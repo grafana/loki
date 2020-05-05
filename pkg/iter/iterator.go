@@ -587,33 +587,32 @@ func (i *reverseIterator) Close() error {
 	return nil
 }
 
-var entryPool = sync.Pool{
+var entryBufferPool = sync.Pool{
 	New: func() interface{} {
-		return &entries{
-			a: make([]logproto.Entry, 0, 1024),
+		return &entryBuffer{
+			entries: make([]logproto.Entry, 0, 1024),
 		}
 	},
 }
 
-type entries struct {
-	a []logproto.Entry
+type entryBuffer struct {
+	entries []logproto.Entry
 }
 
 type reverseEntryIterator struct {
-	iter    EntryIterator
-	cur     logproto.Entry
-	entries *entries
+	iter EntryIterator
+	cur  logproto.Entry
+	buf  *entryBuffer
 
 	loaded bool
 }
 
-// NewEntryReversedIter returns an iterator which loads all or up to N entries
-// of an existing iterator, and then iterates over them backward.
-// Preload entries when they are being queried with a timeout.
+// NewEntryReversedIter returns an iterator which loads all entries and iterates backward.
+// The labels of entries is always empty.
 func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
 	iter, err := &reverseEntryIterator{
-		iter:    it,
-		entries: entryPool.Get().(*entries),
+		iter: it,
+		buf:  entryBufferPool.Get().(*entryBuffer),
 	}, it.Error()
 
 	if err != nil {
@@ -627,7 +626,7 @@ func (i *reverseEntryIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.iter.Next() {
-			i.entries.a = append(i.entries.a, i.iter.Entry())
+			i.buf.entries = append(i.buf.entries, i.iter.Entry())
 		}
 		i.iter.Close()
 	}
@@ -635,12 +634,12 @@ func (i *reverseEntryIterator) load() {
 
 func (i *reverseEntryIterator) Next() bool {
 	i.load()
-	if len(i.entries.a) == 0 {
-		entryPool.Put(i.entries)
-		i.entries = nil
+	if len(i.buf.entries) == 0 {
+		entryBufferPool.Put(i.buf)
+		i.buf.entries = nil
 		return false
 	}
-	i.cur, i.entries.a = i.entries.a[len(i.entries.a)-1], i.entries.a[:len(i.entries.a)-1]
+	i.cur, i.buf.entries = i.buf.entries[len(i.buf.entries)-1], i.buf.entries[:len(i.buf.entries)-1]
 	return true
 }
 
@@ -655,6 +654,11 @@ func (i *reverseEntryIterator) Labels() string {
 func (i *reverseEntryIterator) Error() error { return nil }
 
 func (i *reverseEntryIterator) Close() error {
+	if i.buf.entries != nil {
+		i.buf.entries = i.buf.entries[:0]
+		entryBufferPool.Put(i.buf)
+		i.buf.entries = nil
+	}
 	if !i.loaded {
 		return i.iter.Close()
 	}

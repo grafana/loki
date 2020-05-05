@@ -278,7 +278,7 @@ func TestInsert(t *testing.T) {
 	}))
 }
 
-func TestReverseEntryIterator(t *testing.T) {
+func TestReverseIterator(t *testing.T) {
 	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
@@ -293,6 +293,23 @@ func TestReverseEntryIterator(t *testing.T) {
 		assert.Equal(t, true, reversedIter.Next())
 		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
 		assert.Equal(t, reversedIter.Labels(), itr2.Labels())
+	}
+
+	assert.Equal(t, false, reversedIter.Next())
+	assert.Equal(t, nil, reversedIter.Error())
+	assert.NoError(t, reversedIter.Close())
+}
+
+func TestReverseEntryIterator(t *testing.T) {
+	itr1 := mkStreamIterator(identity, defaultLabels)
+
+	reversedIter, err := NewEntryReversedIter(itr1)
+	require.NoError(t, err)
+
+	for i := int64(testSize - 1); i >= 0; i-- {
+		assert.Equal(t, true, reversedIter.Next())
+		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, reversedIter.Labels(), "")
 	}
 
 	assert.Equal(t, false, reversedIter.Next())
