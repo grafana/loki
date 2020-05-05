@@ -60,11 +60,12 @@ type stream struct {
 	cfg *Config
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks   []chunkDesc
-	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
-	labels   labels.Labels
-	factory  func() chunkenc.Chunk
-	lastLine line
+	chunks       []chunkDesc
+	fp           model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	labels       labels.Labels
+	labelsString string
+	factory      func() chunkenc.Chunk
+	lastLine     line
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -86,11 +87,12 @@ type entryWithError struct {
 
 func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, factory func() chunkenc.Chunk) *stream {
 	return &stream{
-		cfg:     cfg,
-		fp:      fp,
-		labels:  labels,
-		factory: factory,
-		tailers: map[uint32]*tailer{},
+		cfg:          cfg,
+		fp:           fp,
+		labels:       labels,
+		labelsString: labels.String(),
+		factory:      factory,
+		tailers:      map[uint32]*tailer{},
 	}
 }
 
@@ -172,7 +174,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronize
 
 	if len(storedEntries) != 0 {
 		go func() {
-			stream := logproto.Stream{Labels: s.labels.String(), Entries: storedEntries}
+			stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
 
 			closedTailers := []uint32{}
 
@@ -202,7 +204,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronize
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			// return bad http status request response with all failed entries
 			buf := bytes.Buffer{}
-			streamName := s.labels.String()
+			streamName := s.labelsString
 
 			limitedFailedEntries := failedEntriesWithError
 			if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
@@ -272,7 +274,7 @@ func (s *stream) Iterator(ctx context.Context, from, through time.Time, directio
 		}
 	}
 
-	return iter.NewNonOverlappingIterator(iterators, s.labels.String()), nil
+	return iter.NewNonOverlappingIterator(iterators, s.labelsString), nil
 }
 
 func (s *stream) addTailer(t *tailer) {
