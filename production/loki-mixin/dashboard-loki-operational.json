@@ -25,8 +25,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "id": 1599,
-  "iteration": 1588693295990,
+  "id": 68,
+  "iteration": 1588704280892,
   "links": [
     {
       "icon": "dashboard",
@@ -616,16 +616,18 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "increase(kube_pod_container_status_last_terminated_reason{cluster=\"$cluster\", namespace=\"$namespace\", reason!=\"Completed\"}[30m]) > 0",
-          "legendFormat": "{{container}}-{{pod}}-{{reason}}",
-          "refId": "A"
+          "expr": "increase(kube_pod_container_status_restarts_total{cluster=\"$cluster\", namespace=\"$namespace\"}[10m]) > 0",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "{{container}}-{{pod}}",
+          "refId": "B"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Container Termination",
+      "title": "Container Restarts",
       "tooltip": {
         "shared": true,
         "sort": 2,
@@ -1873,7 +1875,7 @@
           "timeShift": null,
           "title": "Discarded Lines Per Interval",
           "transform": "table",
-          "type": "table"
+          "type": "table-old"
         }
       ],
       "title": "Limits",
@@ -6344,7 +6346,7 @@
     }
   ],
   "refresh": "30s",
-  "schemaVersion": 22,
+  "schemaVersion": 25,
   "style": "dark",
   "tags": [],
   "templating": {
@@ -6396,7 +6398,6 @@
         "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
         "hide": 0,
         "includeAll": false,
-        "index": -1,
         "label": null,
         "multi": false,
         "name": "cluster",
@@ -6422,7 +6423,6 @@
         "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\"}, namespace)",
         "hide": 0,
         "includeAll": false,
-        "index": -1,
         "label": null,
         "multi": false,
         "name": "namespace",
@@ -6460,8 +6460,5 @@
   "timezone": "",
   "title": "Loki Operational",
   "uid": "f6fe30815b172c9da7e813c15ddfe607",
-  "variables": {
-    "list": []
-  },
-  "version": 21
+  "version": 1
 }
