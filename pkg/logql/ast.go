@@ -133,9 +133,6 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 		}
 		f = newAndFilter(nextFilter, f)
 	}
-	if f == TrueFilter {
-		return nil, nil
-	}
 	return f, nil
 }
 
