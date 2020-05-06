@@ -81,6 +81,28 @@ func Test_SampleExpr_String(t *testing.T) {
 	}
 }
 
+func Test_NilFilterDoesntPanic(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`{namespace="dev", container_name="cart"} |= "" |= "bloop"`,
+		`{namespace="dev", container_name="cart"} |= "bleep" |= ""`,
+		`{namespace="dev", container_name="cart"} |= "bleep" |= "" |= "bloop"`,
+		`{namespace="dev", container_name="cart"} |= "bleep" |= "" |= "bloop"`,
+		`{namespace="dev", container_name="cart"} |= "bleep" |= "bloop" |= ""`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			expr, err := ParseLogSelector(tc)
+			require.Nil(t, err)
+
+			filter, err := expr.Filter()
+			require.Nil(t, err)
+
+			require.True(t, filter.Filter([]byte("bleepbloop")))
+		})
+	}
+
+}
+
 type linecheck struct {
 	l string
 	e bool
