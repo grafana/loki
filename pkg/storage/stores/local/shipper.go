@@ -10,12 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/stores/util"
@@ -170,16 +169,21 @@ func (s *Shipper) loop() {
 	for {
 		select {
 		case <-resyncTicker.C:
+			status := statusSuccess
 			err := s.syncLocalWithStorage(context.Background())
 			if err != nil {
+				status = statusFailure
 				level.Error(pkg_util.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
 			}
+			s.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
 		case <-uploadFilesTicker.C:
+			status := statusSuccess
 			err := s.uploadFiles(context.Background())
 			if err != nil {
-				s.metrics.filesUploadFailures.Inc()
+				status = statusFailure
 				level.Error(pkg_util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
 			}
+			s.metrics.filesUploadOperationTotal.WithLabelValues(status).Inc()
 		case <-cacheCleanupTicker.C:
 			err := s.cleanupCache()
 			if err != nil {
@@ -197,11 +201,13 @@ func (s *Shipper) Stop() {
 	s.wait.Wait()
 
 	// Push all boltdb files to storage before returning
+	status := statusSuccess
 	err := s.uploadFiles(context.Background())
 	if err != nil {
-		s.metrics.filesUploadFailures.Inc()
+		status = statusFailure
 		level.Error(pkg_util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
 	}
+	s.metrics.filesUploadOperationTotal.WithLabelValues(status).Inc()
 
 	s.downloadedPeriodsMtx.Lock()
 	defer s.downloadedPeriodsMtx.Unlock()
@@ -243,7 +249,6 @@ func (s *Shipper) syncLocalWithStorage(ctx context.Context) error {
 
 	for period := range s.downloadedPeriods {
 		if err := s.syncFilesForPeriod(ctx, period, s.downloadedPeriods[period]); err != nil {
-			s.metrics.filesDownloadFailures.Inc()
 			return err
 		}
 	}
@@ -284,9 +289,10 @@ func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *
 			s.downloadedPeriodsMtx.Unlock()
 
 			if err := s.downloadFilesForPeriod(ctx, period, fc); err != nil {
-				s.metrics.filesDownloadFailures.Inc()
+				s.metrics.filesDownloadOperationTotal.WithLabelValues(statusFailure).Inc()
 				return err
 			}
+			s.metrics.filesDownloadOperationTotal.WithLabelValues(statusSuccess).Inc()
 		}
 
 	}

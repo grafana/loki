@@ -3,13 +3,11 @@ package local
 import (
 	"context"
 
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/weaveworks/common/instrument"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 )
 
