@@ -888,7 +888,7 @@ The example belows show all possible statistics returned with their respective d
         "totalDuplicates": 0 // Total of duplicates removed from replication
       },
       "summary": {
-        "bytesProcessedPerSeconds": 0, // Total of bytes processed per seconds
+        "bytesProcessedPerSeconds": 0, // Total of bytes processed per second
         "execTime": 0, // Total execution time in seconds (float)
         "linesProcessedPerSeconds": 0, // Total lines processed per second
         "totalBytesProcessed":0, // Total amount of bytes processed overall for this request

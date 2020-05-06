@@ -87,9 +87,9 @@ func (m *Result) GetIngester() Ingester {
 
 // Summary is the summary of a query statistics.
 type Summary struct {
-	// Total bytes processed per seconds.
+	// Total bytes processed per second.
 	BytesProcessedPerSeconds int64 `protobuf:"varint,1,opt,name=bytesProcessedPerSeconds,proto3" json:"bytesProcessedPerSeconds"`
-	// Total lines processed per seconds.
+	// Total lines processed per second.
 	LinesProcessedPerSeconds int64 `protobuf:"varint,2,opt,name=linesProcessedPerSeconds,proto3" json:"linesProcessedPerSeconds"`
 	// Total bytes processed.
 	TotalBytesProcessed int64 `protobuf:"varint,3,opt,name=totalBytesProcessed,proto3" json:"totalBytesProcessed"`
