@@ -55,9 +55,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		// force sane defaults.
 		cfg = raw{
 			BackoffConfig: util.BackoffConfig{
-				MaxBackoff: 5 * time.Second,
-				MaxRetries: 5,
-				MinBackoff: 100 * time.Millisecond,
+				MaxBackoff: 5 * time.Minute,
+				MaxRetries: 10,
+				MinBackoff: 500 * time.Millisecond,
 			},
 			BatchSize: 100 * 1024,
 			BatchWait: 1 * time.Second,
