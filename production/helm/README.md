@@ -67,6 +67,10 @@ $ helm upgrade --install fluent-bit loki/fluent-bit \
 To install Grafana on your cluster with helm, use the following command:
 
 ```bash
+# with Helm 2
+$ helm install stable/grafana -n loki-grafana --namespace <YOUR-NAMESPACE>
+
+# with Helm 3
 $ helm install loki-grafana stable/grafana -n <YOUR-NAMESPACE>
 ```
 
