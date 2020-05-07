@@ -12,6 +12,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -40,6 +41,7 @@ type Config struct {
 	Retries                  int                 `yaml:"max_retries"`
 	MaxBackoff               time.Duration       `yaml:"retry_max_backoff"`
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
+	QueryConcurrency         int                 `yaml:"query_concurrency"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -63,6 +65,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
 	f.DurationVar(&cfg.MinBackoff, "cassandra.retry-min-backoff", 100*time.Millisecond, "Minimum time to wait before retrying a failed request. (Default = 100ms)")
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
+	f.IntVar(&cfg.QueryConcurrency, "cassandra.query-concurrency", 0, "Limit number of concurrent queries to Cassandra. (Default is 0: no limit)")
 }
 
 func (cfg *Config) Validate() error {
@@ -192,9 +195,10 @@ func (cfg *Config) createKeyspace() error {
 
 // StorageClient implements chunk.IndexClient and chunk.ObjectClient for Cassandra.
 type StorageClient struct {
-	cfg       Config
-	schemaCfg chunk.SchemaConfig
-	session   *gocql.Session
+	cfg            Config
+	schemaCfg      chunk.SchemaConfig
+	session        *gocql.Session
+	querySemaphore *semaphore.Weighted
 }
 
 // NewStorageClient returns a new StorageClient.
@@ -206,10 +210,16 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient,
 		return nil, errors.WithStack(err)
 	}
 
+	var querySemaphore *semaphore.Weighted
+	if cfg.QueryConcurrency > 0 {
+		querySemaphore = semaphore.NewWeighted(int64(cfg.QueryConcurrency))
+	}
+
 	client := &StorageClient{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		session:   session,
+		cfg:            cfg,
+		schemaCfg:      schemaCfg,
+		session:        session,
+		querySemaphore: querySemaphore,
 	}
 	return client, nil
 }
@@ -277,6 +287,13 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 }
 
 func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback util.Callback) error {
+	if s.querySemaphore != nil {
+		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
+			return err
+		}
+		defer s.querySemaphore.Release(1)
+	}
+
 	var q *gocql.Query
 
 	switch {
@@ -383,6 +400,13 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 }
 
 func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+	if s.querySemaphore != nil {
+		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
+			return input, err
+		}
+		defer s.querySemaphore.Release(1)
+	}
+
 	tableName, err := s.schemaCfg.ChunkTableFor(input.From)
 	if err != nil {
 		return input, err
