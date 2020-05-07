@@ -20,12 +20,12 @@
     "mounts": [
         {
             "name": "data",
-            "description": "Optional external pipelines files",
+            "description": "Optional external pipeline files",
             "source": "",
             "destination": "/data",
             "type": "none",
             "options": ["bind", "ro"],
-			"settable": ["source"]
+			"settable": ["source", "destination"]
         }
 	]
 }
