@@ -73,9 +73,9 @@ var queryTests = []struct {
 						"totalDuplicates": 0
 					},
 					"summary": {
-						"bytesProcessedPerSeconds": 0,
+						"bytesProcessedPerSecond": 0,
 						"execTime": 0,
-						"linesProcessedPerSeconds": 0,
+						"linesProcessedPerSecond": 0,
 						"totalBytesProcessed":0,
 						"totalLinesProcessed":0
 					}
@@ -169,9 +169,9 @@ var queryTests = []struct {
 					"totalDuplicates": 0
 				},
 				"summary": {
-					"bytesProcessedPerSeconds": 0,
+					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
-					"linesProcessedPerSeconds": 0,
+					"linesProcessedPerSecond": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
 				}
@@ -282,9 +282,9 @@ var queryTests = []struct {
 					"totalDuplicates": 0
 				},
 				"summary": {
-					"bytesProcessedPerSeconds": 0,
+					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
-					"linesProcessedPerSeconds": 0,
+					"linesProcessedPerSecond": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
 				}

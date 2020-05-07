@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	bytesPerSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	bytesPerSecond = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_bytes_processed_per_seconds",
 		Help:      "Distribution of bytes processed per second for LogQL queries.",
@@ -87,12 +87,12 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"step", p.Step(),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
-		"throughput_mb", float64(stats.Summary.BytesProcessedPerSeconds)/10e6,
+		"throughput_mb", float64(stats.Summary.BytesProcessedPerSecond)/10e6,
 		"total_bytes_mb", float64(stats.Summary.TotalBytesProcessed)/10e6,
 	)
 
-	bytesPerSeconds.WithLabelValues(status, queryType, rt, latencyType).
-		Observe(float64(stats.Summary.BytesProcessedPerSeconds))
+	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType).
+		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
 	chunkDownloadLatency.WithLabelValues(status, queryType, rt).
