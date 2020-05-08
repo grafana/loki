@@ -65,9 +65,9 @@ func TestLogSlowQuery(t *testing.T) {
 		step:      time.Minute,
 	}, "200", stats.Result{
 		Summary: stats.Summary{
-			BytesProcessedPerSeconds: 100000,
-			ExecTime:                 25.25,
-			TotalBytesProcessed:      100000,
+			BytesProcessedPerSecond: 100000,
+			ExecTime:                25.25,
+			TotalBytesProcessed:     100000,
 		},
 	})
 	require.Equal(t,
