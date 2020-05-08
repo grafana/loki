@@ -23,7 +23,6 @@ require (
 	github.com/go-kit/kit v0.9.0
 	github.com/go-logfmt/logfmt v0.4.0
 	github.com/gogo/protobuf v1.3.1 // remember to update loki-build-image/Dockerfile too
-	github.com/gogo/status v1.0.3 // indirect
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.7.1
 	github.com/gorilla/websocket v1.4.0
