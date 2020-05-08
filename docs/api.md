@@ -109,7 +109,7 @@ Where `<vector value>` is:
     <label key-value pairs>
   },
   "value": [
-    <number: nanosecond unix epoch>,
+    <number: second unix epoch>,
     <string: value>
   ]
 }
@@ -146,7 +146,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
       {
         "metric": {},
         "value": [
-          1559848867745737,
+          1588889221,
           "1267.1266666666666"
         ]
       },
@@ -155,7 +155,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
           "level": "warn"
         },
         "value": [
-          1559848867745737,
+          1588889221,
           "37.77166666666667"
         ]
       },
@@ -164,7 +164,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
           "level": "info"
         },
         "value": [
-          1559848867745737,
+          1588889221,
           "37.69"
         ]
       }
@@ -254,7 +254,7 @@ Where `<matrix value>` is:
     <label key-value pairs>
   },
   "values": [
-    <number: nanosecond unix epoch>,
+    <number: second unix epoch>,
     <string: value>
   ]
 }
@@ -294,15 +294,15 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
         },
         "values": [
           [
-            1559848958663735,
+            1588889221,
             "137.95"
           ],
           [
-            1559849258663735,
+            1588889221,
             "467.115"
           ],
           [
-            1559849558663735,
+            1588889221,
             "658.8516666666667"
           ]
         ]
@@ -313,15 +313,15 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
         },
         "values": [
           [
-            1559848958663735,
+            1588889221,
             "137.27833333333334"
           ],
           [
-            1559849258663735,
+            1588889221,
             "467.69"
           ],
           [
-            1559849558663735,
+            1588889221,
             "660.6933333333334"
           ]
         ]
