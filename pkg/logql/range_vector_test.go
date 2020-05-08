@@ -53,6 +53,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		step            int64
 		expectedVectors []promql.Vector
 		expectedTs      []time.Time
+		start, end      time.Time
 	}{
 		{
 			(5 * time.Second).Nanoseconds(), // no overlap
@@ -73,6 +74,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 				},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
+			time.Unix(10, 0), time.Unix(100, 0),
 		},
 		{
 			(35 * time.Second).Nanoseconds(), // will overlap by 5 sec
@@ -96,6 +98,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 				},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
+			time.Unix(10, 0), time.Unix(100, 0),
 		},
 		{
 			(30 * time.Second).Nanoseconds(), // same range
@@ -116,6 +119,23 @@ func Test_RangeVectorIterator(t *testing.T) {
 				},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
+			time.Unix(10, 0), time.Unix(100, 0),
+		},
+		{
+			(50 * time.Second).Nanoseconds(), // all step are overlaping
+			(10 * time.Second).Nanoseconds(),
+			[]promql.Vector{
+				[]promql.Sample{
+					{Point: newPoint(time.Unix(110, 0), 2), Metric: labelBar},
+					{Point: newPoint(time.Unix(110, 0), 2), Metric: labelFoo},
+				},
+				[]promql.Sample{
+					{Point: newPoint(time.Unix(120, 0), 2), Metric: labelBar},
+					{Point: newPoint(time.Unix(120, 0), 2), Metric: labelFoo},
+				},
+			},
+			[]time.Time{time.Unix(110, 0), time.Unix(120, 0)},
+			time.Unix(110, 0), time.Unix(120, 0),
 		},
 	}
 
@@ -124,7 +144,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			fmt.Sprintf("logs[%s] - step: %s", time.Duration(tt.selRange), time.Duration(tt.step)),
 			func(t *testing.T) {
 				it := newRangeVectorIterator(newEntryIterator(), tt.selRange,
-					tt.step, time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano())
+					tt.step, tt.start.UnixNano(), tt.end.UnixNano())
 
 				i := 0
 				for it.Next() {

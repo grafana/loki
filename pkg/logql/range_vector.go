@@ -70,14 +70,18 @@ func (r *rangeVectorIterator) popBack(newStart int64) {
 	// possible improvement: if there is no overlap we can just remove all.
 	for fp := range r.window {
 		lastPoint := 0
+		remove := false
 		for i, p := range r.window[fp].Points {
 			if p.T <= newStart {
 				lastPoint = i
+				remove = true
 				continue
 			}
 			break
 		}
-		r.window[fp].Points = r.window[fp].Points[lastPoint+1:]
+		if remove {
+			r.window[fp].Points = r.window[fp].Points[lastPoint+1:]
+		}
 		if len(r.window[fp].Points) == 0 {
 			s := r.window[fp]
 			delete(r.window, fp)
