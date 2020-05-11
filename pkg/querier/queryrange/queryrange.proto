@@ -34,7 +34,7 @@ message LokiResponse {
 
 message LokiData {
   string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
-  repeated logproto.Stream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+  repeated logproto.StreamAdapter Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result", (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.Stream"];
 }
 
 

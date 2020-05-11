@@ -150,7 +150,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) getOrCreateStream(pushReqStream *logproto.Stream) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, error) {
 	labels, err := util.ToClientLabels(pushReqStream.Labels)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())

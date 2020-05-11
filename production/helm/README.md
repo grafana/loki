@@ -67,7 +67,11 @@ $ helm upgrade --install fluent-bit loki/fluent-bit \
 To install Grafana on your cluster with helm, use the following command:
 
 ```bash
-$ helm install stable/grafana -n loki-grafana
+# with Helm 2
+$ helm install stable/grafana -n loki-grafana --namespace <YOUR-NAMESPACE>
+
+# with Helm 3
+$ helm install loki-grafana stable/grafana -n <YOUR-NAMESPACE>
 ```
 
 > The chart loki-stack contains a pre-configured Grafana, simply use `--set grafana.enabled=true`
@@ -75,7 +79,7 @@ $ helm install stable/grafana -n loki-grafana
 To get the admin password for the Grafana pod, run the following command:
 
 ```bash
-$  kubectl get secret --namespace <YOUR-NAMESPACE> loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+$ kubectl get secret --namespace <YOUR-NAMESPACE> loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
 ```
 
 To access the Grafana UI, run the following command:

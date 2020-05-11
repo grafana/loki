@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/local"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -146,6 +147,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	}
 
 	pushHandler := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
@@ -167,8 +169,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
-		querier.NewPrepopulateMiddleware(),
+		serverutil.NewPrepopulateMiddleware(),
 	)
 	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
@@ -295,7 +298,13 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.frontend.Wrap(tripperware)
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
-	frontendHandler := queryrange.StatsHTTPMiddleware.Wrap(t.httpAuthMiddleware.Wrap(t.frontend.Handler()))
+	frontendHandler := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+		queryrange.StatsHTTPMiddleware,
+		t.httpAuthMiddleware,
+		serverutil.NewPrepopulateMiddleware(),
+	).Wrap(t.frontend.Handler())
+
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)

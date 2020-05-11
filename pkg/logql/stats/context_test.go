@@ -54,11 +54,11 @@ func TestSnapshot(t *testing.T) {
 			TotalDuplicates:       10,
 		},
 		Summary: Summary{
-			ExecTime:                 2 * time.Second.Seconds(),
-			BytesProcessedPerSeconds: int64(42),
-			LinesProcessedPerSeconds: int64(50),
-			TotalBytesProcessed:      int64(84),
-			TotalLinesProcessed:      int64(100),
+			ExecTime:                2 * time.Second.Seconds(),
+			BytesProcessedPerSecond: int64(42),
+			LinesProcessedPerSecond: int64(50),
+			TotalBytesProcessed:     int64(84),
+			TotalLinesProcessed:     int64(100),
 		},
 	}
 	require.Equal(t, expected, res)
@@ -116,11 +116,11 @@ func TestResult_Merge(t *testing.T) {
 			TotalDuplicates:       10,
 		},
 		Summary: Summary{
-			ExecTime:                 2 * time.Second.Seconds(),
-			BytesProcessedPerSeconds: int64(42),
-			LinesProcessedPerSeconds: int64(50),
-			TotalBytesProcessed:      int64(84),
-			TotalLinesProcessed:      int64(100),
+			ExecTime:                2 * time.Second.Seconds(),
+			BytesProcessedPerSecond: int64(42),
+			LinesProcessedPerSecond: int64(50),
+			TotalBytesProcessed:     int64(84),
+			TotalLinesProcessed:     int64(100),
 		},
 	}
 
@@ -154,11 +154,11 @@ func TestResult_Merge(t *testing.T) {
 			TotalDuplicates:       2 * 10,
 		},
 		Summary: Summary{
-			ExecTime:                 2 * 2 * time.Second.Seconds(),
-			BytesProcessedPerSeconds: int64(42), // 2 requests at the same pace should give the same bytes/lines per sec
-			LinesProcessedPerSeconds: int64(50),
-			TotalBytesProcessed:      2 * int64(84),
-			TotalLinesProcessed:      2 * int64(100),
+			ExecTime:                2 * 2 * time.Second.Seconds(),
+			BytesProcessedPerSecond: int64(42), // 2 requests at the same pace should give the same bytes/lines per sec
+			LinesProcessedPerSecond: int64(50),
+			TotalBytesProcessed:     2 * int64(84),
+			TotalLinesProcessed:     2 * int64(100),
 		},
 	}, res)
 

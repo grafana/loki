@@ -31,6 +31,10 @@ config:
   #    Time_Key: time
   #    Time_Format: "%d/%b/%Y:%H:%M:%S %z"
 
+  # extraOutputs: # Allow to define extra outputs in addition to the one automatically created
+  #   - Name: stdout
+  #     Format: json
+  #     json_date_format: time
 
 affinity: {}
 

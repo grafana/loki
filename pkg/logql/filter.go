@@ -53,9 +53,15 @@ type andFilter struct {
 
 // newAndFilter creates a new filter which matches only if left and right matches.
 func newAndFilter(left LineFilter, right LineFilter) LineFilter {
-	if (right == TrueFilter || right == nil) && (left == TrueFilter || left == nil) {
-		return TrueFilter
+	// Make sure we take care of panics in case a nil or noop filter is passed.
+	if right == nil || right == TrueFilter {
+		return left
 	}
+
+	if left == nil || left == TrueFilter {
+		return right
+	}
+
 	return andFilter{
 		left:  left,
 		right: right,
@@ -73,9 +79,14 @@ type orFilter struct {
 
 // newOrFilter creates a new filter which matches only if left or right matches.
 func newOrFilter(left LineFilter, right LineFilter) LineFilter {
-	if (right == TrueFilter || right == nil) && (left == TrueFilter || left == nil) {
-		return TrueFilter
+	if left == nil || left == TrueFilter {
+		return right
 	}
+
+	if right == nil || right == TrueFilter {
+		return left
+	}
+
 	return orFilter{
 		left:  left,
 		right: right,

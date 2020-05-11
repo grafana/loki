@@ -38,7 +38,7 @@ func TestIngester(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar",bar="baz1"}`,
 			},
@@ -206,7 +206,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar",bar="baz1"}`,
 			},

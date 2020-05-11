@@ -22,7 +22,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 
 	tests := map[string]struct {
 		chunks     []*chunkenc.LazyChunk
-		expected   []*logproto.Stream
+		expected   []logproto.Stream
 		matchers   string
 		start, end time.Time
 		direction  logproto.Direction
@@ -109,7 +109,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -196,7 +196,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -301,7 +301,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -384,7 +384,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -462,7 +462,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -520,7 +520,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -688,14 +688,14 @@ func TestBuildHeapIterator(t *testing.T) {
 
 	for i, tc := range []struct {
 		input    [][]*chunkenc.LazyChunk
-		expected []*logproto.Stream
+		expected []logproto.Stream
 	}{
 		{
 			[][]*chunkenc.LazyChunk{
 				{firstChunk},
 				{thirdChunk},
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
 					Entries: []logproto.Entry{
@@ -724,7 +724,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				{secondChunk},
 				{firstChunk, thirdChunk},
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
 					Entries: []logproto.Entry{

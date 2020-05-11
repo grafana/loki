@@ -53,7 +53,7 @@ func (v Validator) ValidateEntry(userID string, labels string, entry logproto.En
 }
 
 // Validate labels returns an error if the labels are invalid
-func (v Validator) ValidateLabels(userID string, stream *logproto.Stream) error {
+func (v Validator) ValidateLabels(userID string, stream logproto.Stream) error {
 	ls, err := util.ToClientLabels(stream.Labels)
 	if err != nil {
 		// I wish we didn't return httpgrpc errors here as it seems
@@ -93,7 +93,7 @@ func (v Validator) ValidateLabels(userID string, stream *logproto.Stream) error 
 	return nil
 }
 
-func updateMetrics(reason, userID string, stream *logproto.Stream) {
+func updateMetrics(reason, userID string, stream logproto.Stream) {
 	validation.DiscardedSamples.WithLabelValues(reason, userID).Inc()
 	bytes := 0
 	for _, e := range stream.Entries {
