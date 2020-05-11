@@ -39,7 +39,7 @@ type streamIterator struct {
 }
 
 // NewStreamIterator iterates over entries in a stream.
-func NewStreamIterator(stream *logproto.Stream) EntryIterator {
+func NewStreamIterator(stream logproto.Stream) EntryIterator {
 	return &streamIterator{
 		i:       -1,
 		entries: stream.Entries,
@@ -355,7 +355,7 @@ func (i *heapIterator) Len() int {
 }
 
 // NewStreamsIterator returns an iterator over logproto.Stream
-func NewStreamsIterator(ctx context.Context, streams []*logproto.Stream, direction logproto.Direction) EntryIterator {
+func NewStreamsIterator(ctx context.Context, streams []logproto.Stream, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(streams))
 	for i := range streams {
 		is = append(is, NewStreamIterator(streams[i]))
@@ -603,10 +603,10 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 	}
 
 	result := logproto.QueryResponse{
-		Streams: make([]*logproto.Stream, 0, len(streams)),
+		Streams: make([]logproto.Stream, 0, len(streams)),
 	}
 	for _, stream := range streams {
-		result.Streams = append(result.Streams, stream)
+		result.Streams = append(result.Streams, *stream)
 	}
 	return &result, respSize, i.Error()
 }

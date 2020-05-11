@@ -25,7 +25,7 @@ var fooLabels = "{foo=\"bar\"}"
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
 
-func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
+func assertStream(t *testing.T, expected, actual []logproto.Stream) {
 	if len(expected) != len(actual) {
 		t.Fatalf("error stream length are different expected %d actual %d\n%s", len(expected), len(actual), spew.Sdump(expected, actual))
 		return

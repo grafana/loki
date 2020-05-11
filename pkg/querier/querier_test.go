@@ -88,7 +88,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
 
 	queryClient := newQueryClientMock()
-	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
+	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
 
 	tailClient := newTailClientMock()
 	tailClient.On("Recv").Return(mockTailResponse(mockStream(1, 2)), nil)
@@ -233,7 +233,7 @@ func mockQuerierConfig() Config {
 	}
 }
 
-func mockQueryResponse(streams []*logproto.Stream) *logproto.QueryResponse {
+func mockQueryResponse(streams []logproto.Stream) *logproto.QueryResponse {
 	return &logproto.QueryResponse{
 		Streams: streams,
 	}
@@ -264,7 +264,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
 
 	queryClient := newQueryClientMock()
-	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
+	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
 
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("Query", mock.Anything, &request, mock.Anything).Return(queryClient, nil)
@@ -488,7 +488,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 
 			if !tc.skipIngesters {
 				ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
-				queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 1)}), nil).Once()
+				queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil).Once()
 				queryClient.On("Recv").Return(nil, io.EOF).Once()
 			}
 
@@ -573,7 +573,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
 
 			queryClient := newQueryClientMock()
-			queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
+			queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
 
 			tailClient := newTailClientMock()
 			tailClient.On("Recv").Return(mockTailResponse(mockStream(1, 2)), nil)

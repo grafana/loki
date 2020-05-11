@@ -33,7 +33,7 @@ var (
 const ValueTypeStreams = "streams"
 
 // Streams is promql.Value
-type Streams []*logproto.Stream
+type Streams []logproto.Stream
 
 // Type implements `promql.Value`
 func (Streams) Type() promql.ValueType { return ValueTypeStreams }
@@ -329,9 +329,9 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 		}
 	}
 
-	result := make([]*logproto.Stream, 0, len(streams))
+	result := make([]logproto.Stream, 0, len(streams))
 	for _, stream := range streams {
-		result = append(result, stream)
+		result = append(result, *stream)
 	}
 	return result, i.Error()
 }

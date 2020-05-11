@@ -24,7 +24,7 @@ var queryTests = []struct {
 }{
 	{
 		logql.Streams{
-			&logproto.Stream{
+			logproto.Stream{
 				Entries: []logproto.Entry{
 					{
 						Timestamp: time.Unix(0, 123456789012345),

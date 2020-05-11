@@ -33,7 +33,7 @@ func TestLabelsCollisions(t *testing.T) {
 	tt := time.Now().Add(-5 * time.Minute)
 
 	// Notice how labels aren't sorted.
-	err = i.Push(context.Background(), &logproto.PushRequest{Streams: []*logproto.Stream{
+	err = i.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
 		// both label sets have FastFingerprint=e002a3a451262627
 		{Labels: "{app=\"l\",uniq0=\"0\",uniq1=\"1\"}", Entries: entries(5, tt.Add(time.Minute))},
 		{Labels: "{uniq0=\"1\",app=\"m\",uniq1=\"1\"}", Entries: entries(5, tt)},
@@ -82,7 +82,7 @@ func TestConcurrentPushes(t *testing.T) {
 			tt := time.Now().Add(-5 * time.Minute)
 
 			for i := 0; i < iterations; i++ {
-				err := inst.Push(context.Background(), &logproto.PushRequest{Streams: []*logproto.Stream{
+				err := inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
 					{Labels: labels, Entries: entries(entriesPerIteration, tt)},
 				}})
 
@@ -122,7 +122,7 @@ func TestSyncPeriod(t *testing.T) {
 		result = append(result, logproto.Entry{Timestamp: tt, Line: fmt.Sprintf("hello %d", i)})
 		tt = tt.Add(time.Duration(1 + rand.Int63n(randomStep.Nanoseconds())))
 	}
-	pr := &logproto.PushRequest{Streams: []*logproto.Stream{{Labels: lbls, Entries: result}}}
+	pr := &logproto.PushRequest{Streams: []logproto.Stream{{Labels: lbls, Entries: result}}}
 	err = inst.Push(context.Background(), pr)
 	require.NoError(t, err)
 

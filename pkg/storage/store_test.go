@@ -183,12 +183,12 @@ func Test_store_LazyQuery(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *logproto.QueryRequest
-		expected []*logproto.Stream
+		expected []logproto.Stream
 	}{
 		{
 			"all",
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
 					Entries: []logproto.Entry{
@@ -256,7 +256,7 @@ func Test_store_LazyQuery(t *testing.T) {
 		{
 			"filter regex",
 			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), logproto.FORWARD),
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
 					Entries: []logproto.Entry{
@@ -280,7 +280,7 @@ func Test_store_LazyQuery(t *testing.T) {
 		{
 			"filter matcher",
 			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
 					Entries: []logproto.Entry{
@@ -317,7 +317,7 @@ func Test_store_LazyQuery(t *testing.T) {
 		{
 			"filter time",
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), logproto.FORWARD),
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
 					Entries: []logproto.Entry{

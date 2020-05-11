@@ -166,10 +166,10 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
 
-	streams := make([]*logproto.Stream, len(proto.Data.Result))
+	streams := make([]logproto.Stream, len(proto.Data.Result))
 
 	for i, stream := range proto.Data.Result {
-		streams[i] = &logproto.Stream{
+		streams[i] = logproto.Stream{
 			Labels:  stream.Labels,
 			Entries: stream.Entries,
 		}

@@ -33,7 +33,7 @@ func TestTransferOut(t *testing.T) {
 	// Push some data into our original ingester
 	ctx := user.InjectOrgID(context.Background(), "test")
 	_, err := ing.Push(ctx, &logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Entries: []logproto.Entry{
 					{Line: "line 0", Timestamp: time.Unix(0, 0)},
@@ -59,7 +59,7 @@ func TestTransferOut(t *testing.T) {
 
 	// verify we get out of order exception on adding an entry with older timestamps
 	_, err2 := ing.Push(ctx, &logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Entries: []logproto.Entry{
 					{Line: "out of order line", Timestamp: time.Unix(0, 0)},

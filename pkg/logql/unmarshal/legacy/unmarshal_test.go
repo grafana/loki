@@ -14,11 +14,11 @@ import (
 
 // covers requests to /api/prom/push
 var pushTests = []struct {
-	expected []*logproto.Stream
+	expected []logproto.Stream
 	actual   string
 }{
 	{
-		[]*logproto.Stream{
+		[]logproto.Stream{
 			{
 				Entries: []logproto.Entry{
 					{
