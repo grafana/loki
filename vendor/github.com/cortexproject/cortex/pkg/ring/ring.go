@@ -256,24 +256,29 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-	maxErrors := r.cfg.ReplicationFactor / 2
+	// Calculate the number of required ingesters;
+	// ensure we always require at least RF-1 when RF=3.
+	numRequired := len(r.ringDesc.Ingesters)
+	if numRequired < r.cfg.ReplicationFactor {
+		numRequired = r.cfg.ReplicationFactor
+	}
+	maxUnavailable := r.cfg.ReplicationFactor / 2
+	numRequired -= maxUnavailable
 
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(&ingester, Read) {
-			maxErrors--
-			continue
+		if r.IsHealthy(&ingester, Read) {
+			ingesters = append(ingesters, ingester)
 		}
-		ingesters = append(ingesters, ingester)
 	}
 
-	if maxErrors < 0 {
+	if len(ingesters) < numRequired {
 		return ReplicationSet{}, fmt.Errorf("too many failed ingesters")
 	}
 
 	return ReplicationSet{
 		Ingesters: ingesters,
-		MaxErrors: maxErrors,
+		MaxErrors: len(ingesters) - numRequired,
 	}, nil
 }
 

@@ -28,6 +28,7 @@ type Params interface {
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
+	Interval() time.Duration
 	Limit() uint32
 	Direction() logproto.Direction
 	Shards() []string
@@ -36,7 +37,7 @@ type Params interface {
 func NewLiteralParams(
 	qs string,
 	start, end time.Time,
-	step time.Duration,
+	step, interval time.Duration,
 	direction logproto.Direction,
 	limit uint32,
 	shards []string,
@@ -46,6 +47,7 @@ func NewLiteralParams(
 		start:     start,
 		end:       end,
 		step:      step,
+		interval:  interval,
 		direction: direction,
 		limit:     limit,
 		shards:    shards,
@@ -57,6 +59,7 @@ type LiteralParams struct {
 	qs         string
 	start, end time.Time
 	step       time.Duration
+	interval   time.Duration
 	direction  logproto.Direction
 	limit      uint32
 	shards     []string
@@ -75,6 +78,9 @@ func (p LiteralParams) End() time.Time { return p.end }
 
 // Step impls Params
 func (p LiteralParams) Step() time.Duration { return p.step }
+
+// Interval impls Params
+func (p LiteralParams) Interval() time.Duration { return p.interval }
 
 // Limit impls Params
 func (p LiteralParams) Limit() uint32 { return p.limit }
@@ -95,7 +101,7 @@ func GetRangeType(q Params) QueryRangeType {
 
 // Evaluator is an interface for iterating over data at different nodes in the AST
 type Evaluator interface {
-	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary compuation of embedded expressions. This allows more modular & extensible
+	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// StepEvaluator implementations which can be composed.
 	StepEvaluator(ctx context.Context, nextEvaluator Evaluator, expr SampleExpr, p Params) (StepEvaluator, error)
 	// Iterator returns the iter.EntryIterator for a given LogSelectorExpr
@@ -394,7 +400,7 @@ func rangeAggEvaluator(
 	}, vecIter.Close)
 }
 
-// binOpExpr explicly does not handle when both legs are literals as
+// binOpExpr explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func binOpStepEvaluator(
 	ctx context.Context,

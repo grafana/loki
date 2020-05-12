@@ -102,7 +102,7 @@ func (e *expiringCounter) Add(val float64) {
 	e.lastModSec = time.Now().Unix()
 }
 
-// HasExpired implements Expireable
+// HasExpired implements Expirable
 func (e *expiringCounter) HasExpired(currentTimeSec int64, maxAgeSec int64) bool {
 	return currentTimeSec-e.lastModSec >= maxAgeSec
 }

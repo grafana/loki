@@ -23,4 +23,4 @@ spec:
             release: {{ .Release.Name }}
     - ports:
       - port: {{ .Values.service.port }}
-{{- end -}}
+{{- end }}

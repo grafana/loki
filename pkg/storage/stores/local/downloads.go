@@ -23,7 +23,7 @@ func (s *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 
 	// listing tables from store
 	var objects []chunk.StorageObject
-	objects, err = s.storageClient.List(ctx, period+"/")
+	objects, _, err = s.storageClient.List(ctx, period+"/")
 	if err != nil {
 		return
 	}
@@ -160,7 +160,7 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 	fc.Lock()
 	defer fc.Unlock()
 
-	objects, err := s.storageClient.List(ctx, period+"/")
+	objects, _, err := s.storageClient.List(ctx, period+"/")
 	if err != nil {
 		return err
 	}

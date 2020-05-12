@@ -109,8 +109,8 @@ func Test_TrueFilter(t *testing.T) {
 		{"nil left or", newOrFilter(nil, newContainsFilter(empty, false)), true},
 		{"nil right and not empty", newAndFilter(newContainsFilter([]byte("foo"), false), nil), false},
 		{"nil left or not empty", newOrFilter(nil, newContainsFilter([]byte("foo"), false)), false},
-		{"nil both and", newAndFilter(nil, nil), true},
-		{"nil both or", newOrFilter(nil, nil), true},
+		{"nil both and", newAndFilter(nil, nil), false}, // returns nil
+		{"nil both or", newOrFilter(nil, nil), false},   // returns nil
 		{"empty match and chained", newAndFilter(newContainsFilter(empty, false), newAndFilter(newContainsFilter(empty, false), newAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
 		{"empty match or chained", newOrFilter(newContainsFilter(empty, false), newOrFilter(newContainsFilter(empty, true), newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
 		{"empty match and", newNotFilter(newAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},

@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -43,6 +44,7 @@ func TestChunkFlushingIdle(t *testing.T) {
 	cfg.RetainPeriod = 500 * time.Millisecond
 
 	store, ing := newTestStore(t, cfg)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	testData := pushTestSamples(t, ing)
 
 	// wait beyond idle time so samples flush
@@ -53,7 +55,7 @@ func TestChunkFlushingIdle(t *testing.T) {
 func TestChunkFlushingShutdown(t *testing.T) {
 	store, ing := newTestStore(t, defaultIngesterTestConfig(t))
 	testData := pushTestSamples(t, ing)
-	ing.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	store.checkData(t, testData)
 }
 
@@ -72,7 +74,7 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	// checkData only iterates between unix seconds 0 and 1000
 	now := time.Unix(0, 0)
 
-	req := &logproto.PushRequest{Streams: []*logproto.Stream{
+	req := &logproto.PushRequest{Streams: []logproto.Stream{
 		// some colliding label sets
 		{Labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}.String(), Entries: entries(5, now.Add(time.Minute))},
 		{Labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}.String(), Entries: entries(5, now)},
@@ -90,10 +92,10 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	// force flush
-	ing.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	// verify that we get all the data back
-	store.checkData(t, map[string][]*logproto.Stream{userID: req.Streams})
+	store.checkData(t, map[string][]logproto.Stream{userID: req.Streams})
 
 	// make sure all chunks have different fingerprint, even colliding ones.
 	chunkFingerprints := map[model.Fingerprint]bool{}
@@ -123,7 +125,7 @@ func TestFlushMaxAge(t *testing.T) {
 		{Timestamp: now.Add(time.Second * 61), Line: "3"},
 	}
 
-	req := &logproto.PushRequest{Streams: []*logproto.Stream{
+	req := &logproto.PushRequest{Streams: []logproto.Stream{
 		{Labels: model.LabelSet{"app": "l"}.String(), Entries: firstEntries},
 	}}
 
@@ -136,9 +138,9 @@ func TestFlushMaxAge(t *testing.T) {
 	time.Sleep(2 * cfg.FlushCheckPeriod)
 
 	// ensure chunk is not flushed after flush period elapses
-	store.checkData(t, map[string][]*logproto.Stream{})
+	store.checkData(t, map[string][]logproto.Stream{})
 
-	req2 := &logproto.PushRequest{Streams: []*logproto.Stream{
+	req2 := &logproto.PushRequest{Streams: []logproto.Stream{
 		{Labels: model.LabelSet{"app": "l"}.String(), Entries: secondEntries},
 	}}
 
@@ -148,12 +150,13 @@ func TestFlushMaxAge(t *testing.T) {
 	time.Sleep(2 * cfg.FlushCheckPeriod)
 
 	// assert stream is now both batches
-	store.checkData(t, map[string][]*logproto.Stream{
+	store.checkData(t, map[string][]logproto.Stream{
 		userID: {
 			{Labels: model.LabelSet{"app": "l"}.String(), Entries: append(firstEntries, secondEntries...)},
 		},
 	})
 
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
 type testStore struct {
@@ -172,6 +175,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 
 	ing, err := New(cfg, client.Config{}, store, limits)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
 	return store, ing
 }
@@ -188,7 +192,7 @@ func defaultIngesterTestConfig(t *testing.T) Config {
 	cfg.ConcurrentFlushes = 1
 	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = kvClient
 	cfg.LifecyclerConfig.NumTokens = 1
-	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
+	cfg.LifecyclerConfig.ListenPort = 0
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
@@ -231,11 +235,11 @@ func (s *testStore) LazyQuery(ctx context.Context, req logql.SelectParams) (iter
 
 func (s *testStore) Stop() {}
 
-func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]*logproto.Stream {
+func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test samples.
-	testData := map[string][]*logproto.Stream{}
+	testData := map[string][]logproto.Stream{}
 	for i, userID := range userIDs {
 		testData[userID] = buildTestStreams(i)
 	}
@@ -251,8 +255,8 @@ func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]*logp
 	return testData
 }
 
-func buildTestStreams(offset int) []*logproto.Stream {
-	var m []*logproto.Stream
+func buildTestStreams(offset int) []logproto.Stream {
+	var m []logproto.Stream
 	for i := 0; i < numSeries; i++ {
 		ss := logproto.Stream{
 			Labels: model.Metric{
@@ -266,7 +270,7 @@ func buildTestStreams(offset int) []*logproto.Stream {
 				Line:      "line",
 			})
 		}
-		m = append(m, &ss)
+		m = append(m, ss)
 	}
 
 	sort.Slice(m, func(i, j int) bool {
@@ -277,15 +281,15 @@ func buildTestStreams(offset int) []*logproto.Stream {
 }
 
 // check that the store is holding data equivalent to what we expect
-func (s *testStore) checkData(t *testing.T, testData map[string][]*logproto.Stream) {
+func (s *testStore) checkData(t *testing.T, testData map[string][]logproto.Stream) {
 	for userID, expected := range testData {
 		streams := s.getStreamsForUser(t, userID)
 		require.Equal(t, expected, streams)
 	}
 }
 
-func (s *testStore) getStreamsForUser(t *testing.T, userID string) []*logproto.Stream {
-	var streams []*logproto.Stream
+func (s *testStore) getStreamsForUser(t *testing.T, userID string) []logproto.Stream {
+	var streams []logproto.Stream
 	for _, c := range s.getChunksForUser(userID) {
 		lokiChunk := c.Data.(*chunkenc.Facade).LokiChunk()
 		streams = append(streams, buildStreamsFromChunk(t, c.Metric.String(), lokiChunk))
@@ -303,11 +307,11 @@ func (s *testStore) getChunksForUser(userID string) []chunk.Chunk {
 	return s.chunks[userID]
 }
 
-func buildStreamsFromChunk(t *testing.T, labels string, chk chunkenc.Chunk) *logproto.Stream {
+func buildStreamsFromChunk(t *testing.T, labels string, chk chunkenc.Chunk) logproto.Stream {
 	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, nil)
 	require.NoError(t, err)
 
-	stream := &logproto.Stream{
+	stream := logproto.Stream{
 		Labels: labels,
 	}
 	for it.Next() {

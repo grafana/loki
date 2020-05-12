@@ -197,10 +197,12 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	var resp *logproto.TailResponse
 	var err error
 	defer t.dropTailClient(addr)
+
+	logger := util.WithContext(querierTailClient.Context(), util.Logger)
 	for {
 		if t.stopped {
 			if err := querierTailClient.CloseSend(); err != nil {
-				level.Error(util.Logger).Log("msg", "Error closing grpc tail client", "err", err)
+				level.Error(logger).Log("msg", "Error closing grpc tail client", "err", err)
 			}
 			break
 		}
@@ -208,7 +210,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 		if err != nil {
 			// We don't want to log error when its due to stopping the tail request
 			if !t.stopped {
-				level.Error(util.Logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
+				level.Error(logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
 			}
 			break
 		}
@@ -221,7 +223,7 @@ func (t *Tailer) pushTailResponseFromIngester(resp *logproto.TailResponse) {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
-	t.openStreamIterator.Push(iter.NewStreamIterator(resp.Stream))
+	t.openStreamIterator.Push(iter.NewStreamIterator(*resp.Stream))
 }
 
 // finds oldest entry by peeking at open stream iterator.

@@ -5,12 +5,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
@@ -34,8 +31,6 @@ import (
 // ErrReadOnly is returned when the ingester is shutting down and a push was
 // attempted.
 var ErrReadOnly = errors.New("Ingester is shutting down")
-
-var readinessProbeSuccess = []byte("Ready")
 
 var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "cortex_ingester_flush_queue_length",
@@ -93,6 +88,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
+	services.Service
+
 	cfg          Config
 	clientConfig client.Config
 
@@ -101,12 +98,14 @@ type Ingester struct {
 	instances    map[string]*instance
 	readonly     bool
 
-	lifecycler *ring.Lifecycler
-	store      ChunkStore
+	lifecycler        *ring.Lifecycler
+	lifecyclerWatcher *services.FailureWatcher
 
-	done     sync.WaitGroup
-	quit     chan struct{}
-	quitting chan struct{}
+	store ChunkStore
+
+	loopDone    sync.WaitGroup
+	loopQuit    chan struct{}
+	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -138,18 +137,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		clientConfig: clientConfig,
 		instances:    map[string]*instance{},
 		store:        store,
-		quit:         make(chan struct{}),
+		loopQuit:     make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		quitting:     make(chan struct{}),
+		tailersQuit:  make(chan struct{}),
 		factory: func() chunkenc.Chunk {
 			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
-	}
-
-	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
-	for j := 0; j < cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
-		go i.flushLoop(j)
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
@@ -157,30 +150,81 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		return nil, err
 	}
 
-	i.lifecycler.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
-		// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
-		// for now we just simulate old behaviour here. When Ingester itself becomes a service, it will enter Failed state as well.
-		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
-		os.Exit(1)
-	}))
-
-	err = services.StartAndAwaitRunning(context.Background(), i.lifecycler)
-	if err != nil {
-		return nil, err
-	}
+	i.lifecyclerWatcher = services.NewFailureWatcher()
+	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 
-	i.done.Add(1)
-	go i.loop()
-
+	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	return i, nil
 }
 
+func (i *Ingester) starting(ctx context.Context) error {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
+		go i.flushLoop(j)
+	}
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
+	err := i.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
+	// start our loop
+	i.loopDone.Add(1)
+	go i.loop()
+	return nil
+}
+
+func (i *Ingester) running(ctx context.Context) error {
+	var serviceError error
+	select {
+	// wait until service is asked to stop
+	case <-ctx.Done():
+	// stop
+	case err := <-i.lifecyclerWatcher.Chan():
+		serviceError = fmt.Errorf("lifecycler failed: %w", err)
+	}
+
+	// close tailers before stopping our loop
+	close(i.tailersQuit)
+	for _, instance := range i.getInstances() {
+		instance.closeTailers()
+	}
+
+	close(i.loopQuit)
+	i.loopDone.Wait()
+	return serviceError
+}
+
+// Called after running exits, when Ingester transitions to Stopping state.
+// At this point, loop no longer runs, but flushers are still running.
+func (i *Ingester) stopping(_ error) error {
+	i.stopIncomingRequests()
+
+	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+
+	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
+	// we better stop them.
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
+	}
+	i.flushQueuesDone.Wait()
+
+	return err
+}
+
 func (i *Ingester) loop() {
-	defer i.done.Done()
+	defer i.loopDone.Done()
 
 	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
 	defer flushTicker.Stop()
@@ -190,30 +234,9 @@ func (i *Ingester) loop() {
 		case <-flushTicker.C:
 			i.sweepUsers(false)
 
-		case <-i.quit:
+		case <-i.loopQuit:
 			return
 		}
-	}
-}
-
-// Shutdown stops the ingester.
-func (i *Ingester) Shutdown() {
-	close(i.quit)
-	i.done.Wait()
-
-	i.stopIncomingRequests()
-
-	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
-	}
-}
-
-// Stopping helps cleaning up resources before actual shutdown
-func (i *Ingester) Stopping() {
-	close(i.quitting)
-	for _, instance := range i.getInstances() {
-		instance.closeTailers()
 	}
 }
 
@@ -275,7 +298,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
 
-	defer helpers.LogError("closing iterator", heapItr.Close)
+	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
 }
@@ -313,18 +336,13 @@ func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 }
 
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
-// the addition removal of another ingester. Returns 200 when the ingester is
+// the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
-func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if err := i.lifecycler.CheckReady(r.Context()); err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
+func (i *Ingester) CheckReady(ctx context.Context) error {
+	if s := i.State(); s != services.Running && s != services.Stopping {
+		return fmt.Errorf("ingester not ready: %v", s)
 	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
-	}
+	return i.lifecycler.CheckReady(ctx)
 }
 
 func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
@@ -349,7 +367,7 @@ func (i *Ingester) getInstances() []*instance {
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
-	case <-i.quitting:
+	case <-i.tailersQuit:
 		return errors.New("Ingester is stopping")
 	default:
 	}

@@ -11,6 +11,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -226,7 +228,8 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
 		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			return bc, ErrInvalidChecksum
+			level.Error(util.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
+			continue
 		}
 
 		bc.blocks = append(bc.blocks, blk)
@@ -490,7 +493,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		return iterForward, nil
 	}
 
-	return iter.NewReversedIter(iterForward, 0, false)
+	return iter.NewEntryReversedIter(iterForward)
 }
 
 func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.LineFilter) iter.EntryIterator {

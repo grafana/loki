@@ -27,13 +27,14 @@ var (
 		Help:      "LogQL query timings",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"query_type"})
+	lastEntryMinTime = time.Unix(-100, 0)
 )
 
 // ValueTypeStreams promql.ValueType for log streams
 const ValueTypeStreams = "streams"
 
 // Streams is promql.Value
-type Streams []*logproto.Stream
+type Streams []logproto.Stream
 
 func (streams Streams) Len() int      { return len(streams) }
 func (streams Streams) Swap(i, j int) { streams[i], streams[j] = streams[j], streams[i] }
@@ -164,8 +165,9 @@ func (q *query) Eval(ctx context.Context) (promql.Value, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer helpers.LogError("closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.params.Limit())
+
+		defer helpers.LogErrorWithContext(ctx, "closing iterator", iter.Close)
+		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	default:
 		return nil, errors.New("Unexpected type (%T): cannot evaluate")
@@ -182,7 +184,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql.Value, 
 	if err != nil {
 		return nil, err
 	}
-	defer helpers.LogError("closing SampleExpr", stepEvaluator.Close)
+	defer helpers.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
 	seriesIndex := map[uint64]*promql.Series{}
 
@@ -263,24 +265,38 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32) (Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
-	for ; respSize < size && i.Next(); respSize++ {
+	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
+	// value here because many unit tests start at time.Unix(0,0)
+	lastEntry := lastEntryMinTime
+	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
-		stream, ok := streams[labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels: labels,
+		forwardShouldOutput := dir == logproto.FORWARD &&
+			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
+		backwardShouldOutput := dir == logproto.BACKWARD &&
+			(i.Entry().Timestamp.Equal(lastEntry.Add(-interval)) || i.Entry().Timestamp.Before(lastEntry.Add(-interval)))
+		// If step == 0 output every line.
+		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
+		// Then check to see if the entry is equal to, or past a forward or reverse step
+		if interval == 0 || lastEntry.Unix() < 0 || forwardShouldOutput || backwardShouldOutput {
+			stream, ok := streams[labels]
+			if !ok {
+				stream = &logproto.Stream{
+					Labels: labels,
+				}
+				streams[labels] = stream
 			}
-			streams[labels] = stream
+			stream.Entries = append(stream.Entries, entry)
+			lastEntry = i.Entry().Timestamp
+			respSize++
 		}
-		stream.Entries = append(stream.Entries, entry)
 	}
 
 	result := make(Streams, 0, len(streams))
 	for _, stream := range streams {
-		result = append(result, stream)
+		result = append(result, *stream)
 	}
 	sort.Sort(result)
 	return result, i.Error()

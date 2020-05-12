@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -56,13 +57,13 @@ func TestDistributor(t *testing.T) {
 		},
 		{
 			lines:         100,
-			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (100 bytes) exceeded while adding 100 lines for a total size of 1000 bytes"),
+			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(100, 100, 1000)),
 		},
 		{
 			lines:            100,
 			maxLineSize:      1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "max line size (1B) exceeded while adding (10B) size line"),
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg(1, 10, "{foo=\"bar\"}")),
 		},
 		{
 			lines:            100,
@@ -80,6 +81,7 @@ func TestDistributor(t *testing.T) {
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
 
 			d := prepare(t, limits, nil)
+			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 			request := makeWriteRequest(tc.lines, 10)
 
@@ -114,9 +116,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  10 * (1.0 / float64(bytesInMB)),
 			pushes: []testPush{
 				{bytes: 5, expectedError: nil},
-				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10 bytes) exceeded while adding 1 lines for a total size of 6 bytes")},
+				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(10, 1, 6))},
 				{bytes: 5, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10 bytes) exceeded while adding 1 lines for a total size of 1 bytes")},
+				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(10, 1, 1))},
 			},
 		},
 		"global strategy: limit should be evenly shared across distributors": {
@@ -126,9 +128,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  5 * (1.0 / float64(bytesInMB)),
 			pushes: []testPush{
 				{bytes: 3, expectedError: nil},
-				{bytes: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5 bytes) exceeded while adding 1 lines for a total size of 3 bytes")},
+				{bytes: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(5, 1, 3))},
 				{bytes: 2, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5 bytes) exceeded while adding 1 lines for a total size of 1 bytes")},
+				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(5, 1, 1))},
 			},
 		},
 		"global strategy: burst should set to each distributor": {
@@ -138,9 +140,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  20 * (1.0 / float64(bytesInMB)),
 			pushes: []testPush{
 				{bytes: 15, expectedError: nil},
-				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5 bytes) exceeded while adding 1 lines for a total size of 6 bytes")},
+				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(5, 1, 6))},
 				{bytes: 5, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5 bytes) exceeded while adding 1 lines for a total size of 1 bytes")},
+				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(5, 1, 1))},
 			},
 		},
 	}
@@ -163,7 +165,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			distributors := make([]*Distributor, testData.distributors)
 			for i := 0; i < testData.distributors; i++ {
 				distributors[i] = prepare(t, limits, kvStore)
-				defer distributors[i].Stop()
+				defer services.StopAndAwaitTerminated(context.Background(), distributors[i]) //nolint:errcheck
 			}
 
 			// If the distributors ring is setup, wait until the first distributor
@@ -226,13 +228,14 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distri
 
 	d, err := New(distributorConfig, clientConfig, ingestersRing, overrides)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
 	return d
 }
 
 func makeWriteRequest(lines int, size int) *logproto.PushRequest {
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar"}`,
 			},

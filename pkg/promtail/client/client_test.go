@@ -60,11 +60,11 @@ func TestClient_Handle(t *testing.T) {
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -86,11 +86,11 @@ func TestClient_Handle(t *testing.T) {
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -111,15 +111,15 @@ func TestClient_Handle(t *testing.T) {
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -140,7 +140,7 @@ func TestClient_Handle(t *testing.T) {
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -161,15 +161,15 @@ func TestClient_Handle(t *testing.T) {
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -191,7 +191,7 @@ func TestClient_Handle(t *testing.T) {
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "tenant-default",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -213,15 +213,15 @@ func TestClient_Handle(t *testing.T) {
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "tenant-default",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "tenant-1",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[3].Entry, logEntries[4].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[3].Entry, logEntries[4].Entry}}}},
 				},
 				{
 					tenantID: "tenant-2",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[5].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[5].Entry}}}},
 				},
 			},
 			expectedMetrics: `

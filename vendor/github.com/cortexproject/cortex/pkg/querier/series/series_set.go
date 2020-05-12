@@ -346,3 +346,14 @@ func (emptySeriesIterator) Next() bool {
 func (emptySeriesIterator) Err() error {
 	return nil
 }
+
+type emptySeriesSet struct{}
+
+func (emptySeriesSet) Next() bool         { return false }
+func (emptySeriesSet) At() storage.Series { return nil }
+func (emptySeriesSet) Err() error         { return nil }
+
+// NewEmptySeriesSet returns a new series set that contains no series.
+func NewEmptySeriesSet() storage.SeriesSet {
+	return emptySeriesSet{}
+}

@@ -15,7 +15,7 @@ import (
 type Promtail struct {
 	client         client.Client
 	targetManagers *targets.TargetManagers
-	server         *server.Server
+	server         server.Server
 
 	stopped bool
 	mtx     sync.Mutex

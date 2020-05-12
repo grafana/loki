@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logql"
-
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -17,11 +17,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -36,10 +35,10 @@ func TestIngester(t *testing.T) {
 
 	i, err := New(ingesterConfig, client.Config{}, store, limits)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar",bar="baz1"}`,
 			},
@@ -204,10 +203,10 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 
 	i, err := New(ingesterConfig, client.Config{}, store, overrides)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar",bar="baz1"}`,
 			},
@@ -337,7 +336,7 @@ func TestIngester_buildStoreRequest(t *testing.T) {
 			require.Equal(t, tc.expectedStoreQueryRequest.End, storeRequest.End)
 
 			if storeRequest.Start.Sub(tc.expectedStoreQueryRequest.Start) > time.Second {
-				t.Fatalf("expected upto 1s difference in expected and acutal store request end time but got %d", storeRequest.End.Sub(tc.expectedStoreQueryRequest.End))
+				t.Fatalf("expected upto 1s difference in expected and actual store request end time but got %d", storeRequest.End.Sub(tc.expectedStoreQueryRequest.End))
 			}
 		})
 	}

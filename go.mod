@@ -10,7 +10,7 @@ require (
 	github.com/containerd/containerd v1.3.2 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
-	github.com/cortexproject/cortex v1.0.1-0.20200416152925-3fe04dcff1d8
+	github.com/cortexproject/cortex v1.0.1-0.20200424135841-64fb9ad94a38
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v0.7.3-0.20190817195342-4760db040282
@@ -26,6 +26,7 @@ require (
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.7.1
 	github.com/gorilla/websocket v1.4.0
+	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20191002090509-6af20e3a5340 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/golang-lru v0.5.3
@@ -38,7 +39,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
-	github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
+	github.com/pierrec/lz4 v2.5.3-0.20200429092203-e876bbd321b3+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.5.0
 	github.com/prometheus/client_model v0.2.0

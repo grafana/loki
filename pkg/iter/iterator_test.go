@@ -197,7 +197,7 @@ func mkStreamIterator(f generator, labels string) EntryIterator {
 	for i := int64(0); i < testSize; i++ {
 		entries = append(entries, f(i))
 	}
-	return NewStreamIterator(&logproto.Stream{
+	return NewStreamIterator(logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	})
@@ -278,7 +278,7 @@ func TestInsert(t *testing.T) {
 	}))
 }
 
-func TestReverseEntryIterator(t *testing.T) {
+func TestReverseIterator(t *testing.T) {
 	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
@@ -293,6 +293,23 @@ func TestReverseEntryIterator(t *testing.T) {
 		assert.Equal(t, true, reversedIter.Next())
 		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
 		assert.Equal(t, reversedIter.Labels(), itr2.Labels())
+	}
+
+	assert.Equal(t, false, reversedIter.Next())
+	assert.Equal(t, nil, reversedIter.Error())
+	assert.NoError(t, reversedIter.Close())
+}
+
+func TestReverseEntryIterator(t *testing.T) {
+	itr1 := mkStreamIterator(identity, defaultLabels)
+
+	reversedIter, err := NewEntryReversedIter(itr1)
+	require.NoError(t, err)
+
+	for i := int64(testSize - 1); i >= 0; i-- {
+		assert.Equal(t, true, reversedIter.Next())
+		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, reversedIter.Labels(), "")
 	}
 
 	assert.Equal(t, false, reversedIter.Next())
@@ -318,7 +335,7 @@ func TestReverseEntryIteratorUnlimited(t *testing.T) {
 }
 
 func Test_PeekingIterator(t *testing.T) {
-	iter := NewPeekingIterator(NewStreamIterator(&logproto.Stream{
+	iter := NewPeekingIterator(NewStreamIterator(logproto.Stream{
 		Entries: []logproto.Entry{
 			{
 				Timestamp: time.Unix(0, 1),
@@ -381,7 +398,7 @@ func Test_PeekingIterator(t *testing.T) {
 }
 
 func Test_DuplicateCount(t *testing.T) {
-	stream := &logproto.Stream{
+	stream := logproto.Stream{
 		Entries: []logproto.Entry{
 			{
 				Timestamp: time.Unix(0, 1),
@@ -440,7 +457,7 @@ func Test_DuplicateCount(t *testing.T) {
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
-				NewStreamIterator(&logproto.Stream{
+				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(0, 4),
@@ -457,7 +474,7 @@ func Test_DuplicateCount(t *testing.T) {
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
-				NewStreamIterator(&logproto.Stream{
+				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(0, 4),
@@ -471,7 +488,7 @@ func Test_DuplicateCount(t *testing.T) {
 		{
 			"single f",
 			[]EntryIterator{
-				NewStreamIterator(&logproto.Stream{
+				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(0, 4),
@@ -485,7 +502,7 @@ func Test_DuplicateCount(t *testing.T) {
 		{
 			"single b",
 			[]EntryIterator{
-				NewStreamIterator(&logproto.Stream{
+				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(0, 4),

@@ -572,6 +572,25 @@ func BenchmarkRead(b *testing.B) {
 	}
 }
 
+func BenchmarkBackwardIterator(b *testing.B) {
+	b.ReportAllocs()
+	c := NewMemChunk(EncSnappy, testBlockSize, testTargetSize)
+	_ = fillChunk(c)
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
+		if err != nil {
+			panic(err)
+		}
+		for iterator.Next() {
+			_ = iterator.Entry()
+		}
+		if err := iterator.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestGenerateDataSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {

@@ -107,14 +107,15 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 	return nil
 }
 
-// List only objects from the store non-recursively
-func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+// List objects and common-prefixes i.e synthetic directories from the store non-recursively
+func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
+	var commonPrefixes []chunk.StorageCommonPrefix
 
 	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: s.delimiter})
 	for {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		}
 
 		attr, err := iter.Next()
@@ -122,12 +123,12 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 			if err == iterator.Done {
 				break
 			}
-			return nil, err
+			return nil, nil, err
 		}
 
 		// When doing query with Delimiter, Prefix is the only field set for entries which represent synthetic "directory entries".
-		// We do not want to consider those entries since we are doing only non-recursive listing of objects for now.
 		if attr.Name == "" {
+			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(attr.Prefix))
 			continue
 		}
 
@@ -137,7 +138,7 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 		})
 	}
 
-	return storageObjects, nil
+	return storageObjects, commonPrefixes, nil
 }
 
 // DeleteObject deletes the specified object key from the configured GCS bucket. If the

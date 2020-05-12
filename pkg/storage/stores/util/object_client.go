@@ -21,17 +21,21 @@ func (p PrefixedObjectClient) GetObject(ctx context.Context, objectKey string) (
 	return p.downstreamClient.GetObject(ctx, p.prefix+objectKey)
 }
 
-func (p PrefixedObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
-	objects, err := p.downstreamClient.List(ctx, p.prefix+prefix)
+func (p PrefixedObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+	objects, commonPrefixes, err := p.downstreamClient.List(ctx, p.prefix+prefix)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for i := range objects {
 		objects[i].Key = strings.TrimPrefix(objects[i].Key, p.prefix)
 	}
 
-	return objects, nil
+	for i := range commonPrefixes {
+		commonPrefixes[i] = chunk.StorageCommonPrefix(strings.TrimPrefix(string(commonPrefixes[i]), p.prefix))
+	}
+
+	return objects, commonPrefixes, nil
 }
 
 func (p PrefixedObjectClient) DeleteObject(ctx context.Context, objectKey string) error {

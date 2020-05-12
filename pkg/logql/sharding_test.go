@@ -23,6 +23,7 @@ func TestMappingEquivalence(t *testing.T) {
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second
+		interval = time.Duration(0)
 		limit    = 100
 	)
 
@@ -64,6 +65,7 @@ func TestMappingEquivalence(t *testing.T) {
 				start,
 				end,
 				step,
+				interval,
 				logproto.FORWARD,
 				uint32(limit),
 				nil,

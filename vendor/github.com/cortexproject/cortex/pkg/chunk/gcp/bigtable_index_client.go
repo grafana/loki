@@ -317,7 +317,7 @@ func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQ
 	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	const null = string('\xff')
 
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
@@ -346,7 +346,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 
 	err := table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
 		if query.ValueEqual == nil || bytes.Equal(r[columnFamily][0].Value, query.ValueEqual) {
-			return callback(&rowBatch{
+			return callback(query, &rowBatch{
 				row: r,
 			})
 		}

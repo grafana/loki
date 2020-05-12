@@ -60,11 +60,12 @@ type stream struct {
 	cfg *Config
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks   []chunkDesc
-	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
-	labels   labels.Labels
-	factory  func() chunkenc.Chunk
-	lastLine line
+	chunks       []chunkDesc
+	fp           model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	labels       labels.Labels
+	labelsString string
+	factory      func() chunkenc.Chunk
+	lastLine     line
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -86,11 +87,12 @@ type entryWithError struct {
 
 func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, factory func() chunkenc.Chunk) *stream {
 	return &stream{
-		cfg:     cfg,
-		fp:      fp,
-		labels:  labels,
-		factory: factory,
-		tailers: map[uint32]*tailer{},
+		cfg:          cfg,
+		fp:           fp,
+		labels:       labels,
+		labelsString: labels.String(),
+		factory:      factory,
+		tailers:      map[uint32]*tailer{},
 	}
 }
 
@@ -109,7 +111,7 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	return nil
 }
 
-func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
+func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
 	var lastChunkTimestamp time.Time
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
@@ -145,7 +147,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 			if err != nil {
 				// This should be an unlikely situation, returning an error up the stack doesn't help much here
 				// so instead log this to help debug the issue if it ever arises.
-				level.Error(util.Logger).Log("msg", "failed to Close chunk", "err", err)
+				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to Close chunk", "err", err)
 			}
 			chunk.closed = true
 
@@ -172,7 +174,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 
 	if len(storedEntries) != 0 {
 		go func() {
-			stream := logproto.Stream{Labels: s.labels.String(), Entries: storedEntries}
+			stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
 
 			closedTailers := []uint32{}
 
@@ -202,7 +204,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			// return bad http status request response with all failed entries
 			buf := bytes.Buffer{}
-			streamName := s.labels.String()
+			streamName := s.labelsString
 
 			limitedFailedEntries := failedEntriesWithError
 			if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
@@ -272,7 +274,7 @@ func (s *stream) Iterator(ctx context.Context, from, through time.Time, directio
 		}
 	}
 
-	return iter.NewNonOverlappingIterator(iterators, s.labels.String()), nil
+	return iter.NewNonOverlappingIterator(iterators, s.labelsString), nil
 }
 
 func (s *stream) addTailer(t *tailer) {

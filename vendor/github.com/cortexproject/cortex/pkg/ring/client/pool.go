@@ -13,7 +13,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -28,6 +27,12 @@ type PoolClient interface {
 // PoolFactory defines the signature for a client factory.
 type PoolFactory func(addr string) (PoolClient, error)
 
+// PoolServiceDiscovery defines the signature of a function returning the list
+// of known service endpoints. This function is used to remove stale clients from
+// the pool (a stale client is a client connected to a service endpoint no more
+// active).
+type PoolServiceDiscovery func() ([]string, error)
+
 // PoolConfig is config for creating a Pool.
 type PoolConfig struct {
 	CheckInterval      time.Duration
@@ -40,7 +45,7 @@ type Pool struct {
 	services.Service
 
 	cfg        PoolConfig
-	ring       ring.ReadRing
+	discovery  PoolServiceDiscovery
 	factory    PoolFactory
 	logger     log.Logger
 	clientName string
@@ -52,10 +57,10 @@ type Pool struct {
 }
 
 // NewPool creates a new Pool.
-func NewPool(clientName string, cfg PoolConfig, ring ring.ReadRing, factory PoolFactory, clientsMetric prometheus.Gauge, logger log.Logger) *Pool {
+func NewPool(clientName string, cfg PoolConfig, discovery PoolServiceDiscovery, factory PoolFactory, clientsMetric prometheus.Gauge, logger log.Logger) *Pool {
 	p := &Pool{
 		cfg:           cfg,
-		ring:          ring,
+		discovery:     discovery,
 		factory:       factory,
 		logger:        logger,
 		clientName:    clientName,
@@ -127,7 +132,7 @@ func (p *Pool) RemoveClientFor(addr string) {
 	}
 }
 
-// RegisteredAddresses returns all the addresses that a client is cached for
+// RegisteredAddresses returns all the service addresses for which there's an active client.
 func (p *Pool) RegisteredAddresses() []string {
 	result := []string{}
 	p.RLock()
@@ -146,19 +151,19 @@ func (p *Pool) Count() int {
 }
 
 func (p *Pool) removeStaleClients() {
-	clients := map[string]struct{}{}
-	replicationSet, err := p.ring.GetAll()
+	// Only if service discovery has been configured.
+	if p.discovery == nil {
+		return
+	}
+
+	serviceAddrs, err := p.discovery()
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error removing stale clients", "err", err)
 		return
 	}
 
-	for _, ing := range replicationSet.Ingesters {
-		clients[ing.Addr] = struct{}{}
-	}
-
 	for _, addr := range p.RegisteredAddresses() {
-		if _, ok := clients[addr]; ok {
+		if util.StringsContain(serviceAddrs, addr) {
 			continue
 		}
 		level.Info(util.Logger).Log("msg", "removing stale client", "addr", addr)

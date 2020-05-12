@@ -46,7 +46,7 @@ config:
 
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
-  # log line receieved that passed the filter. If add is chosen,
+  # log line received that passed the filter. If add is chosen,
   # the extracted value most be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
@@ -116,7 +116,7 @@ config:
 
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
-  # log line receieved that passed the filter. If add is chosen,
+  # log line received that passed the filter. If add is chosen,
   # the extracted value most be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>

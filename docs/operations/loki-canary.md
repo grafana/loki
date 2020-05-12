@@ -145,7 +145,7 @@ spec:
     targetPort: 3500
 ```
 
-DeamonSet Implementation of loki-canary
+DaemonSet Implementation of loki-canary
 
 ```
 ---

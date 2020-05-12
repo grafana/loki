@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -168,6 +169,13 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		if matcher.Type == labels.MatchEqual {
 			fps := values.fps[matcher.Value]
 			toIntersect = append(toIntersect, fps.fps...) // deliberate copy
+		} else if matcher.Type == labels.MatchRegexp && len(chunk.FindSetMatches(matcher.Value)) > 0 {
+			// The lookup is of the form `=~"a|b|c|d"`
+			set := chunk.FindSetMatches(matcher.Value)
+			for _, value := range set {
+				toIntersect = append(toIntersect, values.fps[value].fps...)
+			}
+			sort.Sort(toIntersect)
 		} else {
 			// accumulate the matching fingerprints (which are all distinct)
 			// then sort to maintain the invariant

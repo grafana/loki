@@ -240,7 +240,7 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 # Enable backoff and retry when a rate limit is hit.
 [backoff_on_ratelimits: <bool> | default = false]
 
-# Configures backoff when enbaled.
+# Configures backoff when enabled.
 backoff_config:
   # Minimum delay when backing off.
   [min_period: <duration> | default = 100ms]
@@ -282,7 +282,7 @@ The `ingester_config` block configures Ingesters.
 # How long chunks should sit in-memory with no updates before
 # being flushed if they don't hit the max block size. This means
 # that half-empty chunks will still be flushed after a certain
-# period as long as they receieve no further activity.
+# period as long as they receive no further activity.
 [chunk_idle_period: <duration> | default = 30m]
 
 # The targeted _uncompressed_ size in bytes of a chunk block
@@ -388,7 +388,7 @@ kvstore:
       - <string>
 
     # The Dial timeout for the ETCD connection.
-    [dial_tmeout: <duration> | default = 10s]
+    [dial_timeout: <duration> | default = 10s]
 
     # The maximum number of retries to do for failed ops to ETCD.
     [max_retries: <int> | default = 10]
@@ -433,7 +433,7 @@ aws:
     # DynamoDB rate cap to back off when throttled.
     [throttle_limit: <float> | default = 10.0]
 
-    # Metics-based autoscaling configuration.
+    # Metrics-based autoscaling configuration.
     metrics:
       # Use metrics-based autoscaling via this Prometheus query URL.
       [url: <string>]
@@ -453,7 +453,7 @@ aws:
       # Query to fetch throttle rates per table
       [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0"]
 
-      # Quer to fetch write capacity usage per table
+      # Query to fetch write capacity usage per table
       [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0"]
 
       # Query to fetch read capacity usage per table
@@ -538,6 +538,66 @@ cassandra:
 
   # Initial connection timeout during initial dial to server.
   [connect_timeout: <duration> | default = 600ms]
+
+swift:
+  # Openstack authentication URL.
+  # CLI flag: -ruler.storage.swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # Openstack username for the api.
+  # CLI flag: -ruler.storage.swift.username
+  [username: <string> | default = ""]
+
+  # Openstack user's domain name.
+  # CLI flag: -ruler.storage.swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # Openstack user's domain id.
+  # CLI flag: -ruler.storage.swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # Openstack userid for the api.
+  # CLI flag: -ruler.storage.swift.user-id
+  [user_id: <string> | default = ""]
+
+  # Openstack api key.
+  # CLI flag: -ruler.storage.swift.password
+  [password: <string> | default = ""]
+
+  # Openstack user's domain id.
+  # CLI flag: -ruler.storage.swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # Openstack user's domain name.
+  # CLI flag: -ruler.storage.swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # Openstack project id (v2,v3 auth only).
+  # CLI flag: -ruler.storage.swift.project-id
+  [project_id: <string> | default = ""]
+
+  # Openstack project name (v2,v3 auth only).
+  # CLI flag: -ruler.storage.swift.project-name
+  [project_name: <string> | default = ""]
+
+  # Id of the project's domain (v3 auth only), only needed if it differs the
+  # from user domain.
+  # CLI flag: -ruler.storage.swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # Name of the project's domain (v3 auth only), only needed if it differs
+  # from the user domain.
+  # CLI flag: -ruler.storage.swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
+  # auth only)
+  # CLI flag: -ruler.storage.swift.region-name
+  [region_name: <string> | default = ""]
+
+  # Name of the Swift container to put chunks in.
+  # CLI flag: -ruler.storage.swift.container-name
+  [container_name: <string> | default = "cortex"]
 
 # Configures storing index in BoltDB. Required fields only
 # required when boltdb is present in config.
@@ -692,12 +752,13 @@ for from specific time periods.
 # store and object_store below affect which <storage_config> key is
 # used.
 
-# Which store to use for the index. Either cassandra, bigtable, aws-dynamo, or
-# boltdb
+# Which store to use for the index. Either aws, gcp, bigtable, bigtable-hashed,
+# cassandra, or boltdb.
 store: <string>
 
-# Which store to use for the chunks. Either gcs, s3, inmemory, filesystem,
-# cassandra. If omitted, defaults to same value as store.
+# Which store to use for the chunks. Either aws, aws-dynamo, azure, gcp,
+# bigtable, gcs, cassandra, swift or filesystem. If omitted, defaults to the same
+# value as store.
 [object_store: <string>]
 
 # The schema version to use, current recommended schema is v11.

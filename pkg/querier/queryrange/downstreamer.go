@@ -87,7 +87,7 @@ func ResponseToResult(resp queryrange.Response) (logql.Result, error) {
 		streams := make(logql.Streams, 0, len(r.Data.Result))
 
 		for _, stream := range r.Data.Result {
-			streams = append(streams, &stream)
+			streams = append(streams, stream)
 		}
 
 		return logql.Result{

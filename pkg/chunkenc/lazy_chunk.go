@@ -15,6 +15,7 @@ import (
 // LazyChunk loads the chunk when it is accessed.
 type LazyChunk struct {
 	Chunk   chunk.Chunk
+	IsValid bool
 	Fetcher *chunk.Fetcher
 }
 

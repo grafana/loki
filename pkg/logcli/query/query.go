@@ -12,6 +12,7 @@ import (
 
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/user"
 
@@ -42,6 +43,7 @@ type Query struct {
 	Limit           int
 	Forward         bool
 	Step            time.Duration
+	Interval        time.Duration
 	Quiet           bool
 	NoLabels        bool
 	IgnoreLabelsKey []string
@@ -69,7 +71,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
 	} else {
-		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Step, q.Quiet)
+		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Step, q.Interval, q.Quiet)
 	}
 
 	if err != nil {
@@ -124,6 +126,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.Start,
 			q.Start,
 			0,
+			0,
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
@@ -134,6 +137,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.Start,
 			q.End,
 			q.Step,
+			q.Interval,
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
@@ -165,7 +169,7 @@ func localStore(conf loki.Config) (logql.Querier, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits)
+	s, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

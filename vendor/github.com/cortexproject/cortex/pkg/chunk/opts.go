@@ -19,9 +19,9 @@ func init() {
 	}
 }
 
+// FindSetMatches returns list of values that can be equality matched on.
 // copied from Prometheus querier.go, removed check for Prometheus wrapper.
-// Returns list of values that can regex matches.
-func findSetMatches(pattern string) []string {
+func FindSetMatches(pattern string) []string {
 	escaped := false
 	sets := []*strings.Builder{{}}
 	for i := 0; i < len(pattern); i++ {

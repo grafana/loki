@@ -46,7 +46,6 @@ type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring"`
 
 	// Config for the ingester lifecycle control
-	ListenPort       *int          `yaml:"-"`
 	NumTokens        int           `yaml:"num_tokens"`
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
 	ObservePeriod    time.Duration `yaml:"observe_period"`
@@ -62,6 +61,9 @@ type LifecyclerConfig struct {
 	Port           int    `doc:"hidden"`
 	ID             string `doc:"hidden"`
 	SkipUnregister bool   `yaml:"-"`
+
+	// Injected internally
+	ListenPort int `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -143,7 +145,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	if err != nil {
 		return nil, err
 	}
-	port := GetInstancePort(cfg.Port, *cfg.ListenPort)
+	port := GetInstancePort(cfg.Port, cfg.ListenPort)
 	codec := GetCodec()
 	store, err := kv.NewClient(cfg.RingConfig.KVStore, codec)
 	if err != nil {

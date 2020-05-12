@@ -655,9 +655,9 @@ var (
 			"totalDuplicates": 19
 		},
 		"summary": {
-			"bytesProcessedPerSeconds": 20,
+			"bytesProcessedPerSecond": 20,
 			"execTime": 21,
-			"linesProcessedPerSeconds": 22,
+			"linesProcessedPerSecond": 22,
 			"totalBytesProcessed": 23,
 			"totalLinesProcessed": 24
 		}
@@ -758,11 +758,11 @@ var (
 	}
 	statsResult = stats.Result{
 		Summary: stats.Summary{
-			BytesProcessedPerSeconds: 20,
-			ExecTime:                 21,
-			LinesProcessedPerSeconds: 22,
-			TotalBytesProcessed:      23,
-			TotalLinesProcessed:      24,
+			BytesProcessedPerSecond: 20,
+			ExecTime:                21,
+			LinesProcessedPerSecond: 22,
+			TotalBytesProcessed:     23,
+			TotalLinesProcessed:     24,
 		},
 		Store: stats.Store{
 			CompressedBytes:       11,

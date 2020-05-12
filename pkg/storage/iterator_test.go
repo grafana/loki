@@ -6,8 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
@@ -18,7 +22,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 
 	tests := map[string]struct {
 		chunks     []*chunkenc.LazyChunk
-		expected   []*logproto.Stream
+		expected   []logproto.Stream
 		matchers   string
 		start, end time.Time
 		direction  logproto.Direction
@@ -105,7 +109,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -192,7 +196,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -297,7 +301,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -380,7 +384,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -458,7 +462,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -516,7 +520,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 					},
 				}),
 			},
-			[]*logproto.Stream{
+			[]logproto.Stream{
 				{
 					Labels: fooLabels,
 					Entries: []logproto.Entry{
@@ -639,6 +643,130 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 	}
 }
 
+func TestBuildHeapIterator(t *testing.T) {
+	var (
+		firstChunk = newLazyChunk(logproto.Stream{
+			Labels: "{foo=\"bar\"}",
+			Entries: []logproto.Entry{
+				{
+					Timestamp: from,
+					Line:      "1",
+				},
+				{
+					Timestamp: from.Add(time.Millisecond),
+					Line:      "2",
+				},
+				{
+					Timestamp: from.Add(2 * time.Millisecond),
+					Line:      "3",
+				},
+			},
+		})
+		secondChunk = newLazyInvalidChunk(logproto.Stream{
+			Labels: "{foo=\"bar\"}",
+			Entries: []logproto.Entry{
+				{
+					Timestamp: from.Add(3 * time.Millisecond),
+					Line:      "4",
+				},
+				{
+					Timestamp: from.Add(4 * time.Millisecond),
+					Line:      "5",
+				},
+			},
+		})
+		thirdChunk = newLazyChunk(logproto.Stream{
+			Labels: "{foo=\"bar\"}",
+			Entries: []logproto.Entry{
+				{
+					Timestamp: from.Add(5 * time.Millisecond),
+					Line:      "6",
+				},
+			},
+		})
+	)
+
+	for i, tc := range []struct {
+		input    [][]*chunkenc.LazyChunk
+		expected []logproto.Stream
+	}{
+		{
+			[][]*chunkenc.LazyChunk{
+				{firstChunk},
+				{thirdChunk},
+			},
+			[]logproto.Stream{
+				{
+					Labels: "{foo=\"bar\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond),
+							Line:      "6",
+						},
+					},
+				},
+			},
+		},
+		{
+			[][]*chunkenc.LazyChunk{
+				{secondChunk},
+				{firstChunk, thirdChunk},
+			},
+			[]logproto.Stream{
+				{
+					Labels: "{foo=\"bar\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond),
+							Line:      "6",
+						},
+					},
+				},
+			},
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			ctx = user.InjectOrgID(context.Background(), "test-user")
+			it, err := buildHeapIterator(ctx, tc.input, nil, logproto.FORWARD, from, from.Add(6*time.Millisecond))
+			if err != nil {
+				t.Errorf("buildHeapIterator error = %v", err)
+				return
+			}
+			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil)
+			streams, _, err := iter.ReadBatch(it, req.Limit)
+			_ = it.Close()
+			if err != nil {
+				t.Fatalf("error reading batch %s", err)
+			}
+			assertStream(t, tc.expected, streams.Streams)
+		})
+	}
+}
+
 func TestDropLabels(t *testing.T) {
 
 	for i, tc := range []struct {
@@ -678,5 +806,38 @@ func TestDropLabels(t *testing.T) {
 			dropped := dropLabels(tc.ls, tc.drop...)
 			require.Equal(t, tc.expected, dropped)
 		})
+	}
+}
+
+func Test_IsInvalidChunkError(t *testing.T) {
+	tests := []struct {
+		name           string
+		err            error
+		expectedResult bool
+	}{
+		{
+			"invalid chunk cheksum error from cortex",
+			promql.ErrStorage{Err: chunk.ErrInvalidChecksum},
+			true,
+		},
+		{
+			"invalid chunk cheksum error from loki",
+			promql.ErrStorage{Err: chunkenc.ErrInvalidChecksum},
+			true,
+		},
+		{
+			"cache error",
+			promql.ErrStorage{Err: errors.New("error fetching from cache")},
+			false,
+		},
+		{
+			"no error from cortex or loki",
+			nil,
+			false,
+		},
+	}
+	for _, tc := range tests {
+		result := isInvalidChunkError(tc.err)
+		require.Equal(t, tc.expectedResult, result)
 	}
 }

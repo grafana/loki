@@ -26,8 +26,9 @@ storage_config:
   gcs:
     bucket_name: GCS_BUCKET_NAME
 
-  boltdb_shipper_config:
+  boltdb_shipper:
     active_index_directory: /loki/index
+    shared_store: gcs
     cache_location: /loki/boltdb-cache
 ``` 
 

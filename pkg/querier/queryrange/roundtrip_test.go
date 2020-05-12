@@ -1,16 +1,20 @@
 package queryrange
 
 import (
+	"bytes"
 	"context"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -285,6 +289,34 @@ func TestRegexpParamsSupport(t *testing.T) {
 	}))
 	_, err = tpw(rt).RoundTrip(req)
 	require.Equal(t, 2, *count) // expecting the query to also be splitted since it has a filter.
+	require.NoError(t, err)
+}
+
+func TestPostQueries(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "/loki/api/v1/query_range", nil)
+	data := url.Values{
+		"query": {`{app="foo"} |~ "foo"`},
+	}
+	body := bytes.NewBufferString(data.Encode())
+	req.Body = ioutil.NopCloser(body)
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
+	require.NoError(t, err)
+	_, err = newRoundTripper(
+		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected default roundtripper called")
+			return nil, nil
+		}),
+		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, nil
+		}),
+		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected metric roundtripper called")
+			return nil, nil
+		}),
+		fakeLimits{},
+	).RoundTrip(req)
 	require.NoError(t, err)
 }
 

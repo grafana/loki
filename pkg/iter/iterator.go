@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -39,7 +40,7 @@ type streamIterator struct {
 }
 
 // NewStreamIterator iterates over entries in a stream.
-func NewStreamIterator(stream *logproto.Stream) EntryIterator {
+func NewStreamIterator(stream logproto.Stream) EntryIterator {
 	return &streamIterator{
 		i:       -1,
 		entries: stream.Entries,
@@ -355,7 +356,7 @@ func (i *heapIterator) Len() int {
 }
 
 // NewStreamsIterator returns an iterator over logproto.Stream
-func NewStreamsIterator(ctx context.Context, streams []*logproto.Stream, direction logproto.Direction) EntryIterator {
+func NewStreamsIterator(ctx context.Context, streams []logproto.Stream, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(streams))
 	for i := range streams {
 		is = append(is, NewStreamIterator(streams[i]))
@@ -586,6 +587,84 @@ func (i *reverseIterator) Close() error {
 	return nil
 }
 
+var entryBufferPool = sync.Pool{
+	New: func() interface{} {
+		return &entryBuffer{
+			entries: make([]logproto.Entry, 0, 1024),
+		}
+	},
+}
+
+type entryBuffer struct {
+	entries []logproto.Entry
+}
+
+type reverseEntryIterator struct {
+	iter EntryIterator
+	cur  logproto.Entry
+	buf  *entryBuffer
+
+	loaded bool
+}
+
+// NewEntryReversedIter returns an iterator which loads all entries and iterates backward.
+// The labels of entries is always empty.
+func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
+	iter, err := &reverseEntryIterator{
+		iter: it,
+		buf:  entryBufferPool.Get().(*entryBuffer),
+	}, it.Error()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return iter, nil
+}
+
+func (i *reverseEntryIterator) load() {
+	if !i.loaded {
+		i.loaded = true
+		for i.iter.Next() {
+			i.buf.entries = append(i.buf.entries, i.iter.Entry())
+		}
+		i.iter.Close()
+	}
+}
+
+func (i *reverseEntryIterator) Next() bool {
+	i.load()
+	if len(i.buf.entries) == 0 {
+		entryBufferPool.Put(i.buf)
+		i.buf.entries = nil
+		return false
+	}
+	i.cur, i.buf.entries = i.buf.entries[len(i.buf.entries)-1], i.buf.entries[:len(i.buf.entries)-1]
+	return true
+}
+
+func (i *reverseEntryIterator) Entry() logproto.Entry {
+	return i.cur
+}
+
+func (i *reverseEntryIterator) Labels() string {
+	return ""
+}
+
+func (i *reverseEntryIterator) Error() error { return nil }
+
+func (i *reverseEntryIterator) Close() error {
+	if i.buf.entries != nil {
+		i.buf.entries = i.buf.entries[:0]
+		entryBufferPool.Put(i.buf)
+		i.buf.entries = nil
+	}
+	if !i.loaded {
+		return i.iter.Close()
+	}
+	return nil
+}
+
 // ReadBatch reads a set of entries off an iterator.
 func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
 	streams := map[string]*logproto.Stream{}
@@ -603,10 +682,10 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 	}
 
 	result := logproto.QueryResponse{
-		Streams: make([]*logproto.Stream, 0, len(streams)),
+		Streams: make([]logproto.Stream, 0, len(streams)),
 	}
 	for _, stream := range streams {
-		result.Streams = append(result.Streams, stream)
+		result.Streams = append(result.Streams, *stream)
 	}
 	return &result, respSize, i.Error()
 }

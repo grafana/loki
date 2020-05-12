@@ -1,7 +1,6 @@
 package loki
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/local"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -79,31 +80,43 @@ func (m *moduleName) Set(s string) error {
 	return nil
 }
 
-func (t *Loki) initServer() (err error) {
-	t.server, err = server.New(t.cfg.Server)
-	return
+func (t *Loki) initServer() (services.Service, error) {
+	serv, err := server.New(t.cfg.Server)
+	if err != nil {
+		return nil, err
+	}
+
+	t.server = serv
+
+	servicesToWaitFor := func() []services.Service {
+		svs := []services.Service(nil)
+		for m, s := range t.serviceMap {
+			// Server should not wait for itself.
+			if m != Server {
+				svs = append(svs, s)
+			}
+		}
+		return svs
+	}
+
+	s := cortex.NewServerService(t.server, servicesToWaitFor)
+
+	return s, nil
 }
 
-func (t *Loki) initRing() (err error) {
+func (t *Loki) initRing() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
-	if err == nil {
-		err = services.StartAndAwaitRunning(context.Background(), t.ring)
-	}
 	if err != nil {
 		return
 	}
 	prometheus.MustRegister(t.ring)
 	t.server.HTTP.Handle("/ring", t.ring)
-	return
+	return t.ring, nil
 }
 
-func (t *Loki) stopRing() (err error) {
-	return services.StopAndAwaitTerminated(context.Background(), t.ring)
-}
-
-func (t *Loki) initRuntimeConfig() (err error) {
+func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	if t.cfg.RuntimeConfig.LoadPath == "" {
 		t.cfg.RuntimeConfig.LoadPath = t.cfg.LimitsConfig.PerTenantOverrideConfig
 		t.cfg.RuntimeConfig.ReloadPeriod = t.cfg.LimitsConfig.PerTenantOverridePeriod
@@ -113,71 +126,53 @@ func (t *Loki) initRuntimeConfig() (err error) {
 	// make sure to set default limits before we start loading configuration into memory
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.cfg.LimitsConfig)
 
+	var err error
 	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig, prometheus.DefaultRegisterer)
-	if err == nil {
-		err = services.StartAndAwaitRunning(context.Background(), t.runtimeConfig)
-	}
-	return err
+	return t.runtimeConfig, err
 }
 
-func (t *Loki) stopRuntimeConfig() (err error) {
-	return services.StopAndAwaitTerminated(context.Background(), t.runtimeConfig)
-}
-
-func (t *Loki) initOverrides() (err error) {
+func (t *Loki) initOverrides() (_ services.Service, err error) {
 	t.overrides, err = validation.NewOverrides(t.cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
-	return err
+	// overrides are not a service, since they don't have any operational state.
+	return nil, err
 }
 
-func (t *Loki) initDistributor() (err error) {
+func (t *Loki) initDistributor() (services.Service, error) {
 	t.cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	var err error
 	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	pushHandler := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.distributor.ReadinessHandler))
-
 	t.server.HTTP.Handle("/api/prom/push", pushHandler)
 	t.server.HTTP.Handle("/loki/api/v1/push", pushHandler)
-	return
+	return t.distributor, nil
 }
 
-func (t *Loki) stopDistributor() (err error) {
-	t.distributor.Stop()
-	return nil
-}
-
-func (t *Loki) initQuerier() error {
+func (t *Loki) initQuerier() (services.Service, error) {
 	level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
 	worker, err := frontend.NewWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
 	if err != nil {
-		return err
-	}
-	// worker is nil, if no address is defined.
-	if worker != nil {
-		err = services.StartAndAwaitRunning(context.Background(), worker)
-		if err != nil {
-			return err
-		}
+		return nil, err
 	}
 
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
-		querier.NewPrepopulateMiddleware(),
+		serverutil.NewPrepopulateMiddleware(),
 	)
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.querier.ReadinessHandler))
-
 	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
 	// Prometheus compatibility requires `loki/api/v1/labels` however we already released `loki/api/v1/label`
@@ -193,13 +188,13 @@ func (t *Loki) initQuerier() error {
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
 	t.server.HTTP.Handle("/api/prom/tail", httpMiddleware.Wrap(http.HandlerFunc(t.querier.TailHandler)))
 	t.server.HTTP.Handle("/api/prom/series", httpMiddleware.Wrap(http.HandlerFunc(t.querier.SeriesHandler)))
-	return nil
+	return worker, nil // ok if worker is nil here
 }
 
-func (t *Loki) initIngester() (err error) {
+func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
+	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
 
 	// We want ingester to also query the store when using boltdb-shipper
 	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
@@ -217,25 +212,14 @@ func (t *Loki) initIngester() (err error) {
 	logproto.RegisterQuerierServer(t.server.GRPC, t.ingester)
 	logproto.RegisterIngesterServer(t.server.GRPC, t.ingester)
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
-	return
+	return t.ingester, nil
 }
 
-func (t *Loki) stopIngester() error {
-	t.ingester.Shutdown()
-	return nil
-}
-
-func (t *Loki) stoppingIngester() error {
-	t.ingester.Stopping()
-	return nil
-}
-
-func (t *Loki) initTableManager() error {
+func (t *Loki) initTableManager() (services.Service, error) {
 	err := t.cfg.SchemaConfig.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Assume the newest config is the one to use
@@ -254,9 +238,9 @@ func (t *Loki) initTableManager() error {
 		os.Exit(1)
 	}
 
-	tableClient, err := loki_storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
@@ -264,30 +248,13 @@ func (t *Loki) initTableManager() error {
 
 	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, prometheus.DefaultRegisterer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := services.StartAndAwaitRunning(context.Background(), t.tableManager); err != nil {
-		return err
-	}
-
-	// Once the execution reaches this point, synchronous table initialization has been
-	// done and the table-manager is ready to serve, so we're just returning a 200.
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("Ready")); err != nil {
-			level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
-		}
-	}))
-
-	return nil
+	return t.tableManager, nil
 }
 
-func (t *Loki) stopTableManager() error {
-	return services.StopAndAwaitTerminated(context.Background(), t.tableManager)
-}
-
-func (t *Loki) initStore() (err error) {
+func (t *Loki) initStore() (_ services.Service, err error) {
 	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
@@ -302,16 +269,18 @@ func (t *Loki) initStore() (err error) {
 		}
 	}
 
-	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides)
-	return
+	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
+	if err != nil {
+		return
+	}
+
+	return services.NewIdleService(nil, func(_ error) error {
+		t.store.Stop()
+		return nil
+	}), nil
 }
 
-func (t *Loki) stopStore() error {
-	t.store.Stop()
-	return nil
-}
-
-func (t *Loki) initQueryFrontend() (err error) {
+func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
 	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -330,13 +299,19 @@ func (t *Loki) initQueryFrontend() (err error) {
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
-		return err
+		return
 	}
 	t.stopper = stopper
 	t.frontend.Wrap(tripperware)
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
-	frontendHandler := queryrange.StatsHTTPMiddleware.Wrap(t.httpAuthMiddleware.Wrap(t.frontend.Handler()))
+	frontendHandler := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+		queryrange.StatsHTTPMiddleware,
+		t.httpAuthMiddleware,
+		serverutil.NewPrepopulateMiddleware(),
+	).Wrap(t.frontend.Handler())
+
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
@@ -349,29 +324,26 @@ func (t *Loki) initQueryFrontend() (err error) {
 	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
 	// fallback route
 	t.server.HTTP.PathPrefix("/").Handler(frontendHandler)
-	return
+
+	return services.NewIdleService(nil, func(_ error) error {
+		t.frontend.Close()
+		if t.stopper != nil {
+			t.stopper.Stop()
+		}
+		return nil
+	}), nil
 }
 
-func (t *Loki) stopQueryFrontend() error {
-	t.frontend.Close()
-	if t.stopper != nil {
-		t.stopper.Stop()
-	}
-	return nil
-}
-
-func (t *Loki) initMemberlistKV() error {
+func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
 	t.cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
 	t.memberlistKV = memberlist.NewKVInit(&t.cfg.MemberlistKV)
-	return nil
-}
-
-func (t *Loki) stopMemberlistKV() error {
-	t.memberlistKV.Stop()
-	return nil
+	return services.NewIdleService(nil, func(_ error) error {
+		t.memberlistKV.Stop()
+		return nil
+	}), nil
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName
@@ -432,73 +404,84 @@ func uniqueDeps(deps []moduleName) []moduleName {
 	return result
 }
 
+// find modules in the supplied list, that depend on mod
+func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
+	result := []moduleName(nil)
+
+	for _, n := range mods {
+		for _, d := range modules[n].deps {
+			if d == mod {
+				result = append(result, n)
+				break
+			}
+		}
+	}
+
+	return result
+}
+
 type module struct {
-	deps     []moduleName
-	init     func(t *Loki) error
-	stopping func(t *Loki) error
-	stop     func(t *Loki) error
+	deps []moduleName
+
+	// service for this module (can return nil)
+	service func(t *Loki) (services.Service, error)
+
+	// service that will be wrapped into moduleServiceWrapper, to wait for dependencies to start / end
+	// (can return nil)
+	wrappedService func(t *Loki) (services.Service, error)
 }
 
 var modules = map[moduleName]module{
 	Server: {
-		init: (*Loki).initServer,
+		service: (*Loki).initServer,
 	},
 
 	RuntimeConfig: {
-		init: (*Loki).initRuntimeConfig,
-		stop: (*Loki).stopRuntimeConfig,
+		wrappedService: (*Loki).initRuntimeConfig,
 	},
 
 	MemberlistKV: {
-		init: (*Loki).initMemberlistKV,
-		stop: (*Loki).stopMemberlistKV,
+		wrappedService: (*Loki).initMemberlistKV,
 	},
 
 	Ring: {
-		deps: []moduleName{RuntimeConfig, Server, MemberlistKV},
-		init: (*Loki).initRing,
-		stop: (*Loki).stopRing,
+		deps:           []moduleName{RuntimeConfig, Server, MemberlistKV},
+		wrappedService: (*Loki).initRing,
 	},
 
 	Overrides: {
-		deps: []moduleName{RuntimeConfig},
-		init: (*Loki).initOverrides,
+		deps:           []moduleName{RuntimeConfig},
+		wrappedService: (*Loki).initOverrides,
 	},
 
 	Distributor: {
-		deps: []moduleName{Ring, Server, Overrides},
-		init: (*Loki).initDistributor,
-		stop: (*Loki).stopDistributor,
+		deps:           []moduleName{Ring, Server, Overrides},
+		wrappedService: (*Loki).initDistributor,
 	},
 
 	Store: {
-		deps: []moduleName{Overrides},
-		init: (*Loki).initStore,
-		stop: (*Loki).stopStore,
+		deps:           []moduleName{Overrides},
+		wrappedService: (*Loki).initStore,
 	},
 
 	Ingester: {
-		deps:     []moduleName{Store, Server, MemberlistKV},
-		init:     (*Loki).initIngester,
-		stop:     (*Loki).stopIngester,
-		stopping: (*Loki).stoppingIngester,
+		deps:           []moduleName{Store, Server, MemberlistKV},
+		wrappedService: (*Loki).initIngester,
 	},
 
 	Querier: {
-		deps: []moduleName{Store, Ring, Server},
-		init: (*Loki).initQuerier,
+		deps:           []moduleName{Store, Ring, Server},
+		wrappedService: (*Loki).initQuerier,
 	},
 
 	QueryFrontend: {
-		deps: []moduleName{Server, Overrides},
-		init: (*Loki).initQueryFrontend,
-		stop: (*Loki).stopQueryFrontend,
+		deps:           []moduleName{Server, Overrides},
+		wrappedService: (*Loki).initQueryFrontend,
 	},
 
 	TableManager: {
-		deps: []moduleName{Server},
-		init: (*Loki).initTableManager,
-		stop: (*Loki).stopTableManager,
+		deps:           []moduleName{Server},
+		wrappedService: (*Loki).initTableManager,
 	},
 
 	All: {

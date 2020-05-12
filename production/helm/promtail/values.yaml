@@ -17,7 +17,7 @@ initContainer:
 
 image:
   repository: grafana/promtail
-  tag: 1.4.1
+  tag: 1.4.0
   pullPolicy: IfNotPresent
 
 livenessProbe: {}
@@ -114,6 +114,14 @@ volumeMounts:
 
 # Custom volumeMounts together with the default ones
 extraVolumeMounts: []
+
+# Add extra Commandline args while starting up promtail.
+# more info : https://github.com/grafana/loki/pull/1530
+
+extraCommandlineArgs: []
+# example:
+# extraCommandlineArgs:
+#   - -client.external-labels=hostname=$(HOSTNAME)
 
 config:
   client:

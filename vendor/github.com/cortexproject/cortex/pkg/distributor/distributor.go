@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
@@ -698,6 +699,42 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			Metric: m,
 		})
 	}
+	return result, nil
+}
+
+// MetricMetadata returns all metric metadata of a user.
+func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+	req := &ingester_client.MetricsMetadataRequest{}
+	// TODO: We only need to look in all the ingesters if we're shardByAllLabels is enabled.
+	// Look into distributor/query.go
+	resps, err := d.forAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+		return client.MetricsMetadata(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := []scrape.MetricMetadata{}
+	dedupTracker := map[ingester_client.MetricMetadata]struct{}{}
+	for _, resp := range resps {
+		r := resp.(*client.MetricsMetadataResponse)
+		for _, m := range r.Metadata {
+			// Given we look across all ingesters - dedup the metadata.
+			_, ok := dedupTracker[*m]
+			if ok {
+				continue
+			}
+			dedupTracker[*m] = struct{}{}
+
+			result = append(result, scrape.MetricMetadata{
+				Metric: m.MetricName,
+				Help:   m.Help,
+				Unit:   m.Unit,
+				Type:   client.MetricMetadataMetricTypeToMetricType(m.GetType()),
+			})
+		}
+	}
+
 	return result, nil
 }
 

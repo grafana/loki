@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/middleware"
@@ -93,7 +92,7 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 				case *LokiPromResponse:
 					statistics = &r.Statistics
 				default:
-					level.Warn(util.Logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
+					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
 			}
 			if statistics != nil {

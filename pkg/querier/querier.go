@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
@@ -36,8 +35,6 @@ const (
 	// check loop)
 	tailerWaitEntryThrottle = time.Second / 2
 )
-
-var readinessProbeSuccess = []byte("Ready")
 
 // Config for a querier.
 type Config struct {
@@ -98,21 +95,6 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 type responseFromIngesters struct {
 	addr     string
 	response interface{}
-}
-
-// ReadinessHandler is used to indicate to k8s when the querier is ready.
-// Returns 200 when the querier is ready, 500 otherwise.
-func (q *Querier) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := q.ring.GetAll()
-	if err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
-	}
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters

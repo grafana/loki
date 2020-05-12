@@ -66,6 +66,8 @@ var DiscardedSamples = prometheus.NewCounterVec(
 	},
 	[]string{discardReasonLabel, "user"},
 )
+
+// DiscardedMetadata is a metric of the number of discarded metadata, by reason.
 var DiscardedMetadata = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "cortex_discarded_metadata_total",

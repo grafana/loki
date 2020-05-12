@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -19,13 +18,11 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 const (
 	wsPingPeriod = 1 * time.Second
-
-	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
-	StatusClientClosedRequest = 499
 )
 
 type QueryResponse struct {
@@ -41,12 +38,12 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	request, err := loghttp.ParseRangeQuery(r)
 	if err != nil {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
@@ -55,6 +52,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Start,
 		request.End,
 		request.Step,
+		request.Interval,
 		request.Direction,
 		request.Limit,
 		request.Shards,
@@ -62,12 +60,12 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 }
@@ -80,12 +78,12 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	request, err := loghttp.ParseInstantQuery(r)
 	if err != nil {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
@@ -94,6 +92,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Ts,
 		request.Ts,
 		0,
+		0,
 		request.Direction,
 		request.Limit,
 		nil,
@@ -101,12 +100,12 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 }
@@ -119,29 +118,29 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	request, err := loghttp.ParseRangeQuery(r)
 	if err != nil {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 	request.Query, err = parseRegexQuery(r)
 	if err != nil {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	expr, err := logql.ParseExpr(request.Query)
 	if err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
 	// short circuit metric queries
 	if _, ok := expr.(logql.SampleExpr); ok {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logql.ValueTypeStreams), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logql.ValueTypeStreams), w)
 		return
 	}
 
 	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
@@ -150,6 +149,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Start,
 		request.End,
 		request.Step,
+		request.Interval,
 		request.Direction,
 		request.Limit,
 		request.Shards,
@@ -158,12 +158,12 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := query.Exec(ctx)
 	if err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
 	if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 }
@@ -172,13 +172,13 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := loghttp.ParseLabelQuery(r)
 	if err != nil {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	resp, err := q.Label(r.Context(), req)
 	if err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
@@ -188,7 +188,7 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		err = marshal_legacy.WriteLabelResponseJSON(*resp, w)
 	}
 	if err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 }
@@ -198,41 +198,42 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
+	logger := util.WithContext(r.Context(), util.Logger)
 
 	req, err := loghttp.ParseTailQuery(r)
 	if err != nil {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	req.Query, err = parseRegexQuery(r)
 	if err != nil {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "Error in upgrading websocket", "err", err)
+		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
 		return
 	}
 
 	defer func() {
 		if err := conn.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "Error closing websocket", "err", err)
+			level.Error(logger).Log("msg", "Error closing websocket", "err", err)
 		}
 	}()
 
 	tailer, err := q.Tail(r.Context(), req)
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-			level.Error(util.Logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
+			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
 		}
 		return
 	}
 	defer func() {
 		if err := tailer.close(); err != nil {
-			level.Error(util.Logger).Log("msg", "Error closing Tailer", "err", err)
+			level.Error(logger).Log("msg", "Error closing Tailer", "err", err)
 		}
 	}()
 
@@ -252,12 +253,12 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 					if closeErr.Code == websocket.CloseNormalClosure {
 						break
 					}
-					level.Error(util.Logger).Log("msg", "Error from client", "err", err)
+					level.Error(logger).Log("msg", "Error from client", "err", err)
 					break
 				} else if tailer.stopped {
 					return
 				} else {
-					level.Error(util.Logger).Log("msg", "Unexpected error from client", "err", err)
+					level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
 					break
 				}
 			}
@@ -275,25 +276,25 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "Error writing to websocket", "err", err)
+				level.Error(logger).Log("msg", "Error writing to websocket", "err", err)
 				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
+					level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
 				}
 				return
 			}
 
 		case err := <-closeErrChan:
-			level.Error(util.Logger).Log("msg", "Error from iterator", "err", err)
+			level.Error(logger).Log("msg", "Error from iterator", "err", err)
 			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-				level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
+				level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
 			}
 			return
 		case <-ticker.C:
 			// This is to periodically check whether connection is active, useful to clean up dead connections when there are no entries to send
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				level.Error(util.Logger).Log("msg", "Error writing ping message to websocket", "err", err)
+				level.Error(logger).Log("msg", "Error writing ping message to websocket", "err", err)
 				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
+					level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
 				}
 				return
 			}
@@ -308,37 +309,21 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 func (q *Querier) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := loghttp.ParseSeriesQuery(r)
 	if err != nil {
-		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	resp, err := q.Series(r.Context(), req)
 	if err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
 
 	err = marshal.WriteSeriesResponseJSON(*resp, w)
 	if err != nil {
-		writeError(err, w)
+		serverutil.WriteError(err, w)
 		return
 	}
-}
-
-// NewPrepopulateMiddleware creates a middleware which will parse incoming http forms.
-// This is important because some endpoints can POST x-www-form-urlencoded bodies instead of GET w/ query strings.
-func NewPrepopulateMiddleware() middleware.Interface {
-	return middleware.Func(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			err := req.ParseForm()
-			if err != nil {
-				writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-				return
-
-			}
-			next.ServeHTTP(w, req)
-		})
-	})
 }
 
 // parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
@@ -354,23 +339,6 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 		query = logql.NewFilterExpr(expr, labels.MatchRegexp, regexp).String()
 	}
 	return query, nil
-}
-
-func writeError(err error, w http.ResponseWriter) {
-	switch {
-	case err == context.Canceled:
-		http.Error(w, err.Error(), StatusClientClosedRequest)
-	case err == context.DeadlineExceeded:
-		http.Error(w, err.Error(), http.StatusGatewayTimeout)
-	case logql.IsParseError(err):
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	default:
-		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			http.Error(w, string(grpcErr.Body), int(grpcErr.Code))
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
 }
 
 func (q *Querier) validateEntriesLimits(ctx context.Context, limit uint32) error {

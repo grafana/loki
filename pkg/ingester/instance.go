@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const queryBatchSize = 128
@@ -35,11 +37,11 @@ var (
 )
 
 var (
-	memoryStreams = promauto.NewGauge(prometheus.GaugeOpts{
+	memoryStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "loki",
 		Name:      "ingester_memory_streams",
-		Help:      "The total number of streams in memory.",
-	})
+		Help:      "The total number of streams in memory per tenant.",
+	}, []string{"tenant"})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
@@ -111,7 +113,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 		stream = newStream(i.cfg, fp, sortedLabels, i.factory)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
-		memoryStreams.Inc()
+		memoryStreams.WithLabelValues(i.instanceID).Inc()
 		i.addTailersToNewStream(stream)
 	}
 
@@ -129,13 +131,8 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 	var appendErr error
 	for _, s := range req.Streams {
-		labels, err := util.ToClientLabels(s.Labels)
-		if err != nil {
-			appendErr = err
-			continue
-		}
 
-		stream, err := i.getOrCreateStream(labels)
+		stream, err := i.getOrCreateStream(s)
 		if err != nil {
 			appendErr = err
 			continue
@@ -153,7 +150,11 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, error) {
+	labels, err := util.ToClientLabels(pushReqStream.Labels)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
 	rawFp := client.FastFingerprint(labels)
 	fp := i.mapper.mapFP(rawFp, labels)
 
@@ -162,15 +163,22 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 		return stream, nil
 	}
 
-	err := i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+	err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
+		bytes := 0
+		for _, e := range pushReqStream.Entries {
+			bytes += len(e.Line)
+		}
+		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+		level.Warn(cutil.Logger).Log("message", "could not create new stream for tenant", "error", err)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
 	}
 
 	sortedLabels := i.index.Add(labels, fp)
 	stream = newStream(i.cfg, fp, sortedLabels, i.factory)
 	i.streams[fp] = stream
-	memoryStreams.Inc()
+	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)
 
@@ -271,7 +279,7 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 }
 
 // forMatchingStreams will execute a function for each stream that satisfies a set of requirements (time range, matchers, etc).
-// It uses a function in order to enable generic stream acces without accidentally leaking streams under the mutex.
+// It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forMatchingStreams(
 	matchers []*labels.Matcher,
 	fn func(*stream) error,

@@ -47,7 +47,7 @@ func CollectTrailer(ctx context.Context) grpc.CallOption {
 func SendAsTrailer(ctx context.Context, stream grpc.ServerStream) {
 	trailer, err := encodeTrailer(ctx)
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "failed to encode trailer", "err", err)
+		level.Warn(util.WithContext(ctx, util.Logger)).Log("msg", "failed to encode trailer", "err", err)
 		return
 	}
 	stream.SetTrailer(trailer)
@@ -92,7 +92,7 @@ func decodeTrailers(ctx context.Context) Result {
 	}
 	res.Ingester.TotalReached = int32(len(collector.trailers))
 	for _, meta := range collector.trailers {
-		ing := decodeTrailer(meta)
+		ing := decodeTrailer(ctx, meta)
 		res.Ingester.TotalChunksMatched += ing.Ingester.TotalChunksMatched
 		res.Ingester.TotalBatches += ing.Ingester.TotalBatches
 		res.Ingester.TotalLinesSent += ing.Ingester.TotalLinesSent
@@ -109,26 +109,27 @@ func decodeTrailers(ctx context.Context) Result {
 	return res
 }
 
-func decodeTrailer(meta *metadata.MD) Result {
+func decodeTrailer(ctx context.Context, meta *metadata.MD) Result {
+	logger := util.WithContext(ctx, util.Logger)
 	var ingData IngesterData
 	values := meta.Get(ingesterDataKey)
 	if len(values) == 1 {
 		if err := jsoniter.UnmarshalFromString(values[0], &ingData); err != nil {
-			level.Warn(util.Logger).Log("msg", "could not unmarshal ingester data", "err", err)
+			level.Warn(logger).Log("msg", "could not unmarshal ingester data", "err", err)
 		}
 	}
 	var chunkData ChunkData
 	values = meta.Get(chunkDataKey)
 	if len(values) == 1 {
 		if err := jsoniter.UnmarshalFromString(values[0], &chunkData); err != nil {
-			level.Warn(util.Logger).Log("msg", "could not unmarshal chunk data", "err", err)
+			level.Warn(logger).Log("msg", "could not unmarshal chunk data", "err", err)
 		}
 	}
 	var storeData StoreData
 	values = meta.Get(storeDataKey)
 	if len(values) == 1 {
 		if err := jsoniter.UnmarshalFromString(values[0], &storeData); err != nil {
-			level.Warn(util.Logger).Log("msg", "could not unmarshal chunk data", "err", err)
+			level.Warn(logger).Log("msg", "could not unmarshal chunk data", "err", err)
 		}
 	}
 	return Result{

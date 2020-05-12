@@ -43,6 +43,7 @@ type BoltDBGetter interface {
 
 type ShipperConfig struct {
 	ActiveIndexDirectory string        `yaml:"active_index_directory"`
+	SharedStoreType      string        `yaml:"shared_store"`
 	CacheLocation        string        `yaml:"cache_location"`
 	CacheTTL             time.Duration `yaml:"cache_ttl"`
 	ResyncInterval       time.Duration `yaml:"resync_interval"`
@@ -53,6 +54,7 @@ type ShipperConfig struct {
 // RegisterFlags registers flags.
 func (cfg *ShipperConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ActiveIndexDirectory, "boltdb.shipper.active-index-directory", "", "Directory where ingesters would write boltdb files which would then be uploaded by shipper to configured storage")
+	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.shared-store", "", "Shared store for keeping boltdb files. Supported types: gcs, s3, azure, filesystem")
 	f.StringVar(&cfg.CacheLocation, "boltdb.shipper.cache-location", "", "Cache location for restoring boltDB files for queries")
 	f.DurationVar(&cfg.CacheTTL, "boltdb.shipper.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")

@@ -176,10 +176,10 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
 
-	streams := make([]*logproto.Stream, len(proto.Data.Result))
+	streams := make([]logproto.Stream, len(proto.Data.Result))
 
 	for i, stream := range proto.Data.Result {
-		streams[i] = &logproto.Stream{
+		streams[i] = logproto.Stream{
 			Labels:  stream.Labels,
 			Entries: stream.Entries,
 		}
@@ -407,12 +407,11 @@ func (p paramsWrapper) End() time.Time {
 func (p paramsWrapper) Step() time.Duration {
 	return time.Duration(p.LokiRequest.Step * 1e6)
 }
-func (p paramsWrapper) Limit() uint32 {
-	return p.LokiRequest.Limit
-}
+func (p paramsWrapper) Interval() time.Duration { return 0 }
 func (p paramsWrapper) Direction() logproto.Direction {
 	return p.LokiRequest.Direction
 }
+func (p paramsWrapper) Limit() uint32 { return p.LokiRequest.Limit }
 func (p paramsWrapper) Shards() []string {
 	return p.LokiRequest.Shards
 }

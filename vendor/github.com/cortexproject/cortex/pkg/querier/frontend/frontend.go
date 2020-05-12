@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -152,18 +155,26 @@ func (f *Frontend) Handler() http.Handler {
 }
 
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
-	userID, err := user.ExtractOrgID(r.Context())
-	if err != nil {
-		server.WriteError(w, err)
-		return
-	}
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
 	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
-		level.Info(f.log).Log("msg", "slow query", "org_id", userID, "url", fmt.Sprintf("http://%s", r.Host+r.RequestURI), "time_taken", queryResponseTime.String())
+		logMessage := []interface{}{
+			"msg", "slow query",
+			"host", r.Host,
+			"path", r.URL.Path,
+			"time_taken", queryResponseTime.String(),
+		}
+		for k, v := range r.URL.Query() {
+			logMessage = append(logMessage, fmt.Sprintf("qs_%s", k), strings.Join(v, ","))
+		}
+		pf := r.PostForm.Encode()
+		if pf != "" {
+			logMessage = append(logMessage, "body", pf)
+		}
+		level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
 	}
 
 	if err != nil {
@@ -176,7 +187,11 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		hs[h] = vs
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+
+	if _, err = io.Copy(w, resp.Body); err != nil {
+		server.WriteError(w, err)
+		return
+	}
 }
 
 func writeError(w http.ResponseWriter, err error) {

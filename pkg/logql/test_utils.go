@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func NewMockQuerier(shards int, streams []*logproto.Stream) MockQuerier {
+func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
 	return MockQuerier{
 		shards:  shards,
 		streams: streams,
@@ -24,7 +24,7 @@ func NewMockQuerier(shards int, streams []*logproto.Stream) MockQuerier {
 // Shard aware mock querier
 type MockQuerier struct {
 	shards  int
-	streams []*logproto.Stream
+	streams []logproto.Stream
 }
 
 func (q MockQuerier) Select(_ context.Context, req SelectParams) (iter.EntryIterator, error) {
@@ -48,7 +48,7 @@ func (q MockQuerier) Select(_ context.Context, req SelectParams) (iter.EntryIter
 		shard = &shards[0]
 	}
 
-	var matched []*logproto.Stream
+	var matched []logproto.Stream
 
 outer:
 	for _, stream := range q.streams {
@@ -68,7 +68,7 @@ outer:
 	}
 
 	// apply the LineFilter
-	filtered := make([]*logproto.Stream, 0, len(matched))
+	filtered := make([]logproto.Stream, 0, len(matched))
 	if filter == nil || filter == TrueFilter {
 		filtered = matched
 	} else {
@@ -81,7 +81,7 @@ outer:
 			}
 
 			if len(entries) > 0 {
-				filtered = append(filtered, &logproto.Stream{
+				filtered = append(filtered, logproto.Stream{
 					Labels:  s.Labels,
 					Entries: entries,
 				})
@@ -107,6 +107,7 @@ func (d MockDownstreamer) Downstream(expr Expr, p Params, shards Shards) (Query,
 		p.Start(),
 		p.End(),
 		p.Step(),
+		p.Interval(),
 		p.Direction(),
 		p.Limit(),
 		shards.Encode(),
@@ -116,10 +117,10 @@ func (d MockDownstreamer) Downstream(expr Expr, p Params, shards Shards) (Query,
 
 // create nStreams of nEntries with labelNames each where each label value
 // with the exception of the "index" label is modulo'd into a shard
-func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (streams []*logproto.Stream) {
+func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (streams []logproto.Stream) {
 	for i := 0; i < nStreams; i++ {
 		// labels
-		stream := &logproto.Stream{}
+		stream := logproto.Stream{}
 		ls := labels.Labels{{Name: "index", Value: fmt.Sprintf("%d", i)}}
 
 		for _, lName := range labelNames {

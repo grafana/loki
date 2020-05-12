@@ -12,6 +12,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/textparse"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -136,6 +137,31 @@ func FromMetricsForLabelMatchersResponse(resp *MetricsForLabelMatchersResponse) 
 		metrics = append(metrics, FromLabelAdaptersToMetric(m.Labels))
 	}
 	return metrics
+}
+
+// MetricMetadataMetricTypeToMetricType converts a metric type from our internal client
+// to a Prometheus one.
+func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) textparse.MetricType {
+	switch mt {
+	case UNKNOWN:
+		return textparse.MetricTypeUnknown
+	case COUNTER:
+		return textparse.MetricTypeCounter
+	case GAUGE:
+		return textparse.MetricTypeGauge
+	case HISTOGRAM:
+		return textparse.MetricTypeHistogram
+	case GAUGEHISTOGRAM:
+		return textparse.MetricTypeGaugeHistogram
+	case SUMMARY:
+		return textparse.MetricTypeSummary
+	case INFO:
+		return textparse.MetricTypeInfo
+	case STATESET:
+		return textparse.MetricTypeStateset
+	default:
+		return textparse.MetricTypeUnknown
+	}
 }
 
 func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {

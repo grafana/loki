@@ -64,6 +64,11 @@ func Test_SampleExpr_String(t *testing.T) {
 		sum by (cluster) (count_over_time({job="postgres"}[5m]))
 		`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m])) / min(count_over_time({job="mysql"}[5m])) `,
+		`sum by (job) (
+			count_over_time({namespace="tns"} |= "level=error"[5m])
+		/
+			count_over_time({namespace="tns"}[5m])
+		)`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
@@ -74,6 +79,28 @@ func Test_SampleExpr_String(t *testing.T) {
 			require.Equal(t, expr, expr2)
 		})
 	}
+}
+
+func Test_NilFilterDoesntPanic(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`{namespace="dev", container_name="cart"} |= "" |= "bloop"`,
+		`{namespace="dev", container_name="cart"} |= "bleep" |= ""`,
+		`{namespace="dev", container_name="cart"} |= "bleep" |= "" |= "bloop"`,
+		`{namespace="dev", container_name="cart"} |= "bleep" |= "" |= "bloop"`,
+		`{namespace="dev", container_name="cart"} |= "bleep" |= "bloop" |= ""`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			expr, err := ParseLogSelector(tc)
+			require.Nil(t, err)
+
+			filter, err := expr.Filter()
+			require.Nil(t, err)
+
+			require.True(t, filter.Filter([]byte("bleepbloop")))
+		})
+	}
+
 }
 
 type linecheck struct {

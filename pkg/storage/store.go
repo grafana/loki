@@ -9,6 +9,7 @@ import (
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
@@ -26,7 +27,7 @@ import (
 type Config struct {
 	storage.Config      `yaml:",inline"`
 	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig local.ShipperConfig `yaml:"boltdb_shipper_config"`
+	BoltDBShipperConfig local.ShipperConfig `yaml:"boltdb_shipper"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -49,10 +50,8 @@ type store struct {
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits) (Store, error) {
-	registerCustomIndexClients(cfg, schemaCfg)
-
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits)
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
+	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -242,35 +241,30 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func registerCustomIndexClients(cfg Config, schemaCfg chunk.SchemaConfig) {
-	boltdbShipperInstances := 0
-	storage.RegisterIndexStore(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
-		// since we do not know which object client is being used for the period for which we are creating this index client,
-		// we need to iterate through all the periodic configs to find the right one.
-		// We maintain number of instances that we have already created in boltdbShipperInstances and then count the number of
-		// encounters of BoltDBShipperType until we find the right periodic config for getting the ObjectType.
-		// This is done assuming we are creating index client in the order of periodic configs.
-		// Note: We are assuming that user would never store chunks in table based store otherwise NewObjectClient would return an error.
+func RegisterCustomIndexClients(cfg Config) {
+	// BoltDB Shipper is supposed to be run as a singleton.
+	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
+	// in tests for creating multiple instances of it at a time.
+	var boltDBIndexClientWithShipper chunk.IndexClient
 
-		// ToDo: Try passing on ObjectType from Cortex to the callback for creating custom index client.
-		boltdbShipperEncounter := 0
-		objectStoreType := ""
-		for _, config := range schemaCfg.Configs {
-			if config.IndexType == local.BoltDBShipperType {
-				boltdbShipperEncounter++
-				if boltdbShipperEncounter > boltdbShipperInstances {
-					objectStoreType = config.ObjectType
-					break
-				}
-			}
+	storage.RegisterIndexStore(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
+		if boltDBIndexClientWithShipper != nil {
+			return boltDBIndexClientWithShipper, nil
 		}
 
-		boltdbShipperInstances++
-		objectClient, err := storage.NewObjectClient(objectStoreType, cfg.Config)
+		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)
 		if err != nil {
 			return nil, err
 		}
 
-		return local.NewBoltDBIndexClient(cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}, objectClient, cfg.BoltDBShipperConfig)
-	}, nil)
+		boltDBIndexClientWithShipper, err = local.NewBoltDBIndexClientWithShipper(cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}, objectClient, cfg.BoltDBShipperConfig)
+		return boltDBIndexClientWithShipper, err
+	}, func() (client chunk.TableClient, e error) {
+		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)
+		if err != nil {
+			return nil, err
+		}
+
+		return local.NewBoltDBShipperTableClient(objectClient), nil
+	})
 }

@@ -34,7 +34,6 @@ func (s *DefaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operati
 	}
 
 	minSuccess := (replicationFactor / 2) + 1
-	maxFailure := replicationFactor - minSuccess
 
 	// Skip those that have not heartbeated in a while. NB these are still
 	// included in the calculation of minSuccess, so if too many failed ingesters
@@ -44,19 +43,18 @@ func (s *DefaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operati
 			i++
 		} else {
 			ingesters = append(ingesters[:i], ingesters[i+1:]...)
-			maxFailure--
 		}
 	}
 
 	// This is just a shortcut - if there are not minSuccess available ingesters,
 	// after filtering out dead ones, don't even bother trying.
-	if maxFailure < 0 || len(ingesters) < minSuccess {
+	if len(ingesters) < minSuccess {
 		err := fmt.Errorf("at least %d live replicas required, could only find %d",
 			minSuccess, len(ingesters))
 		return nil, 0, err
 	}
 
-	return ingesters, maxFailure, nil
+	return ingesters, len(ingesters) - minSuccess, nil
 }
 
 func (s *DefaultReplicationStrategy) ShouldExtendReplicaSet(ingester IngesterDesc, op Operation) bool {
