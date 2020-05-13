@@ -43,6 +43,7 @@ type Config struct {
 	ExtraQueryDelay          time.Duration    `yaml:"extra_query_delay,omitempty"`
 	IngesterMaxQueryLookback time.Duration    `yaml:"query_ingesters_within,omitempty"`
 	Engine                   logql.EngineOpts `yaml:"engine,omitempty"`
+	MaxConcurrent            int              `yaml:"max_concurrent"`
 }
 
 // RegisterFlags register flags.
@@ -51,6 +52,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryTimeout, "querier.query_timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.IngesterMaxQueryLookback, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 }
 
 // Querier handlers queries.
@@ -99,7 +101,7 @@ type responseFromIngesters struct {
 // forAllIngesters runs f, in parallel, for all ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (q *Querier) forAllIngesters(ctx context.Context, f func(logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	replicationSet, err := q.ring.GetAll()
+	replicationSet, err := q.ring.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +336,7 @@ func (q *Querier) tailDisconnectedIngesters(ctx context.Context, req *logproto.T
 	}
 
 	// Get the current replication set from the ring
-	replicationSet, err := q.ring.GetAll()
+	replicationSet, err := q.ring.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -527,7 +529,7 @@ func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
 		return err
 	}
 
-	replicationSet, err := q.ring.GetAll()
+	replicationSet, err := q.ring.GetAll(ring.Read)
 	if err != nil {
 		return err
 	}

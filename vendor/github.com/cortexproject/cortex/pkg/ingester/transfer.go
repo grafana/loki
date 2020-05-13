@@ -354,23 +354,29 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 // The passed wireChunks slice is for re-use.
 func toWireChunks(descs []*desc, wireChunks []client.Chunk) ([]client.Chunk, error) {
 	if cap(wireChunks) < len(descs) {
-		wireChunks = make([]client.Chunk, 0, len(descs))
+		wireChunks = make([]client.Chunk, len(descs))
+	} else {
+		wireChunks = wireChunks[:len(descs)]
 	}
-	wireChunks = wireChunks[:0]
-	for _, d := range descs {
+	for i, d := range descs {
 		wireChunk := client.Chunk{
 			StartTimestampMs: int64(d.FirstTime),
 			EndTimestampMs:   int64(d.LastTime),
 			Encoding:         int32(d.C.Encoding()),
 		}
 
-		buf := bytes.NewBuffer(make([]byte, 0, d.C.Size()))
+		slice := wireChunks[i].Data[:0] // try to re-use the memory from last time
+		if cap(slice) < d.C.Size() {
+			slice = make([]byte, 0, d.C.Size())
+		}
+		buf := bytes.NewBuffer(slice)
+
 		if err := d.C.Marshal(buf); err != nil {
 			return nil, err
 		}
 
 		wireChunk.Data = buf.Bytes()
-		wireChunks = append(wireChunks, wireChunk)
+		wireChunks[i] = wireChunk
 	}
 	return wireChunks, nil
 }

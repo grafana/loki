@@ -54,10 +54,6 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 	err = tableClient.DeleteTable(context.Background(), "table1")
 	require.NoError(t, err)
 
-	// cortex does not omit empty directories from the list
-	// ToDo: change the code in cortex to remove empty directories from the list
-	ensureEmptyAndRemoveDirectory(t, path.Join(tempDir, storageKeyPrefix, "table1"))
-
 	delete(foldersWithFiles, "table1")
 	checkExpectedTables(t, tableClient, foldersWithFiles)
 }
@@ -72,12 +68,4 @@ func checkExpectedTables(t *testing.T, tableClient chunk.TableClient, expectedTa
 		_, ok := expectedTables[table]
 		require.True(t, ok)
 	}
-}
-
-func ensureEmptyAndRemoveDirectory(t *testing.T, directory string) {
-	filesInfo, err := ioutil.ReadDir(directory)
-	require.NoError(t, err)
-	require.Len(t, filesInfo, 0)
-
-	require.NoError(t, os.Remove(directory))
 }

@@ -324,31 +324,51 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 		return nil
 	}
 
-	var ticker *time.Ticker
-	if !immediate {
-		perSeriesDuration := w.cfg.CheckpointDuration / time.Duration(numSeries)
-		ticker = time.NewTicker(perSeriesDuration)
-		defer ticker.Stop()
-	}
+	perSeriesDuration := (95 * w.cfg.CheckpointDuration) / (100 * time.Duration(numSeries))
 
 	var wireChunkBuf []client.Chunk
-	b := make([]byte, 0, 1024)
+	var b []byte
+	bytePool := sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 0, 1024)
+		},
+	}
+	records := [][]byte{}
+	totalSize := 0
 	for userID, state := range us {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
-			wireChunkBuf, b, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf, b)
+			wireChunkBuf, b, err = w.checkpointSeries(userID, pair.fp, pair.series, wireChunkBuf, bytePool.Get().([]byte))
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return err
 			}
 
+			records = append(records, b)
+			totalSize += len(b)
+			if totalSize >= 1*1024*1024 { // 1 MiB.
+				if err := checkpoint.Log(records...); err != nil {
+					return err
+				}
+				w.checkpointLoggedBytesTotal.Add(float64(totalSize))
+				totalSize = 0
+				for i := range records {
+					bytePool.Put(records[i]) // nolint:staticcheck
+				}
+				records = records[:0]
+			}
+
 			if !immediate {
 				select {
-				case <-ticker.C:
+				case <-time.After(perSeriesDuration):
 				case <-w.quit: // When we're trying to shutdown, finish the checkpoint as fast as possible.
 				}
 			}
 		}
+	}
+
+	if err := checkpoint.Log(records...); err != nil {
+		return err
 	}
 
 	if err := checkpoint.Close(); err != nil {
@@ -445,9 +465,9 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 }
 
 // checkpointSeries write the chunks of the series to the checkpoint.
-func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk, b []byte) ([]client.Chunk, []byte, error) {
+func (w *walWrapper) checkpointSeries(userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk, b []byte) ([]client.Chunk, []byte, error) {
 	var err error
-	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks[:0])
+	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks)
 	if err != nil {
 		return wireChunks, b, err
 	}
@@ -458,14 +478,7 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 		Labels:      client.FromLabelsToLabelAdapters(series.metric),
 		Chunks:      wireChunks,
 	}, CheckpointRecord, b)
-	if err != nil {
-		return wireChunks, b, err
-	}
 
-	err = cp.Log(b)
-	if err == nil {
-		w.checkpointLoggedBytesTotal.Add(float64(len(b)))
-	}
 	return wireChunks, b, err
 }
 

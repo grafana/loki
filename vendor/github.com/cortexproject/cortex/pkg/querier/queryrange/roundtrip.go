@@ -77,8 +77,13 @@ func (cfg *Config) Validate(log log.Logger) error {
 		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
 	}
 
-	if cfg.CacheResults && cfg.SplitQueriesByInterval <= 0 {
-		return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
+	if cfg.CacheResults {
+		if cfg.SplitQueriesByInterval <= 0 {
+			return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
+		}
+		if err := cfg.ResultsCacheConfig.CacheConfig.Validate(); err != nil {
+			return errors.Wrap(err, "invalid ResultsCache config")
+		}
 	}
 	return nil
 }
@@ -131,6 +136,7 @@ func NewTripperware(
 	engineOpts promql.EngineOpts,
 	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
+	cacheGenNumberLoader CacheGenNumberLoader,
 ) (frontend.Tripperware, cache.Cache, error) {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -152,7 +158,7 @@ func NewTripperware(
 
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader)
 		if err != nil {
 			return nil, nil, err
 		}

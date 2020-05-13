@@ -31,6 +31,10 @@ type BasicLifecyclerDelegate interface {
 	// will continue to hearbeat the ring the this function is executing and will proceed
 	// to unregister the instance from the ring only after this function has returned.
 	OnRingInstanceStopping(lifecycler *BasicLifecycler)
+
+	// OnRingInstanceHeartbeat is called while the instance is updating its heartbeat
+	// in the ring.
+	OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc)
 }
 
 type BasicLifecyclerConfig struct {
@@ -305,7 +309,7 @@ func (l *BasicLifecycler) waitStableTokens(ctx context.Context, period time.Dura
 func (l *BasicLifecycler) verifyTokens(ctx context.Context) bool {
 	result := false
 
-	err := l.updateInstance(ctx, func(r Desc, i *IngesterDesc) bool {
+	err := l.updateInstance(ctx, func(r *Desc, i *IngesterDesc) bool {
 		// At this point, we should have the same tokens as we have registered before.
 		actualTokens, takenTokens := r.TokensFor(l.cfg.ID)
 
@@ -363,7 +367,7 @@ func (l *BasicLifecycler) unregisterInstance(ctx context.Context) error {
 	return nil
 }
 
-func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(Desc, *IngesterDesc) bool) error {
+func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(*Desc, *IngesterDesc) bool) error {
 	var instanceDesc IngesterDesc
 
 	err := l.store.CAS(ctx, l.ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
@@ -379,7 +383,7 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(Desc, 
 			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState())
 		}
 
-		changed := update(*ringDesc, &instanceDesc)
+		changed := update(ringDesc, &instanceDesc)
 		if ok && !changed {
 			return nil, false, nil
 		}
@@ -402,7 +406,8 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(Desc, 
 // heartbeat updates the instance timestamp within the ring. This function is guaranteed
 // to be called within the lifecycler main goroutine.
 func (l *BasicLifecycler) heartbeat(ctx context.Context) {
-	err := l.updateInstance(ctx, func(_ Desc, i *IngesterDesc) bool {
+	err := l.updateInstance(ctx, func(r *Desc, i *IngesterDesc) bool {
+		l.delegate.OnRingInstanceHeartbeat(l, r, i)
 		i.Timestamp = time.Now().Unix()
 		return true
 	})
@@ -418,7 +423,7 @@ func (l *BasicLifecycler) heartbeat(ctx context.Context) {
 // changeState of the instance within the ring. This function is guaranteed
 // to be called within the lifecycler main goroutine.
 func (l *BasicLifecycler) changeState(ctx context.Context, state IngesterState) error {
-	err := l.updateInstance(ctx, func(_ Desc, i *IngesterDesc) bool {
+	err := l.updateInstance(ctx, func(_ *Desc, i *IngesterDesc) bool {
 		// No-op if the state hasn't changed.
 		if i.State == state {
 			return false

@@ -47,7 +47,7 @@ import (
 // It is incremented whenever an incompatibility between the generated code and
 // the grpc package is introduced; the generated code references
 // a constant, grpc.SupportPackageIsVersionN (where N is generatedCodeVersion).
-const generatedCodeVersion = 4
+const generatedCodeVersion = 6
 
 // Paths for packages used by code generated in this file,
 // relative to the import_prefix of the generator.Generator.
@@ -112,7 +112,7 @@ func (g *grpc) Generate(file *generator.FileDescriptor) {
 
 	g.P("// Reference imports to suppress errors if they are not otherwise used.")
 	g.P("var _ ", contextPkg, ".Context")
-	g.P("var _ ", grpcPkg, ".ClientConn")
+	g.P("var _ ", grpcPkg, ".ClientConnInterface")
 	g.P()
 
 	// Assert version compatibility.
@@ -166,6 +166,10 @@ func (g *grpc) generateService(file *generator.FileDescriptor, service *pb.Servi
 	g.P("type ", servName, "Client interface {")
 	for i, method := range service.Method {
 		g.gen.PrintComments(fmt.Sprintf("%s,2,%d", path, i)) // 2 means method in a service.
+		if method.GetOptions().GetDeprecated() {
+			g.P("//")
+			g.P(deprecationComment)
+		}
 		g.P(g.generateClientSignature(servName, method))
 	}
 	g.P("}")
@@ -173,7 +177,7 @@ func (g *grpc) generateService(file *generator.FileDescriptor, service *pb.Servi
 
 	// Client structure.
 	g.P("type ", unexport(servName), "Client struct {")
-	g.P("cc *", grpcPkg, ".ClientConn")
+	g.P("cc ", grpcPkg, ".ClientConnInterface")
 	g.P("}")
 	g.P()
 
@@ -181,7 +185,7 @@ func (g *grpc) generateService(file *generator.FileDescriptor, service *pb.Servi
 	if deprecated {
 		g.P(deprecationComment)
 	}
-	g.P("func New", servName, "Client (cc *", grpcPkg, ".ClientConn) ", servName, "Client {")
+	g.P("func New", servName, "Client (cc ", grpcPkg, ".ClientConnInterface) ", servName, "Client {")
 	g.P("return &", unexport(servName), "Client{cc}")
 	g.P("}")
 	g.P()
@@ -213,12 +217,16 @@ func (g *grpc) generateService(file *generator.FileDescriptor, service *pb.Servi
 	g.P("type ", serverType, " interface {")
 	for i, method := range service.Method {
 		g.gen.PrintComments(fmt.Sprintf("%s,2,%d", path, i)) // 2 means method in a service.
+		if method.GetOptions().GetDeprecated() {
+			g.P("//")
+			g.P(deprecationComment)
+		}
 		g.P(g.generateServerSignature(servName, method))
 	}
 	g.P("}")
 	g.P()
 
-	// Server Unimplemented struct for forward compatability.
+	// Server Unimplemented struct for forward compatibility.
 	if deprecated {
 		g.P(deprecationComment)
 	}

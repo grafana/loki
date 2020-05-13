@@ -209,7 +209,9 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 		return qs.next.Do(ctx, r)
 	}
 
-	queryable := lazyquery.NewLazyQueryable(&ShardedQueryable{r, qs.next})
+	shardedQueryable := &ShardedQueryable{Req: r, Handler: qs.next}
+
+	queryable := lazyquery.NewLazyQueryable(shardedQueryable)
 
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
@@ -234,6 +236,7 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 			ResultType: string(res.Value.Type()),
 			Result:     extracted,
 		},
+		Headers: headersMapToPrometheusResponseHeaders(shardedQueryable.getResponseHeaders()),
 	}, nil
 }
 
@@ -327,4 +330,12 @@ func TimeFromMillis(ms int64) time.Time {
 
 func TimeToMillis(t time.Time) int64 {
 	return t.UnixNano() / nanosecondsInMillisecond
+}
+
+func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusResponseHeader) {
+	for h, v := range headersMap {
+		prs = append(prs, &PrometheusResponseHeader{Name: h, Values: v})
+	}
+
+	return
 }

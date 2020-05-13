@@ -129,26 +129,40 @@ func (resp *PrometheusResponse) minTime() int64 {
 }
 
 func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
-	promResponses := make([]*PrometheusResponse, 0, len(responses))
-	for _, res := range responses {
-		promResponses = append(promResponses, res.(*PrometheusResponse))
-	}
-	// Merge the responses.
-	sort.Sort(byFirstTime(promResponses))
-
-	if len(promResponses) == 0 {
+	if len(responses) == 0 {
 		return &PrometheusResponse{
 			Status: StatusSuccess,
 		}, nil
 	}
 
-	return &PrometheusResponse{
+	promResponses := make([]*PrometheusResponse, 0, len(responses))
+	// we need to pass on all the headers for results cache gen numbers.
+	var resultsCacheGenNumberHeaderValues []string
+
+	for _, res := range responses {
+		promResponses = append(promResponses, res.(*PrometheusResponse))
+		resultsCacheGenNumberHeaderValues = append(resultsCacheGenNumberHeaderValues, getHeaderValuesWithName(res, ResultsCacheGenNumberHeaderName)...)
+	}
+
+	// Merge the responses.
+	sort.Sort(byFirstTime(promResponses))
+
+	response := PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
 		},
-	}, nil
+	}
+
+	if len(resultsCacheGenNumberHeaderValues) != 0 {
+		response.Headers = []*PrometheusResponseHeader{{
+			Name:   ResultsCacheGenNumberHeaderName,
+			Values: resultsCacheGenNumberHeaderValues,
+		}}
+	}
+
+	return &response, nil
 }
 
 func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {

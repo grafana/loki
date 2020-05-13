@@ -103,11 +103,14 @@ func (cfg *Config) Validate() error {
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
 	}
+	if err := cfg.IndexQueriesCacheConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Index Queries Cache config")
+	}
 	return nil
 }
 
 // NewStore makes the storage clients based on the configuration.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, reg prometheus.Registerer) (chunk.Store, error) {
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, reg prometheus.Registerer, cacheGenNumLoader chunk.CacheGenNumLoader) (chunk.Store, error) {
 	chunkMetrics := newChunkClientMetrics(reg)
 
 	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig)
@@ -133,11 +136,16 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	chunksCache = cache.StopOnce(chunksCache)
 	writeDedupeCache = cache.StopOnce(writeDedupeCache)
 
+	// lets wrap all caches with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers
+	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
+	chunksCache = cache.NewCacheGenNumMiddleware(chunksCache)
+	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
+
 	err = schemaCfg.Load()
 	if err != nil {
 		return nil, errors.Wrap(err, "error loading schema config")
 	}
-	stores := chunk.NewCompositeStore()
+	stores := chunk.NewCompositeStore(cacheGenNumLoader)
 
 	for _, s := range schemaCfg.Configs {
 		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg)
