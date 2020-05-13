@@ -798,9 +798,11 @@ for them.  It is the canonical way to specify static targets in a scrape
 configuration.
 
 ```yaml
-# Configures the discovery to look on the current machine. Must be either
-# localhost or the hostname of the current computer. This is not a mandatory config
-# and this can skipped.
+# Configures the discovery to look on the current machine. 
+# This is required by the prometheus service discovery code but doesn't
+# really apply to Promtail which can ONLY look at files on the local machine
+# As such it should only have the value of localhost, OR it can be excluded
+# entirely and a default value of localhost will be applied by Promtail.
 targets:
   - localhost
 

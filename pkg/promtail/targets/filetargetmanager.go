@@ -109,13 +109,14 @@ func NewFileTargetManager(
 		}
 
 		// Add Source value to the static config target groups for unique identification
-		// within scrape pool. Also, set dummy target if target is not defined in promtail config.
+		// within scrape pool. Also, default target label to localhost if target is not
+		// defined in promtail config.
 		// Just to make sure prometheus target group sync works fine.
 		for i, tg := range cfg.ServiceDiscoveryConfig.StaticConfigs {
 			tg.Source = fmt.Sprintf("%d", i)
 			if len(tg.Targets) == 0 {
 				tg.Targets = []model.LabelSet{
-					{model.AddressLabel: "dummy"},
+					{model.AddressLabel: "localhost"},
 				}
 			}
 		}
