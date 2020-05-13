@@ -38,6 +38,11 @@ config:
   # attempting to match the source to the extract map.
   # It is an error to specify `match_all: true` and also specify a `value`
   [match_all: <bool>]
+
+  # If present and true all log line bytes will be counted.
+  # It is an error to specify `count_entry_bytes: true` without specifying `match_all: true`
+  # It is an error to specify `count_entry_bytes: true` without specifying `action: add`
+  [count_entry_bytes: <bool>]
   
   # Filters down source data and only changes the metric
   # if the targeted value exactly matches the provided string.
@@ -136,17 +141,30 @@ config:
       type: Counter
       description: "total number of log lines"
       prefix: my_promtail_custom_
-      source: time
+      match_all: true
       config:
         action: inc
+    log_bytes_total:
+      type: Counter
+      description: "total bytes of log lines"
+      prefix: my_promtail_custom_
+      match_all: true
+      count_entry_bytes: true
+      config:
+        action: add
 ```
 
-This pipeline creates a `log_lines_total` counter that increments whenever the
-extracted map contains a key for `time`. Since every log entry has a timestamp,
-this is a good field to use to count every line. Notice that `value` is not
-defined in the `config` section as we want to count every line and don't need to
-filter the value. Similarly, `inc` is used as the action because we want to
-increment the counter by one rather than by using the value of `time`.
+This pipeline creates a `log_lines_total` counter which increments for every log line received 
+by using the `match_all: true` parameter.
+
+It also creates a `log_bytes_total` counter which adds the byte size of every log line received 
+to the counter by using the `count_entry_bytes: true` parameter.
+
+The combination of these two metric stages will give you two counters to track the volume of 
+every log stream in both number of lines and bytes, which can be useful in identifying sources
+of very high volume, as well as helping understand why you may have too much cardinality.
+
+These stages should be placed towards the end of your pipeline after any `labels` stages
 
 ```yaml
 - regex:
