@@ -16,6 +16,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+var nilMetrics = NewSplitByMetrics(nil)
+
 func Test_splitQuery(t *testing.T) {
 
 	tests := []struct {
@@ -105,6 +107,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		l,
 		lokiCodec,
+		nilMetrics,
 	).Wrap(next)
 
 	tests := []struct {
@@ -288,6 +291,7 @@ func Test_ExitEarly(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		l,
 		lokiCodec,
+		nilMetrics,
 	).Wrap(next)
 
 	req := &LokiRequest{
@@ -366,6 +370,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		l,
 		lokiCodec,
+		nilMetrics,
 	).Wrap(next)
 
 	// split into n requests w/ n/2 limit, ensuring unused responses are cleaned up properly

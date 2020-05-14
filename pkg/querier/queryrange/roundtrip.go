@@ -53,12 +53,13 @@ func NewTripperware(
 	instrumentMetrics := queryrange.NewInstrumentMiddlewareMetrics(registerer)
 	retryMetrics := queryrange.NewRetryMiddlewareMetrics(registerer)
 	shardingMetrics := logql.NewShardingMetrics(registerer)
+	splitByMetrics := NewSplitByMetrics(registerer)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics, shardingMetrics)
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, shardingMetrics)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -164,10 +165,11 @@ func NewLogFilterTripperware(
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
+	splitByMetrics *SplitByMetrics,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByMetrics))
 	}
 
 	if cfg.ShardedQueries {
@@ -209,6 +211,7 @@ func NewMetricTripperware(
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
+	splitByMetrics *SplitByMetrics,
 ) (frontend.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
@@ -227,7 +230,7 @@ func NewMetricTripperware(
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
 		queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-		SplitByIntervalMiddleware(limits, codec),
+		SplitByIntervalMiddleware(limits, codec, splitByMetrics),
 	)
 
 	var c cache.Cache
