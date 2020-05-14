@@ -4,7 +4,6 @@ import (
 	fmt "fmt"
 	io "io"
 	time "time"
-	"unsafe"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.
@@ -148,7 +147,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Labels = yoloString(dAtA[iNdEx:postIndex])
+			m.Labels = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
@@ -301,7 +300,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Line = yoloString(dAtA[iNdEx:postIndex])
+			m.Line = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -420,8 +419,4 @@ func (m *Entry) Equal(that interface{}) bool {
 		return false
 	}
 	return true
-}
-
-func yoloString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
 }
