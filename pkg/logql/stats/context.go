@@ -22,6 +22,9 @@ package stats
 
 import (
 	"context"
+	"errors"
+	fmt "fmt"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -35,6 +38,8 @@ const (
 	chunksKey   ctxKeyType = "chunks"
 	ingesterKey ctxKeyType = "ingester"
 	storeKey    ctxKeyType = "store"
+	resultKey   ctxKeyType = "result" // key for pre-computed results to be merged in  `Snapshot`
+	lockKey     ctxKeyType = "lock"   // key for locking a context when stats is used concurrently
 )
 
 // Log logs a query statistics result.
@@ -82,6 +87,8 @@ func NewContext(ctx context.Context) context.Context {
 	ctx = context.WithValue(ctx, storeKey, &StoreData{})
 	ctx = context.WithValue(ctx, chunksKey, &ChunkData{})
 	ctx = context.WithValue(ctx, ingesterKey, &IngesterData{})
+	ctx = context.WithValue(ctx, resultKey, &Result{})
+	ctx = context.WithValue(ctx, lockKey, &sync.Mutex{})
 	return ctx
 }
 
@@ -157,8 +164,17 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 		res.Store.CompressedBytes = c.CompressedBytes
 		res.Store.TotalDuplicates = c.TotalDuplicates
 	}
-	res.ComputeSummary(execTime)
-	return res
+
+	// see if there is a pre-computed Result embedded in the context which needs merging
+	_ = JoinResults(ctx, res)
+	merged, err := GetResult(ctx)
+	if err != nil {
+		merged = &res
+	}
+
+	merged.ComputeSummary(execTime)
+	return *merged
+
 }
 
 // ComputeSummary calculates the summary based on store and ingester data.
@@ -203,4 +219,38 @@ func (r *Result) Merge(m Result) {
 	r.Ingester.TotalDuplicates += m.Ingester.TotalDuplicates
 
 	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime + m.Summary.ExecTime) * float64(time.Second))))
+}
+
+// JoinResults merges a Result with the embedded Result in a context in a concurrency-safe manner.
+func JoinResults(ctx context.Context, res Result) error {
+	mtx, err := GetMutex(ctx)
+	if err != nil {
+		return err
+	}
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	v, err := GetResult(ctx)
+	if err != nil {
+		return err
+	}
+	v.Merge(res)
+	return nil
+}
+
+func GetResult(ctx context.Context) (*Result, error) {
+	v, ok := ctx.Value(resultKey).(*Result)
+	if !ok {
+		return nil, errors.New("unpopulated Results key")
+	}
+	return v, nil
+}
+
+// GetChunkData returns the chunks statistics data from the current context.
+func GetMutex(ctx context.Context) (*sync.Mutex, error) {
+	res, ok := ctx.Value(lockKey).(*sync.Mutex)
+	if !ok {
+		return nil, fmt.Errorf("no mutex available under %s", string(lockKey))
+	}
+	return res, nil
 }

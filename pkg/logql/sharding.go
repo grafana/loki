@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 // DownstreamSampleExpr is a SampleExpr which signals downstream computation
@@ -103,6 +105,27 @@ type DownstreamEvaluator struct {
 	defaultEvaluator *DefaultEvaluator
 }
 
+// Exec runs a query and collects stats from the embedded Downstreamer
+func (ev DownstreamEvaluator) Exec(ctx context.Context, expr Expr, p Params, shards Shards) (Result, error) {
+	qry, err := ev.Downstream(expr, p, shards)
+	if err != nil {
+		return Result{}, err
+	}
+
+	res, err := qry.Exec(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+
+	err = stats.JoinResults(ctx, res.Statistics)
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "unable to merge downstream results", "err", err)
+	}
+
+	return res, nil
+
+}
+
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	return &DownstreamEvaluator{
 		Downstreamer: downstreamer,
@@ -131,12 +154,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
-		qry, err := ev.Downstream(e.SampleExpr, params, shards)
-		if err != nil {
-			return nil, err
-		}
-
-		res, err := qry.Exec(ctx)
+		res, err := ev.Exec(ctx, e.SampleExpr, params, shards)
 		if err != nil {
 			return nil, err
 		}
@@ -209,15 +227,11 @@ func (ev *DownstreamEvaluator) Iterator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
-		qry, err := ev.Downstream(e.LogSelectorExpr, params, shards)
+		res, err := ev.Exec(ctx, e.LogSelectorExpr, params, shards)
 		if err != nil {
 			return nil, err
 		}
 
-		res, err := qry.Exec(ctx)
-		if err != nil {
-			return nil, err
-		}
 		return ResultIterator(res, params)
 
 	case *ConcatLogSelectorExpr:
