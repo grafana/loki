@@ -173,7 +173,23 @@ Specify a username and password if the Loki server requires authentication.
 If using the GrafanaLab's hosted Loki, the username needs to be set to your instanceId and the password should be a Grafana.com api key.
 
 ### tenant
-Loki is a multi-tenant log storage platform and all requests sent must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.  The tenant can be any string value.
+Loki is a multi-tenant log storage platform and all requests sent must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.
+The tenant can be any string value. 
+
+The tenant field also supports placeholders, so it can dynamically change based on tag and record fields. Each placeholder must be added as a buffer chunk key. The following is an example of setting the tenant based on a k8s pod label:
+
+```
+<match **>
+  @type loki
+  url "https://logs-us-west1.grafana.net"
+  tenant ${$.kubernetes.labels.tenant}
+  # ...
+  <buffer $.kubernetes.labels.tenant>
+    @type memory
+    flush_interval 5s
+  </buffer>
+</match>
+```
 
 ### client certificate verification
 Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.

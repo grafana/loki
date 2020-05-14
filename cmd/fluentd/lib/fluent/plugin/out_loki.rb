@@ -133,8 +133,10 @@ module Fluent
         payload = generic_to_loki(chunk)
         body = { 'streams' => payload }
 
+        tenant = extract_placeholders(@tenant, chunk) if @tenant
+
         # add ingest path to loki url
-        res = loki_http_request(body)
+        res = loki_http_request(body, tenant)
 
         return if res.is_a?(Net::HTTPSuccess)
 
@@ -176,18 +178,20 @@ module Fluent
 
       private
 
-      def loki_http_request(body)
+      def loki_http_request(body, tenant)
         req = Net::HTTP::Post.new(
           @uri.request_uri
         )
         req.add_field('Content-Type', 'application/json')
-        req.add_field('X-Scope-OrgID', @tenant) if @tenant
+        req.add_field('X-Scope-OrgID', tenant) if tenant
         req.body = Yajl.dump(body)
         req.basic_auth(@username, @password) if @username
 
         opts = ssl_opts(@uri)
 
-        log.debug "sending #{req.body.length} bytes to loki"
+        msg = "sending #{req.body.length} bytes to loki"
+        msg += " (tenant: \"#{tenant}\")" if tenant
+        log.debug msg
 
         Net::HTTP.start(@uri.host, @uri.port, **opts) { |http| http.request(req) }
       end
