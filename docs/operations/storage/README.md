@@ -26,6 +26,7 @@ The following are supported for the index:
 * [Google Bigtable](https://cloud.google.com/bigtable)
 * [Apache Cassandra](https://cassandra.apache.org)
 * [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
+* [Boltb-Shipper](boltdb-shipper.md) EXPERIMENTAL index store which stores boltdb index files in the object store 
 
 The following are supported for the chunks:
 
@@ -34,7 +35,7 @@ The following are supported for the chunks:
 * [Apache Cassandra](https://cassandra.apache.org)
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
-* Filesystem (doesn't work when clustering Loki)
+* [Filesystem](filesystem.md) (please read more about the filesystem to understand the pros/cons before using with production data)
 
 ## Cloud Storage Permissions
 

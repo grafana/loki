@@ -83,21 +83,5 @@ Frequency for checking updates can be configured with `resync_interval` config.
 To avoid keeping downloaded index files forever there is a ttl for them which defaults to 24 hours, which means if index files for a period are not used for 24 hours they would be removed from cache location.
 ttl can be configured using `cache_ttl` config.
 
-## Horizontal scaling of non-shared filesystem stores
-
-Using the boltdb-shipper also allows running the single binary Loki (or really just the ingesters) with a `filesystem` object store also using a shared hash ring.
-
-If you configure a shared ring via etcd/consul/memberlist you can run multiple instances of Loki on separate machines with separate filesystems,
-this now works because the ingesters are able to query the store directly.
-
-To enable this configuration in the ingester config you must set `query_store_max_look_back_period` according to how far back you want to store data, or use a value of -1 for infinite.
-
-At query time, any Loki instance can field the query, the instance will then use the ring to ask every other Loki instance for relevant data, 
-and because the ingesters can each query their store as far back as `query_store_max_look_back_period` allows, the correct data can be returned.
-
-Scaling up is as easy as adding more loki instances and letting them talk to the same ring.
-
-Scaling down is possible but manual, you would need to shutdown the loki instance and then physically copy the chunks directory and its index files in their entirety to another Loki instance.
-You cannot move them in partial it must be all, this other Loki instance will then find the boltdb index files and serve the chunks copied.
 
 
