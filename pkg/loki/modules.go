@@ -164,7 +164,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	if t.cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
+		t.cfg.Querier.IngesterQueryStoreMaxLookback = t.cfg.Ingester.QueryStoreMaxLookBackPeriod
+	}
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
 		return nil, err
