@@ -504,7 +504,7 @@ func activePeriodConfig(cfg chunk.SchemaConfig) chunk.PeriodConfig {
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge time.Duration) (time.Duration, error) {
-	if pc.ObjectType != local.FilesystemObjectStoreType && maxLookBackConfig.Milliseconds() != 0 {
+	if pc.ObjectType != local.FilesystemObjectStoreType && maxLookBackConfig.Nanoseconds() != 0 {
 		return 0, errors.New("it is an error to specify a non zero `query_store_max_look_back_period` value when using any object store other than `filesystem`")
 	}
 	// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
