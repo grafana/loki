@@ -34,6 +34,9 @@ const (
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
 
+	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
+	FilesystemObjectStoreType = "filesystem"
+
 	cacheCleanupInterval = 24 * time.Hour
 	storageKeyPrefix     = "index/"
 )

@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -198,10 +199,14 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
 
 	// We want ingester to also query the store when using boltdb-shipper
-	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
+	pc := activePeriodConfig(t.cfg.SchemaConfig)
+	if pc.IndexType == local.BoltDBShipperType {
 		t.cfg.Ingester.QueryStore = true
-		// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
-		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = t.cfg.Ingester.MaxChunkAge + local.ShipperFileUploadInterval + (15 * time.Minute)
+		mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
+		if err != nil {
+			return nil, err
+		}
+		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
 	}
 
 	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
@@ -256,7 +261,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
-	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
+	if activePeriodConfig(t.cfg.SchemaConfig).IndexType == local.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
@@ -483,9 +488,9 @@ var modules = map[moduleName]module{
 	},
 }
 
-// activeIndexType type returns index type which would be applicable to logs that would be pushed starting now
+// activePeriodConfig type returns index type which would be applicable to logs that would be pushed starting now
 // Note: Another periodic config can be applicable in future which can change index type
-func activeIndexType(cfg chunk.SchemaConfig) string {
+func activePeriodConfig(cfg chunk.SchemaConfig) chunk.PeriodConfig {
 	now := model.Now()
 	i := sort.Search(len(cfg.Configs), func(i int) bool {
 		return cfg.Configs[i].From.Time > now
@@ -493,5 +498,25 @@ func activeIndexType(cfg chunk.SchemaConfig) string {
 	if i > 0 {
 		i--
 	}
-	return cfg.Configs[i].IndexType
+	return cfg.Configs[i]
+}
+
+func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge time.Duration) (time.Duration, error) {
+	if pc.ObjectType != local.FilesystemObjectStoreType && maxLookBackConfig.Milliseconds() != 0 {
+		return 0, errors.New("it is an error to specify a non zero `query_store_max_look_back_period` value when using any object store other than `filesystem`")
+	}
+	// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
+	defaultMaxLookBack := maxChunkAge + local.ShipperFileUploadInterval + (15 * time.Minute)
+
+	if maxLookBackConfig == 0 {
+		// If the QueryStoreMaxLookBackPeriod is still it's default value of 0, set it to the default calculated value.
+		return defaultMaxLookBack, nil
+	} else if maxLookBackConfig > 0 && maxLookBackConfig < defaultMaxLookBack {
+		// If the QueryStoreMaxLookBackPeriod is > 0 (-1 is allowed for infinite), make sure it's at least greater than the default or throw an error
+		return 0, fmt.Errorf("the configured query_store_max_look_back_period of '%v' is less than the calculated default of '%v' "+
+			"which is calculated based on the max_chunk_age + 15 minute boltdb-shipper interval + 15 min additional buffer.  Increase this value"+
+			"greater than the default or remove it from the configuration to use the default", maxLookBackConfig, defaultMaxLookBack)
+
+	}
+	return maxLookBackConfig, nil
 }

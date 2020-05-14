@@ -64,7 +64,7 @@ type Config struct {
 	ingesterClientFactory func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error)
 
 	QueryStore                  bool          `yaml:"-"`
-	QueryStoreMaxLookBackPeriod time.Duration `yaml:"-"`
+	QueryStoreMaxLookBackPeriod time.Duration `yaml:"query_store_max_look_back_period"`
 }
 
 // RegisterFlags registers the flags.
@@ -84,6 +84,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
+	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -414,7 +415,7 @@ func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRe
 	}
 	start := req.Start
 	end := req.End
-	if cfg.QueryStoreMaxLookBackPeriod != 0 {
+	if cfg.QueryStoreMaxLookBackPeriod > 0 {
 		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
 		if oldestStartTime.After(req.Start) {
 			start = oldestStartTime
