@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/storage"
+	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -217,52 +218,13 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	results = append(results, storeValues)
 
 	return &logproto.LabelResponse{
-		Values: mergeLists(results...),
+		Values: listutil.MergeStringLists(results...),
 	}, nil
 }
 
 // Check implements the grpc healthcheck
 func (*Querier) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
-}
-
-func mergeLists(ss ...[]string) []string {
-	switch len(ss) {
-	case 0:
-		return nil
-	case 1:
-		return ss[0]
-	case 2:
-		return mergePair(ss[0], ss[1])
-	default:
-		n := len(ss) / 2
-		return mergePair(mergeLists(ss[:n]...), mergeLists(ss[n:]...))
-	}
-}
-
-func mergePair(s1, s2 []string) []string {
-	i, j := 0, 0
-	result := make([]string, 0, len(s1)+len(s2))
-	for i < len(s1) && j < len(s2) {
-		if s1[i] < s2[j] {
-			result = append(result, s1[i])
-			i++
-		} else if s1[i] > s2[j] {
-			result = append(result, s2[j])
-			j++
-		} else {
-			result = append(result, s1[i])
-			i++
-			j++
-		}
-	}
-	for ; i < len(s1); i++ {
-		result = append(result, s1[i])
-	}
-	for ; j < len(s2); j++ {
-		result = append(result, s2[j])
-	}
-	return result
 }
 
 // Tail keeps getting matching logs from all ingesters for given query
