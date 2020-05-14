@@ -496,7 +496,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 			store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
 
 			conf := mockQuerierConfig()
-			conf.IngesterMaxQueryLookback = tc.lookback
+			conf.QueryIngestersWithin = tc.lookback
 			q, err := newQuerier(
 				conf,
 				mockIngesterClientConfig(),

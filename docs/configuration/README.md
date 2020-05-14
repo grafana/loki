@@ -317,6 +317,13 @@ The `ingester_config` block configures Ingesters.
 # The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created.
 [max_chunk_age: <duration> | default = 1h]
 
+# How far in the past an ingester is allowed to query the store for data.  
+# This is only useful for running multiple loki binaries with a shared ring with a `filesystem` store which is NOT shared between the binaries
+# When using any "shared" object store like S3 or GCS this value must always be left as 0
+# It is an error to configure this to a non-zero value when using any object store other than `filesystem`
+# Use a value of -1 to allow the ingester to query the store infinitely far back in time.
+[query_store_max_look_back_period: <duration> | default = 0]
+
 ```
 
 ### lifecycler_config

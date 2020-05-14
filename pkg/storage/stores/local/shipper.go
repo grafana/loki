@@ -34,6 +34,9 @@ const (
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
 
+	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
+	FilesystemObjectStoreType = "filesystem"
+
 	cacheCleanupInterval = 24 * time.Hour
 	storageKeyPrefix     = "index/"
 )
@@ -128,7 +131,7 @@ func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGette
 // avoid uploading same files again with different name. If the filed does not exist we would create one with uploader name set to
 // ingester name and startup timestamp so that we randomise the name and do not override files from other ingesters.
 func (s *Shipper) getUploaderName() (string, error) {
-	uploader := fmt.Sprintf("%s-%d", s.cfg.IngesterName, time.Now().Unix())
+	uploader := fmt.Sprintf("%s-%d", s.cfg.IngesterName, time.Now().UnixNano())
 
 	uploaderFilePath := path.Join(s.cfg.ActiveIndexDirectory, "uploader", "name")
 	if err := chunk_util.EnsureDirectory(path.Dir(uploaderFilePath)); err != nil {
