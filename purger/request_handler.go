@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -102,6 +104,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	if err := dm.deleteStore.AddDeleteRequest(ctx, userID, model.Time(startTime), model.Time(endTime), match); err != nil {
+		level.Error(util.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -120,11 +123,56 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 
 	deleteRequests, err := dm.deleteStore.GetAllDeleteRequestsForUser(ctx, userID)
 	if err != nil {
+		level.Error(util.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
+		level.Error(util.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 	}
+}
+
+// CancelDeleteRequestHandler handles delete request cancellation
+func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	params := r.URL.Query()
+	requestID := params.Get("request_id")
+
+	deleteRequest, err := dm.deleteStore.GetDeleteRequest(ctx, userID, requestID)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error getting delete request from the store", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if deleteRequest == nil {
+		http.Error(w, "could not find delete request with given id", http.StatusBadRequest)
+		return
+	}
+
+	if deleteRequest.Status != StatusReceived {
+		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
+		return
+	}
+
+	if deleteRequest.CreatedAt.Add(deleteRequestCancellationDeadline).Before(model.Now()) {
+		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", deleteRequestCancellationDeadline.String()), http.StatusBadRequest)
+		return
+	}
+
+	if err := dm.deleteStore.RemoveDeleteRequest(ctx, userID, requestID, deleteRequest.CreatedAt, deleteRequest.StartTime, deleteRequest.EndTime); err != nil {
+		level.Error(util.Logger).Log("msg", "error cancelling the delete request", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
