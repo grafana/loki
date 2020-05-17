@@ -322,7 +322,32 @@ func (t *JournalTarget) Stop() error {
 func makeJournalFields(fields map[string]string) map[string]string {
 	result := make(map[string]string, len(fields))
 	for k, v := range fields {
+		if k == "PRIORITY" {
+			result[fmt.Sprintf("__journal_%s_%s", strings.ToLower(k), "keyword")] = makeJournalPriority(v)
+		}
 		result[fmt.Sprintf("__journal_%s", strings.ToLower(k))] = v
 	}
 	return result
+}
+
+func makeJournalPriority(priority string) string {
+	switch priority {
+	case "0":
+		return "emerg"
+	case "1":
+		return "alert"
+	case "2":
+		return "crit"
+	case "3":
+		return "error"
+	case "4":
+		return "warning"
+	case "5":
+		return "notice"
+	case "6":
+		return "info"
+	case "7":
+		return "debug"
+	}
+	return priority
 }
