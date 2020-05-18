@@ -507,7 +507,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
 
-	RegisterCustomIndexClients(config)
+	RegisterCustomIndexClients(config, nil)
 
 	store, err := NewStore(config, chunk.StoreConfig{}, chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{

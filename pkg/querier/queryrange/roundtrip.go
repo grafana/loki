@@ -55,7 +55,7 @@ func NewTripperware(
 	shardingMetrics := logql.NewShardingMetrics(registerer)
 	splitByMetrics := NewSplitByMetrics(registerer)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -242,6 +242,7 @@ func NewMetricTripperware(
 			limits,
 			codec,
 			extractor,
+			nil,
 		)
 		if err != nil {
 			return nil, nil, err

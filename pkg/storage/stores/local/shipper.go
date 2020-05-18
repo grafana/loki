@@ -14,6 +14,7 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/stores/util"
@@ -32,6 +33,9 @@ const (
 
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
+
+	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
+	FilesystemObjectStoreType = "filesystem"
 
 	cacheCleanupInterval = 24 * time.Hour
 	storageKeyPrefix     = "index/"
@@ -88,12 +92,13 @@ type Shipper struct {
 	uploadedFilesMtime    map[string]time.Time
 	uploadedFilesMtimeMtx sync.RWMutex
 
-	done chan struct{}
-	wait sync.WaitGroup
+	done    chan struct{}
+	wait    sync.WaitGroup
+	metrics *boltDBShipperMetrics
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGetter BoltDBGetter) (*Shipper, error) {
+func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGetter BoltDBGetter, registerer prometheus.Registerer) (*Shipper, error) {
 	err := chunk_util.EnsureDirectory(cfg.CacheLocation)
 	if err != nil {
 		return nil, err
@@ -106,12 +111,15 @@ func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGette
 		storageClient:      util.NewPrefixedObjectClient(storageClient, storageKeyPrefix),
 		done:               make(chan struct{}),
 		uploadedFilesMtime: map[string]time.Time{},
+		metrics:            newBoltDBShipperMetrics(registerer),
 	}
 
 	shipper.uploader, err = shipper.getUploaderName()
 	if err != nil {
 		return nil, err
 	}
+
+	level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %d mode", cfg.Mode))
 
 	shipper.wait.Add(1)
 	go shipper.loop()
@@ -123,7 +131,7 @@ func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGette
 // avoid uploading same files again with different name. If the filed does not exist we would create one with uploader name set to
 // ingester name and startup timestamp so that we randomise the name and do not override files from other ingesters.
 func (s *Shipper) getUploaderName() (string, error) {
-	uploader := fmt.Sprintf("%s-%d", s.cfg.IngesterName, time.Now().Unix())
+	uploader := fmt.Sprintf("%s-%d", s.cfg.IngesterName, time.Now().UnixNano())
 
 	uploaderFilePath := path.Join(s.cfg.ActiveIndexDirectory, "uploader", "name")
 	if err := chunk_util.EnsureDirectory(path.Dir(uploaderFilePath)); err != nil {
@@ -229,9 +237,17 @@ func (s *Shipper) cleanupCache() error {
 
 // syncLocalWithStorage syncs all the periods that we have in the cache with the storage
 // i.e download new and updated files and remove files which were delete from the storage.
-func (s *Shipper) syncLocalWithStorage(ctx context.Context) error {
+func (s *Shipper) syncLocalWithStorage(ctx context.Context) (err error) {
 	s.downloadedPeriodsMtx.RLock()
 	defer s.downloadedPeriodsMtx.RUnlock()
+
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+		s.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
+	}()
 
 	for period := range s.downloadedPeriods {
 		if err := s.syncFilesForPeriod(ctx, period, s.downloadedPeriods[period]); err != nil {
@@ -239,7 +255,7 @@ func (s *Shipper) syncLocalWithStorage(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return
 }
 
 // deleteFileFromCache removes a file from cache.

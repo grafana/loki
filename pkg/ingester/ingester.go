@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -64,7 +66,7 @@ type Config struct {
 	ingesterClientFactory func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error)
 
 	QueryStore                  bool          `yaml:"-"`
-	QueryStoreMaxLookBackPeriod time.Duration `yaml:"-"`
+	QueryStoreMaxLookBackPeriod time.Duration `yaml:"query_store_max_look_back_period"`
 }
 
 // RegisterFlags registers the flags.
@@ -84,6 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
+	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -311,7 +314,50 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	return instance.Label(ctx, req)
+	resp, err := instance.Label(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only continue if we should query the store for labels
+	if !i.cfg.QueryStore {
+		return resp, nil
+	}
+
+	// Only continue if the store is a chunk.Store
+	var cs chunk.Store
+	var ok bool
+	if cs, ok = i.store.(chunk.Store); !ok {
+		return resp, nil
+	}
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
+	start := adjustQueryStartTime(i.cfg, *req.Start)
+	if start.After(*req.End) {
+		// The request is older than we are allowed to query the store, just return what we have.
+		return resp, nil
+	}
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	var storeValues []string
+	if req.Values {
+		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &logproto.LabelResponse{
+		Values: listutil.MergeStringLists(resp.Values, storeValues),
+	}, nil
 }
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
@@ -414,12 +460,7 @@ func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRe
 	}
 	start := req.Start
 	end := req.End
-	if cfg.QueryStoreMaxLookBackPeriod != 0 {
-		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
-		if oldestStartTime.After(req.Start) {
-			start = oldestStartTime
-		}
-	}
+	start = adjustQueryStartTime(cfg, start)
 
 	if start.After(end) {
 		return nil
@@ -430,4 +471,14 @@ func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRe
 	newRequest.End = end
 
 	return &newRequest
+}
+
+func adjustQueryStartTime(cfg Config, start time.Time) time.Time {
+	if cfg.QueryStoreMaxLookBackPeriod > 0 {
+		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
+		if oldestStartTime.After(start) {
+			start = oldestStartTime
+		}
+	}
+	return start
 }

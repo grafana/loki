@@ -27,19 +27,27 @@ const (
 	syncReasonInitial    = "initial"
 	syncReasonPeriodic   = "periodic"
 	syncReasonRingChange = "ring-change"
+
+	// sharedOptionWithQuerier is a message appended to all config options that should be also
+	// set on the querier in order to work correct.
+	sharedOptionWithQuerier = " This option needs be set both on the store-gateway and querier when running in microservices mode."
+
+	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
+	// in the ring will be automatically removed.
+	ringAutoForgetUnhealthyPeriods = 10
 )
 
 // Config holds the store gateway config.
 type Config struct {
 	ShardingEnabled bool       `yaml:"sharding_enabled"`
-	ShardingRing    RingConfig `yaml:"sharding_ring"`
+	ShardingRing    RingConfig `yaml:"sharding_ring" doc:"description=The hash ring configuration. This option is required only if blocks sharding is enabled."`
 }
 
 // RegisterFlags registers the Config flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ShardingRing.RegisterFlags(f)
 
-	f.BoolVar(&cfg.ShardingEnabled, "experimental.store-gateway.sharding-enabled", false, "Shard blocks across multiple store gateway instances.")
+	f.BoolVar(&cfg.ShardingEnabled, "experimental.store-gateway.sharding-enabled", false, "Shard blocks across multiple store gateway instances."+sharedOptionWithQuerier)
 }
 
 // StoreGateway is the Cortex service responsible to expose an API over the bucket
@@ -112,6 +120,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 		delegate := ring.BasicLifecyclerDelegate(g)
 		delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
 		delegate = ring.NewTokensPersistencyDelegate(gatewayCfg.ShardingRing.TokensFilePath, ring.JOINING, delegate, logger)
+		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*gatewayCfg.ShardingRing.HeartbeatTimeout, delegate, logger)
 
 		g.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, logger, reg)
 		if err != nil {
@@ -200,6 +209,15 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		if err = g.ringLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
 			return errors.Wrapf(err, "switch instance to %s in the ring", ring.ACTIVE)
 		}
+
+		// Wait until the ring client detected this instance in the ACTIVE state to
+		// make sure that when we'll run the loop it won't be detected as a ring
+		// topology change.
+		level.Info(g.logger).Log("msg", "waiting until store-gateway is ACTIVE in the ring")
+		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+			return err
+		}
+		level.Info(g.logger).Log("msg", "store-gateway is ACTIVE in the ring")
 	}
 
 	return nil
@@ -207,13 +225,13 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 
 func (g *StoreGateway) running(ctx context.Context) error {
 	var ringTickerChan <-chan time.Time
-	var ringLastTokens ring.TokenDescs
+	var ringLastState ring.ReplicationSet
 
 	syncTicker := time.NewTicker(g.storageCfg.BucketStore.SyncInterval)
 	defer syncTicker.Stop()
 
 	if g.gatewayCfg.ShardingEnabled {
-		ringLastTokens = g.ring.GetAllTokens(ring.BlocksSync)
+		ringLastState, _ = g.ring.GetAll(ring.BlocksSync) // nolint:errcheck
 		ringTicker := time.NewTicker(g.gatewayCfg.ShardingRing.RingCheckPeriod)
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -224,9 +242,12 @@ func (g *StoreGateway) running(ctx context.Context) error {
 		case <-syncTicker.C:
 			g.syncStores(ctx, syncReasonPeriodic)
 		case <-ringTickerChan:
-			currTokens := g.ring.GetAllTokens(ring.BlocksSync)
-			if !currTokens.Equals(ringLastTokens) {
-				ringLastTokens = currTokens
+			// We ignore the error because in case of error it will return an empty
+			// replication set which we use to compare with the previous state.
+			currRingState, _ := g.ring.GetAll(ring.BlocksSync) // nolint:errcheck
+
+			if hasRingTopologyChanged(ringLastState, currRingState) {
+				ringLastState = currRingState
 				g.syncStores(ctx, syncReasonRingChange)
 			}
 		case <-ctx.Done():
@@ -277,8 +298,10 @@ func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc 
 	return ring.JOINING, tokens
 }
 
-func (g *StoreGateway) OnRingInstanceTokens(_ *ring.BasicLifecycler, tokens ring.Tokens) {}
-func (g *StoreGateway) OnRingInstanceStopping(_ *ring.BasicLifecycler)                   {}
+func (g *StoreGateway) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
+func (g *StoreGateway) OnRingInstanceStopping(_ *ring.BasicLifecycler)              {}
+func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.IngesterDesc) {
+}
 
 func createBucketClient(cfg cortex_tsdb.Config, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg, "cortex-bucket-stores", logger)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
@@ -156,20 +157,31 @@ func (s *Shipper) getFileFromStorage(ctx context.Context, objectKey, destination
 
 // downloadFilesForPeriod should be called when files for a period does not exist i.e they were never downloaded or got cleaned up later on by TTL
 // While files are being downloaded it will block all reads/writes on filesCollection by taking an exclusive lock
-func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc *filesCollection) error {
+func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc *filesCollection) (err error) {
 	fc.Lock()
 	defer fc.Unlock()
 
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+		s.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
+	}()
+
+	startTime := time.Now()
+	totalFilesSize := int64(0)
+
 	objects, _, err := s.storageClient.List(ctx, period+"/")
 	if err != nil {
-		return err
+		return
 	}
 
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", period, objects))
 
 	folderPath, err := s.getFolderPathForPeriod(period, true)
 	if err != nil {
-		return err
+		return
 	}
 
 	for _, object := range objects {
@@ -181,21 +193,33 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 		filePath := path.Join(folderPath, uploader)
 		df := downloadedFiles{}
 
-		err := s.getFileFromStorage(ctx, object.Key, filePath)
+		err = s.getFileFromStorage(ctx, object.Key, filePath)
 		if err != nil {
-			return err
+			return
 		}
 
 		df.mtime = object.ModifiedAt
 		df.boltdb, err = local.OpenBoltdbFile(filePath)
 		if err != nil {
-			return err
+			return
 		}
+
+		var stat os.FileInfo
+		stat, err = os.Stat(filePath)
+		if err != nil {
+			return
+		}
+
+		totalFilesSize += stat.Size()
 
 		fc.files[uploader] = df
 	}
 
-	return nil
+	duration := time.Since(startTime).Seconds()
+	s.metrics.filesDownloadDurationSeconds.add(period, duration)
+	s.metrics.filesDownloadSizeBytes.add(period, totalFilesSize)
+
+	return
 }
 
 func (s *Shipper) getFolderPathForPeriod(period string, ensureExists bool) (string, error) {

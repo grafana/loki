@@ -28,7 +28,14 @@ import (
 var (
 	// Value that cachecontrolHeader has if the response indicates that the results should not be cached.
 	noCacheValue = "no-store"
+
+	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
+	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
 )
+
+type CacheGenNumberLoader interface {
+	GetResultsCacheGenNumber(userID string) string
+}
 
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
@@ -49,14 +56,36 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 type Extractor interface {
 	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
 	Extract(start, end int64, from Response) Response
+	ResponseWithoutHeaders(resp Response) Response
 }
 
-// ExtractorFunc is a sugar syntax for declaring an Extractor from a function.
-type ExtractorFunc func(start, end int64, from Response) Response
+// PrometheusResponseExtractor helps extracting specific info from Query Response.
+type PrometheusResponseExtractor struct{}
 
-// Extract calls the `ExtractorFunc` to implements an `Extractor`.
-func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
-	return e(start, end, from)
+// Extract extracts response for specific a range from a response.
+func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Response {
+	promRes := from.(*PrometheusResponse)
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: promRes.Data.ResultType,
+			Result:     extractMatrix(start, end, promRes.Data.Result),
+		},
+		Headers: promRes.Headers,
+	}
+}
+
+// ResponseWithoutHeaders is useful in caching data without headers since
+// we anyways do not need headers for sending back the response so this saves some space by reducing size of the objects.
+func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Response {
+	promRes := resp.(*PrometheusResponse)
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: promRes.Data.ResultType,
+			Result:     promRes.Data.Result,
+		},
+	}
 }
 
 // CacheSplitter generates cache keys. This is a useful interface for downstream
@@ -74,19 +103,6 @@ func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
-// PrometheusResponseExtractor is an `Extractor` for a Prometheus query range response.
-var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Response) Response {
-	promRes := from.(*PrometheusResponse)
-	return &PrometheusResponse{
-		Status: StatusSuccess,
-		Data: PrometheusData{
-			ResultType: promRes.Data.ResultType,
-			Result:     extractMatrix(start, end, promRes.Data.Result),
-		},
-		Headers: promRes.Headers,
-	}
-})
-
 type resultsCache struct {
 	logger   log.Logger
 	cfg      ResultsCacheConfig
@@ -95,8 +111,9 @@ type resultsCache struct {
 	limits   Limits
 	splitter CacheSplitter
 
-	extractor Extractor
-	merger    Merger
+	extractor            Extractor
+	merger               Merger
+	cacheGenNumberLoader CacheGenNumberLoader
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
@@ -112,22 +129,28 @@ func NewResultsCacheMiddleware(
 	limits Limits,
 	merger Merger,
 	extractor Extractor,
+	cacheGenNumberLoader CacheGenNumberLoader,
 ) (Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	if cacheGenNumberLoader != nil {
+		c = cache.NewCacheGenNumMiddleware(c)
+	}
+
 	return MiddlewareFunc(func(next Handler) Handler {
 		return &resultsCache{
-			logger:    logger,
-			cfg:       cfg,
-			next:      next,
-			cache:     c,
-			limits:    limits,
-			merger:    merger,
-			extractor: extractor,
-			splitter:  splitter,
+			logger:               logger,
+			cfg:                  cfg,
+			next:                 next,
+			cache:                c,
+			limits:               limits,
+			merger:               merger,
+			extractor:            extractor,
+			splitter:             splitter,
+			cacheGenNumberLoader: cacheGenNumberLoader,
 		}
 	}), c, nil
 }
@@ -136,6 +159,10 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	if s.cacheGenNumberLoader != nil {
+		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(userID))
 	}
 
 	var (
@@ -168,21 +195,49 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func (s resultsCache) shouldCacheResponse(r Response) bool {
-	if promResp, ok := r.(*PrometheusResponse); ok {
-		for _, hv := range promResp.Headers {
-			if hv.GetName() != cachecontrolHeader {
-				continue
-			}
-			for _, v := range hv.GetValues() {
-				if v == noCacheValue {
-					level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
-					return false
-				}
-			}
+func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool {
+	headerValues := getHeaderValuesWithName(r, cachecontrolHeader)
+	for _, v := range headerValues {
+		if v == noCacheValue {
+			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
+			return false
 		}
 	}
+
+	if s.cacheGenNumberLoader == nil {
+		return true
+	}
+
+	genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
+	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
+
+	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
+		level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		return false
+	}
+
+	for _, gen := range genNumbersFromResp {
+		if gen != genNumberFromCtx {
+			level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			return false
+		}
+	}
+
 	return true
+}
+
+func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
+	if promResp, ok := r.(*PrometheusResponse); ok {
+		for _, hv := range promResp.Headers {
+			if hv.GetName() != headerName {
+				continue
+			}
+
+			headerValues = append(headerValues, hv.GetValues()...)
+		}
+	}
+
+	return
 }
 
 func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Extent, error) {
@@ -191,11 +246,11 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 		return nil, nil, err
 	}
 
-	if !s.shouldCacheResponse(response) {
+	if !s.shouldCacheResponse(ctx, response) {
 		return response, []Extent{}, nil
 	}
 
-	extent, err := toExtent(ctx, r, response)
+	extent, err := toExtent(ctx, r, s.extractor.ResponseWithoutHeaders(response))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -231,10 +286,10 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.Response)
-		if !s.shouldCacheResponse(reqResp.Response) {
+		if !s.shouldCacheResponse(ctx, reqResp.Response) {
 			continue
 		}
-		extent, err := toExtent(ctx, reqResp.Request, reqResp.Response)
+		extent, err := toExtent(ctx, reqResp.Request, s.extractor.ResponseWithoutHeaders(reqResp.Response))
 		if err != nil {
 			return nil, nil, err
 		}

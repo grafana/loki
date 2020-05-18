@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -127,7 +129,7 @@ func New(cfg Config) (*Loki, error) {
 	}
 
 	loki.setupAuthMiddleware()
-	storage.RegisterCustomIndexClients(cfg.StorageConfig)
+	storage.RegisterCustomIndexClients(cfg.StorageConfig, prometheus.DefaultRegisterer)
 
 	serviceMap, err := loki.initModuleServices(cfg.Target)
 	if err != nil {

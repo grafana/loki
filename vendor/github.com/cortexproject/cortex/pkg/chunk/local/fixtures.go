@@ -59,6 +59,10 @@ func (f *fixture) Clients() (
 				Prefix: "chunks",
 				Period: 10 * time.Minute,
 			},
+			IndexTables: chunk.PeriodicTableConfig{
+				Prefix: "index",
+				Period: 10 * time.Minute,
+			},
 		}},
 	}
 

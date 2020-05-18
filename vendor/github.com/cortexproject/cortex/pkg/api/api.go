@@ -249,7 +249,7 @@ func (a *API) RegisterCompactor(c *compactor.Compactor) {
 // RegisterQuerier registers the Prometheus routes supported by the
 // Cortex querier service. Currently this can not be registered simultaneously
 // with the QueryFrontend.
-func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine, distributor *distributor.Distributor, registerRoutesExternally bool) http.Handler {
+func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine, distributor *distributor.Distributor, registerRoutesExternally bool, tombstonesLoader *purger.TombstonesLoader) http.Handler {
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -285,7 +285,8 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 
 	promRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.PrometheusHTTPPrefix + "/api/v1")
 	api.Register(promRouter)
-	promHandler := fakeRemoteAddr(promRouter)
+	cacheGenHeaderMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
+	promHandler := fakeRemoteAddr(cacheGenHeaderMiddleware.Wrap(promRouter))
 
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "GET")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/query", promHandler, true, "GET", "POST")
@@ -293,11 +294,13 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", promHandler, true, "GET", "POST")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", promHandler, true, "GET")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/series", promHandler, true, "GET", "POST", "DELETE")
-	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", promHandler, true, "GET")
+	//TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
+	// https://github.com/prometheus/prometheus/pull/7125/files
+	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", querier.MetadataHandler(distributor), true, "GET")
 
 	legacyPromRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.LegacyHTTPPrefix + "/api/v1")
 	api.Register(legacyPromRouter)
-	legacyPromHandler := fakeRemoteAddr(legacyPromRouter)
+	legacyPromHandler := fakeRemoteAddr(cacheGenHeaderMiddleware.Wrap(legacyPromRouter))
 
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "GET")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/query", legacyPromHandler, true, "GET", "POST")
@@ -305,7 +308,9 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/labels", legacyPromHandler, true, "GET", "POST")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", legacyPromHandler, true, "GET")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/series", legacyPromHandler, true, "GET", "POST", "DELETE")
-	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", legacyPromHandler, true, "GET")
+	//TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
+	// https://github.com/prometheus/prometheus/pull/7125/files
+	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", querier.MetadataHandler(distributor), true, "GET")
 
 	// if we have externally registered routes then we need to return the server handler
 	// so that we continue to use all standard middleware

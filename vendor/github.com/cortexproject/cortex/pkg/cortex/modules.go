@@ -186,19 +186,11 @@ func (t *Cortex) initDistributor(cfg *Config) (serv services.Service, err error)
 }
 
 func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
-	var tombstonesLoader *purger.TombstonesLoader
-	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
-	} else {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil)
-	}
-
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, t.tombstonesLoader, prometheus.DefaultRegisterer)
 
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
 	registerExternally := cfg.Target != All
-	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally)
+	handler := t.api.RegisterQuerier(queryable, engine, t.distributor, registerExternally, t.tombstonesLoader)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
@@ -210,7 +202,7 @@ func (t *Cortex) initQuerier(cfg *Config) (serv services.Service, err error) {
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
-	worker, err := frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(handler), util.Logger)
+	worker, err := frontend.NewWorker(cfg.Worker, cfg.Querier, httpgrpc_server.NewServer(handler), util.Logger)
 	if err != nil {
 		return
 	}
@@ -288,12 +280,13 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		return nil, nil
 	}
+
 	err = cfg.Schema.Load()
 	if err != nil {
 		return
 	}
 
-	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer)
+	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer, t.tombstonesLoader)
 	if err != nil {
 		return
 	}
@@ -306,6 +299,9 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 
 func (t *Cortex) initDeleteRequestsStore(cfg *Config) (serv services.Service, err error) {
 	if !cfg.DataPurgerConfig.Enable {
+		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
+		t.tombstonesLoader = purger.NewTombstonesLoader(nil, nil)
+
 		return
 	}
 
@@ -319,6 +315,8 @@ func (t *Cortex) initDeleteRequestsStore(cfg *Config) (serv services.Service, er
 	if err != nil {
 		return
 	}
+
+	t.tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore, prometheus.DefaultRegisterer)
 
 	return
 }
@@ -336,12 +334,13 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 	if err != nil {
 		return
 	}
+
 	tripperware, cache, err := queryrange.NewTripperware(
 		cfg.QueryRange,
 		util.Logger,
 		t.overrides,
 		queryrange.PrometheusCodec,
-		queryrange.PrometheusResponseExtractor,
+		queryrange.PrometheusResponseExtractor{},
 		cfg.Schema,
 		promql.EngineOpts{
 			Logger:     util.Logger,
@@ -351,6 +350,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (serv services.Service, err erro
 		},
 		cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
+		t.tombstonesLoader,
 	)
 
 	if err != nil {
@@ -410,17 +410,9 @@ func (t *Cortex) initTableManager(cfg *Config) (services.Service, error) {
 }
 
 func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
-	var tombstonesLoader *purger.TombstonesLoader
-	if cfg.DataPurgerConfig.Enable {
-		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
-	} else {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		tombstonesLoader = purger.NewTombstonesLoader(nil)
-	}
-
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, t.tombstonesLoader, prometheus.DefaultRegisterer)
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -570,7 +562,7 @@ var modules = map[ModuleName]module{
 	},
 
 	Store: {
-		deps:           []ModuleName{Overrides},
+		deps:           []ModuleName{Overrides, DeleteRequestsStore},
 		wrappedService: (*Cortex).initStore,
 	},
 
@@ -594,12 +586,12 @@ var modules = map[ModuleName]module{
 	},
 
 	StoreQueryable: {
-		deps:           []ModuleName{Store, DeleteRequestsStore},
+		deps:           []ModuleName{Store},
 		wrappedService: (*Cortex).initStoreQueryable,
 	},
 
 	QueryFrontend: {
-		deps:           []ModuleName{API, Overrides},
+		deps:           []ModuleName{API, Overrides, DeleteRequestsStore},
 		wrappedService: (*Cortex).initQueryFrontend,
 	},
 

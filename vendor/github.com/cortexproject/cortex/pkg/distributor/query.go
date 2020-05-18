@@ -71,7 +71,7 @@ func (d *Distributor) queryPrep(ctx context.Context, from, to model.Time, matche
 	if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
 		replicationSet, err = d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
 	} else {
-		replicationSet, err = d.ingestersRing.GetAll()
+		replicationSet, err = d.ingestersRing.GetAll(ring.Read)
 	}
 	return replicationSet, req, err
 }
