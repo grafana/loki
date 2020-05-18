@@ -60,7 +60,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(go_goroutines{cluster=\"$cluster\", namespace=\"$namespace\", instance=~\"$deployment.*\", instance=~\"$pod\"})",
+          "expr": "sum(go_goroutines{cluster=\"$cluster\", namespace=\"$namespace\", instance=~\"$deployment.*\", instance=~\"$pod.*\"})",
           "refId": "A"
         }
       ],
@@ -146,7 +146,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(go_gc_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", instance=~\"$deployment.*\", instance=~\"$pod\"}) by (quantile)",
+          "expr": "sum(go_gc_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", instance=~\"$deployment.*\", instance=~\"$pod.*\"}) by (quantile)",
           "legendFormat": "{{quantile}}",
           "refId": "A"
         }
@@ -664,7 +664,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\", exported_instance=~\"$deployment.*\", exported_instance=~\"$pod\", container_name=~\"$container\"}[5m])) by (level)",
+          "expr": "sum(rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\", exported_instance=~\"$deployment.*\", exported_instance=~\"$pod.*\", container_name=~\"$container\"}[5m])) by (level)",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -768,7 +768,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", instance=~\"$deployment.*\", instance=~\"$pod\", container_name=~\"$container\", level=~\"$level\"}$filter[5m])) by (level)",
+          "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", instance=~\"$deployment.*\", instance=~\"$pod.*\", container_name=~\"$container\", level=~\"$level\"}$filter[5m])) by (level)",
           "intervalFactor": 3,
           "legendFormat": "{{level}}",
           "refId": "A"
@@ -833,7 +833,7 @@
       },
       "targets": [
         {
-          "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", instance=~\"$deployment.*\", instance=~\"$pod\", container_name=~\"$container\", level=~\"$level\"} $filter",
+          "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", instance=~\"$deployment.*\", instance=~\"$pod.*\", container_name=~\"$container\", level=~\"$level\"} $filter",
           "refId": "A"
         }
       ],
