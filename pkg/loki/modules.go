@@ -303,7 +303,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		util.Logger,
 		t.overrides,
 		t.cfg.SchemaConfig,
-		t.cfg.Querier.IngesterMaxQueryLookback,
+		t.cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
