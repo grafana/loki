@@ -142,6 +142,24 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.panel('Flush Rate') +
           g.qpsPanel('loki_ingester_chunk_age_seconds_count{cluster="$cluster", job="$namespace/ingester"}'),
         ),
+      )
+      .addRow(
+        g.row('Duration')
+        .addPanel(
+          g.panel('Chunk Duration hours (end-start)') +
+          g.queryPanel(
+            [
+              'histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{cluster="$cluster", job="$namespace/ingester"}[5m])) by (le))',
+              'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{cluster="$cluster", job="$namespace/ingester"}[5m])) by (le))',
+              'sum(rate(loki_ingester_chunk_bounds_hours_sum{cluster="$cluster", job="$namespace/ingester"}[5m])) / sum(rate(loki_ingester_chunk_bounds_hours_count{cluster="$cluster", job="$namespace/ingester"}[5m]))',
+            ],
+            [
+              'p50',
+              'p99',
+              'avg',
+            ],
+          ),
+        )
       ),
   },
 }
