@@ -40,6 +40,7 @@ const (
 )
 
 var supportedEncoding = []Encoding{
+	EncNone,
 	EncGZIP,
 	EncLZ4_64k,
 	EncSnappy,
