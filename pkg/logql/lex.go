@@ -66,7 +66,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		lval.str = l.TokenText()
 		return NUMBER
 
-	case scanner.String:
+	case scanner.String, scanner.RawString:
 		var err error
 		lval.str, err = strconv.Unquote(l.TokenText())
 		if err != nil {
