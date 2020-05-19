@@ -66,7 +66,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		lval.str = l.TokenText()
 		return NUMBER
 
-	case scanner.String:
+	case scanner.String, scanner.RawString:
 		var err error
 		lval.str, err = strconv.Unquote(l.TokenText())
 		if err != nil {
@@ -74,19 +74,6 @@ func (l *lexer) Lex(lval *exprSymType) int {
 			return 0
 		}
 		return STRING
-	}
-	// scaning regex
-	if l.TokenText() == "/" {
-		re := ""
-		for r := l.Next(); r != scanner.EOF; r = l.Next() {
-			if string(r) == "/" {
-				lval.str = re
-				return REGEX
-			}
-			re += string(r)
-		}
-		l.Error("missing closing '/' in regular expression")
-		return 0
 	}
 
 	// scanning duration tokens

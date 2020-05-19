@@ -19,6 +19,9 @@ the labels passed to the log stream selector will affect the relative
 performance of the query's execution. The filter expression is then used to do a
 distributed `grep` over the aggregated logs from the matching log streams.
 
+> To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
+For example `` `\w+` `` is the same as `"\\w+"`, this is specially useful when writing regular expression which can contains many backslash that require escaping.
+
 ### Log Stream Selector
 
 The log stream selector determines which log streams should be included in your
@@ -51,6 +54,7 @@ Examples:
 
 - `{name=~"mysql.+"}`
 - `{name!~"mysql.+"}`
+- `` {name!~`mysql-\d+`} ``
 
 The same rules that apply for [Prometheus Label
 Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors)
@@ -64,6 +68,7 @@ regex:
 
 - `{job="mysql"} |= "error"`
 - `{name="kafka"} |~ "tsdb-ops.*io:2003"`
+- `` {name="cassandra"} |~  `error=\w+` ``
 - `{instance=~"kafka-[23]",name="kafka"} != kafka.server:type=ReplicaManager`
 
 In the previous examples, `|=`, `|~`, and `!=` act as **filter operators** and

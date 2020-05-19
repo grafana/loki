@@ -10,15 +10,10 @@ import (
 	"time"
 )
 
-type filter struct {
-	t labels.MatchType
-	m string
-}
-
 type exprSymType struct {
 	yys                   int
 	Expr                  Expr
-	Filter                filter
+	Filter                labels.MatchType
 	Grouping              *grouping
 	Labels                []string
 	LogExpr               LogSelectorExpr
@@ -41,46 +36,45 @@ type exprSymType struct {
 const IDENTIFIER = 57346
 const STRING = 57347
 const NUMBER = 57348
-const REGEX = 57349
-const DURATION = 57350
-const MATCHERS = 57351
-const LABELS = 57352
-const EQ = 57353
-const NEQ = 57354
-const RE = 57355
-const NRE = 57356
-const OPEN_BRACE = 57357
-const CLOSE_BRACE = 57358
-const OPEN_BRACKET = 57359
-const CLOSE_BRACKET = 57360
-const COMMA = 57361
-const DOT = 57362
-const PIPE_MATCH = 57363
-const PIPE_EXACT = 57364
-const OPEN_PARENTHESIS = 57365
-const CLOSE_PARENTHESIS = 57366
-const BY = 57367
-const WITHOUT = 57368
-const COUNT_OVER_TIME = 57369
-const RATE = 57370
-const SUM = 57371
-const AVG = 57372
-const MAX = 57373
-const MIN = 57374
-const COUNT = 57375
-const STDDEV = 57376
-const STDVAR = 57377
-const BOTTOMK = 57378
-const TOPK = 57379
-const OR = 57380
-const AND = 57381
-const UNLESS = 57382
-const ADD = 57383
-const SUB = 57384
-const MUL = 57385
-const DIV = 57386
-const MOD = 57387
-const POW = 57388
+const DURATION = 57349
+const MATCHERS = 57350
+const LABELS = 57351
+const EQ = 57352
+const NEQ = 57353
+const RE = 57354
+const NRE = 57355
+const OPEN_BRACE = 57356
+const CLOSE_BRACE = 57357
+const OPEN_BRACKET = 57358
+const CLOSE_BRACKET = 57359
+const COMMA = 57360
+const DOT = 57361
+const PIPE_MATCH = 57362
+const PIPE_EXACT = 57363
+const OPEN_PARENTHESIS = 57364
+const CLOSE_PARENTHESIS = 57365
+const BY = 57366
+const WITHOUT = 57367
+const COUNT_OVER_TIME = 57368
+const RATE = 57369
+const SUM = 57370
+const AVG = 57371
+const MAX = 57372
+const MIN = 57373
+const COUNT = 57374
+const STDDEV = 57375
+const STDVAR = 57376
+const BOTTOMK = 57377
+const TOPK = 57378
+const OR = 57379
+const AND = 57380
+const UNLESS = 57381
+const ADD = 57382
+const SUB = 57383
+const MUL = 57384
+const DIV = 57385
+const MOD = 57386
+const POW = 57387
 
 var exprToknames = [...]string{
 	"$end",
@@ -89,7 +83,6 @@ var exprToknames = [...]string{
 	"IDENTIFIER",
 	"STRING",
 	"NUMBER",
-	"REGEX",
 	"DURATION",
 	"MATCHERS",
 	"LABELS",
@@ -143,7 +136,8 @@ var exprExca = [...]int{
 	-2, 0,
 	-1, 3,
 	1, 2,
-	24, 2,
+	23, 2,
+	37, 2,
 	38, 2,
 	39, 2,
 	40, 2,
@@ -152,9 +146,9 @@ var exprExca = [...]int{
 	43, 2,
 	44, 2,
 	45, 2,
-	46, 2,
 	-2, 0,
 	-1, 44,
+	37, 2,
 	38, 2,
 	39, 2,
 	40, 2,
@@ -163,61 +157,61 @@ var exprExca = [...]int{
 	43, 2,
 	44, 2,
 	45, 2,
-	46, 2,
 	-2, 0,
 }
 
 const exprPrivate = 57344
 
-const exprLast = 186
+const exprLast = 199
 
 var exprAct = [...]int{
 
-	52, 4, 37, 104, 48, 3, 82, 14, 43, 36,
-	111, 51, 44, 53, 54, 113, 11, 31, 32, 33,
-	34, 35, 36, 114, 6, 53, 54, 110, 17, 18,
-	19, 20, 22, 23, 21, 24, 25, 26, 27, 111,
-	86, 101, 15, 16, 112, 33, 34, 35, 36, 11,
-	11, 72, 89, 85, 88, 87, 83, 6, 84, 50,
-	75, 17, 18, 19, 20, 22, 23, 21, 24, 25,
-	26, 27, 102, 77, 74, 15, 16, 76, 69, 94,
-	70, 90, 66, 93, 67, 95, 56, 45, 2, 103,
-	99, 100, 55, 106, 29, 30, 31, 32, 33, 34,
-	35, 36, 108, 95, 109, 28, 29, 30, 31, 32,
-	33, 34, 35, 36, 92, 116, 57, 58, 59, 60,
-	61, 62, 63, 64, 65, 38, 91, 71, 115, 96,
-	68, 98, 47, 105, 49, 42, 49, 41, 10, 42,
-	96, 41, 9, 13, 39, 40, 38, 73, 39, 40,
-	42, 107, 41, 8, 5, 12, 42, 38, 41, 39,
-	40, 38, 97, 98, 7, 39, 40, 42, 73, 41,
-	46, 42, 1, 41, 0, 0, 39, 40, 0, 0,
-	39, 40, 78, 79, 80, 81,
+	52, 4, 37, 100, 48, 3, 78, 14, 43, 36,
+	112, 51, 44, 53, 54, 11, 31, 32, 33, 34,
+	35, 36, 108, 6, 53, 54, 97, 17, 18, 19,
+	20, 22, 23, 21, 24, 25, 26, 27, 82, 109,
+	109, 15, 16, 11, 111, 110, 11, 33, 34, 35,
+	36, 80, 85, 81, 6, 84, 79, 68, 17, 18,
+	19, 20, 22, 23, 21, 24, 25, 26, 27, 83,
+	50, 98, 15, 16, 73, 104, 67, 86, 103, 66,
+	90, 91, 56, 55, 89, 99, 95, 96, 88, 102,
+	29, 30, 31, 32, 33, 34, 35, 36, 106, 91,
+	107, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+	45, 2, 38, 114, 87, 113, 92, 94, 47, 101,
+	49, 42, 49, 41, 10, 42, 9, 41, 13, 8,
+	39, 40, 5, 69, 39, 40, 12, 105, 71, 57,
+	58, 59, 60, 61, 62, 63, 64, 65, 92, 7,
+	46, 70, 38, 1, 72, 0, 0, 42, 0, 41,
+	0, 42, 0, 41, 0, 0, 39, 40, 0, 93,
+	39, 40, 38, 69, 0, 38, 0, 94, 0, 0,
+	0, 42, 0, 41, 42, 0, 41, 0, 0, 0,
+	39, 40, 0, 39, 40, 74, 75, 76, 77,
 }
 var exprPact = [...]int{
 
-	1, -1000, 67, 159, -1000, -1000, 1, -1000, -1000, -1000,
-	-1000, 130, 36, -12, -1000, 86, 80, -1000, -1000, -1000,
+	1, -1000, 64, 173, -1000, -1000, 1, -1000, -1000, -1000,
+	-1000, 116, 48, -11, -1000, 77, 76, -1000, -1000, -1000,
 	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 1, 1,
-	1, 1, 1, 1, 1, 1, 1, -1000, -1000, 77,
-	125, 73, 122, 27, 144, 67, 58, 57, -1000, 171,
-	35, 34, 32, 31, 29, -1000, -1000, 55, -24, -24,
-	2, 2, -37, -37, -37, -37, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, 132, -1000, 121, 109,
-	78, 74, 138, 155, 35, 17, 53, 1, 129, 129,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 123,
-	127, 0, 1, 3, 20, -1000, -9, -1000, -1000, -1,
-	-1000, 124, -1000, -1000, 0, -1000, -1000,
+	1, 1, 1, 1, 1, 1, 1, 74, -1000, -1000,
+	-1000, -1000, -1000, 34, 150, 64, 136, 59, -1000, 185,
+	29, 32, 47, 33, 30, -1000, -1000, 52, -24, -24,
+	5, 5, -36, -36, -36, -36, -1000, -1000, -1000, -1000,
+	-1000, -1000, 118, -1000, 109, 83, 79, 75, 146, 170,
+	29, 3, 53, 1, 115, 115, -1000, -1000, -1000, -1000,
+	-1000, 73, -1000, -1000, -1000, 110, 114, 0, 1, -1,
+	22, -1000, 21, -1000, -1000, -1000, -1000, -13, -1000, 111,
+	-1000, -1000, 0, -1000, -1000,
 }
 var exprPgo = [...]int{
 
-	0, 172, 87, 2, 0, 3, 5, 1, 6, 4,
-	170, 164, 155, 154, 153, 143, 142, 138,
+	0, 153, 110, 2, 0, 3, 5, 1, 6, 4,
+	150, 149, 136, 132, 129, 128, 126, 124,
 }
 var exprR1 = [...]int{
 
 	0, 1, 2, 2, 7, 7, 7, 7, 7, 6,
-	6, 6, 6, 8, 8, 8, 8, 11, 14, 14,
-	14, 14, 14, 3, 3, 3, 3, 3, 3, 13,
+	6, 6, 6, 6, 8, 8, 8, 8, 8, 11,
+	14, 14, 14, 14, 14, 3, 3, 3, 3, 13,
 	13, 13, 10, 10, 9, 9, 9, 9, 16, 16,
 	16, 16, 16, 16, 16, 16, 16, 17, 17, 17,
 	15, 15, 15, 15, 15, 15, 15, 15, 15, 12,
@@ -226,8 +220,8 @@ var exprR1 = [...]int{
 var exprR2 = [...]int{
 
 	0, 1, 1, 1, 1, 1, 1, 1, 3, 1,
-	2, 3, 2, 2, 2, 3, 2, 4, 4, 5,
-	5, 6, 7, 2, 2, 2, 2, 2, 2, 3,
+	3, 3, 3, 2, 2, 3, 3, 3, 2, 4,
+	4, 5, 5, 6, 7, 1, 1, 1, 1, 3,
 	3, 3, 1, 3, 3, 3, 3, 3, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 1, 2, 2,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -235,33 +229,33 @@ var exprR2 = [...]int{
 }
 var exprChk = [...]int{
 
-	-1000, -1, -2, -6, -7, -13, 23, -11, -14, -16,
-	-17, 15, -12, -15, 6, 41, 42, 27, 28, 29,
-	30, 33, 31, 32, 34, 35, 36, 37, 38, 39,
-	40, 41, 42, 43, 44, 45, 46, -3, 2, 21,
-	22, 14, 12, -7, -6, -2, -10, 2, -9, 4,
-	23, 23, -4, 25, 26, 6, 6, -2, -2, -2,
-	-2, -2, -2, -2, -2, -2, 5, 7, 5, 5,
-	7, 5, 24, 24, 16, 2, 19, 16, 11, 12,
-	13, 14, -8, -6, 23, -7, 6, 23, 23, 23,
-	-9, 5, 5, 5, 5, -3, 2, 24, 8, -6,
-	-8, 24, 19, -7, -5, 4, -5, 24, -4, -7,
-	24, 19, 24, 24, 24, 4, -4,
+	-1000, -1, -2, -6, -7, -13, 22, -11, -14, -16,
+	-17, 14, -12, -15, 6, 40, 41, 26, 27, 28,
+	29, 32, 30, 31, 33, 34, 35, 36, 37, 38,
+	39, 40, 41, 42, 43, 44, 45, -3, 2, 20,
+	21, 13, 11, -7, -6, -2, -10, 2, -9, 4,
+	22, 22, -4, 24, 25, 6, 6, -2, -2, -2,
+	-2, -2, -2, -2, -2, -2, 5, 2, 23, 23,
+	15, 2, 18, 15, 10, 11, 12, 13, -8, -6,
+	22, -7, 6, 22, 22, 22, -9, 5, 5, 5,
+	5, -3, 2, 23, 7, -6, -8, 23, 18, -7,
+	-5, 4, -5, 5, 2, 23, -4, -7, 23, 18,
+	23, 23, 23, 4, -4,
 }
 var exprDef = [...]int{
 
 	0, -2, 1, -2, 3, 9, 0, 4, 5, 6,
 	7, 0, 0, 0, 47, 0, 0, 59, 60, 50,
 	51, 52, 53, 54, 55, 56, 57, 58, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 10, 12, 0,
-	0, 0, 0, 3, -2, 0, 0, 0, 32, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 13, 25,
+	26, 27, 28, 3, -2, 0, 0, 0, 32, 0,
 	0, 0, 0, 0, 0, 48, 49, 38, 39, 40,
-	41, 42, 43, 44, 45, 46, 23, 24, 25, 26,
-	27, 28, 8, 11, 29, 30, 0, 31, 0, 0,
-	0, 0, 0, 0, 0, 3, 47, 0, 0, 0,
-	33, 34, 35, 36, 37, 14, 16, 17, 13, 0,
-	0, 18, 0, 3, 0, 61, 0, 15, 20, 3,
-	19, 0, 63, 64, 21, 62, 22,
+	41, 42, 43, 44, 45, 46, 10, 12, 8, 11,
+	29, 30, 0, 31, 0, 0, 0, 0, 0, 0,
+	0, 3, 47, 0, 0, 0, 33, 34, 35, 36,
+	37, 0, 18, 19, 14, 0, 0, 20, 0, 3,
+	0, 61, 0, 15, 17, 16, 22, 3, 21, 0,
+	63, 64, 23, 62, 24,
 }
 var exprTok1 = [...]int{
 
@@ -273,7 +267,7 @@ var exprTok2 = [...]int{
 	12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
 	22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
 	32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
-	42, 43, 44, 45, 46,
+	42, 43, 44, 45,
 }
 var exprTok3 = [...]int{
 	0,
@@ -661,89 +655,79 @@ exprdefault:
 			exprVAL.LogExpr = newMatcherExpr(exprDollar[1].Selector)
 		}
 	case 10:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
+		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.LogExpr = NewFilterExpr(exprDollar[1].LogExpr, exprDollar[2].Filter.t, exprDollar[2].Filter.m)
+			exprVAL.LogExpr = NewFilterExpr(exprDollar[1].LogExpr, exprDollar[2].Filter, exprDollar[3].str)
 		}
 	case 11:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
 			exprVAL.LogExpr = exprDollar[2].LogExpr
 		}
-	case 13:
+	case 14:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
 			exprVAL.LogRangeExpr = newLogRange(exprDollar[1].LogExpr, exprDollar[2].duration)
 		}
-	case 14:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-		{
-			exprVAL.LogRangeExpr = addFilterToLogRangeExpr(exprDollar[1].LogRangeExpr, exprDollar[2].Filter.t, exprDollar[2].Filter.m)
-		}
 	case 15:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+		{
+			exprVAL.LogRangeExpr = addFilterToLogRangeExpr(exprDollar[1].LogRangeExpr, exprDollar[2].Filter, exprDollar[3].str)
+		}
+	case 16:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
 			exprVAL.LogRangeExpr = exprDollar[2].LogRangeExpr
 		}
-	case 17:
+	case 19:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
 			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp)
 		}
-	case 18:
+	case 20:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
 			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, nil, nil)
 		}
-	case 19:
+	case 21:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
 			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[4].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, nil)
 		}
-	case 20:
+	case 22:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
 			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, exprDollar[5].Grouping, nil)
 		}
-	case 21:
+	case 23:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
 			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, nil, &exprDollar[3].str)
 		}
-	case 22:
+	case 24:
 		exprDollar = exprS[exprpt-7 : exprpt+1]
 		{
 			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, exprDollar[7].Grouping, &exprDollar[3].str)
 		}
-	case 23:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-		{
-			exprVAL.Filter = filter{t: labels.MatchRegexp, m: exprDollar[2].str}
-		}
-	case 24:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-		{
-			exprVAL.Filter = filter{t: labels.MatchRegexp, m: exprDollar[2].str}
-		}
 	case 25:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
+		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Filter = filter{t: labels.MatchEqual, m: exprDollar[2].str}
+			exprVAL.Filter = labels.MatchRegexp
 		}
 	case 26:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
+		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Filter = filter{t: labels.MatchNotRegexp, m: exprDollar[2].str}
+			exprVAL.Filter = labels.MatchEqual
 		}
 	case 27:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
+		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Filter = filter{t: labels.MatchNotRegexp, m: exprDollar[2].str}
+			exprVAL.Filter = labels.MatchNotRegexp
 		}
 	case 28:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
+		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Filter = filter{t: labels.MatchNotEqual, m: exprDollar[2].str}
+			exprVAL.Filter = labels.MatchNotEqual
 		}
 	case 29:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
