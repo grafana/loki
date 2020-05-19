@@ -87,8 +87,8 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"step", p.Step(),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
-		"throughput_mb", float64(stats.Summary.BytesProcessedPerSecond)/10e6,
-		"total_bytes_mb", float64(stats.Summary.TotalBytesProcessed)/10e6,
+		"throughput_mb", float64(stats.Summary.BytesProcessedPerSecond)/1e6,
+		"total_bytes_mb", float64(stats.Summary.TotalBytesProcessed)/1e6,
 	)
 
 	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType).
