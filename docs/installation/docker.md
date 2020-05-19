@@ -27,7 +27,7 @@ Navigate to http://localhost:3100/metrics to view the output.
 
 **Windows**
 
-Copy and paste the commands below into your terminal. Note that you will need to replace the <placeholders> in the commands with your local path.
+Copy and paste the commands below into your terminal. Note that you will need to replace the `<placeholders>` in the commands with your local path.
 
 ```bash
 cd "<local-path>"
