@@ -21,7 +21,7 @@ wget https://raw.githubusercontent.com/grafana/loki/v1.4.1/cmd/promtail/promtail
 docker run -v $(pwd):/mnt/config -v /var/log:/var/log grafana/promtail:1.4.1 -config.file=/mnt/config/promtail-config.yaml
 ```
 
-When finished, loki-config.yaml and promtail-config.yaml are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
+When finished, `loki-config.yaml` and `promtail-config.yaml` are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
 
 Navigate to http://localhost:3100/metrics to view the output.
 
@@ -37,7 +37,7 @@ wget https://raw.githubusercontent.com/grafana/loki/v1.4.1/cmd/promtail/promtail
 docker run -v <local-path>:/mnt/config -v /var/log:/var/log grafana/promtail:1.4.1 --config.file=/mnt/config/promtail-config.yaml
 ```
 
-When finished, loki-config.yaml and promtail-config.yaml are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
+When finished, `loki-config.yaml` and `promtail-config.yaml` are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
 
 Navigate to http://localhost:3100/metrics to view the output.
 
