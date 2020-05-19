@@ -75,6 +75,19 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 		return STRING
 	}
+	// scaning regex
+	if l.TokenText() == "/" {
+		re := ""
+		for r := l.Next(); r != scanner.EOF; r = l.Next() {
+			if string(r) == "/" {
+				lval.str = re
+				return REGEX
+			}
+			re += string(r)
+		}
+		l.Error("missing closing '/' in regular expression")
+		return 0
+	}
 
 	// scanning duration tokens
 	if l.TokenText() == "[" {

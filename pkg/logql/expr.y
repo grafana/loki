@@ -5,11 +5,15 @@ import (
   "time"
   "github.com/prometheus/prometheus/pkg/labels"
 )
+type filter struct{
+  t labels.MatchType
+  m string
+}
 %}
 
 %union{
   Expr                    Expr
-  Filter                  labels.MatchType
+  Filter                  filter
   Grouping                *grouping
   Labels                  []string
   LogExpr                 LogSelectorExpr
@@ -48,7 +52,7 @@ import (
 %type <BinOpExpr>             binOpExpr
 %type <LiteralExpr>           literalExpr
 
-%token <str>      IDENTIFIER STRING NUMBER
+%token <str>      IDENTIFIER STRING NUMBER REGEX
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
@@ -79,17 +83,15 @@ metricExpr:
 
 logExpr:
       selector                                    { $$ = newMatcherExpr($1)}
-    | logExpr filter STRING                       { $$ = NewFilterExpr( $1, $2, $3 ) }
+    | logExpr filter                              { $$ = NewFilterExpr( $1, $2.t, $2.m ) }
     | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
-    | logExpr filter error
     | logExpr error
     ;
 
 logRangeExpr:
-      logExpr DURATION { $$ = newLogRange($1, $2) } // <selector> <filters> <range>
-    | logRangeExpr filter STRING                       { $$ = addFilterToLogRangeExpr( $1, $2, $3 ) }
+      logExpr DURATION                                 { $$ = newLogRange($1, $2) } // <selector> <filters> <range>
+    | logRangeExpr filter                              { $$ = addFilterToLogRangeExpr( $1, $2.t, $2.m ) }
     | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS  { $$ = $2 }
-    | logRangeExpr filter error
     | logRangeExpr error
     ;
 
@@ -106,10 +108,12 @@ vectorAggregationExpr:
     ;
 
 filter:
-      PIPE_MATCH                       { $$ = labels.MatchRegexp }
-    | PIPE_EXACT                       { $$ = labels.MatchEqual }
-    | NRE                              { $$ = labels.MatchNotRegexp }
-    | NEQ                              { $$ = labels.MatchNotEqual }
+      PIPE_MATCH STRING                       { $$ = filter{t:labels.MatchRegexp, m: $2 }}
+    | PIPE_MATCH REGEX                        { $$ = filter{t:labels.MatchRegexp, m: $2}}
+    | PIPE_EXACT STRING                       { $$ = filter{t:labels.MatchEqual, m: $2}}
+    | NRE STRING                              { $$ = filter{t:labels.MatchNotRegexp, m: $2 }}
+    | NRE REGEX                               { $$ = filter{t:labels.MatchNotRegexp, m: $2 }}
+    | NEQ STRING                              { $$ = filter{t:labels.MatchNotEqual, m: $2 }}
     ;
 
 selector:
