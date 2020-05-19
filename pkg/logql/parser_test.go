@@ -40,6 +40,25 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			// test [12h] before filter expr
+			in: `count_over_time({foo="bar"}[12h] |= "error")`,
+			exp: &rangeAggregationExpr{
+				operation: "count_over_time",
+				left: &logRange{
+					left: &filterExpr{
+						ty:    labels.MatchEqual,
+						match: "error",
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+					},
+					interval: 12 * time.Hour,
+				},
+			},
+		},
+		{
 			// test [12h] after filter expr
 			in: `count_over_time({foo="bar"} |= "error" [12h])`,
 			exp: &rangeAggregationExpr{
