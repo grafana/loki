@@ -432,7 +432,7 @@ aws:
     # URL for DynamoDB with escaped Key and Secret encoded. If only region is specified as a
     # host, the proper endpoint will be deduced. Use inmemory:///<bucket-name> to
     # use a mock in-memory implementation.
-    dynamodb_url: <string>
+    dynamodb: <string>
 
     # DynamoDB table management requests per-second limit.
     [api_limit: <float> | default = 2.0]
