@@ -1,6 +1,6 @@
 image:
   repository: grafana/loki
-  tag: 1.4.1
+  tag: 1.5.0
   pullPolicy: IfNotPresent
 
   ## Optionally specify an array of imagePullSecrets.
@@ -63,8 +63,8 @@ config:
       #   consul:
       #     host: "consul:8500"
       #     prefix: ""
-      #     httpclienttimeout: "20s"
-      #     consistentreads: true
+      #     http_client_timeout: "20s"
+      #     consistent_reads: true
   limits_config:
     enforce_metric_name: false
     reject_old_samples: true
@@ -86,7 +86,7 @@ config:
     filesystem:
       directory: /data/loki/chunks
   chunk_store_config:
-    max_look_back_period: 0
+    max_look_back_period: 0s
   table_manager:
     retention_deletes_enabled: false
     retention_period: 0s
