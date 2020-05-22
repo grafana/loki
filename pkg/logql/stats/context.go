@@ -13,7 +13,7 @@ Then you can update statistics by mutating data by using:
 
 Finally to get a snapshot of the current query statistic use
 
-	stats.Snapshot(ctx,time.Since(start))
+	stats.Snapshot(ctx, time.Since(start), logger)
 
 Ingester statistics are sent across the GRPC stream using Trailers
 see https://github.com/grpc/grpc-go/blob/master/Documentation/grpc-metadata.md
@@ -29,6 +29,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 type ctxKeyType string
@@ -144,7 +145,7 @@ func GetStoreData(ctx context.Context) *StoreData {
 }
 
 // Snapshot compute query statistics from a context using the total exec time.
-func Snapshot(ctx context.Context, execTime time.Duration) Result {
+func Snapshot(ctx context.Context, execTime time.Duration, log log.Logger) Result {
 	// ingester data is decoded from grpc trailers.
 	res := decodeTrailers(ctx)
 	// collect data from store.
@@ -166,7 +167,9 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	}
 
 	// see if there is a pre-computed Result embedded in the context which needs merging
-	_ = JoinResults(ctx, res)
+	if err := JoinResults(ctx, res); err != nil {
+		level.Warn(log).Log("msg", "could not merge Stats embedded in ctx", "err", err)
+	}
 	merged, err := GetResult(ctx)
 	if err != nil {
 		merged = &res

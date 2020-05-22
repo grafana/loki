@@ -130,7 +130,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 
 	data, err := q.Eval(ctx)
 
-	statResult = stats.Snapshot(ctx, time.Since(start))
+	statResult = stats.Snapshot(ctx, time.Since(start), log)
 	statResult.Log(level.Debug(log))
 
 	status := "200"
