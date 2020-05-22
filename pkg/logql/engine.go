@@ -344,15 +344,3 @@ type groupedAggregation struct {
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
 }
-
-// rate calculate the per-second rate of log lines.
-func rate(selRange time.Duration) func(ts int64, samples []promql.Point) float64 {
-	return func(ts int64, samples []promql.Point) float64 {
-		return float64(len(samples)) / selRange.Seconds()
-	}
-}
-
-// count counts the amount of log lines.
-func count(ts int64, samples []promql.Point) float64 {
-	return float64(len(samples))
-}

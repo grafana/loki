@@ -108,6 +108,26 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `bytes_over_time({ foo !~ "bar" }[12m])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 12 * time.Minute,
+				},
+				operation: OpRangeTypeBytes,
+			},
+		},
+		{
+			in: `bytes_rate({ foo !~ "bar" }[12m])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 12 * time.Minute,
+				},
+				operation: OpRangeTypeBytesRate,
+			},
+		},
+		{
 			in: `rate({ foo !~ "bar" }[5h])`,
 			exp: &rangeAggregationExpr{
 				left: &logRange{
@@ -355,7 +375,31 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
+		},
+		{
+			in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
+			exp: newRangeAggregationExpr(
+				&logRange{
+					left: &filterExpr{
+						left: &filterExpr{
+							left: &filterExpr{
+								left: &filterExpr{
+									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+									ty:    labels.MatchEqual,
+									match: "baz",
+								},
+								ty:    labels.MatchRegexp,
+								match: "blip",
+							},
+							ty:    labels.MatchNotEqual,
+							match: "flip",
+						},
+						ty:    labels.MatchNotRegexp,
+						match: "flap",
+					},
+					interval: 5 * time.Minute,
+				}, OpRangeTypeBytes),
 		},
 		{
 			in: `sum(count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
@@ -379,7 +423,37 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
+				"sum",
+				&grouping{
+					without: false,
+					groups:  []string{"foo"},
+				},
+				nil),
+		},
+		{
+			in: `sum(bytes_rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: &filterExpr{
+						left: &filterExpr{
+							left: &filterExpr{
+								left: &filterExpr{
+									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+									ty:    labels.MatchEqual,
+									match: "baz",
+								},
+								ty:    labels.MatchRegexp,
+								match: "blip",
+							},
+							ty:    labels.MatchNotEqual,
+							match: "flip",
+						},
+						ty:    labels.MatchNotRegexp,
+						match: "flap",
+					},
+					interval: 5 * time.Minute,
+				}, OpRangeTypeBytesRate),
 				"sum",
 				&grouping{
 					without: false,
@@ -409,7 +483,7 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
 				"topk",
 				&grouping{
 					without: true,
@@ -441,7 +515,7 @@ func TestParse(t *testing.T) {
 								match: "flap",
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeRate),
+						}, OpRangeTypeRate),
 					"sum",
 					&grouping{
 						without: false,
@@ -474,7 +548,7 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
 		},
 		{
 			in: `sum(count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (foo)`,
@@ -498,7 +572,7 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
 				"sum",
 				&grouping{
 					without: false,
@@ -528,7 +602,7 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
 				"topk",
 				&grouping{
 					without: true,
@@ -560,7 +634,7 @@ func TestParse(t *testing.T) {
 								match: "flap",
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeRate),
+						}, OpRangeTypeRate),
 					"sum",
 					&grouping{
 						without: false,
@@ -632,7 +706,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -648,7 +722,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -665,7 +739,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpTypeCountOverTime),
+					}, OpRangeTypeCount),
 					"sum",
 					&grouping{
 						without: false,
@@ -693,7 +767,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -709,7 +783,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -726,7 +800,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpTypeCountOverTime),
+					}, OpRangeTypeCount),
 					"sum",
 					&grouping{
 						without: false,
@@ -753,7 +827,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpTypeCountOverTime),
+					}, OpRangeTypeCount),
 					"sum",
 					&grouping{
 						without: false,
@@ -771,7 +845,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -787,7 +861,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -818,7 +892,7 @@ func TestParse(t *testing.T) {
 								ty:    labels.MatchEqual,
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 					newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -827,7 +901,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+						}, OpRangeTypeCount)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
 		},
 		{
 			in: `sum by (job) (
@@ -849,7 +923,7 @@ func TestParse(t *testing.T) {
 								ty:    labels.MatchEqual,
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 					newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -858,7 +932,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+						}, OpRangeTypeCount)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
 				mustNewLiteralExpr("100", false),
 			),
 		},
@@ -876,7 +950,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 					"sum",
 					&grouping{
 						without: false,
