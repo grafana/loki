@@ -23,7 +23,10 @@ docker run -v $(pwd):/mnt/config -v /var/log:/var/log grafana/promtail:1.5.0 -co
 
 When finished, loki-config.yaml and promtail-config.yaml are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
 
-Navigate to http://localhost:3100/metrics to view the output.
+Navigate to http://localhost:3100/metrics to view the metrics and http://localhost:3100/ready for readiness.
+
+As of v1.5.0, image is configured to run by default as user loki with  UID `10001` and GID `10001`. You can use a different user, specially if you are using bind mounts, by specifying uid with docker run command
+by specifying `--user=UID` with numeric UID suited to your needs.
 
 **Windows**
 
