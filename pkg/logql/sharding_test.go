@@ -75,6 +75,7 @@ func TestMappingEquivalence(t *testing.T) {
 
 			res, err := qry.Exec(context.Background())
 			require.Nil(t, err)
+
 			shardedRes, err := shardedQry.Exec(context.Background())
 			require.Nil(t, err)
 

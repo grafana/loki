@@ -23,18 +23,18 @@ This includes a bunch of tooling for parallelization improvements based on backe
 // ShardedEngine is an Engine implementation that can split queries into more parallelizable forms via
 // querying the underlying backend shards individually and reaggregating them.
 type ShardedEngine struct {
-	timeout   time.Duration
-	evaluator Evaluator
-	metrics   *ShardingMetrics
+	timeout        time.Duration
+	downstreamable Downstreamable
+	metrics        *ShardingMetrics
 }
 
 // NewShardedEngine constructs a *ShardedEngine
-func NewShardedEngine(opts EngineOpts, downstreamer Downstreamer, metrics *ShardingMetrics) *ShardedEngine {
+func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics) *ShardedEngine {
 	opts.applyDefault()
 	return &ShardedEngine{
-		timeout:   opts.Timeout,
-		evaluator: NewDownstreamEvaluator(downstreamer),
-		metrics:   metrics,
+		timeout:        opts.Timeout,
+		downstreamable: downstreamable,
+		metrics:        metrics,
 	}
 
 }
@@ -44,7 +44,7 @@ func (ng *ShardedEngine) Query(p Params, shards int) Query {
 	return &query{
 		timeout:   ng.timeout,
 		params:    p,
-		evaluator: ng.evaluator,
+		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),
 		parse: func(ctx context.Context, query string) (Expr, error) {
 			logger := spanlogger.FromContext(ctx)
 			mapper, err := NewShardMapper(shards, ng.metrics)
@@ -87,30 +87,30 @@ func (d DownstreamLogSelectorExpr) String() string {
 // Contract: The embedded SampleExprs within a linked list of ConcatSampleExprs must be of the
 // same structure. This makes special implementations of SampleExpr.Associative() unnecessary.
 type ConcatSampleExpr struct {
-	SampleExpr
+	DownstreamSampleExpr
 	next *ConcatSampleExpr
 }
 
 func (c ConcatSampleExpr) String() string {
 	if c.next == nil {
-		return c.SampleExpr.String()
+		return c.DownstreamSampleExpr.String()
 	}
 
-	return fmt.Sprintf("%s ++ %s", c.SampleExpr.String(), c.next.String())
+	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.String())
 }
 
 // ConcatLogSelectorExpr is an expr for concatenating multiple LogSelectorExpr
 type ConcatLogSelectorExpr struct {
-	LogSelectorExpr
+	DownstreamLogSelectorExpr
 	next *ConcatLogSelectorExpr
 }
 
 func (c ConcatLogSelectorExpr) String() string {
 	if c.next == nil {
-		return c.LogSelectorExpr.String()
+		return c.DownstreamLogSelectorExpr.String()
 	}
 
-	return fmt.Sprintf("%s ++ %s", c.LogSelectorExpr.String(), c.next.String())
+	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.String())
 }
 
 type Shards []astmapper.ShardAnnotation
@@ -140,10 +140,20 @@ func ParseShards(strs []string) (Shards, error) {
 	return shards, nil
 }
 
+type Downstreamable interface {
+	Downstreamer() Downstreamer
+}
+
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
+type DownstreamQuery struct {
+	Expr   Expr
+	Params Params
+	Shards Shards
+}
+
 type Downstreamer interface {
-	Downstream(Expr, Params, Shards) (Query, error)
+	Downstream(context.Context, []DownstreamQuery) ([]Result, error)
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -152,24 +162,20 @@ type DownstreamEvaluator struct {
 	defaultEvaluator *DefaultEvaluator
 }
 
-// Exec runs a query and collects stats from the embedded Downstreamer
-func (ev DownstreamEvaluator) Exec(ctx context.Context, expr Expr, p Params, shards Shards) (Result, error) {
-	qry, err := ev.Downstream(expr, p, shards)
+// Downstream runs queries and collects stats from the embedded Downstreamer
+func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery) ([]Result, error) {
+	results, err := ev.Downstreamer.Downstream(ctx, queries)
 	if err != nil {
-		return Result{}, err
+		return nil, err
 	}
 
-	res, err := qry.Exec(ctx)
-	if err != nil {
-		return Result{}, err
+	for _, res := range results {
+		if err := stats.JoinResults(ctx, res.Statistics); err != nil {
+			level.Warn(util.Logger).Log("msg", "unable to merge downstream results", "err", err)
+		}
 	}
 
-	err = stats.JoinResults(ctx, res.Statistics)
-	if err != nil {
-		level.Warn(util.Logger).Log("msg", "unable to merge downstream results", "err", err)
-	}
-
-	return res, nil
+	return results, nil
 
 }
 
@@ -201,60 +207,48 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
-		res, err := ev.Exec(ctx, e.SampleExpr, params, shards)
+		results, err := ev.Downstream(ctx, []DownstreamQuery{{
+			Expr:   e.SampleExpr,
+			Params: params,
+			Shards: shards,
+		}})
 		if err != nil {
 			return nil, err
 		}
-		return ResultStepEvaluator(res, params)
+		return ResultStepEvaluator(results[0], params)
 
 	case *ConcatSampleExpr:
-		type result struct {
-			stepper StepEvaluator
-			err     error
-		}
-		ctx, cancel := context.WithCancel(ctx)
 		cur := e
-		ch := make(chan result)
-		done := make(chan struct{})
-		count := 0
-
+		var queries []DownstreamQuery
 		for cur != nil {
-			go func(expr SampleExpr) {
-				eval, err := ev.StepEvaluator(ctx, nextEv, expr, params)
-				if err != nil {
-					level.Warn(util.Logger).Log("msg", "could not extract StepEvaluator", "err", err, "expr", expr.String())
-				}
-				select {
-				case <-done:
-				case ch <- result{eval, err}:
-				}
-			}(cur.SampleExpr)
+			qry := DownstreamQuery{
+				Expr:   cur.DownstreamSampleExpr.SampleExpr,
+				Params: params,
+			}
+			if shard := cur.DownstreamSampleExpr.shard; shard != nil {
+				qry.Shards = Shards{*shard}
+			}
+			queries = append(queries, qry)
 			cur = cur.next
-			count++
 		}
 
-		xs := make([]StepEvaluator, 0, count)
-		cleanup := func() {
-			cancel()           // cancel ctx
-			done <- struct{}{} // send done signal to awaiting goroutines
-			// Close previously opened StepEvaluators
-			for _, x := range xs {
-				x.Close() // close unused StepEvaluators
-			}
+		results, err := ev.Downstream(ctx, queries)
+		if err != nil {
+			return nil, err
 		}
 
-		for i := 0; i < count; i++ {
-			select {
-			case <-ctx.Done():
-				defer cleanup()
-				return nil, ctx.Err()
-			case res := <-ch:
-				if res.err != nil {
-					defer cleanup()
-					return nil, res.err
-				}
-				xs = append(xs, res.stepper)
+		xs := make([]StepEvaluator, 0, len(queries))
+		for i, res := range results {
+			stepper, err := ResultStepEvaluator(res, params)
+			if err != nil {
+				level.Warn(util.Logger).Log(
+					"msg", "could not extract StepEvaluator",
+					"err", err,
+					"expr", queries[i].Expr.String(),
+				)
+				return nil, err
 			}
+			xs = append(xs, stepper)
 		}
 
 		return ConcatEvaluator(xs)
@@ -277,62 +271,48 @@ func (ev *DownstreamEvaluator) Iterator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
-		res, err := ev.Exec(ctx, e.LogSelectorExpr, params, shards)
+		results, err := ev.Downstream(ctx, []DownstreamQuery{{
+			Expr:   e.LogSelectorExpr,
+			Params: params,
+			Shards: shards,
+		}})
+
+		if err != nil {
+			return nil, err
+		}
+		return ResultIterator(results[0], params)
+
+	case *ConcatLogSelectorExpr:
+		cur := e
+		var queries []DownstreamQuery
+		for cur != nil {
+			qry := DownstreamQuery{
+				Expr:   cur.DownstreamLogSelectorExpr.LogSelectorExpr,
+				Params: params,
+			}
+			if shard := cur.DownstreamLogSelectorExpr.shard; shard != nil {
+				qry.Shards = Shards{*shard}
+			}
+			queries = append(queries, qry)
+			cur = cur.next
+		}
+
+		results, err := ev.Downstream(ctx, queries)
 		if err != nil {
 			return nil, err
 		}
 
-		return ResultIterator(res, params)
-
-	case *ConcatLogSelectorExpr:
-		type result struct {
-			iterator iter.EntryIterator
-			err      error
-		}
-		ctx, cancel := context.WithCancel(ctx)
-		cur := e
-		ch := make(chan result)
-		done := make(chan struct{})
-		count := 0
-
-		for cur != nil {
-			go func(expr LogSelectorExpr) {
-				iterator, err := ev.Iterator(ctx, expr, params)
-				if err != nil {
-					level.Warn(util.Logger).Log("msg", "could not extract Iterator", "err", err, "expr", expr.String())
-				}
-				select {
-				case <-done:
-				case ch <- result{iterator, err}:
-				}
-			}(cur.LogSelectorExpr)
-			cur = cur.next
-			count++
-		}
-
-		xs := make([]iter.EntryIterator, 0, count)
-
-		cleanup := func() {
-			cancel()           // cancel ctx
-			done <- struct{}{} // send done signal to awaiting goroutines
-			// Close previously opened Iterators
-			for _, x := range xs {
-				x.Close() // close unused Iterators
+		xs := make([]iter.EntryIterator, 0, len(queries))
+		for i, res := range results {
+			iter, err := ResultIterator(res, params)
+			if err != nil {
+				level.Warn(util.Logger).Log(
+					"msg", "could not extract Iterator",
+					"err", err,
+					"expr", queries[i].Expr.String(),
+				)
 			}
-		}
-
-		for i := 0; i < count; i++ {
-			select {
-			case <-ctx.Done():
-				defer cleanup()
-				return nil, ctx.Err()
-			case res := <-ch:
-				if res.err != nil {
-					defer cleanup()
-					return nil, res.err
-				}
-				xs = append(xs, res.iterator)
-			}
+			xs = append(xs, iter)
 		}
 
 		return iter.NewHeapIterator(ctx, xs, params.Direction()), nil

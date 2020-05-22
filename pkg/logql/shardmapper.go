@@ -164,7 +164,7 @@ func (m ShardMapper) mapLogSelectorExpr(expr LogSelectorExpr, r *shardRecorder) 
 	var head *ConcatLogSelectorExpr
 	for i := m.shards - 1; i >= 0; i-- {
 		head = &ConcatLogSelectorExpr{
-			LogSelectorExpr: DownstreamLogSelectorExpr{
+			DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
 				shard: &astmapper.ShardAnnotation{
 					Shard: i,
 					Of:    m.shards,
@@ -183,7 +183,7 @@ func (m ShardMapper) mapSampleExpr(expr SampleExpr, r *shardRecorder) SampleExpr
 	var head *ConcatSampleExpr
 	for i := m.shards - 1; i >= 0; i-- {
 		head = &ConcatSampleExpr{
-			SampleExpr: DownstreamSampleExpr{
+			DownstreamSampleExpr: DownstreamSampleExpr{
 				shard: &astmapper.ShardAnnotation{
 					Shard: i,
 					Of:    m.shards,

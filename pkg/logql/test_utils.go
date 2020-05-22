@@ -101,18 +101,30 @@ type MockDownstreamer struct {
 	*Engine
 }
 
-func (d MockDownstreamer) Downstream(expr Expr, p Params, shards Shards) (Query, error) {
-	params := NewLiteralParams(
-		expr.String(),
-		p.Start(),
-		p.End(),
-		p.Step(),
-		p.Interval(),
-		p.Direction(),
-		p.Limit(),
-		shards.Encode(),
-	)
-	return d.Query(params), nil
+func (m MockDownstreamer) Downstreamer() Downstreamer { return m }
+
+func (d MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]Result, error) {
+	results := make([]Result, 0, len(queries))
+	for _, query := range queries {
+		params := NewLiteralParams(
+			query.Expr.String(),
+			query.Params.Start(),
+			query.Params.End(),
+			query.Params.Step(),
+			query.Params.Interval(),
+			query.Params.Direction(),
+			query.Params.Limit(),
+			query.Shards.Encode(),
+		)
+		res, err := d.Query(params).Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		results = append(results, res)
+	}
+	return results, nil
+
 }
 
 // create nStreams of nEntries with labelNames each where each label value

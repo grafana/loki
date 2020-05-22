@@ -16,7 +16,7 @@ func TestStringer(t *testing.T) {
 	}{
 		{
 			in: &ConcatLogSelectorExpr{
-				LogSelectorExpr: DownstreamLogSelectorExpr{
+				DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
 					shard: &astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
@@ -28,7 +28,7 @@ func TestStringer(t *testing.T) {
 					},
 				},
 				next: &ConcatLogSelectorExpr{
-					LogSelectorExpr: DownstreamLogSelectorExpr{
+					DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
@@ -72,7 +72,7 @@ func TestMapSampleExpr(t *testing.T) {
 				},
 			},
 			out: &ConcatSampleExpr{
-				SampleExpr: DownstreamSampleExpr{
+				DownstreamSampleExpr: DownstreamSampleExpr{
 					shard: &astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
@@ -90,7 +90,7 @@ func TestMapSampleExpr(t *testing.T) {
 					},
 				},
 				next: &ConcatSampleExpr{
-					SampleExpr: DownstreamSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
@@ -180,7 +180,7 @@ func TestMapping(t *testing.T) {
 		{
 			in: `{foo="bar"}`,
 			expr: &ConcatLogSelectorExpr{
-				LogSelectorExpr: DownstreamLogSelectorExpr{
+				DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
 					shard: &astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
@@ -192,7 +192,7 @@ func TestMapping(t *testing.T) {
 					},
 				},
 				next: &ConcatLogSelectorExpr{
-					LogSelectorExpr: DownstreamLogSelectorExpr{
+					DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
@@ -210,7 +210,7 @@ func TestMapping(t *testing.T) {
 		{
 			in: `{foo="bar"} |= "error"`,
 			expr: &ConcatLogSelectorExpr{
-				LogSelectorExpr: DownstreamLogSelectorExpr{
+				DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
 					shard: &astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
@@ -226,7 +226,7 @@ func TestMapping(t *testing.T) {
 					},
 				},
 				next: &ConcatLogSelectorExpr{
-					LogSelectorExpr: DownstreamLogSelectorExpr{
+					DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
@@ -248,7 +248,7 @@ func TestMapping(t *testing.T) {
 		{
 			in: `rate({foo="bar"}[5m])`,
 			expr: &ConcatSampleExpr{
-				SampleExpr: DownstreamSampleExpr{
+				DownstreamSampleExpr: DownstreamSampleExpr{
 					shard: &astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
@@ -266,7 +266,7 @@ func TestMapping(t *testing.T) {
 					},
 				},
 				next: &ConcatSampleExpr{
-					SampleExpr: DownstreamSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
@@ -290,7 +290,7 @@ func TestMapping(t *testing.T) {
 		{
 			in: `count_over_time({foo="bar"}[5m])`,
 			expr: &ConcatSampleExpr{
-				SampleExpr: DownstreamSampleExpr{
+				DownstreamSampleExpr: DownstreamSampleExpr{
 					shard: &astmapper.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
@@ -308,7 +308,7 @@ func TestMapping(t *testing.T) {
 					},
 				},
 				next: &ConcatSampleExpr{
-					SampleExpr: DownstreamSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
@@ -335,7 +335,7 @@ func TestMapping(t *testing.T) {
 				grouping:  &grouping{},
 				operation: OpTypeSum,
 				left: &ConcatSampleExpr{
-					SampleExpr: DownstreamSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
@@ -357,7 +357,7 @@ func TestMapping(t *testing.T) {
 						},
 					},
 					next: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
@@ -390,7 +390,7 @@ func TestMapping(t *testing.T) {
 				params:    3,
 				operation: OpTypeTopK,
 				left: &ConcatSampleExpr{
-					SampleExpr: DownstreamSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
@@ -408,7 +408,7 @@ func TestMapping(t *testing.T) {
 						},
 					},
 					next: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
@@ -439,7 +439,7 @@ func TestMapping(t *testing.T) {
 				},
 				operation: OpTypeMax,
 				left: &ConcatSampleExpr{
-					SampleExpr: DownstreamSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
@@ -457,7 +457,7 @@ func TestMapping(t *testing.T) {
 						},
 					},
 					next: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
@@ -485,7 +485,7 @@ func TestMapping(t *testing.T) {
 				operation: OpTypeSum,
 				grouping:  &grouping{},
 				left: &ConcatSampleExpr{
-					SampleExpr: DownstreamSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
@@ -507,7 +507,7 @@ func TestMapping(t *testing.T) {
 						},
 					},
 					next: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
@@ -541,7 +541,7 @@ func TestMapping(t *testing.T) {
 					grouping:  &grouping{},
 					operation: OpTypeSum,
 					left: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
@@ -563,7 +563,7 @@ func TestMapping(t *testing.T) {
 							},
 						},
 						next: &ConcatSampleExpr{
-							SampleExpr: DownstreamSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
 								shard: &astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
@@ -592,7 +592,7 @@ func TestMapping(t *testing.T) {
 					operation: OpTypeSum,
 					grouping:  &grouping{},
 					left: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
@@ -614,7 +614,7 @@ func TestMapping(t *testing.T) {
 							},
 						},
 						next: &ConcatSampleExpr{
-							SampleExpr: DownstreamSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
 								shard: &astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
@@ -652,7 +652,7 @@ func TestMapping(t *testing.T) {
 					},
 					operation: OpTypeSum,
 					left: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
@@ -676,7 +676,7 @@ func TestMapping(t *testing.T) {
 							},
 						},
 						next: &ConcatSampleExpr{
-							SampleExpr: DownstreamSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
 								shard: &astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
@@ -715,7 +715,7 @@ func TestMapping(t *testing.T) {
 					grouping:  &grouping{},
 					operation: OpTypeMax,
 					left: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
@@ -733,7 +733,7 @@ func TestMapping(t *testing.T) {
 							},
 						},
 						next: &ConcatSampleExpr{
-							SampleExpr: DownstreamSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
 								shard: &astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
@@ -766,7 +766,7 @@ func TestMapping(t *testing.T) {
 					operation: OpTypeSum,
 					grouping:  &grouping{},
 					left: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
@@ -788,7 +788,7 @@ func TestMapping(t *testing.T) {
 							},
 						},
 						next: &ConcatSampleExpr{
-							SampleExpr: DownstreamSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
 								shard: &astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
@@ -828,7 +828,7 @@ func TestMapping(t *testing.T) {
 						},
 						operation: OpTypeSum,
 						left: &ConcatSampleExpr{
-							SampleExpr: DownstreamSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
 								shard: &astmapper.ShardAnnotation{
 									Shard: 0,
 									Of:    2,
@@ -852,7 +852,7 @@ func TestMapping(t *testing.T) {
 								},
 							},
 							next: &ConcatSampleExpr{
-								SampleExpr: DownstreamSampleExpr{
+								DownstreamSampleExpr: DownstreamSampleExpr{
 									shard: &astmapper.ShardAnnotation{
 										Shard: 1,
 										Of:    2,
@@ -884,7 +884,7 @@ func TestMapping(t *testing.T) {
 					operation: OpTypeSum,
 					grouping:  &grouping{},
 					left: &ConcatSampleExpr{
-						SampleExpr: DownstreamSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
 							shard: &astmapper.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
@@ -906,7 +906,7 @@ func TestMapping(t *testing.T) {
 							},
 						},
 						next: &ConcatSampleExpr{
-							SampleExpr: DownstreamSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
 								shard: &astmapper.ShardAnnotation{
 									Shard: 1,
 									Of:    2,

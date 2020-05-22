@@ -14,14 +14,12 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 
+const (
+	DefaultDownstreamConcurrency = 32
+)
+
 type DownstreamHandler struct {
 	next queryrange.Handler
-}
-
-type QuerierFunc func(context.Context) (logql.Result, error)
-
-func (fn QuerierFunc) Exec(ctx context.Context) (logql.Result, error) {
-	return fn(ctx)
 }
 
 func ParamsToLokiRequest(params logql.Params) *LokiRequest {
@@ -36,21 +34,95 @@ func ParamsToLokiRequest(params logql.Params) *LokiRequest {
 	}
 }
 
-func (h DownstreamHandler) Downstream(expr logql.Expr, params logql.Params, shards logql.Shards) (logql.Query, error) {
-	req := ParamsToLokiRequest(params).WithShards(shards).WithQuery(expr.String()).(*LokiRequest)
+func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
+	p := DefaultDownstreamConcurrency
+	locks := make(chan struct{}, p)
+	for i := 0; i < p; i++ {
+		locks <- struct{}{}
+	}
+	return &instance{
+		locks:   locks,
+		handler: h.next,
+	}
+}
 
-	return QuerierFunc(func(ctx context.Context) (logql.Result, error) {
+// instance is an intermediate struct for controlling concurrency across a single query
+type instance struct {
+	locks   chan struct{}
+	handler queryrange.Handler
+}
 
-		logger, ctx := spanlogger.New(ctx, "DownstreamHandler")
+func (i instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logql.Result, error) {
+	return i.For(queries, func(qry logql.DownstreamQuery) (logql.Result, error) {
+		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards).WithQuery(qry.Expr.String()).(*LokiRequest)
+		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
 		level.Debug(logger).Log("shards", req.Shards, "query", req.Query)
 
-		res, err := h.next.Do(ctx, req)
+		res, err := i.handler.Do(ctx, req)
 		if err != nil {
 			return logql.Result{}, err
 		}
 		return ResponseToResult(res)
-	}), nil
+	})
+}
+
+// For runs a function against a list of queries, collecting the results or returning an error. The indices are preserved such that input[i] maps to output[i].
+func (in instance) For(
+	queries []logql.DownstreamQuery,
+	fn func(logql.DownstreamQuery) (logql.Result, error),
+) ([]logql.Result, error) {
+	type resp struct {
+		i   int
+		res logql.Result
+		err error
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+
+	ch := make(chan resp)
+
+	// Make one goroutine to dispatch the other goroutines, bounded by instance parallelism
+	go func() {
+		for i := 0; i < len(queries); i++ {
+			select {
+			case <-done:
+				break
+			case <-in.locks:
+				go func(i int) {
+					// release lock back into pool
+					defer func() {
+						in.locks <- struct{}{}
+					}()
+
+					res, err := fn(queries[i])
+					response := resp{
+						i:   i,
+						res: res,
+						err: err,
+					}
+
+					// Feed the result into the channel unless the work has completed.
+					select {
+					case <-done:
+					case ch <- response:
+					}
+				}(i)
+			}
+		}
+	}()
+
+	results := make([]logql.Result, len(queries))
+	for i := 0; i < len(queries); i++ {
+		resp := <-ch
+		if resp.err != nil {
+			return nil, resp.err
+		}
+		results[resp.i] = resp.res
+	}
+	return results, nil
+
 }
 
 // convert to matrix
