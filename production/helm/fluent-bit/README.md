@@ -78,7 +78,7 @@ For more details, read the [Fluent Bit documentation](../../../cmd/fluent-bit/RE
 | `loki.password`          | The http basic auth password to access the Loki service.                                           |                                  |
 | `config.port`            | the Fluent Bit port to listen. (This is mainly used to serve metrics)                              | `2020`                           |
 | `config.tenantID`        | The tenantID used by default to push logs to Loki                                                  | `''`                             |
-| `config.batchWait`       | Time to wait before send a log batch to Loki, full os not. (unit: secs)                            | `1`                              |
+| `config.batchWait`       | Time to wait before send a log batch to Loki, full or not. (unit: secs)                            | `1`                              |
 | `config.batchSize`       | Log batch size to send a log batch to Loki. (unit: bytes)                                          | `10240` (10KiB)                  |
 | `config.loglevel`        | the Fluent Bit log level (debug,info,warn,error).                                                  | `warn`                           |
 | `config.lineFormat`      | The line format to use to send a record (json/key_value)                                           | `json`                           |
