@@ -29,7 +29,6 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 )
 
 type ctxKeyType string
@@ -166,17 +165,15 @@ func Snapshot(ctx context.Context, execTime time.Duration, log log.Logger) Resul
 		res.Store.TotalDuplicates = c.TotalDuplicates
 	}
 
-	// see if there is a pre-computed Result embedded in the context which needs merging
-	if err := JoinResults(ctx, res); err != nil {
-		level.Warn(log).Log("msg", "could not merge Stats embedded in ctx", "err", err)
-	}
-	merged, err := GetResult(ctx)
+	existing, err := GetResult(ctx)
 	if err != nil {
-		merged = &res
+		res.ComputeSummary(execTime)
+		return res
 	}
 
-	merged.ComputeSummary(execTime)
-	return *merged
+	existing.Merge(res)
+	existing.ComputeSummary(execTime)
+	return *existing
 
 }
 
