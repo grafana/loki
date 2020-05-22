@@ -41,15 +41,17 @@ func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
 		locks <- struct{}{}
 	}
 	return &instance{
-		locks:   locks,
-		handler: h.next,
+		parallelism: p,
+		locks:       locks,
+		handler:     h.next,
 	}
 }
 
 // instance is an intermediate struct for controlling concurrency across a single query
 type instance struct {
-	locks   chan struct{}
-	handler queryrange.Handler
+	parallelism int
+	locks       chan struct{}
+	handler     queryrange.Handler
 }
 
 func (i instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logql.Result, error) {
