@@ -73,6 +73,15 @@ var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor strin
 		return nil, err
 	}
 
+	// Just seeking the cursor won't give us the entry. We should call Next() or Previous()
+	// to get the closest following or the closest preceding entry. We have chosen here to call Next(),
+	// reason being, if we call Previous() we would re read an already read entry.
+	// More info here https://www.freedesktop.org/software/systemd/man/sd_journal_seek_cursor.html#
+	_, err = journal.Next()
+	if err != nil {
+		return nil, err
+	}
+
 	return journal.GetEntry()
 }
 
