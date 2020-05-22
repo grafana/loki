@@ -1,13 +1,13 @@
 # Fluentd
 
 Loki has a [Fluentd](https://www.fluentd.org/) output plugin called
-`fluent-plugin-loki` that enables shipping logs to a private Loki
+`fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
 instance or [Grafana Cloud](https://grafana.com/oss/loki).
 
 ## Installation
 
 ```
-$ gem install fluent-plugin-loki
+$ gem install fluent-plugin-grafana-loki
 ```
 
 ## Usage
