@@ -113,6 +113,8 @@ func validateDriverOpt(loggerInfo logger.Info) error {
 		case "env-regex":
 		case "max-size":
 		case "max-file":
+		case "mode":
+		case "max-buffer-size":
 		default:
 			return fmt.Errorf("%s: wrong log-opt: '%s' - %s", driverName, opt, loggerInfo.ContainerID)
 		}
