@@ -136,7 +136,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         g.row('Flush Stats')
         .addPanel(
           g.panel('Queue Length') +
-          g.queryPanel('cortex_ingester_flush_queue_length{cluster="$cluster", job="$namespace/ingester"}', '{{instance}}'),
+          g.queryPanel('cortex_ingester_flush_queue_length{cluster="$cluster", job="$namespace/ingester"}', '{{pod}}'),
         )
         .addPanel(
           g.panel('Flush Rate') +
