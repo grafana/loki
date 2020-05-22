@@ -16,6 +16,53 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
+/*
+This includes a bunch of tooling for parallelization improvements based on backend shard factors. In schemas 10+ a shard factor (default 16) is introduced in the index store, calculated by hashing the label set of a log stream. This allows us to perform certain optimizations that fall under the umbrella of query remapping and querying shards individually. For instance, `{app="foo"} |= "bar"` can be executed on each shard independently, then reaggregated. There are also a class of optimizations that can be performed by altering a query into a functionally equivalent, but more parallelizable form. For instance, an average can be remapped into a sum/count, which can then take advantage of our sharded execution model.
+*/
+
+// ShardedEngine is an Engine implementation that can split queries into more parallelizable forms via
+// querying the underlying backend shards individually and reaggregating them.
+type ShardedEngine struct {
+	timeout   time.Duration
+	evaluator Evaluator
+	metrics   *ShardingMetrics
+}
+
+// NewShardedEngine constructs a *ShardedEngine
+func NewShardedEngine(opts EngineOpts, downstreamer Downstreamer, metrics *ShardingMetrics) *ShardedEngine {
+	opts.applyDefault()
+	return &ShardedEngine{
+		timeout:   opts.Timeout,
+		evaluator: NewDownstreamEvaluator(downstreamer),
+		metrics:   metrics,
+	}
+
+}
+
+// Query constructs a Query
+func (ng *ShardedEngine) Query(p Params, shards int) Query {
+	return &query{
+		timeout:   ng.timeout,
+		params:    p,
+		evaluator: ng.evaluator,
+		parse: func(ctx context.Context, query string) (Expr, error) {
+			logger := spanlogger.FromContext(ctx)
+			mapper, err := NewShardMapper(shards, ng.metrics)
+			if err != nil {
+				return nil, err
+			}
+			noop, parsed, err := mapper.Parse(query)
+			if err != nil {
+				level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", query)
+				return nil, err
+			}
+
+			level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
+			return parsed, nil
+		},
+	}
+}
+
 // DownstreamSampleExpr is a SampleExpr which signals downstream computation
 type DownstreamSampleExpr struct {
 	shard *astmapper.ShardAnnotation
@@ -352,43 +399,4 @@ func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
 	}
 	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
 
-}
-
-type ShardedEngine struct {
-	timeout   time.Duration
-	evaluator Evaluator
-	metrics   *ShardingMetrics
-}
-
-func NewShardedEngine(opts EngineOpts, downstreamer Downstreamer, metrics *ShardingMetrics) *ShardedEngine {
-	opts.applyDefault()
-	return &ShardedEngine{
-		timeout:   opts.Timeout,
-		evaluator: NewDownstreamEvaluator(downstreamer),
-		metrics:   metrics,
-	}
-
-}
-
-func (ng *ShardedEngine) Query(p Params, shards int) Query {
-	return &query{
-		timeout:   ng.timeout,
-		params:    p,
-		evaluator: ng.evaluator,
-		parse: func(ctx context.Context, query string) (Expr, error) {
-			logger := spanlogger.FromContext(ctx)
-			mapper, err := NewShardMapper(shards, ng.metrics)
-			if err != nil {
-				return nil, err
-			}
-			noop, parsed, err := mapper.Parse(query)
-			if err != nil {
-				level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", query)
-				return nil, err
-			}
-
-			level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
-			return parsed, nil
-		},
-	}
 }
