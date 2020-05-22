@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTombstonesLoader(t *testing.T) {
 	deleteRequestSelectors := []string{"foo"}
-	metric, err := promql.ParseMetric(deleteRequestSelectors[0])
+	metric, err := parser.ParseMetric(deleteRequestSelectors[0])
 	require.NoError(t, err)
 
 	for _, tc := range []struct {

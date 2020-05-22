@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
@@ -200,7 +200,7 @@ func TestChunkStore_Get(t *testing.T) {
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running query", tc.query, "with schema", schema)
-					matchers, err := promql.ParseMetricSelector(tc.query)
+					matchers, err := parser.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -521,7 +521,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running query", tc.query, "with schema", schema)
-					matchers, err := promql.ParseMetricSelector(tc.query)
+					matchers, err := parser.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -610,7 +610,7 @@ func TestChunkStore_verifyRegexSetOptimizations(t *testing.T) {
 				mockSchema.resetQueries()
 
 				t.Log("========= Running query", tc.query, "with schema", schema)
-				matchers, err := promql.ParseMetricSelector(tc.query)
+				matchers, err := parser.ParseMetricSelector(tc.query)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -934,7 +934,7 @@ func TestChunkStoreError(t *testing.T) {
 				store := newTestChunkStore(t, schema)
 				defer store.Stop()
 
-				matchers, err := promql.ParseMetricSelector(tc.query)
+				matchers, err := parser.ParseMetricSelector(tc.query)
 				require.NoError(t, err)
 
 				// Query with ordinary time-range
@@ -981,7 +981,7 @@ func TestStoreMaxLookBack(t *testing.T) {
 	err = storeWithLookBackLimit.Put(ctx, []Chunk{fooChunk2})
 	require.NoError(t, err)
 
-	matchers, err := promql.ParseMetricSelector(`foo{bar="baz"}`)
+	matchers, err := parser.ParseMetricSelector(`foo{bar="baz"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1089,7 +1089,7 @@ func TestStore_DeleteChunk(t *testing.T) {
 
 	nonExistentChunk := dummyChunkForEncoding(model.Now(), metric3, encoding.Varbit, 200)
 
-	fooMetricNameMatcher, err := promql.ParseMetricSelector(`foo`)
+	fooMetricNameMatcher, err := parser.ParseMetricSelector(`foo`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1175,7 +1175,7 @@ func TestStore_DeleteChunk(t *testing.T) {
 				}
 				require.NoError(t, err)
 
-				matchersForDeletedChunk, err := promql.ParseMetricSelector(tc.chunkToDelete.Metric.String())
+				matchersForDeletedChunk, err := parser.ParseMetricSelector(tc.chunkToDelete.Metric.String())
 				require.NoError(t, err)
 
 				var nonDeletedIntervals []model.Interval
@@ -1218,7 +1218,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 		{Name: "bar", Value: "baz2"},
 	}
 
-	matchers, err := promql.ParseMetricSelector(`foo`)
+	matchers, err := parser.ParseMetricSelector(`foo`)
 	if err != nil {
 		t.Fatal(err)
 	}

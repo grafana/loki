@@ -11,7 +11,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 
@@ -394,7 +394,7 @@ func BenchmarkEncodeLabelsString(b *testing.B) {
 	var err error
 	for n := 0; n < b.N; n++ {
 		data = []byte(lbs.String())
-		decoded, err = promql.ParseMetric(string(data))
+		decoded, err = parser.ParseMetric(string(data))
 		if err != nil {
 			panic(err)
 		}

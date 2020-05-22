@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -237,7 +237,7 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 }
 
 func TestDataPurger_ExecutePlan(t *testing.T) {
-	fooMetricNameMatcher, err := promql.ParseMetricSelector(`foo`)
+	fooMetricNameMatcher, err := parser.ParseMetricSelector(`foo`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 }
 
 func TestDataPurger_Restarts(t *testing.T) {
-	fooMetricNameMatcher, err := promql.ParseMetricSelector(`foo`)
+	fooMetricNameMatcher, err := parser.ParseMetricSelector(`foo`)
 	if err != nil {
 		t.Fatal(err)
 	}

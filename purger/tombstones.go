@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -214,7 +214,7 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 		tombstoneSet.tombstones[i].Matchers = make([][]*labels.Matcher, len(tombstoneSet.tombstones[i].Selectors))
 
 		for j, selector := range tombstoneSet.tombstones[i].Selectors {
-			tombstoneSet.tombstones[i].Matchers[j], err = promql.ParseMetricSelector(selector)
+			tombstoneSet.tombstones[i].Matchers[j], err = parser.ParseMetricSelector(selector)
 
 			if err != nil {
 				tl.metrics.deleteRequestsLoadFailures.Inc()

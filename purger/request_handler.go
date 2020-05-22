@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -65,7 +65,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	for i := range match {
-		_, err := promql.ParseMetricSelector(match[i])
+		_, err := parser.ParseMetricSelector(match[i])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

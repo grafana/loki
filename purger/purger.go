@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -403,7 +404,7 @@ func (dp *DataPurger) buildDeletePlan(req deleteRequestWithLogger) error {
 		chunksGroups := []ChunksGroup{}
 
 		for _, selector := range req.Selectors {
-			matchers, err := promql.ParseMetricSelector(selector)
+			matchers, err := parser.ParseMetricSelector(selector)
 			if err != nil {
 				return err
 			}
