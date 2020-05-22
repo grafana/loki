@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -137,6 +138,42 @@ func Test_astMapper(t *testing.T) {
 	require.Equal(t, called, 2)
 	require.Equal(t, expected.(*LokiResponse).Data, resp.(*LokiResponse).Data)
 
+}
+
+func Test_hasShards(t *testing.T) {
+	for i, tc := range []struct {
+		input    queryrange.ShardingConfigs
+		expected bool
+	}{
+		{
+			input: queryrange.ShardingConfigs{
+				{},
+			},
+			expected: false,
+		},
+		{
+			input: queryrange.ShardingConfigs{
+				{RowShards: 16},
+			},
+			expected: true,
+		},
+		{
+			input: queryrange.ShardingConfigs{
+				{},
+				{RowShards: 16},
+				{},
+			},
+			expected: true,
+		},
+		{
+			input:    nil,
+			expected: false,
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			require.Equal(t, tc.expected, hasShards(tc.input))
+		})
+	}
 }
 
 // astmapper successful stream & prom conversion
