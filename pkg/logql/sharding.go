@@ -8,7 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
@@ -174,6 +174,9 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		for cur != nil {
 			go func(expr SampleExpr) {
 				eval, err := ev.StepEvaluator(ctx, nextEv, expr, params)
+				if err != nil {
+					level.Warn(util.Logger).Log("msg", "could not extract StepEvaluator", "err", err, "expr", expr.String())
+				}
 				select {
 				case <-done:
 				case ch <- result{eval, err}:
@@ -248,6 +251,9 @@ func (ev *DownstreamEvaluator) Iterator(
 		for cur != nil {
 			go func(expr LogSelectorExpr) {
 				iterator, err := ev.Iterator(ctx, expr, params)
+				if err != nil {
+					level.Warn(util.Logger).Log("msg", "could not extract Iterator", "err", err, "expr", expr.String())
+				}
 				select {
 				case <-done:
 				case ch <- result{iterator, err}:
@@ -364,16 +370,13 @@ func NewShardedEngine(opts EngineOpts, downstreamer Downstreamer, metrics *Shard
 
 }
 
-func (ng *ShardedEngine) Query(p Params, shards int, logger log.Logger) Query {
-	if logger == nil {
-		logger = log.NewNopLogger()
-	}
-
+func (ng *ShardedEngine) Query(p Params, shards int) Query {
 	return &query{
 		timeout:   ng.timeout,
 		params:    p,
 		evaluator: ng.evaluator,
-		parse: func(query string) (Expr, error) {
+		parse: func(ctx context.Context, query string) (Expr, error) {
+			logger := spanlogger.FromContext(ctx)
 			mapper, err := NewShardMapper(shards, ng.metrics)
 			if err != nil {
 				return nil, err

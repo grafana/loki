@@ -94,7 +94,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 		return nil, fmt.Errorf("expected *LokiRequest, got (%T)", r)
 	}
 	params := paramsFromRequest(req)
-	query := ast.ng.Query(params, int(conf.RowShards), shardedLog)
+	query := ast.ng.Query(params, int(conf.RowShards))
 
 	res, err := query.Exec(ctx)
 	if err != nil {

@@ -95,7 +95,9 @@ func (ng *Engine) Query(params Params) Query {
 		timeout:   ng.timeout,
 		params:    params,
 		evaluator: ng.evaluator,
-		parse:     ParseExpr,
+		parse: func(_ context.Context, query string) (Expr, error) {
+			return ParseExpr(query)
+		},
 	}
 }
 
@@ -108,13 +110,13 @@ type Query interface {
 type query struct {
 	timeout   time.Duration
 	params    Params
-	parse     func(string) (Expr, error)
+	parse     func(context.Context, string) (Expr, error)
 	evaluator Evaluator
 }
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (Result, error) {
-	log, ctx := spanlogger.New(ctx, "Engine.Exec")
+	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
 
 	rangeType := GetRangeType(q.params)
@@ -150,7 +152,7 @@ func (q *query) Eval(ctx context.Context) (promql.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, q.timeout)
 	defer cancel()
 
-	expr, err := q.parse(q.params.Query())
+	expr, err := q.parse(ctx, q.params.Query())
 	if err != nil {
 		return nil, err
 	}

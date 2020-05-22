@@ -71,7 +71,7 @@ func TestMappingEquivalence(t *testing.T) {
 				nil,
 			)
 			qry := regular.Query(params)
-			shardedQry := sharded.Query(params, shards, nil)
+			shardedQry := sharded.Query(params, shards)
 
 			res, err := qry.Exec(context.Background())
 			require.Nil(t, err)
