@@ -4,8 +4,8 @@ import (
 	"time"
 	"fmt"
 
-	"github.com/influxdata/go-syslog/v2"
-	"github.com/influxdata/go-syslog/v2/common"
+	"github.com/influxdata/go-syslog/v3"
+	"github.com/influxdata/go-syslog/v3/common"
 )
 
 // ColumnPositionTemplate is the template used to communicate the column where errors occur.
@@ -13,35 +13,37 @@ var ColumnPositionTemplate = " [col %d]"
 
 const (
 	// ErrPrival represents an error in the priority value (PRIVAL) inside the PRI part of the RFC5424 syslog message.
-	ErrPrival         = "expecting a priority value in the range 1-191 or equal to 0"
+	ErrPrival          = "expecting a priority value in the range 1-191 or equal to 0"
 	// ErrPri represents an error in the PRI part of the RFC5424 syslog message.
-	ErrPri            = "expecting a priority value within angle brackets"
+	ErrPri             = "expecting a priority value within angle brackets"
 	// ErrVersion represents an error in the VERSION part of the RFC5424 syslog message.
-	ErrVersion        = "expecting a version value in the range 1-999"
+	ErrVersion         = "expecting a version value in the range 1-999"
 	// ErrTimestamp represents an error in the TIMESTAMP part of the RFC5424 syslog message.
-	ErrTimestamp      = "expecting a RFC3339MICRO timestamp or a nil value"
+	ErrTimestamp       = "expecting a RFC3339MICRO timestamp or a nil value"
 	// ErrHostname represents an error in the HOSTNAME part of the RFC5424 syslog message.
-	ErrHostname       = "expecting an hostname (from 1 to max 255 US-ASCII characters) or a nil value"
+	ErrHostname        = "expecting an hostname (from 1 to max 255 US-ASCII characters) or a nil value"
 	// ErrAppname represents an error in the APP-NAME part of the RFC5424 syslog message.
-	ErrAppname        = "expecting an app-name (from 1 to max 48 US-ASCII characters) or a nil value"
+	ErrAppname         = "expecting an app-name (from 1 to max 48 US-ASCII characters) or a nil value"
 	// ErrProcID represents an error in the PROCID part of the RFC5424 syslog message.
-	ErrProcID         = "expecting a procid (from 1 to max 128 US-ASCII characters) or a nil value"
+	ErrProcID          = "expecting a procid (from 1 to max 128 US-ASCII characters) or a nil value"
 	// ErrMsgID represents an error in the MSGID part of the RFC5424 syslog message.
-	ErrMsgID          = "expecting a msgid (from 1 to max 32 US-ASCII characters) or a nil value"
+	ErrMsgID           = "expecting a msgid (from 1 to max 32 US-ASCII characters) or a nil value"
 	// ErrStructuredData represents an error in the STRUCTURED DATA part of the RFC5424 syslog message.
-	ErrStructuredData = "expecting a structured data section containing one or more elements (`[id( key=\"value\")*]+`) or a nil value"
+	ErrStructuredData  = "expecting a structured data section containing one or more elements (`[id( key=\"value\")*]+`) or a nil value"
 	// ErrSdID represents an error regarding the ID of a STRUCTURED DATA element of the RFC5424 syslog message.
-	ErrSdID           = "expecting a structured data element id (from 1 to max 32 US-ASCII characters; except `=`, ` `, `]`, and `\"`"
+	ErrSdID            = "expecting a structured data element id (from 1 to max 32 US-ASCII characters; except `=`, ` `, `]`, and `\"`"
 	// ErrSdIDDuplicated represents an error occurring when two STRUCTURED DATA elementes have the same ID in a RFC5424 syslog message.
-	ErrSdIDDuplicated = "duplicate structured data element id"
+	ErrSdIDDuplicated  = "duplicate structured data element id"
 	// ErrSdParam represents an error regarding a STRUCTURED DATA PARAM of the RFC5424 syslog message.
-	ErrSdParam        = "expecting a structured data parameter (`key=\"value\"`, both part from 1 to max 32 US-ASCII characters; key cannot contain `=`, ` `, `]`, and `\"`, while value cannot contain `]`, backslash, and `\"` unless escaped)"
+	ErrSdParam         = "expecting a structured data parameter (`key=\"value\"`, both part from 1 to max 32 US-ASCII characters; key cannot contain `=`, ` `, `]`, and `\"`, while value cannot contain `]`, backslash, and `\"` unless escaped)"
 	// ErrMsg represents an error in the MESSAGE part of the RFC5424 syslog message.
-	ErrMsg            = "expecting a free-form optional message in UTF-8 (starting with or without BOM)"
+	ErrMsg             = "expecting a free-form optional message in UTF-8 (starting with or without BOM)"
+	// ErrMsgNotCompliant represents an error in the MESSAGE part of the RFC5424 syslog message if WithCompliatMsg option is on.
+	ErrMsgNotCompliant = ErrMsg + " or a free-form optional message in any encoding (starting without BOM)"
 	// ErrEscape represents the error for a RFC5424 syslog message occurring when a STRUCTURED DATA PARAM value contains '"', '\', or ']' not escaped.
-	ErrEscape         = "expecting chars `]`, `\"`, and `\\` to be escaped within param value"
+	ErrEscape          = "expecting chars `]`, `\"`, and `\\` to be escaped within param value"
 	// ErrParse represents a general parsing error for a RFC5424 syslog message.
-	ErrParse          = "parsing error"
+	ErrParse           = "parsing error"
 )
 
 // RFC3339MICRO represents the timestamp format that RFC5424 mandates.
@@ -63,6 +65,15 @@ action markmsg {
 	m.msgat = m.p
 }
 
+action select_msg_mode {
+	fhold;
+
+	if m.compliantMsg {
+		fgoto msg_compliant;
+	}
+	fgoto msg_any;
+}
+
 action set_prival {
 	output.priority = uint8(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
 	output.prioritySet = true
@@ -74,13 +85,13 @@ action set_version {
 
 action set_timestamp {
 	if t, e := time.Parse(RFC3339MICRO, string(m.text())); e != nil {
-        m.err = fmt.Errorf("%s [col %d]", e, m.p)
+		m.err = fmt.Errorf("%s [col %d]", e, m.p)
 		fhold;
-    	fgoto fail;
-    } else {
-        output.timestamp = t
+		fgoto fail;
+	} else {
+		output.timestamp = t
 		output.timestampSet = true
-    }
+	}
 }
 
 action set_hostname {
@@ -151,55 +162,55 @@ action set_msg {
 action err_prival {
 	m.err = fmt.Errorf(ErrPrival + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_pri {
 	m.err = fmt.Errorf(ErrPri + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_version {
 	m.err = fmt.Errorf(ErrVersion + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_timestamp {
 	m.err = fmt.Errorf(ErrTimestamp + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_hostname {
 	m.err = fmt.Errorf(ErrHostname + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_appname {
 	m.err = fmt.Errorf(ErrAppname + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_procid {
 	m.err = fmt.Errorf(ErrProcID + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_msgid {
 	m.err = fmt.Errorf(ErrMsgID + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_structureddata {
 	m.err = fmt.Errorf(ErrStructuredData + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_sdid {
@@ -209,7 +220,7 @@ action err_sdid {
 	}
 	m.err = fmt.Errorf(ErrSdID + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_sdparam {
@@ -218,7 +229,7 @@ action err_sdparam {
 	}
 	m.err = fmt.Errorf(ErrSdParam + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_msg {
@@ -228,34 +239,31 @@ action err_msg {
 		output.message = string(m.data[m.msgat:m.p])
 	}
 
-	m.err = fmt.Errorf(ErrMsg + ColumnPositionTemplate, m.p)
+	if m.compliantMsg {
+		m.err = fmt.Errorf(ErrMsgNotCompliant + ColumnPositionTemplate, m.p)
+	} else {
+		m.err = fmt.Errorf(ErrMsg + ColumnPositionTemplate, m.p)
+	}
+
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_escape {
 	m.err = fmt.Errorf(ErrEscape + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 action err_parse {
 	m.err = fmt.Errorf(ErrParse + ColumnPositionTemplate, m.p)
 	fhold;
-    fgoto fail;
+	fgoto fail;
 }
 
 nilvalue = '-';
 
-nonzerodigit = '1'..'9';
-
-# 1..191
-privalrange = (('1' ('9' ('0'..'1'){,1} | '0'..'8' ('0'..'9'){,1}){,1}) | ('2'..'9' ('0'..'9'){,1}));
-
-# 1..191 or 0
-prival = (privalrange | '0') >mark %from(set_prival) $err(err_prival);
-
-pri = ('<' prival '>') @err(err_pri);
+pri = ('<' prival >mark %from(set_prival) $err(err_prival) '>') @err(err_pri);
 
 version = (nonzerodigit digit{0,2} <err(err_version)) >mark %from(set_version) %eof(set_version) @err(err_version);
 
@@ -290,7 +298,14 @@ sdelement = ('[' sdid (sp sdparam)* ']');
 
 structureddata = nilvalue | sdelement+ >ini_elements $err(err_structureddata);
 
-msg = (bom? utf8octets) >mark >markmsg %set_msg $err(err_msg);
+msg_any := any* >mark >markmsg %set_msg $err(err_msg);
+
+# MSG-ANY = *OCTET ; not starting with BOM
+# MSG-UTF8 = BOM *OCTECT ; UTF-8 string as specified in RFC 3629
+# MSG = MSG-ANY | MSG-UTF8
+msg_compliant := ((bom utf8octets) | (any* - (bom any*))) >mark >markmsg %set_msg $err(err_msg);
+
+msg = any? @select_msg_mode;
 
 fail := (any - [\n\r])* @err{ fgoto main; };
 
@@ -311,6 +326,7 @@ type machine struct {
 	msgat        int
 	backslashat  []int
 	bestEffort 	 bool
+	compliantMsg bool
 }
 
 // NewMachine creates a new FSM able to parse RFC5424 syslog messages.
@@ -330,6 +346,7 @@ func NewMachine(options ...syslog.MachineOption) syslog.Machine {
 	return m
 }
 
+// WithBestEffort enables best effort mode.
 func (m *machine) WithBestEffort() {
 	m.bestEffort = true
 }
@@ -368,11 +385,11 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 	m.err = nil
 	output := &syslogMessage{}
 
-    %% write init;
-    %% write exec;
+	%% write init;
+	%% write exec;
 
 	if m.cs < first_final || m.cs == en_fail {
-		if m.bestEffort && output.valid() {
+		if m.bestEffort && output.minimal() {
 			// An error occurred but partial parsing is on and partial message is minimally valid
 			return output.export(), m.err
 		}
