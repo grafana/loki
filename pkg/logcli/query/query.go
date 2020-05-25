@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -109,6 +110,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 	if err := cfg.YAML(&q.LocalConfig)(&conf); err != nil {
+		return err
+	}
+
+	if err := conf.Validate(util.Logger); err != nil {
 		return err
 	}
 
