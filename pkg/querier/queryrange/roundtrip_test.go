@@ -76,6 +76,17 @@ var (
 			Labels: `{filename="/var/hostlog/apport.log", job="varlogs"}`,
 		},
 	}
+
+	series = logproto.SeriesResponse{
+		Series: []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+			},
+			{
+				Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+			},
+		},
+	}
 )
 
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
@@ -191,6 +202,47 @@ func TestLogFilterTripperware(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSeriesTripperware(t *testing.T) {
+
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiSeriesRequest{
+		Match:   []string{`{job="varlogs"}`},
+		StartTs: testTime.Add(-6 * time.Hour), // bigger than the limit
+		EndTs:   testTime,
+		Path:    "/loki/api/v1/series",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	count, h := seriesResult(series)
+	rt.setHandler(h)
+	resp, err := tpw(rt).RoundTrip(req)
+	// 2 queries
+	require.Equal(t, 2, *count)
+	require.NoError(t, err)
+	lokiSeriesResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
+	res, ok := lokiSeriesResponse.(*LokiSeriesResponse)
+	require.Equal(t, true, ok)
+
+	// make sure we return unique series since responses from
+	// SplitByInterval middleware might have duplicate series
+	require.Equal(t, series.Series, res.Data)
+	require.NoError(t, err)
+}
 func TestLogNoRegex(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
@@ -313,6 +365,10 @@ func TestPostQueries(t *testing.T) {
 		}),
 		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected metric roundtripper called")
+			return nil, nil
+		}),
+		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected series roundtripper called")
 			return nil, nil
 		}),
 		fakeLimits{},
@@ -442,7 +498,19 @@ func promqlResult(v promql.Value) (*int, http.Handler) {
 		}
 		count++
 	})
+}
 
+func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
+	count := 0
+	var lock sync.Mutex
+	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		defer lock.Unlock()
+		if err := marshal.WriteSeriesResponseJSON(v, w); err != nil {
+			panic(err)
+		}
+		count++
+	})
 }
 
 type fakeRoundTripper struct {

@@ -64,61 +64,77 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
-		return newRoundTripper(next, logFilterRT, metricRT, limits)
+		seriesRT := seriesTripperware(next)
+		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, limits)
 	}, cache, nil
 }
 
 type roundTripper struct {
-	next, log, metric http.RoundTripper
+	next, log, metric, series http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(next, log, metric http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(next, log, metric, series http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
 		log:    log,
 		limits: limits,
 		metric: metric,
+		series: series,
 		next:   next,
 	}
 }
 
 func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if !strings.HasSuffix(req.URL.Path, "/query_range") && !strings.HasSuffix(req.URL.Path, "/prom/query") {
-		return r.next.RoundTrip(req)
-	}
 	err := req.ParseForm()
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
-	rangeQuery, err := loghttp.ParseRangeQuery(req)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-	expr, err := logql.ParseExpr(rangeQuery.Query)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-	switch e := expr.(type) {
-	case logql.SampleExpr:
-		return r.metric.RoundTrip(req)
-	case logql.LogSelectorExpr:
-		filter, err := transformRegexQuery(req, e).Filter()
+
+	switch op := getOperation(req); op {
+	case "query_range":
+		rangeQuery, err := loghttp.ParseRangeQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		if err := validateLimits(req, rangeQuery.Limit, r.limits); err != nil {
-			return nil, err
+		expr, err := logql.ParseExpr(rangeQuery.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		if filter == nil {
+		switch e := expr.(type) {
+		case logql.SampleExpr:
+			return r.metric.RoundTrip(req)
+		case logql.LogSelectorExpr:
+			filter, err := transformRegexQuery(req, e).Filter()
+			if err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
+			if err := validateLimits(req, rangeQuery.Limit, r.limits); err != nil {
+				return nil, err
+			}
+			if filter == nil {
+				return r.next.RoundTrip(req)
+			}
+			return r.log.RoundTrip(req)
+
+		default:
 			return r.next.RoundTrip(req)
 		}
-		return r.log.RoundTrip(req)
-
+	case "series":
+		_, err := loghttp.ParseSeriesQuery(req)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return r.series.RoundTrip(req)
 	default:
 		return r.next.RoundTrip(req)
 	}
@@ -154,6 +170,16 @@ func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
 	return nil
 }
 
+func getOperation(req *http.Request) string {
+	if strings.HasSuffix(req.URL.Path, "/query_range") || strings.HasSuffix(req.URL.Path, "/prom/query") {
+		return "query_range"
+	} else if strings.HasSuffix(req.URL.Path, "/series") {
+		return "series"
+	} else {
+		return ""
+	}
+}
+
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests with regex.
 func NewLogFilterTripperware(
 	cfg Config,
@@ -187,6 +213,32 @@ func NewLogFilterTripperware(
 		)
 	}
 
+	if cfg.MaxRetries > 0 {
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
+	}
+
+	return func(next http.RoundTripper) http.RoundTripper {
+		if len(queryRangeMiddleware) > 0 {
+			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
+		}
+		return next
+	}, nil
+}
+
+// NewSeriesripperware creates a new frontend tripperware responsible for handling series requests
+func NewSeriesTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	codec queryrange.Codec,
+	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
+	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
+	splitByMetrics *SplitByMetrics,
+) (frontend.Tripperware, error) {
+	queryRangeMiddleware := []queryrange.Middleware{}
+	if cfg.SplitQueriesByInterval != 0 {
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByMetrics))
+	}
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
