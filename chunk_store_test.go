@@ -179,7 +179,7 @@ func TestChunkStore_Get(t *testing.T) {
 		},
 		{
 			query: `{__name__=~"foo"}`,
-			err:   "rpc error: code = Code(400) desc = query must contain metric name",
+			err:   "query must contain metric name",
 		},
 	}
 	for _, schema := range schemas {
@@ -908,25 +908,25 @@ func TestChunkStoreError(t *testing.T) {
 			query:   "foo",
 			from:    model.Time(0).Add(31 * 24 * time.Hour),
 			through: model.Time(0),
-			err:     "rpc error: code = Code(400) desc = invalid query, through < from (0 < 2678400)",
+			err:     "invalid query, through < from (0 < 2678400)",
 		},
 		{
 			query:   "foo",
 			from:    model.Time(0),
 			through: model.Time(0).Add(31 * 24 * time.Hour),
-			err:     "rpc error: code = Code(400) desc = invalid query, length > limit (744h0m0s > 720h0m0s)",
+			err:     "invalid query, length > limit (744h0m0s > 720h0m0s)",
 		},
 		{
 			query:   "{foo=\"bar\"}",
 			from:    model.Time(0),
 			through: model.Time(0).Add(1 * time.Hour),
-			err:     "rpc error: code = Code(400) desc = query must contain metric name",
+			err:     "query must contain metric name",
 		},
 		{
 			query:   "{__name__=~\"bar\"}",
 			from:    model.Time(0),
 			through: model.Time(0).Add(1 * time.Hour),
-			err:     "rpc error: code = Code(400) desc = query must contain metric name",
+			err:     "query must contain metric name",
 		},
 	} {
 		for _, schema := range schemas {
