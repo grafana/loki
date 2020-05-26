@@ -77,11 +77,15 @@ For more details, read the [Fluent Bit documentation](../../../cmd/fluent-bit/RE
 | `loki.user`              | The http basic auth username to access the Loki service.                                           |                                  |
 | `loki.password`          | The http basic auth password to access the Loki service.                                           |                                  |
 | `config.port`            | the Fluent Bit port to listen. (This is mainly used to serve metrics)                              | `2020`                           |
+| `config.tenantID`        | The tenantID used by default to push logs to Loki                                                  | `''`                             |
+| `config.batchWait`       | Time to wait before send a log batch to Loki, full or not. (unit: secs)                            | `1`                              |
+| `config.batchSize`       | Log batch size to send a log batch to Loki. (unit: bytes)                                          | `10240` (10KiB)                  |
 | `config.loglevel`        | the Fluent Bit log level (debug,info,warn,error).                                                  | `warn`                           |
 | `config.lineFormat`      | The line format to use to send a record (json/key_value)                                           | `json`                           |
 | `config.k8sLoggingParser`| Allow Kubernetes Pods to suggest a pre-defined Parser. See [Official Fluent Bit documentation](https://docs.fluentbit.io/manual/filter/kubernetes#kubernetes-annotations).                                                                                      | `Off`                           |
 | `config.removeKeys`      | The list of key to remove from each record                                                         | `[removeKeys,stream]`            |
 | `config.labels`          | A set of labels to send for every log                                                              | `'{job="fluent-bit"}'`           |
+| `config.autoKubernetesLabels` | If set to true, it will add all Kubernetes labels to Loki labels                                   | `false`                          |
 | `config.labelMap`        | Mapping of labels from a record. See [Fluent Bit documentation](../../../cmd/fluent-bit/README.md) |                                  |
 | `config.parsers`         | Definition of extras fluent bit parsers. See [Official Fluent Bit documentation](https://docs.fluentbit.io/manual/filter/parser). The format is a sequence of mappings where each key is the same as the one in the [PARSER] section of parsers.conf file       | `[]`                            |
 | `config.extraOutputs`    | Definition of extras fluent bit outputs. See [Official Fluent Bit documentation](https://docs.fluentbit.io/manual/pipeline/outputs/). The format is a sequence of mappings where each key is the same as the one in the [OUTPUT]                                | `[]`                            |
