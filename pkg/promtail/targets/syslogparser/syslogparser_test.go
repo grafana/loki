@@ -5,7 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/influxdata/go-syslog/v2"
+	"github.com/influxdata/go-syslog/v3"
+	"github.com/influxdata/go-syslog/v3/rfc5424"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/promtail/targets/syslogparser"
@@ -24,9 +25,9 @@ func TestParseStream_OctetCounting(t *testing.T) {
 
 	require.Equal(t, 2, len(results))
 	require.NoError(t, results[0].Error)
-	require.Equal(t, "First", *results[0].Message.Message())
+	require.Equal(t, "First", *results[0].Message.(*rfc5424.SyslogMessage).Message)
 	require.NoError(t, results[1].Error)
-	require.Equal(t, "Second", *results[1].Message.Message())
+	require.Equal(t, "Second", *results[1].Message.(*rfc5424.SyslogMessage).Message)
 }
 
 func TestParseStream_NewlineSeparated(t *testing.T) {
@@ -42,9 +43,9 @@ func TestParseStream_NewlineSeparated(t *testing.T) {
 
 	require.Equal(t, 2, len(results))
 	require.NoError(t, results[0].Error)
-	require.Equal(t, "First", *results[0].Message.Message())
+	require.Equal(t, "First", *results[0].Message.(*rfc5424.SyslogMessage).Message)
 	require.NoError(t, results[1].Error)
-	require.Equal(t, "Second", *results[1].Message.Message())
+	require.Equal(t, "Second", *results[1].Message.(*rfc5424.SyslogMessage).Message)
 }
 
 func TestParseStream_InvalidStream(t *testing.T) {

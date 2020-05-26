@@ -21,6 +21,25 @@ func TestParse(t *testing.T) {
 		err error
 	}{
 		{
+			// raw string
+			in: "count_over_time({foo=~`bar\\w+`}[12h] |~ `error\\`)",
+			exp: &rangeAggregationExpr{
+				operation: "count_over_time",
+				left: &logRange{
+					left: &filterExpr{
+						ty:    labels.MatchRegexp,
+						match: "error\\",
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchRegexp, "foo", "bar\\w+"),
+							},
+						},
+					},
+					interval: 12 * time.Hour,
+				},
+			},
+		},
+		{
 			// test [12h] before filter expr
 			in: `count_over_time({foo="bar"}[12h] |= "error")`,
 			exp: &rangeAggregationExpr{
@@ -658,10 +677,10 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `
-			sum(count_over_time({foo="bar"}[5m])) by (foo) ^
-			sum(count_over_time({foo="bar"}[5m])) by (foo) /
-			sum(count_over_time({foo="bar"}[5m])) by (foo)
-			`,
+					sum(count_over_time({foo="bar"}[5m])) by (foo) ^
+					sum(count_over_time({foo="bar"}[5m])) by (foo) /
+					sum(count_over_time({foo="bar"}[5m])) by (foo)
+					`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
 				mustNewBinOpExpr(
@@ -720,10 +739,10 @@ func TestParse(t *testing.T) {
 		{
 			// operator precedence before left associativity
 			in: `
-			sum(count_over_time({foo="bar"}[5m])) by (foo) +
-			sum(count_over_time({foo="bar"}[5m])) by (foo) /
-			sum(count_over_time({foo="bar"}[5m])) by (foo)
-			`,
+					sum(count_over_time({foo="bar"}[5m])) by (foo) +
+					sum(count_over_time({foo="bar"}[5m])) by (foo) /
+					sum(count_over_time({foo="bar"}[5m])) by (foo)
+					`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
@@ -781,10 +800,10 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `sum by (job) (
-					count_over_time({namespace="tns"} |= "level=error"[5m])
-				/
-					count_over_time({namespace="tns"}[5m])
-				)`,
+							count_over_time({namespace="tns"} |= "level=error"[5m])
+						/
+							count_over_time({namespace="tns"}[5m])
+						)`,
 			exp: mustNewVectorAggregationExpr(
 				mustNewBinOpExpr(OpTypeDiv,
 					newRangeAggregationExpr(
@@ -812,10 +831,10 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `sum by (job) (
-					count_over_time({namespace="tns"} |= "level=error"[5m])
-				/
-					count_over_time({namespace="tns"}[5m])
-				) * 100`,
+							count_over_time({namespace="tns"} |= "level=error"[5m])
+						/
+							count_over_time({namespace="tns"}[5m])
+						) * 100`,
 			exp: mustNewBinOpExpr(OpTypeMul, mustNewVectorAggregationExpr(
 				mustNewBinOpExpr(OpTypeDiv,
 					newRangeAggregationExpr(

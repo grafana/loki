@@ -76,19 +76,26 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
-func (c *Client) ListLabelNames(quiet bool) (*loghttp.LabelResponse, error) {
+func (c *Client) ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
 	var labelResponse loghttp.LabelResponse
-	if err := c.doRequest(labelsPath, "", quiet, &labelResponse); err != nil {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", from.UnixNano())
+	params.SetInt("end", through.UnixNano())
+
+	if err := c.doRequest(labelsPath, params.Encode(), quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
 }
 
 // ListLabelValues uses the /api/v1/label endpoint to list label values
-func (c *Client) ListLabelValues(name string, quiet bool) (*loghttp.LabelResponse, error) {
+func (c *Client) ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
 	var labelResponse loghttp.LabelResponse
-	if err := c.doRequest(path, "", quiet, &labelResponse); err != nil {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", from.UnixNano())
+	params.SetInt("end", through.UnixNano())
+	if err := c.doRequest(path, params.Encode(), quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil

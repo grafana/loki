@@ -169,7 +169,7 @@ Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
 
 $ logcli help labels
-usage: logcli labels [<label>]
+usage: logcli labels [<flags>] [<label>]
 
 Find values for a given label.
 
@@ -188,7 +188,11 @@ Flags:
       --tls-skip-verify  Server certificate TLS skip verify.
       --cert=""          Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
       --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=ORG-ID    adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.
+      --org-id=ORG-ID    adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting 
+      tenant data when bypassing an auth gateway.
+      --since=1h         Lookback window.
+      --from=FROM        Start looking for labels at this absolute time (inclusive)
+      --to=TO            Stop looking for labels at this absolute time (exclusive)
 
 Args:
   [<label>]  The name of the label.

@@ -449,12 +449,12 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
-# github.com/influxdata/go-syslog/v2 v2.0.1
-github.com/influxdata/go-syslog/v2
-github.com/influxdata/go-syslog/v2/common
-github.com/influxdata/go-syslog/v2/nontransparent
-github.com/influxdata/go-syslog/v2/octetcounting
-github.com/influxdata/go-syslog/v2/rfc5424
+# github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da
+github.com/influxdata/go-syslog/v3
+github.com/influxdata/go-syslog/v3/common
+github.com/influxdata/go-syslog/v3/nontransparent
+github.com/influxdata/go-syslog/v3/octetcounting
+github.com/influxdata/go-syslog/v3/rfc5424
 # github.com/jessevdk/go-flags v1.4.0
 github.com/jessevdk/go-flags
 # github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
