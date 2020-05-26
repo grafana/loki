@@ -661,6 +661,8 @@ labels:
 [path: <string>]
 ```
 
+**Note**: priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
+
 ### syslog_config
 
 The `syslog_config` block configures a syslog listener allowing users to push
