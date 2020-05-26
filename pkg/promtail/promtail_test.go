@@ -470,17 +470,8 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if _, ok := h.receivedMap[file]; ok {
-			h.receivedMap[file] = append(h.receivedMap[file], s.Entries...)
-		} else {
-			h.receivedMap[file] = s.Entries
-		}
-
-		if _, ok := h.receivedLabels[file]; ok {
-			h.receivedLabels[file] = append(h.receivedLabels[file], parsedLabels)
-		} else {
-			h.receivedLabels[file] = []labels.Labels{parsedLabels}
-		}
+		h.receivedMap[file] = append(h.receivedMap[file], s.Entries...)
+		h.receivedLabels[file] = append(h.receivedLabels[file], parsedLabels)
 
 	}
 
