@@ -27,7 +27,7 @@ func TestSnapshot(t *testing.T) {
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
 
-	res := Snapshot(ctx, 2*time.Second, util.Logger)
+	res := Snapshot(ctx, 2*time.Second)
 	res.Log(util.Logger)
 	expected := Result{
 		Ingester: Ingester{
@@ -101,7 +101,7 @@ func TestSnapshot_MergesResults(t *testing.T) {
 
 	err := JoinResults(ctx, expected)
 	require.Nil(t, err)
-	res := Snapshot(ctx, 2*time.Second, util.Logger)
+	res := Snapshot(ctx, 2*time.Second)
 	require.Equal(t, expected, res)
 }
 

@@ -17,7 +17,14 @@ import (
 )
 
 /*
-This includes a bunch of tooling for parallelization improvements based on backend shard factors. In schemas 10+ a shard factor (default 16) is introduced in the index store, calculated by hashing the label set of a log stream. This allows us to perform certain optimizations that fall under the umbrella of query remapping and querying shards individually. For instance, `{app="foo"} |= "bar"` can be executed on each shard independently, then reaggregated. There are also a class of optimizations that can be performed by altering a query into a functionally equivalent, but more parallelizable form. For instance, an average can be remapped into a sum/count, which can then take advantage of our sharded execution model.
+This includes a bunch of tooling for parallelization improvements based on backend shard factors.
+In schemas 10+ a shard factor (default 16) is introduced in the index store,
+calculated by hashing the label set of a log stream. This allows us to perform certain optimizations
+that fall under the umbrella of query remapping and querying shards individually.
+For instance, `{app="foo"} |= "bar"` can be executed on each shard independently, then reaggregated.
+There are also a class of optimizations that can be performed by altering a query into a functionally equivalent,
+but more parallelizable form. For instance, an average can be remapped into a sum/count,
+which can then take advantage of our sharded execution model.
 */
 
 // ShardedEngine is an Engine implementation that can split queries into more parallelizable forms via
@@ -144,14 +151,14 @@ type Downstreamable interface {
 	Downstreamer() Downstreamer
 }
 
-// Downstreamer is an interface for deferring responsibility for query execution.
-// It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type DownstreamQuery struct {
 	Expr   Expr
 	Params Params
 	Shards Shards
 }
 
+// Downstreamer is an interface for deferring responsibility for query execution.
+// It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
 	Downstream(context.Context, []DownstreamQuery) ([]Result, error)
 }

@@ -13,7 +13,7 @@ Then you can update statistics by mutating data by using:
 
 Finally to get a snapshot of the current query statistic use
 
-	stats.Snapshot(ctx, time.Since(start), logger)
+	stats.Snapshot(ctx, time.Since(start))
 
 Ingester statistics are sent across the GRPC stream using Trailers
 see https://github.com/grpc/grpc-go/blob/master/Documentation/grpc-metadata.md
@@ -144,7 +144,7 @@ func GetStoreData(ctx context.Context) *StoreData {
 }
 
 // Snapshot compute query statistics from a context using the total exec time.
-func Snapshot(ctx context.Context, execTime time.Duration, log log.Logger) Result {
+func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	// ingester data is decoded from grpc trailers.
 	res := decodeTrailers(ctx)
 	// collect data from store.
