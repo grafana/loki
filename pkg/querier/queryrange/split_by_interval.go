@@ -8,22 +8,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
-
-// SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(limits Limits, merger queryrange.Merger) queryrange.Middleware {
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return &splitByInterval{
-			next:   next,
-			limits: limits,
-			merger: merger,
-		}
-	})
-}
 
 type lokiResult struct {
 	req queryrange.Request
@@ -35,10 +26,38 @@ type packedResp struct {
 	err  error
 }
 
+type SplitByMetrics struct {
+	splits prometheus.Histogram
+}
+
+func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
+	return &SplitByMetrics{
+		splits: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Name:      "query_frontend_partitions",
+			Help:      "Number of time-based partitions (sub-requests) per request",
+			Buckets:   prometheus.ExponentialBuckets(1, 4, 5), // 1 -> 1024
+		}),
+	}
+}
+
 type splitByInterval struct {
-	next   queryrange.Handler
-	limits Limits
-	merger queryrange.Merger
+	next    queryrange.Handler
+	limits  Limits
+	merger  queryrange.Merger
+	metrics *SplitByMetrics
+}
+
+// SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
+func SplitByIntervalMiddleware(limits Limits, merger queryrange.Merger, metrics *SplitByMetrics) queryrange.Middleware {
+	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+		return &splitByInterval{
+			next:    next,
+			limits:  limits,
+			merger:  merger,
+			metrics: metrics,
+		}
+	})
 }
 
 func (h *splitByInterval) Feed(ctx context.Context, input []*lokiResult) chan *lokiResult {
@@ -148,6 +167,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 	}
 
 	intervals := splitByTime(lokiRequest, interval)
+	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {

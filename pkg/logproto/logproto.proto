@@ -37,6 +37,8 @@ message QueryRequest {
   google.protobuf.Timestamp end = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   Direction direction = 5;
   reserved 6;
+  repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
+
 }
 
 enum Direction {

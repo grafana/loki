@@ -11,14 +11,20 @@
     container.new('query-frontend', $._images.query_frontend) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.query_frontend_args)) +
-    $.util.resourcesRequests('2', '600Mi') +
-    $.util.resourcesLimits(null, '1200Mi') +
-    $.jaeger_mixin,
+    $.jaeger_mixin +
+    if $._config.queryFrontend.sharded_queries_enabled then
+    $.util.resourcesRequests('2', '2Gi') +
+    $.util.resourcesLimits(null, '6Gi') +
+    container.withEnvMap({
+      JAEGER_REPORTER_MAX_QUEUE_SIZE: '5000',
+    })
+    else $.util.resourcesRequests('2', '600Mi') +
+    $.util.resourcesLimits(null, '1200Mi'),
 
   local deployment = $.apps.v1.deployment,
 
   query_frontend_deployment:
-    deployment.new('query-frontend', 2, [$.query_frontend_container]) +
+    deployment.new('query-frontend', $._config.queryFrontend.replicas, [$.query_frontend_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
