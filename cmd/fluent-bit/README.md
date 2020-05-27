@@ -1,6 +1,6 @@
 # Fluent Bit output plugin
 
-[Fluent Bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html)  [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
+[Fluent Bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
 
 This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/fluent/fluent-bit-go) interface. It pushes logs to Loki using a GRPC connection.
 
@@ -22,6 +22,12 @@ This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/flue
 | LineFormat    | Format to use when flattening the record to a log line. Valid values are "json" or "key_value". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format <key>=<value>. | json |
 | DropSingleKey | If set to true and after extracting label_keys a record only has a single key remaining, the log line sent to Loki will just be the value of the record key.| true |
 | LabelMapPath | Path to a json file defining how to transform nested records. | none
+| Buffer |  Enable buffering mechanism  | false
+| BufferType | Specify the buffering mechanism to use (currently only dque is implemented). | dque
+| DqueDir| Path to the directory for queued logs | /tmp/flb-storage/loki
+| DqueSegmentSize| Segment size in terms of number of records per segment  | 500
+| DqueSync| Whether to fsync each queue change | false
+| DqueName | Queue name, must be uniq per output | dque
 
 ### Labels
 
@@ -74,6 +80,26 @@ and a LabelMap file as follow :
 The labels extracted will be `{team="x-men", container="promtail", pod="promtail-xxx", namespace="prod"}`.
 
 If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log line you can use the `RemoveKeys` configuration field. (e.g. `RemoveKeys kubernetes,HOSTNAME`).
+
+### Buffering
+Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. Loki output plugin in ceratain situation can be blocked by loki client because of design:
+* BatchSize is over limit, output plugin pause receiving new records until the pending batch is sucessfully sent to the server
+* Loki server is unreachable (retry 429s, 500s and connection-level errors), output plugin blocks new records until loki server will be avalible again and the pending batch is sucessfully sent to the server or as long as the maximum number of attempts has been reached within configured backoff mechanism
+
+The blocking state with some of the input plugins is not acceptable because it can have a undesirable side effects on the part that generates the logs. Fluent Bit implements buffering mechanism that is based on parallel processing and it cannot send logs in order which is loki requirement (loki logs must be in increasing time order per stream).
+
+Loki output plugin has buffering mechanism based on [`dque`](https://github.com/joncrlsn/dque) which is compatible with loki server strict time ordering and can be set up by configuration flag:
+```properties
+[Output]
+    Name loki
+    Match *
+    Url http://localhost:3100/loki/api/v1/push
+    Buffer true
+    DqueSegmentSize 8096
+    DqueDir /tmp/flb-storage/buffer
+    DqueName loki.0
+```
+
 
 ### Configuration examples
 

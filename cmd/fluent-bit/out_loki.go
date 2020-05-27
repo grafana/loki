@@ -68,7 +68,11 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	level.Info(paramLogger).Log("LineFormat", conf.lineFormat)
 	level.Info(paramLogger).Log("DropSingleKey", conf.dropSingleKey)
 	level.Info(paramLogger).Log("LabelMapPath", fmt.Sprintf("%+v", conf.labelMap))
-
+	level.Info(paramLogger).Log("Buffer", conf.bufferConfig.buffer)
+	level.Info(paramLogger).Log("BufferType", conf.bufferConfig.bufferType)
+	level.Info(paramLogger).Log("QueueDir", conf.bufferConfig.dqueConfig.queueDir)
+	level.Info(paramLogger).Log("QueueSegmentSize", conf.bufferConfig.dqueConfig.queueSegmentSize)
+	level.Info(paramLogger).Log("QueueSync", conf.bufferConfig.dqueConfig.queueSync)
 	plugin, err := newPlugin(conf, logger)
 	if err != nil {
 		level.Error(logger).Log("newPlugin", err)

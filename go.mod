@@ -22,6 +22,7 @@ require (
 	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/go-kit/kit v0.10.0
 	github.com/go-logfmt/logfmt v0.5.0
+	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/protobuf v1.3.1 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.7.3
@@ -33,6 +34,7 @@ require (
 	github.com/hpcloud/tail v1.0.0
 	github.com/influxdata/go-syslog/v2 v2.0.1
 	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
+	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.9
 	github.com/klauspost/compress v1.9.4
 	github.com/mitchellh/mapstructure v1.1.2
