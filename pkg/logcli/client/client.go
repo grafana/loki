@@ -23,7 +23,7 @@ import (
 const (
 	queryPath       = "/loki/api/v1/query"
 	queryRangePath  = "/loki/api/v1/query_range"
-	labelsPath      = "/loki/api/v1/labels"
+	labelsPath      = "/loki/api/v1/label"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	seriesPath      = "/loki/api/v1/series"
 	tailPath        = "/loki/api/v1/tail"
