@@ -40,3 +40,18 @@ func EscapeBytes(value string) string {
 
 	return res
 }
+
+// InBetween tells whether value is into [min, max] range.
+func InBetween(val, min, max int) bool {
+	return val >= min && val <= max
+}
+
+// ValidPriority checks whether the given value is in the priority range [0, 191].
+func ValidPriority(priority uint8) bool {
+	return InBetween(int(priority), 0, 191)
+}
+
+// ValidVersion checks whether the given value is in the version range [1, 999].
+func ValidVersion(version uint16) bool {
+	return InBetween(int(version), 1, 999)
+}

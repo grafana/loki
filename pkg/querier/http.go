@@ -47,7 +47,17 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Interval, request.Direction, request.Limit)
+	params := logql.NewLiteralParams(
+		request.Query,
+		request.Start,
+		request.End,
+		request.Step,
+		request.Interval,
+		request.Direction,
+		request.Limit,
+		request.Shards,
+	)
+	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -77,7 +87,17 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := q.engine.NewInstantQuery(request.Query, request.Ts, request.Direction, request.Limit)
+	params := logql.NewLiteralParams(
+		request.Query,
+		request.Ts,
+		request.Ts,
+		0,
+		0,
+		request.Direction,
+		request.Limit,
+		nil,
+	)
+	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -124,7 +144,18 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Interval, request.Direction, request.Limit)
+	params := logql.NewLiteralParams(
+		request.Query,
+		request.Start,
+		request.End,
+		request.Step,
+		request.Interval,
+		request.Direction,
+		request.Limit,
+		request.Shards,
+	)
+	query := q.engine.Query(params)
+
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)

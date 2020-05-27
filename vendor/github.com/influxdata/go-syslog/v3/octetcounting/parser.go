@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	syslog "github.com/influxdata/go-syslog/v2"
-	"github.com/influxdata/go-syslog/v2/rfc5424"
+	syslog "github.com/influxdata/go-syslog/v3"
+	"github.com/influxdata/go-syslog/v3/rfc5424"
 )
 
 // parser is capable to parse the input stream containing syslog messages with octetcounting framing.

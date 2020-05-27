@@ -12,7 +12,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/influxdata/go-syslog/v2"
+	"github.com/influxdata/go-syslog/v3"
+	"github.com/influxdata/go-syslog/v3/rfc5424"
 	"github.com/mwitkow/go-conntrack"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -176,32 +177,34 @@ func (t *SyslogTarget) handleMessageError(err error) {
 }
 
 func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Message) {
-	if msg.Message() == nil {
+	rfc5424Msg := msg.(*rfc5424.SyslogMessage)
+
+	if rfc5424Msg.Message == nil {
 		return
 	}
 
 	lb := labels.NewBuilder(connLabels)
-	if v := msg.SeverityLevel(); v != nil {
+	if v := rfc5424Msg.SeverityLevel(); v != nil {
 		lb.Set("__syslog_message_severity", *v)
 	}
-	if v := msg.FacilityLevel(); v != nil {
+	if v := rfc5424Msg.FacilityLevel(); v != nil {
 		lb.Set("__syslog_message_facility", *v)
 	}
-	if v := msg.Hostname(); v != nil {
+	if v := rfc5424Msg.Hostname; v != nil {
 		lb.Set("__syslog_message_hostname", *v)
 	}
-	if v := msg.Appname(); v != nil {
+	if v := rfc5424Msg.Appname; v != nil {
 		lb.Set("__syslog_message_app_name", *v)
 	}
-	if v := msg.ProcID(); v != nil {
+	if v := rfc5424Msg.ProcID; v != nil {
 		lb.Set("__syslog_message_proc_id", *v)
 	}
-	if v := msg.MsgID(); v != nil {
+	if v := rfc5424Msg.MsgID; v != nil {
 		lb.Set("__syslog_message_msg_id", *v)
 	}
 
-	if t.config.LabelStructuredData && msg.StructuredData() != nil {
-		for id, params := range *msg.StructuredData() {
+	if t.config.LabelStructuredData && rfc5424Msg.StructuredData != nil {
+		for id, params := range *rfc5424Msg.StructuredData {
 			id = strings.Replace(id, "@", "_", -1)
 			for name, value := range params {
 				key := "__syslog_message_sd_" + id + "_" + name
@@ -220,7 +223,7 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 	}
 
-	t.messages <- message{filtered, *msg.Message()}
+	t.messages <- message{filtered, *rfc5424Msg.Message}
 }
 
 func (t *SyslogTarget) messageSender() {
