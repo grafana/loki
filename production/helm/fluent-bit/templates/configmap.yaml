@@ -39,8 +39,12 @@ data:
           {{- else }}
         Url {{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}{{ .Values.loki.servicePath }}
         {{- end }}
+        TenantID {{ .Values.config.tenantID }}
+        BatchWait {{ .Values.config.batchWait }}
+        BatchSize {{ .Values.config.batchSize }}
         Labels {{ .Values.config.labels }}
         RemoveKeys {{ include "helm-toolkit.utils.joinListWithComma" .Values.config.removeKeys }}
+        AutoKubernetesLabels {{ .Values.config.autoKubernetesLabels }}
         LabelMapPath /fluent-bit/etc/labelmap.json
         LineFormat {{ .Values.config.lineFormat }}
         LogLevel {{ .Values.config.loglevel }}

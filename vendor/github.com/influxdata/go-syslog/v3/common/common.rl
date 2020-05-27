@@ -16,18 +16,26 @@ bs = 0x5C;
 # ", ], \
 toescape = (dq | csb | bs);
 
+# 1..9
+nonzerodigit = '1'..'9';
+
 # 0..59
 sexagesimal = '0'..'5' . '0'..'9';
 
 # 01..31
-datemday = ('0' . '1'..'9' | '1'..'2' . '0'..'9' | '3' . '0'..'1');
+datemday_2digit = ('0' . nonzerodigit | '1'..'2' . '0'..'9' | '3' . '0'..'1');
+
+#  1 ..  9, 10..31
+datemday = (sp . nonzerodigit | '1'..'2' . '0'..'9' | '3' . '0'..'1');
 
 # 01..12
-datemonth = ('0' . '1'..'9' | '1' . '0'..'2');
+datemonth = ('0' . nonzerodigit | '1' . '0'..'2');
+
+datemmm = ('Jan' | 'Feb' | 'Mar' | 'Apr' | 'May' | 'Jun' | 'Jul' | 'Aug' | 'Sep' | 'Oct' | 'Nov' | 'Dec');
 
 datefullyear = digit{4};
 
-fulldate = datefullyear '-' datemonth '-' datemday;
+fulldate = datefullyear '-' datemonth '-' datemday_2digit;
 
 # 01..23
 timehour = ('0'..'1' . '0'..'9' | '2' . '0'..'3');
@@ -42,21 +50,27 @@ timenumoffset = ('+' | '-') timehour ':' timeminute;
 
 timeoffset = 'Z' | timenumoffset;
 
-partialtime = timehour ':' timeminute ':' timesecond . timesecfrac?;
+hhmmss = timehour ':' timeminute ':' timesecond;
+
+partialtime = hhmmss . timesecfrac?;
 
 fulltime = partialtime . timeoffset;
 
-printusascii = '!'..'~';
+# 1..191
+privalrange = (('1' ('9' ('0'..'1'){,1} | '0'..'8' ('0'..'9'){,1}){,1}) | ('2'..'9' ('0'..'9'){,1}));
 
-hostnamerange = printusascii{1,255};
+# 1..191 or 0
+prival = (privalrange | '0');
 
-appnamerange = printusascii{1,48};
+hostnamerange = graph{1,255};
 
-procidrange = printusascii{1,128};
+appnamerange = graph{1,48};
 
-msgidrange = printusascii{1,32};
+procidrange = graph{1,128};
 
-sdname = (printusascii - ('=' | sp | csb | dq)){1,32};
+msgidrange = graph{1,32};
+
+sdname = (graph - ('=' | sp | csb | dq)){1,32};
 
 # rfc 3629
 utf8tail = 0x80..0xBF;

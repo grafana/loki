@@ -13,7 +13,7 @@
       {
         "datasource": "$logs",
         "enable": true,
-        "expr": "{cluster=\"$cluster\", diff_namespace=\"$namespace\", container_name=\"kube-diff-logger\"}",
+        "expr": "{cluster=\"$cluster\", diff_namespace=\"$namespace\", container=\"kube-diff-logger\"}",
         "hide": true,
         "iconColor": "rgba(255, 96, 96, 1)",
         "name": "deployments",
@@ -2023,10 +2023,10 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod_name=~\"distributor.*\"}",
+              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"distributor.*\"}",
               "instant": false,
               "intervalFactor": 3,
-              "legendFormat": "{{pod_name}}",
+              "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
@@ -2406,9 +2406,9 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_distributor_bytes_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (instance)",
+              "expr": "sum(rate(loki_distributor_bytes_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (pod)",
               "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
+              "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
@@ -2494,9 +2494,9 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_distributor_lines_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (instance)",
+              "expr": "sum(rate(loki_distributor_lines_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (pod)",
               "intervalFactor": 1,
-              "legendFormat": "{{instance}}",
+              "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
@@ -2687,10 +2687,10 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod_name=~\"ingester.*\"}",
+              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"ingester.*\"}",
               "instant": false,
               "intervalFactor": 3,
-              "legendFormat": "{{pod_name}}",
+              "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
@@ -3633,10 +3633,10 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod_name=~\"querier.*\"}",
+              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"querier.*\"}",
               "instant": false,
               "intervalFactor": 3,
-              "legendFormat": "{{pod_name}}",
+              "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],

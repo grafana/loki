@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
@@ -87,14 +88,18 @@ type batchChunkIterator struct {
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
 func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.LineFilter, req *logproto.QueryRequest) *batchChunkIterator {
-	// __name__ is not something we filter by because it's a constant in loki and only used for upstream compatibility.
-	// Therefore remove it
-	for i := range matchers {
-		if matchers[i].Name == labels.MetricName {
-			matchers = append(matchers[:i], matchers[i+1:]...)
-			break
+	// __name__ is not something we filter by because it's a constant in loki
+	// and only used for upstream compatibility; therefore remove it.
+	// The same applies to the sharding label which is injected by the cortex storage code.
+	for _, omit := range []string{labels.MetricName, astmapper.ShardLabel} {
+		for i := range matchers {
+			if matchers[i].Name == omit {
+				matchers = append(matchers[:i], matchers[i+1:]...)
+				break
+			}
 		}
 	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	res := &batchChunkIterator{
 		batchSize: batchSize,

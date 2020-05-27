@@ -28,8 +28,30 @@ type Params interface {
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
+	Interval() time.Duration
 	Limit() uint32
 	Direction() logproto.Direction
+	Shards() []string
+}
+
+func NewLiteralParams(
+	qs string,
+	start, end time.Time,
+	step, interval time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+) LiteralParams {
+	return LiteralParams{
+		qs:        qs,
+		start:     start,
+		end:       end,
+		step:      step,
+		interval:  interval,
+		direction: direction,
+		limit:     limit,
+		shards:    shards,
+	}
 }
 
 // LiteralParams impls Params
@@ -40,7 +62,10 @@ type LiteralParams struct {
 	interval   time.Duration
 	direction  logproto.Direction
 	limit      uint32
+	shards     []string
 }
+
+func (p LiteralParams) Copy() LiteralParams { return p }
 
 // String impls Params
 func (p LiteralParams) Query() string { return p.qs }
@@ -54,11 +79,17 @@ func (p LiteralParams) End() time.Time { return p.end }
 // Step impls Params
 func (p LiteralParams) Step() time.Duration { return p.step }
 
+// Interval impls Params
+func (p LiteralParams) Interval() time.Duration { return p.interval }
+
 // Limit impls Params
 func (p LiteralParams) Limit() uint32 { return p.limit }
 
 // Direction impls Params
 func (p LiteralParams) Direction() logproto.Direction { return p.direction }
+
+// Shards impls Params
+func (p LiteralParams) Shards() []string { return p.shards }
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
@@ -82,12 +113,21 @@ func EvaluatorUnsupportedType(expr Expr, ev Evaluator) error {
 	return errors.Errorf("unexpected expr type (%T) for Evaluator type (%T) ", expr, ev)
 }
 
-type defaultEvaluator struct {
+type DefaultEvaluator struct {
 	maxLookBackPeriod time.Duration
 	querier           Querier
 }
 
-func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
+// NewDefaultEvaluator constructs a DefaultEvaluator
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *DefaultEvaluator {
+	return &DefaultEvaluator{
+		querier:           querier,
+		maxLookBackPeriod: maxLookBackPeriod,
+	}
+
+}
+
+func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
 	params := SelectParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     q.Start(),
@@ -95,6 +135,7 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 			Limit:     q.Limit(),
 			Direction: q.Direction(),
 			Selector:  expr.String(),
+			Shards:    q.Shards(),
 		},
 	}
 
@@ -106,7 +147,7 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 
 }
 
-func (ev *defaultEvaluator) StepEvaluator(
+func (ev *DefaultEvaluator) StepEvaluator(
 	ctx context.Context,
 	nextEv Evaluator,
 	expr SampleExpr,
@@ -123,6 +164,7 @@ func (ev *defaultEvaluator) StepEvaluator(
 				Limit:     0,
 				Direction: logproto.FORWARD,
 				Selector:  expr.Selector().String(),
+				Shards:    q.Shards(),
 			},
 		})
 		if err != nil {

@@ -549,7 +549,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it := newBatchChunkIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, newQuery("", tt.start, tt.end, tt.direction))
+			it := newBatchChunkIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, newQuery("", tt.start, tt.end, tt.direction, nil))
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
 			if err != nil {
@@ -756,7 +756,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				t.Errorf("buildHeapIterator error = %v", err)
 				return
 			}
-			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD)
+			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil)
 			streams, _, err := iter.ReadBatch(it, req.Limit)
 			_ = it.Close()
 			if err != nil {
