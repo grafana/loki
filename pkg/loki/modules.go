@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
+	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -31,8 +32,10 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/ruler"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/local"
 	serverutil "github.com/grafana/loki/pkg/util/server"
@@ -51,6 +54,7 @@ const (
 	Ingester      string = "ingester"
 	Querier       string = "querier"
 	QueryFrontend string = "query-frontend"
+	Ruler         string = "ruler"
 	Store         string = "store"
 	TableManager  string = "table-manager"
 	MemberlistKV  string = "memberlist-kv"
@@ -317,6 +321,45 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		}
 		return nil
 	}), nil
+}
+
+func (t *Loki) initRuler() (_ services.Service, err error) {
+	t.cfg.Ruler.Ring.ListenPort = t.cfg.Server.GRPCListenPort
+	t.cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	q, err := querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
+	if err != nil {
+		return nil, err
+	}
+
+	engine := logql.NewEngine(t.cfg.Querier.Engine, q)
+
+	t.ruler, err = cortex_ruler.NewRuler(
+		t.cfg.Ruler,
+		ruler.LokiDelayedQueryFunc(engine),
+		ruler.InMemoryAppendableHistory,
+		prometheus.DefaultRegisterer,
+		util.Logger,
+	)
+
+	if err != nil {
+		return
+	}
+
+	// Expose HTTP endpoints.
+	if t.cfg.Ruler.EnableAPI {
+
+		t.server.HTTP.Handle("/ruler/ring", t.ruler)
+		cortex_ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
+
+		// Ruler API Routes
+		t.server.HTTP.Path("/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
+		t.server.HTTP.Path("/api/v1/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
+		t.server.HTTP.Path("/api/v1/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.GetRuleGroup)))
+		t.server.HTTP.Path("/api/v1/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.CreateRuleGroup)))
+		t.server.HTTP.Path("/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.DeleteRuleGroup)))
+	}
+
+	return t.ruler, nil
 }
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
