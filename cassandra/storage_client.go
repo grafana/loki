@@ -318,7 +318,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 			query.TableName), query.HashValue)
 
 	case query.ValueEqual != nil:
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? value = ? ALLOW FILTERING",
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND value = ? ALLOW FILTERING",
 			query.TableName), query.HashValue, query.ValueEqual)
 	}
 
