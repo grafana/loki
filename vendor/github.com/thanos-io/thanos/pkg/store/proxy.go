@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/thanos-io/thanos/pkg/component"
+	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
@@ -99,7 +100,7 @@ func NewProxyStore(
 }
 
 // Info returns store information about the external labels this store have.
-func (s *ProxyStore) Info(ctx context.Context, r *storepb.InfoRequest) (*storepb.InfoResponse, error) {
+func (s *ProxyStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.InfoResponse, error) {
 	res := &storepb.InfoResponse{
 		Labels:    make([]storepb.Label, 0, len(s.selectorLabels)),
 		StoreType: s.component.ToProto(),
@@ -432,13 +433,15 @@ func startStreamSeriesSet(
 
 			if w := rr.r.GetWarning(); w != "" {
 				s.warnCh.send(storepb.NewWarnSeriesResponse(errors.New(w)))
-				continue
 			}
-			select {
-			case s.recvCh <- rr.r.GetSeries():
-			case <-ctx.Done():
-				s.handleErr(errors.Wrapf(ctx.Err(), "failed to receive any data from %s", s.name), done)
-				return
+
+			if series := rr.r.GetSeries(); series != nil {
+				select {
+				case s.recvCh <- series:
+				case <-ctx.Done():
+					s.handleErr(errors.Wrapf(ctx.Err(), "failed to receive any data from %s", s.name), done)
+					return
+				}
 			}
 		}
 	}()
@@ -513,7 +516,7 @@ func labelSetMatches(ls storepb.LabelSet, matchers []storepb.LabelMatcher) (bool
 				continue
 			}
 
-			m, err := translateMatcher(m)
+			m, err := promclient.TranslateMatcher(m)
 			if err != nil {
 				return false, err
 			}

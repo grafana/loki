@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 // Distributor is the read interface to the distributor, made an interface here
@@ -49,11 +50,16 @@ type distributorQuerier struct {
 	chunkIterFn chunkIteratorFunc
 }
 
-func (q *distributorQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
+func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.Select")
+	defer log.Span.Finish()
+
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata.
 	if sp == nil {
-		ms, err := q.distributor.MetricsForLabelMatchers(q.ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -66,7 +72,7 @@ func (q *distributorQuerier) SelectSorted(sp *storage.SelectParams, matchers ...
 		return q.streamingSelect(*sp, matchers)
 	}
 
-	matrix, err := q.distributor.Query(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
+	matrix, err := q.distributor.Query(ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
@@ -75,11 +81,7 @@ func (q *distributorQuerier) SelectSorted(sp *storage.SelectParams, matchers ...
 	return series.MatrixToSeriesSet(matrix), nil, nil
 }
 
-func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.SelectSorted(sp, matchers...)
-}
-
-func (q *distributorQuerier) streamingSelect(sp storage.SelectParams, matchers []*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}

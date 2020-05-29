@@ -27,7 +27,6 @@ package grpclb
 import (
 	"context"
 	"errors"
-	"strconv"
 	"sync"
 	"time"
 
@@ -127,11 +126,10 @@ func (b *lbBuilder) Name() string {
 }
 
 func (b *lbBuilder) Build(cc balancer.ClientConn, opt balancer.BuildOptions) balancer.Balancer {
-	// This generates a manual resolver builder with a random scheme. This
-	// scheme will be used to dial to remote LB, so we can send filtered address
-	// updates to remote LB ClientConn using this manual resolver.
-	scheme := "grpclb_internal_" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	r := &lbManualResolver{scheme: scheme, ccb: cc}
+	// This generates a manual resolver builder with a fixed scheme. This
+	// scheme will be used to dial to remote LB, so we can send filtered
+	// address updates to remote LB ClientConn using this manual resolver.
+	r := &lbManualResolver{scheme: "grpclb-internal", ccb: cc}
 
 	lb := &lbBalancer{
 		cc:              newLBCacheClientConn(cc),

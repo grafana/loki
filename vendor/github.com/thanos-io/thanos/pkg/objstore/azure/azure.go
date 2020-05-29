@@ -231,18 +231,23 @@ func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (
 	return b.getBlobReader(ctx, name, off, length)
 }
 
-// ObjectSize returns the size of the specified object.
-func (b *Bucket) ObjectSize(ctx context.Context, name string) (uint64, error) {
+// Attributes returns information about the specified object.
+func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
 	blobURL, err := getBlobURL(ctx, *b.config, name)
 	if err != nil {
-		return 0, errors.Wrapf(err, "cannot get Azure blob URL, blob: %s", name)
+		return objstore.ObjectAttributes{}, errors.Wrapf(err, "cannot get Azure blob URL, blob: %s", name)
 	}
+
 	var props *blob.BlobGetPropertiesResponse
 	props, err = blobURL.GetProperties(ctx, blob.BlobAccessConditions{})
 	if err != nil {
-		return 0, err
+		return objstore.ObjectAttributes{}, err
 	}
-	return uint64(props.ContentLength()), nil
+
+	return objstore.ObjectAttributes{
+		Size:         props.ContentLength(),
+		LastModified: props.LastModified(),
+	}, nil
 }
 
 // Exists checks if the given object exists.

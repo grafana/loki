@@ -28,7 +28,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/storage/tsdb"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/testutil"
 )
 
@@ -421,10 +421,7 @@ func (t *Test) exec(tc testCommand) error {
 		t.clear()
 
 	case *loadCmd:
-		app, err := t.storage.Appender()
-		if err != nil {
-			return err
-		}
+		app := t.storage.Appender()
 		if err := cmd.append(app); err != nil {
 			app.Rollback()
 			return err
@@ -565,13 +562,13 @@ func NewStorage(t T) storage.Storage {
 	// Tests just load data for a series sequentially. Thus we
 	// need a long appendable window.
 	db, err := tsdb.Open(dir, nil, nil, &tsdb.Options{
-		MinBlockDuration: model.Duration(24 * time.Hour),
-		MaxBlockDuration: model.Duration(24 * time.Hour),
+		MinBlockDuration: int64(24 * time.Hour / time.Millisecond),
+		MaxBlockDuration: int64(24 * time.Hour / time.Millisecond),
 	})
 	if err != nil {
 		t.Fatalf("Opening test storage failed: %s", err)
 	}
-	return testStorage{Storage: tsdb.Adapter(db, int64(0)), dir: dir}
+	return testStorage{Storage: Adapter(db, int64(0)), dir: dir}
 }
 
 type testStorage struct {
@@ -584,4 +581,43 @@ func (s testStorage) Close() error {
 		return err
 	}
 	return os.RemoveAll(s.dir)
+}
+
+// Adapter return an adapter as storage.Storage.
+func Adapter(db *tsdb.DB, startTimeMargin int64) storage.Storage {
+	return &adapter{db: db, startTimeMargin: startTimeMargin}
+}
+
+// adapter implements a storage.Storage around TSDB.
+type adapter struct {
+	db              *tsdb.DB
+	startTimeMargin int64
+}
+
+// StartTime implements the Storage interface.
+func (a adapter) StartTime() (int64, error) {
+	var startTime int64
+
+	if len(a.db.Blocks()) > 0 {
+		startTime = a.db.Blocks()[0].Meta().MinTime
+	} else {
+		startTime = time.Now().Unix() * 1000
+	}
+
+	// Add a safety margin as it may take a few minutes for everything to spin up.
+	return startTime + a.startTimeMargin, nil
+}
+
+func (a adapter) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return a.db.Querier(ctx, mint, maxt)
+}
+
+// Appender returns a new appender against the storage.
+func (a adapter) Appender() storage.Appender {
+	return a.db.Appender()
+}
+
+// Close closes the storage and all its underlying resources.
+func (a adapter) Close() error {
+	return a.db.Close()
 }

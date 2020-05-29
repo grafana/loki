@@ -692,6 +692,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	}
 
 	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
+	defer log.Finish()
 
 	from, through, matchers, err := client.FromQueryRequest(req)
 	if err != nil {

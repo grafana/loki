@@ -60,6 +60,7 @@ type Limits struct {
 	MaxQueryLength      time.Duration `yaml:"max_query_length"`
 	MaxQueryParallelism int           `yaml:"max_query_parallelism"`
 	CardinalityLimit    int           `yaml:"cardinality_limit"`
+	MaxCacheFreshness   time.Duration `yaml:"max_cache_freshness"`
 
 	// Config for overrides, convenient if it goes here. [Deprecated in favor of RuntimeConfig flag in cortex.Config]
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
@@ -103,6 +104,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
+	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
@@ -280,6 +282,11 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxQueryLength
+}
+
+// MaxCacheFreshness returns the limit of the length (in time) of a query.
+func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
+	return o.getOverridesForUser(userID).MaxCacheFreshness
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the

@@ -73,7 +73,7 @@ func newSyncerMetrics(reg prometheus.Registerer, blocksMarkedForDeletion prometh
 
 	m.garbageCollectedBlocks = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_compact_garbage_collected_blocks_total",
-		Help: "Total number of deleted blocks by compactor.",
+		Help: "Total number of blocks marked for deletion by compactor.",
 	})
 	m.garbageCollections = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_compact_garbage_collection_total",
@@ -237,7 +237,7 @@ func (s *Syncer) Groups() (res []*Group, err error) {
 	return res, nil
 }
 
-// GarbageCollect deletes blocks from the bucket if their data is available as part of a
+// GarbageCollect marks blocks for deletion from bucket if their data is available as part of a
 // block with a higher compaction level.
 // Call to SyncMetas function is required to populate duplicateIDs in duplicateBlocksFilter.
 func (s *Syncer) GarbageCollect(ctx context.Context) error {
@@ -265,7 +265,7 @@ func (s *Syncer) GarbageCollect(ctx context.Context) error {
 			return ctx.Err()
 		}
 
-		// Spawn a new context so we always delete a block in full on shutdown.
+		// Spawn a new context so we always mark a block for deletion in full on shutdown.
 		delCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 
 		level.Info(s.logger).Log("msg", "marking outdated block for deletion", "block", id)
@@ -487,7 +487,7 @@ func (e RetryError) Error() string {
 // IsRetryError returns true if the base error is a RetryError.
 // If a multierror is passed, all errors must be retriable.
 func IsRetryError(err error) bool {
-	if multiErr, ok := err.(terrors.MultiError); ok {
+	if multiErr, ok := errors.Cause(err).(terrors.MultiError); ok {
 		for _, err := range multiErr {
 			if _, ok := errors.Cause(err).(RetryError); !ok {
 				return false
@@ -581,13 +581,13 @@ func RepairIssue347(ctx context.Context, logger log.Logger, bkt objstore.Bucket,
 
 	level.Info(logger).Log("msg", "deleting broken block", "id", ie.id)
 
-	// Spawn a new context so we always delete a block in full on shutdown.
+	// Spawn a new context so we always mark a block for deletion in full on shutdown.
 	delCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	// TODO(bplotka): Issue with this will introduce overlap that will halt compactor. Automate that (fix duplicate overlaps caused by this).
 	if err := block.MarkForDeletion(delCtx, logger, bkt, ie.id, blocksMarkedForDeletion); err != nil {
-		return errors.Wrapf(err, "deleting old block %s failed. You need to delete this block manually", ie.id)
+		return errors.Wrapf(err, "marking old block %s for deletion has failed", ie.id)
 	}
 	return nil
 }
@@ -647,7 +647,7 @@ func (cg *Group) compact(ctx context.Context, dir string, comp tsdb.Compactor) (
 
 		cgKey, groupKey := cg.Key(), GroupKey(meta.Thanos)
 		if cgKey != groupKey {
-			return false, ulid.ULID{}, halt(errors.Wrapf(err, "compact planned compaction for mixed groups. group: %s, planned block's group: %s", cgKey, groupKey))
+			return false, ulid.ULID{}, halt(errors.Errorf("compact planned compaction for mixed groups. group: %s, planned block's group: %s", cgKey, groupKey))
 		}
 
 		for _, s := range meta.Compaction.Sources {
@@ -708,7 +708,7 @@ func (cg *Group) compact(ctx context.Context, dir string, comp tsdb.Compactor) (
 			}
 			if meta.Stats.NumSamples == 0 {
 				if err := cg.deleteBlock(block); err != nil {
-					level.Warn(cg.logger).Log("msg", "failed to delete empty block found during compaction", "block", block)
+					level.Warn(cg.logger).Log("msg", "failed to mark for deletion an empty block found during compaction", "block", block)
 				}
 			}
 		}
@@ -763,12 +763,12 @@ func (cg *Group) compact(ctx context.Context, dir string, comp tsdb.Compactor) (
 	}
 	level.Info(cg.logger).Log("msg", "uploaded block", "result_block", compID, "duration", time.Since(begin))
 
-	// Delete the blocks we just compacted from the group and bucket so they do not get included
+	// Mark for deletion the blocks we just compacted from the group and bucket so they do not get included
 	// into the next planning cycle.
 	// Eventually the block we just uploaded should get synced into the group again (including sync-delay).
 	for _, b := range plan {
 		if err := cg.deleteBlock(b); err != nil {
-			return false, ulid.ULID{}, retry(errors.Wrapf(err, "delete old block from bucket"))
+			return false, ulid.ULID{}, retry(errors.Wrapf(err, "mark old block for deletion from bucket"))
 		}
 		cg.groupGarbageCollectedBlocks.Inc()
 	}
@@ -786,12 +786,12 @@ func (cg *Group) deleteBlock(b string) error {
 		return errors.Wrapf(err, "remove old block dir %s", id)
 	}
 
-	// Spawn a new context so we always delete a block in full on shutdown.
+	// Spawn a new context so we always mark a block for deletion in full on shutdown.
 	delCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	level.Info(cg.logger).Log("msg", "marking compacted block for deletion", "old_block", id)
 	if err := block.MarkForDeletion(delCtx, cg.logger, cg.bkt, id, cg.blocksMarkedForDeletion); err != nil {
-		return errors.Wrapf(err, "delete block %s from bucket", id)
+		return errors.Wrapf(err, "mark block %s for deletion from bucket", id)
 	}
 	return nil
 }

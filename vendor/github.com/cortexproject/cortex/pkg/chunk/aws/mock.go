@@ -194,7 +194,7 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 	}
 }
 
-func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
+func (m *mockDynamoDBClient) QueryPagesWithContext(ctx aws.Context, input *dynamodb.QueryInput, fn func(*dynamodb.QueryOutput, bool) bool, opts ...request.Option) error {
 	result := &dynamodb.QueryOutput{
 		Items: []map[string]*dynamodb.AttributeValue{},
 	}
@@ -241,10 +241,8 @@ func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.Que
 
 		result.Items = append(result.Items, item)
 	}
-
-	return &dynamoDBMockRequest{
-		result: result,
-	}
+	fn(result, true)
+	return nil
 }
 
 type dynamoDBMockRequest struct {
@@ -252,9 +250,6 @@ type dynamoDBMockRequest struct {
 	err    error
 }
 
-func (m *dynamoDBMockRequest) NextPage() dynamoDBRequest {
-	return m
-}
 func (m *dynamoDBMockRequest) Send() error {
 	return m.err
 }
@@ -263,9 +258,6 @@ func (m *dynamoDBMockRequest) Data() interface{} {
 }
 func (m *dynamoDBMockRequest) Error() error {
 	return m.err
-}
-func (m *dynamoDBMockRequest) HasNextPage() bool {
-	return false
 }
 func (m *dynamoDBMockRequest) Retryable() bool {
 	return false

@@ -1,6 +1,30 @@
 package lint
 
 /*
+Package loading
+
+Conceptually, package loading in the runner can be imagined as a
+graph-shaped work list. We iteratively pop off leaf nodes (packages
+that have no unloaded dependencies) and load data from export data,
+our cache, or source.
+
+Specifically, non-initial packages are loaded from export data and the
+fact cache if possible, otherwise from source. Initial packages are
+loaded from export data, the fact cache and the (problems, ignores,
+config) cache if possible, otherwise from source.
+
+The appeal of this approach is that it is both simple to implement and
+easily parallelizable. Each leaf node can be processed independently,
+and new leaf nodes appear as their dependencies are being processed.
+
+The downside of this approach, however, is that we're doing more work
+than necessary. Imagine an initial package A, which has the following
+dependency chain: A->B->C->D – in the current implementation, we will
+load all 4 packages. However, if package A can be loaded fully from
+cached information, then none of its dependencies are necessary, and
+we could avoid loading them.
+
+
 Parallelism
 
 Runner implements parallel processing of packages by spawning one
@@ -18,6 +42,34 @@ means that if we have many parallel, independent subgraphs, they will
 all execute in parallel, while not wasting resources for long linear
 chains or trying to process more subgraphs in parallel than the system
 can handle.
+
+
+Caching
+
+We make use of several caches. These caches are Go's export data, our
+facts cache, and our (problems, ignores, config) cache.
+
+Initial packages will either be loaded from a combination of all three
+caches, or from source. Non-initial packages will either be loaded
+from a combination of export data and facts cache, or from source.
+
+The facts cache is separate from the (problems, ignores, config) cache
+because when we process non-initial packages, we generate facts, but
+we discard problems and ignores.
+
+The facts cache is keyed by (package, analyzer), whereas the
+(problems, ignores, config) cache is keyed by (package, list of
+analyzes). The difference between the two exists because there are
+only a handful of analyses that produce facts, but hundreds of
+analyses that don't. Creating one cache entry per fact-generating
+analysis is feasible, creating one cache entry per normal analysis has
+significant performance and storage overheads.
+
+The downside of keying by the list of analyzes is, naturally, that a
+change in list of analyzes changes the cache key. `staticcheck -checks
+A` and `staticcheck -checks A,B` will therefore need their own cache
+entries and not reuse each other's work. This problem does not affect
+the facts cache.
 
 */
 
@@ -37,6 +89,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
@@ -46,6 +99,11 @@ import (
 	"honnef.co/go/tools/internal/cache"
 	"honnef.co/go/tools/loader"
 )
+
+func init() {
+	gob.Register(&FileIgnore{})
+	gob.Register(&LineIgnore{})
+}
 
 // If enabled, abuse of the go/analysis API will lead to panics
 const sanityCheck = true
@@ -58,21 +116,43 @@ const sanityCheck = true
 // This may change unused's behavior, however, as it may observe fewer
 // interfaces from transitive dependencies.
 
+// OPT(dh): every single package will have the same value for
+// canClearTypes. We could move the Package.decUse method to runner to
+// eliminate this field. This is probably not worth it, though. There
+// are only thousands of packages, so the field only takes up
+// kilobytes of memory.
+
+// OPT(dh): do we really need the Package.gen field? it's based
+// trivially on pkg.results and merely caches the result of a type
+// assertion. How often do we actually use the field?
+
 type Package struct {
+	// dependents is initially set to 1 plus the number of packages
+	// that directly import this package. It is atomically decreased
+	// by 1 every time a dependent has been processed or when the
+	// package itself has been processed. Once the value reaches zero,
+	// the package is no longer needed.
 	dependents uint64
 
 	*packages.Package
-	Imports    []*Package
-	initial    bool
+	Imports []*Package
+	initial bool
+	// fromSource is set to true for packages that have been loaded
+	// from source. This is the case for initial packages, packages
+	// with missing export data, and packages with no cached facts.
 	fromSource bool
-	hash       string
-	done       chan struct{}
+	// hash stores the package hash, as computed by packageHash
+	hash     string
+	actionID cache.ActionID
+	done     chan struct{}
 
 	resultsMu sync.Mutex
-	// results maps analyzer IDs to analyzer results
+	// results maps analyzer IDs to analyzer results. it is
+	// implemented as a deduplicating concurrent cache.
 	results []*result
 
-	cfg      *config.Config
+	cfg *config.Config
+	// gen maps file names to the code generator that created them
 	gen      map[string]facts.Generator
 	problems []Problem
 	ignores  []Ignore
@@ -82,12 +162,22 @@ type Package struct {
 	facts    []map[types.Object][]analysis.Fact
 	pkgFacts [][]analysis.Fact
 
+	// canClearTypes is set to true if we can discard type
+	// information after the package and its dependents have been
+	// processed. This is the case when no cumulative checkers are
+	// being run.
 	canClearTypes bool
 }
 
+type cachedPackage struct {
+	Problems []Problem
+	Ignores  []Ignore
+	Config   *config.Config
+}
+
 func (pkg *Package) decUse() {
-	atomic.AddUint64(&pkg.dependents, ^uint64(0))
-	if atomic.LoadUint64(&pkg.dependents) == 0 {
+	ret := atomic.AddUint64(&pkg.dependents, ^uint64(0))
+	if ret == 0 {
 		// nobody depends on this package anymore
 		if pkg.canClearTypes {
 			pkg.Types = nil
@@ -108,16 +198,16 @@ type result struct {
 }
 
 type Runner struct {
-	ld    loader.Loader
-	cache *cache.Cache
+	cache           *cache.Cache
+	goVersion       int
+	stats           *Stats
+	repeatAnalyzers uint
 
-	analyzerIDs analyzerIDs
+	analyzerIDs      analyzerIDs
+	problemsCacheKey string
 
 	// limits parallelism of loading packages
 	loadSem chan struct{}
-
-	goVersion int
-	stats     *Stats
 }
 
 type analyzerIDs struct {
@@ -225,6 +315,13 @@ func (ac *analysisAction) report(pass *analysis.Pass, d analysis.Diagnostic) {
 		Message: d.Message,
 		Check:   pass.Analyzer.Name,
 	}
+	for _, r := range d.Related {
+		p.Related = append(p.Related, Related{
+			Pos:     DisplayPosition(pass.Fset, r.Pos),
+			End:     DisplayPosition(pass.Fset, r.End),
+			Message: r.Message,
+		})
+	}
 	ac.problems = append(ac.problems, p)
 }
 
@@ -278,6 +375,21 @@ func (r *Runner) runAnalysis(ac *analysisAction) (ret interface{}, err error) {
 	}
 }
 
+func (r *Runner) loadCachedPackage(pkg *Package, analyzers []*analysis.Analyzer) (cachedPackage, bool) {
+	// OPT(dh): we can cache this computation, it'll be the same for all packages
+	id := cache.Subkey(pkg.actionID, "data "+r.problemsCacheKey)
+
+	b, _, err := r.cache.GetBytes(id)
+	if err != nil {
+		return cachedPackage{}, false
+	}
+	var cpkg cachedPackage
+	if err := gob.NewDecoder(bytes.NewReader(b)).Decode(&cpkg); err != nil {
+		return cachedPackage{}, false
+	}
+	return cpkg, true
+}
+
 func (r *Runner) loadCachedFacts(a *analysis.Analyzer, pkg *Package) ([]Fact, bool) {
 	if len(a.FactTypes) == 0 {
 		return nil, true
@@ -285,10 +397,7 @@ func (r *Runner) loadCachedFacts(a *analysis.Analyzer, pkg *Package) ([]Fact, bo
 
 	var facts []Fact
 	// Look in the cache for facts
-	aID, err := passActionID(pkg, a)
-	if err != nil {
-		return nil, false
-	}
+	aID := passActionID(pkg, a)
 	aID = cache.Subkey(aID, "facts")
 	b, _, err := r.cache.GetBytes(aID)
 	if err != nil {
@@ -378,9 +487,15 @@ func (r *Runner) runAnalysisUser(pass *analysis.Pass, ac *analysisAction) (inter
 	}
 
 	// Then with this analyzer
-	ret, err := ac.analyzer.Run(pass)
-	if err != nil {
-		return nil, err
+	var ret interface{}
+	for i := uint(0); i < r.repeatAnalyzers+1; i++ {
+		var err error
+		t := time.Now()
+		ret, err = ac.analyzer.Run(pass)
+		r.stats.MeasureAnalyzer(ac.analyzer, ac.pkg, time.Since(t))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(ac.analyzer.FactTypes) > 0 {
@@ -404,21 +519,25 @@ func (r *Runner) runAnalysisUser(pass *analysis.Pass, ac *analysisAction) (inter
 			}
 		}
 
-		buf := &bytes.Buffer{}
-		if err := gob.NewEncoder(buf).Encode(facts); err != nil {
-			return nil, err
-		}
-		aID, err := passActionID(ac.pkg, ac.analyzer)
-		if err != nil {
-			return nil, err
-		}
-		aID = cache.Subkey(aID, "facts")
-		if err := r.cache.PutBytes(aID, buf.Bytes()); err != nil {
+		if err := r.cacheData(facts, ac.pkg, ac.analyzer, "facts"); err != nil {
 			return nil, err
 		}
 	}
 
 	return ret, nil
+}
+
+func (r *Runner) cacheData(v interface{}, pkg *Package, a *analysis.Analyzer, subkey string) error {
+	buf := &bytes.Buffer{}
+	if err := gob.NewEncoder(buf).Encode(v); err != nil {
+		return err
+	}
+	aID := passActionID(pkg, a)
+	aID = cache.Subkey(aID, subkey)
+	if err := r.cache.PutBytes(aID, buf.Bytes()); err != nil {
+		return err
+	}
+	return nil
 }
 
 func NewRunner(stats *Stats) (*Runner, error) {
@@ -438,9 +557,17 @@ func NewRunner(stats *Stats) (*Runner, error) {
 // diagnostics as well as extracted ignore directives.
 //
 // Note that diagnostics have not been filtered at this point yet, to
-// accomodate cumulative analyzes that require additional steps to
+// accommodate cumulative analyzes that require additional steps to
 // produce diagnostics.
 func (r *Runner) Run(cfg *packages.Config, patterns []string, analyzers []*analysis.Analyzer, hasCumulative bool) ([]*Package, error) {
+	checkerNames := make([]string, len(analyzers))
+	for i, a := range analyzers {
+		checkerNames[i] = a.Name
+	}
+	sort.Strings(checkerNames)
+	r.problemsCacheKey = strings.Join(checkerNames, " ")
+
+	var allAnalyzers []*analysis.Analyzer
 	r.analyzerIDs = analyzerIDs{m: map[*analysis.Analyzer]int{}}
 	id := 0
 	seen := map[*analysis.Analyzer]struct{}{}
@@ -450,6 +577,7 @@ func (r *Runner) Run(cfg *packages.Config, patterns []string, analyzers []*analy
 			return
 		}
 		seen[a] = struct{}{}
+		allAnalyzers = append(allAnalyzers, a)
 		r.analyzerIDs.m[a] = id
 		id++
 		for _, f := range a.FactTypes {
@@ -468,6 +596,11 @@ func (r *Runner) Run(cfg *packages.Config, patterns []string, analyzers []*analy
 	for _, a := range injectedAnalyses {
 		dfs(a)
 	}
+	// Run all analyzers on all packages (subject to further
+	// restrictions enforced later). This guarantees that if analyzer
+	// A1 depends on A2, and A2 has facts, that A2 will run on the
+	// dependencies of user-provided packages, even though A1 won't.
+	analyzers = allAnalyzers
 
 	var dcfg packages.Config
 	if cfg != nil {
@@ -475,11 +608,10 @@ func (r *Runner) Run(cfg *packages.Config, patterns []string, analyzers []*analy
 	}
 
 	atomic.StoreUint32(&r.stats.State, StateGraph)
-	initialPkgs, err := r.ld.Graph(dcfg, patterns...)
+	initialPkgs, err := loader.Graph(dcfg, patterns...)
 	if err != nil {
 		return nil, err
 	}
-
 	defer r.cache.Trim()
 
 	var allPkgs []*Package
@@ -507,7 +639,8 @@ func (r *Runner) Run(cfg *packages.Config, patterns []string, analyzers []*analy
 			m[l].Imports = append(m[l].Imports, m[v])
 		}
 
-		m[l].hash, err = packageHash(m[l])
+		m[l].hash, err = r.packageHash(m[l])
+		m[l].actionID = packageActionID(m[l])
 		if err != nil {
 			m[l].errs = append(m[l].errs, err)
 		}
@@ -564,27 +697,36 @@ func parsePos(pos string) (token.Position, int, error) {
 	}, len(parts[0]), nil
 }
 
-// loadPkg loads a Go package. If the package is in the set of initial
-// packages, it will be loaded from source, otherwise it will be
-// loaded from export data. In the case that the package was loaded
-// from export data, cached facts will also be loaded.
-//
-// Currently, only cached facts for this package will be loaded, not
-// for any of its dependencies.
+// loadPkg loads a Go package. It may be loaded from a combination of
+// caches, or from source.
 func (r *Runner) loadPkg(pkg *Package, analyzers []*analysis.Analyzer) error {
 	if pkg.Types != nil {
 		panic(fmt.Sprintf("internal error: %s has already been loaded", pkg.Package))
 	}
 
-	// Load type information
 	if pkg.initial {
-		// Load package from source
-		pkg.fromSource = true
-		return r.ld.LoadFromSource(pkg.Package)
+		// Try to load cached package
+		cpkg, ok := r.loadCachedPackage(pkg, analyzers)
+		if ok {
+			pkg.problems = cpkg.Problems
+			pkg.ignores = cpkg.Ignores
+			pkg.cfg = cpkg.Config
+		} else {
+			pkg.fromSource = true
+			return loader.LoadFromSource(pkg.Package)
+		}
 	}
 
+	// At this point we're either working with a non-initial package,
+	// or we managed to load cached problems for the package. We still
+	// need export data and facts.
+
+	// OPT(dh): we don't need type information for this package if no
+	// other package depends on it. this may be the case for initial
+	// packages.
+
 	// Load package from export data
-	if err := r.ld.LoadFromExport(pkg.Package); err != nil {
+	if err := loader.LoadFromExport(pkg.Package); err != nil {
 		// We asked Go to give us up to date export data, yet
 		// we can't load it. There must be something wrong.
 		//
@@ -597,7 +739,7 @@ func (r *Runner) loadPkg(pkg *Package, analyzers []*analysis.Analyzer) error {
 		// FIXME(dh): we no longer reload from export data, so
 		// theoretically we should be able to continue
 		pkg.fromSource = true
-		if err := r.ld.LoadFromSource(pkg.Package); err != nil {
+		if err := loader.LoadFromSource(pkg.Package); err != nil {
 			return err
 		}
 		// Make sure this package can't be imported successfully
@@ -658,13 +800,14 @@ func (r *Runner) loadPkg(pkg *Package, analyzers []*analysis.Analyzer) error {
 		dfs(a)
 	}
 
-	if failed {
-		pkg.fromSource = true
-		// XXX we added facts to the maps, we need to get rid of those
-		return r.ld.LoadFromSource(pkg.Package)
+	if !failed {
+		return nil
 	}
 
-	return nil
+	// We failed to load some cached facts
+	pkg.fromSource = true
+	// XXX we added facts to the maps, we need to get rid of those
+	return loader.LoadFromSource(pkg.Package)
 }
 
 type analysisError struct {
@@ -695,7 +838,7 @@ func (r *Runner) processPkg(pkg *Package, analyzers []*analysis.Analyzer) {
 	}()
 
 	// Ensure all packages have the generated map and config. This is
-	// required by interna of the runner. Analyses that themselves
+	// required by internals of the runner. Analyses that themselves
 	// make use of either have an explicit dependency so that other
 	// runners work correctly, too.
 	analyzers = append(analyzers[0:len(analyzers):len(analyzers)], injectedAnalyses...)
@@ -766,7 +909,7 @@ func (r *Runner) processPkg(pkg *Package, analyzers []*analysis.Analyzer) {
 			defer wg.Done()
 			// Only initial packages and packages with missing
 			// facts will have been loaded from source.
-			if pkg.initial || r.hasFacts(a) {
+			if pkg.initial || len(a.FactTypes) > 0 {
 				if _, err := r.runAnalysis(ac); err != nil {
 					errs[i] = analysisError{a, pkg, err}
 					return
@@ -800,6 +943,8 @@ func (r *Runner) processPkg(pkg *Package, analyzers []*analysis.Analyzer) {
 
 	// We can't process ignores at this point because `unused` needs
 	// to see more than one package to make its decision.
+	//
+	// OPT(dh): can't we guard this block of code by pkg.initial?
 	ignores, problems := parseDirectives(pkg.Package)
 	pkg.ignores = append(pkg.ignores, ignores...)
 	pkg.problems = append(pkg.problems, problems...)
@@ -822,32 +967,6 @@ func (r *Runner) processPkg(pkg *Package, analyzers []*analysis.Analyzer) {
 	// live that export data wouldn't also. We only need to discard
 	// the AST and the TypesInfo maps; that happens after we return
 	// from processPkg.
-}
-
-// hasFacts reports whether an analysis exports any facts. An analysis
-// that has a transitive dependency that exports facts is considered
-// to be exporting facts.
-func (r *Runner) hasFacts(a *analysis.Analyzer) bool {
-	ret := false
-	seen := make([]bool, len(r.analyzerIDs.m))
-	var dfs func(*analysis.Analyzer)
-	dfs = func(a *analysis.Analyzer) {
-		if seen[r.analyzerIDs.get(a)] {
-			return
-		}
-		seen[r.analyzerIDs.get(a)] = true
-		if len(a.FactTypes) > 0 {
-			ret = true
-		}
-		for _, req := range a.Requires {
-			if ret {
-				break
-			}
-			dfs(req)
-		}
-	}
-	dfs(a)
-	return ret
 }
 
 func parseDirective(s string) (cmd string, args []string) {
@@ -912,7 +1031,7 @@ func parseDirectives(pkg *packages.Package) ([]Ignore, []Problem) {
 							File:   pos.Filename,
 							Line:   pos.Line,
 							Checks: checks,
-							Pos:    c.Pos(),
+							Pos:    DisplayPosition(pkg.Fset, c.Pos()),
 						}
 					case "file-ignore":
 						ig = &FileIgnore{
@@ -932,15 +1051,38 @@ func parseDirectives(pkg *packages.Package) ([]Ignore, []Problem) {
 // packageHash computes a package's hash. The hash is based on all Go
 // files that make up the package, as well as the hashes of imported
 // packages.
-func packageHash(pkg *Package) (string, error) {
+func (r *Runner) packageHash(pkg *Package) (string, error) {
 	key := cache.NewHash("package hash")
 	fmt.Fprintf(key, "pkgpath %s\n", pkg.PkgPath)
+	fmt.Fprintf(key, "go %d\n", r.goVersion)
 	for _, f := range pkg.CompiledGoFiles {
 		h, err := cache.FileHash(f)
 		if err != nil {
 			return "", err
 		}
 		fmt.Fprintf(key, "file %s %x\n", f, h)
+	}
+
+	// Actually load the configuration to calculate its hash. This
+	// will take into consideration inheritance of configuration
+	// files, as well as the default configuration.
+	//
+	// OPT(dh): doing this means we'll load the config twice: once for
+	// computing the hash, and once when analyzing the package from
+	// source.
+	cdir := config.Dir(pkg.GoFiles)
+	if cdir == "" {
+		fmt.Fprintf(key, "file %s %x\n", config.ConfigName, [cache.HashSize]byte{})
+	} else {
+		cfg, err := config.Load(cdir)
+		if err != nil {
+			return "", err
+		}
+		h := cache.NewHash(config.ConfigName)
+		if _, err := h.Write([]byte(cfg.String())); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(key, "file %s %x\n", config.ConfigName, h.Sum())
 	}
 
 	imps := make([]*Package, len(pkg.Imports))
@@ -959,12 +1101,14 @@ func packageHash(pkg *Package) (string, error) {
 	return hex.EncodeToString(h[:]), nil
 }
 
-// passActionID computes an ActionID for an analysis pass.
-func passActionID(pkg *Package, analyzer *analysis.Analyzer) (cache.ActionID, error) {
-	key := cache.NewHash("action ID")
+func packageActionID(pkg *Package) cache.ActionID {
+	key := cache.NewHash("package ID")
 	fmt.Fprintf(key, "pkgpath %s\n", pkg.PkgPath)
 	fmt.Fprintf(key, "pkghash %s\n", pkg.hash)
-	fmt.Fprintf(key, "analyzer %s\n", analyzer.Name)
+	return key.Sum()
+}
 
-	return key.Sum(), nil
+// passActionID computes an ActionID for an analysis pass.
+func passActionID(pkg *Package, analyzer *analysis.Analyzer) cache.ActionID {
+	return cache.Subkey(pkg.actionID, fmt.Sprintf("analyzer %s", analyzer.Name))
 }

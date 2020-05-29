@@ -4,9 +4,14 @@
 package storepb
 
 import (
+	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"unsafe"
 
+	"github.com/gogo/protobuf/types"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/thanos-io/thanos/pkg/store/storepb/prompb"
 )
@@ -16,6 +21,7 @@ var PartialResponseStrategyValues = func() []string {
 	for k := range PartialResponseStrategy_value {
 		s = append(s, k)
 	}
+	sort.Strings(s)
 	return s
 }()
 
@@ -31,6 +37,14 @@ func NewSeriesResponse(series *Series) *SeriesResponse {
 	return &SeriesResponse{
 		Result: &SeriesResponse_Series{
 			Series: series,
+		},
+	}
+}
+
+func NewHintsSeriesResponse(hints *types.Any) *SeriesResponse {
+	return &SeriesResponse{
+		Result: &SeriesResponse_Hints{
+			Hints: hints,
 		},
 	}
 }
@@ -169,6 +183,7 @@ func (s *mergedSeriesSet) Next() bool {
 }
 
 // LabelsToPromLabels converts Thanos proto labels to Prometheus labels in type safe manner.
+// NOTE: It allocates memory.
 func LabelsToPromLabels(lset []Label) labels.Labels {
 	ret := make(labels.Labels, len(lset))
 	for i, l := range lset {
@@ -186,6 +201,7 @@ func LabelsToPromLabelsUnsafe(lset []Label) labels.Labels {
 }
 
 // PromLabelsToLabels converts Prometheus labels to Thanos proto labels in type safe manner.
+// NOTE: It allocates memory.
 func PromLabelsToLabels(lset labels.Labels) []Label {
 	ret := make([]Label, len(lset))
 	for i, l := range lset {
@@ -197,24 +213,15 @@ func PromLabelsToLabels(lset labels.Labels) []Label {
 // PromLabelsToLabelsUnsafe converts Prometheus labels to Thanos proto labels in type unsafe manner.
 // It reuses the same memory. Caller should abort using passed labels.Labels.
 //
-// // NOTE: This depends on order of struct fields etc, so use with extreme care.
+// NOTE: This depends on order of struct fields etc, so use with extreme care.
 func PromLabelsToLabelsUnsafe(lset labels.Labels) []Label {
 	return *(*[]Label)(unsafe.Pointer(&lset))
-}
-
-// PrompbLabelsToLabels converts Prometheus labels to Thanos proto labels in type safe manner.
-func PrompbLabelsToLabels(lset []prompb.Label) []Label {
-	ret := make([]Label, len(lset))
-	for i, l := range lset {
-		ret[i] = Label{Name: l.Name, Value: l.Value}
-	}
-	return ret
 }
 
 // PrompbLabelsToLabelsUnsafe converts Prometheus proto labels to Thanos proto labels in type unsafe manner.
 // It reuses the same memory. Caller should abort using passed labels.Labels.
 //
-// // NOTE: This depends on order of struct fields etc, so use with extreme care.
+// NOTE: This depends on order of struct fields etc, so use with extreme care.
 func PrompbLabelsToLabelsUnsafe(lset []prompb.Label) []Label {
 	return *(*[]Label)(unsafe.Pointer(&lset))
 }
@@ -233,4 +240,104 @@ func LabelSetsToString(lsets []LabelSet) string {
 		s = append(s, LabelsToString(ls.Labels))
 	}
 	return strings.Join(s, "")
+}
+
+func (x *PartialResponseStrategy) UnmarshalJSON(entry []byte) error {
+	fieldStr, err := strconv.Unquote(string(entry))
+	if err != nil {
+		return errors.Wrapf(err, fmt.Sprintf("failed to unqote %v, in order to unmarshal as 'partial_response_strategy'. Possible values are %s", string(entry), strings.Join(PartialResponseStrategyValues, ",")))
+	}
+
+	if len(fieldStr) == 0 {
+		// NOTE: For Rule default is abort as this is recommended for alerting.
+		*x = PartialResponseStrategy_ABORT
+		return nil
+	}
+
+	strategy, ok := PartialResponseStrategy_value[strings.ToUpper(fieldStr)]
+	if !ok {
+		return errors.Errorf(fmt.Sprintf("failed to unmarshal %v as 'partial_response_strategy'. Possible values are %s", string(entry), strings.Join(PartialResponseStrategyValues, ",")))
+	}
+	*x = PartialResponseStrategy(strategy)
+	return nil
+}
+
+func (x *PartialResponseStrategy) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(x.String())), nil
+}
+
+// ExtendLabels extend given labels by extend in labels format.
+// The type conversion is done safely, which means we don't modify extend labels underlying array.
+//
+// In case of existing labels already present in given label set, it will be overwritten by external one.
+func ExtendLabels(lset []Label, extend labels.Labels) []Label {
+	overwritten := map[string]struct{}{}
+	for i, l := range lset {
+		if v := extend.Get(l.Name); v != "" {
+			lset[i].Value = v
+			overwritten[l.Name] = struct{}{}
+		}
+	}
+
+	for _, l := range extend {
+		if _, ok := overwritten[l.Name]; ok {
+			continue
+		}
+		lset = append(lset, Label{
+			Name:  l.Name,
+			Value: l.Value,
+		})
+	}
+	sort.Slice(lset, func(i, j int) bool {
+		return lset[i].Name < lset[j].Name
+	})
+	return lset
+}
+
+// TranslatePromMatchers returns proto matchers from Prometheus matchers.
+// NOTE: It allocates memory.
+func TranslatePromMatchers(ms ...*labels.Matcher) ([]LabelMatcher, error) {
+	res := make([]LabelMatcher, 0, len(ms))
+	for _, m := range ms {
+		var t LabelMatcher_Type
+
+		switch m.Type {
+		case labels.MatchEqual:
+			t = LabelMatcher_EQ
+		case labels.MatchNotEqual:
+			t = LabelMatcher_NEQ
+		case labels.MatchRegexp:
+			t = LabelMatcher_RE
+		case labels.MatchNotRegexp:
+			t = LabelMatcher_NRE
+		default:
+			return nil, errors.Errorf("unrecognized matcher type %d", m.Type)
+		}
+		res = append(res, LabelMatcher{Type: t, Name: m.Name, Value: m.Value})
+	}
+	return res, nil
+}
+
+// TranslateFromPromMatchers returns Prometheus matchers from proto matchers.
+// NOTE: It allocates memory.
+func TranslateFromPromMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
+	res := make([]*labels.Matcher, 0, len(ms))
+	for _, m := range ms {
+		var t labels.MatchType
+
+		switch m.Type {
+		case LabelMatcher_EQ:
+			t = labels.MatchEqual
+		case LabelMatcher_NEQ:
+			t = labels.MatchNotEqual
+		case LabelMatcher_RE:
+			t = labels.MatchRegexp
+		case LabelMatcher_NRE:
+			t = labels.MatchNotRegexp
+		default:
+			return nil, errors.Errorf("unrecognized matcher type %d", m.Type)
+		}
+		res = append(res, &labels.Matcher{Type: t, Name: m.Name, Value: m.Value})
+	}
+	return res, nil
 }

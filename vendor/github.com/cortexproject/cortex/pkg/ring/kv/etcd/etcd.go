@@ -214,7 +214,7 @@ outer:
 
 // List implements kv.Client.
 func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
-	resp, err := c.cli.Get(ctx, prefix, clientv3.WithPrefix())
+	resp, err := c.cli.Get(ctx, prefix, clientv3.WithPrefix(), clientv3.WithKeysOnly())
 	if err != nil {
 		return nil, err
 	}

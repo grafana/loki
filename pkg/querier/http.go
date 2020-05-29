@@ -9,7 +9,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -26,8 +26,8 @@ const (
 )
 
 type QueryResponse struct {
-	ResultType promql.ValueType `json:"resultType"`
-	Result     promql.Value     `json:"result"`
+	ResultType parser.ValueType `json:"resultType"`
+	Result     parser.Value     `json:"result"`
 }
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.

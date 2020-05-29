@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,27 +10,29 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/configs/userconfig"
-
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
 
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	tls_cfg "github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config says where we can find the ruler userconfig.
 type Config struct {
-	ConfigsAPIURL flagext.URLValue `yaml:"configs_api_url"`
-	ClientTimeout time.Duration    `yaml:"client_timeout"` // HTTP timeout duration for requests made to the Weave Cloud configs service.
+	ConfigsAPIURL flagext.URLValue     `yaml:"configs_api_url"`
+	ClientTimeout time.Duration        `yaml:"client_timeout"` // HTTP timeout duration for requests made to the Weave Cloud configs service.
+	TLS           tls_cfg.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.ConfigsAPIURL, prefix+"configs.url", "URL of configs API server.")
 	f.DurationVar(&cfg.ClientTimeout, prefix+"configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
+	cfg.TLS.RegisterFlagsWithPrefix(prefix+"configs", f)
 }
 
 var configsRequestDuration = instrument.NewHistogramCollector(promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -51,16 +54,27 @@ type Client interface {
 
 // New creates a new ConfigClient.
 func New(cfg Config) (*ConfigDBClient, error) {
-	return &ConfigDBClient{
+	client := &ConfigDBClient{
 		URL:     cfg.ConfigsAPIURL.URL,
 		Timeout: cfg.ClientTimeout,
-	}, nil
+	}
+
+	tlsConfig, err := cfg.TLS.GetTLSConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	if tlsConfig != nil {
+		client.TLSConfig = tlsConfig
+	}
+	return client, nil
 }
 
 // ConfigDBClient allows retrieving recording and alerting rules from the configs server.
 type ConfigDBClient struct {
-	URL     *url.URL
-	Timeout time.Duration
+	URL       *url.URL
+	Timeout   time.Duration
+	TLSConfig *tls.Config
 }
 
 // GetRules implements Client
@@ -73,7 +87,7 @@ func (c ConfigDBClient) GetRules(ctx context.Context, since userconfig.ID) (map[
 	var response *ConfigsResponse
 	err := instrument.CollectedRequest(ctx, "GetRules", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		response, err = doRequest(endpoint, c.Timeout, since)
+		response, err = doRequest(endpoint, c.Timeout, c.TLSConfig, since)
 		return err
 	})
 	if err != nil {
@@ -99,19 +113,22 @@ func (c ConfigDBClient) GetAlerts(ctx context.Context, since userconfig.ID) (*Co
 	var response *ConfigsResponse
 	err := instrument.CollectedRequest(ctx, "GetAlerts", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		response, err = doRequest(endpoint, c.Timeout, since)
+		response, err = doRequest(endpoint, c.Timeout, c.TLSConfig, since)
 		return err
 	})
 	return response, err
 }
 
-func doRequest(endpoint string, timeout time.Duration, since userconfig.ID) (*ConfigsResponse, error) {
+func doRequest(endpoint string, timeout time.Duration, tlsConfig *tls.Config, since userconfig.ID) (*ConfigsResponse, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	client := &http.Client{Timeout: timeout}
+	if tlsConfig != nil {
+		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

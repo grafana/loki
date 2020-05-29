@@ -3,7 +3,6 @@ package storegateway
 import (
 	"context"
 	"flag"
-	"io"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -269,7 +268,7 @@ func (g *StoreGateway) syncStores(ctx context.Context, reason string) {
 	level.Info(g.logger).Log("msg", "synchronizing TSDB blocks for all users", "reason", reason)
 	g.bucketSync.WithLabelValues(reason).Inc()
 
-	if err := g.stores.SyncBlocks(ctx); err != nil && err != io.EOF {
+	if err := g.stores.SyncBlocks(ctx); err != nil {
 		level.Warn(g.logger).Log("msg", "failed to synchronize TSDB blocks", "reason", reason, "err", err)
 	} else {
 		level.Info(g.logger).Log("msg", "successfully synchronized TSDB blocks for all users", "reason", reason)
@@ -304,13 +303,9 @@ func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.
 }
 
 func createBucketClient(cfg cortex_tsdb.Config, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg, "cortex-bucket-stores", logger)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg, "store-gateway", logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket client")
-	}
-
-	if reg != nil {
-		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_storegateway_", reg))
 	}
 
 	return bucketClient, nil

@@ -173,9 +173,6 @@ type ReadRowsResponse_CellChunk struct {
 	// this CellChunk is a continuation of the same row as the previous
 	// CellChunk in the response stream, even if that CellChunk was in a
 	// previous ReadRowsResponse message.
-	//
-	// Classified as IDENTIFYING_ID to provide context around data accesses for
-	// auditing systems.
 	RowKey []byte `protobuf:"bytes,1,opt,name=row_key,json=rowKey,proto3" json:"row_key,omitempty"`
 	// The column family name for this chunk of data.  If this message
 	// is not present this CellChunk is a continuation of the same column
@@ -406,9 +403,6 @@ type SampleRowKeysResponse struct {
 	// Note that row keys in this list may not have ever been written to or read
 	// from, and users should therefore not make any assumptions about the row key
 	// structure that are specific to their use case.
-	//
-	// Classified as IDENTIFYING_ID to provide context around data accesses for
-	// auditing systems.
 	RowKey []byte `protobuf:"bytes,1,opt,name=row_key,json=rowKey,proto3" json:"row_key,omitempty"`
 	// Approximate total storage space used by all rows in the table which precede
 	// `row_key`. Buffering the contents of all rows between two subsequent
@@ -469,9 +463,6 @@ type MutateRowRequest struct {
 	// "default" application profile will be used.
 	AppProfileId string `protobuf:"bytes,4,opt,name=app_profile_id,json=appProfileId,proto3" json:"app_profile_id,omitempty"`
 	// Required. The key of the row to which the mutation should be applied.
-	//
-	// Classified as IDENTIFYING_ID to provide context around data accesses for
-	// auditing systems.
 	RowKey []byte `protobuf:"bytes,2,opt,name=row_key,json=rowKey,proto3" json:"row_key,omitempty"`
 	// Required. Changes to be atomically applied to the specified row. Entries are applied
 	// in order, meaning that earlier mutations can be masked by later ones.
@@ -634,9 +625,6 @@ func (m *MutateRowsRequest) GetEntries() []*MutateRowsRequest_Entry {
 // A mutation for a given row.
 type MutateRowsRequest_Entry struct {
 	// The key of the row to which the `mutations` should be applied.
-	//
-	// Classified as IDENTIFYING_ID to provide context around data accesses for
-	// auditing systems.
 	RowKey []byte `protobuf:"bytes,1,opt,name=row_key,json=rowKey,proto3" json:"row_key,omitempty"`
 	// Required. Changes to be atomically applied to the specified row. Mutations are
 	// applied in order, meaning that earlier mutations can be masked by
@@ -793,9 +781,6 @@ type CheckAndMutateRowRequest struct {
 	// "default" application profile will be used.
 	AppProfileId string `protobuf:"bytes,7,opt,name=app_profile_id,json=appProfileId,proto3" json:"app_profile_id,omitempty"`
 	// Required. The key of the row to which the conditional mutation should be applied.
-	//
-	// Classified as IDENTIFYING_ID to provide context around data accesses for
-	// auditing systems.
 	RowKey []byte `protobuf:"bytes,2,opt,name=row_key,json=rowKey,proto3" json:"row_key,omitempty"`
 	// The filter to be applied to the contents of the specified row. Depending
 	// on whether or not any results are yielded, either `true_mutations` or
@@ -939,9 +924,6 @@ type ReadModifyWriteRowRequest struct {
 	// "default" application profile will be used.
 	AppProfileId string `protobuf:"bytes,4,opt,name=app_profile_id,json=appProfileId,proto3" json:"app_profile_id,omitempty"`
 	// Required. The key of the row to which the read/modify/write rules should be applied.
-	//
-	// Classified as IDENTIFYING_ID to provide context around data accesses for
-	// auditing systems.
 	RowKey []byte `protobuf:"bytes,2,opt,name=row_key,json=rowKey,proto3" json:"row_key,omitempty"`
 	// Required. Rules specifying how the specified row's contents are to be transformed
 	// into writes. Entries are applied in order, meaning that earlier rules will
@@ -1064,7 +1046,9 @@ func init() {
 	proto.RegisterType((*ReadModifyWriteRowResponse)(nil), "google.bigtable.v2.ReadModifyWriteRowResponse")
 }
 
-func init() { proto.RegisterFile("google/bigtable/v2/bigtable.proto", fileDescriptor_7e9247725ec9a6cf) }
+func init() {
+	proto.RegisterFile("google/bigtable/v2/bigtable.proto", fileDescriptor_7e9247725ec9a6cf)
+}
 
 var fileDescriptor_7e9247725ec9a6cf = []byte{
 	// 1469 bytes of a gzipped FileDescriptorProto
@@ -1164,11 +1148,11 @@ var fileDescriptor_7e9247725ec9a6cf = []byte{
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
-var _ grpc.ClientConn
+var _ grpc.ClientConnInterface
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
+const _ = grpc.SupportPackageIsVersion6
 
 // BigtableClient is the client API for Bigtable service.
 //
@@ -1203,10 +1187,10 @@ type BigtableClient interface {
 }
 
 type bigtableClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewBigtableClient(cc *grpc.ClientConn) BigtableClient {
+func NewBigtableClient(cc grpc.ClientConnInterface) BigtableClient {
 	return &bigtableClient{cc}
 }
 

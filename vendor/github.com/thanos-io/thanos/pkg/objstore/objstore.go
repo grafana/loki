@@ -70,8 +70,8 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
-	// ObjectSize returns the size of the specified object.
-	ObjectSize(ctx context.Context, name string) (uint64, error)
+	// Attributes returns information about the specified object.
+	Attributes(ctx context.Context, name string) (ObjectAttributes, error)
 }
 
 // InstrumentedBucket is a BucketReader with optional instrumentation control.
@@ -81,6 +81,14 @@ type InstrumentedBucketReader interface {
 	// ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
 	// thanos_objstore_bucket_operation_failures_total metric.
 	ReaderWithExpectedErrs(IsOpFailureExpectedFunc) BucketReader
+}
+
+type ObjectAttributes struct {
+	// Size is the object size in bytes.
+	Size int64 `json:"size"`
+
+	// LastModified is the timestamp the object was last modified.
+	LastModified time.Time `json:"last_modified"`
 }
 
 // TryToGetSize tries to get upfront size from reader.
@@ -211,13 +219,13 @@ func DownloadDir(ctx context.Context, logger log.Logger, bkt BucketReader, src, 
 }
 
 const (
-	iterOp     = "iter"
-	sizeOp     = "objectsize"
-	getOp      = "get"
-	getRangeOp = "get_range"
-	existsOp   = "exists"
-	uploadOp   = "upload"
-	deleteOp   = "delete"
+	iterOp       = "iter"
+	getOp        = "get"
+	getRangeOp   = "get_range"
+	existsOp     = "exists"
+	uploadOp     = "upload"
+	deleteOp     = "delete"
+	attributesOp = "attributes"
 )
 
 // IsOpFailureExpectedFunc allows to mark certain errors as expected, so they will not increment thanos_objstore_bucket_operation_failures_total metric.
@@ -256,12 +264,12 @@ func BucketWithMetrics(name string, b Bucket, reg prometheus.Registerer) *metric
 	}
 	for _, op := range []string{
 		iterOp,
-		sizeOp,
 		getOp,
 		getRangeOp,
 		existsOp,
 		uploadOp,
 		deleteOp,
+		attributesOp,
 	} {
 		bkt.ops.WithLabelValues(op)
 		bkt.opsFailures.WithLabelValues(op)
@@ -308,20 +316,20 @@ func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string)
 	return err
 }
 
-func (b *metricBucket) ObjectSize(ctx context.Context, name string) (uint64, error) {
-	const op = sizeOp
+func (b *metricBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
+	const op = attributesOp
 	b.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
-	rc, err := b.bkt.ObjectSize(ctx, name)
+	attrs, err := b.bkt.Attributes(ctx, name)
 	if err != nil {
 		if !b.isOpFailureExpected(err) {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
-		return 0, err
+		return attrs, err
 	}
 	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
-	return rc, nil
+	return attrs, nil
 }
 
 func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {

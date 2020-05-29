@@ -4,12 +4,12 @@ import (
 	"go/ast"
 	"strings"
 
-	. "honnef.co/go/tools/lint/lintdsl"
+	"honnef.co/go/tools/code"
 )
 
 func buildTags(f *ast.File) [][]string {
 	var out [][]string
-	for _, line := range strings.Split(Preamble(f), "\n") {
+	for _, line := range strings.Split(code.Preamble(f), "\n") {
 		if !strings.HasPrefix(line, "+build ") {
 			continue
 		}

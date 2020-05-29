@@ -2,7 +2,7 @@ package batch
 
 import (
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -28,7 +28,7 @@ type iterator interface {
 }
 
 // NewChunkMergeIterator returns a storage.SeriesIterator that merges chunks together.
-func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) storage.SeriesIterator {
+func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
 	iter := newMergeIterator(chunks)
 	return newIteratorAdapter(iter)
 }
@@ -42,7 +42,7 @@ type iteratorAdapter struct {
 	underlying iterator
 }
 
-func newIteratorAdapter(underlying iterator) storage.SeriesIterator {
+func newIteratorAdapter(underlying iterator) chunkenc.Iterator {
 	return &iteratorAdapter{
 		batchSize:  1,
 		underlying: underlying,

@@ -525,7 +525,9 @@ func init() {
 	proto.RegisterType((*AuditConfigDelta)(nil), "google.iam.v1.AuditConfigDelta")
 }
 
-func init() { proto.RegisterFile("google/iam/v1/policy.proto", fileDescriptor_a3cd40b8a66b2a99) }
+func init() {
+	proto.RegisterFile("google/iam/v1/policy.proto", fileDescriptor_a3cd40b8a66b2a99)
+}
 
 var fileDescriptor_a3cd40b8a66b2a99 = []byte{
 	// 550 bytes of a gzipped FileDescriptorProto

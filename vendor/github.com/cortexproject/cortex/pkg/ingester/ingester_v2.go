@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -74,21 +75,20 @@ type TSDBState struct {
 	tsdbMetrics *tsdbMetrics
 
 	// Head compactions metrics.
-	compactionsTriggered prometheus.Counter
-	compactionsFailed    prometheus.Counter
-	walReplayTime        prometheus.Histogram
+	compactionsTriggered   prometheus.Counter
+	compactionsFailed      prometheus.Counter
+	walReplayTime          prometheus.Histogram
+	appenderAddDuration    prometheus.Histogram
+	appenderCommitDuration prometheus.Histogram
+	refCachePurgeDuration  prometheus.Histogram
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
-	}
-
-	if registerer != nil {
-		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_ingester_", registerer))
 	}
 
 	i := &Ingester{
@@ -116,6 +116,21 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 			walReplayTime: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 				Name:    "cortex_ingester_tsdb_wal_replay_duration_seconds",
 				Help:    "The total time it takes to open and replay a TSDB WAL.",
+				Buckets: prometheus.DefBuckets,
+			}),
+			appenderAddDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+				Name:    "cortex_ingester_tsdb_appender_add_duration_seconds",
+				Help:    "The total time it takes for a push request to add samples to the TSDB appender.",
+				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+			}),
+			appenderCommitDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+				Name:    "cortex_ingester_tsdb_appender_commit_duration_seconds",
+				Help:    "The total time it takes for a push request to commit samples appended to TSDB.",
+				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+			}),
+			refCachePurgeDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+				Name:    "cortex_ingester_tsdb_refcache_purge_duration_seconds",
+				Help:    "The total time it takes to purge the TSDB series reference cache for a single tenant.",
 				Buckets: prometheus.DefBuckets,
 			}),
 		},
@@ -220,9 +235,13 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		case <-refCachePurgeTicker.C:
 			for _, userID := range i.getTSDBUsers() {
 				userDB := i.getTSDB(userID)
-				if userDB != nil {
-					userDB.refCache.Purge(time.Now().Add(-cortex_tsdb.DefaultRefCacheTTL))
+				if userDB == nil {
+					continue
 				}
+
+				startTime := time.Now()
+				userDB.refCache.Purge(startTime.Add(-cortex_tsdb.DefaultRefCacheTTL))
+				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
 			}
 		case <-ctx.Done():
 			return nil
@@ -276,7 +295,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	// successfully committed
 	succeededSamplesCount := 0
 	failedSamplesCount := 0
-	now := time.Now()
+	startAppend := time.Now()
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender()
@@ -285,7 +304,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 		// that even if we have a reference it's not guaranteed to be still valid.
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
-		cachedRef, cachedRefExists := db.refCache.Ref(now, client.FromLabelAdaptersToLabels(ts.Labels))
+		cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(ts.Labels))
 
 		for _, s := range ts.Samples {
 			var err error
@@ -297,7 +316,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 					continue
 				}
 
-				if errors.Cause(err) == tsdb.ErrNotFound {
+				if errors.Cause(err) == storage.ErrNotFound {
 					cachedRefExists = false
 					err = nil
 				}
@@ -311,7 +330,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				copiedLabels := client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
 				if ref, err = app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
-					db.refCache.SetRef(now, copiedLabels, ref)
+					db.refCache.SetRef(startAppend, copiedLabels, ref)
 					cachedRef = ref
 					cachedRefExists = true
 
@@ -327,17 +346,17 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
 			cause := errors.Cause(err)
-			if cause == tsdb.ErrOutOfBounds || cause == tsdb.ErrOutOfOrderSample || cause == tsdb.ErrAmendSample {
+			if cause == storage.ErrOutOfBounds || cause == storage.ErrOutOfOrderSample || cause == storage.ErrDuplicateSampleForTimestamp {
 				if firstPartialErr == nil {
 					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().Format(time.RFC3339Nano))
 				}
 
 				switch cause {
-				case tsdb.ErrOutOfBounds:
+				case storage.ErrOutOfBounds:
 					validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Inc()
-				case tsdb.ErrOutOfOrderSample:
+				case storage.ErrOutOfOrderSample:
 					validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Inc()
-				case tsdb.ErrAmendSample:
+				case storage.ErrDuplicateSampleForTimestamp:
 					validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Inc()
 				}
 
@@ -352,9 +371,15 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			return nil, wrapWithUser(err, userID)
 		}
 	}
+
+	// At this point all samples have been added to the appender, so we can track the time it took.
+	i.TSDBState.appenderAddDuration.Observe(time.Since(startAppend).Seconds())
+
+	startCommit := time.Now()
 	if err := app.Commit(); err != nil {
 		return nil, wrapWithUser(err, userID)
 	}
+	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 
 	// Increment metrics only if the samples have been successfully committed.
 	// If the code didn't reach this point, it means that we returned an error
@@ -396,13 +421,14 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 		return &client.QueryResponse{}, nil
 	}
 
-	q, err := db.Querier(int64(from), int64(through))
+	q, err := db.Querier(ctx, int64(from), int64(through))
 	if err != nil {
 		return nil, err
 	}
 	defer q.Close()
 
-	ss, err := q.Select(matchers...)
+	// It's not required to return sorted series because series are sorted by the Cortex querier.
+	ss, _, err := q.Select(false, nil, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -446,13 +472,13 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 
 	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
 	// label values without any time range bound.
-	q, err := db.Querier(0, math.MaxInt64)
+	q, err := db.Querier(ctx, 0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}
 	defer q.Close()
 
-	vals, err := q.LabelValues(req.LabelName)
+	vals, _, err := q.LabelValues(req.LabelName)
 	if err != nil {
 		return nil, err
 	}
@@ -475,13 +501,13 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 
 	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
 	// label names without any time range bound.
-	q, err := db.Querier(0, math.MaxInt64)
+	q, err := db.Querier(ctx, 0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}
 	defer q.Close()
 
-	names, err := q.LabelNames()
+	names, _, err := q.LabelNames()
 	if err != nil {
 		return nil, err
 	}
@@ -503,13 +529,16 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 
 	// Parse the request
-	from, to, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	_, _, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create a new instance of the TSDB querier
-	q, err := db.Querier(int64(from), int64(to))
+	// Since ingester runs with a very limited TSDB retention, we can (and should) query
+	// metrics without any time range bound, otherwise when we receive a request with a time
+	// range older then the ingester's data we return an empty response instead of returning
+	// the currently known series.
+	q, err := db.Querier(ctx, 0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +551,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 
 	for _, matchers := range matchersSet {
-		seriesSet, err := q.Select(matchers...)
+		seriesSet, _, err := q.Select(false, nil, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -603,7 +632,8 @@ func createUserStats(db *userTSDB) *client.UserStatsResponse {
 
 // v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
-	_, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
+	log, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
+	defer log.Finish()
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -622,13 +652,14 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		return nil
 	}
 
-	q, err := db.Querier(int64(from), int64(through))
+	q, err := db.Querier(ctx, int64(from), int64(through))
 	if err != nil {
 		return err
 	}
 	defer q.Close()
 
-	ss, err := q.Select(matchers...)
+	// It's not required to return sorted series because series are sorted by the Cortex querier.
+	ss, _, err := q.Select(false, nil, matchers...)
 	if err != nil {
 		return err
 	}
@@ -685,6 +716,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 
 	i.metrics.queriedSeries.Observe(float64(numSeries))
 	i.metrics.queriedSamples.Observe(float64(numSamples))
+	level.Debug(log).Log("series", numSeries, "samples", numSamples)
 	return nil
 }
 
@@ -754,12 +786,16 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
 	userLogger := util.WithUserID(userID, util.Logger)
 
+	blockRanges := i.cfg.TSDBConfig.BlockRanges.ToMilliseconds()
+
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
-		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMilliseconds(),
+		RetentionDuration: i.cfg.TSDBConfig.Retention.Milliseconds(),
+		MinBlockDuration:  blockRanges[0],
+		MaxBlockDuration:  blockRanges[len(blockRanges)-1],
 		NoLockfile:        true,
 		StripeSize:        i.cfg.TSDBConfig.StripeSize,
+		WALCompression:    i.cfg.TSDBConfig.WALCompressionEnabled,
 	})
 	if err != nil {
 		return nil, err
@@ -780,6 +816,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		{
 			Name:  cortex_tsdb.TenantIDExternalLabel,
 			Value: userID,
+		}, {
+			Name:  cortex_tsdb.IngesterIDExternalLabel,
+			Value: i.lifecycler.ID,
 		},
 	}
 
