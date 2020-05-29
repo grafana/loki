@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/logproto"
@@ -14,7 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/stretchr/testify/require"
 )
 
 func testSampleStreams() []queryrange.SampleStream {
@@ -193,7 +194,7 @@ func TestDownstreamHandler(t *testing.T) {
 	ensureParallelism(t, in, in.parallelism)
 }
 
-// Consumes the locks in an instance, making sure they're all available. Does not replace them and thus instance is unusuable after. This is a cleanup test to ensure internal state
+// Consumes the locks in an instance, making sure they're all available. Does not replace them and thus instance is unusable after. This is a cleanup test to ensure internal state
 func ensureParallelism(t *testing.T, in *instance, n int) {
 	for i := 0; i < n; i++ {
 		select {

@@ -10,10 +10,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/stretchr/testify/require"
 )
 
 var (

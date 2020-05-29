@@ -41,7 +41,7 @@ func Test_Config(t *testing.T) {
 			clientDefaultConfig,
 			Config{
 				URL: flagext.URLValue{
-					u,
+					URL: u,
 				},
 				BackoffConfig: util.BackoffConfig{
 					MaxBackoff: 5 * time.Minute,
@@ -75,7 +75,7 @@ func Test_Config(t *testing.T) {
 		require.NoError(t, err)
 
 		if !reflect.DeepEqual(tc.expectedConfig, clientConfig) {
-			t.Errorf("Configs does not match, expected: %v, recieved: %v", tc.expectedConfig, clientConfig)
+			t.Errorf("Configs does not match, expected: %v, received: %v", tc.expectedConfig, clientConfig)
 		}
 	}
 }

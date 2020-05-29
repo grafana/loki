@@ -129,7 +129,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			time.Unix(10, 0), time.Unix(100, 0),
 		},
 		{
-			(50 * time.Second).Nanoseconds(), // all step are overlaping
+			(50 * time.Second).Nanoseconds(), // all step are overlapping
 			(10 * time.Second).Nanoseconds(),
 			[]promql.Vector{
 				[]promql.Sample{
