@@ -1158,6 +1158,54 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 		},
+		{
+			`bytes_rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Stream{
+				{logproto.Stream{
+					Labels: `{app="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(45, 0), Line: "0123456789"}, // 10 bytes / 30s for the first point.
+						{Timestamp: time.Unix(60, 0), Line: ""},
+						{Timestamp: time.Unix(75, 0), Line: ""},
+						{Timestamp: time.Unix(90, 0), Line: ""},
+						{Timestamp: time.Unix(105, 0), Line: ""},
+					},
+				}},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(30, 0), End: time.Unix(120, 0), Limit: 0, Selector: `{app="foo"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "foo"}},
+					Points: []promql.Point{{T: 60 * 1000, V: 10. / 30.}, {T: 75 * 1000, V: 0}, {T: 90 * 1000, V: 0}, {T: 105 * 1000, V: 0}, {T: 120 * 1000, V: 0}},
+				},
+			},
+		},
+		{
+			`bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Stream{
+				{logproto.Stream{
+					Labels: `{app="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(45, 0), Line: "01234"}, // 5 bytes
+						{Timestamp: time.Unix(60, 0), Line: ""},
+						{Timestamp: time.Unix(75, 0), Line: ""},
+						{Timestamp: time.Unix(90, 0), Line: ""},
+						{Timestamp: time.Unix(105, 0), Line: "0123"}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(30, 0), End: time.Unix(120, 0), Limit: 0, Selector: `{app="foo"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "foo"}},
+					Points: []promql.Point{{T: 60 * 1000, V: 5.}, {T: 75 * 1000, V: 0}, {T: 90 * 1000, V: 0}, {T: 105 * 1000, V: 4.}, {T: 120 * 1000, V: 4.}},
+				},
+			},
+		},
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
