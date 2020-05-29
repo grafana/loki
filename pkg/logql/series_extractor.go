@@ -10,12 +10,14 @@ var (
 	extractCount = countSampleExtractor{}
 )
 
+// SeriesIterator is an iterator that iterate over a stream of logs and returns sample.
 type SeriesIterator interface {
 	Close() error
 	Next() bool
 	Peek() (Sample, bool)
 }
 
+// Sample is a series sample
 type Sample struct {
 	Labels        string
 	Value         float64
@@ -70,8 +72,10 @@ func (e *seriesIterator) Peek() (Sample, bool) {
 	return e.cur, true
 }
 
+// SampleExtractor transforms a log entry into a sample.
+// In case of failure the second return value will be false.
 type SampleExtractor interface {
-	From(string, logproto.Entry) (Sample, bool)
+	From(labels string, e logproto.Entry) (Sample, bool)
 }
 
 type countSampleExtractor struct{}
