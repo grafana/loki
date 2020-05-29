@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
+	"github.com/cortexproject/cortex/pkg/chunk/grpc"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
@@ -73,6 +74,8 @@ type Config struct {
 	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config"`
 
 	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
+
+	GrpcConfig grpc.Config `yaml:"grpc_store"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -86,6 +89,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.DeleteStoreConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
+	cfg.GrpcConfig.RegisterFlags(f)
 
 	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or tsdb. Be aware tsdb is experimental and shouldn't be used in production.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
@@ -206,6 +210,8 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "boltdb":
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
+	case "grpc-store":
+		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}
@@ -245,8 +251,10 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 			return nil, err
 		}
 		return objectclient.NewClient(store, objectclient.Base64Encoder), nil
+	case "grpc-store":
+		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store", name)
 	}
 }
 
@@ -283,8 +291,10 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig)
 	case "boltdb":
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
+	case "grpc-store":
+		return grpc.NewTableClient(cfg.GrpcConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store", name)
 	}
 }
 
