@@ -107,9 +107,11 @@ transform it into an instance vector.
 
 The currently supported functions for operating over are:
 
-- `rate`: calculate the number of entries per second
+- `rate`: calculates the number of entries per second
 - `count_over_time`: counts the entries for each log stream within the given
   range.
+- `bytes_rate`: calculates the number of bytes per second for each stream.
+- `bytes_over_time`: counts the amount of bytes used by each log stream for a given range.
 
 > `count_over_time({job="mysql"}[5m])`
 
