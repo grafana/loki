@@ -82,7 +82,7 @@ The labels extracted will be `{team="x-men", container="promtail", pod="promtail
 If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log line you can use the `RemoveKeys` configuration field. (e.g. `RemoveKeys kubernetes,HOSTNAME`).
 
 ### Buffering
-Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. Loki output plugin in ceratain situation can be blocked by loki client because of design:
+Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. Loki output plugin in certain situation can be blocked by loki client because of its design:
 * BatchSize is over limit, output plugin pause receiving new records until the pending batch is sucessfully sent to the server
 * Loki server is unreachable (retry 429s, 500s and connection-level errors), output plugin blocks new records until loki server will be avalible again and the pending batch is sucessfully sent to the server or as long as the maximum number of attempts has been reached within configured backoff mechanism
 

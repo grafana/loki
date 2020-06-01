@@ -34,7 +34,7 @@ type dqueEntry struct {
 	Line string
 }
 
-func dqueEntryBuider() interface{} {
+func dqueEntryBuilder() interface{} {
 	return &dqueEntry{}
 }
 
@@ -52,7 +52,7 @@ func newDque(cfg *config, logger log.Logger) (client.Client, error) {
 	var err error
 
 	q := &dqueClient{
-		logger: log.With(logger, "component", "queue", "host", cfg.clientConfig.TenantID),
+		logger: log.With(logger, "component", "queue", "name", cfg.bufferConfig.dqueConfig.queueName),
 		quit:   make(chan struct{}),
 	}
 
@@ -61,7 +61,7 @@ func newDque(cfg *config, logger log.Logger) (client.Client, error) {
 		return nil, fmt.Errorf("cannot create queue directory: %s", err)
 	}
 
-	q.queue, err = dque.NewOrOpen(cfg.bufferConfig.dqueConfig.queueName, cfg.bufferConfig.dqueConfig.queueDir, cfg.bufferConfig.dqueConfig.queueSegmentSize, dqueEntryBuider)
+	q.queue, err = dque.NewOrOpen(cfg.bufferConfig.dqueConfig.queueName, cfg.bufferConfig.dqueConfig.queueDir, cfg.bufferConfig.dqueConfig.queueSegmentSize, dqueEntryBuilder)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,9 @@ func newDque(cfg *config, logger log.Logger) (client.Client, error) {
 
 func (c *dqueClient) dequeuer() {
 	defer func() {
-		c.queue.Close()
+		if err := c.queue.Close(); err != nil {
+			level.Error(c.logger).Log("msg", "error closing queue", "err", err)
+		}
 		c.wg.Done()
 	}()
 

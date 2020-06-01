@@ -170,7 +170,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	case "true":
 		res.bufferConfig.buffer = true
 	default:
-		return nil, fmt.Errorf("invalid boolean DropSingleKey: %v", buffer)
+		return nil, fmt.Errorf("invalid boolean Buffer: %v", buffer)
 	}
 
 	// buffering type
@@ -190,7 +190,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	if queueSegmentSize != "" {
 		res.bufferConfig.dqueConfig.queueSegmentSize, err = strconv.Atoi(queueSegmentSize)
 		if err != nil {
-			return nil, fmt.Errorf("invalid string queueSegmentSize: %v", queueSegmentSize)
+			return nil, fmt.Errorf("impossible to convert string to integer DqueSegmentSize: %v", queueSegmentSize)
 		}
 	}
 
