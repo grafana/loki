@@ -63,7 +63,7 @@ type Querier struct {
 	ring   ring.ReadRing
 	pool   *ring_client.Pool
 	store  storage.Store
-	engine logql.Engine
+	engine *logql.Engine
 	limits *validation.Overrides
 }
 
@@ -86,6 +86,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		store:  store,
 		limits: limits,
 	}
+
 	querier.engine = logql.NewEngine(cfg.Engine, &querier)
 	err := services.StartAndAwaitRunning(context.Background(), querier.pool)
 	if err != nil {

@@ -376,7 +376,7 @@ kvstore:
   # is "consul"
   consul:
     # The hostname and port of Consul.
-    [host: <string> | duration = "localhost:8500"]
+    [host: <string> | default = "localhost:8500"]
 
     # The ACL Token used to interact with Consul.
     [acl_token: <string>]
@@ -856,7 +856,7 @@ logs in Loki.
 [max_line_size: <string> | default = none ]
 
 # Maximum number of log entries that will be returned for a query. 0 to disable.
-[max_entries_limit: <int> | default = 5000 ]
+[max_entries_limit_per_query: <int> | default = 5000 ]
 
 # Maximum number of active streams per user, across the cluster. 0 to disable.
 # When the global limit is enabled, each ingester is configured with a dynamic

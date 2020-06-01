@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -80,7 +81,7 @@ var (
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -144,7 +145,7 @@ func TestMetricsTripperware(t *testing.T) {
 
 func TestLogFilterTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -191,7 +192,7 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestLogNoRegex(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -225,7 +226,7 @@ func TestLogNoRegex(t *testing.T) {
 }
 
 func TestUnhandledPath(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -249,7 +250,7 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -320,7 +321,7 @@ func TestPostQueries(t *testing.T) {
 }
 
 func TestEntriesLimitsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -351,7 +352,7 @@ func TestEntriesLimitsTripperware(t *testing.T) {
 }
 
 func TestEntriesLimitWithZeroTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}

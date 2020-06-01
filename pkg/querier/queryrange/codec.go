@@ -52,6 +52,12 @@ func (r *LokiRequest) WithQuery(query string) queryrange.Request {
 	return &new
 }
 
+func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
+	new := *r
+	new.Shards = shards.Encode()
+	return &new
+}
+
 func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -67,8 +73,9 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 		StartTs:   req.Start.UTC(),
 		EndTs:     req.End.UTC(),
 		// GetStep must return milliseconds
-		Step: int64(req.Step) / 1e6,
-		Path: r.URL.Path,
+		Step:   int64(req.Step) / 1e6,
+		Path:   r.URL.Path,
+		Shards: req.Shards,
 	}, nil
 }
 
@@ -83,6 +90,9 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 		"query":     []string{lokiReq.Query},
 		"direction": []string{lokiReq.Direction.String()},
 		"limit":     []string{fmt.Sprintf("%d", lokiReq.Limit)},
+	}
+	if len(lokiReq.Shards) > 0 {
+		params["shards"] = lokiReq.Shards
 	}
 	if lokiReq.Step != 0 {
 		params["step"] = []string{fmt.Sprintf("%f", float64(lokiReq.Step)/float64(1e3))}
@@ -397,9 +407,11 @@ func (p paramsWrapper) End() time.Time {
 func (p paramsWrapper) Step() time.Duration {
 	return time.Duration(p.LokiRequest.Step * 1e6)
 }
-func (p paramsWrapper) Limit() uint32 {
-	return p.LokiRequest.Limit
-}
+func (p paramsWrapper) Interval() time.Duration { return 0 }
 func (p paramsWrapper) Direction() logproto.Direction {
 	return p.LokiRequest.Direction
+}
+func (p paramsWrapper) Limit() uint32 { return p.LokiRequest.Limit }
+func (p paramsWrapper) Shards() []string {
+	return p.LokiRequest.Shards
 }

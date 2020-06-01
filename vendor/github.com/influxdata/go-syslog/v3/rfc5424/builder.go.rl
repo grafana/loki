@@ -5,8 +5,10 @@ import (
     "sort"
     "fmt"
 
-    "github.com/influxdata/go-syslog/v2/common"
+    "github.com/influxdata/go-syslog/v3/common"
 )
+
+// todo(leodido) > support best effort for builder ?
 
 %%{
 machine builder;
@@ -19,41 +21,41 @@ action mark {
 
 action set_timestamp {
 	if t, e := time.Parse(RFC3339MICRO, string(data[pb:p])); e == nil {
-        sm.timestamp = &t
+        sm.Timestamp = &t
     }
 }
 
 action set_hostname {
     if s := string(data[pb:p]); s != "-" {
-        sm.hostname = &s
+        sm.Hostname = &s
     }
 }
 
 action set_appname {
     if s := string(data[pb:p]); s != "-" {
-        sm.appname = &s
+        sm.Appname = &s
     }
 }
 
 action set_procid {
     if s := string(data[pb:p]); s != "-" {
-        sm.procID = &s
+        sm.ProcID = &s
     }
 }
 
 action set_msgid {
     if s := string(data[pb:p]); s != "-" {
-        sm.msgID = &s
+        sm.MsgID = &s
     }
 }
 
 action set_sdid {
-    if sm.structuredData == nil {
-        sm.structuredData = &(map[string]map[string]string{})
+    if sm.StructuredData == nil {
+        sm.StructuredData = &(map[string]map[string]string{})
     }
 
     id := string(data[pb:p])
-    elements := *sm.structuredData
+    elements := *sm.StructuredData
     if _, ok := elements[id]; !ok {
         elements[id] = map[string]string{}
     }
@@ -61,7 +63,7 @@ action set_sdid {
 
 action set_sdpn {
     // Assuming SD map already exists, contains currentid key (set from outside)
-    elements := *sm.structuredData
+    elements := *sm.StructuredData
     elements[currentid][string(data[pb:p])] = ""
 }
 
@@ -71,19 +73,19 @@ action markslash {
 
 action set_sdpv {
     // Store text
-	text := data[pb:p]
-	// Strip backslashes only when there are ...
+    text := data[pb:p]
+    // Strip backslashes only when there are ...
     if len(backslashes) > 0 {
         text = common.RemoveBytes(text, backslashes, pb)
     }
-	// Assuming SD map already exists, contains currentid key and currentparamname key (set from outside)
-    elements := *sm.structuredData
+    // Assuming SD map already exists, contains currentid key and currentparamname key (set from outside)
+    elements := *sm.StructuredData
     elements[currentid][currentparamname] = string(text)
 }
 
 action set_msg {
     if s := string(data[pb:p]); s != "" {
-        sm.message = &s
+        sm.Message = &s
     }
 }
 
@@ -105,7 +107,7 @@ escapes = (bs >markslash toescape);
 
 sdpv := (utf8charwodelims* escapes*)+ >mark %set_sdpv;
 
-msg := (bom? utf8octets) >mark %set_msg;
+msg := any* >mark %set_msg;
 
 write data noerror nofinal;
 }%%
@@ -113,11 +115,11 @@ write data noerror nofinal;
 type entrypoint int
 
 const (
-	timestamp entrypoint = iota
-	hostname
-	appname
-	procid
-	msgid
+    timestamp entrypoint = iota
+    hostname
+    appname
+    procid
+    msgid
     sdid
     sdpn
     sdpv
@@ -154,10 +156,10 @@ var currentparamname string
 
 func (sm *SyslogMessage) set(from entrypoint, value string) *SyslogMessage {
     data := []byte(value)
-	p := 0
-	pb := 0
-	pe := len(data)
-	eof := len(data)
+    p := 0
+    pb := 0
+    pe := len(data)
+    eof := len(data)
     cs := from.translate()
     backslashes := []int{}
     %% write exec;
@@ -168,54 +170,54 @@ func (sm *SyslogMessage) set(from entrypoint, value string) *SyslogMessage {
 // SetPriority set the priority value and the computed facility and severity codes accordingly.
 //
 // It ignores incorrect priority values (range [0, 191]).
-func (sm *SyslogMessage) SetPriority(value uint8) *SyslogMessage {
-	if value >= 0 && value <= 191 {
-		sm.setPriority(value)
-	}
+func (sm *SyslogMessage) SetPriority(value uint8) Builder {
+    if common.ValidPriority(value) {
+        sm.ComputeFromPriority(value)
+    }
 
-	return sm
+    return sm
 }
 
 // SetVersion set the version value.
 //
 // It ignores incorrect version values (range ]0, 999]).
-func (sm *SyslogMessage) SetVersion(value uint16) *SyslogMessage {
-	if value > 0 && value <= 999 {
-		sm.version = value
+func (sm *SyslogMessage) SetVersion(value uint16) Builder {
+	if common.ValidVersion(value) {
+		sm.Version = value
 	}
 
 	return sm
 }
 
 // SetTimestamp set the timestamp value.
-func (sm *SyslogMessage) SetTimestamp(value string) *SyslogMessage {
+func (sm *SyslogMessage) SetTimestamp(value string) Builder {
     return sm.set(timestamp, value)
 }
 
 // SetHostname set the hostname value.
-func (sm *SyslogMessage) SetHostname(value string) *SyslogMessage {
+func (sm *SyslogMessage) SetHostname(value string) Builder {
     return sm.set(hostname, value)
 }
 
 // SetAppname set the appname value.
-func (sm *SyslogMessage) SetAppname(value string) *SyslogMessage {
+func (sm *SyslogMessage) SetAppname(value string) Builder {
     return sm.set(appname, value)
 }
 
 // SetProcID set the procid value.
-func (sm *SyslogMessage) SetProcID(value string) *SyslogMessage {
+func (sm *SyslogMessage) SetProcID(value string) Builder {
     return sm.set(procid, value)
 }
 
 // SetMsgID set the msgid value.
-func (sm *SyslogMessage) SetMsgID(value string) *SyslogMessage {
+func (sm *SyslogMessage) SetMsgID(value string) Builder {
     return sm.set(msgid, value)
 }
 
 // SetElementID set a structured data id.
 //
 // When the provided id already exists the operation is discarded.
-func (sm *SyslogMessage) SetElementID(value string) *SyslogMessage {
+func (sm *SyslogMessage) SetElementID(value string) Builder {
     return sm.set(sdid, value)
 }
 
@@ -223,13 +225,13 @@ func (sm *SyslogMessage) SetElementID(value string) *SyslogMessage {
 //
 // If the element does not exist it creates one with the given element id.
 // When a parameter with the given name already exists for the given element the operation is discarded.
-func (sm *SyslogMessage) SetParameter(id string, name string, value string) *SyslogMessage {
+func (sm *SyslogMessage) SetParameter(id string, name string, value string) Builder {
     // Create an element with the given id (or re-use the existing one)
     sm.set(sdid, id)
 
     // We can create parameter iff the given element id exists
-    if sm.structuredData != nil {
-        elements := *sm.structuredData
+    if sm.StructuredData != nil {
+        elements := *sm.StructuredData
         if _, ok := elements[id]; ok {
             currentid = id
             sm.set(sdpn, name)
@@ -245,8 +247,8 @@ func (sm *SyslogMessage) SetParameter(id string, name string, value string) *Sys
 }
 
 // SetMessage set the message value.
-func (sm *SyslogMessage) SetMessage(value string) *SyslogMessage {
-	return sm.set(msg, value)
+func (sm *SyslogMessage) SetMessage(value string) Builder {
+    return sm.set(msg, value)
 }
 
 func (sm *SyslogMessage) String() (string, error) {
@@ -263,25 +265,25 @@ func (sm *SyslogMessage) String() (string, error) {
     mid := "-"
     sd := "-"
     m := ""
-    if sm.timestamp != nil {
-        t = sm.timestamp.Format("2006-01-02T15:04:05.999999Z07:00") // verify 07:00
+    if sm.Timestamp != nil {
+        t = sm.Timestamp.Format("2006-01-02T15:04:05.999999Z07:00") // verify 07:00
     }
-    if sm.hostname != nil {
-        hn = *sm.hostname
+    if sm.Hostname != nil {
+        hn = *sm.Hostname
     }
-    if sm.appname != nil {
-        an = *sm.appname
+    if sm.Appname != nil {
+        an = *sm.Appname
     }
-    if sm.procID != nil {
-        pid = *sm.procID
+    if sm.ProcID != nil {
+        pid = *sm.ProcID
     }
-    if sm.msgID != nil {
-        mid = *sm.msgID
+    if sm.MsgID != nil {
+        mid = *sm.MsgID
     }
-    if sm.structuredData != nil {
+    if sm.StructuredData != nil {
         // Sort element identifiers
         identifiers := make([]string, 0)
-        for k, _ := range *sm.structuredData {
+        for k, _ := range *sm.StructuredData {
             identifiers = append(identifiers, k)
         }
         sort.Strings(identifiers)
@@ -291,7 +293,7 @@ func (sm *SyslogMessage) String() (string, error) {
             sd += fmt.Sprintf("[%s", id)
 
             // Sort parameter names
-            params := (*sm.structuredData)[id]
+            params := (*sm.StructuredData)[id]
             names := make([]string, 0)
             for n, _ := range params {
                 names = append(names, n)
@@ -304,9 +306,9 @@ func (sm *SyslogMessage) String() (string, error) {
             sd += "]"
         }
     }
-    if sm.message != nil {
-        m = " " + *sm.message
+    if sm.Message != nil {
+        m = " " + *sm.Message
     }
 
-    return fmt.Sprintf(template, *sm.priority, sm.version, t, hn, an, pid, mid, sd, m), nil
+    return fmt.Sprintf(template, *sm.Priority, sm.Version, t, hn, an, pid, mid, sd, m), nil
 }

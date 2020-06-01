@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -187,7 +189,7 @@ func Test_store_LazyQuery(t *testing.T) {
 	}{
 		{
 			"all",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -255,7 +257,7 @@ func Test_store_LazyQuery(t *testing.T) {
 		},
 		{
 			"filter regex",
-			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -279,7 +281,7 @@ func Test_store_LazyQuery(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -316,7 +318,7 @@ func Test_store_LazyQuery(t *testing.T) {
 		},
 		{
 			"filter time",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), logproto.FORWARD),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), logproto.FORWARD, nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -375,7 +377,7 @@ func Test_store_GetSeries(t *testing.T) {
 	}{
 		{
 			"all",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 				{Labels: mustParseLabels("{foo=\"bazz\"}")},
@@ -384,7 +386,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"all-single-batch",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 				{Labels: mustParseLabels("{foo=\"bazz\"}")},
@@ -393,7 +395,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"regexp filter (post chunk fetching)",
-			newQuery("{foo=~\"bar.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			newQuery("{foo=~\"bar.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 			},
@@ -401,7 +403,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 			},
@@ -423,6 +425,51 @@ func Test_store_GetSeries(t *testing.T) {
 				return
 			}
 			require.Equal(t, tt.expected, out)
+		})
+	}
+}
+
+func Test_store_decodeReq_Matchers(t *testing.T) {
+	tests := []struct {
+		name     string
+		req      *logproto.QueryRequest
+		matchers []*labels.Matcher
+	}{
+		{
+			"unsharded",
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			[]*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
+				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
+			},
+		},
+		{
+			"unsharded",
+			newQuery(
+				"{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD,
+				[]astmapper.ShardAnnotation{
+					{Shard: 1, Of: 2},
+				},
+			),
+			[]*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
+				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
+				labels.MustNewMatcher(
+					labels.MatchEqual,
+					astmapper.ShardLabel,
+					astmapper.ShardAnnotation{Shard: 1, Of: 2}.String(),
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms, _, _, _, err := decodeReq(logql.SelectParams{QueryRequest: tt.req})
+			if err != nil {
+				t.Errorf("store.GetSeries() error = %v", err)
+				return
+			}
+			require.Equal(t, tt.matchers, ms)
 		})
 	}
 }
