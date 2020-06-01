@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -39,7 +41,18 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 		var buf bytes.Buffer
 		wrapped := newBadResponseLoggingWriter(w, &buf)
 		next.ServeHTTP(wrapped, r)
-		statusCode := wrapped.statusCode
+
+		statusCode, writeErr := wrapped.statusCode, wrapped.writeError
+
+		if writeErr != nil {
+			if errors.Is(writeErr, context.Canceled) {
+				l.logWithRequest(r).Debugf("%s %s %s, request cancelled: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers)
+			} else {
+				l.logWithRequest(r).Warnf("%s %s %s, error: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers)
+			}
+
+			return
+		}
 		if 100 <= statusCode && statusCode < 500 || statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable {
 			l.logWithRequest(r).Debugf("%s %s (%d) %s", r.Method, uri, statusCode, time.Since(begin))
 			if l.LogRequestHeaders && headers != nil {

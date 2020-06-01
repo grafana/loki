@@ -3,7 +3,7 @@ package simple
 import "honnef.co/go/tools/lint"
 
 var Docs = map[string]*lint.Documentation{
-	"S1000": &lint.Documentation{
+	"S1000": {
 		Title: `Use plain channel send or receive instead of single-case select`,
 		Text: `Select statements with a single case can be replaced with a simple
 send or receive.
@@ -22,7 +22,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1001": &lint.Documentation{
+	"S1001": {
 		Title: `Replace for loop with call to copy`,
 		Text: `Use copy() for copying elements from one slice to another.
 
@@ -38,7 +38,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1002": &lint.Documentation{
+	"S1002": {
 		Title: `Omit comparison with boolean constant`,
 		Text: `Before:
 
@@ -50,7 +50,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1003": &lint.Documentation{
+	"S1003": {
 		Title: `Replace call to strings.Index with strings.Contains`,
 		Text: `Before:
 
@@ -62,7 +62,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1004": &lint.Documentation{
+	"S1004": {
 		Title: `Replace call to bytes.Compare with bytes.Equal`,
 		Text: `Before:
 
@@ -74,7 +74,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1005": &lint.Documentation{
+	"S1005": {
 		Title: `Drop unnecessary use of the blank identifier`,
 		Text: `In many cases, assigning to the blank identifier is unnecessary.
 
@@ -92,13 +92,13 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1006": &lint.Documentation{
+	"S1006": {
 		Title: `Use for { ... } for infinite loops`,
 		Text:  `For infinite loops, using for { ... } is the most idiomatic choice.`,
 		Since: "2017.1",
 	},
 
-	"S1007": &lint.Documentation{
+	"S1007": {
 		Title: `Simplify regular expression by using raw string literal`,
 		Text: `Raw string literals use ` + "`" + ` instead of " and do not support
 any escape sequences. This means that the backslash (\) can be used
@@ -117,7 +117,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1008": &lint.Documentation{
+	"S1008": {
 		Title: `Simplify returning boolean expression`,
 		Text: `Before:
 
@@ -132,7 +132,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1009": &lint.Documentation{
+	"S1009": {
 		Title: `Omit redundant nil check on slices`,
 		Text: `The len function is defined for all slices, even nil ones, which have
 a length of zero. It is not necessary to check if a slice is not nil
@@ -148,14 +148,14 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1010": &lint.Documentation{
+	"S1010": {
 		Title: `Omit default slice index`,
 		Text: `When slicing, the second index defaults to the length of the value,
 making s[n:len(s)] and s[n:] equivalent.`,
 		Since: "2017.1",
 	},
 
-	"S1011": &lint.Documentation{
+	"S1011": {
 		Title: `Use a single append to concatenate two slices`,
 		Text: `Before:
 
@@ -169,7 +169,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1012": &lint.Documentation{
+	"S1012": {
 		Title: `Replace time.Now().Sub(x) with time.Since(x)`,
 		Text: `The time.Since helper has the same effect as using time.Now().Sub(x)
 but is easier to read.
@@ -184,7 +184,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1016": &lint.Documentation{
+	"S1016": {
 		Title: `Use a type conversion instead of manually copying struct fields`,
 		Text: `Two struct types with identical fields can be converted between each
 other. In older versions of Go, the fields had to have identical
@@ -207,7 +207,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1017": &lint.Documentation{
+	"S1017": {
 		Title: `Replace manual trimming with strings.TrimPrefix`,
 		Text: `Instead of using strings.HasPrefix and manual slicing, use the
 strings.TrimPrefix function. If the string doesn't start with the
@@ -227,7 +227,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1018": &lint.Documentation{
+	"S1018": {
 		Title: `Use copy for sliding elements`,
 		Text: `copy() permits using the same source and destination slice, even with
 overlapping ranges. This makes it ideal for sliding elements in a
@@ -245,7 +245,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1019": &lint.Documentation{
+	"S1019": {
 		Title: `Simplify make call by omitting redundant arguments`,
 		Text: `The make function has default values for the length and capacity
 arguments. For channels and maps, the length defaults to zero.
@@ -253,7 +253,7 @@ Additionally, for slices the capacity defaults to the length.`,
 		Since: "2017.1",
 	},
 
-	"S1020": &lint.Documentation{
+	"S1020": {
 		Title: `Omit redundant nil check in type assertion`,
 		Text: `Before:
 
@@ -265,7 +265,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1021": &lint.Documentation{
+	"S1021": {
 		Title: `Merge variable declaration and assignment`,
 		Text: `Before:
 
@@ -278,7 +278,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1023": &lint.Documentation{
+	"S1023": {
 		Title: `Omit redundant control flow`,
 		Text: `Functions that have no return value do not need a return statement as
 the final statement of the function.
@@ -289,7 +289,7 @@ statement in a case block.`,
 		Since: "2017.1",
 	},
 
-	"S1024": &lint.Documentation{
+	"S1024": {
 		Title: `Replace x.Sub(time.Now()) with time.Until(x)`,
 		Text: `The time.Until helper has the same effect as using x.Sub(time.Now())
 but is easier to read.
@@ -304,7 +304,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1025": &lint.Documentation{
+	"S1025": {
 		Title: `Don't use fmt.Sprintf("%s", x) unnecessarily`,
 		Text: `In many instances, there are easier and more efficient ways of getting
 a value's string representation. Whenever a value's underlying type is
@@ -336,7 +336,7 @@ to
 		Since: "2017.1",
 	},
 
-	"S1028": &lint.Documentation{
+	"S1028": {
 		Title: `Simplify error construction with fmt.Errorf`,
 		Text: `Before:
 
@@ -348,7 +348,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1029": &lint.Documentation{
+	"S1029": {
 		Title: `Range over the string directly`,
 		Text: `Ranging over a string will yield byte offsets and runes. If the offset
 isn't used, this is functionally equivalent to converting the string
@@ -366,7 +366,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1030": &lint.Documentation{
+	"S1030": {
 		Title: `Use bytes.Buffer.String or bytes.Buffer.Bytes`,
 		Text: `bytes.Buffer has both a String and a Bytes method. It is never
 necessary to use string(buf.Bytes()) or []byte(buf.String()) – simply
@@ -374,7 +374,7 @@ use the other method.`,
 		Since: "2017.1",
 	},
 
-	"S1031": &lint.Documentation{
+	"S1031": {
 		Title: `Omit redundant nil check around loop`,
 		Text: `You can use range on nil slices and maps, the loop will simply never
 execute. This makes an additional nil check around the loop
@@ -396,7 +396,7 @@ After:
 		Since: "2017.1",
 	},
 
-	"S1032": &lint.Documentation{
+	"S1032": {
 		Title: `Use sort.Ints(x), sort.Float64s(x), and sort.Strings(x)`,
 		Text: `The sort.Ints, sort.Float64s and sort.Strings functions are easier to
 read than sort.Sort(sort.IntSlice(x)), sort.Sort(sort.Float64Slice(x))
@@ -412,14 +412,74 @@ After:
 		Since: "2019.1",
 	},
 
-	"S1033": &lint.Documentation{
+	"S1033": {
 		Title: `Unnecessary guard around call to delete`,
 		Text:  `Calling delete on a nil map is a no-op.`,
 		Since: "2019.2",
 	},
 
-	"S1034": &lint.Documentation{
+	"S1034": {
 		Title: `Use result of type assertion to simplify cases`,
 		Since: "2019.2",
+	},
+
+	"S1035": {
+		Title: `Redundant call to net/http.CanonicalHeaderKey in method call on net/http.Header`,
+		Text: `The methods on net/http.Header, namely Add, Del, Get and Set, already
+canonicalize the given header name.`,
+		Since: "2020.1",
+	},
+
+	"S1036": {
+		Title: `Unnecessary guard around map access`,
+
+		Text: `When accessing a map key that doesn't exist yet, one
+receives a zero value. Often, the zero value is a suitable value, for example when using append or doing integer math.
+
+The following
+
+    if _, ok := m["foo"]; ok {
+        m["foo"] = append(m["foo"], "bar")
+    } else {
+        m["foo"] = []string{"bar"}
+    }
+
+can be simplified to
+
+    m["foo"] = append(m["foo"], "bar")
+
+and
+
+    if _, ok := m2["k"]; ok {
+        m2["k"] += 4
+    } else {
+        m2["k"] = 4
+    }
+
+can be simplified to
+
+    m["k"] += 4
+`,
+		Since: "2020.1",
+	},
+
+	"S1037": {
+		Title: `Elaborate way of sleeping`,
+		Text: `Using a select statement with a single case receiving
+from the result of time.After is a very elaborate way of sleeping that
+can much simpler be expressed with a simple call to time.Sleep.`,
+		Since: "2020.1",
+	},
+
+	"S1038": {
+		Title: "Unnecessarily complex way of printing formatted string",
+		Text:  `Instead of using fmt.Print(fmt.Sprintf(...)), one can use fmt.Printf(...).`,
+		Since: "2020.1",
+	},
+
+	"S1039": {
+		Title: "Unnecessary use of fmt.Sprint",
+		Text:  `Calling fmt.Sprint with a single string argument is unnecessary and identical to using the string directly.`,
+		Since: "2020.1",
 	},
 }

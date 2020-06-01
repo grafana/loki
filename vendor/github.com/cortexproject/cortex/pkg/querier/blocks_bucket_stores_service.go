@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"io"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -85,7 +84,7 @@ func (s *BucketStoresService) syncStoresLoop(ctx context.Context) error {
 
 	err := runutil.Repeat(syncInterval, ctx.Done(), func() error {
 		level.Info(s.logger).Log("msg", "synchronizing TSDB blocks for all users")
-		if err := s.stores.SyncBlocks(ctx); err != nil && err != io.EOF {
+		if err := s.stores.SyncBlocks(ctx); err != nil {
 			level.Warn(s.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
 		} else {
 			level.Info(s.logger).Log("msg", "successfully synchronized TSDB blocks for all users")

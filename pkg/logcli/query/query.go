@@ -13,7 +13,7 @@ import (
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/cfg"
@@ -90,11 +90,11 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput) {
 	switch value.Type() {
 	case logql.ValueTypeStreams:
 		q.printStream(value.(loghttp.Streams), out)
-	case promql.ValueTypeScalar:
+	case parser.ValueTypeScalar:
 		q.printScalar(value.(loghttp.Scalar))
-	case promql.ValueTypeMatrix:
+	case parser.ValueTypeMatrix:
 		q.printMatrix(value.(loghttp.Matrix))
-	case promql.ValueTypeVector:
+	case parser.ValueTypeVector:
 		q.printVector(value.(loghttp.Vector))
 	default:
 		log.Fatalf("Unable to print unsupported type: %v", value.Type())

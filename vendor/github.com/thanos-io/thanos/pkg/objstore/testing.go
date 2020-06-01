@@ -94,7 +94,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	testutil.Ok(t, err)
 	testutil.Assert(t, !ok, "expected not exits")
 
-	_, err = bkt.ObjectSize(ctx, "id1/obj_1.some")
+	_, err = bkt.Attributes(ctx, "id1/obj_1.some")
 	testutil.NotOk(t, err)
 	testutil.Assert(t, bkt.IsObjNotFoundErr(err), "expected not found error but got %s", err)
 
@@ -110,9 +110,9 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	testutil.Equals(t, "@test-data@", string(content))
 
 	// Check if we can get the correct size.
-	sz, err := bkt.ObjectSize(ctx, "id1/obj_1.some")
+	attrs, err := bkt.Attributes(ctx, "id1/obj_1.some")
 	testutil.Ok(t, err)
-	testutil.Assert(t, sz == 11, "expected size to be equal to 11")
+	testutil.Assert(t, attrs.Size == 11, "expected size to be equal to 11")
 
 	rc2, err := bkt.GetRange(ctx, "id1/obj_1.some", 1, 3)
 	testutil.Ok(t, err)

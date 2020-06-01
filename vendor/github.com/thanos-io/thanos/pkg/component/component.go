@@ -81,19 +81,23 @@ func FromProto(storeType storepb.StoreType) StoreAPI {
 		return Store
 	case storepb.StoreType_RECEIVE:
 		return Receive
+	case storepb.StoreType_DEBUG:
+		return Debug
 	default:
-		return nil
+		return UnknownStoreAPI
 	}
 }
 
 var (
-	Bucket     = source{component: component{name: "bucket"}}
-	Compact    = source{component: component{name: "compact"}}
-	Downsample = source{component: component{name: "downsample"}}
-	Query      = sourceStoreAPI{component: component{name: "query"}}
-	Rule       = sourceStoreAPI{component: component{name: "rule"}}
-	Sidecar    = sourceStoreAPI{component: component{name: "sidecar"}}
-	Store      = sourceStoreAPI{component: component{name: "store"}}
-	Receive    = sourceStoreAPI{component: component{name: "receive"}}
-	Replicate  = sourceStoreAPI{component: component{name: "replicate"}}
+	Bucket          = source{component: component{name: "bucket"}}
+	Compact         = source{component: component{name: "compact"}}
+	Downsample      = source{component: component{name: "downsample"}}
+	Replicate       = source{component: component{name: "replicate"}}
+	Debug           = sourceStoreAPI{component: component{name: "debug"}}
+	Receive         = sourceStoreAPI{component: component{name: "receive"}}
+	Rule            = sourceStoreAPI{component: component{name: "rule"}}
+	Sidecar         = sourceStoreAPI{component: component{name: "sidecar"}}
+	Store           = storeAPI{component: component{name: "store"}}
+	UnknownStoreAPI = storeAPI{component: component{name: "unknown-store-api"}}
+	Query           = storeAPI{component: component{name: "query"}}
 )

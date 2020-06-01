@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"path"
@@ -64,7 +63,7 @@ type Frontend struct {
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
-	queues map[string]chan *request
+	queues *queueIterator
 
 	// Metrics.
 	queueDuration prometheus.Histogram
@@ -86,7 +85,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
-		queues: map[string]chan *request{},
+		queues: newQueueIterator(cfg.MaxOutstandingPerTenant),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_duration_seconds",
@@ -146,7 +145,7 @@ func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 func (f *Frontend) Close() {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
-	for len(f.queues) > 0 {
+	for f.queues.len() > 0 {
 		f.cond.Wait()
 	}
 }
@@ -192,11 +191,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		hs[h] = vs
 	}
 	w.WriteHeader(resp.StatusCode)
-
-	if _, err = io.Copy(w, resp.Body); err != nil {
-		server.WriteError(w, err)
-		return
-	}
+	io.Copy(w, resp.Body)
 }
 
 func writeError(w http.ResponseWriter, err error) {
@@ -348,11 +343,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	queue, ok := f.queues[userID]
-	if !ok {
-		queue = make(chan *request, f.cfg.MaxOutstandingPerTenant)
-		f.queues[userID] = queue
-	}
+	queue := f.queues.getOrAddQueue(userID)
 
 	select {
 	case queue <- req:
@@ -371,7 +362,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	defer f.mtx.Unlock()
 
 FindQueue:
-	for len(f.queues) == 0 && ctx.Err() == nil {
+	for f.queues.len() == 0 && ctx.Err() == nil {
 		f.cond.Wait()
 	}
 
@@ -379,16 +370,10 @@ FindQueue:
 		return nil, err
 	}
 
-	keys := make([]string, 0, len(f.queues))
-	for k := range f.queues {
-		keys = append(keys, k)
-	}
-	rand.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] })
-
-	for _, userID := range keys {
-		queue, ok := f.queues[userID]
-		if !ok {
-			continue
+	for {
+		queue, userID := f.queues.getNextQueue()
+		if queue == nil {
+			break
 		}
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
@@ -407,7 +392,7 @@ FindQueue:
 			lastRequest := false
 			request := <-queue
 			if len(queue) == 0 {
-				delete(f.queues, userID)
+				f.queues.deleteQueue(userID)
 				lastRequest = true
 			}
 

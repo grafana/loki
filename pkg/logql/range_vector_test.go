@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -27,8 +28,8 @@ var entries = []logproto.Entry{
 	{Timestamp: time.Unix(100, 1)},
 }
 
-var labelFoo, _ = promql.ParseMetric("{app=\"foo\"}")
-var labelBar, _ = promql.ParseMetric("{app=\"bar\"}")
+var labelFoo, _ = parser.ParseMetric("{app=\"foo\"}")
+var labelBar, _ = parser.ParseMetric("{app=\"bar\"}")
 
 func newEntryIterator() iter.EntryIterator {
 	return iter.NewHeapIterator(context.Background(), []iter.EntryIterator{

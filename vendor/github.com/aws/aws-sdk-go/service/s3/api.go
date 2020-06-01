@@ -9706,12 +9706,19 @@ func (es *SelectObjectContentEventStream) runOutputStream(r *request.Request) {
 		opts = append(opts, eventstream.DecodeWithLogger(r.Config.Logger))
 	}
 
+	unmarshalerForEvent := unmarshalerForSelectObjectContentEventStreamEvent{
+		metadata: protocol.ResponseMetadata{
+			StatusCode: r.HTTPResponse.StatusCode,
+			RequestID:  r.RequestID,
+		},
+	}.UnmarshalerForEventName
+
 	decoder := eventstream.NewDecoder(r.HTTPResponse.Body, opts...)
 	eventReader := eventstreamapi.NewEventReader(decoder,
 		protocol.HandlerPayloadUnmarshal{
 			Unmarshalers: r.Handlers.UnmarshalStream,
 		},
-		unmarshalerForSelectObjectContentEventStreamEvent,
+		unmarshalerForEvent,
 	)
 
 	es.outputReader = r.HTTPResponse.Body
@@ -17692,6 +17699,10 @@ type GetObjectOutput struct {
 	LastModified *time.Time `location:"header" locationName:"Last-Modified" type:"timestamp"`
 
 	// A map of metadata to store with the object in S3.
+	//
+	// By default unmarshaled keys are written as a map keys in following canonicalized format:
+	// the first letter and any letter following a hyphen will be capitalized, and the rest as lowercase.
+	// Set `aws.Config.LowerCaseHeaderMaps` to `true` to write unmarshaled keys to the map as lowercase.
 	Metadata map[string]*string `location:"headers" locationName:"x-amz-meta-" type:"map"`
 
 	// This is set to the number of metadata entries not returned in x-amz-meta
@@ -18919,6 +18930,10 @@ type HeadObjectOutput struct {
 	LastModified *time.Time `location:"header" locationName:"Last-Modified" type:"timestamp"`
 
 	// A map of metadata to store with the object in S3.
+	//
+	// By default unmarshaled keys are written as a map keys in following canonicalized format:
+	// the first letter and any letter following a hyphen will be capitalized, and the rest as lowercase.
+	// Set `aws.Config.LowerCaseHeaderMaps` to `true` to write unmarshaled keys to the map as lowercase.
 	Metadata map[string]*string `location:"headers" locationName:"x-amz-meta-" type:"map"`
 
 	// This is set to the number of metadata entries not returned in x-amz-meta
@@ -28253,7 +28268,11 @@ func (r *readSelectObjectContentEventStream) readEventStream() {
 	}
 }
 
-func unmarshalerForSelectObjectContentEventStreamEvent(eventType string) (eventstreamapi.Unmarshaler, error) {
+type unmarshalerForSelectObjectContentEventStreamEvent struct {
+	metadata protocol.ResponseMetadata
+}
+
+func (u unmarshalerForSelectObjectContentEventStreamEvent) UnmarshalerForEventName(eventType string) (eventstreamapi.Unmarshaler, error) {
 	switch eventType {
 	case "Cont":
 		return &ContinuationEvent{}, nil

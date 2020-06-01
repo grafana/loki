@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -53,18 +54,18 @@ const namespace = "prometheus"
 // Metrics for rule evaluation.
 type Metrics struct {
 	evalDuration        prometheus.Summary
-	evalFailures        prometheus.Counter
-	evalTotal           prometheus.Counter
 	iterationDuration   prometheus.Summary
 	iterationsMissed    prometheus.Counter
 	iterationsScheduled prometheus.Counter
+	evalTotal           *prometheus.CounterVec
+	evalFailures        *prometheus.CounterVec
 	groupInterval       *prometheus.GaugeVec
 	groupLastEvalTime   *prometheus.GaugeVec
 	groupLastDuration   *prometheus.GaugeVec
 	groupRules          *prometheus.GaugeVec
 }
 
-// NewGroupMetrics makes a new Metrics and registers them with the provided registerer,
+// NewGroupMetrics creates a new instance of Metrics and registers it with the provided registerer,
 // if not nil.
 func NewGroupMetrics(reg prometheus.Registerer) *Metrics {
 	m := &Metrics{
@@ -74,18 +75,6 @@ func NewGroupMetrics(reg prometheus.Registerer) *Metrics {
 				Name:       "rule_evaluation_duration_seconds",
 				Help:       "The duration for a rule to execute.",
 				Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
-			}),
-		evalFailures: prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: namespace,
-				Name:      "rule_evaluation_failures_total",
-				Help:      "The total number of rule evaluation failures.",
-			}),
-		evalTotal: prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: namespace,
-				Name:      "rule_evaluations_total",
-				Help:      "The total number of rule evaluations.",
 			}),
 		iterationDuration: prometheus.NewSummary(prometheus.SummaryOpts{
 			Namespace:  namespace,
@@ -103,6 +92,22 @@ func NewGroupMetrics(reg prometheus.Registerer) *Metrics {
 			Name:      "rule_group_iterations_total",
 			Help:      "The total number of scheduled rule group evaluations, whether executed or missed.",
 		}),
+		evalTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "rule_evaluations_total",
+				Help:      "The total number of rule evaluations.",
+			},
+			[]string{"rule_group"},
+		),
+		evalFailures: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "rule_evaluation_failures_total",
+				Help:      "The total number of rule evaluation failures.",
+			},
+			[]string{"rule_group"},
+		),
 		groupInterval: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: namespace,
@@ -140,11 +145,11 @@ func NewGroupMetrics(reg prometheus.Registerer) *Metrics {
 	if reg != nil {
 		reg.MustRegister(
 			m.evalDuration,
-			m.evalFailures,
-			m.evalTotal,
 			m.iterationDuration,
 			m.iterationsMissed,
 			m.iterationsScheduled,
+			m.evalTotal,
+			m.evalFailures,
 			m.groupInterval,
 			m.groupLastEvalTime,
 			m.groupLastDuration,
@@ -231,37 +236,52 @@ type Group struct {
 
 	shouldRestore bool
 
-	done       chan struct{}
-	terminated chan struct{}
+	markStale   bool
+	done        chan struct{}
+	terminated  chan struct{}
+	managerDone chan struct{}
 
 	logger log.Logger
 
 	metrics *Metrics
 }
 
+type GroupOptions struct {
+	Name, File    string
+	Interval      time.Duration
+	Rules         []Rule
+	ShouldRestore bool
+	Opts          *ManagerOptions
+	done          chan struct{}
+}
+
 // NewGroup makes a new Group with the given name, options, and rules.
-func NewGroup(name, file string, interval time.Duration, rules []Rule, shouldRestore bool, opts *ManagerOptions) *Group {
-	metrics := opts.Metrics
+func NewGroup(o GroupOptions) *Group {
+	metrics := o.Opts.Metrics
 	if metrics == nil {
-		metrics = NewGroupMetrics(opts.Registerer)
+		metrics = NewGroupMetrics(o.Opts.Registerer)
 	}
 
-	metrics.groupLastEvalTime.WithLabelValues(groupKey(file, name))
-	metrics.groupLastDuration.WithLabelValues(groupKey(file, name))
-	metrics.groupRules.WithLabelValues(groupKey(file, name)).Set(float64(len(rules)))
-	metrics.groupInterval.WithLabelValues(groupKey(file, name)).Set(interval.Seconds())
+	key := groupKey(o.File, o.Name)
+	metrics.evalTotal.WithLabelValues(key)
+	metrics.evalFailures.WithLabelValues(key)
+	metrics.groupLastEvalTime.WithLabelValues(key)
+	metrics.groupLastDuration.WithLabelValues(key)
+	metrics.groupRules.WithLabelValues(key).Set(float64(len(o.Rules)))
+	metrics.groupInterval.WithLabelValues(key).Set(o.Interval.Seconds())
 
 	return &Group{
-		name:                 name,
-		file:                 file,
-		interval:             interval,
-		rules:                rules,
-		shouldRestore:        shouldRestore,
-		opts:                 opts,
-		seriesInPreviousEval: make([]map[string]labels.Labels, len(rules)),
+		name:                 o.Name,
+		file:                 o.File,
+		interval:             o.Interval,
+		rules:                o.Rules,
+		shouldRestore:        o.ShouldRestore,
+		opts:                 o.Opts,
+		seriesInPreviousEval: make([]map[string]labels.Labels, len(o.Rules)),
 		done:                 make(chan struct{}),
+		managerDone:          o.done,
 		terminated:           make(chan struct{}),
-		logger:               log.With(opts.Logger, "group", name),
+		logger:               log.With(o.Opts.Logger, "group", o.Name),
 		metrics:              metrics,
 	}
 }
@@ -313,6 +333,29 @@ func (g *Group) run(ctx context.Context) {
 	// after each `evalTimestamp + N * g.interval` occurrence.
 	tick := time.NewTicker(g.interval)
 	defer tick.Stop()
+
+	defer func() {
+		if !g.markStale {
+			return
+		}
+		go func(now time.Time) {
+			for _, rule := range g.seriesInPreviousEval {
+				for _, r := range rule {
+					g.staleSeries = append(g.staleSeries, r)
+				}
+			}
+			// That can be garbage collected at this point.
+			g.seriesInPreviousEval = nil
+			// Wait for 2 intervals to give the opportunity to renamed rules
+			// to insert new series in the tsdb. At this point if there is a
+			// renamed rule, it should already be started.
+			select {
+			case <-g.managerDone:
+			case <-time.After(2 * g.interval):
+				g.cleanupStaleSeries(now)
+			}
+		}(time.Now())
+	}()
 
 	iter()
 	if g.shouldRestore {
@@ -444,7 +487,7 @@ func (g *Group) evalTimestamp() time.Time {
 		base   = adjNow - (adjNow % int64(g.interval))
 	)
 
-	return time.Unix(0, base+offset)
+	return time.Unix(0, base+offset).UTC()
 }
 
 func nameAndLabels(rule Rule) string {
@@ -524,7 +567,7 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				rule.SetEvaluationTimestamp(t)
 			}(time.Now())
 
-			g.metrics.evalTotal.Inc()
+			g.metrics.evalTotal.WithLabelValues(groupKey(g.File(), g.Name())).Inc()
 
 			vector, err := rule.Eval(ctx, ts, g.opts.QueryFunc, g.opts.ExternalURL)
 			if err != nil {
@@ -533,7 +576,7 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				if _, ok := err.(promql.ErrQueryCanceled); !ok {
 					level.Warn(g.logger).Log("msg", "Evaluating rule failed", "rule", rule, "err", err)
 				}
-				g.metrics.evalFailures.Inc()
+				g.metrics.evalFailures.WithLabelValues(groupKey(g.File(), g.Name())).Inc()
 				return
 			}
 
@@ -545,16 +588,18 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				numDuplicates = 0
 			)
 
-			app, err := g.opts.Appendable.Appender()
-			if err != nil {
-				level.Warn(g.logger).Log("msg", "creating appender failed", "err", err)
-				return
-			}
-
+			app := g.opts.Appendable.Appender()
 			seriesReturned := make(map[string]labels.Labels, len(g.seriesInPreviousEval[i]))
+			defer func() {
+				if err := app.Commit(); err != nil {
+					level.Warn(g.logger).Log("msg", "Rule sample appending failed", "err", err)
+					return
+				}
+				g.seriesInPreviousEval[i] = seriesReturned
+			}()
 			for _, s := range vector {
 				if _, err := app.Add(s.Metric, s.T, s.V); err != nil {
-					switch err {
+					switch errors.Cause(err) {
 					case storage.ErrOutOfOrderSample:
 						numOutOfOrder++
 						level.Debug(g.logger).Log("msg", "Rule evaluation result discarded", "err", err, "sample", s)
@@ -579,47 +624,42 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				if _, ok := seriesReturned[metric]; !ok {
 					// Series no longer exposed, mark it stale.
 					_, err = app.Add(lset, timestamp.FromTime(ts), math.Float64frombits(value.StaleNaN))
-					switch err {
+					switch errors.Cause(err) {
 					case nil:
 					case storage.ErrOutOfOrderSample, storage.ErrDuplicateSampleForTimestamp:
 						// Do not count these in logging, as this is expected if series
 						// is exposed from a different rule.
 					default:
-						level.Warn(g.logger).Log("msg", "adding stale sample failed", "sample", metric, "err", err)
+						level.Warn(g.logger).Log("msg", "Adding stale sample failed", "sample", metric, "err", err)
 					}
 				}
 			}
-			if err := app.Commit(); err != nil {
-				level.Warn(g.logger).Log("msg", "rule sample appending failed", "err", err)
-			} else {
-				g.seriesInPreviousEval[i] = seriesReturned
-			}
 		}(i, rule)
 	}
+	g.cleanupStaleSeries(ts)
+}
 
-	if len(g.staleSeries) != 0 {
-		app, err := g.opts.Appendable.Appender()
-		if err != nil {
-			level.Warn(g.logger).Log("msg", "creating appender failed", "err", err)
-			return
+func (g *Group) cleanupStaleSeries(ts time.Time) {
+	if len(g.staleSeries) == 0 {
+		return
+	}
+	app := g.opts.Appendable.Appender()
+	for _, s := range g.staleSeries {
+		// Rule that produced series no longer configured, mark it stale.
+		_, err := app.Add(s, timestamp.FromTime(ts), math.Float64frombits(value.StaleNaN))
+		switch errors.Cause(err) {
+		case nil:
+		case storage.ErrOutOfOrderSample, storage.ErrDuplicateSampleForTimestamp:
+			// Do not count these in logging, as this is expected if series
+			// is exposed from a different rule.
+		default:
+			level.Warn(g.logger).Log("msg", "Adding stale sample for previous configuration failed", "sample", s, "err", err)
 		}
-		for _, s := range g.staleSeries {
-			// Rule that produced series no longer configured, mark it stale.
-			_, err = app.Add(s, timestamp.FromTime(ts), math.Float64frombits(value.StaleNaN))
-			switch err {
-			case nil:
-			case storage.ErrOutOfOrderSample, storage.ErrDuplicateSampleForTimestamp:
-				// Do not count these in logging, as this is expected if series
-				// is exposed from a different rule.
-			default:
-				level.Warn(g.logger).Log("msg", "adding stale sample for previous configuration failed", "sample", s, "err", err)
-			}
-		}
-		if err := app.Commit(); err != nil {
-			level.Warn(g.logger).Log("msg", "stale sample appending for previous configuration failed", "err", err)
-		} else {
-			g.staleSeries = nil
-		}
+	}
+	if err := app.Commit(); err != nil {
+		level.Warn(g.logger).Log("msg", "Stale sample appending for previous configuration failed", "err", err)
+	} else {
+		g.staleSeries = nil
 	}
 }
 
@@ -667,7 +707,7 @@ func (g *Group) RestoreForState(ts time.Time) {
 				matchers = append(matchers, mt)
 			}
 
-			sset, err, _ := q.Select(nil, matchers...)
+			sset, err, _ := q.Select(false, nil, matchers...)
 			if err != nil {
 				level.Error(g.logger).Log("msg", "Failed to restore 'for' state",
 					labels.AlertName, alertRule.Name(), "stage", "Select", "err", err)
@@ -707,8 +747,8 @@ func (g *Group) RestoreForState(ts time.Time) {
 				return
 			}
 
-			downAt := time.Unix(t/1000, 0)
-			restoredActiveAt := time.Unix(int64(v), 0)
+			downAt := time.Unix(t/1000, 0).UTC()
+			restoredActiveAt := time.Unix(int64(v), 0).UTC()
 			timeSpentPending := downAt.Sub(restoredActiveAt)
 			timeRemainingPending := alertHoldDuration - timeSpentPending
 
@@ -784,14 +824,10 @@ type Manager struct {
 	groups   map[string]*Group
 	mtx      sync.RWMutex
 	block    chan struct{}
+	done     chan struct{}
 	restored bool
 
 	logger log.Logger
-}
-
-// Appendable returns an Appender.
-type Appendable interface {
-	Appender() (storage.Appender, error)
 }
 
 // NotifyFunc sends notifications about a set of alerts generated by the given expression.
@@ -803,7 +839,7 @@ type ManagerOptions struct {
 	QueryFunc       QueryFunc
 	NotifyFunc      NotifyFunc
 	Context         context.Context
-	Appendable      Appendable
+	Appendable      storage.Appendable
 	TSDB            storage.Storage
 	Logger          log.Logger
 	Registerer      prometheus.Registerer
@@ -825,6 +861,7 @@ func NewManager(o *ManagerOptions) *Manager {
 		groups: map[string]*Group{},
 		opts:   o,
 		block:  make(chan struct{}),
+		done:   make(chan struct{}),
 		logger: o.Logger,
 	}
 
@@ -847,6 +884,10 @@ func (m *Manager) Stop() {
 	for _, eg := range m.groups {
 		eg.stop()
 	}
+
+	// Shut down the groups waiting multiple evaluation intervals to write
+	// staleness markers.
+	close(m.done)
 
 	level.Info(m.logger).Log("msg", "Rule manager stopped")
 }
@@ -899,14 +940,21 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 	}
 
 	// Stop remaining old groups.
+	wg.Add(len(m.groups))
 	for n, oldg := range m.groups {
-		oldg.stop()
-		if m := oldg.metrics; m != nil {
-			m.groupInterval.DeleteLabelValues(n)
-			m.groupLastEvalTime.DeleteLabelValues(n)
-			m.groupLastDuration.DeleteLabelValues(n)
-			m.groupRules.DeleteLabelValues(n)
-		}
+		go func(n string, g *Group) {
+			g.markStale = true
+			g.stop()
+			if m := g.metrics; m != nil {
+				m.evalTotal.DeleteLabelValues(n)
+				m.evalFailures.DeleteLabelValues(n)
+				m.groupInterval.DeleteLabelValues(n)
+				m.groupLastEvalTime.DeleteLabelValues(n)
+				m.groupLastDuration.DeleteLabelValues(n)
+				m.groupRules.DeleteLabelValues(n)
+			}
+			wg.Done()
+		}(n, oldg)
 	}
 
 	wg.Wait()
@@ -937,7 +985,7 @@ func (m *Manager) LoadGroups(
 
 			rules := make([]Rule, 0, len(rg.Rules))
 			for _, r := range rg.Rules {
-				expr, err := promql.ParseExpr(r.Expr.Value)
+				expr, err := parser.ParseExpr(r.Expr.Value)
 				if err != nil {
 					return nil, []error{errors.Wrap(err, fn)}
 				}
@@ -962,7 +1010,15 @@ func (m *Manager) LoadGroups(
 				))
 			}
 
-			groups[groupKey(fn, rg.Name)] = NewGroup(rg.Name, fn, itv, rules, shouldRestore, m.opts)
+			groups[groupKey(fn, rg.Name)] = NewGroup(GroupOptions{
+				Name:          rg.Name,
+				File:          fn,
+				Interval:      itv,
+				Rules:         rules,
+				ShouldRestore: shouldRestore,
+				Opts:          m.opts,
+				done:          m.done,
+			})
 		}
 	}
 

@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 const (
@@ -24,7 +24,7 @@ var (
 	ShardLabelRE = regexp.MustCompile("^[0-9]+_of_[0-9]+$")
 )
 
-type squasher = func(...promql.Node) (promql.Expr, error)
+type squasher = func(...parser.Node) (parser.Expr, error)
 
 type shardSummer struct {
 	shards       int
@@ -57,25 +57,25 @@ func (summer *shardSummer) CopyWithCurShard(curshard int) *shardSummer {
 }
 
 // shardSummer expands a query AST by sharding and re-summing when possible
-func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) {
+func (summer *shardSummer) MapNode(node parser.Node) (parser.Node, bool, error) {
 
 	switch n := node.(type) {
-	case *promql.AggregateExpr:
-		if CanParallelize(n) && n.Op == promql.SUM {
+	case *parser.AggregateExpr:
+		if CanParallelize(n) && n.Op == parser.SUM {
 			result, err := summer.shardSum(n)
 			return result, true, err
 		}
 
 		return n, false, nil
 
-	case *promql.VectorSelector:
+	case *parser.VectorSelector:
 		if summer.currentShard != nil {
 			mapped, err := shardVectorSelector(*summer.currentShard, summer.shards, n)
 			return mapped, true, err
 		}
 		return n, true, nil
 
-	case *promql.MatrixSelector:
+	case *parser.MatrixSelector:
 		if summer.currentShard != nil {
 			mapped, err := shardMatrixSelector(*summer.currentShard, summer.shards, n)
 			return mapped, true, err
@@ -88,7 +88,7 @@ func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) 
 }
 
 // shardSum contains the logic for how we split/stitch legs of a parallelized sum query
-func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, error) {
+func (summer *shardSummer) shardSum(expr *parser.AggregateExpr) (parser.Node, error) {
 
 	parent, subSums, err := summer.splitSum(expr)
 	if err != nil {
@@ -107,17 +107,17 @@ func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 
 // splitSum forms the parent and child legs of a parallel query
 func (summer *shardSummer) splitSum(
-	expr *promql.AggregateExpr,
+	expr *parser.AggregateExpr,
 ) (
-	parent *promql.AggregateExpr,
-	children []promql.Node,
+	parent *parser.AggregateExpr,
+	children []parser.Node,
 	err error,
 ) {
-	parent = &promql.AggregateExpr{
+	parent = &parser.AggregateExpr{
 		Op:    expr.Op,
 		Param: expr.Param,
 	}
-	var mkChild func(sharded *promql.AggregateExpr) promql.Expr
+	var mkChild func(sharded *parser.AggregateExpr) parser.Expr
 
 	if expr.Without {
 		/*
@@ -135,7 +135,7 @@ func (summer *shardSummer) splitSum(
 		*/
 		parent.Grouping = []string{ShardLabel}
 		parent.Without = true
-		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
+		mkChild = func(sharded *parser.AggregateExpr) parser.Expr {
 			sharded.Grouping = expr.Grouping
 			sharded.Without = true
 			return sharded
@@ -149,7 +149,7 @@ func (summer *shardSummer) splitSum(
 			)
 		*/
 		parent.Grouping = expr.Grouping
-		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
+		mkChild = func(sharded *parser.AggregateExpr) parser.Expr {
 			groups := make([]string, 0, len(expr.Grouping)+1)
 			groups = append(groups, expr.Grouping...)
 			groups = append(groups, ShardLabel)
@@ -171,7 +171,7 @@ func (summer *shardSummer) splitSum(
 		*/
 		parent.Grouping = []string{ShardLabel}
 		parent.Without = true
-		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
+		mkChild = func(sharded *parser.AggregateExpr) parser.Expr {
 			sharded.Grouping = []string{ShardLabel}
 			return sharded
 		}
@@ -190,9 +190,9 @@ func (summer *shardSummer) splitSum(
 			return parent, children, err
 		}
 
-		subSum := mkChild(&promql.AggregateExpr{
+		subSum := mkChild(&parser.AggregateExpr{
 			Op:   expr.Op,
-			Expr: sharded.(promql.Expr),
+			Expr: sharded.(parser.Expr),
 		})
 
 		children = append(children,
@@ -214,13 +214,13 @@ func (summer *shardSummer) recordShards(n float64) {
 	}
 }
 
-func shardVectorSelector(curshard, shards int, selector *promql.VectorSelector) (promql.Node, error) {
+func shardVectorSelector(curshard, shards int, selector *parser.VectorSelector) (parser.Node, error) {
 	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, ShardLabel, fmt.Sprintf(ShardLabelFmt, curshard, shards))
 	if err != nil {
 		return nil, err
 	}
 
-	return &promql.VectorSelector{
+	return &parser.VectorSelector{
 		Name:   selector.Name,
 		Offset: selector.Offset,
 		LabelMatchers: append(
@@ -230,15 +230,15 @@ func shardVectorSelector(curshard, shards int, selector *promql.VectorSelector) 
 	}, nil
 }
 
-func shardMatrixSelector(curshard, shards int, selector *promql.MatrixSelector) (promql.Node, error) {
+func shardMatrixSelector(curshard, shards int, selector *parser.MatrixSelector) (parser.Node, error) {
 	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, ShardLabel, fmt.Sprintf(ShardLabelFmt, curshard, shards))
 	if err != nil {
 		return nil, err
 	}
 
-	if vs, ok := selector.VectorSelector.(*promql.VectorSelector); ok {
-		return &promql.MatrixSelector{
-			VectorSelector: &promql.VectorSelector{
+	if vs, ok := selector.VectorSelector.(*parser.VectorSelector); ok {
+		return &parser.MatrixSelector{
+			VectorSelector: &parser.VectorSelector{
 				Name:   vs.Name,
 				Offset: vs.Offset,
 				LabelMatchers: append(

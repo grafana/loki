@@ -8,7 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -163,7 +163,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 }
 
 func mustParseLabels(s string) labels.Labels {
-	labels, err := promql.ParseMetric(s)
+	labels, err := parser.ParseMetric(s)
 	if err != nil {
 		log.Fatalf("Failed to parse %s", s)
 	}

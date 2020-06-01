@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"net/http"
@@ -177,7 +178,7 @@ func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Conf
 	a.RegisterRoute("/push", push.Handler(pushConfig, i.Push), true) // For testing and debugging.
 }
 
-// RegisterPurger registers the endpoints associated with the Purger/DeleteStore. They do not exacty
+// RegisterPurger registers the endpoints associated with the Purger/DeleteStore. They do not exactly
 // match the Prometheus API but mirror it closely enough to justify their routing under the Prometheus
 // component/
 func (a *API) RegisterPurger(store *purger.DeleteStore) {
@@ -185,10 +186,12 @@ func (a *API) RegisterPurger(store *purger.DeleteStore) {
 
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/cancel_delete_request", http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
 
 	// Legacy Routes
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/cancel_delete_request", http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
 }
 
 // RegisterRuler registers routes associated with the Ruler service. If the
@@ -253,15 +256,17 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	api := v1.NewAPI(
 		engine,
 		queryable,
-		querier.DummyTargetRetriever{},
-		querier.DummyAlertmanagerRetriever{},
+		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
+		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
+		v1.GlobalURLOptions{},
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
-		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
-		false,                              // Disable admin APIs.
+		nil,   // Only needed for admin APIs.
+		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
+		false, // Disable admin APIs.
 		a.logger,
-		querier.DummyRulesRetriever{},
+		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
@@ -288,7 +293,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	cacheGenHeaderMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
 	promHandler := fakeRemoteAddr(cacheGenHeaderMiddleware.Wrap(promRouter))
 
-	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "GET")
+	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "POST")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/query", promHandler, true, "GET", "POST")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", promHandler, true, "GET", "POST")
 	a.registerRouteWithRouter(router, a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", promHandler, true, "GET", "POST")
@@ -302,7 +307,7 @@ func (a *API) RegisterQuerier(queryable storage.Queryable, engine *promql.Engine
 	api.Register(legacyPromRouter)
 	legacyPromHandler := fakeRemoteAddr(cacheGenHeaderMiddleware.Wrap(legacyPromRouter))
 
-	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "GET")
+	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/read", querier.RemoteReadHandler(queryable), true, "POST")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/query", legacyPromHandler, true, "GET", "POST")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", legacyPromHandler, true, "GET", "POST")
 	a.registerRouteWithRouter(router, a.cfg.LegacyHTTPPrefix+"/api/v1/labels", legacyPromHandler, true, "GET", "POST")
@@ -335,7 +340,7 @@ func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 	// Previously the frontend handled all calls to the provided prefix. Instead explicit
 	// routing is used since it will be required to enable the frontend to be run as part
 	// of a single binary in the future.
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", f.Handler(), true, "GET")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", f.Handler(), true, "POST")
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", f.Handler(), true, "GET", "POST")
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", f.Handler(), true, "GET", "POST")
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", f.Handler(), true, "GET", "POST")
@@ -344,7 +349,7 @@ func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", f.Handler(), true, "GET")
 
 	// Register Legacy Routers
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", f.Handler(), true, "GET")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", f.Handler(), true, "POST")
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", f.Handler(), true, "GET", "POST")
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", f.Handler(), true, "GET", "POST")
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", f.Handler(), true, "GET", "POST")

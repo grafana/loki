@@ -1,11 +1,11 @@
 package astmapper
 
 import (
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 /*
-subtreeFolder is a NodeMapper which embeds an entire promql.Node in an embedded query
+subtreeFolder is a NodeMapper which embeds an entire parser.Node in an embedded query
 if it does not contain any previously embedded queries. This allows the frontend to "zip up" entire
 subtrees of an AST that have not already been parallelized.
 
@@ -19,10 +19,10 @@ func NewSubtreeFolder() ASTMapper {
 }
 
 // MapNode implements NodeMapper
-func (f *subtreeFolder) MapNode(node promql.Node) (promql.Node, bool, error) {
+func (f *subtreeFolder) MapNode(node parser.Node) (parser.Node, bool, error) {
 	switch n := node.(type) {
 	// do not attempt to fold number or string leaf nodes
-	case *promql.NumberLiteral, *promql.StringLiteral:
+	case *parser.NumberLiteral, *parser.StringLiteral:
 		return n, true, nil
 	}
 
@@ -39,29 +39,29 @@ func (f *subtreeFolder) MapNode(node promql.Node) (promql.Node, bool, error) {
 	return expr, true, err
 }
 
-func isEmbedded(node promql.Node) (bool, error) {
+func isEmbedded(node parser.Node) (bool, error) {
 	switch n := node.(type) {
-	case *promql.VectorSelector:
+	case *parser.VectorSelector:
 		if n.Name == EmbeddedQueriesMetricName {
 			return true, nil
 		}
 
-	case *promql.MatrixSelector:
+	case *parser.MatrixSelector:
 		return isEmbedded(n.VectorSelector)
 	}
 	return false, nil
 }
 
-type predicate = func(promql.Node) (bool, error)
+type predicate = func(parser.Node) (bool, error)
 
-// Predicate is a helper which uses promql.Walk under the hood determine if any node in a subtree
+// Predicate is a helper which uses parser.Walk under the hood determine if any node in a subtree
 // returns true for a specified function
-func Predicate(node promql.Node, fn predicate) (bool, error) {
+func Predicate(node parser.Node, fn predicate) (bool, error) {
 	v := &visitor{
 		fn: fn,
 	}
 
-	if err := promql.Walk(v, node, nil); err != nil {
+	if err := parser.Walk(v, node, nil); err != nil {
 		return false, err
 	}
 	return v.result, nil
@@ -72,8 +72,8 @@ type visitor struct {
 	result bool
 }
 
-// Visit implements promql.Visitor
-func (v *visitor) Visit(node promql.Node, path []promql.Node) (promql.Visitor, error) {
+// Visit implements parser.Visitor
+func (v *visitor) Visit(node parser.Node, path []parser.Node) (parser.Visitor, error) {
 	// if the visitor has already seen a predicate success, don't overwrite
 	if v.result {
 		return nil, nil

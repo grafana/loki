@@ -5,7 +5,7 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -20,7 +20,7 @@ type chunkMergeIterator struct {
 }
 
 // NewChunkMergeIterator creates a storage.SeriesIterator for a set of chunks.
-func NewChunkMergeIterator(cs []chunk.Chunk, _, _ model.Time) storage.SeriesIterator {
+func NewChunkMergeIterator(cs []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
 	its := buildIterators(cs)
 	c := &chunkMergeIterator{
 		currTime: -1,
@@ -112,7 +112,7 @@ func (c *chunkMergeIterator) Next() bool {
 			continue
 		}
 
-		iter := heap.Pop(&c.h).(storage.SeriesIterator)
+		iter := heap.Pop(&c.h).(chunkenc.Iterator)
 		if err := iter.Err(); err != nil {
 			c.currErr = err
 			return false
@@ -131,7 +131,7 @@ func (c *chunkMergeIterator) Err() error {
 }
 
 type extraIterator interface {
-	storage.SeriesIterator
+	chunkenc.Iterator
 	AtTime() int64
 }
 

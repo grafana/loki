@@ -4,15 +4,15 @@ import (
 	"context"
 
 	"github.com/go-kit/kit/log"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // BlocksStoreSet implementation used when the blocks are sharded and replicated across
@@ -28,10 +28,10 @@ type blocksStoreReplicationSet struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func newBlocksStoreReplicationSet(storesRing *ring.Ring, logger log.Logger, reg prometheus.Registerer) (*blocksStoreReplicationSet, error) {
+func newBlocksStoreReplicationSet(storesRing *ring.Ring, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
 		storesRing:  storesRing,
-		clientsPool: newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), logger, reg),
+		clientsPool: newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), tlsCfg, logger, reg),
 	}
 
 	var err error
@@ -70,25 +70,25 @@ func (s *blocksStoreReplicationSet) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
-func (s *blocksStoreReplicationSet) GetClientsFor(metas []*metadata.Meta) ([]storegatewaypb.StoreGatewayClient, error) {
+func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID) ([]BlocksStoreClient, error) {
 	var sets []ring.ReplicationSet
 
 	// Find the replication set of each block we need to query.
-	for _, m := range metas {
+	for _, blockID := range blockIDs {
 		// Buffer internally used by the ring (give extra room for a JOINING + LEAVING instance).
 		// Do not reuse the same buffer across multiple Get() calls because we do retain the
 		// returned replication set.
 		buf := make([]ring.IngesterDesc, 0, s.storesRing.ReplicationFactor()+2)
 
-		set, err := s.storesRing.Get(cortex_tsdb.HashBlockID(m.ULID), ring.BlocksRead, buf)
+		set, err := s.storesRing.Get(cortex_tsdb.HashBlockID(blockID), ring.BlocksRead, buf)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", m.ULID.String())
+			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", blockID.String())
 		}
 
 		sets = append(sets, set)
 	}
 
-	var clients []storegatewaypb.StoreGatewayClient
+	var clients []BlocksStoreClient
 
 	// Get the client for each store-gateway.
 	for _, addr := range findSmallestInstanceSet(sets) {
@@ -97,7 +97,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(metas []*metadata.Meta) ([]sto
 			return nil, errors.Wrapf(err, "failed to get store-gateway client for %s", addr)
 		}
 
-		clients = append(clients, c.(storegatewaypb.StoreGatewayClient))
+		clients = append(clients, c.(BlocksStoreClient))
 	}
 
 	return clients, nil

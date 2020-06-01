@@ -43,12 +43,9 @@ type ShardedQuerier struct {
 	ResponseHeadersMtx sync.Mutex
 }
 
-func (q *ShardedQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.SelectSorted(sp, matchers...)
-}
-
 // Select returns a set of series that matches the given label matchers.
-func (q *ShardedQuerier) SelectSorted(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// The bool passed is ignored because the series is always sorted.
+func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	var embeddedQuery string
 	var isEmbedded bool
 	for _, matcher := range matchers {

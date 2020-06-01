@@ -33,9 +33,8 @@ func (a *appender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
 	return 0, nil
 }
 
-func (a *appender) AddFast(l labels.Labels, ref uint64, t int64, v float64) error {
-	_, err := a.Add(l, t, v)
-	return err
+func (a *appender) AddFast(_ uint64, _ int64, _ float64) error {
+	return storage.ErrNotFound
 }
 
 func (a *appender) Commit() error {
@@ -62,11 +61,11 @@ type tsdb struct {
 }
 
 // Appender returns a storage.Appender
-func (t *tsdb) Appender() (storage.Appender, error) {
+func (t *tsdb) Appender() storage.Appender {
 	return &appender{
 		pusher: t.pusher,
 		userID: t.userID,
-	}, nil
+	}
 }
 
 // Querier returns a new Querier on the storage.

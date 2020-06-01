@@ -15,10 +15,8 @@ import (
 	"net/url"
 	"path"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -26,13 +24,12 @@ import (
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/component"
-	"github.com/thanos-io/thanos/pkg/exthttp"
+	thanoshttp "github.com/thanos-io/thanos/pkg/http"
+	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/store/storepb/prompb"
@@ -41,21 +38,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var statusToCode = map[int]codes.Code{
-	http.StatusBadRequest:          codes.InvalidArgument,
-	http.StatusNotFound:            codes.NotFound,
-	http.StatusUnprocessableEntity: codes.Internal,
-	http.StatusServiceUnavailable:  codes.Unavailable,
-	http.StatusInternalServerError: codes.Internal,
-}
-
-var userAgent = fmt.Sprintf("Thanos/%s", version.Version)
-
 // PrometheusStore implements the store node API on top of the Prometheus remote read API.
 type PrometheusStore struct {
 	logger         log.Logger
 	base           *url.URL
-	client         *http.Client
+	client         *promclient.Client
 	buffers        sync.Pool
 	component      component.StoreAPI
 	externalLabels func() labels.Labels
@@ -64,18 +51,14 @@ type PrometheusStore struct {
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
 }
 
-const (
-	initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size.
-
-	SUCCESS = "success"
-)
+const initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size for sync pool size.
 
 // NewPrometheusStore returns a new PrometheusStore that uses the given HTTP client
 // to talk to Prometheus.
 // It attaches the provided external labels to all results.
 func NewPrometheusStore(
 	logger log.Logger,
-	client *http.Client,
+	client *promclient.Client,
 	baseURL *url.URL,
 	component component.StoreAPI,
 	externalLabels func() labels.Labels,
@@ -83,11 +66,6 @@ func NewPrometheusStore(
 ) (*PrometheusStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
-	}
-	if client == nil {
-		client = &http.Client{
-			Transport: tracing.HTTPTripperware(logger, exthttp.NewTransport()),
-		}
 	}
 	p := &PrometheusStore{
 		logger:                        logger,
@@ -108,7 +86,7 @@ func NewPrometheusStore(
 // Info returns store information about the Prometheus instance.
 // NOTE(bwplotka): MaxTime & MinTime are not accurate nor adjusted dynamically.
 // This is fine for now, but might be needed in future.
-func (p *PrometheusStore) Info(ctx context.Context, r *storepb.InfoRequest) (*storepb.InfoResponse, error) {
+func (p *PrometheusStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.InfoResponse, error) {
 	lset := p.externalLabels()
 	mint, maxt := p.timestamps()
 
@@ -169,7 +147,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	}
 
 	if r.SkipChunks {
-		labelMaps, err := p.seriesLabels(s.Context(), newMatchers, r.MinTime, r.MaxTime)
+		labelMaps, err := p.client.SeriesInGRPC(s.Context(), p.base, newMatchers, r.MinTime, r.MaxTime)
 		if err != nil {
 			return err
 		}
@@ -211,7 +189,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 
 	queryPrometheusSpan, ctx := tracing.StartSpan(s.Context(), "query_prometheus")
 
-	httpResp, err := p.startPromSeries(ctx, q)
+	httpResp, err := p.startPromRemoteRead(ctx, q)
 	if err != nil {
 		queryPrometheusSpan.Finish()
 		return errors.Wrap(err, "query Prometheus")
@@ -421,7 +399,7 @@ func (p *PrometheusStore) chunkSamples(series *prompb.TimeSeries, maxSamplesPerC
 	return chks, nil
 }
 
-func (p *PrometheusStore) startPromSeries(ctx context.Context, q *prompb.Query) (presp *http.Response, err error) {
+func (p *PrometheusStore) startPromRemoteRead(ctx context.Context, q *prompb.Query) (presp *http.Response, _ error) {
 	reqb, err := proto.Marshal(&prompb.ReadRequest{
 		Queries:               []*prompb.Query{q},
 		AcceptedResponseTypes: p.remoteReadAcceptableResponses,
@@ -444,7 +422,8 @@ func (p *PrometheusStore) startPromSeries(ctx context.Context, q *prompb.Query) 
 	}
 	preq.Header.Add("Content-Encoding", "snappy")
 	preq.Header.Set("Content-Type", "application/x-stream-protobuf")
-	preq.Header.Set("User-Agent", userAgent)
+
+	preq.Header.Set("User-Agent", thanoshttp.ThanosUserAgent)
 	tracing.DoInSpan(ctx, "query_prometheus_request", func(ctx context.Context) {
 		preq = preq.WithContext(ctx)
 		presp, err = p.client.Do(preq)
@@ -475,7 +454,7 @@ func matchesExternalLabels(ms []storepb.LabelMatcher, externalLabels labels.Labe
 	var newMatcher []storepb.LabelMatcher
 	for _, m := range ms {
 		// Validate all matchers.
-		tm, err := translateMatcher(m)
+		tm, err := promclient.TranslateMatcher(m)
 		if err != nil {
 			return false, nil, err
 		}
@@ -506,7 +485,7 @@ func (p *PrometheusStore) encodeChunk(ss []prompb.Sample) (storepb.Chunk_Encodin
 		return 0, nil, err
 	}
 	for _, s := range ss {
-		a.Append(int64(s.Timestamp), float64(s.Value))
+		a.Append(s.Timestamp, s.Value)
 	}
 	return storepb.Chunk_XOR, c.Bytes(), nil
 }
@@ -537,67 +516,16 @@ Outer:
 		}
 		lset = append(lset, l)
 	}
-	for ei < len(pbExtend) {
-		lset = append(lset, pbExtend[ei])
-		ei++
-	}
-	return lset
+	return storepb.ExtendLabels(lset, extend)
 }
 
 // LabelNames returns all known label names.
-func (p *PrometheusStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest) (
-	*storepb.LabelNamesResponse, error,
-) {
-	u := *p.base
-	u.Path = path.Join(u.Path, "/api/v1/labels")
-
-	req, err := http.NewRequest("GET", u.String(), nil)
+func (p *PrometheusStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	lbls, err := p.client.LabelNamesInGRPC(ctx, p.base)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, err
 	}
-	req.Header.Set("User-Agent", userAgent)
-
-	span, ctx := tracing.StartSpan(ctx, "/prom_label_names HTTP[client]")
-	defer span.Finish()
-
-	resp, err := p.client.Do(req.WithContext(ctx))
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	defer runutil.ExhaustCloseWithLogOnErr(p.logger, resp.Body, "label names request body")
-
-	if resp.StatusCode/100 != 2 {
-		return nil, status.Errorf(codes.Internal, "request Prometheus server failed, code %s", resp.Status)
-	}
-
-	if resp.StatusCode == http.StatusNoContent {
-		return &storepb.LabelNamesResponse{Names: []string{}}, nil
-	}
-
-	var m struct {
-		Data   []string `json:"data"`
-		Status string   `json:"status"`
-		Error  string   `json:"error"`
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	if err = json.Unmarshal(body, &m); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	if m.Status != SUCCESS {
-		code, exists := statusToCode[resp.StatusCode]
-		if !exists {
-			return nil, status.Error(codes.Internal, m.Error)
-		}
-		return nil, status.Error(code, m.Error)
-	}
-
-	return &storepb.LabelNamesResponse{Names: m.Data}, nil
+	return &storepb.LabelNamesResponse{Names: lbls}, nil
 }
 
 // LabelValues returns all known label values for a given label name.
@@ -609,124 +537,10 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 		return &storepb.LabelValuesResponse{Values: []string{l}}, nil
 	}
 
-	u := *p.base
-	u.Path = path.Join(u.Path, "/api/v1/label/", r.Label, "/values")
-
-	req, err := http.NewRequest("GET", u.String(), nil)
+	vals, err := p.client.LabelValuesInGRPC(ctx, p.base, r.Label)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, err
 	}
-	req.Header.Set("User-Agent", userAgent)
-
-	span, ctx := tracing.StartSpan(ctx, "/prom_label_values HTTP[client]")
-	defer span.Finish()
-
-	resp, err := p.client.Do(req.WithContext(ctx))
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	defer runutil.ExhaustCloseWithLogOnErr(p.logger, resp.Body, "label values request body")
-
-	if resp.StatusCode/100 != 2 {
-		return nil, status.Errorf(codes.Internal, "request Prometheus server failed, code %s", resp.Status)
-	}
-
-	if resp.StatusCode == http.StatusNoContent {
-		return &storepb.LabelValuesResponse{Values: []string{}}, nil
-	}
-
-	var m struct {
-		Data   []string `json:"data"`
-		Status string   `json:"status"`
-		Error  string   `json:"error"`
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	if err = json.Unmarshal(body, &m); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	sort.Strings(m.Data)
-
-	if m.Status != SUCCESS {
-		code, exists := statusToCode[resp.StatusCode]
-		if !exists {
-			return nil, status.Error(codes.Internal, m.Error)
-		}
-		return nil, status.Error(code, m.Error)
-	}
-
-	return &storepb.LabelValuesResponse{Values: m.Data}, nil
-}
-
-// seriesLabels returns the labels from Prometheus series API.
-func (p *PrometheusStore) seriesLabels(ctx context.Context, matchers []storepb.LabelMatcher, startTime, endTime int64) ([]map[string]string, error) {
-	u := *p.base
-	u.Path = path.Join(u.Path, "/api/v1/series")
-	q := u.Query()
-
-	metric, err := matchersToString(matchers)
-	if err != nil {
-		return nil, errors.Wrap(err, "invalid matchers")
-	}
-
-	q.Add("match[]", metric)
-	q.Add("start", formatTime(timestamp.Time(startTime)))
-	q.Add("end", formatTime(timestamp.Time(endTime)))
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequest("GET", u.String(), nil)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	req.Header.Set("User-Agent", userAgent)
-
-	span, ctx := tracing.StartSpan(ctx, "/prom_series HTTP[client]")
-	defer span.Finish()
-
-	resp, err := p.client.Do(req.WithContext(ctx))
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	defer runutil.ExhaustCloseWithLogOnErr(p.logger, resp.Body, "series request body")
-
-	if resp.StatusCode/100 != 2 {
-		return nil, status.Errorf(codes.Internal, "request Prometheus server failed, code %s", resp.Status)
-	}
-
-	if resp.StatusCode == http.StatusNoContent {
-		return nil, nil
-	}
-
-	var m struct {
-		Data   []map[string]string `json:"data"`
-		Status string              `json:"status"`
-		Error  string              `json:"error"`
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	if err = json.Unmarshal(body, &m); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	if m.Status != SUCCESS {
-		code, exists := statusToCode[resp.StatusCode]
-		if !exists {
-			return nil, status.Error(codes.Internal, m.Error)
-		}
-		return nil, status.Error(code, m.Error)
-	}
-
-	return m.Data, nil
-}
-
-func formatTime(t time.Time) string {
-	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
+	sort.Strings(vals)
+	return &storepb.LabelValuesResponse{Values: vals}, nil
 }

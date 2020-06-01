@@ -18,7 +18,7 @@ to install the code reviewing tool.
 
     1. If you would like, you may want to set up aliases for `git-codereview`,
     such that `git codereview change` becomes `git change`. See the
-    [godoc](https://godoc.org/golang.org/x/review/git-codereview) for details.
+    [godoc](https://pkg.go.dev/golang.org/x/review/git-codereview) for details.
 
         * Should you run into issues with the `git-codereview` tool, please note
         that all error messages will assume that you have set up these aliases.

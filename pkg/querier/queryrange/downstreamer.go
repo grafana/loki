@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logql"
 )
@@ -128,7 +129,7 @@ func (in instance) For(
 }
 
 // convert to matrix
-func sampleStreamToMatrix(streams []queryrange.SampleStream) promql.Value {
+func sampleStreamToMatrix(streams []queryrange.SampleStream) parser.Value {
 	xs := make(promql.Matrix, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Series{}

@@ -17,7 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
 )
 
-// RuleStoreConfig conigures a rule store
+// RuleStoreConfig configures a rule store.
 type RuleStoreConfig struct {
 	Type     string        `yaml:"type"`
 	ConfigDB client.Config `yaml:"configdb"`
@@ -73,7 +73,7 @@ func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
 	case "swift":
 		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift, ""))
 	default:
-		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs", cfg.Type)
+		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure", cfg.Type)
 	}
 }
 

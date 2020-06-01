@@ -229,15 +229,19 @@ func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
 // get in input labels whose data structure is reused.
 func FromLabelAdaptersToLabelsWithCopy(input []LabelAdapter) labels.Labels {
 	result := make(labels.Labels, len(input))
-
 	for i, l := range input {
 		result[i] = labels.Label{
-			Name:  l.Name,
-			Value: l.Value,
+			Name:  copyString(l.Name),
+			Value: copyString(l.Value),
 		}
 	}
-
 	return result
+}
+
+func copyString(in string) string {
+	out := make([]byte, len(in))
+	copy(out, in)
+	return string(out)
 }
 
 // FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.

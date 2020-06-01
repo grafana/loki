@@ -83,9 +83,9 @@ func (b *UserBucketReaderClient) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
 }
 
-// ObjectSize returns the size of the specified object.
-func (b *UserBucketReaderClient) ObjectSize(ctx context.Context, name string) (uint64, error) {
-	return b.bucket.ObjectSize(ctx, b.fullName(name))
+// Attributes returns attributes of the specified object.
+func (b *UserBucketReaderClient) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+	return b.bucket.Attributes(ctx, b.fullName(name))
 }
 
 // ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment

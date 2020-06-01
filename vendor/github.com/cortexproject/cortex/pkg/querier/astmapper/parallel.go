@@ -4,18 +4,18 @@ import (
 	"fmt"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-var summableAggregates = map[promql.ItemType]struct{}{
-	promql.SUM:     {},
-	promql.MIN:     {},
-	promql.MAX:     {},
-	promql.TOPK:    {},
-	promql.BOTTOMK: {},
-	promql.COUNT:   {},
+var summableAggregates = map[parser.ItemType]struct{}{
+	parser.SUM:     {},
+	parser.MIN:     {},
+	parser.MAX:     {},
+	parser.TOPK:    {},
+	parser.BOTTOMK: {},
+	parser.COUNT:   {},
 }
 
 var nonParallelFuncs = []string{
@@ -26,13 +26,13 @@ var nonParallelFuncs = []string{
 
 // CanParallelize tests if a subtree is parallelizable.
 // A subtree is parallelizable if all of its components are parallelizable.
-func CanParallelize(node promql.Node) bool {
+func CanParallelize(node parser.Node) bool {
 	switch n := node.(type) {
 	case nil:
 		// nil handles cases where we check optional fields that are not set
 		return true
 
-	case promql.Expressions:
+	case parser.Expressions:
 		for _, e := range n {
 			if !CanParallelize(e) {
 				return false
@@ -40,15 +40,25 @@ func CanParallelize(node promql.Node) bool {
 		}
 		return true
 
-	case *promql.AggregateExpr:
+	case *parser.AggregateExpr:
 		_, ok := summableAggregates[n.Op]
-		return ok && CanParallelize(n.Expr)
+		if !ok {
+			return false
+		}
 
-	case *promql.BinaryExpr:
+		// Ensure there are no nested aggregations
+		nestedAggs, err := Predicate(n.Expr, func(node parser.Node) (bool, error) {
+			_, ok := node.(*parser.AggregateExpr)
+			return ok, nil
+		})
+
+		return err == nil && !nestedAggs && CanParallelize(n.Expr)
+
+	case *parser.BinaryExpr:
 		// since binary exprs use each side for merging, they cannot be parallelized
 		return false
 
-	case *promql.Call:
+	case *parser.Call:
 		if n.Func == nil {
 			return false
 		}
@@ -63,20 +73,20 @@ func CanParallelize(node promql.Node) bool {
 		}
 		return true
 
-	case *promql.SubqueryExpr:
+	case *parser.SubqueryExpr:
 		return CanParallelize(n.Expr)
 
-	case *promql.ParenExpr:
+	case *parser.ParenExpr:
 		return CanParallelize(n.Expr)
 
-	case *promql.UnaryExpr:
+	case *parser.UnaryExpr:
 		// Since these are only currently supported for Scalars, should be parallel-compatible
 		return true
 
-	case *promql.EvalStmt:
+	case *parser.EvalStmt:
 		return CanParallelize(n.Expr)
 
-	case *promql.MatrixSelector, *promql.NumberLiteral, *promql.StringLiteral, *promql.VectorSelector:
+	case *parser.MatrixSelector, *parser.NumberLiteral, *parser.StringLiteral, *parser.VectorSelector:
 		return true
 
 	default:
@@ -87,7 +97,7 @@ func CanParallelize(node promql.Node) bool {
 }
 
 // ParallelizableFunc ensures that a promql function can be part of a parallel query.
-func ParallelizableFunc(f promql.Function) bool {
+func ParallelizableFunc(f parser.Function) bool {
 
 	for _, v := range nonParallelFuncs {
 		if v == f.Name {

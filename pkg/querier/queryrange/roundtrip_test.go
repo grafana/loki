@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
@@ -37,7 +38,7 @@ var (
 		MaxRetries:             3,
 		CacheResults:           true,
 		ResultsCacheConfig: queryrange.ResultsCacheConfig{
-			MaxCacheFreshness: 1 * time.Minute,
+			LegacyMaxCacheFreshness: 1 * time.Minute,
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
@@ -410,6 +411,10 @@ func (f fakeLimits) MaxEntriesLimitPerQuery(string) int {
 	return f.maxEntriesLimitPerQuery
 }
 
+func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
+	return 1 * time.Minute
+}
+
 func counter() (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex
@@ -431,7 +436,7 @@ func errorResult() (*int, http.Handler) {
 	})
 }
 
-func promqlResult(v promql.Value) (*int, http.Handler) {
+func promqlResult(v parser.Value) (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

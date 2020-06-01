@@ -116,6 +116,13 @@ func Downsample(
 		if err := indexr.Series(postings.At(), &lset, &chks); err != nil {
 			return id, errors.Wrapf(err, "get series %d", postings.At())
 		}
+
+		for i, c := range chks[1:] {
+			if chks[i].MaxTime >= c.MinTime {
+				return id, errors.Errorf("found overlapping chunks within series %d. Chunks expected to be ordered by min time and non-overlapping, got: %v", postings.At(), chks)
+			}
+		}
+
 		// While #183 exists, we sanitize the chunks we retrieved from the block
 		// before retrieving their samples.
 		for i, c := range chks {
@@ -129,6 +136,9 @@ func Downsample(
 		// Raw and already downsampled data need different processing.
 		if origMeta.Thanos.Downsample.Resolution == 0 {
 			for _, c := range chks {
+				// TODO(bwplotka): We can optimze this further by using in WriteSeries iterators of each chunk instead of
+				// samples. Also ensure 120 sample limit, otherwise we have gigantic chunks.
+				// https://github.com/thanos-io/thanos/issues/2542.
 				if err := expandChunkIterator(c.Chunk.Iterator(reuseIt), &all); err != nil {
 					return id, errors.Wrapf(err, "expand chunk %d, series %d", c.Ref, postings.At())
 				}
@@ -139,7 +149,11 @@ func Downsample(
 		} else {
 			// Downsample a block that contains aggregated chunks already.
 			for _, c := range chks {
-				aggrChunks = append(aggrChunks, c.Chunk.(*AggrChunk))
+				ac, ok := c.Chunk.(*AggrChunk)
+				if !ok {
+					return id, errors.Errorf("expected downsampled chunk (*downsample.AggrChunk) got %T instead for series: %d", c.Chunk, postings.At())
+				}
+				aggrChunks = append(aggrChunks, ac)
 			}
 			downsampledChunks, err := downsampleAggr(
 				aggrChunks,
@@ -334,12 +348,12 @@ func downsampleRawLoop(data []sample, resolution int64, numChunks int) []chunks.
 
 		ab := newAggrChunkBuilder()
 
-		// Encode first raw value; see CounterSeriesIterator.
+		// Encode first raw value; see ApplyCounterResetsSeriesIterator.
 		ab.apps[AggrCounter].Append(batch[0].t, batch[0].v)
 
 		lastT := downsampleBatch(batch, resolution, ab.add)
 
-		// Encode last raw value; see CounterSeriesIterator.
+		// Encode last raw value; see ApplyCounterResetsSeriesIterator.
 		ab.apps[AggrCounter].Append(lastT, batch[len(batch)-1].v)
 
 		chks = append(chks, ab.encode())
@@ -511,7 +525,7 @@ func downsampleAggrBatch(chks []*AggrChunk, buf *[]sample, resolution int64) (ch
 		acs = append(acs, c.Iterator(reuseIt))
 	}
 	*buf = (*buf)[:0]
-	it := NewCounterSeriesIterator(acs...)
+	it := NewApplyCounterResetsIterator(acs...)
 
 	if err := expandChunkIterator(it, buf); err != nil {
 		return chk, err
@@ -524,7 +538,7 @@ func downsampleAggrBatch(chks []*AggrChunk, buf *[]sample, resolution int64) (ch
 	ab.chunks[AggrCounter] = chunkenc.NewXORChunk()
 	ab.apps[AggrCounter], _ = ab.chunks[AggrCounter].Appender()
 
-	// Retain first raw value; see CounterSeriesIterator.
+	// Retain first raw value; see ApplyCounterResetsSeriesIterator.
 	ab.apps[AggrCounter].Append((*buf)[0].t, (*buf)[0].v)
 
 	lastT := downsampleBatch(*buf, resolution, func(t int64, a *aggregator) {
@@ -536,7 +550,7 @@ func downsampleAggrBatch(chks []*AggrChunk, buf *[]sample, resolution int64) (ch
 		ab.apps[AggrCounter].Append(t, a.counter)
 	})
 
-	// Retain last raw value; see CounterSeriesIterator.
+	// Retain last raw value; see ApplyCounterResetsSeriesIterator.
 	ab.apps[AggrCounter].Append(lastT, it.lastV)
 
 	ab.mint = mint
@@ -549,19 +563,24 @@ type sample struct {
 	v float64
 }
 
-// CounterSeriesIterator generates monotonically increasing values by iterating
+// ApplyCounterResetsSeriesIterator generates monotonically increasing values by iterating
 // over an ordered sequence of chunks, which should be raw or aggregated chunks
-// of counter values.  The generated samples can be used by PromQL functions
-// like 'rate' that calculate differences between counter values.
+// of counter values. The generated samples can be used by PromQL functions
+// like 'rate' that calculate differences between counter values. Stale Markers
+// are removed as well.
 //
 // Counter aggregation chunks must have the first and last values from their
 // original raw series: the first raw value should be the first value encoded
 // in the chunk, and the last raw value is encoded by the duplication of the
-// previous sample's timestamp.  As iteration occurs between chunks, the
+// previous sample's timestamp. As iteration occurs between chunks, the
 // comparison between the last raw value of the earlier chunk and the first raw
 // value of the later chunk ensures that counter resets between chunks are
 // recognized and that the correct value delta is calculated.
-type CounterSeriesIterator struct {
+//
+// It handles overlapped chunks (removes overlaps).
+// NOTE: It is important to deduplicate with care ensuring that you don't hit
+// issue https://github.com/thanos-io/thanos/issues/2401#issuecomment-621958839.
+type ApplyCounterResetsSeriesIterator struct {
 	chks   []chunkenc.Iterator
 	i      int     // Current chunk.
 	total  int     // Total number of processed samples.
@@ -570,11 +589,11 @@ type CounterSeriesIterator struct {
 	totalV float64 // Total counter state since beginning of series.
 }
 
-func NewCounterSeriesIterator(chks ...chunkenc.Iterator) *CounterSeriesIterator {
-	return &CounterSeriesIterator{chks: chks}
+func NewApplyCounterResetsIterator(chks ...chunkenc.Iterator) *ApplyCounterResetsSeriesIterator {
+	return &ApplyCounterResetsSeriesIterator{chks: chks}
 }
 
-func (it *CounterSeriesIterator) Next() bool {
+func (it *ApplyCounterResetsSeriesIterator) Next() bool {
 	for {
 		if it.i >= len(it.chks) {
 			return false
@@ -618,11 +637,12 @@ func (it *CounterSeriesIterator) Next() bool {
 	}
 }
 
-func (it *CounterSeriesIterator) At() (t int64, v float64) {
+func (it *ApplyCounterResetsSeriesIterator) At() (t int64, v float64) {
 	return it.lastT, it.totalV
 }
 
-func (it *CounterSeriesIterator) Seek(x int64) bool {
+func (it *ApplyCounterResetsSeriesIterator) Seek(x int64) bool {
+	// Don't use underlying Seek, but iterate over next to not miss counter resets.
 	for {
 		if t, _ := it.At(); t >= x {
 			return true
@@ -635,7 +655,7 @@ func (it *CounterSeriesIterator) Seek(x int64) bool {
 	}
 }
 
-func (it *CounterSeriesIterator) Err() error {
+func (it *ApplyCounterResetsSeriesIterator) Err() error {
 	if it.i >= len(it.chks) {
 		return nil
 	}
@@ -674,6 +694,11 @@ func (it *AverageChunkIterator) Next() bool {
 	}
 	it.t, it.v = cntT, sumV/cntV
 	return true
+}
+
+func (it *AverageChunkIterator) Seek(t int64) bool {
+	it.err = errors.New("seek used, but not implemented")
+	return false
 }
 
 func (it *AverageChunkIterator) At() (int64, float64) {

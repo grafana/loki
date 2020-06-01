@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"
 )
@@ -110,7 +111,7 @@ func (r *rangeVectorIterator) load(start, end int64) {
 			var metric labels.Labels
 			if metric, ok = r.metrics[lbs]; !ok {
 				var err error
-				metric, err = promql.ParseMetric(lbs)
+				metric, err = parser.ParseMetric(lbs)
 				if err != nil {
 					continue
 				}

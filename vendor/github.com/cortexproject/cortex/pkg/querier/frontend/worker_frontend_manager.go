@@ -27,7 +27,7 @@ var (
 type frontendManager struct {
 	server    *server.Server
 	client    FrontendClient
-	clientCfg grpcclient.Config
+	clientCfg grpcclient.ConfigWithTLS
 
 	log log.Logger
 
@@ -37,7 +37,7 @@ type frontendManager struct {
 	currentProcessors *atomic.Int32
 }
 
-func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.Config) *frontendManager {
+func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.ConfigWithTLS) *frontendManager {
 	f := &frontendManager{
 		log:               log,
 		client:            client,
@@ -133,8 +133,8 @@ func (f *frontendManager) process(ctx context.Context, c Frontend_ProcessClient)
 			}
 
 			// Ensure responses that are too big are not retried.
-			if len(response.Body) >= f.clientCfg.MaxSendMsgSize {
-				errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), f.clientCfg.MaxSendMsgSize)
+			if len(response.Body) >= f.clientCfg.GRPC.MaxSendMsgSize {
+				errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), f.clientCfg.GRPC.MaxSendMsgSize)
 				response = &httpgrpc.HTTPResponse{
 					Code: http.StatusRequestEntityTooLarge,
 					Body: []byte(errMsg),

@@ -1,7 +1,6 @@
 package tsdb
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"path/filepath"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
+	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
@@ -31,8 +31,17 @@ const (
 	// BackendFilesystem is the value for the filesystem storge backend
 	BackendFilesystem = "filesystem"
 
-	// TenantIDExternalLabel is the external label set when shipping blocks to the storage
+	// TenantIDExternalLabel is the external label containing the tenant ID,
+	// set when shipping blocks to the storage.
 	TenantIDExternalLabel = "__org_id__"
+
+	// IngesterIDExternalLabel is the external label containing the ingester ID,
+	// set when shipping blocks to the storage.
+	IngesterIDExternalLabel = "__ingester_id__"
+
+	// ShardIDExternalLabel is the external label containing the shard ID
+	// and can be used to shard blocks.
+	ShardIDExternalLabel = "__shard_id__"
 )
 
 // Validation errors
@@ -44,6 +53,7 @@ var (
 	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
 	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
+	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
 )
 
 // Config holds the config information for TSDB storage
@@ -58,6 +68,7 @@ type Config struct {
 	HeadCompactionInterval    time.Duration     `yaml:"head_compaction_interval"`
 	HeadCompactionConcurrency int               `yaml:"head_compaction_concurrency"`
 	StripeSize                int               `yaml:"stripe_size"`
+	WALCompressionEnabled     bool              `yaml:"wal_compression_enabled"`
 	StoreGatewayEnabled       bool              `yaml:"store_gateway_enabled"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
@@ -129,6 +140,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeadCompactionInterval, "experimental.tsdb.head-compaction-interval", 1*time.Minute, "How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range. Must be greater than 0 and max 5 minutes.")
 	f.IntVar(&cfg.HeadCompactionConcurrency, "experimental.tsdb.head-compaction-concurrency", 5, "Maximum number of tenants concurrently compacting TSDB head into a new block")
 	f.IntVar(&cfg.StripeSize, "experimental.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
+	f.BoolVar(&cfg.WALCompressionEnabled, "experimental.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
 	f.BoolVar(&cfg.StoreGatewayEnabled, "experimental.tsdb.store-gateway-enabled", false, "True if the Cortex cluster is running the store-gateway service and the querier should query the bucket store via the store-gateway.")
 }
 
@@ -154,23 +166,29 @@ func (cfg *Config) Validate() error {
 		return errInvalidStripeSize
 	}
 
+	if len(cfg.BlockRanges) == 0 {
+		return errEmptyBlockranges
+	}
+
 	return cfg.BucketStore.Validate()
 }
 
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier
 type BucketStoreConfig struct {
-	SyncDir                  string           `yaml:"sync_dir"`
-	SyncInterval             time.Duration    `yaml:"sync_interval"`
-	MaxChunkPoolBytes        uint64           `yaml:"max_chunk_pool_bytes"`
-	MaxSampleCount           uint64           `yaml:"max_sample_count"`
-	MaxConcurrent            int              `yaml:"max_concurrent"`
-	TenantSyncConcurrency    int              `yaml:"tenant_sync_concurrency"`
-	BlockSyncConcurrency     int              `yaml:"block_sync_concurrency"`
-	MetaSyncConcurrency      int              `yaml:"meta_sync_concurrency"`
-	BinaryIndexHeader        bool             `yaml:"binary_index_header_enabled"`
-	ConsistencyDelay         time.Duration    `yaml:"consistency_delay"`
-	IndexCache               IndexCacheConfig `yaml:"index_cache"`
-	IgnoreDeletionMarksDelay time.Duration    `yaml:"ignore_deletion_mark_delay"`
+	SyncDir                  string              `yaml:"sync_dir"`
+	SyncInterval             time.Duration       `yaml:"sync_interval"`
+	MaxChunkPoolBytes        uint64              `yaml:"max_chunk_pool_bytes"`
+	MaxSampleCount           uint64              `yaml:"max_sample_count"`
+	MaxConcurrent            int                 `yaml:"max_concurrent"`
+	TenantSyncConcurrency    int                 `yaml:"tenant_sync_concurrency"`
+	BlockSyncConcurrency     int                 `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency      int                 `yaml:"meta_sync_concurrency"`
+	BinaryIndexHeader        bool                `yaml:"binary_index_header_enabled"`
+	ConsistencyDelay         time.Duration       `yaml:"consistency_delay"`
+	IndexCache               IndexCacheConfig    `yaml:"index_cache"`
+	ChunksCache              ChunksCacheConfig   `yaml:"chunks_cache"`
+	MetadataCache            MetadataCacheConfig `yaml:"metadata_cache"`
+	IgnoreDeletionMarksDelay time.Duration       `yaml:"ignore_deletion_mark_delay"`
 
 	// Controls what is the ratio of postings offsets store will hold in memory.
 	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
@@ -183,6 +201,8 @@ type BucketStoreConfig struct {
 // RegisterFlags registers the BucketStore flags
 func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.IndexCache.RegisterFlagsWithPrefix(f, "experimental.tsdb.bucket-store.index-cache.")
+	cfg.ChunksCache.RegisterFlagsWithPrefix(f, "experimental.tsdb.bucket-store.chunks-cache.")
+	cfg.MetadataCache.RegisterFlagsWithPrefix(f, "experimental.tsdb.bucket-store.metadata-cache.")
 
 	f.StringVar(&cfg.SyncDir, "experimental.tsdb.bucket-store.sync-dir", "tsdb-sync", "Directory to store synchronized TSDB index headers.")
 	f.DurationVar(&cfg.SyncInterval, "experimental.tsdb.bucket-store.sync-interval", 5*time.Minute, "How frequently scan the bucket to look for changes (new blocks shipped by ingesters and blocks removed by retention or compaction). 0 disables it.")
@@ -202,7 +222,19 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the config.
 func (cfg *BucketStoreConfig) Validate() error {
-	return cfg.IndexCache.Validate()
+	err := cfg.IndexCache.Validate()
+	if err != nil {
+		return errors.Wrap(err, "index-cache configuration")
+	}
+	err = cfg.ChunksCache.Validate()
+	if err != nil {
+		return errors.Wrap(err, "chunks-cache configuration")
+	}
+	err = cfg.MetadataCache.Validate()
+	if err != nil {
+		return errors.Wrap(err, "metadata-cache configuration")
+	}
+	return nil
 }
 
 // BlocksDir returns the directory path where TSDB blocks and wal should be

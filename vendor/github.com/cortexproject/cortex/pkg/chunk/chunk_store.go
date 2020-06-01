@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -15,8 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -26,11 +23,10 @@ import (
 )
 
 var (
+	ErrQueryMustContainMetricName = QueryError("query must contain metric name")
 	ErrMetricNameLabelMissing     = errors.New("metric name label missing")
 	ErrParialDeleteChunkNoOverlap = errors.New("interval for partial deletion has not overlap with chunk interval")
-)
 
-var (
 	indexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_entries_per_chunk",
@@ -43,6 +39,13 @@ var (
 		Help:      "Total count of corrupt chunks found in cache.",
 	})
 )
+
+// Query errors are to be treated as user errors, rather than storage errors.
+type QueryError string
+
+func (e QueryError) Error() string {
+	return string(e)
+}
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
@@ -286,12 +289,12 @@ func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, f
 	defer log.Span.Finish()
 
 	if *through < *from {
-		return false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
+		return false, QueryError(fmt.Sprintf("invalid query, through < from (%s < %s)", through, from))
 	}
 
 	maxQueryLength := c.limits.MaxQueryLength(userID)
 	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
-		return false, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength)
+		return false, QueryError(fmt.Sprintf(validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength))
 	}
 
 	now := model.Now()
@@ -333,7 +336,7 @@ func (c *baseStore) validateQuery(ctx context.Context, userID string, from *mode
 	// Check there is a metric name matcher of type equal,
 	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(matchers)
 	if !ok || metricNameMatcher.Type != labels.MatchEqual {
-		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "query must contain metric name")
+		return "", nil, false, ErrQueryMustContainMetricName
 	}
 
 	return metricNameMatcher.Value, matchers, false, nil
@@ -357,7 +360,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
 	if maxChunksPerQuery > 0 && len(filtered) > maxChunksPerQuery {
-		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), maxChunksPerQuery)
+		err := QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), maxChunksPerQuery))
 		level.Error(log).Log("err", err)
 		return nil, err
 	}
@@ -366,7 +369,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 	keys := keysFromChunks(filtered)
 	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
-		return nil, promql.ErrStorage{Err: err}
+		return nil, err
 	}
 
 	// Filter out chunks based on the empty matchers in the query.
