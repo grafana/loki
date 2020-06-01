@@ -26,7 +26,7 @@ type loki struct {
 }
 
 func newPlugin(cfg *config, logger log.Logger) (*loki, error) {
-	client, err := client.New(cfg.clientConfig, logger)
+	client, err := NewClient(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,6 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 
 // prevent base64-encoding []byte values (default json.Encoder rule) by
 // converting them to strings
-
 func toStringSlice(slice []interface{}) []interface{} {
 	var s []interface{}
 	for _, v := range slice {

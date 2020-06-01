@@ -38,6 +38,7 @@ const (
 
 type config struct {
 	clientConfig         client.Config
+	bufferConfig         bufferConfig
 	logLevel             logging.Level
 	autoKubernetesLabels bool
 	removeKeys           []string
@@ -51,6 +52,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	res := &config{}
 
 	res.clientConfig = defaultClientCfg
+	res.bufferConfig = defaultBufferConfig
 
 	url := cfg.Get("URL")
 	var clientURL flagext.URLValue
@@ -159,5 +161,55 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		}
 		res.labelKeys = nil
 	}
+
+	// enable loki plugin buffering
+	buffer := cfg.Get("Buffer")
+	switch buffer {
+	case "false", "":
+		res.bufferConfig.buffer = false
+	case "true":
+		res.bufferConfig.buffer = true
+	default:
+		return nil, fmt.Errorf("invalid boolean Buffer: %v", buffer)
+	}
+
+	// buffering type
+	bufferType := cfg.Get("BufferType")
+	if bufferType != "" {
+		res.bufferConfig.bufferType = bufferType
+	}
+
+	// dque directory
+	queueDir := cfg.Get("DqueDir")
+	if queueDir != "" {
+		res.bufferConfig.dqueConfig.queueDir = queueDir
+	}
+
+	// dque segment size (queueEntry unit)
+	queueSegmentSize := cfg.Get("DqueSegmentSize")
+	if queueSegmentSize != "" {
+		res.bufferConfig.dqueConfig.queueSegmentSize, err = strconv.Atoi(queueSegmentSize)
+		if err != nil {
+			return nil, fmt.Errorf("impossible to convert string to integer DqueSegmentSize: %v", queueSegmentSize)
+		}
+	}
+
+	// dque control file change sync to disk as they happen aka dque.turbo mode
+	queueSync := cfg.Get("DqueSync")
+	switch queueSync {
+	case "normal", "":
+		res.bufferConfig.dqueConfig.queueSync = false
+	case "full":
+		res.bufferConfig.dqueConfig.queueSync = true
+	default:
+		return nil, fmt.Errorf("invalid string queueSync: %v", queueSync)
+	}
+
+	// dque name
+	queueName := cfg.Get("DqueName")
+	if queueName != "" {
+		res.bufferConfig.dqueConfig.queueName = queueName
+	}
+
 	return res, nil
 }
