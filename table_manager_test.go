@@ -158,22 +158,30 @@ func TestTableManager(t *testing.T) {
 	tbmConfig := TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
 		IndexTables: ProvisionConfig{
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			WriteScale:                 activeScalingConfig,
-			InactiveWriteScale:         inactiveScalingConfig,
-			InactiveWriteScaleLastN:    autoScaleLastN,
+			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+				WriteScale:                 activeScalingConfig,
+			},
+			InactiveTableProvisionConfig: InactiveTableProvisionConfig{
+				InactiveWriteThroughput: inactiveWrite,
+				InactiveReadThroughput:  inactiveRead,
+				InactiveWriteScale:      inactiveScalingConfig,
+				InactiveWriteScaleLastN: autoScaleLastN,
+			},
 		},
 		ChunkTables: ProvisionConfig{
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
+			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+			},
+			InactiveTableProvisionConfig: InactiveTableProvisionConfig{
+				InactiveWriteThroughput: inactiveWrite,
+				InactiveReadThroughput:  inactiveRead,
+			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,21 +352,29 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 	tbmConfig := TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
 		IndexTables: ProvisionConfig{
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			InactiveWriteScale:         inactiveScalingConfig,
-			InactiveWriteScaleLastN:    autoScaleLastN,
+			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+			},
+			InactiveTableProvisionConfig: InactiveTableProvisionConfig{
+				InactiveWriteThroughput: inactiveWrite,
+				InactiveReadThroughput:  inactiveRead,
+				InactiveWriteScale:      inactiveScalingConfig,
+				InactiveWriteScaleLastN: autoScaleLastN,
+			},
 		},
 		ChunkTables: ProvisionConfig{
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
+			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+			},
+			InactiveTableProvisionConfig: InactiveTableProvisionConfig{
+				InactiveWriteThroughput: inactiveWrite,
+				InactiveReadThroughput:  inactiveRead,
+			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,23 +446,31 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 	tbmConfig := TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
 		IndexTables: ProvisionConfig{
-			ProvisionedWriteThroughput:     write,
-			ProvisionedReadThroughput:      read,
-			InactiveWriteThroughput:        inactiveWrite,
-			InactiveReadThroughput:         inactiveRead,
-			InactiveWriteScale:             inactiveScalingConfig,
-			InactiveWriteScaleLastN:        1,
-			InactiveThroughputOnDemandMode: true,
+			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+			},
+			InactiveTableProvisionConfig: InactiveTableProvisionConfig{
+				InactiveWriteThroughput:        inactiveWrite,
+				InactiveReadThroughput:         inactiveRead,
+				InactiveWriteScale:             inactiveScalingConfig,
+				InactiveThroughputOnDemandMode: true,
+				InactiveWriteScaleLastN:        1,
+			},
 		},
 		ChunkTables: ProvisionConfig{
-			ProvisionedWriteThroughput:     write,
-			ProvisionedReadThroughput:      read,
-			InactiveWriteThroughput:        inactiveWrite,
-			InactiveReadThroughput:         inactiveRead,
-			InactiveThroughputOnDemandMode: true,
+			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+			},
+			InactiveTableProvisionConfig: InactiveTableProvisionConfig{
+				InactiveWriteThroughput:        inactiveWrite,
+				InactiveReadThroughput:         inactiveRead,
+				InactiveThroughputOnDemandMode: true,
+			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +553,7 @@ func TestTableManagerTags(t *testing.T) {
 				IndexTables: PeriodicTableConfig{},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -553,7 +577,7 @@ func TestTableManagerTags(t *testing.T) {
 				},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -593,21 +617,29 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 		RetentionDeletesEnabled: true,
 		CreationGracePeriod:     gracePeriod,
 		IndexTables: ProvisionConfig{
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			InactiveWriteScale:         inactiveScalingConfig,
-			InactiveWriteScaleLastN:    autoScaleLastN,
+			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+			},
+			InactiveTableProvisionConfig: InactiveTableProvisionConfig{
+				InactiveWriteThroughput: inactiveWrite,
+				InactiveReadThroughput:  inactiveRead,
+				InactiveWriteScale:      inactiveScalingConfig,
+				InactiveWriteScaleLastN: autoScaleLastN,
+			},
 		},
 		ChunkTables: ProvisionConfig{
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
+			ActiveTableProvisionConfig: ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+			},
+			InactiveTableProvisionConfig: InactiveTableProvisionConfig{
+				InactiveWriteThroughput: inactiveWrite,
+				InactiveReadThroughput:  inactiveRead,
+			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -730,6 +762,6 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	// Test table manager retention not multiple of periodic config
 	tbmConfig.RetentionPeriod++
-	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil)
+	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
 	require.Error(t, err)
 }

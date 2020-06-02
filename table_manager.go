@@ -81,6 +81,13 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	return &m
 }
 
+// ExtraTables holds the list of tables that TableManager has to manage using a TableClient.
+// This is useful for managing tables other than Chunk and Index tables.
+type ExtraTables struct {
+	TableClient TableClient
+	Tables      []TableDesc
+}
+
 // TableManagerConfig holds config for a TableManager
 type TableManagerConfig struct {
 	// Master 'off-switch' for table capacity updates, e.g. when troubleshooting
@@ -139,23 +146,6 @@ func (cfg *TableManagerConfig) Validate() error {
 	return nil
 }
 
-// ProvisionConfig holds config for provisioning capacity (on DynamoDB for now)
-type ProvisionConfig struct {
-	ProvisionedThroughputOnDemandMode bool  `yaml:"enable_ondemand_throughput_mode"`
-	ProvisionedWriteThroughput        int64 `yaml:"provisioned_write_throughput"`
-	ProvisionedReadThroughput         int64 `yaml:"provisioned_read_throughput"`
-	InactiveThroughputOnDemandMode    bool  `yaml:"enable_inactive_throughput_on_demand_mode"`
-	InactiveWriteThroughput           int64 `yaml:"inactive_write_throughput"`
-	InactiveReadThroughput            int64 `yaml:"inactive_read_throughput"`
-
-	WriteScale              AutoScalingConfig `yaml:"write_scale"`
-	InactiveWriteScale      AutoScalingConfig `yaml:"inactive_write_scale"`
-	InactiveWriteScaleLastN int64             `yaml:"inactive_write_scale_lastn"`
-	ReadScale               AutoScalingConfig `yaml:"read_scale"`
-	InactiveReadScale       AutoScalingConfig `yaml:"inactive_read_scale"`
-	InactiveReadScaleLastN  int64             `yaml:"inactive_read_scale_lastn"`
-}
-
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
@@ -168,24 +158,6 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkTables.RegisterFlags("table-manager.chunk-table", f)
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 1000, "Table default write throughput. Supported by DynamoDB")
-	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "Table default read throughput. Supported by DynamoDB")
-	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled. Supported by DynamoDB")
-	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "Table write throughput for inactive tables. Supported by DynamoDB")
-	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "Table read throughput for inactive tables. Supported by DynamoDB")
-	f.BoolVar(&cfg.InactiveThroughputOnDemandMode, argPrefix+".inactive-enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled. Supported by DynamoDB")
-
-	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
-	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
-	f.Int64Var(&cfg.InactiveWriteScaleLastN, argPrefix+".inactive-write-throughput.scale-last-n", 4, "Number of last inactive tables to enable write autoscale.")
-
-	cfg.ReadScale.RegisterFlags(argPrefix+".read-throughput.scale", f)
-	cfg.InactiveReadScale.RegisterFlags(argPrefix+".inactive-read-throughput.scale", f)
-	f.Int64Var(&cfg.InactiveReadScaleLastN, argPrefix+".inactive-read-throughput.scale-last-n", 4, "Number of last inactive tables to enable read autoscale.")
-}
-
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
 	services.Service
@@ -196,13 +168,14 @@ type TableManager struct {
 	maxChunkAge  time.Duration
 	bucketClient BucketClient
 	metrics      *tableManagerMetrics
+	extraTables  []ExtraTables
 
 	bucketRetentionLoop services.Service
 }
 
 // NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
-	objectClient BucketClient, registerer prometheus.Registerer) (*TableManager, error) {
+	objectClient BucketClient, extraTables []ExtraTables, registerer prometheus.Registerer) (*TableManager, error) {
 
 	if cfg.RetentionPeriod != 0 {
 		// Assume the newest config is the one to use for validation of retention
@@ -219,6 +192,7 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 		client:       tableClient,
 		bucketClient: objectClient,
 		metrics:      newTableManagerMetrics(registerer),
+		extraTables:  extraTables,
 	}
 
 	tm.Service = services.NewBasicService(tm.starting, tm.loop, tm.stopping)
@@ -273,6 +247,67 @@ func (m *TableManager) loop(ctx context.Context) error {
 	}
 }
 
+func (m *TableManager) checkAndCreateExtraTables() error {
+	for _, extraTables := range m.extraTables {
+		existingTablesList, err := extraTables.TableClient.ListTables(context.Background())
+		if err != nil {
+			return err
+		}
+
+		existingTablesMap := map[string]struct{}{}
+		for _, table := range existingTablesList {
+			existingTablesMap[table] = struct{}{}
+		}
+
+		for _, tableDesc := range extraTables.Tables {
+			if _, ok := existingTablesMap[tableDesc.Name]; !ok {
+				// creating table
+				level.Info(util.Logger).Log("msg", "creating extra table",
+					"tableName", tableDesc.Name,
+					"provisionedRead", tableDesc.ProvisionedRead,
+					"provisionedWrite", tableDesc.ProvisionedWrite,
+					"useOnDemandMode", tableDesc.UseOnDemandIOMode,
+					"useWriteAutoScale", tableDesc.WriteScale.Enabled,
+					"useReadAutoScale", tableDesc.ReadScale.Enabled,
+				)
+				err = extraTables.TableClient.CreateTable(context.Background(), tableDesc)
+				if err != nil {
+					return err
+				}
+				continue
+			} else if m.cfg.ThroughputUpdatesDisabled {
+				// table already exists, throughput updates are disabled so no need to check for difference in configured throuhput vs actual
+				continue
+			}
+
+			level.Info(util.Logger).Log("msg", "checking throughput of extra table", "table", tableDesc.Name)
+			// table already exists, lets check actual throughput for tables is same as what is in configurations, if not let us update it
+			current, _, err := extraTables.TableClient.DescribeTable(context.Background(), tableDesc.Name)
+			if err != nil {
+				return err
+			}
+
+			if !current.Equals(tableDesc) {
+				level.Info(util.Logger).Log("msg", "updating throughput of extra table",
+					"table", tableDesc.Name,
+					"tableName", tableDesc.Name,
+					"provisionedRead", tableDesc.ProvisionedRead,
+					"provisionedWrite", tableDesc.ProvisionedWrite,
+					"useOnDemandMode", tableDesc.UseOnDemandIOMode,
+					"useWriteAutoScale", tableDesc.WriteScale.Enabled,
+					"useReadAutoScale", tableDesc.ReadScale.Enabled,
+				)
+				err := extraTables.TableClient.UpdateTable(context.Background(), current, tableDesc)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 // single iteration of bucket retention loop
 func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
@@ -288,6 +323,11 @@ func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 // SyncTables will calculate the tables expected to exist, create those that do
 // not and update those that need it.  It is exposed for testing.
 func (m *TableManager) SyncTables(ctx context.Context) error {
+	err := m.checkAndCreateExtraTables()
+	if err != nil {
+		return err
+	}
+
 	expected := m.calculateExpectedTables()
 	level.Info(util.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
 

@@ -24,25 +24,31 @@ const (
 	modelTimeHour = model.Time(time.Hour / time.Millisecond)
 )
 
-func setupTestDeleteStore() (*DeleteStore, error) {
-	var deleteStoreConfig DeleteStoreConfig
+func setupTestDeleteStore(t *testing.T) *DeleteStore {
+	var (
+		deleteStoreConfig DeleteStoreConfig
+		tbmConfig         chunk.TableManagerConfig
+		schemaCfg         = chunk.DefaultSchemaConfig("", "v10", 0)
+	)
 	flagext.DefaultValues(&deleteStoreConfig)
+	flagext.DefaultValues(&tbmConfig)
 
 	mockStorage := chunk.NewMockStorage()
 
-	err := mockStorage.CreateTable(context.Background(), chunk.TableDesc{
-		Name: deleteStoreConfig.RequestsTableName,
-	})
-	if err != nil {
-		return nil, err
-	}
+	extraTables := []chunk.ExtraTables{{TableClient: mockStorage, Tables: deleteStoreConfig.GetTables()}}
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, mockStorage, nil, extraTables, nil)
+	require.NoError(t, err)
 
-	return NewDeleteStore(deleteStoreConfig, mockStorage)
+	require.NoError(t, tableManager.SyncTables(context.Background()))
+
+	deleteStore, err := NewDeleteStore(deleteStoreConfig, mockStorage)
+	require.NoError(t, err)
+
+	return deleteStore
 }
 
 func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.ObjectClient, *DataPurger) {
-	deleteStore, err := setupTestDeleteStore()
-	require.NoError(t, err)
+	deleteStore := setupTestDeleteStore(t)
 
 	chunkStore, err := testutils.SetupTestChunkStore()
 	require.NoError(t, err)

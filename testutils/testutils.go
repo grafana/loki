@@ -45,7 +45,7 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, 
 		return nil, nil, err
 	}
 
-	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -114,7 +114,7 @@ func SetupTestChunkStore() (chunk.Store, error) {
 	)
 	flagext.DefaultValues(&tbmConfig)
 	storage := chunk.NewMockStorage()
-	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, storage, nil, nil)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, storage, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}

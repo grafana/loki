@@ -73,12 +73,14 @@ type DeleteStore struct {
 
 // DeleteStoreConfig holds configuration for delete store.
 type DeleteStoreConfig struct {
-	Store             string `yaml:"store"`
-	RequestsTableName string `yaml:"requests_table_name"`
+	Store             string                  `yaml:"store"`
+	RequestsTableName string                  `yaml:"requests_table_name"`
+	ProvisionConfig   TableProvisioningConfig `yaml:"table_provisioning"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *DeleteStoreConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.ProvisionConfig.RegisterFlags("deletes.table", f)
 	f.StringVar(&cfg.Store, "deletes.store", "", "Store for keeping delete request")
 	f.StringVar(&cfg.RequestsTableName, "deletes.requests-table-name", "delete_requests", "Name of the table which stores delete requests")
 }

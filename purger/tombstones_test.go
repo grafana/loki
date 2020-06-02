@@ -94,9 +94,7 @@ func TestTombstonesLoader(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			deleteStore, err := setupTestDeleteStore()
-			require.NoError(t, err)
-
+			deleteStore := setupTestDeleteStore(t)
 			tombstonesLoader := NewTombstonesLoader(deleteStore, nil)
 
 			// add delete requests
