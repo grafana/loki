@@ -10,7 +10,7 @@ import (
 // RangeVectorAggregator aggregates samples for a given range of samples.
 // It receives the current milliseconds timestamp and the list of point within
 // the range.
-type RangeVectorAggregator func(int64, []promql.Point) float64
+type RangeVectorAggregator func([]promql.Point) float64
 
 // RangeVectorIterator iterates through a range of samples.
 // To fetch the current vector use `At` with a `RangeVectorAggregator`.
@@ -135,7 +135,7 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 	for _, series := range r.window {
 		result = append(result, promql.Sample{
 			Point: promql.Point{
-				V: aggregator(ts, series.Points),
+				V: aggregator(series.Points),
 				T: ts,
 			},
 			Metric: series.Metric,

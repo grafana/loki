@@ -36,13 +36,17 @@ func Test_seriesIterator_Peek(t *testing.T) {
 		{
 			"bytes empty",
 			newSeriesIterator(
-				iter.NewStreamIterator(newStream(3,
-					func(i int64) logproto.Entry {
-						return logproto.Entry{
-							Timestamp: time.Unix(i, 0),
-						}
-					},
-					`{app="foo"}`)),
+				iter.NewStreamIterator(
+					newStream(
+						3,
+						func(i int64) logproto.Entry {
+							return logproto.Entry{
+								Timestamp: time.Unix(i, 0),
+							}
+						},
+						`{app="foo"}`,
+					),
+				),
 				extractBytes,
 			),
 			[]expectation{
@@ -55,14 +59,18 @@ func Test_seriesIterator_Peek(t *testing.T) {
 		{
 			"bytes",
 			newSeriesIterator(
-				iter.NewStreamIterator(newStream(3,
-					func(i int64) logproto.Entry {
-						return logproto.Entry{
-							Timestamp: time.Unix(i, 0),
-							Line:      "foo",
-						}
-					},
-					`{app="foo"}`)),
+				iter.NewStreamIterator(
+					newStream(
+						3,
+						func(i int64) logproto.Entry {
+							return logproto.Entry{
+								Timestamp: time.Unix(i, 0),
+								Line:      "foo",
+							}
+						},
+						`{app="foo"}`,
+					),
+				),
 				extractBytes,
 			),
 			[]expectation{
@@ -77,21 +85,26 @@ func Test_seriesIterator_Peek(t *testing.T) {
 			newSeriesIterator(
 				iter.NewStreamsIterator(context.Background(),
 					[]logproto.Stream{
-						newStream(3,
+						newStream(
+							3,
 							func(i int64) logproto.Entry {
 								return logproto.Entry{
 									Timestamp: time.Unix(i, 0),
 									Line:      "foo",
 								}
 							},
-							`{app="foo"}`), newStream(3,
+							`{app="foo"}`,
+						),
+						newStream(
+							3,
 							func(i int64) logproto.Entry {
 								return logproto.Entry{
 									Timestamp: time.Unix(i, 0),
 									Line:      "barr",
 								}
 							},
-							`{app="barr"}`),
+							`{app="barr"}`,
+						),
 					},
 					logproto.BACKWARD,
 				),

@@ -279,9 +279,10 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 
 func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr, r *shardRecorder) SampleExpr {
 	switch expr.operation {
-	case OpRangeTypeCount, OpRangeTypeRate:
+	case OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeBytesRate, OpRangeTypeBytes:
 		// count_over_time(x) -> count_over_time(x, shard=1) ++ count_over_time(x, shard=2)...
 		// rate(x) -> rate(x, shard=1) ++ rate(x, shard=2)...
+		// same goes for bytes_rate and bytes_over_time
 		return m.mapSampleExpr(expr, r)
 	default:
 		return expr
@@ -323,8 +324,10 @@ var shardableOps = map[string]bool{
 	OpTypeCount: true,
 
 	// range vector ops
-	OpRangeTypeCount: true,
-	OpRangeTypeRate:  true,
+	OpRangeTypeCount:     true,
+	OpRangeTypeRate:      true,
+	OpRangeTypeBytes:     true,
+	OpRangeTypeBytesRate: true,
 
 	// binops - arith
 	OpTypeAdd: true,
