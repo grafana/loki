@@ -558,7 +558,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 		"ring containing one active ingester and max active tailers": {
 			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
 			expectedError: httpgrpc.Errorf(http.StatusBadRequest,
-				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", 6, 1),
+				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", 6, 5),
 			tailersCount: 5,
 		},
 	}
