@@ -39,8 +39,8 @@ type CacheGenNumberLoader interface {
 
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
-	CacheConfig       cache.Config  `yaml:"cache"`
-	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
+	CacheConfig             cache.Config  `yaml:"cache"`
+	LegacyMaxCacheFreshness time.Duration `yaml:"max_freshness" doc:"hidden"` // TODO: (deprecated) remove in Cortex v1.4.0
 }
 
 // RegisterFlags registers flags.
@@ -48,8 +48,6 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 
 	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
-
-	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
@@ -171,7 +169,12 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
-	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
+	// check if cache freshness value is provided in legacy config
+	maxCacheFreshness := s.cfg.LegacyMaxCacheFreshness
+	if maxCacheFreshness == time.Duration(0) {
+		maxCacheFreshness = s.limits.MaxCacheFreshness(userID)
+	}
+	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)
 	}
@@ -184,7 +187,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if err == nil && len(extents) > 0 {
-		extents, err := s.filterRecentExtents(r, extents)
+		extents, err := s.filterRecentExtents(r, maxCacheFreshness, extents)
 		if err != nil {
 			return nil, err
 		}
@@ -417,8 +420,8 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 	return requests, cachedResponses, nil
 }
 
-func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Extent, error) {
-	maxCacheTime := (int64(model.Now().Add(-s.cfg.MaxCacheFreshness)) / req.GetStep()) * req.GetStep()
+func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {
+	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / req.GetStep()) * req.GetStep()
 	for i := range extents {
 		// Never cache data for the latest freshness period.
 		if extents[i].End > maxCacheTime {

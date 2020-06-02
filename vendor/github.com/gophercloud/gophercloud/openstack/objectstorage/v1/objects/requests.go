@@ -13,6 +13,7 @@ import (
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/accounts"
+	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers"
 	"github.com/gophercloud/gophercloud/pagination"
 )
 
@@ -482,11 +483,20 @@ func CreateTempURL(c *gophercloud.ServiceClient, containerName, objectName strin
 	}
 	duration := time.Duration(opts.TTL) * time.Second
 	expiry := time.Now().Add(duration).Unix()
-	getHeader, err := accounts.Get(c, nil).Extract()
+	getHeader, err := containers.Get(c, containerName, nil).Extract()
 	if err != nil {
 		return "", err
 	}
-	secretKey := []byte(getHeader.TempURLKey)
+	tempURLKey := getHeader.TempURLKey
+	if tempURLKey == "" {
+		// fallback to an account TempURL key
+		getHeader, err := accounts.Get(c, nil).Extract()
+		if err != nil {
+			return "", err
+		}
+		tempURLKey = getHeader.TempURLKey
+	}
+	secretKey := []byte(tempURLKey)
 	url := getURL(c, containerName, objectName)
 	splitPath := strings.Split(url, opts.Split)
 	baseURL, objectPath := splitPath[0], splitPath[1]

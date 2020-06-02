@@ -9,7 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
@@ -107,7 +107,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	}
 
 	switch res.Data.Type() {
-	case promql.ValueTypeMatrix:
+	case parser.ValueTypeMatrix:
 		return &LokiPromResponse{
 			Response: &queryrange.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,

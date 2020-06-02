@@ -1,16 +1,28 @@
 package ruler
 
 import (
-	"context"
+	"github.com/cortexproject/cortex/pkg/ring"
 )
 
-// TransferOut is a noop for the ruler
-func (r *Ruler) TransferOut(ctx context.Context) error {
-	return nil
+func (r *Ruler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.IngesterDesc) (ring.IngesterState, ring.Tokens) {
+	// When we initialize the ruler instance in the ring we want to start from
+	// a clean situation, so whatever is the state we set it ACTIVE, while we keep existing
+	// tokens (if any).
+	var tokens []uint32
+	if instanceExists {
+		tokens = instanceDesc.GetTokens()
+	}
+
+	_, takenTokens := ringDesc.TokensFor(instanceID)
+	newTokens := ring.GenerateTokens(r.cfg.Ring.NumTokens-len(tokens), takenTokens)
+
+	// Tokens sorting will be enforced by the parent caller.
+	tokens = append(tokens, newTokens...)
+
+	return ring.ACTIVE, tokens
 }
 
-// Flush triggers a flush of all the work items currently
-// scheduled by the ruler, currently every ruler will
-// query a backend rule store for it's rules so no
-// flush is required.
-func (r *Ruler) Flush() {}
+func (r *Ruler) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
+func (r *Ruler) OnRingInstanceStopping(_ *ring.BasicLifecycler)              {}
+func (r *Ruler) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.IngesterDesc) {
+}

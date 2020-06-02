@@ -41,7 +41,6 @@ var Fixtures = []testutils.Fixture{
 			}
 			index := &dynamoDBStorageClient{
 				DynamoDB:                dynamoDB,
-				queryRequestFn:          dynamoDB.queryRequest,
 				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 				schemaCfg:               schemaConfig,
@@ -80,7 +79,6 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 				},
 				DynamoDB:                dynamoDB,
 				writeThrottle:           rate.NewLimiter(10, dynamoDBMaxWriteBatchSize),
-				queryRequestFn:          dynamoDB.queryRequest,
 				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 				schemaCfg:               schemaCfg,

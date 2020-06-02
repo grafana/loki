@@ -154,7 +154,9 @@ func (c *memcachedClient) updateMemcacheServers() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		c.provider.Resolve(ctx, c.addresses)
+		if err := c.provider.Resolve(ctx, c.addresses); err != nil {
+			return err
+		}
 		servers = c.provider.Addresses()
 	} else {
 		_, addrs, err := net.LookupSRV(c.service, "tcp", c.hostname)

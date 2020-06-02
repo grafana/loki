@@ -511,6 +511,17 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
+		// If the ingester is in the JOINING state this means it crashed due to
+		// a failed token transfer or some other reason during startup. We want
+		// to set it back to PENDING in order to start the lifecycle from the
+		// beginning.
+		if ingesterDesc.State == JOINING {
+			level.Warn(util.Logger).Log("msg", "instance found in ring as JOINING, setting to PENDING",
+				"ring", i.RingName)
+			ingesterDesc.State = PENDING
+			return ringDesc, true, nil
+		}
+
 		// If the ingester failed to clean it's ring entry up in can leave it's state in LEAVING.
 		// Move it into ACTIVE to ensure the ingester joins the ring.
 		if ingesterDesc.State == LEAVING && len(ingesterDesc.Tokens) == i.cfg.NumTokens {

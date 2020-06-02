@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -24,7 +25,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
+const (
+	millisecondPerDay                 = int64(24 * time.Hour / time.Millisecond)
+	deleteRequestCancellationDeadline = 24 * time.Hour
+)
 
 type purgerMetrics struct {
 	deleteRequestsProcessedTotal      *prometheus.CounterVec
@@ -335,7 +339,8 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 	}
 
 	for _, deleteRequest := range deleteRequests {
-		if deleteRequest.CreatedAt.Add(24 * time.Hour).After(model.Now()) {
+		// adding an extra minute here to avoid a race between cancellation of request and picking of the request for processing
+		if deleteRequest.CreatedAt.Add(deleteRequestCancellationDeadline).Add(time.Minute).After(model.Now()) {
 			continue
 		}
 
@@ -399,7 +404,7 @@ func (dp *DataPurger) buildDeletePlan(req deleteRequestWithLogger) error {
 		chunksGroups := []ChunksGroup{}
 
 		for _, selector := range req.Selectors {
-			matchers, err := promql.ParseMetricSelector(selector)
+			matchers, err := parser.ParseMetricSelector(selector)
 			if err != nil {
 				return err
 			}

@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config for a gRPC client.
@@ -64,4 +65,26 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(unaryClientInterceptors...)),
 		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(streamClientInterceptors...)),
 	}
+}
+
+// ConfigWithTLS is the config for a grpc client with tls
+type ConfigWithTLS struct {
+	GRPC Config           `yaml:",inline"`
+	TLS  tls.ClientConfig `yaml:",inline"`
+}
+
+// RegisterFlagsWithPrefix registers flags with prefix.
+func (cfg *ConfigWithTLS) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.GRPC.RegisterFlagsWithPrefix(prefix, f)
+	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
+}
+
+// DialOption returns the config as a grpc.DialOptions
+func (cfg *ConfigWithTLS) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
+	opts, err := cfg.TLS.GetGRPCDialOptions()
+	if err != nil {
+		return nil, err
+	}
+
+	return append(opts, cfg.GRPC.DialOption(unaryClientInterceptors, streamClientInterceptors)...), nil
 }

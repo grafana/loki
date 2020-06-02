@@ -5,6 +5,9 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/iter"
 )
 
 // RangeVectorAggregator aggregates samples for a given range of samples.
@@ -108,7 +111,7 @@ func (r *rangeVectorIterator) load(start, end int64) {
 			var metric labels.Labels
 			if metric, ok = r.metrics[sample.Labels]; !ok {
 				var err error
-				metric, err = promql.ParseMetric(sample.Labels)
+				metric, err = parser.ParseMetric(sample.Labels)
 				if err != nil {
 					continue
 				}

@@ -17,6 +17,7 @@ import (
 type Limits interface {
 	MaxQueryLength(string) time.Duration
 	MaxQueryParallelism(string) int
+	MaxCacheFreshness(string) time.Duration
 }
 
 type limits struct {

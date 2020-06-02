@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
@@ -63,7 +64,7 @@ func (t *timeseries) Labels() labels.Labels {
 }
 
 // Iterator implements the storage.Series interface
-func (t *timeseries) Iterator() storage.SeriesIterator {
+func (t *timeseries) Iterator() chunkenc.Iterator {
 	return &timeSeriesSeriesIterator{
 		ts: t,
 		i:  -1,

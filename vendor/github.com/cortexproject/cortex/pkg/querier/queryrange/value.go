@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -86,15 +87,15 @@ func ResponseToSamples(resp Response) ([]SampleStream, error) {
 		return nil, errors.New(promRes.Error)
 	}
 	switch promRes.Data.ResultType {
-	case promql.ValueTypeVector, promql.ValueTypeMatrix:
+	case parser.ValueTypeVector, parser.ValueTypeMatrix:
 		return promRes.Data.Result, nil
 	}
 
 	return nil, errors.Errorf(
 		"Invalid promql.Value type: [%s]. Only %s and %s supported",
 		promRes.Data.ResultType,
-		promql.ValueTypeVector,
-		promql.ValueTypeMatrix,
+		parser.ValueTypeVector,
+		parser.ValueTypeMatrix,
 	)
 }
 

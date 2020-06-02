@@ -10,10 +10,14 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
+	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
@@ -45,17 +49,23 @@ type BucketStores struct {
 	stores   map[string]*store.BucketStore
 
 	// Metrics.
-	syncTimes prometheus.Histogram
+	syncTimes       prometheus.Histogram
+	syncLastSuccess prometheus.Gauge
 }
 
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
+	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, bucketClient, logger, reg)
+	if err != nil {
+		return nil, errors.Wrapf(err, "create caching bucket")
+	}
+
 	indexCacheRegistry := prometheus.NewRegistry()
 
 	u := &BucketStores{
 		logger:             logger,
 		cfg:                cfg,
-		bucket:             bucketClient,
+		bucket:             cachingBucket,
 		filters:            filters,
 		stores:             map[string]*store.BucketStore{},
 		logLevel:           logLevel,
@@ -67,10 +77,13 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
+		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "blocks_last_successful_sync_timestamp_seconds",
+			Help: "Unix timestamp of the last successful blocks sync.",
+		}),
 	}
 
 	// Init the index cache.
-	var err error
 	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, indexCacheRegistry); err != nil {
 		return nil, errors.Wrap(err, "create index cache")
 	}
@@ -99,18 +112,17 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
 func (u *BucketStores) SyncBlocks(ctx context.Context) error {
-	if err := u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	return u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
-func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
+func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
 	defer func(start time.Time) {
 		u.syncTimes.Observe(time.Since(start).Seconds())
+		if returnErr == nil {
+			u.syncLastSuccess.SetToCurrentTime()
+		}
 	}(time.Now())
 
 	type job struct {
@@ -120,6 +132,8 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 	wg := &sync.WaitGroup{}
 	jobs := make(chan job)
+	errs := tsdb_errors.MultiError{}
+	errsMx := sync.Mutex{}
 
 	// Create a pool of workers which will synchronize blocks. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in
@@ -131,7 +145,9 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 			for job := range jobs {
 				if err := f(ctx, job.store); err != nil {
-					level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks for user", "user", job.userID, "err", err)
+					errsMx.Lock()
+					errs.Add(errors.Wrapf(err, "failed to synchronize TSDB blocks for user %s", job.userID))
+					errsMx.Unlock()
 				}
 			}
 		}()
@@ -155,11 +171,17 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 		}
 	})
 
+	if err != nil {
+		errsMx.Lock()
+		errs.Add(err)
+		errsMx.Unlock()
+	}
+
 	// Wait until all workers completed.
 	close(jobs)
 	wg.Wait()
 
-	return err
+	return errs.Err()
 }
 
 // Series makes a series request to the underlying user bucket store.
@@ -221,12 +243,19 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		append(u.filters, []block.MetadataFilter{
 			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay),
-			// Filters out duplicate blocks that can be formed from two or more overlapping
-			// blocks that fully submatches the source blocks of the older blocks.
-			// TODO(pracucci) can this cause troubles with the upcoming blocks sharding in the store-gateway?
-			block.NewDeduplicateFilter(),
+			// The duplicate filter has been intentionally omitted because it could cause troubles with
+			// the consistency check done on the querier. The duplicate filter removes redundant blocks
+			// but if the store-gateway removes redundant blocks before the querier discovers them, the
+			// consistency check on the querier will fail.
 		}...),
-		nil,
+		[]block.MetadataModifier{
+			// Remove Cortex external labels so that they're not injected when querying blocks.
+			NewReplicaLabelRemover(userLogger, []string{
+				tsdb.TenantIDExternalLabel,
+				tsdb.IngesterIDExternalLabel,
+				tsdb.ShardIDExternalLabel,
+			}),
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -250,6 +279,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.cfg.BucketStore.BinaryIndexHeader,
 		u.cfg.BucketStore.IndexCache.PostingsCompression,
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
+		true, // Enable series hints.
 	)
 	if err != nil {
 		return nil, err
@@ -274,4 +304,31 @@ func getUserIDFromGRPCContext(ctx context.Context) string {
 	}
 
 	return values[0]
+}
+
+// ReplicaLabelRemover is a BaseFetcher modifier modifies external labels of existing blocks, it removes given replica labels from the metadata of blocks that have it.
+type ReplicaLabelRemover struct {
+	logger log.Logger
+
+	replicaLabels []string
+}
+
+// NewReplicaLabelRemover creates a ReplicaLabelRemover.
+func NewReplicaLabelRemover(logger log.Logger, replicaLabels []string) *ReplicaLabelRemover {
+	return &ReplicaLabelRemover{logger: logger, replicaLabels: replicaLabels}
+}
+
+// Modify modifies external labels of existing blocks, it removes given replica labels from the metadata of blocks that have it.
+func (r *ReplicaLabelRemover) Modify(_ context.Context, metas map[ulid.ULID]*thanos_metadata.Meta, modified *extprom.TxGaugeVec) error {
+	for u, meta := range metas {
+		l := meta.Thanos.Labels
+		for _, replicaLabel := range r.replicaLabels {
+			if _, exists := l[replicaLabel]; exists {
+				level.Debug(r.logger).Log("msg", "replica label removed", "label", replicaLabel)
+				delete(l, replicaLabel)
+			}
+		}
+		metas[u].Thanos.Labels = l
+	}
+	return nil
 }

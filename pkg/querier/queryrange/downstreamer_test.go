@@ -240,8 +240,12 @@ func TestInstanceFor(t *testing.T) {
 		return logql.Result{}, errors.New("testerr")
 	})
 	require.NotNil(t, err)
-	// Ensure no more than the initial batch was parallelized.
-	require.LessOrEqual(t, ct, in.parallelism)
+	mtx.Lock()
+	ctRes := ct
+	mtx.Unlock()
+
+	// Ensure no more than the initial batch was parallelized. (One extra instance can be started though.)
+	require.LessOrEqual(t, ctRes, in.parallelism+1)
 	ensureParallelism(t, in, in.parallelism)
 
 	in = mkIn()

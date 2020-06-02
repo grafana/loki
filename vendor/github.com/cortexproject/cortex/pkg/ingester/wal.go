@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -109,8 +109,6 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 	if !cfg.WALEnabled {
 		return &noopWAL{}, nil
 	}
-
-	util.WarnExperimentalUse("Chunks WAL")
 
 	var walRegistry prometheus.Registerer
 	if registerer != nil {
@@ -335,6 +333,8 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	}
 	records := [][]byte{}
 	totalSize := 0
+	ticker := time.NewTicker(perSeriesDuration)
+	defer ticker.Stop()
 	for userID, state := range us {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
@@ -360,7 +360,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 
 			if !immediate {
 				select {
-				case <-time.After(perSeriesDuration):
+				case <-ticker.C:
 				case <-w.quit: // When we're trying to shutdown, finish the checkpoint as fast as possible.
 				}
 			}
@@ -596,12 +596,12 @@ func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int
 // segmentsExist is a stripped down version of
 // https://github.com/prometheus/prometheus/blob/4c648eddf47d7e07fbc74d0b18244402200dca9e/tsdb/wal/wal.go#L739-L760.
 func segmentsExist(dir string) (bool, error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return false, err
 	}
-	for _, fn := range files {
-		if _, err := strconv.Atoi(fn); err == nil {
+	for _, f := range files {
+		if _, err := strconv.Atoi(f.Name()); err == nil {
 			// First filename which is a number.
 			// This is how Prometheus stores and this
 			// is how it checks too.
@@ -1061,13 +1061,13 @@ func newWalReader(name string, startSegment int) (*wal.Reader, io.Closer, error)
 // If https://github.com/prometheus/prometheus/pull/6477 is merged, get rid of this
 // method and use from Prometheus directly.
 func SegmentRange(dir string) (int, int, error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return 0, 0, err
 	}
 	first, last := math.MaxInt32, math.MinInt32
-	for _, fn := range files {
-		k, err := strconv.Atoi(fn)
+	for _, f := range files {
+		k, err := strconv.Atoi(f.Name())
 		if err != nil {
 			continue
 		}

@@ -275,8 +275,10 @@ type BucketAttrs struct {
 
 	// StorageClass is the default storage class of the bucket. This defines
 	// how objects in the bucket are stored and determines the SLA
-	// and the cost of storage. Typical values are "NEARLINE", "COLDLINE" and
-	// "STANDARD". Defaults to "STANDARD".
+	// and the cost of storage. Typical values are "STANDARD", "NEARLINE",
+	// "COLDLINE" and "ARCHIVE". Defaults to "STANDARD".
+	// See https://cloud.google.com/storage/docs/storage-classes for all
+	// valid values.
 	StorageClass string
 
 	// Created is the creation time of the bucket.
@@ -459,7 +461,7 @@ type LifecycleCondition struct {
 	// MatchesStorageClasses is the condition matching the object's storage
 	// class.
 	//
-	// Values include "NEARLINE", "COLDLINE" and "STANDARD".
+	// Values include "STANDARD", "NEARLINE", "COLDLINE" and "ARCHIVE".
 	MatchesStorageClasses []string
 
 	// NumNewerVersions is the condition matching objects with a number of newer versions.
@@ -984,12 +986,11 @@ func toLifecycle(rl *raw.BucketLifecycle) Lifecycle {
 			},
 		}
 
-		switch {
-		case rr.Condition.IsLive == nil:
+		if rr.Condition.IsLive == nil {
 			r.Condition.Liveness = LiveAndArchived
-		case *rr.Condition.IsLive == true:
+		} else if *rr.Condition.IsLive {
 			r.Condition.Liveness = Live
-		case *rr.Condition.IsLive == false:
+		} else {
 			r.Condition.Liveness = Archived
 		}
 
@@ -1150,6 +1151,9 @@ func (it *ObjectIterator) fetch(pageSize int, pageToken string) (string, error) 
 	req.Delimiter(it.query.Delimiter)
 	req.Prefix(it.query.Prefix)
 	req.Versions(it.query.Versions)
+	if len(it.query.fieldSelection) > 0 {
+		req.Fields("nextPageToken", googleapi.Field(it.query.fieldSelection))
+	}
 	req.PageToken(pageToken)
 	if it.bucket.userProject != "" {
 		req.UserProject(it.bucket.userProject)

@@ -15,6 +15,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	v1 "google.golang.org/genproto/googleapis/iam/v1"
 	longrunning "google.golang.org/genproto/googleapis/longrunning"
+	field_mask "google.golang.org/genproto/protobuf/field_mask"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -34,13 +35,14 @@ const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 // Request message for
 // [google.bigtable.admin.v2.BigtableTableAdmin.CreateTable][google.bigtable.admin.v2.BigtableTableAdmin.CreateTable]
 type CreateTableRequest struct {
-	// The unique name of the instance in which to create the table.
-	// Values are of the form `projects/<project>/instances/<instance>`.
+	// Required. The unique name of the instance in which to create the table.
+	// Values are of the form `projects/{project}/instances/{instance}`.
 	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
-	// The name by which the new table should be referred to within the parent
-	// instance, e.g., `foobar` rather than `<parent>/tables/foobar`.
+	// Required. The name by which the new table should be referred to within the
+	// parent instance, e.g., `foobar` rather than `{parent}/tables/foobar`.
+	// Maximum 50 characters.
 	TableId string `protobuf:"bytes,2,opt,name=table_id,json=tableId,proto3" json:"table_id,omitempty"`
-	// The Table to create.
+	// Required. The Table to create.
 	Table *Table `protobuf:"bytes,3,opt,name=table,proto3" json:"table,omitempty"`
 	// The optional list of row keys that will be used to initially split the
 	// table into several tablets (tablets are similar to HBase regions).
@@ -166,16 +168,16 @@ func (m *CreateTableRequest_Split) GetKey() []byte {
 // feature might be changed in backward-incompatible ways and is not recommended
 // for production use. It is not subject to any SLA or deprecation policy.
 type CreateTableFromSnapshotRequest struct {
-	// The unique name of the instance in which to create the table.
-	// Values are of the form `projects/<project>/instances/<instance>`.
+	// Required. The unique name of the instance in which to create the table.
+	// Values are of the form `projects/{project}/instances/{instance}`.
 	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
-	// The name by which the new table should be referred to within the parent
-	// instance, e.g., `foobar` rather than `<parent>/tables/foobar`.
+	// Required. The name by which the new table should be referred to within the
+	// parent instance, e.g., `foobar` rather than `{parent}/tables/foobar`.
 	TableId string `protobuf:"bytes,2,opt,name=table_id,json=tableId,proto3" json:"table_id,omitempty"`
-	// The unique name of the snapshot from which to restore the table. The
-	// snapshot and the table must be in the same instance.
-	// Values are of the form
-	// `projects/<project>/instances/<instance>/clusters/<cluster>/snapshots/<snapshot>`.
+	// Required. The unique name of the snapshot from which to restore the table.
+	// The snapshot and the table must be in the same instance. Values are of the
+	// form
+	// `projects/{project}/instances/{instance}/clusters/{cluster}/snapshots/{snapshot}`.
 	SourceSnapshot       string   `protobuf:"bytes,3,opt,name=source_snapshot,json=sourceSnapshot,proto3" json:"source_snapshot,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -231,9 +233,9 @@ func (m *CreateTableFromSnapshotRequest) GetSourceSnapshot() string {
 // Request message for
 // [google.bigtable.admin.v2.BigtableTableAdmin.DropRowRange][google.bigtable.admin.v2.BigtableTableAdmin.DropRowRange]
 type DropRowRangeRequest struct {
-	// The unique name of the table on which to drop a range of rows.
+	// Required. The unique name of the table on which to drop a range of rows.
 	// Values are of the form
-	// `projects/<project>/instances/<instance>/tables/<table>`.
+	// `projects/{project}/instances/{instance}/tables/{table}`.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Delete all rows or by prefix.
 	//
@@ -326,14 +328,21 @@ func (*DropRowRangeRequest) XXX_OneofWrappers() []interface{} {
 // Request message for
 // [google.bigtable.admin.v2.BigtableTableAdmin.ListTables][google.bigtable.admin.v2.BigtableTableAdmin.ListTables]
 type ListTablesRequest struct {
-	// The unique name of the instance for which tables should be listed.
-	// Values are of the form `projects/<project>/instances/<instance>`.
+	// Required. The unique name of the instance for which tables should be
+	// listed. Values are of the form `projects/{project}/instances/{instance}`.
 	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
 	// The view to be applied to the returned tables' fields.
-	// Defaults to `NAME_ONLY` if unspecified; no others are currently supported.
+	// Only NAME_ONLY view (default) and REPLICATION_VIEW are supported.
 	View Table_View `protobuf:"varint,2,opt,name=view,proto3,enum=google.bigtable.admin.v2.Table_View" json:"view,omitempty"`
 	// Maximum number of results per page.
-	// CURRENTLY UNIMPLEMENTED AND IGNORED.
+	//
+	// A page_size of zero lets the server choose the number of items to return.
+	// A page_size which is strictly positive will return at most that many items.
+	// A negative page_size will cause an error.
+	//
+	// Following the first request, subsequent paginated calls are not required
+	// to pass a page_size. If a page_size is set in subsequent calls, it must
+	// match the page_size given in the first request.
 	PageSize int32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// The value of `next_page_token` returned by a previous call.
 	PageToken            string   `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
@@ -451,9 +460,9 @@ func (m *ListTablesResponse) GetNextPageToken() string {
 // Request message for
 // [google.bigtable.admin.v2.BigtableTableAdmin.GetTable][google.bigtable.admin.v2.BigtableTableAdmin.GetTable]
 type GetTableRequest struct {
-	// The unique name of the requested table.
+	// Required. The unique name of the requested table.
 	// Values are of the form
-	// `projects/<project>/instances/<instance>/tables/<table>`.
+	// `projects/{project}/instances/{instance}/tables/{table}`.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// The view to be applied to the returned table's fields.
 	// Defaults to `SCHEMA_VIEW` if unspecified.
@@ -505,9 +514,9 @@ func (m *GetTableRequest) GetView() Table_View {
 // Request message for
 // [google.bigtable.admin.v2.BigtableTableAdmin.DeleteTable][google.bigtable.admin.v2.BigtableTableAdmin.DeleteTable]
 type DeleteTableRequest struct {
-	// The unique name of the table to be deleted.
+	// Required. The unique name of the table to be deleted.
 	// Values are of the form
-	// `projects/<project>/instances/<instance>/tables/<table>`.
+	// `projects/{project}/instances/{instance}/tables/{table}`.
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -549,14 +558,14 @@ func (m *DeleteTableRequest) GetName() string {
 // Request message for
 // [google.bigtable.admin.v2.BigtableTableAdmin.ModifyColumnFamilies][google.bigtable.admin.v2.BigtableTableAdmin.ModifyColumnFamilies]
 type ModifyColumnFamiliesRequest struct {
-	// The unique name of the table whose families should be modified.
+	// Required. The unique name of the table whose families should be modified.
 	// Values are of the form
-	// `projects/<project>/instances/<instance>/tables/<table>`.
+	// `projects/{project}/instances/{instance}/tables/{table}`.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Modifications to be atomically applied to the specified table's families.
-	// Entries are applied in order, meaning that earlier modifications can be
-	// masked by later ones (in the case of repeated updates to the same family,
-	// for example).
+	// Required. Modifications to be atomically applied to the specified table's
+	// families. Entries are applied in order, meaning that earlier modifications
+	// can be masked by later ones (in the case of repeated updates to the same
+	// family, for example).
 	Modifications        []*ModifyColumnFamiliesRequest_Modification `protobuf:"bytes,2,rep,name=modifications,proto3" json:"modifications,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}                                    `json:"-"`
 	XXX_unrecognized     []byte                                      `json:"-"`
@@ -717,9 +726,9 @@ func (*ModifyColumnFamiliesRequest_Modification) XXX_OneofWrappers() []interface
 // Request message for
 // [google.bigtable.admin.v2.BigtableTableAdmin.GenerateConsistencyToken][google.bigtable.admin.v2.BigtableTableAdmin.GenerateConsistencyToken]
 type GenerateConsistencyTokenRequest struct {
-	// The unique name of the Table for which to create a consistency token.
-	// Values are of the form
-	// `projects/<project>/instances/<instance>/tables/<table>`.
+	// Required. The unique name of the Table for which to create a consistency
+	// token. Values are of the form
+	// `projects/{project}/instances/{instance}/tables/{table}`.
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -803,11 +812,11 @@ func (m *GenerateConsistencyTokenResponse) GetConsistencyToken() string {
 // Request message for
 // [google.bigtable.admin.v2.BigtableTableAdmin.CheckConsistency][google.bigtable.admin.v2.BigtableTableAdmin.CheckConsistency]
 type CheckConsistencyRequest struct {
-	// The unique name of the Table for which to check replication consistency.
-	// Values are of the form
-	// `projects/<project>/instances/<instance>/tables/<table>`.
+	// Required. The unique name of the Table for which to check replication
+	// consistency. Values are of the form
+	// `projects/{project}/instances/{instance}/tables/{table}`.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// The token created using GenerateConsistencyToken for the Table.
+	// Required. The token created using GenerateConsistencyToken for the Table.
 	ConsistencyToken     string   `protobuf:"bytes,2,opt,name=consistency_token,json=consistencyToken,proto3" json:"consistency_token,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -904,18 +913,18 @@ func (m *CheckConsistencyResponse) GetConsistent() bool {
 // feature might be changed in backward-incompatible ways and is not recommended
 // for production use. It is not subject to any SLA or deprecation policy.
 type SnapshotTableRequest struct {
-	// The unique name of the table to have the snapshot taken.
+	// Required. The unique name of the table to have the snapshot taken.
 	// Values are of the form
-	// `projects/<project>/instances/<instance>/tables/<table>`.
+	// `projects/{project}/instances/{instance}/tables/{table}`.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// The name of the cluster where the snapshot will be created in.
+	// Required. The name of the cluster where the snapshot will be created in.
 	// Values are of the form
-	// `projects/<project>/instances/<instance>/clusters/<cluster>`.
+	// `projects/{project}/instances/{instance}/clusters/{cluster}`.
 	Cluster string `protobuf:"bytes,2,opt,name=cluster,proto3" json:"cluster,omitempty"`
-	// The ID by which the new snapshot should be referred to within the parent
-	// cluster, e.g., `mysnapshot` of the form: `[_a-zA-Z0-9][-_.a-zA-Z0-9]*`
-	// rather than
-	// `projects/<project>/instances/<instance>/clusters/<cluster>/snapshots/mysnapshot`.
+	// Required. The ID by which the new snapshot should be referred to within the
+	// parent cluster, e.g., `mysnapshot` of the form:
+	// `[_a-zA-Z0-9][-_.a-zA-Z0-9]*` rather than
+	// `projects/{project}/instances/{instance}/clusters/{cluster}/snapshots/mysnapshot`.
 	SnapshotId string `protobuf:"bytes,3,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
 	// The amount of time that the new snapshot can stay active after it is
 	// created. Once 'ttl' expires, the snapshot will get deleted. The maximum
@@ -997,9 +1006,9 @@ func (m *SnapshotTableRequest) GetDescription() string {
 // feature might be changed in backward-incompatible ways and is not recommended
 // for production use. It is not subject to any SLA or deprecation policy.
 type GetSnapshotRequest struct {
-	// The unique name of the requested snapshot.
+	// Required. The unique name of the requested snapshot.
 	// Values are of the form
-	// `projects/<project>/instances/<instance>/clusters/<cluster>/snapshots/<snapshot>`.
+	// `projects/{project}/instances/{instance}/clusters/{cluster}/snapshots/{snapshot}`.
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -1046,11 +1055,11 @@ func (m *GetSnapshotRequest) GetName() string {
 // feature might be changed in backward-incompatible ways and is not recommended
 // for production use. It is not subject to any SLA or deprecation policy.
 type ListSnapshotsRequest struct {
-	// The unique name of the cluster for which snapshots should be listed.
-	// Values are of the form
-	// `projects/<project>/instances/<instance>/clusters/<cluster>`.
-	// Use `<cluster> = '-'` to list snapshots for all clusters in an instance,
-	// e.g., `projects/<project>/instances/<instance>/clusters/-`.
+	// Required. The unique name of the cluster for which snapshots should be
+	// listed. Values are of the form
+	// `projects/{project}/instances/{instance}/clusters/{cluster}`.
+	// Use `{cluster} = '-'` to list snapshots for all clusters in an instance,
+	// e.g., `projects/{project}/instances/{instance}/clusters/-`.
 	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
 	// The maximum number of snapshots to return per page.
 	// CURRENTLY UNIMPLEMENTED AND IGNORED.
@@ -1174,9 +1183,9 @@ func (m *ListSnapshotsResponse) GetNextPageToken() string {
 // feature might be changed in backward-incompatible ways and is not recommended
 // for production use. It is not subject to any SLA or deprecation policy.
 type DeleteSnapshotRequest struct {
-	// The unique name of the snapshot to be deleted.
+	// Required. The unique name of the snapshot to be deleted.
 	// Values are of the form
-	// `projects/<project>/instances/<instance>/clusters/<cluster>/snapshots/<snapshot>`.
+	// `projects/{project}/instances/{instance}/clusters/{cluster}/snapshots/{snapshot}`.
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -1344,6 +1353,740 @@ func (m *CreateTableFromSnapshotMetadata) GetFinishTime() *timestamp.Timestamp {
 	return nil
 }
 
+// The request for
+// [CreateBackup][google.bigtable.admin.v2.BigtableTableAdmin.CreateBackup].
+type CreateBackupRequest struct {
+	// Required. This must be one of the clusters in the instance in which this
+	// table is located. The backup will be stored in this cluster. Values are
+	// of the form `projects/{project}/instances/{instance}/clusters/{cluster}`.
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// Required. The id of the backup to be created. The `backup_id` along with
+	// the parent `parent` are combined as {parent}/backups/{backup_id} to create
+	// the full backup name, of the form:
+	// `projects/{project}/instances/{instance}/clusters/{cluster}/backups/{backup_id}`.
+	// This string must be between 1 and 50 characters in length and match the
+	// regex [_a-zA-Z0-9][-_.a-zA-Z0-9]*.
+	BackupId string `protobuf:"bytes,2,opt,name=backup_id,json=backupId,proto3" json:"backup_id,omitempty"`
+	// Required. The backup to create.
+	Backup               *Backup  `protobuf:"bytes,3,opt,name=backup,proto3" json:"backup,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *CreateBackupRequest) Reset()         { *m = CreateBackupRequest{} }
+func (m *CreateBackupRequest) String() string { return proto.CompactTextString(m) }
+func (*CreateBackupRequest) ProtoMessage()    {}
+func (*CreateBackupRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{19}
+}
+
+func (m *CreateBackupRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_CreateBackupRequest.Unmarshal(m, b)
+}
+func (m *CreateBackupRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_CreateBackupRequest.Marshal(b, m, deterministic)
+}
+func (m *CreateBackupRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CreateBackupRequest.Merge(m, src)
+}
+func (m *CreateBackupRequest) XXX_Size() int {
+	return xxx_messageInfo_CreateBackupRequest.Size(m)
+}
+func (m *CreateBackupRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_CreateBackupRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CreateBackupRequest proto.InternalMessageInfo
+
+func (m *CreateBackupRequest) GetParent() string {
+	if m != nil {
+		return m.Parent
+	}
+	return ""
+}
+
+func (m *CreateBackupRequest) GetBackupId() string {
+	if m != nil {
+		return m.BackupId
+	}
+	return ""
+}
+
+func (m *CreateBackupRequest) GetBackup() *Backup {
+	if m != nil {
+		return m.Backup
+	}
+	return nil
+}
+
+// Metadata type for the operation returned by
+// [CreateBackup][google.bigtable.admin.v2.BigtableTableAdmin.CreateBackup].
+type CreateBackupMetadata struct {
+	// The name of the backup being created.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The name of the table the backup is created from.
+	SourceTable string `protobuf:"bytes,2,opt,name=source_table,json=sourceTable,proto3" json:"source_table,omitempty"`
+	// The time at which this operation started.
+	StartTime *timestamp.Timestamp `protobuf:"bytes,3,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
+	// If set, the time at which this operation finished or was cancelled.
+	EndTime              *timestamp.Timestamp `protobuf:"bytes,4,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
+	XXX_unrecognized     []byte               `json:"-"`
+	XXX_sizecache        int32                `json:"-"`
+}
+
+func (m *CreateBackupMetadata) Reset()         { *m = CreateBackupMetadata{} }
+func (m *CreateBackupMetadata) String() string { return proto.CompactTextString(m) }
+func (*CreateBackupMetadata) ProtoMessage()    {}
+func (*CreateBackupMetadata) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{20}
+}
+
+func (m *CreateBackupMetadata) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_CreateBackupMetadata.Unmarshal(m, b)
+}
+func (m *CreateBackupMetadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_CreateBackupMetadata.Marshal(b, m, deterministic)
+}
+func (m *CreateBackupMetadata) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CreateBackupMetadata.Merge(m, src)
+}
+func (m *CreateBackupMetadata) XXX_Size() int {
+	return xxx_messageInfo_CreateBackupMetadata.Size(m)
+}
+func (m *CreateBackupMetadata) XXX_DiscardUnknown() {
+	xxx_messageInfo_CreateBackupMetadata.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CreateBackupMetadata proto.InternalMessageInfo
+
+func (m *CreateBackupMetadata) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *CreateBackupMetadata) GetSourceTable() string {
+	if m != nil {
+		return m.SourceTable
+	}
+	return ""
+}
+
+func (m *CreateBackupMetadata) GetStartTime() *timestamp.Timestamp {
+	if m != nil {
+		return m.StartTime
+	}
+	return nil
+}
+
+func (m *CreateBackupMetadata) GetEndTime() *timestamp.Timestamp {
+	if m != nil {
+		return m.EndTime
+	}
+	return nil
+}
+
+// The request for
+// [GetBackup][google.bigtable.admin.v2.BigtableTableAdmin.GetBackup].
+type GetBackupRequest struct {
+	// Required. Name of the backup.
+	// Values are of the form
+	// `projects/{project}/instances/{instance}/clusters/{cluster}/backups/{backup}`.
+	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *GetBackupRequest) Reset()         { *m = GetBackupRequest{} }
+func (m *GetBackupRequest) String() string { return proto.CompactTextString(m) }
+func (*GetBackupRequest) ProtoMessage()    {}
+func (*GetBackupRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{21}
+}
+
+func (m *GetBackupRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GetBackupRequest.Unmarshal(m, b)
+}
+func (m *GetBackupRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GetBackupRequest.Marshal(b, m, deterministic)
+}
+func (m *GetBackupRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetBackupRequest.Merge(m, src)
+}
+func (m *GetBackupRequest) XXX_Size() int {
+	return xxx_messageInfo_GetBackupRequest.Size(m)
+}
+func (m *GetBackupRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetBackupRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetBackupRequest proto.InternalMessageInfo
+
+func (m *GetBackupRequest) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+// The request for
+// [UpdateBackup][google.bigtable.admin.v2.BigtableTableAdmin.UpdateBackup].
+type UpdateBackupRequest struct {
+	// Required. The backup to update. `backup.name`, and the fields to be updated
+	// as specified by `update_mask` are required. Other fields are ignored.
+	// Update is only supported for the following fields:
+	//  * `backup.expire_time`.
+	Backup *Backup `protobuf:"bytes,1,opt,name=backup,proto3" json:"backup,omitempty"`
+	// Required. A mask specifying which fields (e.g. `expire_time`) in the
+	// Backup resource should be updated. This mask is relative to the Backup
+	// resource, not to the request message. The field mask must always be
+	// specified; this prevents any future fields from being erased accidentally
+	// by clients that do not know about them.
+	UpdateMask           *field_mask.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}              `json:"-"`
+	XXX_unrecognized     []byte                `json:"-"`
+	XXX_sizecache        int32                 `json:"-"`
+}
+
+func (m *UpdateBackupRequest) Reset()         { *m = UpdateBackupRequest{} }
+func (m *UpdateBackupRequest) String() string { return proto.CompactTextString(m) }
+func (*UpdateBackupRequest) ProtoMessage()    {}
+func (*UpdateBackupRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{22}
+}
+
+func (m *UpdateBackupRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_UpdateBackupRequest.Unmarshal(m, b)
+}
+func (m *UpdateBackupRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_UpdateBackupRequest.Marshal(b, m, deterministic)
+}
+func (m *UpdateBackupRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_UpdateBackupRequest.Merge(m, src)
+}
+func (m *UpdateBackupRequest) XXX_Size() int {
+	return xxx_messageInfo_UpdateBackupRequest.Size(m)
+}
+func (m *UpdateBackupRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_UpdateBackupRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_UpdateBackupRequest proto.InternalMessageInfo
+
+func (m *UpdateBackupRequest) GetBackup() *Backup {
+	if m != nil {
+		return m.Backup
+	}
+	return nil
+}
+
+func (m *UpdateBackupRequest) GetUpdateMask() *field_mask.FieldMask {
+	if m != nil {
+		return m.UpdateMask
+	}
+	return nil
+}
+
+// The request for
+// [DeleteBackup][google.bigtable.admin.v2.BigtableTableAdmin.DeleteBackup].
+type DeleteBackupRequest struct {
+	// Required. Name of the backup to delete.
+	// Values are of the form
+	// `projects/{project}/instances/{instance}/clusters/{cluster}/backups/{backup}`.
+	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *DeleteBackupRequest) Reset()         { *m = DeleteBackupRequest{} }
+func (m *DeleteBackupRequest) String() string { return proto.CompactTextString(m) }
+func (*DeleteBackupRequest) ProtoMessage()    {}
+func (*DeleteBackupRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{23}
+}
+
+func (m *DeleteBackupRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_DeleteBackupRequest.Unmarshal(m, b)
+}
+func (m *DeleteBackupRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_DeleteBackupRequest.Marshal(b, m, deterministic)
+}
+func (m *DeleteBackupRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeleteBackupRequest.Merge(m, src)
+}
+func (m *DeleteBackupRequest) XXX_Size() int {
+	return xxx_messageInfo_DeleteBackupRequest.Size(m)
+}
+func (m *DeleteBackupRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeleteBackupRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DeleteBackupRequest proto.InternalMessageInfo
+
+func (m *DeleteBackupRequest) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+// The request for
+// [ListBackups][google.bigtable.admin.v2.BigtableTableAdmin.ListBackups].
+type ListBackupsRequest struct {
+	// Required. The cluster to list backups from. Values are of the
+	// form `projects/{project}/instances/{instance}/clusters/{cluster}`.
+	// Use `{cluster} = '-'` to list backups for all clusters in an instance,
+	// e.g., `projects/{project}/instances/{instance}/clusters/-`.
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// A filter expression that filters backups listed in the response.
+	// The expression must specify the field name, a comparison operator,
+	// and the value that you want to use for filtering. The value must be a
+	// string, a number, or a boolean. The comparison operator must be
+	// <, >, <=, >=, !=, =, or :. Colon ‘:’ represents a HAS operator which is
+	// roughly synonymous with equality. Filter rules are case insensitive.
+	//
+	// The fields eligible for filtering are:
+	//   * `name`
+	//   * `source_table`
+	//   * `state`
+	//   * `start_time` (and values are of the format YYYY-MM-DDTHH:MM:SSZ)
+	//   * `end_time` (and values are of the format YYYY-MM-DDTHH:MM:SSZ)
+	//   * `expire_time` (and values are of the format YYYY-MM-DDTHH:MM:SSZ)
+	//   * `size_bytes`
+	//
+	// To filter on multiple expressions, provide each separate expression within
+	// parentheses. By default, each expression is an AND expression. However,
+	// you can include AND, OR, and NOT expressions explicitly.
+	//
+	// Some examples of using filters are:
+	//
+	//   * `name:"exact"` --> The backup's name is the string "exact".
+	//   * `name:howl` --> The backup's name contains the string "howl".
+	//   * `source_table:prod`
+	//          --> The source_table's name contains the string "prod".
+	//   * `state:CREATING` --> The backup is pending creation.
+	//   * `state:READY` --> The backup is fully created and ready for use.
+	//   * `(name:howl) AND (start_time < \"2018-03-28T14:50:00Z\")`
+	//          --> The backup name contains the string "howl" and start_time
+	//              of the backup is before 2018-03-28T14:50:00Z.
+	//   * `size_bytes > 10000000000` --> The backup's size is greater than 10GB
+	Filter string `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	// An expression for specifying the sort order of the results of the request.
+	// The string value should specify one or more fields in
+	// [Backup][google.bigtable.admin.v2.Backup]. The full syntax is described at
+	// https://aip.dev/132#ordering.
+	//
+	// Fields supported are:
+	//    * name
+	//    * source_table
+	//    * expire_time
+	//    * start_time
+	//    * end_time
+	//    * size_bytes
+	//    * state
+	//
+	// For example, "start_time". The default sorting order is ascending.
+	// To specify descending order for the field, a suffix " desc" should
+	// be appended to the field name. For example, "start_time desc".
+	// Redundant space characters in the syntax are insigificant.
+	//
+	// If order_by is empty, results will be sorted by `start_time` in descending
+	// order starting from the most recently created backup.
+	OrderBy string `protobuf:"bytes,3,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	// Number of backups to be returned in the response. If 0 or
+	// less, defaults to the server's maximum allowed page size.
+	PageSize int32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// If non-empty, `page_token` should contain a
+	// [next_page_token][google.bigtable.admin.v2.ListBackupsResponse.next_page_token]
+	// from a previous
+	// [ListBackupsResponse][google.bigtable.admin.v2.ListBackupsResponse] to the
+	// same `parent` and with the same `filter`.
+	PageToken            string   `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *ListBackupsRequest) Reset()         { *m = ListBackupsRequest{} }
+func (m *ListBackupsRequest) String() string { return proto.CompactTextString(m) }
+func (*ListBackupsRequest) ProtoMessage()    {}
+func (*ListBackupsRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{24}
+}
+
+func (m *ListBackupsRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_ListBackupsRequest.Unmarshal(m, b)
+}
+func (m *ListBackupsRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_ListBackupsRequest.Marshal(b, m, deterministic)
+}
+func (m *ListBackupsRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ListBackupsRequest.Merge(m, src)
+}
+func (m *ListBackupsRequest) XXX_Size() int {
+	return xxx_messageInfo_ListBackupsRequest.Size(m)
+}
+func (m *ListBackupsRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_ListBackupsRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ListBackupsRequest proto.InternalMessageInfo
+
+func (m *ListBackupsRequest) GetParent() string {
+	if m != nil {
+		return m.Parent
+	}
+	return ""
+}
+
+func (m *ListBackupsRequest) GetFilter() string {
+	if m != nil {
+		return m.Filter
+	}
+	return ""
+}
+
+func (m *ListBackupsRequest) GetOrderBy() string {
+	if m != nil {
+		return m.OrderBy
+	}
+	return ""
+}
+
+func (m *ListBackupsRequest) GetPageSize() int32 {
+	if m != nil {
+		return m.PageSize
+	}
+	return 0
+}
+
+func (m *ListBackupsRequest) GetPageToken() string {
+	if m != nil {
+		return m.PageToken
+	}
+	return ""
+}
+
+// The response for
+// [ListBackups][google.bigtable.admin.v2.BigtableTableAdmin.ListBackups].
+type ListBackupsResponse struct {
+	// The list of matching backups.
+	Backups []*Backup `protobuf:"bytes,1,rep,name=backups,proto3" json:"backups,omitempty"`
+	// `next_page_token` can be sent in a subsequent
+	// [ListBackups][google.bigtable.admin.v2.BigtableTableAdmin.ListBackups] call
+	// to fetch more of the matching backups.
+	NextPageToken        string   `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *ListBackupsResponse) Reset()         { *m = ListBackupsResponse{} }
+func (m *ListBackupsResponse) String() string { return proto.CompactTextString(m) }
+func (*ListBackupsResponse) ProtoMessage()    {}
+func (*ListBackupsResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{25}
+}
+
+func (m *ListBackupsResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_ListBackupsResponse.Unmarshal(m, b)
+}
+func (m *ListBackupsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_ListBackupsResponse.Marshal(b, m, deterministic)
+}
+func (m *ListBackupsResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ListBackupsResponse.Merge(m, src)
+}
+func (m *ListBackupsResponse) XXX_Size() int {
+	return xxx_messageInfo_ListBackupsResponse.Size(m)
+}
+func (m *ListBackupsResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_ListBackupsResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ListBackupsResponse proto.InternalMessageInfo
+
+func (m *ListBackupsResponse) GetBackups() []*Backup {
+	if m != nil {
+		return m.Backups
+	}
+	return nil
+}
+
+func (m *ListBackupsResponse) GetNextPageToken() string {
+	if m != nil {
+		return m.NextPageToken
+	}
+	return ""
+}
+
+// The request for
+// [RestoreTable][google.bigtable.admin.v2.BigtableTableAdmin.RestoreTable].
+type RestoreTableRequest struct {
+	// Required. The name of the instance in which to create the restored
+	// table. This instance must be the parent of the source backup. Values are
+	// of the form `projects/<project>/instances/<instance>`.
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// Required. The id of the table to create and restore to. This
+	// table must not already exist. The `table_id` appended to
+	// `parent` forms the full table name of the form
+	// `projects/<project>/instances/<instance>/tables/<table_id>`.
+	TableId string `protobuf:"bytes,2,opt,name=table_id,json=tableId,proto3" json:"table_id,omitempty"`
+	// Required. The source from which to restore.
+	//
+	// Types that are valid to be assigned to Source:
+	//	*RestoreTableRequest_Backup
+	Source               isRestoreTableRequest_Source `protobuf_oneof:"source"`
+	XXX_NoUnkeyedLiteral struct{}                     `json:"-"`
+	XXX_unrecognized     []byte                       `json:"-"`
+	XXX_sizecache        int32                        `json:"-"`
+}
+
+func (m *RestoreTableRequest) Reset()         { *m = RestoreTableRequest{} }
+func (m *RestoreTableRequest) String() string { return proto.CompactTextString(m) }
+func (*RestoreTableRequest) ProtoMessage()    {}
+func (*RestoreTableRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{26}
+}
+
+func (m *RestoreTableRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_RestoreTableRequest.Unmarshal(m, b)
+}
+func (m *RestoreTableRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_RestoreTableRequest.Marshal(b, m, deterministic)
+}
+func (m *RestoreTableRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_RestoreTableRequest.Merge(m, src)
+}
+func (m *RestoreTableRequest) XXX_Size() int {
+	return xxx_messageInfo_RestoreTableRequest.Size(m)
+}
+func (m *RestoreTableRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_RestoreTableRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_RestoreTableRequest proto.InternalMessageInfo
+
+func (m *RestoreTableRequest) GetParent() string {
+	if m != nil {
+		return m.Parent
+	}
+	return ""
+}
+
+func (m *RestoreTableRequest) GetTableId() string {
+	if m != nil {
+		return m.TableId
+	}
+	return ""
+}
+
+type isRestoreTableRequest_Source interface {
+	isRestoreTableRequest_Source()
+}
+
+type RestoreTableRequest_Backup struct {
+	Backup string `protobuf:"bytes,3,opt,name=backup,proto3,oneof"`
+}
+
+func (*RestoreTableRequest_Backup) isRestoreTableRequest_Source() {}
+
+func (m *RestoreTableRequest) GetSource() isRestoreTableRequest_Source {
+	if m != nil {
+		return m.Source
+	}
+	return nil
+}
+
+func (m *RestoreTableRequest) GetBackup() string {
+	if x, ok := m.GetSource().(*RestoreTableRequest_Backup); ok {
+		return x.Backup
+	}
+	return ""
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*RestoreTableRequest) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*RestoreTableRequest_Backup)(nil),
+	}
+}
+
+// Metadata type for the long-running operation returned by
+// [RestoreTable][google.bigtable.admin.v2.BigtableTableAdmin.RestoreTable].
+type RestoreTableMetadata struct {
+	// Name of the table being created and restored to.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The type of the restore source.
+	SourceType RestoreSourceType `protobuf:"varint,2,opt,name=source_type,json=sourceType,proto3,enum=google.bigtable.admin.v2.RestoreSourceType" json:"source_type,omitempty"`
+	// Information about the source used to restore the table, as specified by
+	// `source` in
+	// [RestoreTableRequest][google.bigtable.admin.v2.RestoreTableRequest].
+	//
+	// Types that are valid to be assigned to SourceInfo:
+	//	*RestoreTableMetadata_BackupInfo
+	SourceInfo isRestoreTableMetadata_SourceInfo `protobuf_oneof:"source_info"`
+	// If exists, the name of the long-running operation that will be used to
+	// track the post-restore optimization process to optimize the performance of
+	// the restored table. The metadata type of the long-running operation is
+	// [OptimizeRestoreTableMetadata][]. The response type is
+	// [Empty][google.protobuf.Empty]. This long-running operation may be
+	// automatically created by the system if applicable after the
+	// RestoreTable long-running operation completes successfully. This operation
+	// may not be created if the table is already optimized or the restore was
+	// not successful.
+	OptimizeTableOperationName string `protobuf:"bytes,4,opt,name=optimize_table_operation_name,json=optimizeTableOperationName,proto3" json:"optimize_table_operation_name,omitempty"`
+	// The progress of the
+	// [RestoreTable][google.bigtable.admin.v2.BigtableTableAdmin.RestoreTable]
+	// operation.
+	Progress             *OperationProgress `protobuf:"bytes,5,opt,name=progress,proto3" json:"progress,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}           `json:"-"`
+	XXX_unrecognized     []byte             `json:"-"`
+	XXX_sizecache        int32              `json:"-"`
+}
+
+func (m *RestoreTableMetadata) Reset()         { *m = RestoreTableMetadata{} }
+func (m *RestoreTableMetadata) String() string { return proto.CompactTextString(m) }
+func (*RestoreTableMetadata) ProtoMessage()    {}
+func (*RestoreTableMetadata) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{27}
+}
+
+func (m *RestoreTableMetadata) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_RestoreTableMetadata.Unmarshal(m, b)
+}
+func (m *RestoreTableMetadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_RestoreTableMetadata.Marshal(b, m, deterministic)
+}
+func (m *RestoreTableMetadata) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_RestoreTableMetadata.Merge(m, src)
+}
+func (m *RestoreTableMetadata) XXX_Size() int {
+	return xxx_messageInfo_RestoreTableMetadata.Size(m)
+}
+func (m *RestoreTableMetadata) XXX_DiscardUnknown() {
+	xxx_messageInfo_RestoreTableMetadata.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_RestoreTableMetadata proto.InternalMessageInfo
+
+func (m *RestoreTableMetadata) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *RestoreTableMetadata) GetSourceType() RestoreSourceType {
+	if m != nil {
+		return m.SourceType
+	}
+	return RestoreSourceType_RESTORE_SOURCE_TYPE_UNSPECIFIED
+}
+
+type isRestoreTableMetadata_SourceInfo interface {
+	isRestoreTableMetadata_SourceInfo()
+}
+
+type RestoreTableMetadata_BackupInfo struct {
+	BackupInfo *BackupInfo `protobuf:"bytes,3,opt,name=backup_info,json=backupInfo,proto3,oneof"`
+}
+
+func (*RestoreTableMetadata_BackupInfo) isRestoreTableMetadata_SourceInfo() {}
+
+func (m *RestoreTableMetadata) GetSourceInfo() isRestoreTableMetadata_SourceInfo {
+	if m != nil {
+		return m.SourceInfo
+	}
+	return nil
+}
+
+func (m *RestoreTableMetadata) GetBackupInfo() *BackupInfo {
+	if x, ok := m.GetSourceInfo().(*RestoreTableMetadata_BackupInfo); ok {
+		return x.BackupInfo
+	}
+	return nil
+}
+
+func (m *RestoreTableMetadata) GetOptimizeTableOperationName() string {
+	if m != nil {
+		return m.OptimizeTableOperationName
+	}
+	return ""
+}
+
+func (m *RestoreTableMetadata) GetProgress() *OperationProgress {
+	if m != nil {
+		return m.Progress
+	}
+	return nil
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*RestoreTableMetadata) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*RestoreTableMetadata_BackupInfo)(nil),
+	}
+}
+
+// Metadata type for the long-running operation used to track the progress
+// of optimizations performed on a newly restored table. This long-running
+// operation is automatically created by the system after the successful
+// completion of a table restore, and cannot be cancelled.
+type OptimizeRestoredTableMetadata struct {
+	// Name of the restored table being optimized.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The progress of the post-restore optimizations.
+	Progress             *OperationProgress `protobuf:"bytes,2,opt,name=progress,proto3" json:"progress,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}           `json:"-"`
+	XXX_unrecognized     []byte             `json:"-"`
+	XXX_sizecache        int32              `json:"-"`
+}
+
+func (m *OptimizeRestoredTableMetadata) Reset()         { *m = OptimizeRestoredTableMetadata{} }
+func (m *OptimizeRestoredTableMetadata) String() string { return proto.CompactTextString(m) }
+func (*OptimizeRestoredTableMetadata) ProtoMessage()    {}
+func (*OptimizeRestoredTableMetadata) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43baa00e5f96b1e4, []int{28}
+}
+
+func (m *OptimizeRestoredTableMetadata) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_OptimizeRestoredTableMetadata.Unmarshal(m, b)
+}
+func (m *OptimizeRestoredTableMetadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_OptimizeRestoredTableMetadata.Marshal(b, m, deterministic)
+}
+func (m *OptimizeRestoredTableMetadata) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_OptimizeRestoredTableMetadata.Merge(m, src)
+}
+func (m *OptimizeRestoredTableMetadata) XXX_Size() int {
+	return xxx_messageInfo_OptimizeRestoredTableMetadata.Size(m)
+}
+func (m *OptimizeRestoredTableMetadata) XXX_DiscardUnknown() {
+	xxx_messageInfo_OptimizeRestoredTableMetadata.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_OptimizeRestoredTableMetadata proto.InternalMessageInfo
+
+func (m *OptimizeRestoredTableMetadata) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *OptimizeRestoredTableMetadata) GetProgress() *OperationProgress {
+	if m != nil {
+		return m.Progress
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*CreateTableRequest)(nil), "google.bigtable.admin.v2.CreateTableRequest")
 	proto.RegisterType((*CreateTableRequest_Split)(nil), "google.bigtable.admin.v2.CreateTableRequest.Split")
@@ -1366,6 +2109,16 @@ func init() {
 	proto.RegisterType((*DeleteSnapshotRequest)(nil), "google.bigtable.admin.v2.DeleteSnapshotRequest")
 	proto.RegisterType((*SnapshotTableMetadata)(nil), "google.bigtable.admin.v2.SnapshotTableMetadata")
 	proto.RegisterType((*CreateTableFromSnapshotMetadata)(nil), "google.bigtable.admin.v2.CreateTableFromSnapshotMetadata")
+	proto.RegisterType((*CreateBackupRequest)(nil), "google.bigtable.admin.v2.CreateBackupRequest")
+	proto.RegisterType((*CreateBackupMetadata)(nil), "google.bigtable.admin.v2.CreateBackupMetadata")
+	proto.RegisterType((*GetBackupRequest)(nil), "google.bigtable.admin.v2.GetBackupRequest")
+	proto.RegisterType((*UpdateBackupRequest)(nil), "google.bigtable.admin.v2.UpdateBackupRequest")
+	proto.RegisterType((*DeleteBackupRequest)(nil), "google.bigtable.admin.v2.DeleteBackupRequest")
+	proto.RegisterType((*ListBackupsRequest)(nil), "google.bigtable.admin.v2.ListBackupsRequest")
+	proto.RegisterType((*ListBackupsResponse)(nil), "google.bigtable.admin.v2.ListBackupsResponse")
+	proto.RegisterType((*RestoreTableRequest)(nil), "google.bigtable.admin.v2.RestoreTableRequest")
+	proto.RegisterType((*RestoreTableMetadata)(nil), "google.bigtable.admin.v2.RestoreTableMetadata")
+	proto.RegisterType((*OptimizeRestoredTableMetadata)(nil), "google.bigtable.admin.v2.OptimizeRestoredTableMetadata")
 }
 
 func init() {
@@ -1373,119 +2126,178 @@ func init() {
 }
 
 var fileDescriptor_43baa00e5f96b1e4 = []byte{
-	// 1638 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x58, 0xcb, 0x6b, 0x1b, 0xd7,
-	0x1a, 0xcf, 0xc8, 0x8f, 0xd8, 0x9f, 0xfc, 0xca, 0xb9, 0x76, 0xa2, 0x28, 0x89, 0x6d, 0xe6, 0x86,
-	0x5c, 0x47, 0xce, 0x9d, 0x21, 0x0a, 0x26, 0xbe, 0x4e, 0x7c, 0xaf, 0x23, 0xfb, 0xda, 0x4e, 0x9b,
-	0x34, 0x66, 0x6c, 0x02, 0x09, 0x06, 0x31, 0xd6, 0x1c, 0xcb, 0x27, 0x9e, 0x57, 0x67, 0x8e, 0xec,
-	0x38, 0x6d, 0x16, 0xcd, 0xa6, 0xd0, 0x5d, 0xc9, 0x2a, 0x14, 0x0a, 0xd9, 0x76, 0x59, 0x0a, 0x85,
-	0x50, 0x28, 0xdd, 0x76, 0xdb, 0x75, 0x17, 0x85, 0xae, 0xbb, 0xea, 0x1f, 0x50, 0xce, 0x63, 0xa4,
-	0xd1, 0x63, 0xf4, 0x70, 0x29, 0x74, 0x63, 0xcf, 0x7c, 0xcf, 0xdf, 0xf7, 0x38, 0xdf, 0xf9, 0x46,
-	0x70, 0xab, 0xec, 0x79, 0x65, 0x1b, 0xeb, 0x7b, 0xa4, 0x4c, 0xcd, 0x3d, 0x1b, 0xeb, 0xa6, 0xe5,
-	0x10, 0x57, 0x3f, 0xca, 0x57, 0x29, 0x45, 0xf1, 0x97, 0xd3, 0x35, 0x3f, 0xf0, 0xa8, 0x87, 0x32,
-	0x42, 0x49, 0x8b, 0x44, 0x34, 0xc1, 0x3c, 0xca, 0x67, 0x2f, 0x4b, 0x73, 0xa6, 0x4f, 0x74, 0xd3,
-	0x75, 0x3d, 0x6a, 0x52, 0xe2, 0xb9, 0xa1, 0xd0, 0xcb, 0x5e, 0x4d, 0x74, 0x26, 0xcc, 0x08, 0xa9,
-	0x69, 0x29, 0x45, 0x4c, 0x47, 0x3f, 0xba, 0xc9, 0xfe, 0x15, 0x7d, 0xcf, 0x26, 0xa5, 0x13, 0xc9,
-	0xcf, 0xd6, 0xf3, 0xeb, 0x78, 0xff, 0x94, 0x3c, 0xdb, 0x73, 0xcb, 0x41, 0xc5, 0x75, 0x89, 0x5b,
-	0xd6, 0x3d, 0x1f, 0x07, 0x75, 0x30, 0x22, 0x07, 0xfc, 0x6d, 0xaf, 0xb2, 0xaf, 0x5b, 0x15, 0x21,
-	0x20, 0xf9, 0x97, 0x1a, 0xf9, 0xd8, 0xf1, 0x69, 0xe4, 0x61, 0xa6, 0x91, 0x49, 0x89, 0x83, 0x43,
-	0x6a, 0x3a, 0xbe, 0x10, 0x50, 0x7f, 0x57, 0x00, 0xad, 0x06, 0xd8, 0xa4, 0x78, 0x87, 0x05, 0x65,
-	0xe0, 0x0f, 0x2b, 0x38, 0xa4, 0xe8, 0x3c, 0x0c, 0xfa, 0x66, 0x80, 0x5d, 0x9a, 0x51, 0x66, 0x95,
-	0xb9, 0x61, 0x43, 0xbe, 0xa1, 0x8b, 0x30, 0x24, 0x12, 0x4c, 0xac, 0x4c, 0x8a, 0x73, 0xce, 0xf2,
-	0xf7, 0xfb, 0x16, 0x5a, 0x80, 0x01, 0xfe, 0x98, 0xe9, 0x9b, 0x55, 0xe6, 0xd2, 0xf9, 0x19, 0x2d,
-	0x29, 0xed, 0x9a, 0xf0, 0x24, 0xa4, 0xd1, 0x13, 0x18, 0x23, 0x2e, 0xa1, 0xc4, 0xb4, 0x8b, 0xa1,
-	0x6f, 0x13, 0x1a, 0x66, 0xfa, 0x67, 0xfb, 0xe6, 0xd2, 0xf9, 0x7c, 0xb2, 0x7e, 0x33, 0x5e, 0x6d,
-	0x9b, 0xa9, 0x1a, 0xa3, 0xd2, 0x12, 0x7f, 0x0b, 0xb3, 0x17, 0x61, 0x80, 0x3f, 0xa1, 0x09, 0xe8,
-	0x3b, 0xc4, 0x27, 0x3c, 0x94, 0x11, 0x83, 0x3d, 0xaa, 0x1f, 0xc3, 0x74, 0xcc, 0xca, 0x7a, 0xe0,
-	0x39, 0xdb, 0xae, 0xe9, 0x87, 0x07, 0x1e, 0xfd, 0x13, 0x19, 0xf8, 0x17, 0x8c, 0x87, 0x5e, 0x25,
-	0x28, 0xe1, 0x62, 0x28, 0x8d, 0xf1, 0x5c, 0x0c, 0x1b, 0x63, 0x82, 0x1c, 0xb9, 0x50, 0xdf, 0x28,
-	0xf0, 0x8f, 0xb5, 0xc0, 0xf3, 0x0d, 0xef, 0xd8, 0x30, 0xdd, 0x72, 0x35, 0xeb, 0x08, 0xfa, 0x5d,
-	0xd3, 0xc1, 0xd2, 0x23, 0x7f, 0x46, 0xd7, 0x60, 0x2c, 0xf0, 0x8e, 0x8b, 0x87, 0xf8, 0xa4, 0xe8,
-	0x07, 0x78, 0x9f, 0x3c, 0xe7, 0x5e, 0x47, 0x36, 0xcf, 0x18, 0x23, 0x81, 0x77, 0xfc, 0x3e, 0x3e,
-	0xd9, 0xe2, 0x54, 0x74, 0x17, 0xb2, 0x16, 0xb6, 0x31, 0xc5, 0x45, 0xd3, 0xb6, 0x8b, 0x96, 0x49,
-	0xcd, 0xe2, 0x7e, 0xe0, 0x39, 0xc5, 0x5a, 0x4d, 0x86, 0x36, 0xcf, 0x18, 0xe7, 0x85, 0xcc, 0x3d,
-	0xdb, 0x5e, 0x33, 0xa9, 0xc9, 0xe2, 0xe6, 0x09, 0x28, 0x0c, 0xc1, 0x20, 0x35, 0x83, 0x32, 0xa6,
-	0xea, 0x5b, 0x05, 0xce, 0x3d, 0x20, 0x21, 0xe5, 0xf4, 0xb0, 0x53, 0x36, 0x16, 0xa1, 0xff, 0x88,
-	0xe0, 0x63, 0x8e, 0x69, 0x2c, 0x7f, 0xb5, 0x43, 0xcd, 0xb5, 0xc7, 0x04, 0x1f, 0x1b, 0x5c, 0x03,
-	0x5d, 0x82, 0x61, 0xdf, 0x2c, 0xe3, 0x62, 0x48, 0x5e, 0xe0, 0x4c, 0xff, 0xac, 0x32, 0x37, 0x60,
-	0x0c, 0x31, 0xc2, 0x36, 0x79, 0x81, 0xd1, 0x15, 0x00, 0xce, 0xa4, 0xde, 0x21, 0x76, 0x65, 0x12,
-	0xb9, 0xf8, 0x0e, 0x23, 0xa8, 0x15, 0x40, 0x71, 0x88, 0xa1, 0xef, 0xb9, 0x21, 0x46, 0xb7, 0x59,
-	0x0c, 0x8c, 0x92, 0x51, 0x78, 0x07, 0x75, 0xec, 0x40, 0x29, 0x8e, 0xae, 0xc1, 0xb8, 0x8b, 0x9f,
-	0xd3, 0x62, 0xcc, 0xa5, 0xa8, 0xec, 0x28, 0x23, 0x6f, 0x55, 0xdd, 0x16, 0x61, 0x7c, 0x03, 0xd3,
-	0xba, 0x73, 0xd2, 0xaa, 0x62, 0xa7, 0xce, 0x89, 0x3a, 0x07, 0x68, 0x8d, 0xd7, 0xa7, 0x93, 0x0f,
-	0xf5, 0xe7, 0x14, 0x5c, 0x7a, 0xe8, 0x59, 0x64, 0xff, 0x64, 0xd5, 0xb3, 0x2b, 0x8e, 0xbb, 0x6e,
-	0x3a, 0xc4, 0x26, 0xb5, 0x7a, 0xb5, 0xc2, 0x75, 0x00, 0xa3, 0x0e, 0x53, 0x21, 0x25, 0x31, 0x5f,
-	0x32, 0x29, 0x9e, 0xa6, 0x42, 0x32, 0xc0, 0x36, 0x1e, 0x04, 0x4f, 0x9a, 0x32, 0xea, 0x0d, 0x67,
-	0xbf, 0x57, 0x60, 0x24, 0xce, 0x47, 0x63, 0x90, 0x22, 0x96, 0x04, 0x93, 0x22, 0x16, 0x5a, 0x81,
-	0xc1, 0x12, 0x3f, 0x7e, 0x3c, 0x49, 0xe9, 0xfc, 0xb5, 0x36, 0x87, 0xbd, 0xe6, 0xfd, 0x64, 0xf3,
-	0x8c, 0x21, 0xf5, 0x98, 0x85, 0x8a, 0x6f, 0x31, 0x0b, 0x7d, 0xbd, 0x5a, 0x10, 0x7a, 0x68, 0x12,
-	0xfa, 0xad, 0xc0, 0xf3, 0x79, 0xef, 0xb1, 0xa3, 0xc1, 0xdf, 0x0a, 0x03, 0xd0, 0xe7, 0x78, 0x96,
-	0xba, 0x00, 0x33, 0x1b, 0xd8, 0x65, 0x93, 0x18, 0xaf, 0x7a, 0x6e, 0x48, 0x42, 0x8a, 0xdd, 0xd2,
-	0x09, 0x6f, 0x83, 0x76, 0x65, 0x79, 0x04, 0xb3, 0xc9, 0x6a, 0xb2, 0x4d, 0xe7, 0xe1, 0x5c, 0xa9,
-	0xc6, 0x93, 0xfd, 0x26, 0x8c, 0x4c, 0x94, 0x1a, 0x94, 0xd4, 0xa7, 0x70, 0x61, 0xf5, 0x00, 0x97,
-	0x0e, 0x63, 0xd6, 0xda, 0x95, 0xb8, 0xa5, 0xed, 0x54, 0x82, 0xed, 0x25, 0xc8, 0x34, 0xdb, 0x96,
-	0x20, 0xa7, 0x01, 0xaa, 0xf2, 0xe2, 0xcc, 0x0f, 0x19, 0x31, 0x8a, 0xfa, 0x8d, 0x02, 0x93, 0xd1,
-	0x38, 0xeb, 0x78, 0x20, 0x32, 0x70, 0xb6, 0x64, 0x57, 0x42, 0x8a, 0x83, 0x68, 0x62, 0xca, 0x57,
-	0x34, 0x03, 0xe9, 0x68, 0x54, 0xb2, 0x79, 0x2a, 0x0e, 0x3a, 0x44, 0xa4, 0xfb, 0x16, 0x9a, 0x87,
-	0x3e, 0x4a, 0x6d, 0x5e, 0xa3, 0x74, 0xfe, 0x62, 0x54, 0xe3, 0xe8, 0x36, 0xd3, 0xd6, 0xe4, 0x55,
-	0x68, 0x30, 0x29, 0x34, 0x0b, 0x69, 0x0b, 0x87, 0xa5, 0x80, 0xf8, 0x8c, 0x96, 0x19, 0xe0, 0xd6,
-	0xe2, 0x24, 0x76, 0xc0, 0x36, 0x30, 0x6d, 0x1c, 0xf5, 0xad, 0x2a, 0xf9, 0x0c, 0x26, 0xd9, 0x88,
-	0x89, 0x44, 0x3b, 0x0e, 0xc2, 0xba, 0x71, 0x96, 0xea, 0x6d, 0x9c, 0x7d, 0xa2, 0xc0, 0x54, 0x83,
-	0x33, 0x59, 0x86, 0x15, 0x18, 0x8e, 0x92, 0x11, 0x4d, 0x35, 0x35, 0xb9, 0xd1, 0xab, 0x71, 0xd5,
-	0x94, 0xba, 0x9e, 0x6d, 0xf3, 0x30, 0x25, 0x46, 0x4f, 0x37, 0xc9, 0xf9, 0x4d, 0x81, 0xa9, 0xba,
-	0xea, 0x3f, 0xc4, 0xd4, 0x64, 0x57, 0x0e, 0x7a, 0x02, 0x13, 0x5e, 0x40, 0xca, 0xc4, 0x35, 0xed,
-	0x62, 0x20, 0x2c, 0x70, 0xcd, 0x74, 0x5e, 0xeb, 0x8c, 0x3b, 0xde, 0x48, 0xc6, 0x78, 0x64, 0x27,
-	0x02, 0xb2, 0x0c, 0x23, 0xd2, 0x62, 0x91, 0x2d, 0x31, 0x72, 0x72, 0x64, 0x9b, 0x7a, 0x62, 0x27,
-	0xda, 0x70, 0x8c, 0xb4, 0x94, 0x67, 0x14, 0x74, 0x07, 0xd2, 0xfb, 0xc4, 0x25, 0xe1, 0x81, 0xd0,
-	0xee, 0xeb, 0xa8, 0x0d, 0x42, 0x9c, 0x11, 0xd4, 0x57, 0x29, 0x98, 0x49, 0xd8, 0x17, 0xaa, 0xa1,
-	0x97, 0x12, 0x43, 0x5f, 0xec, 0x6a, 0x95, 0x69, 0xb1, 0x84, 0xfc, 0xad, 0x92, 0x90, 0x7f, 0x33,
-	0x05, 0xa8, 0x20, 0x23, 0xe0, 0x88, 0xef, 0xb1, 0x28, 0xd0, 0x6b, 0x05, 0xd2, 0xb1, 0x30, 0xd0,
-	0x8d, 0x5e, 0x16, 0xb7, 0x6c, 0xa7, 0x4b, 0x5a, 0x5d, 0x78, 0xf5, 0xd3, 0xaf, 0xaf, 0x53, 0xba,
-	0x9a, 0x63, 0x8b, 0xf7, 0x47, 0xe2, 0xb4, 0x2d, 0xfb, 0x81, 0xf7, 0x0c, 0x97, 0x68, 0xa8, 0xe7,
-	0x74, 0xe2, 0x86, 0xd4, 0x74, 0x4b, 0x38, 0xd4, 0x73, 0x2f, 0xc5, 0x62, 0x1e, 0x2e, 0x29, 0x39,
-	0xf4, 0x9d, 0x02, 0x17, 0x12, 0x92, 0x8b, 0x4e, 0x5d, 0x8f, 0xec, 0x95, 0x48, 0x33, 0xb6, 0xb1,
-	0x6b, 0x8f, 0xa2, 0x8d, 0x5d, 0xdd, 0xe4, 0x58, 0x0b, 0xea, 0x72, 0x0f, 0x58, 0xc5, 0x7d, 0x16,
-	0x77, 0xc6, 0xe0, 0x7f, 0xa1, 0x00, 0xd4, 0x56, 0x1c, 0x34, 0x9f, 0x8c, 0xb8, 0x69, 0x57, 0xcb,
-	0xde, 0xe8, 0x4e, 0x58, 0x8c, 0x18, 0x35, 0xcf, 0x31, 0xdf, 0x40, 0x3d, 0xe4, 0x17, 0x7d, 0xa6,
-	0xc0, 0x50, 0xb4, 0x09, 0xa1, 0xeb, 0xc9, 0xee, 0x1a, 0xb6, 0xa5, 0xce, 0xc5, 0xae, 0x07, 0xc3,
-	0x66, 0x4d, 0x02, 0x14, 0x89, 0x44, 0xcf, 0xbd, 0x44, 0x9f, 0x2a, 0x90, 0x8e, 0x6d, 0x4d, 0xed,
-	0xfa, 0xaf, 0x79, 0xb9, 0xca, 0x9e, 0x6f, 0x6a, 0xfe, 0xff, 0xb3, 0xcf, 0xa7, 0x08, 0x49, 0xae,
-	0x17, 0x24, 0xef, 0x14, 0x98, 0x6c, 0xb5, 0x32, 0xa1, 0x85, 0x53, 0xad, 0x58, 0x9d, 0xd3, 0xf5,
-	0x1e, 0x07, 0xb9, 0xa6, 0xfe, 0xaf, 0x7b, 0x90, 0x4b, 0x4e, 0x0b, 0x87, 0xac, 0xe3, 0xde, 0x28,
-	0x30, 0x12, 0xff, 0x26, 0x41, 0xff, 0x6e, 0x93, 0xc7, 0xe6, 0x6f, 0x97, 0xc4, 0x44, 0x16, 0x38,
-	0xc6, 0xbb, 0xea, 0xed, 0x1e, 0x30, 0x5a, 0x31, 0xfb, 0x0c, 0xdb, 0x2f, 0x0a, 0x64, 0x92, 0xf6,
-	0x2a, 0xf4, 0x9f, 0x76, 0xfd, 0xd7, 0x76, 0x85, 0xcb, 0x2e, 0x9d, 0x46, 0x55, 0x9e, 0x9b, 0x0f,
-	0x78, 0x5c, 0x9b, 0xea, 0x6a, 0x0f, 0x71, 0x95, 0x13, 0x8c, 0xb2, 0x18, 0x7f, 0x50, 0x60, 0xa2,
-	0x71, 0x1d, 0x43, 0x37, 0xdb, 0x4c, 0xaa, 0xd6, 0x6b, 0x61, 0x36, 0xdf, 0x8b, 0x8a, 0x8c, 0x65,
-	0x9d, 0xc7, 0xb2, 0xa2, 0xde, 0xe9, 0x21, 0x96, 0x52, 0x83, 0x31, 0x16, 0xc3, 0x97, 0x0a, 0x8c,
-	0xd6, 0x5d, 0xe6, 0xa8, 0xc7, 0x5b, 0xbf, 0xd3, 0x80, 0xfd, 0x2f, 0x07, 0xba, 0xa8, 0xde, 0xea,
-	0x01, 0x68, 0x18, 0x1b, 0xab, 0x6f, 0x15, 0x48, 0xc7, 0x16, 0xc0, 0x76, 0xb3, 0xa2, 0x79, 0x4f,
-	0xcc, 0x76, 0xb1, 0x7a, 0xa9, 0x2b, 0x1c, 0xe1, 0x12, 0x5a, 0xec, 0x88, 0x50, 0xee, 0xc0, 0xec,
-	0xb1, 0xba, 0xae, 0xb1, 0x29, 0xf2, 0xb5, 0x02, 0xa3, 0x75, 0xdb, 0x60, 0xbb, 0x24, 0xb6, 0xda,
-	0x51, 0xb3, 0x7a, 0xd7, 0xf2, 0xb2, 0xfe, 0xf5, 0xa0, 0xdb, 0xde, 0x01, 0x31, 0xd8, 0x2f, 0x6b,
-	0xb8, 0xd9, 0x7d, 0x35, 0x56, 0xbf, 0x3f, 0x22, 0xbd, 0xd3, 0x1c, 0x6e, 0x4c, 0x6f, 0xd2, 0x04,
-	0x91, 0xe8, 0x72, 0xa7, 0x4f, 0xe9, 0xe7, 0x0a, 0x8c, 0x6c, 0x60, 0x7a, 0xdf, 0x74, 0xb6, 0xf8,
-	0xcf, 0x6f, 0xa8, 0x5a, 0x49, 0x62, 0x3a, 0xda, 0xd1, 0x4d, 0x2d, 0xce, 0x8c, 0xe0, 0x4c, 0x35,
-	0xc8, 0x08, 0x6e, 0xc3, 0x59, 0x09, 0xb0, 0xf8, 0x69, 0xa7, 0x9b, 0xb3, 0x5f, 0x73, 0xc1, 0x5a,
-	0x91, 0x61, 0xda, 0x6e, 0x87, 0x69, 0xfb, 0xaf, 0xc7, 0x14, 0x36, 0x60, 0xfa, 0x56, 0x01, 0xb4,
-	0x83, 0x43, 0x4e, 0xc4, 0x81, 0x43, 0xc2, 0x90, 0x7d, 0xce, 0xa3, 0xb9, 0x06, 0xaf, 0xcd, 0x22,
-	0x11, 0xbe, 0xeb, 0x5d, 0x48, 0xca, 0x9e, 0x7b, 0xc0, 0x31, 0xaf, 0xab, 0xf7, 0x7a, 0xc4, 0x4c,
-	0x9b, 0x4c, 0x2e, 0x29, 0xb9, 0xc2, 0x3b, 0x05, 0x2e, 0x97, 0x3c, 0x27, 0xb1, 0xe5, 0x0a, 0x17,
-	0x9a, 0x37, 0xd7, 0x2d, 0xd6, 0x66, 0x5b, 0xca, 0xd3, 0x65, 0xa9, 0x54, 0xf6, 0x6c, 0xd3, 0x2d,
-	0x6b, 0x5e, 0x50, 0xd6, 0xcb, 0xd8, 0xe5, 0x4d, 0xa8, 0x0b, 0x96, 0xe9, 0x93, 0xb0, 0xf9, 0x67,
-	0xe0, 0x3b, 0xfc, 0xe1, 0xab, 0xd4, 0xf4, 0x86, 0xd0, 0x5f, 0xb5, 0xbd, 0x8a, 0xa5, 0x45, 0x7e,
-	0x34, 0xee, 0x43, 0x7b, 0x9c, 0xff, 0x31, 0x12, 0xd8, 0xe5, 0x02, 0xbb, 0x91, 0xc0, 0x2e, 0x17,
-	0xd8, 0x7d, 0x9c, 0xdf, 0x1b, 0xe4, 0xbe, 0x6e, 0xfd, 0x11, 0x00, 0x00, 0xff, 0xff, 0xaf, 0xcd,
-	0x7e, 0xb8, 0xde, 0x16, 0x00, 0x00,
+	// 2585 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x5a, 0x4d, 0x6c, 0x1b, 0xc7,
+	0xf5, 0xf7, 0x50, 0x1f, 0xa6, 0x1e, 0x29, 0xd9, 0x19, 0xc9, 0x36, 0xcd, 0x58, 0x1f, 0xde, 0xbf,
+	0xe2, 0xbf, 0x22, 0xcb, 0x64, 0x4d, 0x23, 0xb1, 0x2d, 0xdb, 0x8d, 0x57, 0x72, 0x2d, 0x0b, 0xb5,
+	0x62, 0x79, 0x65, 0x1b, 0x48, 0xe0, 0x82, 0x58, 0x91, 0x23, 0x6a, 0xab, 0xfd, 0xea, 0xee, 0x52,
+	0x0a, 0xdd, 0xfa, 0x90, 0x1c, 0x0a, 0xb8, 0x87, 0x00, 0x45, 0x90, 0x02, 0x29, 0x7a, 0x2a, 0x02,
+	0x34, 0x48, 0x81, 0x5e, 0x5b, 0x34, 0x87, 0xf4, 0xd0, 0x5e, 0xd4, 0x43, 0x81, 0x16, 0xbd, 0x08,
+	0x45, 0x91, 0x43, 0x0f, 0x45, 0x0f, 0xbd, 0xf4, 0xd6, 0x53, 0x31, 0x1f, 0xbb, 0xdc, 0x25, 0xb9,
+	0x24, 0x57, 0x16, 0x8a, 0x5e, 0xec, 0xe5, 0xcc, 0x7b, 0x6f, 0xde, 0xfb, 0xcd, 0xfb, 0x98, 0xf7,
+	0x20, 0xb8, 0x52, 0xb3, 0xac, 0x9a, 0x4e, 0x8a, 0x9b, 0x5a, 0xcd, 0x53, 0x37, 0x75, 0x52, 0x54,
+	0xab, 0x86, 0x66, 0x16, 0x77, 0x4b, 0xc1, 0x4a, 0x99, 0xff, 0xcb, 0xd6, 0x0b, 0xb6, 0x63, 0x79,
+	0x16, 0xce, 0x71, 0xa6, 0x82, 0x4f, 0x52, 0xe0, 0x9b, 0xbb, 0xa5, 0xfc, 0x39, 0x21, 0x4e, 0xb5,
+	0xb5, 0xa2, 0x6a, 0x9a, 0x96, 0xa7, 0x7a, 0x9a, 0x65, 0xba, 0x9c, 0x2f, 0x7f, 0x26, 0xb4, 0x5b,
+	0xd1, 0x35, 0x62, 0x7a, 0x62, 0x63, 0x3a, 0xb4, 0xb1, 0xa5, 0x11, 0xbd, 0x5a, 0xde, 0x24, 0xdb,
+	0xea, 0xae, 0x66, 0x39, 0x82, 0xe0, 0x6c, 0x88, 0xc0, 0x21, 0xae, 0x55, 0x77, 0x2a, 0x44, 0x6c,
+	0xbd, 0x16, 0x6b, 0x41, 0xc5, 0x32, 0x0c, 0x4b, 0xe8, 0x9c, 0x9f, 0x8d, 0x25, 0xe3, 0x26, 0x70,
+	0xaa, 0x29, 0x41, 0xa5, 0xa9, 0x46, 0x71, 0xf7, 0x32, 0xfd, 0xaf, 0x6c, 0x5b, 0xba, 0x56, 0x69,
+	0x88, 0xfd, 0x7c, 0x74, 0x3f, 0xb2, 0xf7, 0x7f, 0x62, 0x4f, 0xb7, 0xcc, 0x9a, 0x53, 0x37, 0x4d,
+	0xcd, 0xac, 0x15, 0x2d, 0x9b, 0x38, 0x11, 0x08, 0xfc, 0x03, 0xd8, 0xaf, 0xcd, 0xfa, 0x56, 0xb1,
+	0x5a, 0xe7, 0x04, 0x62, 0xff, 0xd5, 0xd6, 0x7d, 0x62, 0xd8, 0x9e, 0x7f, 0xc2, 0x4c, 0xeb, 0x26,
+	0xc7, 0xca, 0x50, 0xdd, 0x9d, 0x16, 0x20, 0x03, 0x0a, 0x4f, 0x33, 0x88, 0xeb, 0xa9, 0x86, 0xcd,
+	0x09, 0xa4, 0xcf, 0x52, 0x80, 0x97, 0x1d, 0xa2, 0x7a, 0xe4, 0x11, 0x35, 0x5b, 0x21, 0xdf, 0xa9,
+	0x13, 0xd7, 0xc3, 0xb7, 0x61, 0xd8, 0x56, 0x1d, 0x62, 0x7a, 0x39, 0x34, 0x83, 0xe6, 0x46, 0x96,
+	0xe6, 0xbe, 0x92, 0x53, 0xff, 0x96, 0x25, 0x98, 0x09, 0xae, 0x98, 0x0b, 0x56, 0x6d, 0xcd, 0x2d,
+	0x54, 0x2c, 0xa3, 0xb8, 0x6a, 0xba, 0x9e, 0x6a, 0x56, 0x88, 0x22, 0xf8, 0xf0, 0x14, 0xa4, 0xb9,
+	0xa3, 0x68, 0xd5, 0x5c, 0x8a, 0xc9, 0x18, 0xf8, 0x4a, 0x4e, 0x29, 0xc7, 0xd9, 0xe2, 0x6a, 0x15,
+	0x2f, 0xc2, 0x10, 0xfb, 0xcc, 0x0d, 0xcc, 0xa0, 0xb9, 0x4c, 0x69, 0xba, 0x10, 0xe7, 0x43, 0x05,
+	0xa6, 0x18, 0xe7, 0xe6, 0x2c, 0xf8, 0x1d, 0x18, 0xd3, 0x4c, 0xcd, 0xd3, 0x54, 0xbd, 0xec, 0xda,
+	0xba, 0xe6, 0xb9, 0xb9, 0xc1, 0x99, 0x81, 0xb9, 0x4c, 0xa9, 0x14, 0x2f, 0xa4, 0xdd, 0xc6, 0xc2,
+	0x06, 0x65, 0x55, 0x46, 0x85, 0x24, 0xf6, 0xcb, 0xcd, 0x9f, 0x85, 0x21, 0xf6, 0x85, 0x4f, 0xc2,
+	0xc0, 0x0e, 0x69, 0x30, 0xf3, 0xb3, 0x0a, 0xfd, 0x94, 0xfe, 0x8c, 0x60, 0x2a, 0x24, 0xe6, 0xae,
+	0x63, 0x19, 0x1b, 0xa6, 0x6a, 0xbb, 0xdb, 0x96, 0xf7, 0xdf, 0x83, 0xed, 0x21, 0x9c, 0xe0, 0xde,
+	0x5e, 0x76, 0xc5, 0xd9, 0x0c, 0xc0, 0x3e, 0x8e, 0x0a, 0x74, 0x1d, 0xe3, 0x02, 0xfc, 0xdf, 0xd2,
+	0x6f, 0x10, 0x8c, 0xdf, 0x71, 0x2c, 0x5b, 0xb1, 0xf6, 0x14, 0xd5, 0xac, 0x05, 0x3e, 0x70, 0x1d,
+	0x06, 0x4d, 0xd5, 0x20, 0xc2, 0x94, 0xd7, 0x98, 0xfc, 0x69, 0x98, 0x8c, 0x93, 0xcf, 0xb1, 0x65,
+	0x2c, 0xf8, 0x02, 0x8c, 0x39, 0xd6, 0x5e, 0x79, 0x87, 0x34, 0xca, 0xb6, 0x43, 0xb6, 0xb4, 0xf7,
+	0x98, 0x2d, 0xd9, 0x7b, 0xc7, 0x94, 0xac, 0x63, 0xed, 0x7d, 0x93, 0x34, 0xd6, 0xd9, 0x2a, 0xbe,
+	0x09, 0xf9, 0x2a, 0xd1, 0x89, 0x47, 0xca, 0xaa, 0xae, 0x97, 0xab, 0xaa, 0xa7, 0x96, 0xb7, 0x1c,
+	0xcb, 0x28, 0x37, 0x3d, 0x23, 0x7d, 0xef, 0x98, 0x72, 0x9a, 0xd3, 0xc8, 0xba, 0x7e, 0x47, 0xf5,
+	0x54, 0x8a, 0x3b, 0x77, 0x89, 0x34, 0x0c, 0x7b, 0xaa, 0x53, 0x23, 0x9e, 0xf4, 0x7b, 0x04, 0xaf,
+	0xdc, 0xd7, 0x5c, 0x8f, 0xad, 0xbb, 0x47, 0x77, 0x1b, 0xd7, 0x60, 0x70, 0x57, 0x23, 0x7b, 0x4c,
+	0xfb, 0xb1, 0xd2, 0x6c, 0x0f, 0x1f, 0x2d, 0x3c, 0xd1, 0xc8, 0x9e, 0xc2, 0x38, 0xf0, 0xab, 0x30,
+	0x62, 0xab, 0x35, 0x52, 0x76, 0xb5, 0x67, 0x24, 0x37, 0x38, 0x83, 0xe6, 0x86, 0x94, 0x34, 0x5d,
+	0xd8, 0xd0, 0x9e, 0x11, 0x3c, 0x09, 0xc0, 0x36, 0x3d, 0x6b, 0x87, 0x98, 0xfc, 0xfe, 0x14, 0x46,
+	0xfe, 0x88, 0x2e, 0x48, 0x75, 0xc0, 0x61, 0x63, 0x5c, 0xdb, 0x32, 0x5d, 0x82, 0xaf, 0x52, 0x6b,
+	0xe9, 0x4a, 0x0e, 0x31, 0x67, 0xef, 0x15, 0x31, 0x8a, 0x20, 0xc7, 0x17, 0xe0, 0x84, 0x49, 0xde,
+	0xf3, 0xca, 0xa1, 0x23, 0x99, 0x67, 0x29, 0xa3, 0x74, 0x79, 0x3d, 0x38, 0xf6, 0xfb, 0x08, 0x4e,
+	0xac, 0x10, 0x2f, 0x92, 0x07, 0x5e, 0xc2, 0x07, 0x0e, 0x8d, 0x9d, 0xf4, 0x00, 0xf0, 0x1d, 0x76,
+	0xe3, 0x47, 0xa4, 0x8a, 0xf4, 0x62, 0x00, 0x5e, 0x5d, 0xb3, 0xaa, 0xda, 0x56, 0x63, 0xd9, 0xd2,
+	0xeb, 0x86, 0x79, 0x57, 0x35, 0x34, 0x5d, 0x6b, 0x3a, 0xca, 0x4b, 0x58, 0x69, 0xc0, 0xa8, 0x41,
+	0x25, 0x6b, 0x15, 0x9e, 0xd6, 0x73, 0x29, 0x76, 0x39, 0x4b, 0xf1, 0xe6, 0x76, 0x51, 0x84, 0xef,
+	0x09, 0x51, 0x3c, 0xf0, 0xa3, 0xd2, 0xf3, 0x5f, 0x22, 0xc8, 0x86, 0x89, 0xf0, 0x18, 0xa4, 0xb4,
+	0x2a, 0x57, 0x5c, 0x49, 0x69, 0x55, 0xea, 0xf3, 0x15, 0x96, 0xa3, 0x18, 0xee, 0x99, 0xd2, 0x85,
+	0x2e, 0x29, 0xb1, 0xa9, 0x42, 0xe3, 0xde, 0x31, 0x45, 0xf0, 0x51, 0x09, 0x75, 0xbb, 0x4a, 0x25,
+	0x0c, 0x24, 0x95, 0xc0, 0xf9, 0xf0, 0x04, 0x0c, 0x56, 0x1d, 0xcb, 0x66, 0x6e, 0x4f, 0xe3, 0x97,
+	0xfd, 0x5a, 0x1a, 0x82, 0x01, 0xc3, 0xaa, 0x4a, 0x4f, 0x61, 0x7a, 0x85, 0x98, 0xb4, 0x0a, 0x92,
+	0x65, 0xcb, 0x74, 0x35, 0xd7, 0x23, 0x66, 0xa5, 0xc1, 0x3c, 0xf0, 0x08, 0x6e, 0xfa, 0x01, 0xcc,
+	0xc4, 0x4b, 0x17, 0x81, 0x74, 0x11, 0x5e, 0xa9, 0x34, 0xf7, 0x44, 0x44, 0x70, 0x04, 0x4f, 0x56,
+	0x5a, 0x98, 0x68, 0x50, 0x9c, 0x59, 0xde, 0x26, 0x95, 0x9d, 0x90, 0xb8, 0x23, 0x70, 0x9b, 0xaf,
+	0x75, 0xd2, 0x21, 0x94, 0xef, 0xdb, 0x15, 0x59, 0x84, 0x5c, 0xbb, 0x1e, 0xc2, 0xa2, 0x29, 0x80,
+	0x80, 0x9e, 0x27, 0xbb, 0xb4, 0x12, 0x5a, 0x91, 0x5e, 0xa4, 0x60, 0xc2, 0x4f, 0xf7, 0x47, 0x15,
+	0xde, 0x32, 0x1c, 0xaf, 0xe8, 0x75, 0xd7, 0x23, 0x8e, 0xd0, 0xfb, 0xff, 0x19, 0xf7, 0x79, 0x98,
+	0x8e, 0xe3, 0x5e, 0xe6, 0xe4, 0x8a, 0xcf, 0x87, 0x67, 0x21, 0xe3, 0x17, 0x31, 0x5a, 0xee, 0x06,
+	0x9a, 0xe6, 0x83, 0xbf, 0xbe, 0x5a, 0xc5, 0x17, 0x61, 0xc0, 0xf3, 0x74, 0xe6, 0x4c, 0x99, 0xd2,
+	0x59, 0xdf, 0x19, 0xfd, 0x07, 0x4d, 0xe1, 0x8e, 0x78, 0x2f, 0x29, 0x94, 0x0a, 0xcf, 0x40, 0xa6,
+	0x4a, 0xdc, 0x8a, 0xa3, 0xd9, 0x74, 0x2d, 0x37, 0xc4, 0x6e, 0x35, 0xbc, 0x24, 0x29, 0x80, 0x57,
+	0x88, 0xd7, 0x5a, 0xb8, 0x6f, 0x46, 0x80, 0xe8, 0xbf, 0x96, 0x72, 0xaf, 0xfb, 0x08, 0xc1, 0x04,
+	0xcd, 0xd8, 0xfe, 0x72, 0x90, 0x58, 0xde, 0x6a, 0xa9, 0x40, 0x7d, 0x63, 0xe4, 0x17, 0xa0, 0x48,
+	0x19, 0x49, 0x25, 0x2b, 0x23, 0xef, 0x23, 0x38, 0xd5, 0xa2, 0x95, 0xf0, 0x97, 0xdb, 0x30, 0xe2,
+	0x03, 0xec, 0x57, 0x13, 0x29, 0x3e, 0xca, 0x03, 0x63, 0x9b, 0x4c, 0x7d, 0xd7, 0x94, 0xc7, 0x70,
+	0x8a, 0xa7, 0xf2, 0xa3, 0x05, 0xfc, 0x9f, 0x08, 0x4e, 0x45, 0x1c, 0x7a, 0x8d, 0x78, 0x2a, 0x7d,
+	0x3e, 0xe0, 0x77, 0xe0, 0xa4, 0xe5, 0x68, 0x35, 0xcd, 0x54, 0xf5, 0xb2, 0xc3, 0xcf, 0x62, 0x67,
+	0x64, 0x4a, 0x85, 0xde, 0x16, 0x86, 0x63, 0x43, 0x39, 0xe1, 0xcb, 0xf1, 0x55, 0xbe, 0x05, 0x59,
+	0x21, 0xb1, 0x4c, 0x5f, 0xd1, 0x22, 0xc1, 0xe6, 0xdb, 0x3c, 0xf2, 0x91, 0xff, 0xc4, 0x56, 0x32,
+	0x82, 0x9e, 0xae, 0xe0, 0x1b, 0x90, 0xd9, 0xd2, 0x4c, 0xcd, 0xdd, 0xe6, 0xdc, 0x03, 0x3d, 0xb9,
+	0x81, 0x93, 0xd3, 0x05, 0xe9, 0x83, 0x14, 0x4c, 0xc7, 0xbc, 0x3d, 0x03, 0xd3, 0x2b, 0xb1, 0xa6,
+	0x5f, 0xeb, 0xeb, 0x5d, 0xdc, 0xe1, 0x41, 0xfb, 0xbf, 0x05, 0xc2, 0x2f, 0x11, 0x8c, 0x73, 0x7d,
+	0x97, 0xd4, 0xca, 0x4e, 0xdd, 0x3e, 0xb2, 0x28, 0x9b, 0x81, 0x91, 0x4d, 0x26, 0xb1, 0xe5, 0xd5,
+	0x9d, 0xe6, 0xab, 0xab, 0x55, 0x7c, 0x0b, 0x86, 0xf9, 0xb7, 0x50, 0x79, 0x26, 0x1e, 0x51, 0xae,
+	0x1b, 0x17, 0x20, 0x98, 0xa4, 0x2f, 0x11, 0x4c, 0x84, 0x35, 0x0f, 0xee, 0x0c, 0x87, 0xc3, 0x40,
+	0x64, 0xd6, 0xf3, 0x90, 0x15, 0x4f, 0x7c, 0xfe, 0x0c, 0xe6, 0x81, 0x95, 0xe1, 0x6b, 0xec, 0xa6,
+	0xf0, 0x75, 0x00, 0xd7, 0x53, 0x1d, 0xaf, 0x5f, 0x14, 0x47, 0x18, 0x35, 0xbb, 0x81, 0x37, 0x20,
+	0x4d, 0xcc, 0x2a, 0x67, 0x1c, 0xec, 0xc9, 0x78, 0x9c, 0x98, 0x55, 0x86, 0xfd, 0xdb, 0x70, 0x72,
+	0x85, 0x78, 0x51, 0xdc, 0x17, 0x23, 0x31, 0x7c, 0x81, 0xa1, 0x3e, 0x03, 0x53, 0x71, 0xa8, 0x0b,
+	0x66, 0x1e, 0xc1, 0x3f, 0x42, 0x30, 0xfe, 0x98, 0x3d, 0x17, 0xa2, 0x32, 0x9b, 0x40, 0xa3, 0x43,
+	0x00, 0x8d, 0x6f, 0x43, 0x86, 0x3f, 0x42, 0x58, 0x13, 0x1c, 0xeb, 0x9d, 0x77, 0x69, 0x9f, 0xbc,
+	0xa6, 0xba, 0x3b, 0xa2, 0xdc, 0x70, 0x1e, 0xba, 0x20, 0x3d, 0x84, 0x71, 0x9e, 0xb1, 0x8e, 0xce,
+	0xd6, 0xdf, 0x22, 0xfe, 0xa0, 0xe7, 0x8b, 0x47, 0x57, 0x1c, 0x4e, 0xc3, 0xf0, 0x96, 0xa6, 0x07,
+	0x15, 0x58, 0x11, 0xbf, 0xf0, 0x59, 0x48, 0x5b, 0x4e, 0x95, 0x38, 0xe5, 0xcd, 0x86, 0xa8, 0x0a,
+	0xc7, 0xd9, 0xef, 0xa5, 0x46, 0x92, 0xb6, 0x64, 0xa8, 0xb5, 0x9e, 0x34, 0x60, 0x3c, 0x62, 0x85,
+	0x28, 0x26, 0x8b, 0x70, 0x9c, 0x83, 0xef, 0x97, 0x92, 0x9e, 0x57, 0xa6, 0xf8, 0x0c, 0x7d, 0x97,
+	0x11, 0x1d, 0xc6, 0x15, 0xe2, 0x7a, 0x96, 0x13, 0x6d, 0x09, 0x4e, 0x47, 0x11, 0x0c, 0x80, 0x39,
+	0xdb, 0xda, 0x44, 0x37, 0xfb, 0xe7, 0x5c, 0x24, 0x90, 0x47, 0xe8, 0xab, 0x95, 0xff, 0xa6, 0xdd,
+	0x24, 0x0f, 0x31, 0xe9, 0x2f, 0x29, 0x98, 0x08, 0x1f, 0xd7, 0x35, 0x5a, 0xef, 0x43, 0xc6, 0x8f,
+	0xd6, 0x86, 0x4d, 0x44, 0xb7, 0x73, 0x31, 0x1e, 0x02, 0x21, 0x78, 0x83, 0x47, 0x73, 0xc3, 0x26,
+	0x0a, 0xb8, 0xc1, 0x37, 0x5e, 0x81, 0x8c, 0x9f, 0x89, 0xcc, 0x2d, 0x4b, 0x44, 0xf6, 0x6c, 0x2f,
+	0x40, 0x57, 0xcd, 0x2d, 0xeb, 0xde, 0x31, 0x05, 0x36, 0x83, 0x5f, 0x58, 0x86, 0x49, 0xcb, 0xf6,
+	0x34, 0x43, 0x7b, 0xe6, 0x0f, 0xec, 0x82, 0xd1, 0x53, 0x99, 0xd9, 0x30, 0xc8, 0x6c, 0xc8, 0xfb,
+	0x44, 0xcc, 0xd0, 0x07, 0x3e, 0xc9, 0xdb, 0xd4, 0xb2, 0x15, 0x48, 0xdb, 0x8e, 0x55, 0x73, 0x88,
+	0xeb, 0x32, 0x67, 0xc8, 0x74, 0x33, 0x2b, 0x60, 0x5d, 0x17, 0x2c, 0x4a, 0xc0, 0xbc, 0x34, 0x1a,
+	0x40, 0x44, 0x8d, 0x92, 0xbe, 0x07, 0x93, 0x0f, 0xc4, 0xa9, 0x02, 0x8c, 0x6a, 0x6f, 0x98, 0xc3,
+	0xca, 0xa4, 0x5e, 0x42, 0x99, 0xd2, 0xfb, 0xb3, 0x80, 0x97, 0x04, 0x07, 0x3b, 0x56, 0xa6, 0x5c,
+	0xf8, 0xe7, 0x08, 0x32, 0xa1, 0x5a, 0x88, 0x17, 0x92, 0x8c, 0x92, 0xf2, 0xbd, 0x7a, 0x71, 0x69,
+	0xed, 0x40, 0x3e, 0xc5, 0x9d, 0x73, 0xc1, 0xf7, 0x4c, 0xfe, 0xf1, 0xc1, 0x9f, 0xfe, 0xf6, 0x51,
+	0xaa, 0x28, 0xcd, 0x17, 0x77, 0x4b, 0xc5, 0xef, 0x72, 0x8a, 0x5b, 0xb6, 0x63, 0x7d, 0x9b, 0x54,
+	0x3c, 0xb7, 0x38, 0x5f, 0xd4, 0xc4, 0x44, 0xc2, 0x2d, 0xce, 0x3f, 0xe7, 0x83, 0x49, 0x77, 0x11,
+	0xcd, 0xe3, 0x1f, 0xa4, 0xe0, 0x4c, 0x4c, 0xe5, 0xc6, 0x87, 0x2e, 0xf6, 0xf9, 0x49, 0x9f, 0x33,
+	0x34, 0xb1, 0x6c, 0x62, 0x29, 0x7d, 0x8c, 0xf6, 0xe5, 0x39, 0x18, 0xe2, 0xf8, 0xf4, 0x7a, 0x8d,
+	0x1c, 0xc8, 0xd3, 0xad, 0xf6, 0xb6, 0xcc, 0xad, 0x98, 0xe5, 0x4b, 0xd2, 0xad, 0x04, 0x96, 0xf3,
+	0x0e, 0x35, 0x7c, 0x1c, 0x05, 0xe3, 0x53, 0x04, 0xd0, 0x9c, 0x97, 0xe0, 0x2e, 0x7e, 0xd1, 0x36,
+	0x22, 0xca, 0x2f, 0xf4, 0x47, 0xcc, 0x53, 0x9d, 0x74, 0xe3, 0x40, 0x16, 0x29, 0x86, 0x29, 0xbf,
+	0x80, 0x13, 0x5c, 0x1b, 0xfe, 0x21, 0x82, 0xb4, 0x3f, 0x5e, 0xc1, 0xaf, 0xc7, 0x9f, 0xdb, 0x32,
+	0x82, 0xe9, 0xed, 0x5b, 0xd7, 0x0f, 0x64, 0x16, 0x23, 0x11, 0x9d, 0xe8, 0x42, 0x8c, 0x46, 0x42,
+	0xa1, 0xe2, 0xfc, 0x73, 0xfc, 0x21, 0x82, 0x4c, 0x68, 0xd4, 0xd2, 0xcd, 0xeb, 0xdb, 0x27, 0x32,
+	0xf9, 0xd3, 0x6d, 0x75, 0xf5, 0x1b, 0x86, 0xed, 0x35, 0x5a, 0x14, 0x9a, 0x4f, 0xa2, 0xd0, 0x1f,
+	0x10, 0x4c, 0x74, 0x1a, 0x90, 0xe0, 0x37, 0x0e, 0x35, 0x50, 0xe9, 0x0d, 0x5e, 0xf9, 0x40, 0xc6,
+	0x54, 0xb5, 0x85, 0xc8, 0x9c, 0x85, 0x69, 0x7e, 0x47, 0x7a, 0xab, 0x7f, 0xcd, 0x17, 0x8d, 0x0e,
+	0x5a, 0x50, 0xef, 0xfc, 0x04, 0x41, 0x36, 0x3c, 0x5d, 0xc5, 0x97, 0xba, 0x60, 0xdc, 0x3e, 0x85,
+	0x8d, 0x05, 0x79, 0x89, 0xe9, 0x78, 0x53, 0xba, 0x9a, 0x40, 0xc7, 0x6a, 0x48, 0x3e, 0xd5, 0xed,
+	0xef, 0x08, 0x72, 0x71, 0xe3, 0x12, 0x7c, 0xbd, 0x9b, 0x8b, 0x76, 0x1d, 0xe0, 0xe4, 0x17, 0x0f,
+	0xc3, 0x2a, 0x62, 0xec, 0x71, 0xd8, 0x79, 0xee, 0x49, 0xcb, 0x09, 0xcc, 0xab, 0xc5, 0xc8, 0xa6,
+	0xa6, 0x1e, 0x20, 0x38, 0xd9, 0x3a, 0x3f, 0xc1, 0x97, 0xbb, 0xa4, 0xca, 0xce, 0x33, 0x9f, 0x7c,
+	0x29, 0x09, 0x8b, 0x30, 0xa9, 0x7c, 0x20, 0x9f, 0x66, 0x3e, 0xd6, 0x36, 0xf2, 0x61, 0x46, 0xde,
+	0x96, 0x6e, 0x24, 0x30, 0xb2, 0xd2, 0x72, 0x0a, 0x35, 0xee, 0x1f, 0x08, 0x46, 0x23, 0x3d, 0x2c,
+	0x4e, 0xd8, 0xec, 0xf6, 0x4a, 0xfd, 0x2f, 0xd0, 0xbe, 0x7c, 0x1e, 0xd2, 0x41, 0x8d, 0xe9, 0xdc,
+	0x7c, 0x1f, 0xc8, 0xb3, 0xdc, 0x4c, 0xfe, 0x4e, 0x5d, 0x08, 0x0d, 0x77, 0x16, 0x42, 0x23, 0x18,
+	0x66, 0xf4, 0x35, 0xe9, 0x4a, 0x02, 0xa3, 0xdd, 0x50, 0xba, 0xff, 0x0c, 0x41, 0x26, 0x34, 0xc1,
+	0xe9, 0x96, 0xb3, 0xda, 0x07, 0x3d, 0xf9, 0x3e, 0xe6, 0x1c, 0xd2, 0x4a, 0xd8, 0x05, 0x17, 0xf1,
+	0xb5, 0x9e, 0x8a, 0x0a, 0x83, 0xe9, 0x67, 0x30, 0x22, 0xa1, 0xd9, 0xec, 0x0b, 0x04, 0xa3, 0x91,
+	0x09, 0x4c, 0xb7, 0x7b, 0xe9, 0x34, 0x40, 0xca, 0x17, 0xfb, 0xa6, 0x17, 0xbe, 0xb6, 0x1a, 0x2d,
+	0x51, 0xbe, 0xf6, 0x5d, 0x4b, 0x54, 0x48, 0xff, 0xe7, 0x4d, 0x03, 0xf0, 0x4f, 0x11, 0x8c, 0x45,
+	0x87, 0x37, 0xb8, 0xd8, 0xab, 0x3e, 0xb4, 0xc2, 0x1d, 0x97, 0xbd, 0xa2, 0x10, 0xcf, 0x1f, 0x1e,
+	0xe2, 0xdf, 0x21, 0xc8, 0x86, 0x3b, 0xeb, 0x6e, 0xe9, 0xb5, 0xc3, 0xec, 0xa0, 0x97, 0xe3, 0xd7,
+	0xf6, 0xe5, 0x29, 0x18, 0x16, 0xa2, 0x3b, 0xb6, 0xf0, 0x22, 0x84, 0xdf, 0x4c, 0x08, 0xb3, 0xe8,
+	0x80, 0x16, 0xfd, 0xc6, 0xf5, 0x13, 0x04, 0x23, 0x41, 0x83, 0x8d, 0xe7, 0xbb, 0xfa, 0x74, 0xd4,
+	0x82, 0x9e, 0xed, 0x96, 0xf4, 0x75, 0x1e, 0x71, 0xf8, 0xcd, 0x24, 0x28, 0x0b, 0x05, 0x29, 0xc6,
+	0xbf, 0x40, 0x90, 0x0d, 0xf7, 0xea, 0xdd, 0x30, 0xee, 0xd0, 0xd3, 0xf7, 0xa1, 0xe1, 0x1a, 0xd3,
+	0x70, 0xa5, 0xc4, 0x1f, 0x83, 0xfc, 0xe8, 0x42, 0x62, 0x45, 0x03, 0x30, 0x3f, 0xa6, 0x35, 0x37,
+	0xd4, 0xc4, 0x77, 0xad, 0xb9, 0xed, 0xcd, 0x7e, 0xac, 0xd7, 0x0a, 0x20, 0xe7, 0x0f, 0x0b, 0xe4,
+	0xe7, 0x08, 0x32, 0xa1, 0x16, 0x1a, 0xf7, 0x78, 0x7d, 0x46, 0xe7, 0x05, 0xf9, 0x4b, 0x7d, 0x52,
+	0x8b, 0x4c, 0x10, 0xbd, 0xf5, 0xc4, 0x9e, 0x49, 0x93, 0x57, 0x36, 0xdc, 0x05, 0x77, 0x03, 0xb1,
+	0x43, 0x73, 0xde, 0x2b, 0xb2, 0xbe, 0xb5, 0x2f, 0x4f, 0xfa, 0xcd, 0x44, 0xc7, 0x6e, 0x9b, 0xa9,
+	0x7f, 0x55, 0x2a, 0x25, 0xe8, 0x0f, 0x1c, 0x2e, 0x86, 0x56, 0x89, 0x9f, 0x20, 0xc8, 0xae, 0x10,
+	0x6f, 0x55, 0x35, 0xd6, 0xd9, 0xdf, 0x64, 0xe0, 0x20, 0xf1, 0x6b, 0xaa, 0x51, 0xd8, 0xbd, 0x5c,
+	0x08, 0x6f, 0xfa, 0x2a, 0x9f, 0x6a, 0xa1, 0xe1, 0xbb, 0xd2, 0xc3, 0x03, 0x39, 0xed, 0xff, 0x91,
+	0x49, 0xa4, 0x62, 0xfb, 0x8b, 0xfd, 0x3c, 0x4d, 0x9a, 0xa7, 0x51, 0xf5, 0xfe, 0x85, 0x20, 0xbb,
+	0xd1, 0x4d, 0xbd, 0x8d, 0xfe, 0xd5, 0xfb, 0x19, 0x3a, 0x90, 0x4f, 0xf8, 0xaa, 0x2c, 0xf0, 0x3f,
+	0x41, 0x61, 0x6a, 0x7e, 0x88, 0x12, 0xeb, 0xe9, 0x46, 0xf5, 0x7c, 0xf7, 0xbe, 0xb4, 0xd2, 0x97,
+	0x84, 0xce, 0xf1, 0xd8, 0x22, 0x0d, 0x7f, 0x9a, 0x02, 0xfc, 0x88, 0xb8, 0x6c, 0x91, 0x38, 0x86,
+	0xe6, 0xba, 0xf4, 0xb1, 0x8d, 0xe7, 0x5a, 0xec, 0x6a, 0x27, 0xf1, 0x11, 0x78, 0xbd, 0x0f, 0x4a,
+	0xe1, 0xfe, 0xbf, 0x42, 0x07, 0xf2, 0x44, 0x13, 0x95, 0x26, 0x05, 0x83, 0xe6, 0xc7, 0x48, 0x92,
+	0x13, 0x42, 0xe3, 0xb5, 0x9d, 0x45, 0x01, 0x52, 0xa4, 0xb5, 0x97, 0x00, 0xa8, 0xa3, 0xcc, 0xfc,
+	0x5f, 0x53, 0xfb, 0xf2, 0x39, 0x3f, 0xc8, 0x78, 0x8c, 0x45, 0x27, 0x81, 0x7f, 0x94, 0xbf, 0x48,
+	0x6d, 0x7b, 0x9e, 0xed, 0x2e, 0x16, 0x8b, 0x7b, 0x7b, 0x7b, 0xad, 0x73, 0x42, 0xb5, 0xee, 0x6d,
+	0x17, 0xa3, 0x41, 0xba, 0x90, 0x8c, 0xbc, 0xc0, 0xbe, 0x7b, 0x32, 0x55, 0x74, 0xab, 0x5e, 0xbd,
+	0x94, 0xf0, 0xa4, 0x4e, 0x4c, 0x89, 0xce, 0xb3, 0x75, 0xd5, 0xdb, 0xb2, 0x1c, 0x23, 0x21, 0x79,
+	0xc1, 0x21, 0x6a, 0xf5, 0x92, 0x65, 0xea, 0x8d, 0xa5, 0x5f, 0x23, 0x38, 0x57, 0xb1, 0x8c, 0xd8,
+	0x7c, 0xb6, 0x74, 0xa6, 0x7d, 0x42, 0xb4, 0x4e, 0x4b, 0xc1, 0x3a, 0x7a, 0xf7, 0x96, 0x60, 0xaa,
+	0x59, 0xba, 0x6a, 0xd6, 0x0a, 0x96, 0x53, 0x2b, 0xd6, 0x88, 0xc9, 0x0a, 0x45, 0xb1, 0xa9, 0x44,
+	0xfb, 0x9f, 0x95, 0xdd, 0x60, 0x1f, 0x9f, 0xa7, 0xa6, 0x56, 0x38, 0xff, 0x32, 0x55, 0xae, 0xe0,
+	0x9f, 0x53, 0x60, 0x67, 0x14, 0x9e, 0x94, 0xf6, 0x7d, 0x82, 0xa7, 0x8c, 0xe0, 0xa9, 0x4f, 0xf0,
+	0x94, 0x11, 0x3c, 0x7d, 0x52, 0xda, 0x1c, 0x66, 0x67, 0x5d, 0xf9, 0x4f, 0x00, 0x00, 0x00, 0xff,
+	0xff, 0x3c, 0xa6, 0x43, 0x97, 0xaa, 0x27, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
-var _ grpc.ClientConn
+var _ grpc.ClientConnInterface
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
+const _ = grpc.SupportPackageIsVersion6
 
 // BigtableTableAdminClient is the client API for BigtableTableAdmin service.
 //
@@ -1561,21 +2373,49 @@ type BigtableTableAdminClient interface {
 	// recommended for production use. It is not subject to any SLA or deprecation
 	// policy.
 	DeleteSnapshot(ctx context.Context, in *DeleteSnapshotRequest, opts ...grpc.CallOption) (*empty.Empty, error)
-	// Gets the access control policy for an instance resource. Returns an empty
-	// policy if an table exists but does not have a policy set.
+	// Starts creating a new Cloud Bigtable Backup. The returned backup
+	// [long-running operation][google.longrunning.Operation] can be used to
+	// track creation of the backup. The
+	// [metadata][google.longrunning.Operation.metadata] field type is
+	// [CreateBackupMetadata][google.bigtable.admin.v2.CreateBackupMetadata]. The
+	// [response][google.longrunning.Operation.response] field type is
+	// [Backup][google.bigtable.admin.v2.Backup], if successful. Cancelling the
+	// returned operation will stop the creation and delete the backup.
+	CreateBackup(ctx context.Context, in *CreateBackupRequest, opts ...grpc.CallOption) (*longrunning.Operation, error)
+	// Gets metadata on a pending or completed Cloud Bigtable Backup.
+	GetBackup(ctx context.Context, in *GetBackupRequest, opts ...grpc.CallOption) (*Backup, error)
+	// Updates a pending or completed Cloud Bigtable Backup.
+	UpdateBackup(ctx context.Context, in *UpdateBackupRequest, opts ...grpc.CallOption) (*Backup, error)
+	// Deletes a pending or completed Cloud Bigtable backup.
+	DeleteBackup(ctx context.Context, in *DeleteBackupRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	// Lists Cloud Bigtable backups. Returns both completed and pending
+	// backups.
+	ListBackups(ctx context.Context, in *ListBackupsRequest, opts ...grpc.CallOption) (*ListBackupsResponse, error)
+	// Create a new table by restoring from a completed backup. The new table
+	// must be in the same instance as the instance containing the backup. The
+	// returned table [long-running operation][google.longrunning.Operation] can
+	// be used to track the progress of the operation, and to cancel it. The
+	// [metadata][google.longrunning.Operation.metadata] field type is
+	// [RestoreTableMetadata][google.bigtable.admin.RestoreTableMetadata]. The
+	// [response][google.longrunning.Operation.response] type is
+	// [Table][google.bigtable.admin.v2.Table], if successful.
+	RestoreTable(ctx context.Context, in *RestoreTableRequest, opts ...grpc.CallOption) (*longrunning.Operation, error)
+	// Gets the access control policy for a resource.
+	// Returns an empty policy if the resource exists but does not have a policy
+	// set.
 	GetIamPolicy(ctx context.Context, in *v1.GetIamPolicyRequest, opts ...grpc.CallOption) (*v1.Policy, error)
-	// Sets the access control policy on a table resource. Replaces any existing
-	// policy.
+	// Sets the access control policy on a Table or Backup resource.
+	// Replaces any existing policy.
 	SetIamPolicy(ctx context.Context, in *v1.SetIamPolicyRequest, opts ...grpc.CallOption) (*v1.Policy, error)
 	// Returns permissions that the caller has on the specified table resource.
 	TestIamPermissions(ctx context.Context, in *v1.TestIamPermissionsRequest, opts ...grpc.CallOption) (*v1.TestIamPermissionsResponse, error)
 }
 
 type bigtableTableAdminClient struct {
-	cc *grpc.ClientConn
+	cc grpc.ClientConnInterface
 }
 
-func NewBigtableTableAdminClient(cc *grpc.ClientConn) BigtableTableAdminClient {
+func NewBigtableTableAdminClient(cc grpc.ClientConnInterface) BigtableTableAdminClient {
 	return &bigtableTableAdminClient{cc}
 }
 
@@ -1696,6 +2536,60 @@ func (c *bigtableTableAdminClient) DeleteSnapshot(ctx context.Context, in *Delet
 	return out, nil
 }
 
+func (c *bigtableTableAdminClient) CreateBackup(ctx context.Context, in *CreateBackupRequest, opts ...grpc.CallOption) (*longrunning.Operation, error) {
+	out := new(longrunning.Operation)
+	err := c.cc.Invoke(ctx, "/google.bigtable.admin.v2.BigtableTableAdmin/CreateBackup", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bigtableTableAdminClient) GetBackup(ctx context.Context, in *GetBackupRequest, opts ...grpc.CallOption) (*Backup, error) {
+	out := new(Backup)
+	err := c.cc.Invoke(ctx, "/google.bigtable.admin.v2.BigtableTableAdmin/GetBackup", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bigtableTableAdminClient) UpdateBackup(ctx context.Context, in *UpdateBackupRequest, opts ...grpc.CallOption) (*Backup, error) {
+	out := new(Backup)
+	err := c.cc.Invoke(ctx, "/google.bigtable.admin.v2.BigtableTableAdmin/UpdateBackup", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bigtableTableAdminClient) DeleteBackup(ctx context.Context, in *DeleteBackupRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
+	err := c.cc.Invoke(ctx, "/google.bigtable.admin.v2.BigtableTableAdmin/DeleteBackup", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bigtableTableAdminClient) ListBackups(ctx context.Context, in *ListBackupsRequest, opts ...grpc.CallOption) (*ListBackupsResponse, error) {
+	out := new(ListBackupsResponse)
+	err := c.cc.Invoke(ctx, "/google.bigtable.admin.v2.BigtableTableAdmin/ListBackups", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bigtableTableAdminClient) RestoreTable(ctx context.Context, in *RestoreTableRequest, opts ...grpc.CallOption) (*longrunning.Operation, error) {
+	out := new(longrunning.Operation)
+	err := c.cc.Invoke(ctx, "/google.bigtable.admin.v2.BigtableTableAdmin/RestoreTable", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bigtableTableAdminClient) GetIamPolicy(ctx context.Context, in *v1.GetIamPolicyRequest, opts ...grpc.CallOption) (*v1.Policy, error) {
 	out := new(v1.Policy)
 	err := c.cc.Invoke(ctx, "/google.bigtable.admin.v2.BigtableTableAdmin/GetIamPolicy", in, out, opts...)
@@ -1795,11 +2689,39 @@ type BigtableTableAdminServer interface {
 	// recommended for production use. It is not subject to any SLA or deprecation
 	// policy.
 	DeleteSnapshot(context.Context, *DeleteSnapshotRequest) (*empty.Empty, error)
-	// Gets the access control policy for an instance resource. Returns an empty
-	// policy if an table exists but does not have a policy set.
+	// Starts creating a new Cloud Bigtable Backup. The returned backup
+	// [long-running operation][google.longrunning.Operation] can be used to
+	// track creation of the backup. The
+	// [metadata][google.longrunning.Operation.metadata] field type is
+	// [CreateBackupMetadata][google.bigtable.admin.v2.CreateBackupMetadata]. The
+	// [response][google.longrunning.Operation.response] field type is
+	// [Backup][google.bigtable.admin.v2.Backup], if successful. Cancelling the
+	// returned operation will stop the creation and delete the backup.
+	CreateBackup(context.Context, *CreateBackupRequest) (*longrunning.Operation, error)
+	// Gets metadata on a pending or completed Cloud Bigtable Backup.
+	GetBackup(context.Context, *GetBackupRequest) (*Backup, error)
+	// Updates a pending or completed Cloud Bigtable Backup.
+	UpdateBackup(context.Context, *UpdateBackupRequest) (*Backup, error)
+	// Deletes a pending or completed Cloud Bigtable backup.
+	DeleteBackup(context.Context, *DeleteBackupRequest) (*empty.Empty, error)
+	// Lists Cloud Bigtable backups. Returns both completed and pending
+	// backups.
+	ListBackups(context.Context, *ListBackupsRequest) (*ListBackupsResponse, error)
+	// Create a new table by restoring from a completed backup. The new table
+	// must be in the same instance as the instance containing the backup. The
+	// returned table [long-running operation][google.longrunning.Operation] can
+	// be used to track the progress of the operation, and to cancel it. The
+	// [metadata][google.longrunning.Operation.metadata] field type is
+	// [RestoreTableMetadata][google.bigtable.admin.RestoreTableMetadata]. The
+	// [response][google.longrunning.Operation.response] type is
+	// [Table][google.bigtable.admin.v2.Table], if successful.
+	RestoreTable(context.Context, *RestoreTableRequest) (*longrunning.Operation, error)
+	// Gets the access control policy for a resource.
+	// Returns an empty policy if the resource exists but does not have a policy
+	// set.
 	GetIamPolicy(context.Context, *v1.GetIamPolicyRequest) (*v1.Policy, error)
-	// Sets the access control policy on a table resource. Replaces any existing
-	// policy.
+	// Sets the access control policy on a Table or Backup resource.
+	// Replaces any existing policy.
 	SetIamPolicy(context.Context, *v1.SetIamPolicyRequest) (*v1.Policy, error)
 	// Returns permissions that the caller has on the specified table resource.
 	TestIamPermissions(context.Context, *v1.TestIamPermissionsRequest) (*v1.TestIamPermissionsResponse, error)
@@ -1847,6 +2769,24 @@ func (*UnimplementedBigtableTableAdminServer) ListSnapshots(ctx context.Context,
 }
 func (*UnimplementedBigtableTableAdminServer) DeleteSnapshot(ctx context.Context, req *DeleteSnapshotRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteSnapshot not implemented")
+}
+func (*UnimplementedBigtableTableAdminServer) CreateBackup(ctx context.Context, req *CreateBackupRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateBackup not implemented")
+}
+func (*UnimplementedBigtableTableAdminServer) GetBackup(ctx context.Context, req *GetBackupRequest) (*Backup, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBackup not implemented")
+}
+func (*UnimplementedBigtableTableAdminServer) UpdateBackup(ctx context.Context, req *UpdateBackupRequest) (*Backup, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateBackup not implemented")
+}
+func (*UnimplementedBigtableTableAdminServer) DeleteBackup(ctx context.Context, req *DeleteBackupRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteBackup not implemented")
+}
+func (*UnimplementedBigtableTableAdminServer) ListBackups(ctx context.Context, req *ListBackupsRequest) (*ListBackupsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListBackups not implemented")
+}
+func (*UnimplementedBigtableTableAdminServer) RestoreTable(ctx context.Context, req *RestoreTableRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RestoreTable not implemented")
 }
 func (*UnimplementedBigtableTableAdminServer) GetIamPolicy(ctx context.Context, req *v1.GetIamPolicyRequest) (*v1.Policy, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetIamPolicy not implemented")
@@ -2096,6 +3036,114 @@ func _BigtableTableAdmin_DeleteSnapshot_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BigtableTableAdmin_CreateBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateBackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BigtableTableAdminServer).CreateBackup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.bigtable.admin.v2.BigtableTableAdmin/CreateBackup",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BigtableTableAdminServer).CreateBackup(ctx, req.(*CreateBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BigtableTableAdmin_GetBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BigtableTableAdminServer).GetBackup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.bigtable.admin.v2.BigtableTableAdmin/GetBackup",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BigtableTableAdminServer).GetBackup(ctx, req.(*GetBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BigtableTableAdmin_UpdateBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateBackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BigtableTableAdminServer).UpdateBackup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.bigtable.admin.v2.BigtableTableAdmin/UpdateBackup",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BigtableTableAdminServer).UpdateBackup(ctx, req.(*UpdateBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BigtableTableAdmin_DeleteBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteBackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BigtableTableAdminServer).DeleteBackup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.bigtable.admin.v2.BigtableTableAdmin/DeleteBackup",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BigtableTableAdminServer).DeleteBackup(ctx, req.(*DeleteBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BigtableTableAdmin_ListBackups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBackupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BigtableTableAdminServer).ListBackups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.bigtable.admin.v2.BigtableTableAdmin/ListBackups",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BigtableTableAdminServer).ListBackups(ctx, req.(*ListBackupsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BigtableTableAdmin_RestoreTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestoreTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BigtableTableAdminServer).RestoreTable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.bigtable.admin.v2.BigtableTableAdmin/RestoreTable",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BigtableTableAdminServer).RestoreTable(ctx, req.(*RestoreTableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BigtableTableAdmin_GetIamPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(v1.GetIamPolicyRequest)
 	if err := dec(in); err != nil {
@@ -2205,6 +3253,30 @@ var _BigtableTableAdmin_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteSnapshot",
 			Handler:    _BigtableTableAdmin_DeleteSnapshot_Handler,
+		},
+		{
+			MethodName: "CreateBackup",
+			Handler:    _BigtableTableAdmin_CreateBackup_Handler,
+		},
+		{
+			MethodName: "GetBackup",
+			Handler:    _BigtableTableAdmin_GetBackup_Handler,
+		},
+		{
+			MethodName: "UpdateBackup",
+			Handler:    _BigtableTableAdmin_UpdateBackup_Handler,
+		},
+		{
+			MethodName: "DeleteBackup",
+			Handler:    _BigtableTableAdmin_DeleteBackup_Handler,
+		},
+		{
+			MethodName: "ListBackups",
+			Handler:    _BigtableTableAdmin_ListBackups_Handler,
+		},
+		{
+			MethodName: "RestoreTable",
+			Handler:    _BigtableTableAdmin_RestoreTable_Handler,
 		},
 		{
 			MethodName: "GetIamPolicy",

@@ -12,6 +12,7 @@ import (
 const (
 	StageTypeJSON      = "json"
 	StageTypeRegex     = "regex"
+	StageTypeReplace   = "replace"
 	StageTypeMetric    = "metrics"
 	StageTypeLabel     = "labels"
 	StageTypeTimestamp = "timestamp"
@@ -97,6 +98,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeTenant:
 		s, err = newTenantStage(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeReplace:
+		s, err = newReplaceStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}

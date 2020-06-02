@@ -19,12 +19,12 @@ package series
 import (
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
@@ -80,18 +80,18 @@ func (c *ConcreteSeries) Labels() labels.Labels {
 }
 
 // Iterator impls storage.Series
-func (c *ConcreteSeries) Iterator() storage.SeriesIterator {
+func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
 
-// concreteSeriesIterator implements storage.SeriesIterator.
+// concreteSeriesIterator implements chunkenc.Iterator.
 type concreteSeriesIterator struct {
 	cur    int
 	series *ConcreteSeries
 }
 
-// NewConcreteSeriesIterator instaniates an in memory storage.SeriesIterator
-func NewConcreteSeriesIterator(series *ConcreteSeries) storage.SeriesIterator {
+// NewConcreteSeriesIterator instaniates an in memory chunkenc.Iterator
+func NewConcreteSeriesIterator(series *ConcreteSeries) chunkenc.Iterator {
 	return &concreteSeriesIterator{
 		cur:    -1,
 		series: series,
@@ -120,11 +120,11 @@ func (c *concreteSeriesIterator) Err() error {
 }
 
 // NewErrIterator instantiates an errIterator
-func NewErrIterator(err error) storage.SeriesIterator {
+func NewErrIterator(err error) chunkenc.Iterator {
 	return errIterator{err}
 }
 
-// errIterator implements storage.SeriesIterator, just returning an error.
+// errIterator implements chunkenc.Iterator, just returning an error.
 type errIterator struct {
 	err error
 }
@@ -240,16 +240,16 @@ func (d DeletedSeries) Labels() labels.Labels {
 	return d.series.Labels()
 }
 
-func (d DeletedSeries) Iterator() storage.SeriesIterator {
+func (d DeletedSeries) Iterator() chunkenc.Iterator {
 	return NewDeletedSeriesIterator(d.series.Iterator(), d.deletedIntervals)
 }
 
 type DeletedSeriesIterator struct {
-	itr              storage.SeriesIterator
+	itr              chunkenc.Iterator
 	deletedIntervals []model.Interval
 }
 
-func NewDeletedSeriesIterator(itr storage.SeriesIterator, deletedIntervals []model.Interval) storage.SeriesIterator {
+func NewDeletedSeriesIterator(itr chunkenc.Iterator, deletedIntervals []model.Interval) chunkenc.Iterator {
 	return &DeletedSeriesIterator{
 		itr:              itr,
 		deletedIntervals: deletedIntervals,
@@ -320,14 +320,14 @@ func (e emptySeries) Labels() labels.Labels {
 	return e.labels
 }
 
-func (emptySeries) Iterator() storage.SeriesIterator {
+func (emptySeries) Iterator() chunkenc.Iterator {
 	return NewEmptySeriesIterator()
 }
 
 type emptySeriesIterator struct {
 }
 
-func NewEmptySeriesIterator() storage.SeriesIterator {
+func NewEmptySeriesIterator() chunkenc.Iterator {
 	return emptySeriesIterator{}
 }
 

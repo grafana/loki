@@ -74,7 +74,9 @@ func init() {
 	proto.RegisterType((*GetPolicyOptions)(nil), "google.iam.v1.GetPolicyOptions")
 }
 
-func init() { proto.RegisterFile("google/iam/v1/options.proto", fileDescriptor_19aa09e909092bd1) }
+func init() {
+	proto.RegisterFile("google/iam/v1/options.proto", fileDescriptor_19aa09e909092bd1)
+}
 
 var fileDescriptor_19aa09e909092bd1 = []byte{
 	// 229 bytes of a gzipped FileDescriptorProto

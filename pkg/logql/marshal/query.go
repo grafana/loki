@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -13,7 +14,7 @@ import (
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
-func NewResultValue(v promql.Value) (loghttp.ResultValue, error) {
+func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 	var err error
 	var value loghttp.ResultValue
 

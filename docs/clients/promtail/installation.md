@@ -100,7 +100,7 @@ rules:
     resources:
     - nodes
     - services
-    - pod
+    - pods
     verbs:
     - get
     - watch
