@@ -7,7 +7,7 @@ using labels and operators for filtering.
 There are two types of LogQL queries: 
 
 -*log queries* return the contents of log lines.
--*metric queries* extend log queries and calculate values based on the counts of logs from a log query.
+-*Metric queries* extend log queries and calculate values based on the counts of logs from a log query.
 
 A basic log query consists of two parts: 
 -**log stream selector**
