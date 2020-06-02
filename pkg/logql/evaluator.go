@@ -378,27 +378,41 @@ func rangeAggEvaluator(
 	expr *rangeAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	vecIter := newRangeVectorIterator(entryIter, expr.left.interval.Nanoseconds(), q.Step().Nanoseconds(),
-		q.Start().UnixNano(), q.End().UnixNano())
 
-	var fn RangeVectorAggregator
-	switch expr.operation {
-	case OpTypeRate:
-		fn = rate(expr.left.interval)
-	case OpTypeCountOverTime:
-		fn = count
+	agg, err := expr.aggregator()
+	if err != nil {
+		return nil, err
 	}
-
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
-		next := vecIter.Next()
-		if !next {
-			return false, 0, promql.Vector{}
-		}
-		ts, vec := vecIter.At(fn)
-		return true, ts, vec
-
-	}, vecIter.Close)
+	extractor, err := expr.extractor()
+	if err != nil {
+		return nil, err
+	}
+	return rangeVectorEvaluator{
+		iter: newRangeVectorIterator(
+			newSeriesIterator(entryIter, extractor),
+			expr.left.interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(),
+		),
+		agg: agg,
+	}, nil
 }
+
+type rangeVectorEvaluator struct {
+	agg  RangeVectorAggregator
+	iter RangeVectorIterator
+}
+
+func (r rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
+	next := r.iter.Next()
+	if !next {
+		return false, 0, promql.Vector{}
+	}
+	ts, vec := r.iter.At(r.agg)
+	return true, ts, vec
+}
+
+func (r rangeVectorEvaluator) Close() error { return r.iter.Close() }
 
 // binOpExpr explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr

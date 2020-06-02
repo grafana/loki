@@ -198,8 +198,10 @@ const (
 	OpTypeTopK    = "topk"
 
 	// range vector ops
-	OpTypeCountOverTime = "count_over_time"
-	OpTypeRate          = "rate"
+	OpRangeTypeCount     = "count_over_time"
+	OpRangeTypeRate      = "rate"
+	OpRangeTypeBytes     = "bytes_over_time"
+	OpRangeTypeBytesRate = "bytes_rate"
 
 	// binops - logical/set
 	OpTypeOr     = "or"

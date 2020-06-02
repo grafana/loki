@@ -44,6 +44,13 @@ func newEntryIterator() iter.EntryIterator {
 	}, logproto.FORWARD)
 }
 
+func newfakeSeriesIterator() SeriesIterator {
+	return &seriesIterator{
+		iter:    iter.NewPeekingIterator(newEntryIterator()),
+		sampler: extractCount,
+	}
+}
+
 func newPoint(t time.Time, v float64) promql.Point {
 	return promql.Point{T: t.UnixNano() / 1e+6, V: v}
 }
@@ -123,7 +130,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			time.Unix(10, 0), time.Unix(100, 0),
 		},
 		{
-			(50 * time.Second).Nanoseconds(), // all step are overlaping
+			(50 * time.Second).Nanoseconds(), // all step are overlapping
 			(10 * time.Second).Nanoseconds(),
 			[]promql.Vector{
 				[]promql.Sample{
@@ -144,12 +151,12 @@ func Test_RangeVectorIterator(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("logs[%s] - step: %s", time.Duration(tt.selRange), time.Duration(tt.step)),
 			func(t *testing.T) {
-				it := newRangeVectorIterator(newEntryIterator(), tt.selRange,
+				it := newRangeVectorIterator(newfakeSeriesIterator(), tt.selRange,
 					tt.step, tt.start.UnixNano(), tt.end.UnixNano())
 
 				i := 0
 				for it.Next() {
-					ts, v := it.At(count)
+					ts, v := it.At(countOverTime)
 					require.ElementsMatch(t, tt.expectedVectors[i], v)
 					require.Equal(t, tt.expectedTs[i].UnixNano()/1e+6, ts)
 					i++

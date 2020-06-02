@@ -103,7 +103,7 @@ type MockDownstreamer struct {
 
 func (m MockDownstreamer) Downstreamer() Downstreamer { return m }
 
-func (d MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]Result, error) {
+func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]Result, error) {
 	results := make([]Result, 0, len(queries))
 	for _, query := range queries {
 		params := NewLiteralParams(
@@ -116,7 +116,7 @@ func (d MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 			query.Params.Limit(),
 			query.Shards.Encode(),
 		)
-		res, err := d.Query(params).Exec(ctx)
+		res, err := m.Query(params).Exec(ctx)
 		if err != nil {
 			return nil, err
 		}

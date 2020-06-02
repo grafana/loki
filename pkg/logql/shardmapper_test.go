@@ -61,7 +61,7 @@ func TestMapSampleExpr(t *testing.T) {
 	}{
 		{
 			in: &rangeAggregationExpr{
-				operation: OpTypeRate,
+				operation: OpRangeTypeRate,
 				left: &logRange{
 					left: &matchersExpr{
 						matchers: []*labels.Matcher{
@@ -78,7 +78,7 @@ func TestMapSampleExpr(t *testing.T) {
 						Of:    2,
 					},
 					SampleExpr: &rangeAggregationExpr{
-						operation: OpTypeRate,
+						operation: OpRangeTypeRate,
 						left: &logRange{
 							left: &matchersExpr{
 								matchers: []*labels.Matcher{
@@ -96,7 +96,7 @@ func TestMapSampleExpr(t *testing.T) {
 							Of:    2,
 						},
 						SampleExpr: &rangeAggregationExpr{
-							operation: OpTypeRate,
+							operation: OpRangeTypeRate,
 							left: &logRange{
 								left: &matchersExpr{
 									matchers: []*labels.Matcher{
@@ -254,7 +254,7 @@ func TestMapping(t *testing.T) {
 						Of:    2,
 					},
 					SampleExpr: &rangeAggregationExpr{
-						operation: OpTypeRate,
+						operation: OpRangeTypeRate,
 						left: &logRange{
 							left: &matchersExpr{
 								matchers: []*labels.Matcher{
@@ -272,7 +272,7 @@ func TestMapping(t *testing.T) {
 							Of:    2,
 						},
 						SampleExpr: &rangeAggregationExpr{
-							operation: OpTypeRate,
+							operation: OpRangeTypeRate,
 							left: &logRange{
 								left: &matchersExpr{
 									matchers: []*labels.Matcher{
@@ -296,7 +296,7 @@ func TestMapping(t *testing.T) {
 						Of:    2,
 					},
 					SampleExpr: &rangeAggregationExpr{
-						operation: OpTypeCountOverTime,
+						operation: OpRangeTypeCount,
 						left: &logRange{
 							left: &matchersExpr{
 								matchers: []*labels.Matcher{
@@ -314,7 +314,7 @@ func TestMapping(t *testing.T) {
 							Of:    2,
 						},
 						SampleExpr: &rangeAggregationExpr{
-							operation: OpTypeCountOverTime,
+							operation: OpRangeTypeCount,
 							left: &logRange{
 								left: &matchersExpr{
 									matchers: []*labels.Matcher{
@@ -344,7 +344,7 @@ func TestMapping(t *testing.T) {
 							grouping:  &grouping{},
 							operation: OpTypeSum,
 							left: &rangeAggregationExpr{
-								operation: OpTypeRate,
+								operation: OpRangeTypeRate,
 								left: &logRange{
 									left: &matchersExpr{
 										matchers: []*labels.Matcher{
@@ -366,7 +366,7 @@ func TestMapping(t *testing.T) {
 								grouping:  &grouping{},
 								operation: OpTypeSum,
 								left: &rangeAggregationExpr{
-									operation: OpTypeRate,
+									operation: OpRangeTypeRate,
 									left: &logRange{
 										left: &matchersExpr{
 											matchers: []*labels.Matcher{
@@ -396,7 +396,7 @@ func TestMapping(t *testing.T) {
 							Of:    2,
 						},
 						SampleExpr: &rangeAggregationExpr{
-							operation: OpTypeRate,
+							operation: OpRangeTypeRate,
 							left: &logRange{
 								left: &matchersExpr{
 									matchers: []*labels.Matcher{
@@ -414,7 +414,7 @@ func TestMapping(t *testing.T) {
 								Of:    2,
 							},
 							SampleExpr: &rangeAggregationExpr{
-								operation: OpTypeRate,
+								operation: OpRangeTypeRate,
 								left: &logRange{
 									left: &matchersExpr{
 										matchers: []*labels.Matcher{
@@ -445,7 +445,7 @@ func TestMapping(t *testing.T) {
 							Of:    2,
 						},
 						SampleExpr: &rangeAggregationExpr{
-							operation: OpTypeRate,
+							operation: OpRangeTypeRate,
 							left: &logRange{
 								left: &matchersExpr{
 									matchers: []*labels.Matcher{
@@ -463,7 +463,7 @@ func TestMapping(t *testing.T) {
 								Of:    2,
 							},
 							SampleExpr: &rangeAggregationExpr{
-								operation: OpTypeRate,
+								operation: OpRangeTypeRate,
 								left: &logRange{
 									left: &matchersExpr{
 										matchers: []*labels.Matcher{
@@ -494,7 +494,7 @@ func TestMapping(t *testing.T) {
 							grouping:  &grouping{},
 							operation: OpTypeCount,
 							left: &rangeAggregationExpr{
-								operation: OpTypeRate,
+								operation: OpRangeTypeRate,
 								left: &logRange{
 									left: &matchersExpr{
 										matchers: []*labels.Matcher{
@@ -516,7 +516,7 @@ func TestMapping(t *testing.T) {
 								grouping:  &grouping{},
 								operation: OpTypeCount,
 								left: &rangeAggregationExpr{
-									operation: OpTypeRate,
+									operation: OpRangeTypeRate,
 									left: &logRange{
 										left: &matchersExpr{
 											matchers: []*labels.Matcher{
@@ -550,7 +550,7 @@ func TestMapping(t *testing.T) {
 								grouping:  &grouping{},
 								operation: OpTypeSum,
 								left: &rangeAggregationExpr{
-									operation: OpTypeRate,
+									operation: OpRangeTypeRate,
 									left: &logRange{
 										left: &matchersExpr{
 											matchers: []*labels.Matcher{
@@ -572,7 +572,7 @@ func TestMapping(t *testing.T) {
 									grouping:  &grouping{},
 									operation: OpTypeSum,
 									left: &rangeAggregationExpr{
-										operation: OpTypeRate,
+										operation: OpRangeTypeRate,
 										left: &logRange{
 											left: &matchersExpr{
 												matchers: []*labels.Matcher{
@@ -601,7 +601,7 @@ func TestMapping(t *testing.T) {
 								grouping:  &grouping{},
 								operation: OpTypeCount,
 								left: &rangeAggregationExpr{
-									operation: OpTypeRate,
+									operation: OpRangeTypeRate,
 									left: &logRange{
 										left: &matchersExpr{
 											matchers: []*labels.Matcher{
@@ -623,7 +623,7 @@ func TestMapping(t *testing.T) {
 									grouping:  &grouping{},
 									operation: OpTypeCount,
 									left: &rangeAggregationExpr{
-										operation: OpTypeRate,
+										operation: OpRangeTypeRate,
 										left: &logRange{
 											left: &matchersExpr{
 												matchers: []*labels.Matcher{
@@ -663,7 +663,7 @@ func TestMapping(t *testing.T) {
 								},
 								operation: OpTypeSum,
 								left: &rangeAggregationExpr{
-									operation: OpTypeRate,
+									operation: OpRangeTypeRate,
 									left: &logRange{
 										left: &matchersExpr{
 											matchers: []*labels.Matcher{
@@ -687,7 +687,7 @@ func TestMapping(t *testing.T) {
 									},
 									operation: OpTypeSum,
 									left: &rangeAggregationExpr{
-										operation: OpTypeRate,
+										operation: OpRangeTypeRate,
 										left: &logRange{
 											left: &matchersExpr{
 												matchers: []*labels.Matcher{
@@ -721,7 +721,7 @@ func TestMapping(t *testing.T) {
 								Of:    2,
 							},
 							SampleExpr: &rangeAggregationExpr{
-								operation: OpTypeRate,
+								operation: OpRangeTypeRate,
 								left: &logRange{
 									left: &matchersExpr{
 										matchers: []*labels.Matcher{
@@ -739,7 +739,7 @@ func TestMapping(t *testing.T) {
 									Of:    2,
 								},
 								SampleExpr: &rangeAggregationExpr{
-									operation: OpTypeRate,
+									operation: OpRangeTypeRate,
 									left: &logRange{
 										left: &matchersExpr{
 											matchers: []*labels.Matcher{
@@ -775,7 +775,7 @@ func TestMapping(t *testing.T) {
 								grouping:  &grouping{},
 								operation: OpTypeCount,
 								left: &rangeAggregationExpr{
-									operation: OpTypeRate,
+									operation: OpRangeTypeRate,
 									left: &logRange{
 										left: &matchersExpr{
 											matchers: []*labels.Matcher{
@@ -797,7 +797,7 @@ func TestMapping(t *testing.T) {
 									grouping:  &grouping{},
 									operation: OpTypeCount,
 									left: &rangeAggregationExpr{
-										operation: OpTypeRate,
+										operation: OpRangeTypeRate,
 										left: &logRange{
 											left: &matchersExpr{
 												matchers: []*labels.Matcher{
@@ -839,7 +839,7 @@ func TestMapping(t *testing.T) {
 									},
 									operation: OpTypeSum,
 									left: &rangeAggregationExpr{
-										operation: OpTypeRate,
+										operation: OpRangeTypeRate,
 										left: &logRange{
 											left: &matchersExpr{
 												matchers: []*labels.Matcher{
@@ -863,7 +863,7 @@ func TestMapping(t *testing.T) {
 										},
 										operation: OpTypeSum,
 										left: &rangeAggregationExpr{
-											operation: OpTypeRate,
+											operation: OpRangeTypeRate,
 											left: &logRange{
 												left: &matchersExpr{
 													matchers: []*labels.Matcher{
@@ -893,7 +893,7 @@ func TestMapping(t *testing.T) {
 								grouping:  &grouping{},
 								operation: OpTypeCount,
 								left: &rangeAggregationExpr{
-									operation: OpTypeRate,
+									operation: OpRangeTypeRate,
 									left: &logRange{
 										left: &matchersExpr{
 											matchers: []*labels.Matcher{
@@ -915,7 +915,7 @@ func TestMapping(t *testing.T) {
 									grouping:  &grouping{},
 									operation: OpTypeCount,
 									left: &rangeAggregationExpr{
-										operation: OpTypeRate,
+										operation: OpRangeTypeRate,
 										left: &logRange{
 											left: &matchersExpr{
 												matchers: []*labels.Matcher{

@@ -52,6 +52,7 @@ import (
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
+                  BYTES_OVER_TIME BYTES_RATE
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -166,8 +167,10 @@ vectorOp:
       ;
 
 rangeOp:
-      COUNT_OVER_TIME { $$ = OpTypeCountOverTime }
-    | RATE            { $$ = OpTypeRate }
+      COUNT_OVER_TIME { $$ = OpRangeTypeCount }
+    | RATE            { $$ = OpRangeTypeRate }
+    | BYTES_OVER_TIME { $$ = OpRangeTypeBytes }
+    | BYTES_RATE      { $$ = OpRangeTypeBytesRate }
     ;
 
 
