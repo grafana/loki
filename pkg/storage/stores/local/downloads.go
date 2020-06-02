@@ -22,6 +22,9 @@ func (s *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 		return
 	}
 
+	fc.RLock()
+	defer fc.RUnlock()
+
 	// listing tables from store
 	var objects []chunk.StorageObject
 	objects, _, err = s.storageClient.List(ctx, period+"/")
@@ -40,17 +43,22 @@ func (s *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 		listedUploaders[uploader] = struct{}{}
 
 		// Checking whether file was updated in the store after we downloaded it, if not, no need to include it in updates
-		downloadedFileDetails, ok := fc.files[uploader]
-		if !ok || downloadedFileDetails.mtime != object.ModifiedAt {
+		var df *downloadedFile
+		df, err = fc.getFile(uploader)
+		if err != nil {
+			return
+		}
+		if df == nil || df.mtime != object.ModifiedAt {
 			toDownload = append(toDownload, object)
 		}
 	}
 
-	for uploader := range fc.files {
+	err = fc.iter(func(uploader string, df *downloadedFile) error {
 		if _, isOK := listedUploaders[uploader]; !isOK {
 			toDelete = append(toDelete, uploader)
 		}
-	}
+		return nil
+	})
 
 	return
 }
@@ -59,10 +67,7 @@ func (s *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 func (s *Shipper) syncFilesForPeriod(ctx context.Context, period string, fc *filesCollection) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("syncing files for period %s", period))
 
-	fc.RLock()
 	toDownload, toDelete, err := s.checkStorageForUpdates(ctx, period, fc)
-	fc.RUnlock()
-
 	if err != nil {
 		return err
 	}
@@ -75,7 +80,7 @@ func (s *Shipper) syncFilesForPeriod(ctx context.Context, period string, fc *fil
 	}
 
 	for _, uploader := range toDelete {
-		err := s.deleteFileFromCache(period, uploader, fc)
+		err := s.deleteFileFromCache(uploader, fc)
 		if err != nil {
 			return err
 		}
@@ -101,13 +106,16 @@ func (s *Shipper) downloadFile(ctx context.Context, period string, storageObject
 	fc.Lock()
 	defer fc.Unlock()
 
-	df, ok := fc.files[uploader]
-	if ok {
+	df, err := fc.getFile(uploader)
+	if err != nil {
+		return err
+	}
+	if df != nil {
 		if err := df.boltdb.Close(); err != nil {
 			return err
 		}
 	} else {
-		df = downloadedFiles{}
+		df = &downloadedFile{}
 	}
 
 	// move the file from temp location to actual location
@@ -122,9 +130,7 @@ func (s *Shipper) downloadFile(ctx context.Context, period string, storageObject
 		return err
 	}
 
-	fc.files[uploader] = df
-
-	return nil
+	return fc.addFile(uploader, df)
 }
 
 // getFileFromStorage downloads a file from storage to given location.
@@ -165,6 +171,12 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 		status := statusSuccess
 		if err != nil {
 			status = statusFailure
+			fc.setErr(err)
+
+			// cleaning up files due to error to avoid returning invalid results.
+			if err := fc.cleanupAllFiles(); err != nil {
+				level.Error(util.Logger).Log("msg", "failed to cleanup partially downloaded files", "err", err)
+			}
 		}
 		s.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
 	}()
@@ -191,7 +203,7 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 		}
 
 		filePath := path.Join(folderPath, uploader)
-		df := downloadedFiles{}
+		df := downloadedFile{}
 
 		err = s.getFileFromStorage(ctx, object.Key, filePath)
 		if err != nil {
@@ -212,7 +224,10 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 
 		totalFilesSize += stat.Size()
 
-		fc.files[uploader] = df
+		err = fc.addFile(uploader, &df)
+		if err != nil {
+			return
+		}
 	}
 
 	duration := time.Since(startTime).Seconds()
