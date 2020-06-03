@@ -21,6 +21,12 @@ If the files in the Objectstore is stored in a compressed format, promtail shoul
 
 To identify and to start tailing the newly added files, we should list the files in the Object store at some desired intervals. How frequently we should this? Once we add the file to `watch`, to identify any changes to the file we should frequently check the modified `datetime` of the file. The list of files might be large and each watch will be running in a `go routine` and each `go routine` making frequent `http` requests to the Obejctstore. We should make sure this doesn't affect promtail's performance.
 
+Instead of frequently doing `ListObjects`, we can consider to use event notification in S3 with `SQS`, through which we can get to know the newly added files and then we can fetch only them.
+
+### How to fetch the file and read the contents?
+
+Here, we have two options. One, just get the file with a `reader` and iterate the lines of the file but if the files we are fetching are very large, just fetching a file using `GetObject` will take time and we would be keeping large amount of data in memory. This might be a serious performance issue. Two, we can download the file to local and then read the file the same way we do for other log files. We should implement multipart download to make the downloading of large files faster and also we should read the downloaded file in smaller chunks to reduce memory consumption. 
+
 ## Proposed Solution for the above mentioned points
 
 > There is no appending of lines to file in object store
@@ -87,3 +93,15 @@ positions:
       osffset: "66",
       latest_modified_datetime: "2020-05-21T23:59:00Z"
 ```
+
+## Iterations
+
+We will be implementing this feature in iterations. 
+
+### A brief implementation details for the first iteration
+
+1. We will use Cortex's object client code to list and read objects
+2. `positions.yaml` will be kept locally
+3. If the object is modifed, we will resume to read from the previous known position. Suppose, if the modified object's size is less than the previous know position then we read from the begining.
+4. We will support scraping logs only from S3 in first iteration.
+5. Only normal files and `gzip` files will be supported. 
