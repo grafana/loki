@@ -50,16 +50,18 @@ func getStore() (lstore.Store, error) {
 			},
 		},
 		chunk.StoreConfig{},
-		chunk.SchemaConfig{
-			Configs: []chunk.PeriodConfig{
-				{
-					From:       chunk.DayTime{Time: start},
-					IndexType:  "boltdb",
-					ObjectType: "filesystem",
-					Schema:     "v9",
-					IndexTables: chunk.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 168,
+		lstore.SchemaConfig{
+			SchemaConfig: chunk.SchemaConfig{
+				Configs: []chunk.PeriodConfig{
+					{
+						From:       chunk.DayTime{Time: start},
+						IndexType:  "boltdb",
+						ObjectType: "filesystem",
+						Schema:     "v9",
+						IndexTables: chunk.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 168,
+						},
 					},
 				},
 			},

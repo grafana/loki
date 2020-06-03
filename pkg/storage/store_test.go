@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -192,7 +194,7 @@ func getLocalStore() Store {
 			FSConfig:     cortex_local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},
 		MaxChunkBatchSize: 10,
-	}, chunk.StoreConfig{}, chunk.SchemaConfig{
+	}, chunk.StoreConfig{}, SchemaConfig{chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
 				From:       chunk.DayTime{Time: start},
@@ -205,7 +207,7 @@ func getLocalStore() Store {
 				},
 			},
 		},
-	}, limits, nil)
+	}}, limits, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -750,7 +752,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 	RegisterCustomIndexClients(&config, nil)
 
-	store, err := NewStore(config, chunk.StoreConfig{}, chunk.SchemaConfig{
+	store, err := NewStore(config, chunk.StoreConfig{}, SchemaConfig{chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
 				From:       chunk.DayTime{Time: timeToModelTime(firstStoreDate)},
@@ -774,7 +776,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 				RowShards: 2,
 			},
 		},
-	}, limits, nil)
+	}}, limits, nil)
 	require.NoError(t, err)
 
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -857,4 +859,161 @@ func buildTestStreams(labels string, tr timeRange) logproto.Stream {
 
 func timeToModelTime(t time.Time) model.Time {
 	return model.TimeFromUnixNano(t.UnixNano())
+}
+
+func TestActiveIndexType(t *testing.T) {
+	var cfg SchemaConfig
+
+	// just one PeriodConfig in the past
+	cfg.Configs = []chunk.PeriodConfig{{
+		From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
+		IndexType: "first",
+	}}
+
+	assert.Equal(t, 0, ActivePeriodConfig(cfg))
+
+	// add a newer PeriodConfig in the past which should be considered
+	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
+		From:      chunk.DayTime{Time: model.Now().Add(-12 * time.Hour)},
+		IndexType: "second",
+	})
+	assert.Equal(t, 1, ActivePeriodConfig(cfg))
+
+	// add a newer PeriodConfig in the future which should not be considered
+	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
+		From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
+		IndexType: "third",
+	})
+	assert.Equal(t, 1, ActivePeriodConfig(cfg))
+}
+
+func TestUsingBoltdbShipper(t *testing.T) {
+	var cfg SchemaConfig
+
+	// just one PeriodConfig in the past using boltdb-shipper
+	cfg.Configs = []chunk.PeriodConfig{{
+		From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
+		IndexType: "boltdb-shipper",
+	}}
+	assert.Equal(t, true, UsingBoltdbShipper(cfg))
+
+	// just one PeriodConfig in the past not using boltdb-shipper
+	cfg.Configs[0].IndexType = "boltdb"
+	assert.Equal(t, false, UsingBoltdbShipper(cfg))
+
+	// add a newer PeriodConfig in the future using boltdb-shipper
+	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
+		From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
+		IndexType: "boltdb-shipper",
+	})
+	assert.Equal(t, true, UsingBoltdbShipper(cfg))
+}
+
+func TestSchemaConfig_Validate(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		configs []chunk.PeriodConfig
+		err     error
+	}{
+		{
+			name: "NOT using boltdb-shipper",
+			configs: []chunk.PeriodConfig{{
+				From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+		},
+		{
+			name: "current config boltdb-shipper with 7 days periodic config, without future index type changes",
+			configs: []chunk.PeriodConfig{{
+				From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+			err: currentBoltdbShipperNon24HoursErr,
+		},
+		{
+			name: "current config boltdb-shipper with 1 day periodic config, without future index type changes",
+			configs: []chunk.PeriodConfig{{
+				From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 24 * time.Hour,
+				},
+			}},
+		},
+		{
+			name: "current config boltdb-shipper with 7 days periodic config, upcoming config NOT boltdb-shipper",
+			configs: []chunk.PeriodConfig{{
+				From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 24 * time.Hour,
+				},
+			}, {
+				From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
+				IndexType: "boltdb",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+		},
+		{
+			name: "current and upcoming config boltdb-shipper with 7 days periodic config",
+			configs: []chunk.PeriodConfig{{
+				From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 24 * time.Hour,
+				},
+			}, {
+				From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+			err: upcomingBoltdbShipperNon24HoursErr,
+		},
+		{
+			name: "current config NOT boltdb-shipper, upcoming config boltdb-shipper with 7 days periodic config",
+			configs: []chunk.PeriodConfig{{
+				From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
+				IndexType: "boltdb",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 24 * time.Hour,
+				},
+			}, {
+				From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
+				IndexType: "boltdb-shipper",
+				Schema:    "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Period: 7 * 24 * time.Hour,
+				},
+			}},
+			err: upcomingBoltdbShipperNon24HoursErr,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := SchemaConfig{chunk.SchemaConfig{Configs: tc.configs}}
+			err := cfg.Validate()
+			if tc.err == nil {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tc.err.Error())
+			}
+		})
+	}
 }
