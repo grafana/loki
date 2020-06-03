@@ -239,3 +239,14 @@ These logical/set binary operators are only defined between two vectors:
 This contrived query will return the intersection of these queries, effectively `rate({app="bar"})`
 
 > `rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])`
+
+#### Comparison operators
+
+-  `==` (equality)
+-  `!=` (inequality)
+-  `>` (greater than)
+-  `>=` (greater than or equal to)
+-  `<` (less than)
+-  `<=` (less than or equal to)
+
+TODO
