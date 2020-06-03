@@ -22,7 +22,7 @@ func Test_splitQuery(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		req      *LokiRequest
+		req      queryrange.Request
 		interval time.Duration
 		want     []queryrange.Request
 	}{
@@ -69,6 +69,28 @@ func Test_splitQuery(t *testing.T) {
 				&LokiRequest{
 					StartTs: time.Date(2019, 12, 9, 13, 0, 0, 1, time.UTC),
 					EndTs:   time.Date(2019, 12, 9, 13, 0, 0, 2, time.UTC),
+				},
+			},
+		},
+		{
+			"3 intervals series",
+			&LokiSeriesRequest{
+				StartTs: time.Date(2019, 12, 9, 12, 0, 0, 1, time.UTC),
+				EndTs:   time.Date(2019, 12, 9, 16, 0, 0, 2, time.UTC),
+			},
+			2 * time.Hour,
+			[]queryrange.Request{
+				&LokiSeriesRequest{
+					StartTs: time.Date(2019, 12, 9, 12, 0, 0, 1, time.UTC),
+					EndTs:   time.Date(2019, 12, 9, 14, 0, 0, 1, time.UTC),
+				},
+				&LokiSeriesRequest{
+					StartTs: time.Date(2019, 12, 9, 14, 0, 0, 1, time.UTC),
+					EndTs:   time.Date(2019, 12, 9, 16, 0, 0, 1, time.UTC),
+				},
+				&LokiSeriesRequest{
+					StartTs: time.Date(2019, 12, 9, 16, 0, 0, 1, time.UTC),
+					EndTs:   time.Date(2019, 12, 9, 16, 0, 0, 2, time.UTC),
 				},
 			},
 		},
@@ -235,6 +257,71 @@ func Test_splitByInterval_Do(t *testing.T) {
 								{Timestamp: time.Unix(0, 2*time.Hour.Nanoseconds()), Line: fmt.Sprintf("%d", 2*time.Hour.Nanoseconds())},
 							},
 						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := split.Do(ctx, tt.req)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, res)
+		})
+	}
+
+}
+
+func Test_series_splitByInterval_Do(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+		return &LokiSeriesResponse{
+			Status:  "success",
+			Version: uint32(loghttp.VersionV1),
+			Data: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+				},
+				{
+					Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+				},
+				{
+					Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+				},
+			},
+		}, nil
+	})
+
+	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	split := SplitByIntervalMiddleware(
+		l,
+		lokiCodec,
+		nilMetrics,
+	).Wrap(next)
+
+	tests := []struct {
+		name string
+		req  *LokiSeriesRequest
+		want *LokiSeriesResponse
+	}{
+		{
+			"backward",
+			&LokiSeriesRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(0, (4 * time.Hour).Nanoseconds()),
+				Match:   []string{`{job="varlogs"}`},
+				Path:    "/loki/api/v1/series",
+			},
+			&LokiSeriesResponse{
+				Status:  "success",
+				Version: 1,
+				Data: []logproto.SeriesIdentifier{
+					{
+						Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+					},
+					{
+						Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
 					},
 				},
 			},
