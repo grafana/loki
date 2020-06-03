@@ -210,6 +210,21 @@ Specify a pair of client certificate and private key with `cert` and `key` if a 
 </match>
 ```
 
+### server certificate verification
+A flag to enable a server certificate verification. By default the `verify_tls` is set to true.
+
+```
+<match **>
+  @type loki
+
+  url "https://loki"
+
+  verify_tls true
+
+  ...
+</match>
+```
+
 ### output format
 Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
 

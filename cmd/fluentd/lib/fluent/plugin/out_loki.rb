@@ -49,6 +49,9 @@ module Fluent
       desc 'TLS'
       config_param :ca_cert, :string, default: nil
 
+      desc 'Server certificate verification'
+      config_param :verify_tls, :bool, default: true
+
       desc 'Loki tenant id'
       config_param :tenant, :string, default: nil
 
@@ -155,7 +158,7 @@ module Fluent
 
         if !@cert.nil? && !@key.nil?
           opts = opts.merge(
-            verify_mode: OpenSSL::SSL::VERIFY_PEER,
+            verify_mode: @verify_tls ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE,
             cert: @cert,
             key: @key
           )
