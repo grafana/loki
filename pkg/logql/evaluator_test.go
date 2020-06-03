@@ -28,3 +28,173 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		},
 	).Point.V))
 }
+
+func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		op       string
+		lhs, rhs *promql.Sample
+		expected *promql.Sample
+	}{
+		{
+			`eq_0`,
+			OpTypeCmpEQ,
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+		},
+		{
+			`eq_1`,
+			OpTypeCmpEQ,
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+		},
+		{
+			`neq_0`,
+			OpTypeNEQ,
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+		},
+		{
+			`neq_1`,
+			OpTypeNEQ,
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+		},
+		{
+			`gt_0`,
+			OpTypeGT,
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+		},
+		{
+			`gt_1`,
+			OpTypeGT,
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+		},
+		{
+			`lt_0`,
+			OpTypeLT,
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+		},
+		{
+			`lt_1`,
+			OpTypeLT,
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+		},
+		{
+			`gte_0`,
+			OpTypeGTE,
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+		},
+		{
+			`gt_1`,
+			OpTypeGTE,
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+		},
+		{
+			`lte_0`,
+			OpTypeLTE,
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+		},
+		{
+			`lte_1`,
+			OpTypeLTE,
+			&promql.Sample{
+				Point: promql.Point{V: 1},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+			&promql.Sample{
+				Point: promql.Point{V: 0},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.expected, mergeBinOp(tc.op, tc.lhs, tc.rhs))
+		})
+	}
+}

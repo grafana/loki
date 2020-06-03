@@ -622,6 +622,120 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			return &res
 		}
 
+	case OpTypeCmpEQ:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V == right.Point.V {
+				val = 1.
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeNEQ:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V != right.Point.V {
+				val = 1.
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeGT:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V > right.Point.V {
+				val = 1.
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeGTE:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V >= right.Point.V {
+				val = 1.
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeLT:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V < right.Point.V {
+				val = 1.
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeLTE:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V <= right.Point.V {
+				val = 1.
+			}
+			res.Point.V = val
+			return res
+		}
+
 	default:
 		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
 	}

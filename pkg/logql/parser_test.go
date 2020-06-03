@@ -985,6 +985,41 @@ func TestParse(t *testing.T) {
 			exp: &literalExpr{value: 3},
 		},
 		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 == 1`,
+			exp: &literalExpr{value: 1},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 != 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 > 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 >= 1`,
+			exp: &literalExpr{value: 1},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 < 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 <= 1`,
+			exp: &literalExpr{value: 1},
+		},
+		{
+			// ensure binary ops with two literals are reduced recursively when comparisons are used
+			in:  `1 >= 1 > 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
 			in: `{foo="bar"} + {foo="bar"}`,
 			err: ParseError{
 				msg:  `unexpected type for left leg of binary operation (+): *logql.matchersExpr`,
@@ -1030,6 +1065,72 @@ func TestParse(t *testing.T) {
 				msg:  `unexpected literal for right leg of logical/set binary operation (or): 1.000000`,
 				line: 0,
 				col:  0,
+			},
+		},
+		{
+			in: `count_over_time({ foo != "bar" }[12m]) > count_over_time({ foo = "bar" }[12m])`,
+			exp: &binOpExpr{
+				op: OpTypeGT,
+				SampleExpr: &rangeAggregationExpr{
+					left: &logRange{
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						interval: 12 * time.Minute,
+					},
+					operation: "count_over_time",
+				},
+				RHS: &rangeAggregationExpr{
+					left: &logRange{
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+						interval: 12 * time.Minute,
+					},
+					operation: "count_over_time",
+				},
+			},
+		},
+		{
+			in: `count_over_time({ foo != "bar" }[12m]) > 1`,
+			exp: &binOpExpr{
+				op: OpTypeGT,
+				SampleExpr: &rangeAggregationExpr{
+					left: &logRange{
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						interval: 12 * time.Minute,
+					},
+					operation: "count_over_time",
+				},
+				RHS: &literalExpr{1},
+			},
+		},
+		{
+			// cannot compare metric & log queries
+			in: `count_over_time({ foo != "bar" }[12m]) > { foo = "bar" }`,
+			err: ParseError{
+				msg: "unexpected type for right leg of binary operation (>): *logql.matchersExpr",
+			},
+		},
+		{
+			// cannot compare metric & log queries
+			in: `count_over_time({ foo != "bar" }[12m]) or count_over_time({ foo = "bar" }[12m]) > 1`,
+			exp: &binOpExpr{
+				op: OpTypeOr,
+				SampleExpr: &rangeAggregationExpr{
+					left: &logRange{
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						interval: 12 * time.Minute,
+					},
+					operation: "count_over_time",
+				},
+				RHS: &binOpExpr{
+					op: OpTypeGT,
+					SampleExpr: &rangeAggregationExpr{
+						left: &logRange{
+							left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+							interval: 12 * time.Minute,
+						},
+						operation: "count_over_time",
+					},
+					RHS: &literalExpr{1},
+				},
 			},
 		},
 	} {

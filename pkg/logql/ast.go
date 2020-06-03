@@ -215,6 +215,14 @@ const (
 	OpTypeDiv = "/"
 	OpTypeMod = "%"
 	OpTypePow = "^"
+
+	// binops - comparison
+	OpTypeCmpEQ = "=="
+	OpTypeNEQ   = "!="
+	OpTypeGT    = ">"
+	OpTypeGTE   = ">="
+	OpTypeLT    = "<"
+	OpTypeLTE   = "<="
 )
 
 // IsLogicalBinOp tests whether an operation is a logical/set binary operation

@@ -50,13 +50,14 @@ import (
 
 %token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION
-%token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
+%token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
 %left <binOp> AND UNLESS
+%left <binOp> CMP_EQ NEQ LT LTE GT GTE
 %left <binOp> ADD SUB
 %left <binOp> MUL DIV MOD
 %right <binOp> POW
@@ -132,9 +133,6 @@ matcher:
     ;
 
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr
-// Comparison operators are currently avoided due to symbol collisions in our grammar: "!=" means not equal in prometheus,
-// but is part of our filter grammar.
-// reference: https://prometheus.io/docs/prometheus/latest/querying/operators/
 // Operator precedence only works if each of these is listed separately.
 binOpExpr:
          expr OR expr          { $$ = mustNewBinOpExpr("or", $1, $3) }
@@ -146,7 +144,15 @@ binOpExpr:
          | expr DIV expr       { $$ = mustNewBinOpExpr("/", $1, $3) }
          | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
          | expr POW expr       { $$ = mustNewBinOpExpr("^", $1, $3) }
+         | expr CMP_EQ expr    { $$ = mustNewBinOpExpr("==", $1, $3) }
+         | expr NEQ expr       { $$ = mustNewBinOpExpr("!=", $1, $3) }
+         | expr GT expr        { $$ = mustNewBinOpExpr(">", $1, $3) }
+         | expr GTE expr       { $$ = mustNewBinOpExpr(">=", $1, $3) }
+         | expr LT expr        { $$ = mustNewBinOpExpr("<", $1, $3) }
+         | expr LTE expr       { $$ = mustNewBinOpExpr("<=", $1, $3) }
          ;
+
+comparisonExpr:
 
 literalExpr:
            NUMBER         { $$ = mustNewLiteralExpr( $1, false ) }
