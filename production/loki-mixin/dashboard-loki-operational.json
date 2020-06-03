@@ -3156,7 +3156,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "ops-cortex",
+          "datasource": "$datasource",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
@@ -3263,7 +3263,7 @@
             "mode": "spectrum"
           },
           "dataFormat": "tsbuckets",
-          "datasource": "ops-cortex",
+          "datasource": "$datasource",
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -3319,7 +3319,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "ops-cortex",
+          "datasource": "$datasource",
           "fill": 7,
           "fillGradient": 0,
           "gridPos": {
@@ -3436,7 +3436,7 @@
             "mode": "spectrum"
           },
           "dataFormat": "tsbuckets",
-          "datasource": "ops-cortex",
+          "datasource": "$datasource",
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -6352,11 +6352,6 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false,
-          "text": "ops-cortex",
-          "value": "ops-cortex"
-        },
         "hide": 0,
         "includeAll": false,
         "label": null,
@@ -6370,11 +6365,6 @@
         "type": "datasource"
       },
       {
-        "current": {
-          "selected": false,
-          "text": "Grafana Logging",
-          "value": "Grafana Logging"
-        },
         "hide": 0,
         "includeAll": false,
         "label": null,
@@ -6390,10 +6380,6 @@
       },
       {
         "allValue": null,
-        "current": {
-          "text": "us-central1",
-          "value": "us-central1"
-        },
         "datasource": "$datasource",
         "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
         "hide": 0,
@@ -6415,10 +6401,6 @@
       },
       {
         "allValue": null,
-        "current": {
-          "text": "loki-prod",
-          "value": "loki-prod"
-        },
         "datasource": "$datasource",
         "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\"}, namespace)",
         "hide": 0,
