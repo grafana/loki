@@ -20,7 +20,7 @@ Established members are expected to demonstrate their adherence to the principle
 
 The current team members are:
 
-- Aditya C S (IBM)                   [adityacs](https://github.com/adityacs)
+- Aditya C S                         [adityacs](https://github.com/adityacs)
 - Cyril Tovena (Grafana)             [cyriltovena](https://github.com/cyriltovena)
 - David Kaltschmidt (Grafana)        [davkal](https://github.com/davkal)
 - Edward Welch (Grafana)             [slim-bean](https://github.com/slim-bean)
