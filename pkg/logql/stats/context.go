@@ -67,6 +67,7 @@ func (r Result) Log(log log.Logger) {
 		"Store.DecompressedLines", r.Store.DecompressedLines,
 		"Store.CompressedBytes", humanize.Bytes(uint64(r.Store.CompressedBytes)),
 		"Store.TotalDuplicates", r.Store.TotalDuplicates,
+		"Store.TotalChunksOverlapping", r.Store.TotalChunksOverlapping,
 	)
 	r.Summary.Log(log)
 }
@@ -129,9 +130,10 @@ func GetIngesterData(ctx context.Context) *IngesterData {
 
 // StoreData contains store specific statistics.
 type StoreData struct {
-	TotalChunksRef        int64         // The total of chunk reference fetched from index.
-	TotalChunksDownloaded int64         // Total number of chunks fetched.
-	ChunksDownloadTime    time.Duration // Time spent fetching chunks.
+	TotalChunksRef         int64         // The total of chunk reference fetched from index.
+	TotalChunksDownloaded  int64         // Total number of chunks fetched.
+	ChunksDownloadTime     time.Duration // Time spent fetching chunks.
+	TotalChunksOverlapping int64         // Total Overlapping chunks found while processing.
 }
 
 // GetStoreData returns the store statistics data from the current context.
@@ -153,6 +155,7 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 		res.Store.TotalChunksRef = s.TotalChunksRef
 		res.Store.TotalChunksDownloaded = s.TotalChunksDownloaded
 		res.Store.ChunksDownloadTime = s.ChunksDownloadTime.Seconds()
+		res.Store.TotalChunksOverlapping = s.TotalChunksOverlapping
 	}
 	// collect data from chunks iteration.
 	c, ok := ctx.Value(chunksKey).(*ChunkData)
@@ -206,6 +209,7 @@ func (r *Result) Merge(m Result) {
 	r.Store.DecompressedLines += m.Store.DecompressedLines
 	r.Store.CompressedBytes += m.Store.CompressedBytes
 	r.Store.TotalDuplicates += m.Store.TotalDuplicates
+	r.Store.TotalChunksOverlapping += m.Store.TotalChunksOverlapping
 
 	r.Ingester.TotalReached += m.Ingester.TotalReached
 	r.Ingester.TotalChunksMatched += m.Ingester.TotalChunksMatched

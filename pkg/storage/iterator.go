@@ -74,6 +74,7 @@ type batchChunkIterator struct {
 	err             error
 	curr            iter.EntryIterator
 	lastOverlapping []*chunkenc.LazyChunk
+	storeStats      *stats.StoreData
 
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -99,16 +100,16 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 			}
 		}
 	}
-
 	ctx, cancel := context.WithCancel(ctx)
 	res := &batchChunkIterator{
-		batchSize: batchSize,
-		matchers:  matchers,
-		filter:    filter,
-		req:       req,
-		ctx:       ctx,
-		cancel:    cancel,
-		chunks:    lazyChunks{direction: req.Direction, chunks: chunks},
+		batchSize:  batchSize,
+		matchers:   matchers,
+		filter:     filter,
+		req:        req,
+		ctx:        ctx,
+		cancel:     cancel,
+		storeStats: stats.GetStoreData(ctx),
+		chunks:     lazyChunks{direction: req.Direction, chunks: chunks},
 		next: make(chan *struct {
 			iter iter.EntryIterator
 			err  error
@@ -170,7 +171,7 @@ func (it *batchChunkIterator) Next() bool {
 func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
-
+	it.storeStats.TotalChunksOverlapping += int64(len(it.lastOverlapping))
 	// pop the next batch of chunks and append/prepend previous overlapping chunks
 	// so we can merge/de-dupe overlapping entries.
 	batch := make([]*chunkenc.LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
