@@ -559,10 +559,10 @@ func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
 			maxCnt = r
 		}
 	}
-
-	if maxCnt >= uint32(q.limits.MaxConcurrentTailRequests(userID)) {
+	l := uint32(q.limits.MaxConcurrentTailRequests(userID))
+	if maxCnt >= l {
 		return httpgrpc.Errorf(http.StatusBadRequest,
-			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, 1)
+			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, l)
 	}
 
 	return nil
