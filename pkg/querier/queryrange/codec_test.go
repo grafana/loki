@@ -748,7 +748,8 @@ var (
 			"chunksDownloadTime": 16,
 			"totalChunksRef": 17,
 			"totalChunksDownloaded": 18,
-			"totalDuplicates": 19
+			"totalDuplicates": 19,
+			"totalChunksOverlapping": 20
 		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
@@ -876,15 +877,16 @@ var (
 			TotalLinesProcessed:     24,
 		},
 		Store: stats.Store{
-			CompressedBytes:       11,
-			DecompressedBytes:     12,
-			DecompressedLines:     13,
-			HeadChunkBytes:        14,
-			HeadChunkLines:        15,
-			ChunksDownloadTime:    16,
-			TotalChunksRef:        17,
-			TotalChunksDownloaded: 18,
-			TotalDuplicates:       19,
+			CompressedBytes:        11,
+			DecompressedBytes:      12,
+			DecompressedLines:      13,
+			HeadChunkBytes:         14,
+			HeadChunkLines:         15,
+			ChunksDownloadTime:     16,
+			TotalChunksRef:         17,
+			TotalChunksDownloaded:  18,
+			TotalDuplicates:        19,
+			TotalChunksOverlapping: 20,
 		},
 		Ingester: stats.Ingester{
 			CompressedBytes:    1,

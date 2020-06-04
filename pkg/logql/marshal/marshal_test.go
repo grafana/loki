@@ -71,6 +71,7 @@ var queryTests = []struct {
 						"chunksDownloadTime": 0,
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
+						"totalChunksOverlapping": 0,
 						"totalDuplicates": 0
 					},
 					"summary": {
@@ -167,6 +168,7 @@ var queryTests = []struct {
 					"chunksDownloadTime": 0,
 					"totalChunksRef": 0,
 					"totalChunksDownloaded": 0,
+					"totalChunksOverlapping": 0,
 					"totalDuplicates": 0
 				},
 				"summary": {
@@ -280,6 +282,7 @@ var queryTests = []struct {
 					"chunksDownloadTime": 0,
 					"totalChunksRef": 0,
 					"totalChunksDownloaded": 0,
+					"totalChunksOverlapping": 0,
 					"totalDuplicates": 0
 				},
 				"summary": {
