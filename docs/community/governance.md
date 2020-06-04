@@ -44,6 +44,7 @@ In case a member leaves, the [offboarding](#offboarding) procedure is applied.
 
 The current team members are:
 
+- Aditya C S - [adityacs](https://github.com/adityacs) ([Grafana Labs](https://grafana.com/)) 
 - Cyril Tovena - [cyriltovena](https://github.com/cyriltovena) ([Grafana Labs](https://grafana.com/))
 - David Kaltschmidt - [davkal](https://github.com/davkal) ([Grafana Labs](https://grafana.com/))
 - Edward Welch - [slim-bean](https://github.com/slim-bean) ([Grafana Labs](https://grafana.com/))
