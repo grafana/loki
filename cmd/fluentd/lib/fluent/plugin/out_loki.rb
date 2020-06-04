@@ -171,7 +171,7 @@ module Fluent
           )
         end
 
-        # Specify custome certificate authority
+        # Specify custom certificate authority
         unless @ca_cert.nil?
           opts = opts.merge(
             ca_file: @ca_cert
