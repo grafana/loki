@@ -321,6 +321,22 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Scalar{T: 60 * 1000, V: 2},
 		},
 		{
+			// single comparison
+			`1 == 1`,
+			time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]logproto.Stream{},
+			[]SelectParams{},
+			promql.Scalar{T: 60 * 1000, V: 1},
+		},
+		{
+			// single comparison, reduce away bool modifier between scalars
+			`1 == bool 1`,
+			time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]logproto.Stream{},
+			[]SelectParams{},
+			promql.Scalar{T: 60 * 1000, V: 1},
+		},
+		{
 			`count_over_time({app="foo"}[1m]) > 1`,
 			time.Unix(60, 0),
 			logproto.FORWARD,
@@ -1223,7 +1239,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`bytes_over_time({app="foo"}[30s]) > 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Stream{
 				{logproto.Stream{
 					Labels: `{app="foo"}`,
@@ -1243,6 +1259,30 @@ func TestEngine_RangeQuery(t *testing.T) {
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
 					Points: []promql.Point{{T: 60 * 1000, V: 1.}, {T: 75 * 1000, V: 0}, {T: 90 * 1000, V: 0}, {T: 105 * 1000, V: 1.}, {T: 120 * 1000, V: 1.}},
+				},
+			},
+		},
+		{
+			`bytes_over_time({app="foo"}[30s]) > 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Stream{
+				{logproto.Stream{
+					Labels: `{app="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(45, 0), Line: "01234"}, // 5 bytes
+						{Timestamp: time.Unix(60, 0), Line: ""},
+						{Timestamp: time.Unix(75, 0), Line: ""},
+						{Timestamp: time.Unix(90, 0), Line: ""},
+						{Timestamp: time.Unix(105, 0), Line: "0123"}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(30, 0), End: time.Unix(120, 0), Limit: 0, Selector: `{app="foo"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "foo"}},
+					Points: []promql.Point{{T: 60 * 1000, V: 1.}, {T: 105 * 1000, V: 1.}, {T: 120 * 1000, V: 1.}},
 				},
 			},
 		},

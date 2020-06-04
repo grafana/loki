@@ -432,14 +432,26 @@ func binOpStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return literalStepEvaluator(expr.op, leftLit, rhs, false)
+		return literalStepEvaluator(
+			expr.op,
+			leftLit,
+			rhs,
+			false,
+			expr.opts.ReturnBool,
+		)
 	}
 	if rOk {
 		lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
-		return literalStepEvaluator(expr.op, rightLit, lhs, true)
+		return literalStepEvaluator(
+			expr.op,
+			rightLit,
+			lhs,
+			true,
+			expr.opts.ReturnBool,
+		)
 	}
 
 	// we have two non literal legs
@@ -485,7 +497,7 @@ func binOpStepEvaluator(
 		for _, pair := range pairs {
 
 			// merge
-			if merged := mergeBinOp(expr.op, pair[0], pair[1]); merged != nil {
+			if merged := mergeBinOp(expr.op, pair[0], pair[1], !expr.opts.ReturnBool); merged != nil {
 				results = append(results, *merged)
 			}
 		}
@@ -501,7 +513,7 @@ func binOpStepEvaluator(
 	})
 }
 
-func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
+func mergeBinOp(op string, left, right *promql.Sample, filter bool) *promql.Sample {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -636,6 +648,8 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			val := 0.
 			if left.Point.V == right.Point.V {
 				val = 1.
+			} else if filter {
+				return nil
 			}
 			res.Point.V = val
 			return res
@@ -655,6 +669,8 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			val := 0.
 			if left.Point.V != right.Point.V {
 				val = 1.
+			} else if filter {
+				return nil
 			}
 			res.Point.V = val
 			return res
@@ -674,6 +690,8 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			val := 0.
 			if left.Point.V > right.Point.V {
 				val = 1.
+			} else if filter {
+				return nil
 			}
 			res.Point.V = val
 			return res
@@ -693,6 +711,8 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			val := 0.
 			if left.Point.V >= right.Point.V {
 				val = 1.
+			} else if filter {
+				return nil
 			}
 			res.Point.V = val
 			return res
@@ -712,6 +732,8 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			val := 0.
 			if left.Point.V < right.Point.V {
 				val = 1.
+			} else if filter {
+				return nil
 			}
 			res.Point.V = val
 			return res
@@ -731,6 +753,8 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			val := 0.
 			if left.Point.V <= right.Point.V {
 				val = 1.
+			} else if filter {
+				return nil
 			}
 			res.Point.V = val
 			return res
@@ -751,6 +775,7 @@ func literalStepEvaluator(
 	lit *literalExpr,
 	eval StepEvaluator,
 	inverted bool,
+	returnBool bool,
 ) (StepEvaluator, error) {
 	return newStepEvaluator(
 		func() (bool, int64, promql.Vector) {
@@ -772,6 +797,7 @@ func literalStepEvaluator(
 					op,
 					left,
 					right,
+					!returnBool,
 				); merged != nil {
 					results = append(results, *merged)
 				}

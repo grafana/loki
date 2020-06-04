@@ -349,13 +349,21 @@ func (e *vectorAggregationExpr) Operations() []string {
 	return append(e.left.Operations(), e.operation)
 }
 
+type BinOpOptions struct {
+	ReturnBool bool
+}
+
 type binOpExpr struct {
 	SampleExpr
-	RHS SampleExpr
-	op  string
+	RHS  SampleExpr
+	op   string
+	opts BinOpOptions
 }
 
 func (e *binOpExpr) String() string {
+	if e.opts.ReturnBool {
+		return fmt.Sprintf("%s %s bool %s", e.SampleExpr.String(), e.op, e.RHS.String())
+	}
 	return fmt.Sprintf("%s %s %s", e.SampleExpr.String(), e.op, e.RHS.String())
 }
 
@@ -365,7 +373,7 @@ func (e *binOpExpr) Operations() []string {
 	return append(ops, e.op)
 }
 
-func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
+func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
 		panic(newParseError(fmt.Sprintf(
@@ -407,24 +415,26 @@ func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
 
 	// map expr like (1+1) -> 2
 	if lOk && rOk {
-		return reduceBinOp(op, leftLit, rightLit)
+		return reduceBinOp(op, leftLit, rightLit, opts)
 	}
 
 	return &binOpExpr{
 		SampleExpr: left,
 		RHS:        right,
 		op:         op,
+		opts:       opts,
 	}
 }
 
 // Reduces a binary operation expression. A binop is reducible if both of its legs are literal expressions.
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
-func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
+func reduceBinOp(op string, left, right *literalExpr, opts BinOpOptions) *literalExpr {
 	merged := mergeBinOp(
 		op,
 		&promql.Sample{Point: promql.Point{V: left.value}},
 		&promql.Sample{Point: promql.Point{V: right.value}},
+		false,
 	)
 	return &literalExpr{value: merged.V}
 }

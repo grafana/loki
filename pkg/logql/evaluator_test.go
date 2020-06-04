@@ -17,6 +17,7 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		&promql.Sample{
 			Point: promql.Point{T: 1, V: 0},
 		},
+		false,
 	).Point.V))
 
 	require.Equal(t, true, math.IsNaN(mergeBinOp(OpTypeMod,
@@ -26,6 +27,7 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		&promql.Sample{
 			Point: promql.Point{T: 1, V: 0},
 		},
+		false,
 	).Point.V))
 }
 
@@ -194,7 +196,12 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			require.Equal(t, tc.expected, mergeBinOp(tc.op, tc.lhs, tc.rhs))
+			require.Equal(t, tc.expected, mergeBinOp(tc.op, tc.lhs, tc.rhs, false))
+
+			//  test filtered variants
+			if tc.expected.V == 0 {
+				require.Nil(t, mergeBinOp(tc.op, tc.lhs, tc.rhs, true))
+			}
 		})
 	}
 }

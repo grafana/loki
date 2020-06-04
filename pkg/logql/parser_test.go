@@ -696,8 +696,10 @@ func TestParse(t *testing.T) {
 			`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
+				BinOpOptions{},
 				mustNewBinOpExpr(
 					OpTypeDiv,
+					BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -757,8 +759,10 @@ func TestParse(t *testing.T) {
 					`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
+				BinOpOptions{},
 				mustNewBinOpExpr(
 					OpTypePow,
+					BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -819,6 +823,7 @@ func TestParse(t *testing.T) {
 					`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
+				BinOpOptions{},
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
 					&logRange{
 						left: &matchersExpr{
@@ -837,6 +842,7 @@ func TestParse(t *testing.T) {
 				),
 				mustNewBinOpExpr(
 					OpTypeDiv,
+					BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -880,6 +886,7 @@ func TestParse(t *testing.T) {
 						)`,
 			exp: mustNewVectorAggregationExpr(
 				mustNewBinOpExpr(OpTypeDiv,
+					BinOpOptions{},
 					newRangeAggregationExpr(
 						&logRange{
 							left: &filterExpr{
@@ -909,8 +916,9 @@ func TestParse(t *testing.T) {
 						/
 							count_over_time({namespace="tns"}[5m])
 						) * 100`,
-			exp: mustNewBinOpExpr(OpTypeMul, mustNewVectorAggregationExpr(
+			exp: mustNewBinOpExpr(OpTypeMul, BinOpOptions{}, mustNewVectorAggregationExpr(
 				mustNewBinOpExpr(OpTypeDiv,
+					BinOpOptions{},
 					newRangeAggregationExpr(
 						&logRange{
 							left: &filterExpr{
@@ -941,6 +949,7 @@ func TestParse(t *testing.T) {
 			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 / 2`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
+				BinOpOptions{},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						&logRange{
@@ -966,8 +975,9 @@ func TestParse(t *testing.T) {
 			in: `1 + -2 / 1`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
+				BinOpOptions{},
 				&literalExpr{value: 1},
-				mustNewBinOpExpr(OpTypeDiv, &literalExpr{value: -2}, &literalExpr{value: 1}),
+				mustNewBinOpExpr(OpTypeDiv, BinOpOptions{}, &literalExpr{value: -2}, &literalExpr{value: 1}),
 			),
 		},
 		{
@@ -975,7 +985,8 @@ func TestParse(t *testing.T) {
 			in: `1 + 1 - -1`,
 			exp: mustNewBinOpExpr(
 				OpTypeSub,
-				mustNewBinOpExpr(OpTypeAdd, &literalExpr{value: 1}, &literalExpr{value: 1}),
+				BinOpOptions{},
+				mustNewBinOpExpr(OpTypeAdd, BinOpOptions{}, &literalExpr{value: 1}, &literalExpr{value: 1}),
 				&literalExpr{value: -1},
 			),
 		},
@@ -1098,7 +1109,7 @@ func TestParse(t *testing.T) {
 					},
 					operation: "count_over_time",
 				},
-				RHS: &literalExpr{1},
+				RHS: &literalExpr{value: 1},
 			},
 		},
 		{
@@ -1109,7 +1120,6 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			// cannot compare metric & log queries
 			in: `count_over_time({ foo != "bar" }[12m]) or count_over_time({ foo = "bar" }[12m]) > 1`,
 			exp: &binOpExpr{
 				op: OpTypeOr,
@@ -1129,8 +1139,27 @@ func TestParse(t *testing.T) {
 						},
 						operation: "count_over_time",
 					},
-					RHS: &literalExpr{1},
+					RHS: &literalExpr{value: 1},
 				},
+			},
+		},
+		{
+			// test associativity
+			in:  `1 > 1 < 1`,
+			exp: &literalExpr{value: 1},
+		},
+		{
+			// bool modifiers are reduced-away between two literal legs
+			in:  `1 > 1 > bool 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
+			// cannot lead with bool modifier
+			in: `bool 1 > 1 > bool 1`,
+			err: ParseError{
+				msg:  "syntax error: unexpected bool",
+				line: 1,
+				col:  1,
 			},
 		},
 	} {

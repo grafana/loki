@@ -23,6 +23,7 @@ var tokens = map[string]int{
 	")":                  CLOSE_PARENTHESIS,
 	"by":                 BY,
 	"without":            WITHOUT,
+	"bool":               BOOL,
 	"[":                  OPEN_BRACKET,
 	"]":                  CLOSE_BRACKET,
 	OpRangeTypeRate:      RATE,
