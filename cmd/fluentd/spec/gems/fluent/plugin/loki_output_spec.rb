@@ -24,7 +24,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
       line_format key_value
       drop_single_key true
       remove_keys a, b
-      verify_tls false
+      insecure_tls true
       <label>
         job
         instance instance
@@ -40,7 +40,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(driver.instance.record_accessors.keys).to eq %w[job instance]
     expect(driver.instance.remove_keys).to eq %w[a b]
     expect(driver.instance.drop_single_key).to eq true
-    expect(driver.instance.verify_tls).to eq false
+    expect(driver.instance.insecure_tls).to eq true
   end
 
   it 'converts syslog output to loki output' do
