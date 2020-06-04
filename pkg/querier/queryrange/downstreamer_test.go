@@ -275,10 +275,10 @@ func TestInstanceFor(t *testing.T) {
 	require.Equal(
 		t,
 		[]logql.Result{
-			logql.Result{
+			{
 				Data: logql.Streams{{Labels: "0_of_2"}},
 			},
-			logql.Result{
+			{
 				Data: logql.Streams{{Labels: "1_of_2"}},
 			},
 		},
