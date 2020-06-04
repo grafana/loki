@@ -140,9 +140,10 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	chunksCache = cache.StopOnce(chunksCache)
 	writeDedupeCache = cache.StopOnce(writeDedupeCache)
 
-	// lets wrap all caches with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers
+	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
+	// chunksCache is not wrapped because chunks content can't be anyways modified without changing its ID so there is no use of
+	// invalidating chunks cache. Also chunks can be fetched only by their ID found in index and we are anyways removing the index and invalidating index cache here.
 	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
-	chunksCache = cache.NewCacheGenNumMiddleware(chunksCache)
 	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
 
 	err = schemaCfg.Load()
