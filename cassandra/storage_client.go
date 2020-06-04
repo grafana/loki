@@ -38,6 +38,7 @@ type Config struct {
 	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticators"`
 	Timeout                  time.Duration       `yaml:"timeout"`
 	ConnectTimeout           time.Duration       `yaml:"connect_timeout"`
+	ReconnectInterval        time.Duration       `yaml:"reconnect_interval"`
 	Retries                  int                 `yaml:"max_retries"`
 	MaxBackoff               time.Duration       `yaml:"retry_max_backoff"`
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
@@ -63,6 +64,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.CustomAuthenticators, "cassandra.custom-authenticator", "If set, when authenticating with cassandra a custom authenticator will be expected during the handshake. This flag can be set multiple times.")
 	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 2*time.Second, "Timeout when connecting to cassandra.")
 	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 5*time.Second, "Initial connection timeout, used during initial dial to server.")
+	f.DurationVar(&cfg.ReconnectInterval, "cassandra.reconnent-interval", 1*time.Second, "Interval to retry connecting to cassandra nodes marked as DOWN.")
 	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
 	f.DurationVar(&cfg.MinBackoff, "cassandra.retry-min-backoff", 100*time.Millisecond, "Minimum time to wait before retrying a failed request. (Default = 100ms)")
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
@@ -94,6 +96,7 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.QueryObserver = observer{}
 	cluster.Timeout = cfg.Timeout
 	cluster.ConnectTimeout = cfg.ConnectTimeout
+	cluster.ReconnectInterval = cfg.ReconnectInterval
 	cluster.NumConns = cfg.NumConnections
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
