@@ -351,6 +351,72 @@ func TestEngine_InstantQuery(t *testing.T) {
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
 			},
 		},
+		{
+			`count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+				{},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="bar"}`}},
+			},
+			promql.Vector{},
+		},
+		{
+			`count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+				{},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="bar"}`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+			},
+		},
+		{
+			`sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+				{},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="bar"}`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0}, Metric: labels.Labels{}},
+			},
+		},
+		{
+			`sum without(app) (count_over_time({app="foo"}[1m])) >= sum without(app) (count_over_time({app="bar"}[1m]))`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+				{newStream(testSize, identity, `{app="bar"}`)},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="bar"}`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 60}, Metric: labels.Labels{}},
+			},
+		},
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {

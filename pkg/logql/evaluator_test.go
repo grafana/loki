@@ -18,6 +18,7 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 			Point: promql.Point{T: 1, V: 0},
 		},
 		false,
+		false,
 	).Point.V))
 
 	require.Equal(t, true, math.IsNaN(mergeBinOp(OpTypeMod,
@@ -27,6 +28,7 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		&promql.Sample{
 			Point: promql.Point{T: 1, V: 0},
 		},
+		false,
 		false,
 	).Point.V))
 }
@@ -196,12 +198,53 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			require.Equal(t, tc.expected, mergeBinOp(tc.op, tc.lhs, tc.rhs, false))
+			// comparing a binop should yield the unfiltered (non-nil variant) regardless
+			// of whether this is a vector-vector comparison or not.
+			require.Equal(t, tc.expected, mergeBinOp(tc.op, tc.lhs, tc.rhs, false, false))
+			require.Equal(t, tc.expected, mergeBinOp(tc.op, tc.lhs, tc.rhs, false, true))
+
+			// vector-vector comparing when not filtering should propagate the labels for nil right hand side matches,
+			// but set the value to zero.
+			require.Equal(
+				t,
+				&promql.Sample{
+					Point: promql.Point{V: 0},
+				},
+				mergeBinOp(tc.op, tc.lhs, nil, false, true),
+			)
 
 			//  test filtered variants
 			if tc.expected.V == 0 {
-				require.Nil(t, mergeBinOp(tc.op, tc.lhs, tc.rhs, true))
+				//  ensure zeroed predicates are filtered out
+				require.Nil(t, mergeBinOp(tc.op, tc.lhs, tc.rhs, true, false))
+				require.Nil(t, mergeBinOp(tc.op, tc.lhs, tc.rhs, true, true))
+
+				// for vector-vector comparisons, ensure that nil right hand sides
+				// translate into nil results
+				require.Nil(t, mergeBinOp(tc.op, tc.lhs, nil, true, true))
+
 			}
+
 		})
 	}
+}
+
+func Test_MergeBinOpVectors_Filter(t *testing.T) {
+	res := mergeBinOp(
+		OpTypeGT,
+		&promql.Sample{
+			Point: promql.Point{V: 2},
+		},
+		&promql.Sample{
+			Point: promql.Point{V: 0},
+		},
+		true,
+		true,
+	)
+
+	// ensure we return the left hand side's value (2) instead of the
+	// comparison operator's result (1: the truthy answer)
+	require.Equal(t, &promql.Sample{
+		Point: promql.Point{V: 2},
+	}, res)
 }

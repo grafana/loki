@@ -497,7 +497,7 @@ func binOpStepEvaluator(
 		for _, pair := range pairs {
 
 			// merge
-			if merged := mergeBinOp(expr.op, pair[0], pair[1], !expr.opts.ReturnBool); merged != nil {
+			if merged := mergeBinOp(expr.op, pair[0], pair[1], !expr.opts.ReturnBool, IsComparisonOperator(expr.op)); merged != nil {
 				results = append(results, *merged)
 			}
 		}
@@ -513,7 +513,7 @@ func binOpStepEvaluator(
 	})
 }
 
-func mergeBinOp(op string, left, right *promql.Sample, filter bool) *promql.Sample {
+func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -764,7 +764,34 @@ func mergeBinOp(op string, left, right *promql.Sample, filter bool) *promql.Samp
 		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
 	}
 
-	return merger(left, right)
+	res := merger(left, right)
+	if !isVectorComparison {
+		return res
+	}
+
+	if filter {
+		// if a filter-enabled vector-wise comparison has returned non-nil,
+		// ensure we return the left hand side's value (2) instead of the
+		// comparison operator's result (1: the truthy answer)
+		if res != nil {
+			return left
+		}
+
+		// otherwise it's been filtered out
+		return res
+	}
+
+	// This only leaves vector comparisons which are not filters.
+	// If we could not find a match but we have a left node to compare, create an entry with a 0 value.
+	// This can occur when we don't find a matching label set in the vectors.
+	if res == nil && left != nil && right == nil {
+		res = &promql.Sample{
+			Metric: left.Metric,
+			Point:  left.Point,
+		}
+		res.Point.V = 0
+	}
+	return res
 
 }
 
@@ -798,6 +825,7 @@ func literalStepEvaluator(
 					left,
 					right,
 					!returnBool,
+					false,
 				); merged != nil {
 					results = append(results, *merged)
 				}

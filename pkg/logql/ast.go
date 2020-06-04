@@ -225,9 +225,23 @@ const (
 	OpTypeLTE   = "<="
 )
 
+func IsComparisonOperator(op string) bool {
+	switch op {
+	case OpTypeCmpEQ, OpTypeNEQ, OpTypeGT, OpTypeGTE, OpTypeLT, OpTypeLTE:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsLogicalBinOp tests whether an operation is a logical/set binary operation
 func IsLogicalBinOp(op string) bool {
-	return op == OpTypeOr || op == OpTypeAnd || op == OpTypeUnless
+	switch op {
+	case OpTypeOr, OpTypeAnd, OpTypeUnless:
+		return true
+	default:
+		return false
+	}
 }
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
@@ -434,6 +448,7 @@ func reduceBinOp(op string, left, right *literalExpr, opts BinOpOptions) *litera
 		op,
 		&promql.Sample{Point: promql.Point{V: left.value}},
 		&promql.Sample{Point: promql.Point{V: right.value}},
+		false,
 		false,
 	)
 	return &literalExpr{value: merged.V}
