@@ -67,7 +67,7 @@ func newDque(cfg *config, logger log.Logger) (client.Client, error) {
 	}
 
 	if !cfg.bufferConfig.dqueConfig.queueSync {
-		q.queue.TurboOn()
+		_ = q.queue.TurboOn()
 	}
 
 	q.loki, err = client.New(cfg.clientConfig, logger)

@@ -101,7 +101,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	switch op := getOperation(req); op {
-	case "query_range":
+	case QueryRangeOp:
 		rangeQuery, err := loghttp.ParseRangeQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -129,7 +129,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		default:
 			return r.next.RoundTrip(req)
 		}
-	case "series":
+	case SeriesOp:
 		_, err := loghttp.ParseSeriesQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -170,11 +170,16 @@ func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
 	return nil
 }
 
+const (
+	QueryRangeOp = "query_range"
+	SeriesOp     = "series"
+)
+
 func getOperation(req *http.Request) string {
 	if strings.HasSuffix(req.URL.Path, "/query_range") || strings.HasSuffix(req.URL.Path, "/prom/query") {
-		return "query_range"
+		return QueryRangeOp
 	} else if strings.HasSuffix(req.URL.Path, "/series") {
-		return "series"
+		return SeriesOp
 	} else {
 		return ""
 	}

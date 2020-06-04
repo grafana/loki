@@ -55,14 +55,14 @@ type instance struct {
 	handler     queryrange.Handler
 }
 
-func (i instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logql.Result, error) {
-	return i.For(queries, func(qry logql.DownstreamQuery) (logql.Result, error) {
+func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logql.Result, error) {
+	return in.For(queries, func(qry logql.DownstreamQuery) (logql.Result, error) {
 		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards).WithQuery(qry.Expr.String()).(*LokiRequest)
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
 		level.Debug(logger).Log("shards", req.Shards, "query", req.Query)
 
-		res, err := i.handler.Do(ctx, req)
+		res, err := in.handler.Do(ctx, req)
 		if err != nil {
 			return logql.Result{}, err
 		}

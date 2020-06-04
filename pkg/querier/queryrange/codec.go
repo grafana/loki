@@ -92,7 +92,7 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 	}
 
 	switch op := getOperation(r); op {
-	case "query_range":
+	case QueryRangeOp:
 		req, err := loghttp.ParseRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -108,7 +108,7 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 			Path:   r.URL.Path,
 			Shards: req.Shards,
 		}, nil
-	case "series":
+	case SeriesOp:
 		req, err := loghttp.ParseSeriesQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -196,7 +196,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 
 	sp.LogFields(otlog.Int("bytes", len(buf)))
 
-	switch req.(type) {
+	switch req := req.(type) {
 	case *LokiSeriesRequest:
 		var resp loghttp.SeriesResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
@@ -213,7 +213,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 
 		return &LokiSeriesResponse{
 			Status:  resp.Status,
-			Version: uint32(loghttp.GetVersion(req.(*LokiSeriesRequest).Path)),
+			Version: uint32(loghttp.GetVersion(req.Path)),
 			Data:    data,
 		}, nil
 	default:
@@ -294,10 +294,6 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 		}
 		return &resp, nil
 	case *LokiSeriesResponse:
-		var data []loghttp.LabelSet
-		for _, series := range response.Data {
-			data = append(data, series.GetLabels())
-		}
 		result := logproto.SeriesResponse{
 			Series: response.Data,
 		}

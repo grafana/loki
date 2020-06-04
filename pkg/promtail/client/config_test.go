@@ -57,7 +57,7 @@ func Test_Config(t *testing.T) {
 			clientCustomConfig,
 			Config{
 				URL: flagext.URLValue{
-					u,
+					URL: u,
 				},
 				BackoffConfig: util.BackoffConfig{
 					MaxBackoff: 1 * time.Minute,

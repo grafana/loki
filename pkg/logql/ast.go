@@ -429,7 +429,7 @@ func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
 
 	// map expr like (1+1) -> 2
 	if lOk && rOk {
-		return reduceBinOp(op, leftLit, rightLit, opts)
+		return reduceBinOp(op, leftLit, rightLit)
 	}
 
 	return &binOpExpr{
@@ -443,7 +443,7 @@ func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
 // Reduces a binary operation expression. A binop is reducible if both of its legs are literal expressions.
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
-func reduceBinOp(op string, left, right *literalExpr, opts BinOpOptions) *literalExpr {
+func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
 	merged := mergeBinOp(
 		op,
 		&promql.Sample{Point: promql.Point{V: left.value}},
