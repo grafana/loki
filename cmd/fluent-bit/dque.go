@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-
-	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/joncrlsn/dque"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/client"
 )
 
 type dqueConfig struct {
