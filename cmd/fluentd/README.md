@@ -1,4 +1,4 @@
-# FluentD output plugin
+# Fluentd output plugin
 
 [Fluentd](https://fluentd.org/) is a data collector for unified logging layer, it can be configured with the Loki output plugin, provided in this folder, to ship logs to Loki.
 
@@ -44,7 +44,7 @@ The expected output is:
 ]
 ```
 
-Start FluentBit + FluentD using:
+Start FluentBit + Fluentd using:
 ```
 LOKI_URL=http://{{ IP }}:3100 make fluentd-test
 ```

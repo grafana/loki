@@ -30,7 +30,7 @@ Try to keep values bounded to as small a set as possible. We don't have perfect 
 
 ## 4. Be aware of dynamic labels applied by clients
 
-Loki has several client options: [Promtail](https://github.com/grafana/loki/tree/master/docs/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [FluentD](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-grafana-loki), [Fluent Bit](https://github.com/grafana/loki/tree/master/cmd/fluent-bit), a [Docker plugin](https://grafana.com/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
+Loki has several client options: [Promtail](https://github.com/grafana/loki/tree/master/docs/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-grafana-loki), [Fluent Bit](https://github.com/grafana/loki/tree/master/cmd/fluent-bit), a [Docker plugin](https://grafana.com/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied. Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality. Details of the Series API can be found [here](https://github.com/grafana/loki/blob/master/docs/api.md#series), or you can use [logcli](https://github.com/grafana/loki/blob/master/docs/getting-started/logcli.md) to query Loki for series information.
 
