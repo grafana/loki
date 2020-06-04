@@ -156,14 +156,22 @@ module Fluent
           use_ssl: uri.scheme == 'https'
         }
 
+        # Verify server TLS certificate
+        if @verify_tls
+          opts = opts.merge(
+            verify_mode: OpenSSL::SSL::VERIFY_PEER
+          )
+        end
+
+        # Verify client TLS certificate
         if !@cert.nil? && !@key.nil?
           opts = opts.merge(
-            verify_mode: @verify_tls ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE,
             cert: @cert,
             key: @key
           )
         end
 
+        # Specify custome certificate authority
         unless @ca_cert.nil?
           opts = opts.merge(
             ca_file: @ca_cert
