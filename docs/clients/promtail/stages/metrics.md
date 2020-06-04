@@ -141,16 +141,16 @@ config:
       type: Counter
       description: "total number of log lines"
       prefix: my_promtail_custom_
-      match_all: true
       config:
+        match_all: true
         action: inc
     log_bytes_total:
       type: Counter
       description: "total bytes of log lines"
       prefix: my_promtail_custom_
-      match_all: true
-      count_entry_bytes: true
       config:
+        match_all: true
+        count_entry_bytes: true
         action: add
 ```
 
