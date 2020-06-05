@@ -41,6 +41,9 @@ const (
 
 	// DockerTargetType is a Docker target
 	DockerTargetType = TargetType("Docker")
+
+	// ObjectTargetType is a object store target
+	ObjectTargetType = TargetType("Object")
 )
 
 // Target is a promtail scrape target

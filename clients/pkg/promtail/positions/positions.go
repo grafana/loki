@@ -174,7 +174,6 @@ func (p *positions) save() {
 		positions[k] = v
 	}
 	p.mtx.Unlock()
-
 	if err := writePositionFile(p.cfg.PositionsFile, positions); err != nil {
 		level.Error(p.logger).Log("msg", "error writing positions file", "error", err)
 	}
