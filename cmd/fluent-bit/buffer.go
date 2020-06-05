@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/go-kit/kit/log"
+
 	"github.com/grafana/loki/pkg/promtail/client"
 )
 

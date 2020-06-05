@@ -14,7 +14,7 @@ var tokens = map[string]int{
 	"{":                  OPEN_BRACE,
 	"}":                  CLOSE_BRACE,
 	"=":                  EQ,
-	"!=":                 NEQ,
+	OpTypeNEQ:            NEQ,
 	"=~":                 RE,
 	"!~":                 NRE,
 	"|=":                 PIPE_EXACT,
@@ -23,6 +23,7 @@ var tokens = map[string]int{
 	")":                  CLOSE_PARENTHESIS,
 	"by":                 BY,
 	"without":            WITHOUT,
+	"bool":               BOOL,
 	"[":                  OPEN_BRACKET,
 	"]":                  CLOSE_BRACKET,
 	OpRangeTypeRate:      RATE,
@@ -49,6 +50,12 @@ var tokens = map[string]int{
 	OpTypeDiv:    DIV,
 	OpTypeMod:    MOD,
 	OpTypePow:    POW,
+	// comparison binops
+	OpTypeCmpEQ: CMP_EQ,
+	OpTypeGT:    GT,
+	OpTypeGTE:   GTE,
+	OpTypeLT:    LT,
+	OpTypeLTE:   LTE,
 }
 
 type lexer struct {

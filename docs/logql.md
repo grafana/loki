@@ -239,3 +239,30 @@ These logical/set binary operators are only defined between two vectors:
 This contrived query will return the intersection of these queries, effectively `rate({app="bar"})`
 
 > `rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])`
+
+#### Comparison operators
+
+-  `==` (equality)
+-  `!=` (inequality)
+-  `>` (greater than)
+-  `>=` (greater than or equal to)
+-  `<` (less than)
+-  `<=` (less than or equal to)
+
+Comparison operators are defined between scalar/scalar, vector/scalar, and vector/vector value pairs. By default they filter. Their behavior can be modified by providing bool after the operator, which will return 0 or 1 for the value rather than filtering.
+
+Between two scalars, the bool modifier must be provided and these operators result in another scalar that is either 0 (false) or 1 (true), depending on the comparison result.
+
+> `1 >= 1` is equivalent to `1`
+
+Between a vector and a scalar, these operators are applied to the value of every data sample in the vector, and vector elements between which the comparison result is false get dropped from the result vector. If the bool modifier is provided, vector elements that would be dropped instead have the value 0 and vector elements that would be kept have the value 1.
+
+>  `count_over_time({foo="bar"}[1m]) > 10` Filters the streams which log at elast 10 lines in the last minute.
+
+>  `count_over_time({foo="bar"}[1m]) > bool 10` The same as above, but instead of filtering, attached the value 0 to streams that log less than 10 lines.
+
+Between two vectors, these operators behave as a filter by default, applied to matching entries. Vector elements for which the expression is not true or which do not find a match on the other side of the expression get dropped from the result, while the others are propagated into a result vector. If the bool modifier is provided, vector elements that would have been dropped instead have the value 0 and vector elements that would be kept have the value 1, with the grouping labels again becoming the output label set.
+
+> `sum without(app) (count_over_time({app="foo"}[1m])) > sum without(app) (count_over_time({app="bar"}[1m]))` Returns the streams matching `app=foo` without app labels that have higher counts within the last minute than their counterparts matching `app=bar`without app labels.
+
+> `sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))` The same as above, but vectors have their values set to 1 if they pass the comparison or 0 if they fail/would otherwise have been filtered out.

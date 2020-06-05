@@ -432,14 +432,26 @@ func binOpStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return literalStepEvaluator(expr.op, leftLit, rhs, false)
+		return literalStepEvaluator(
+			expr.op,
+			leftLit,
+			rhs,
+			false,
+			expr.opts.ReturnBool,
+		)
 	}
 	if rOk {
 		lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
-		return literalStepEvaluator(expr.op, rightLit, lhs, true)
+		return literalStepEvaluator(
+			expr.op,
+			rightLit,
+			lhs,
+			true,
+			expr.opts.ReturnBool,
+		)
 	}
 
 	// we have two non literal legs
@@ -485,7 +497,7 @@ func binOpStepEvaluator(
 		for _, pair := range pairs {
 
 			// merge
-			if merged := mergeBinOp(expr.op, pair[0], pair[1]); merged != nil {
+			if merged := mergeBinOp(expr.op, pair[0], pair[1], !expr.opts.ReturnBool, IsComparisonOperator(expr.op)); merged != nil {
 				results = append(results, *merged)
 			}
 		}
@@ -501,7 +513,7 @@ func binOpStepEvaluator(
 	})
 }
 
-func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
+func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -622,11 +634,164 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			return &res
 		}
 
+	case OpTypeCmpEQ:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V == right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeNEQ:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V != right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeGT:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V > right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeGTE:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V >= right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeLT:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V < right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeLTE:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V <= right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
 	default:
 		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
 	}
 
-	return merger(left, right)
+	res := merger(left, right)
+	if !isVectorComparison {
+		return res
+	}
+
+	if filter {
+		// if a filter-enabled vector-wise comparison has returned non-nil,
+		// ensure we return the left hand side's value (2) instead of the
+		// comparison operator's result (1: the truthy answer)
+		if res != nil {
+			return left
+		}
+
+		// otherwise it's been filtered out
+		return res
+	}
+
+	// This only leaves vector comparisons which are not filters.
+	// If we could not find a match but we have a left node to compare, create an entry with a 0 value.
+	// This can occur when we don't find a matching label set in the vectors.
+	if res == nil && left != nil && right == nil {
+		res = &promql.Sample{
+			Metric: left.Metric,
+			Point:  left.Point,
+		}
+		res.Point.V = 0
+	}
+	return res
 
 }
 
@@ -637,6 +802,7 @@ func literalStepEvaluator(
 	lit *literalExpr,
 	eval StepEvaluator,
 	inverted bool,
+	returnBool bool,
 ) (StepEvaluator, error) {
 	return newStepEvaluator(
 		func() (bool, int64, promql.Vector) {
@@ -658,6 +824,8 @@ func literalStepEvaluator(
 					op,
 					left,
 					right,
+					!returnBool,
+					false,
 				); merged != nil {
 					results = append(results, *merged)
 				}

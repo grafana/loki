@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/go-kit/kit/log"
+
 	"github.com/grafana/loki/pkg/promtail/client"
 )
 

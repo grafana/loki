@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-
-	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/joncrlsn/dque"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/client"
 )
 
 type dqueConfig struct {
@@ -67,7 +67,7 @@ func newDque(cfg *config, logger log.Logger) (client.Client, error) {
 	}
 
 	if !cfg.bufferConfig.dqueConfig.queueSync {
-		q.queue.TurboOn()
+		_ = q.queue.TurboOn()
 	}
 
 	q.loki, err = client.New(cfg.clientConfig, logger)
