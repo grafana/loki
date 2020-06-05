@@ -1373,11 +1373,11 @@ func TestEngine_RangeQuery(t *testing.T) {
 				promql.Series{
 					Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}},
 					Points: []promql.Point{
-						promql.Point{T: 60000, V: 1},
-						promql.Point{T: 75000, V: 0},
-						promql.Point{T: 90000, V: 0},
-						promql.Point{T: 105000, V: 1},
-						promql.Point{T: 120000, V: 1},
+						{T: 60000, V: 1},
+						{T: 75000, V: 0},
+						{T: 90000, V: 0},
+						{T: 105000, V: 1},
+						{T: 120000, V: 1},
 					},
 				},
 			},
