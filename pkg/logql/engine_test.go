@@ -348,7 +348,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 60}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
 			},
 		},
 		{
@@ -1348,7 +1348,37 @@ func TestEngine_RangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60 * 1000, V: 1.}, {T: 105 * 1000, V: 1.}, {T: 120 * 1000, V: 1.}},
+					Points: []promql.Point{{T: 60 * 1000, V: 5.}, {T: 105 * 1000, V: 4.}, {T: 120 * 1000, V: 4.}},
+				},
+			},
+		},
+		{
+			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Stream{
+				{logproto.Stream{
+					Labels: `{app="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(45, 0), Line: "01234"}, // 5 bytes
+						{Timestamp: time.Unix(60, 0), Line: ""},
+						{Timestamp: time.Unix(75, 0), Line: ""},
+						{Timestamp: time.Unix(90, 0), Line: ""},
+						{Timestamp: time.Unix(105, 0), Line: "0123"}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(30, 0), End: time.Unix(120, 0), Limit: 0, Selector: `{app="foo"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}},
+					Points: []promql.Point{
+						promql.Point{T: 60000, V: 1},
+						promql.Point{T: 75000, V: 0},
+						promql.Point{T: 90000, V: 0},
+						promql.Point{T: 105000, V: 1},
+						promql.Point{T: 120000, V: 1},
+					},
 				},
 			},
 		},

@@ -825,7 +825,7 @@ func literalStepEvaluator(
 					left,
 					right,
 					!returnBool,
-					false,
+					IsComparisonOperator(op),
 				); merged != nil {
 					results = append(results, *merged)
 				}
