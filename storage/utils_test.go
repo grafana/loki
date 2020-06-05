@@ -25,18 +25,14 @@ func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 	fixtures = append(fixtures, aws.Fixtures...)
 	fixtures = append(fixtures, gcp.Fixtures...)
 	fixtures = append(fixtures, local.Fixtures...)
+	fixtures = append(fixtures, cassandra.Fixtures()...)
 	fixtures = append(fixtures, Fixtures...)
-
-	cassandraFixtures, err := cassandra.Fixtures()
-	require.NoError(t, err)
-	fixtures = append(fixtures, cassandraFixtures...)
 
 	for _, fixture := range fixtures {
 		t.Run(fixture.Name(), func(t *testing.T) {
-			indexClient, objectClient, err := testutils.Setup(fixture, tableName)
+			indexClient, objectClient, closer, err := testutils.Setup(fixture, tableName)
 			require.NoError(t, err)
-			defer testutils.TeardownFixture(t, fixture)
-
+			defer closer.Close()
 			storageClientTest(t, indexClient, objectClient)
 		})
 	}

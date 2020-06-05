@@ -5,22 +5,25 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 type TableClient struct {
 	client GrpcStoreClient
+	conn   *grpc.ClientConn
 }
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(cfg Config) (*TableClient, error) {
-	grpcClient, _, err := connectToGrpcServer(cfg.Address)
+	grpcClient, conn, err := connectToGrpcServer(cfg.Address)
 	if err != nil {
 		return nil, err
 	}
 	client := &TableClient{
 		client: grpcClient,
+		conn:   conn,
 	}
 	return client, nil
 }
@@ -97,4 +100,8 @@ func (c *TableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) err
 		return errors.WithStack(err)
 	}
 	return nil
+}
+
+func (c *TableClient) Stop() {
+	c.conn.Close()
 }

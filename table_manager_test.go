@@ -92,6 +92,8 @@ func (m *mockTableClient) UpdateTable(_ context.Context, current, expected Table
 	return nil
 }
 
+func (*mockTableClient) Stop() {}
+
 func tmTest(t *testing.T, client *mockTableClient, tableManager *TableManager, name string, tm time.Time, expected []TableDesc) {
 	t.Run(name, func(t *testing.T) {
 		ctx := context.Background()

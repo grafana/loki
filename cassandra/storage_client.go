@@ -10,8 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -44,6 +47,7 @@ type Config struct {
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
 	QueryConcurrency         int                 `yaml:"query_concurrency"`
 	NumConnections           int                 `yaml:"num_connections"`
+	ConvictHosts             bool                `yaml:"convict_hosts_on_failure"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -70,6 +74,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
 	f.IntVar(&cfg.QueryConcurrency, "cassandra.query-concurrency", 0, "Limit number of concurrent queries to Cassandra. (Default is 0: no limit)")
 	f.IntVar(&cfg.NumConnections, "cassandra.num-connections", 2, "Number of TCP connections per host.")
+	f.BoolVar(&cfg.ConvictHosts, "cassandra.convict-hosts-on-failure", true, "Convict hosts of being down on failure.")
 }
 
 func (cfg *Config) Validate() error {
@@ -82,7 +87,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) session() (*gocql.Session, error) {
+func (cfg *Config) session(name string) (*gocql.Session, error) {
 	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -98,12 +103,18 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cluster.ReconnectInterval = cfg.ReconnectInterval
 	cluster.NumConns = cfg.NumConnections
+	cluster.Logger = log.With(pkgutil.Logger, "module", "gocql", "client", name)
+	cluster.Registerer = prometheus.WrapRegistererWith(
+		prometheus.Labels{"client": name}, prometheus.DefaultRegisterer)
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
 			NumRetries: cfg.Retries,
 			Min:        cfg.MinBackoff,
 			Max:        cfg.MaxBackoff,
 		}
+	}
+	if !cfg.ConvictHosts {
+		cluster.ConvictionPolicy = noopConvictionPolicy{}
 	}
 	if err = cfg.setClusterConfig(cluster); err != nil {
 		return nil, errors.WithStack(err)
@@ -212,12 +223,12 @@ type StorageClient struct {
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
 	pkgutil.WarnExperimentalUse("Cassandra Backend")
 
-	readSession, err := cfg.session()
+	readSession, err := cfg.session("index-read")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session()
+	writeSession, err := cfg.session("index-write")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -384,8 +395,46 @@ func (b *readBatchIter) Value() []byte {
 	return b.value
 }
 
+// ObjectClient implements chunk.ObjectClient for Cassandra.
+type ObjectClient struct {
+	cfg            Config
+	schemaCfg      chunk.SchemaConfig
+	readSession    *gocql.Session
+	writeSession   *gocql.Session
+	querySemaphore *semaphore.Weighted
+}
+
+// NewObjectClient returns a new ObjectClient.
+func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig) (*ObjectClient, error) {
+	pkgutil.WarnExperimentalUse("Cassandra Backend")
+
+	readSession, err := cfg.session("chunks-read")
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	writeSession, err := cfg.session("chunks-write")
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	var querySemaphore *semaphore.Weighted
+	if cfg.QueryConcurrency > 0 {
+		querySemaphore = semaphore.NewWeighted(int64(cfg.QueryConcurrency))
+	}
+
+	client := &ObjectClient{
+		cfg:            cfg,
+		schemaCfg:      schemaCfg,
+		readSession:    readSession,
+		writeSession:   writeSession,
+		querySemaphore: querySemaphore,
+	}
+	return client, nil
+}
+
 // PutChunks implements chunk.ObjectClient.
-func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
@@ -409,11 +458,11 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 }
 
 // GetChunks implements chunk.ObjectClient.
-func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
+func (s *ObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, input, s.getChunk)
 }
 
-func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	if s.querySemaphore != nil {
 		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
 			return input, err
@@ -435,7 +484,26 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	return input, err
 }
 
-func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
+func (s *ObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
 	// ToDo: implement this to support deleting chunks from Cassandra
 	return chunk.ErrMethodNotImplemented
 }
+
+// Stop implement chunk.ObjectClient.
+func (s *ObjectClient) Stop() {
+	s.readSession.Close()
+	s.writeSession.Close()
+}
+
+type noopConvictionPolicy struct{}
+
+// AddFailure should return `true` if the host should be convicted, `false` otherwise.
+// Convicted means connections are removed - we don't want that.
+// Implementats gocql.ConvictionPolicy.
+func (noopConvictionPolicy) AddFailure(err error, host *gocql.HostInfo) bool {
+	level.Error(pkgutil.Logger).Log("msg", "Cassandra host failure", "err", err, "host", host.String())
+	return false
+}
+
+// Implementats gocql.ConvictionPolicy.
+func (noopConvictionPolicy) Reset(host *gocql.HostInfo) {}

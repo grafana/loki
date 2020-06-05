@@ -213,6 +213,7 @@ func (m *TableManager) stopping(_ error) error {
 	if m.bucketRetentionLoop != nil {
 		return services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
 	}
+	m.client.Stop()
 	return nil
 }
 

@@ -245,7 +245,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	case "swift":
 		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim))
 	case "cassandra":
-		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
+		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":
 		store, err := local.NewFSObjectClient(cfg.FSConfig)
 		if err != nil {

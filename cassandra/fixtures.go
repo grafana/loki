@@ -2,6 +2,7 @@ package cassandra
 
 import (
 	"context"
+	"io"
 	"os"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -11,39 +12,22 @@ import (
 
 // GOCQL doesn't provide nice mocks, so we use a real Cassandra instance.
 // To enable these tests:
-// $ docker run --name cassandra --rm -p 9042:9042 cassandra:3.11
+// $ docker run -d --name cassandra --rm -p 9042:9042 cassandra:3.11
 // $ CASSANDRA_TEST_ADDRESSES=localhost:9042 go test ./pkg/chunk/storage
 
 type fixture struct {
-	name         string
-	indexClient  chunk.IndexClient
-	objectClient chunk.Client
-	tableClient  chunk.TableClient
-	schemaConfig chunk.SchemaConfig
+	name      string
+	addresses string
 }
 
-func (f fixture) Name() string {
+func (f *fixture) Name() string {
 	return f.name
 }
 
-func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error) {
-	return f.indexClient, f.objectClient, f.tableClient, f.schemaConfig, nil
-}
-
-func (f fixture) Teardown() error {
-	return nil
-}
-
-// Fixtures for unit testing Cassandra integration.
-func Fixtures() ([]testutils.Fixture, error) {
-	addresses := os.Getenv("CASSANDRA_TEST_ADDRESSES")
-	if addresses == "" {
-		return nil, nil
-	}
-
+func (f *fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, io.Closer, error) {
 	var cfg Config
 	flagext.DefaultValues(&cfg)
-	cfg.Addresses = addresses
+	cfg.Addresses = f.addresses
 	cfg.Keyspace = "test"
 	cfg.Consistency = "QUORUM"
 	cfg.ReplicationFactor = 1
@@ -53,21 +37,40 @@ func Fixtures() ([]testutils.Fixture, error) {
 
 	storageClient, err := NewStorageClient(cfg, schemaConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, schemaConfig, nil, err
+	}
+
+	objectClient, err := NewObjectClient(cfg, schemaConfig)
+	if err != nil {
+		return nil, nil, nil, schemaConfig, nil, err
 	}
 
 	tableClient, err := NewTableClient(context.Background(), cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, schemaConfig, nil, err
+	}
+
+	closer := testutils.CloserFunc(func() error {
+		storageClient.Stop()
+		objectClient.Stop()
+		tableClient.Stop()
+		return nil
+	})
+
+	return storageClient, objectClient, tableClient, schemaConfig, closer, nil
+}
+
+// Fixtures for unit testing Cassandra integration.
+func Fixtures() []testutils.Fixture {
+	addresses := os.Getenv("CASSANDRA_TEST_ADDRESSES")
+	if addresses == "" {
+		return nil
 	}
 
 	return []testutils.Fixture{
-		fixture{
-			name:         "Cassandra",
-			indexClient:  storageClient,
-			objectClient: storageClient,
-			tableClient:  tableClient,
-			schemaConfig: schemaConfig,
+		&fixture{
+			name:      "Cassandra",
+			addresses: addresses,
 		},
-	}, nil
+	}
 }

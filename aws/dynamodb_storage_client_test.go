@@ -18,10 +18,9 @@ const (
 
 func TestChunksPartialError(t *testing.T) {
 	fixture := dynamoDBFixture(0, 10, 20)
-	defer testutils.TeardownFixture(t, fixture)
-
-	_, client, err := testutils.Setup(fixture, tableName)
+	_, client, closer, err := testutils.Setup(fixture, tableName)
 	require.NoError(t, err)
+	defer closer.Close()
 
 	sc, ok := client.(*dynamoDBStorageClient)
 	if !ok {

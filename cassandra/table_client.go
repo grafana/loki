@@ -17,7 +17,7 @@ type tableClient struct {
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
-	session, err := cfg.session()
+	session, err := cfg.session("table-manager")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -64,4 +64,8 @@ func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chun
 
 func (c *tableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
 	return nil
+}
+
+func (c *tableClient) Stop() {
+	c.session.Close()
 }

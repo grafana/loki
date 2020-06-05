@@ -117,3 +117,7 @@ func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chun
 func (c *tableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
 	return nil
 }
+
+func (c *tableClient) Stop() {
+	c.client.Close()
+}

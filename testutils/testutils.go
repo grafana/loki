@@ -2,11 +2,9 @@ package testutils
 
 import (
 	"context"
+	"io"
 	"strconv"
-	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -26,8 +24,15 @@ const (
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
-	Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error)
-	Teardown() error
+	Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, io.Closer, error)
+}
+
+// CloserFunc is to io.Closer as http.HandlerFunc is to http.Handler.
+type CloserFunc func() error
+
+// Close implements io.Closer.
+func (f CloserFunc) Close() error {
+	return f()
 }
 
 // DefaultSchemaConfig returns default schema for use in test fixtures
@@ -37,29 +42,29 @@ func DefaultSchemaConfig(kind string) chunk.SchemaConfig {
 }
 
 // Setup a fixture with initial tables
-func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, error) {
+func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, io.Closer, error) {
 	var tbmConfig chunk.TableManagerConfig
 	flagext.DefaultValues(&tbmConfig)
-	indexClient, chunkClient, tableClient, schemaConfig, err := fixture.Clients()
+	indexClient, chunkClient, tableClient, schemaConfig, closer, err := fixture.Clients()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	err = tableManager.SyncTables(context.Background())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	err = tableClient.CreateTable(context.Background(), chunk.TableDesc{
 		Name: tableName,
 	})
 
-	return indexClient, chunkClient, err
+	return indexClient, chunkClient, closer, err
 }
 
 // CreateChunks creates some chunks for testing
@@ -101,10 +106,6 @@ func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 		panic(err)
 	}
 	return chunk
-}
-
-func TeardownFixture(t *testing.T, fixture Fixture) {
-	require.NoError(t, fixture.Teardown())
 }
 
 func SetupTestChunkStore() (chunk.Store, error) {
