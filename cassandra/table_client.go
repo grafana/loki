@@ -40,13 +40,8 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 }
 
 func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
-	err := c.session.Query(fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s (
-			hash text,
-			range blob,
-			value blob,
-			PRIMARY KEY (hash, range)
-		)`, desc.Name)).WithContext(ctx).Exec()
+	query := c.getCreateTableQuery(&desc)
+	err := c.session.Query(query).WithContext(ctx).Exec()
 	return errors.WithStack(err)
 }
 
@@ -68,4 +63,18 @@ func (c *tableClient) UpdateTable(ctx context.Context, current, expected chunk.T
 
 func (c *tableClient) Stop() {
 	c.session.Close()
+}
+
+func (c *tableClient) getCreateTableQuery(desc *chunk.TableDesc) (query string) {
+	query = fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
+			hash text,
+			range blob,
+			value blob,
+			PRIMARY KEY (hash, range)
+		)`, desc.Name)
+	if c.cfg.TableOptions != "" {
+		query = fmt.Sprintf("%s WITH %s", query, c.cfg.TableOptions)
+	}
+	return
 }

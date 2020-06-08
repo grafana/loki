@@ -48,6 +48,7 @@ type Config struct {
 	QueryConcurrency         int                 `yaml:"query_concurrency"`
 	NumConnections           int                 `yaml:"num_connections"`
 	ConvictHosts             bool                `yaml:"convict_hosts_on_failure"`
+	TableOptions             string              `yaml:"table_options"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -75,6 +76,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.QueryConcurrency, "cassandra.query-concurrency", 0, "Limit number of concurrent queries to Cassandra. (Default is 0: no limit)")
 	f.IntVar(&cfg.NumConnections, "cassandra.num-connections", 2, "Number of TCP connections per host.")
 	f.BoolVar(&cfg.ConvictHosts, "cassandra.convict-hosts-on-failure", true, "Convict hosts of being down on failure.")
+	f.StringVar(&cfg.TableOptions, "cassandra.table-options", "", "Table options used to create index or chunk tables. This value is used as plain text in the table `WITH` like this, \"CREATE TABLE <generated_by_cortex> (...) WITH <cassandra.table-options>\". For details, see https://cortexmetrics.io/docs/production/cassandra. (Default = \"\": use default table options of your Cassandra)")
 }
 
 func (cfg *Config) Validate() error {
