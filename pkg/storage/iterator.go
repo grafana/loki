@@ -248,7 +248,9 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	} else {
 		from = time.Unix(0, headChunk.Chunk.From.UnixNano())
 
-		if from.Before(it.req.Start) {
+		// when clipping the from it should never be before the start or equal to the end.
+		// Doing so would include entries not requested.
+		if from.Before(it.req.Start) || from.Equal(it.req.End) {
 			from = it.req.Start
 		}
 	}
