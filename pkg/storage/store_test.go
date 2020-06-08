@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -27,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/storage/stores/local"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -87,6 +90,60 @@ func Benchmark_store_LazyQueryBackward(b *testing.B) {
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
 		Direction: logproto.BACKWARD,
 	})
+}
+
+var entry logproto.Entry
+
+func Benchmark_store_OverlappingChunks(b *testing.B) {
+	b.ReportAllocs()
+	st := &store{
+		cfg: Config{
+			MaxChunkBatchSize: 50,
+		},
+		Store: newMockChunkStore(newOverlappingStreams(200, 200)),
+	}
+	b.ResetTimer()
+	ctx := user.InjectOrgID(stats.NewContext(context.Background()), "fake")
+	start := time.Now()
+	for i := 0; i < b.N; i++ {
+		it, err := st.LazyQuery(ctx, logql.SelectParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  `{foo="bar"}`,
+			Direction: logproto.BACKWARD,
+			Limit:     0,
+			Shards:    nil,
+			Start:     time.Unix(0, 1),
+			End:       time.Unix(0, time.Now().UnixNano()),
+		}})
+		if err != nil {
+			b.Fatal(err)
+		}
+		for it.Next() {
+			entry = it.Entry()
+		}
+		if err := it.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	r := stats.Snapshot(ctx, time.Since(start))
+	statsB, _ := json.MarshalIndent(r, "", "  ")
+	b.Log(string(statsB))
+}
+
+func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
+	streams := make([]*logproto.Stream, streamCount)
+	for i := range streams {
+		streams[i] = &logproto.Stream{
+			Labels:  fmt.Sprintf(`{foo="bar",id="%d"}`, i),
+			Entries: make([]logproto.Entry, entryCount),
+		}
+		for j := range streams[i].Entries {
+			streams[i].Entries[j] = logproto.Entry{
+				Timestamp: time.Unix(0, int64(1+j)),
+				Line:      "a very compressible log line duh",
+			}
+		}
+	}
+	return streams
 }
 
 func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {

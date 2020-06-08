@@ -75,7 +75,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		l = builder.Labels()
 	}
 	from, through := model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano()), model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano())
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(chunkenc.EncSnappy, 256*1024, 0)
 	for _, e := range stream.Entries {
 		if e.Timestamp.UnixNano() < from.UnixNano() {
 			from = model.TimeFromUnixNano(e.Timestamp.UnixNano())
