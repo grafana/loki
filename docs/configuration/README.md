@@ -25,7 +25,9 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [table_manager_config](#table_manager_config)
   * [provision_config](#provision_config)
     * [auto_scaling_config](#auto_scaling_config)
+* [tracing_config](#tracing_config)
 * [Runtime Configuration file](#runtime-configuration-file)
+
 
 ## Configuration File Reference
 
@@ -97,6 +99,9 @@ Supported contents and default values of `loki.yaml`:
 
 # Configuration for "runtime config" module, responsible for reloading runtime configuration file.
 [runtime_config: <runtime_config>]
+
+#Configuration for tracing
+[tracing: <tracing_config>]
 ```
 
 ## server_config
@@ -1042,6 +1047,15 @@ The `auto_scaling_config` block configures autoscaling for DynamoDB.
 
 # DynamoDB target ratio of consumed capacity to provisioned capacity.
 [target: <float> | default = 80]
+```
+
+## tracing_config
+
+The `tracing_config` block configures tracing for Jaeger. Currently limited to disable auto-configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+
+```yaml
+# Whether or not tracing should be enabled.
+[enabled: <boolean>: default = true]
 ```
 
 ## Runtime Configuration file
