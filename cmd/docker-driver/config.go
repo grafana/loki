@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logentry/stages"
@@ -28,23 +28,26 @@ import (
 const (
 	driverName = "loki"
 
-	cfgExternalLabelsKey = "loki-external-labels"
-	cfgURLKey            = "loki-url"
-	cfgTLSCAFileKey      = "loki-tls-ca-file"
-	cfgTLSCertFileKey    = "loki-tls-cert-file"
-	cfgTLSKeyFileKey     = "loki-tls-key-file"
-	cfgTLSServerNameKey  = "loki-tls-server-name"
-	cfgTLSInsecure       = "loki-tls-insecure-skip-verify"
-	cfgProxyURLKey       = "loki-proxy-url"
-	cfgTimeoutKey        = "loki-timeout"
-	cfgBatchWaitKey      = "loki-batch-wait"
-	cfgBatchSizeKey      = "loki-batch-size"
-	cfgMinBackoffKey     = "loki-min-backoff"
-	cfgMaxBackoffKey     = "loki-max-backoff"
-	cfgMaxRetriesKey     = "loki-retries"
-	cfgPipelineStagesKey = "loki-pipeline-stage-file"
-	cfgTenantIDKey       = "loki-tenant-id"
-	cfgRelabelKey        = "loki-relabel-config"
+	cfgExternalLabelsKey     = "loki-external-labels"
+	cfgURLKey                = "loki-url"
+	cfgTLSCAFileKey          = "loki-tls-ca-file"
+	cfgTLSCertFileKey        = "loki-tls-cert-file"
+	cfgTLSKeyFileKey         = "loki-tls-key-file"
+	cfgTLSServerNameKey      = "loki-tls-server-name"
+	cfgTLSInsecure           = "loki-tls-insecure-skip-verify"
+	cfgProxyURLKey           = "loki-proxy-url"
+	cfgTimeoutKey            = "loki-timeout"
+	cfgBatchWaitKey          = "loki-batch-wait"
+	cfgBatchSizeKey          = "loki-batch-size"
+	cfgMinBackoffKey         = "loki-min-backoff"
+	cfgMaxBackoffKey         = "loki-max-backoff"
+	cfgMaxRetriesKey         = "loki-retries"
+	cfgPipelineStagesFileKey = "loki-pipeline-stage-file"
+	cfgPipelineStagesKey     = "loki-pipeline-stages"
+	cfgTenantIDKey           = "loki-tenant-id"
+	cfgNofile                = "no-file"
+	cfgKeepFile              = "keep-file"
+	cfgRelabelKey            = "loki-relabel-config"
 
 	swarmServiceLabelKey = "com.docker.swarm.service.name"
 	swarmStackLabelKey   = "com.docker.stack.namespace"
@@ -105,13 +108,18 @@ func validateDriverOpt(loggerInfo logger.Info) error {
 		case cfgMaxBackoffKey:
 		case cfgMaxRetriesKey:
 		case cfgPipelineStagesKey:
+		case cfgPipelineStagesFileKey:
 		case cfgTenantIDKey:
 		case cfgRelabelKey:
+		case cfgNofile:
+		case cfgKeepFile:
 		case "labels":
 		case "env":
 		case "env-regex":
 		case "max-size":
 		case "max-file":
+		case "mode":
+		case "max-buffer-size":
 		default:
 			return fmt.Errorf("%s: wrong log-opt: '%s' - %s", driverName, opt, loggerInfo.ContainerID)
 		}
@@ -287,19 +295,35 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	}
 
 	// parse pipeline stages
-	var pipeline PipelineConfig
-	pipelineFile, ok := logCtx.Config[cfgPipelineStagesKey]
-	if ok {
-		if err := helpers.LoadConfig(pipelineFile, &pipeline); err != nil {
-			return nil, fmt.Errorf("%s: error loading config file %s: %s", driverName, pipelineFile, err)
-		}
+	pipeline, err := parsePipeline(logCtx)
+	if err != nil {
+		return nil, err
 	}
-
 	return &config{
 		labels:       labels,
 		clientConfig: clientConfig,
 		pipeline:     pipeline,
 	}, nil
+}
+
+func parsePipeline(logCtx logger.Info) (PipelineConfig, error) {
+	var pipeline PipelineConfig
+	pipelineFile, okFile := logCtx.Config[cfgPipelineStagesFileKey]
+	pipelineString, okString := logCtx.Config[cfgPipelineStagesKey]
+	if okFile && okString {
+		return pipeline, fmt.Errorf("only one of %s or %s can be configured", cfgPipelineStagesFileKey, cfgPipelineStagesFileKey)
+	}
+	if okFile {
+		if err := helpers.LoadConfig(pipelineFile, &pipeline); err != nil {
+			return pipeline, fmt.Errorf("error loading config file %s: %s", pipelineFile, err)
+		}
+	}
+	if okString {
+		if err := yaml.UnmarshalStrict([]byte(pipelineString), &pipeline.PipelineStages); err != nil {
+			return pipeline, err
+		}
+	}
+	return pipeline, nil
 }
 
 func expandLabelValue(info logger.Info, defaultTemplate string) (string, error) {
@@ -344,4 +368,16 @@ func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 	}
 	relabed := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
 	return model.LabelSet(util.LabelsToMetric(relabed)), nil
+}
+
+func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, error) {
+	value, ok := logCtx.Config[key]
+	if !ok || value == "" {
+		return defaultValue, nil
+	}
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, err
+	}
+	return b, nil
 }

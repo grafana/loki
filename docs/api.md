@@ -109,7 +109,7 @@ Where `<vector value>` is:
     <label key-value pairs>
   },
   "value": [
-    <number: nanosecond unix epoch>,
+    <number: second unix epoch>,
     <string: value>
   ]
 }
@@ -146,7 +146,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
       {
         "metric": {},
         "value": [
-          1559848867745737,
+          1588889221,
           "1267.1266666666666"
         ]
       },
@@ -155,7 +155,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
           "level": "warn"
         },
         "value": [
-          1559848867745737,
+          1588889221,
           "37.77166666666667"
         ]
       },
@@ -164,7 +164,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
           "level": "info"
         },
         "value": [
-          1559848867745737,
+          1588889221,
           "37.69"
         ]
       }
@@ -217,15 +217,21 @@ accepts the following query parameters in the URL:
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
-- `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.
+- `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
+- `interval`: **Experimental, See Below** Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
-Requests against this endpoint require Loki to query the index store in order to
-find log streams for particular labels. Because the index store is spread out by
-time, the time span covered by `start` and `end`, if large, may cause additional
-load against the index server and result in a slow query.
-
 In microservices mode, `/loki/api/v1/query_range` is exposed by the querier and the frontend.
+
+##### Step vs Interval
+
+Use the `step` parameter when making metric queries to Loki, or queries which return a matrix response.  It is evaluated in exactly the same way Prometheus evaluates `step`.  First the query will be evaluated at `start` and then evaluated again at `start + step` and again at `start + step + step` until `end` is reached.  The result will be a matrix of the query result evaluated at each step.
+
+Use the `interval` parameter when making log queries to Loki, or queries which return a stream response. It is evaluated by returning a log entry at `start`, then the next entry will be returned an entry with timestampe >= `start + interval`, and again at `start + interval + interval` and so on until `end` is reached.  It does not fill missing entries.
+
+**Note about the experimental nature of interval** This flag may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior, however that is uncertain at this time.  [Issue 1779](https://github.com/grafana/loki/issues/1779) was created to track the discussion, if you are using `interval` please go add your use case and thoughts to that issue.
+
+
 
 Response:
 
@@ -248,7 +254,7 @@ Where `<matrix value>` is:
     <label key-value pairs>
   },
   "values": [
-    <number: nanosecond unix epoch>,
+    <number: second unix epoch>,
     <string: value>
   ]
 }
@@ -288,15 +294,15 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
         },
         "values": [
           [
-            1559848958663735,
+            1588889221,
             "137.95"
           ],
           [
-            1559849258663735,
+            1588889221,
             "467.115"
           ],
           [
-            1559849558663735,
+            1588889221,
             "658.8516666666667"
           ]
         ]
@@ -307,15 +313,15 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
         },
         "values": [
           [
-            1559848958663735,
+            1588889221,
             "137.27833333333334"
           ],
           [
-            1559849258663735,
+            1588889221,
             "467.69"
           ],
           [
-            1559849558663735,
+            1588889221,
             "660.6933333333334"
           ]
         ]
@@ -477,7 +483,7 @@ Response (streamed):
 ## `POST /loki/api/v1/push`
 
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
-behavior is for the POST body to be a snappy-compressed protobuf messsage:
+behavior is for the POST body to be a snappy-compressed protobuf message:
 
 - [Protobuf definition](/pkg/logproto/logproto.proto)
 - [Go client library](/pkg/promtail/client/client.go)
@@ -715,7 +721,7 @@ $ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
 > instead.
 
 `/api/prom/push` is the endpoint used to send log entries to Loki. The default
-behavior is for the POST body to be a snappy-compressed protobuf messsage:
+behavior is for the POST body to be a snappy-compressed protobuf message:
 
 - [Protobuf definition](/pkg/logproto/logproto.proto)
 - [Go client library](/pkg/promtail/client/client.go)
@@ -882,9 +888,9 @@ The example belows show all possible statistics returned with their respective d
         "totalDuplicates": 0 // Total of duplicates removed from replication
       },
       "summary": {
-        "bytesProcessedPerSeconds": 0, // Total of bytes processed per seconds
+        "bytesProcessedPerSecond": 0, // Total of bytes processed per second
         "execTime": 0, // Total execution time in seconds (float)
-        "linesProcessedPerSeconds": 0, // Total lines processed per second
+        "linesProcessedPerSecond": 0, // Total lines processed per second
         "totalBytesProcessed":0, // Total amount of bytes processed overall for this request
         "totalLinesProcessed":0 // Total amount of lines processed overall for this request
       }

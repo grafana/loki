@@ -5,30 +5,35 @@ import (
 	"flag"
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/storage/stores/local"
 	"github.com/grafana/loki/pkg/util"
 )
 
 // Config is the loki storage configuration
 type Config struct {
-	storage.Config    `yaml:",inline"`
-	MaxChunkBatchSize int `yaml:"max_chunk_batch_size"`
+	storage.Config      `yaml:",inline"`
+	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig local.ShipperConfig `yaml:"boltdb_shipper"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
+	cfg.BoltDBShipperConfig.RegisterFlags(f)
 	f.IntVar(&cfg.MaxChunkBatchSize, "max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
 }
 
@@ -45,8 +50,8 @@ type store struct {
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits) (Store, error) {
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits)
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
+	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, registerer, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +61,18 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	}, nil
 }
 
-// decodeReq sanitizes an incoming request, rounds bounds, and appends the __name__ matcher
+// NewTableClient creates a TableClient for managing tables for index/chunk store.
+// ToDo: Add support in Cortex for registering custom table client like index client.
+func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
+	if name == local.BoltDBShipperType {
+		name = "boltdb"
+		cfg.FSConfig = cortex_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
+	}
+	return storage.NewTableClient(name, cfg.Config)
+}
+
+// decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
+// and adds the "__cortex_shard__" label if this is a sharded query.
 func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
@@ -74,6 +90,29 @@ func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, mod
 		return nil, nil, 0, 0, err
 	}
 	matchers = append(matchers, nameLabelMatcher)
+
+	if shards := req.GetShards(); shards != nil {
+		parsed, err := logql.ParseShards(shards)
+		if err != nil {
+			return nil, nil, 0, 0, err
+		}
+		for _, s := range parsed {
+			shardMatcher, err := labels.NewMatcher(
+				labels.MatchEqual,
+				astmapper.ShardLabel,
+				s.String(),
+			)
+			if err != nil {
+				return nil, nil, 0, 0, err
+			}
+			matchers = append(matchers, shardMatcher)
+
+			// TODO(owen-d): passing more than one shard will require
+			// a refactor to cortex to support it. We're leaving this codepath in
+			// preparation of that but will not pass more than one until it's supported.
+			break // nolint:staticcheck
+		}
+	}
 
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	return matchers, filter, from, through, nil
@@ -200,4 +239,35 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 		filtered = append(filtered, chunk)
 	}
 	return filtered
+}
+
+func RegisterCustomIndexClients(cfg Config, registerer prometheus.Registerer) {
+	// BoltDB Shipper is supposed to be run as a singleton.
+	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
+	// in tests for creating multiple instances of it at a time.
+	var boltDBIndexClientWithShipper chunk.IndexClient
+
+	storage.RegisterIndexStore(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
+		if boltDBIndexClientWithShipper != nil {
+			return boltDBIndexClientWithShipper, nil
+		}
+
+		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)
+		if err != nil {
+			return nil, err
+		}
+
+		boltDBIndexClientWithShipper, err = local.NewBoltDBIndexClientWithShipper(
+			cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory},
+			objectClient, cfg.BoltDBShipperConfig, registerer)
+
+		return boltDBIndexClientWithShipper, err
+	}, func() (client chunk.TableClient, e error) {
+		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)
+		if err != nil {
+			return nil, err
+		}
+
+		return local.NewBoltDBShipperTableClient(objectClient), nil
+	})
 }

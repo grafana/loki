@@ -6,11 +6,11 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -39,6 +39,10 @@ type FSObjectClient struct {
 
 // NewFSObjectClient makes a chunk.Client which stores chunks as files in the local filesystem.
 func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
+	// filepath.Clean cleans up the path by removing unwanted duplicate slashes, dots etc.
+	// This is needed because DeleteObject works on paths which are already cleaned up and it
+	// checks whether it is about to delete the configured directory when it becomes empty
+	cfg.Directory = filepath.Clean(cfg.Directory)
 	if err := util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}
@@ -53,7 +57,7 @@ func (FSObjectClient) Stop() {}
 
 // GetObject from the store
 func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
-	fl, err := os.Open(path.Join(f.cfg.Directory, objectKey))
+	fl, err := os.Open(filepath.Join(f.cfg.Directory, objectKey))
 	if err != nil && os.IsNotExist(err) {
 		return nil, chunk.ErrStorageObjectNotFound
 	}
@@ -63,8 +67,8 @@ func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 // PutObject into the store
 func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	fullPath := path.Join(f.cfg.Directory, objectKey)
-	err := util.EnsureDirectory(path.Dir(fullPath))
+	fullPath := filepath.Join(f.cfg.Directory, objectKey)
+	err := util.EnsureDirectory(filepath.Dir(fullPath))
 	if err != nil {
 		return err
 	}
@@ -74,50 +78,86 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 		return err
 	}
 
-	defer fl.Close()
+	defer runutil.CloseWithLogOnErr(pkgUtil.Logger, fl, "fullPath: %s", fullPath)
 
 	_, err = io.Copy(fl, object)
-	return err
+	if err != nil {
+		return err
+	}
+
+	err = fl.Sync()
+	if err != nil {
+		return err
+	}
+
+	return fl.Close()
 }
 
-// List only objects from the store non-recursively
-func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+// List objects and common-prefixes i.e directories from the store non-recursively
+func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
+	var commonPrefixes []chunk.StorageCommonPrefix
+
 	folderPath := filepath.Join(f.cfg.Directory, prefix)
 
 	_, err := os.Stat(folderPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return storageObjects, nil
+			return storageObjects, commonPrefixes, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	filesInfo, err := ioutil.ReadDir(folderPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, fileInfo := range filesInfo {
+		nameWithPrefix := filepath.Join(prefix, fileInfo.Name())
+
 		if fileInfo.IsDir() {
+			empty, err := isDirEmpty(filepath.Join(folderPath, fileInfo.Name()))
+			if err != nil {
+				return nil, nil, err
+			}
+
+			// add the directory only if it is not empty
+			if !empty {
+				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(nameWithPrefix+chunk.DirDelim))
+			}
 			continue
 		}
 		storageObjects = append(storageObjects, chunk.StorageObject{
-			Key:        filepath.Join(prefix, fileInfo.Name()),
+			Key:        nameWithPrefix,
 			ModifiedAt: fileInfo.ModTime(),
 		})
 	}
 
-	return storageObjects, nil
+	return storageObjects, commonPrefixes, nil
 }
 
 func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	err := os.Remove(path.Join(f.cfg.Directory, objectKey))
-	if err != nil && os.IsNotExist(err) {
-		return chunk.ErrStorageObjectNotFound
+	// inspired from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L195
+	file := filepath.Join(f.cfg.Directory, objectKey)
+
+	for file != f.cfg.Directory {
+		if err := os.Remove(file); err != nil {
+			return err
+		}
+
+		file = filepath.Dir(file)
+		empty, err := isDirEmpty(file)
+		if err != nil {
+			return err
+		}
+
+		if !empty {
+			break
+		}
 	}
 
-	return err
+	return nil
 }
 
 // DeleteChunksBefore implements BucketClient
@@ -131,4 +171,18 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 		}
 		return nil
 	})
+}
+
+// copied from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L181
+func isDirEmpty(name string) (ok bool, err error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer runutil.CloseWithErrCapture(&err, f, "dir open")
+
+	if _, err = f.Readdir(1); err == io.EOF {
+		return true, nil
+	}
+	return false, err
 }

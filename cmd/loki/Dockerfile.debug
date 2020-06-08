@@ -12,7 +12,7 @@ FROM       alpine:3.9
 RUN        apk add --update --no-cache ca-certificates
 COPY       --from=build /src/loki/cmd/loki/loki-debug /usr/bin/loki-debug
 COPY       --from=build /go/bin/dlv /usr/bin/dlv
-COPY       cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
+COPY       cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
 EXPOSE     3100
 
 # Expose 40000 for delve

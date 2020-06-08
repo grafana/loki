@@ -97,6 +97,7 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 			td["Value"] = s
 		}
 	}
+	td["Entry"] = *entry
 
 	buf := &bytes.Buffer{}
 	err := o.template.Execute(buf, td)

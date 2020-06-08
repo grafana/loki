@@ -5,14 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -22,16 +20,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
+	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
 // attempted.
 var ErrReadOnly = errors.New("Ingester is shutting down")
-
-var readinessProbeSuccess = []byte("Ready")
 
 var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "cortex_ingester_flush_queue_length",
@@ -62,7 +63,10 @@ type Config struct {
 	MaxReturnedErrors int `yaml:"max_returned_stream_errors"`
 
 	// For testing, you can override the address and ID of this ingester.
-	ingesterClientFactory func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error)
+	ingesterClientFactory func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error)
+
+	QueryStore                  bool          `yaml:"-"`
+	QueryStoreMaxLookBackPeriod time.Duration `yaml:"query_store_max_look_back_period"`
 }
 
 // RegisterFlags registers the flags.
@@ -82,10 +86,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
+	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 }
 
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
+	services.Service
+
 	cfg          Config
 	clientConfig client.Config
 
@@ -94,12 +101,14 @@ type Ingester struct {
 	instances    map[string]*instance
 	readonly     bool
 
-	lifecycler *ring.Lifecycler
-	store      ChunkStore
+	lifecycler        *ring.Lifecycler
+	lifecyclerWatcher *services.FailureWatcher
 
-	done     sync.WaitGroup
-	quit     chan struct{}
-	quitting chan struct{}
+	store ChunkStore
+
+	loopDone    sync.WaitGroup
+	loopQuit    chan struct{}
+	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -113,6 +122,7 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
+	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
 }
 
 // New makes a new Ingester.
@@ -130,18 +140,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		clientConfig: clientConfig,
 		instances:    map[string]*instance{},
 		store:        store,
-		quit:         make(chan struct{}),
+		loopQuit:     make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		quitting:     make(chan struct{}),
+		tailersQuit:  make(chan struct{}),
 		factory: func() chunkenc.Chunk {
-			return chunkenc.NewMemChunkSize(enc, cfg.BlockSize, cfg.TargetChunkSize)
+			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
-	}
-
-	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
-	for j := 0; j < cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
-		go i.flushLoop(j)
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
@@ -149,30 +153,81 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		return nil, err
 	}
 
-	i.lifecycler.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
-		// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
-		// for now we just simulate old behaviour here. When Ingester itself becomes a service, it will enter Failed state as well.
-		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
-		os.Exit(1)
-	}))
-
-	err = services.StartAndAwaitRunning(context.Background(), i.lifecycler)
-	if err != nil {
-		return nil, err
-	}
+	i.lifecyclerWatcher = services.NewFailureWatcher()
+	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 
-	i.done.Add(1)
-	go i.loop()
-
+	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	return i, nil
 }
 
+func (i *Ingester) starting(ctx context.Context) error {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
+		go i.flushLoop(j)
+	}
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
+	err := i.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
+	// start our loop
+	i.loopDone.Add(1)
+	go i.loop()
+	return nil
+}
+
+func (i *Ingester) running(ctx context.Context) error {
+	var serviceError error
+	select {
+	// wait until service is asked to stop
+	case <-ctx.Done():
+	// stop
+	case err := <-i.lifecyclerWatcher.Chan():
+		serviceError = fmt.Errorf("lifecycler failed: %w", err)
+	}
+
+	// close tailers before stopping our loop
+	close(i.tailersQuit)
+	for _, instance := range i.getInstances() {
+		instance.closeTailers()
+	}
+
+	close(i.loopQuit)
+	i.loopDone.Wait()
+	return serviceError
+}
+
+// Called after running exits, when Ingester transitions to Stopping state.
+// At this point, loop no longer runs, but flushers are still running.
+func (i *Ingester) stopping(_ error) error {
+	i.stopIncomingRequests()
+
+	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+
+	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
+	// we better stop them.
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
+	}
+	i.flushQueuesDone.Wait()
+
+	return err
+}
+
 func (i *Ingester) loop() {
-	defer i.done.Done()
+	defer i.loopDone.Done()
 
 	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
 	defer flushTicker.Stop()
@@ -182,30 +237,9 @@ func (i *Ingester) loop() {
 		case <-flushTicker.C:
 			i.sweepUsers(false)
 
-		case <-i.quit:
+		case <-i.loopQuit:
 			return
 		}
-	}
-}
-
-// Shutdown stops the ingester.
-func (i *Ingester) Shutdown() {
-	close(i.quit)
-	i.done.Wait()
-
-	i.stopIncomingRequests()
-
-	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
-	}
-}
-
-// Stopping helps cleaning up resources before actual shutdown
-func (i *Ingester) Stopping() {
-	close(i.quitting)
-	for _, instance := range i.getInstances() {
-		instance.closeTailers()
 	}
 }
 
@@ -241,13 +275,35 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 
 // Query the ingests for log streams matching a set of matchers.
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	instanceID, err := user.ExtractOrgID(queryServer.Context())
+	// initialize stats collection for ingester queries and set grpc trailer with stats.
+	ctx := stats.NewContext(queryServer.Context())
+	defer stats.SendAsTrailer(ctx, queryServer)
+
+	instanceID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	return instance.Query(req, queryServer)
+	itrs, err := instance.Query(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if storeReq := buildStoreRequest(i.cfg, req); storeReq != nil {
+		storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: storeReq})
+		if err != nil {
+			return err
+		}
+
+		itrs = append(itrs, storeItr)
+	}
+
+	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
+
+	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+
+	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
 }
 
 // Label returns the set of labels for the stream this ingester knows about.
@@ -258,7 +314,50 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	return instance.Label(ctx, req)
+	resp, err := instance.Label(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only continue if we should query the store for labels
+	if !i.cfg.QueryStore {
+		return resp, nil
+	}
+
+	// Only continue if the store is a chunk.Store
+	var cs chunk.Store
+	var ok bool
+	if cs, ok = i.store.(chunk.Store); !ok {
+		return resp, nil
+	}
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
+	start := adjustQueryStartTime(i.cfg, *req.Start)
+	if start.After(*req.End) {
+		// The request is older than we are allowed to query the store, just return what we have.
+		return resp, nil
+	}
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	var storeValues []string
+	if req.Values {
+		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &logproto.LabelResponse{
+		Values: listutil.MergeStringLists(resp.Values, storeValues),
+	}, nil
 }
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
@@ -283,18 +382,13 @@ func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 }
 
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
-// the addition removal of another ingester. Returns 200 when the ingester is
+// the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
-func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if err := i.lifecycler.CheckReady(r.Context()); err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
+func (i *Ingester) CheckReady(ctx context.Context) error {
+	if s := i.State(); s != services.Running && s != services.Stopping {
+		return fmt.Errorf("ingester not ready: %v", s)
 	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
-	}
+	return i.lifecycler.CheckReady(ctx)
 }
 
 func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
@@ -319,7 +413,7 @@ func (i *Ingester) getInstances() []*instance {
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
-	case <-i.quitting:
+	case <-i.tailersQuit:
 		return errors.New("Ingester is stopping")
 	default:
 	}
@@ -355,4 +449,36 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 	}
 
 	return &resp, nil
+}
+
+// buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
+// The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
+// we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
+func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRequest {
+	if !cfg.QueryStore {
+		return nil
+	}
+	start := req.Start
+	end := req.End
+	start = adjustQueryStartTime(cfg, start)
+
+	if start.After(end) {
+		return nil
+	}
+
+	newRequest := *req
+	newRequest.Start = start
+	newRequest.End = end
+
+	return &newRequest
+}
+
+func adjustQueryStartTime(cfg Config, start time.Time) time.Time {
+	if cfg.QueryStoreMaxLookBackPeriod > 0 {
+		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
+		if oldestStartTime.After(start) {
+			start = oldestStartTime
+		}
+	}
+	return start
 }

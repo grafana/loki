@@ -41,13 +41,13 @@ var Fixtures = []testutils.Fixture{
 			}
 			index := &dynamoDBStorageClient{
 				DynamoDB:                dynamoDB,
-				queryRequestFn:          dynamoDB.queryRequest,
 				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 				schemaCfg:               schemaConfig,
 			}
 			object := objectclient.NewClient(&S3ObjectClient{
-				S3: newMockS3(),
+				S3:        newMockS3(),
+				delimiter: chunk.DirDelim,
 			}, nil)
 			return index, object, table, schemaConfig, nil
 		},
@@ -79,7 +79,6 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 				},
 				DynamoDB:                dynamoDB,
 				writeThrottle:           rate.NewLimiter(10, dynamoDBMaxWriteBatchSize),
-				queryRequestFn:          dynamoDB.queryRequest,
 				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 				schemaCfg:               schemaCfg,

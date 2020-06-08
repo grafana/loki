@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -27,20 +28,27 @@ var entries = []logproto.Entry{
 	{Timestamp: time.Unix(100, 1)},
 }
 
-var labelFoo, _ = promql.ParseMetric("{app=\"foo\"}")
-var labelBar, _ = promql.ParseMetric("{app=\"bar\"}")
+var labelFoo, _ = parser.ParseMetric("{app=\"foo\"}")
+var labelBar, _ = parser.ParseMetric("{app=\"bar\"}")
 
 func newEntryIterator() iter.EntryIterator {
 	return iter.NewHeapIterator(context.Background(), []iter.EntryIterator{
-		iter.NewStreamIterator(&logproto.Stream{
+		iter.NewStreamIterator(logproto.Stream{
 			Labels:  labelFoo.String(),
 			Entries: entries,
 		}),
-		iter.NewStreamIterator(&logproto.Stream{
+		iter.NewStreamIterator(logproto.Stream{
 			Labels:  labelBar.String(),
 			Entries: entries,
 		}),
 	}, logproto.FORWARD)
+}
+
+func newfakeSeriesIterator() SeriesIterator {
+	return &seriesIterator{
+		iter:    iter.NewPeekingIterator(newEntryIterator()),
+		sampler: extractCount,
+	}
 }
 
 func newPoint(t time.Time, v float64) promql.Point {
@@ -53,6 +61,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		step            int64
 		expectedVectors []promql.Vector
 		expectedTs      []time.Time
+		start, end      time.Time
 	}{
 		{
 			(5 * time.Second).Nanoseconds(), // no overlap
@@ -73,6 +82,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 				},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
+			time.Unix(10, 0), time.Unix(100, 0),
 		},
 		{
 			(35 * time.Second).Nanoseconds(), // will overlap by 5 sec
@@ -96,6 +106,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 				},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
+			time.Unix(10, 0), time.Unix(100, 0),
 		},
 		{
 			(30 * time.Second).Nanoseconds(), // same range
@@ -116,6 +127,23 @@ func Test_RangeVectorIterator(t *testing.T) {
 				},
 			},
 			[]time.Time{time.Unix(10, 0), time.Unix(40, 0), time.Unix(70, 0), time.Unix(100, 0)},
+			time.Unix(10, 0), time.Unix(100, 0),
+		},
+		{
+			(50 * time.Second).Nanoseconds(), // all step are overlapping
+			(10 * time.Second).Nanoseconds(),
+			[]promql.Vector{
+				[]promql.Sample{
+					{Point: newPoint(time.Unix(110, 0), 2), Metric: labelBar},
+					{Point: newPoint(time.Unix(110, 0), 2), Metric: labelFoo},
+				},
+				[]promql.Sample{
+					{Point: newPoint(time.Unix(120, 0), 2), Metric: labelBar},
+					{Point: newPoint(time.Unix(120, 0), 2), Metric: labelFoo},
+				},
+			},
+			[]time.Time{time.Unix(110, 0), time.Unix(120, 0)},
+			time.Unix(110, 0), time.Unix(120, 0),
 		},
 	}
 
@@ -123,12 +151,12 @@ func Test_RangeVectorIterator(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("logs[%s] - step: %s", time.Duration(tt.selRange), time.Duration(tt.step)),
 			func(t *testing.T) {
-				it := newRangeVectorIterator(newEntryIterator(), tt.selRange,
-					tt.step, time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano())
+				it := newRangeVectorIterator(newfakeSeriesIterator(), tt.selRange,
+					tt.step, tt.start.UnixNano(), tt.end.UnixNano())
 
 				i := 0
 				for it.Next() {
-					ts, v := it.At(count)
+					ts, v := it.At(countOverTime)
 					require.ElementsMatch(t, tt.expectedVectors[i], v)
 					require.Equal(t, tt.expectedTs[i].UnixNano()/1e+6, ts)
 					i++

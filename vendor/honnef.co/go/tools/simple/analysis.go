@@ -1,223 +1,148 @@
 package simple
 
 import (
-	"flag"
-
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"honnef.co/go/tools/facts"
-	"honnef.co/go/tools/internal/passes/buildssa"
+	"honnef.co/go/tools/internal/passes/buildir"
 	"honnef.co/go/tools/lint/lintutil"
 )
 
-func newFlagSet() flag.FlagSet {
-	fs := flag.NewFlagSet("", flag.PanicOnError)
-	fs.Var(lintutil.NewVersionFlag(), "go", "Target Go version")
-	return *fs
-}
-
-var Analyzers = map[string]*analysis.Analyzer{
+var Analyzers = lintutil.InitializeAnalyzers(Docs, map[string]*analysis.Analyzer{
 	"S1000": {
-		Name:     "S1000",
-		Run:      LintSingleCaseSelect,
-		Doc:      Docs["S1000"].String(),
+		Run:      CheckSingleCaseSelect,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1001": {
-		Name:     "S1001",
-		Run:      LintLoopCopy,
-		Doc:      Docs["S1001"].String(),
+		Run:      CheckLoopCopy,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1002": {
-		Name:     "S1002",
-		Run:      LintIfBoolCmp,
-		Doc:      Docs["S1002"].String(),
+		Run:      CheckIfBoolCmp,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1003": {
-		Name:     "S1003",
-		Run:      LintStringsContains,
-		Doc:      Docs["S1003"].String(),
+		Run:      CheckStringsContains,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1004": {
-		Name:     "S1004",
-		Run:      LintBytesCompare,
-		Doc:      Docs["S1004"].String(),
+		Run:      CheckBytesCompare,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1005": {
-		Name:     "S1005",
-		Run:      LintUnnecessaryBlank,
-		Doc:      Docs["S1005"].String(),
+		Run:      CheckUnnecessaryBlank,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1006": {
-		Name:     "S1006",
-		Run:      LintForTrue,
-		Doc:      Docs["S1006"].String(),
+		Run:      CheckForTrue,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1007": {
-		Name:     "S1007",
-		Run:      LintRegexpRaw,
-		Doc:      Docs["S1007"].String(),
+		Run:      CheckRegexpRaw,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1008": {
-		Name:     "S1008",
-		Run:      LintIfReturn,
-		Doc:      Docs["S1008"].String(),
+		Run:      CheckIfReturn,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1009": {
-		Name:     "S1009",
-		Run:      LintRedundantNilCheckWithLen,
-		Doc:      Docs["S1009"].String(),
+		Run:      CheckRedundantNilCheckWithLen,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1010": {
-		Name:     "S1010",
-		Run:      LintSlicing,
-		Doc:      Docs["S1010"].String(),
+		Run:      CheckSlicing,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1011": {
-		Name:     "S1011",
-		Run:      LintLoopAppend,
-		Doc:      Docs["S1011"].String(),
+		Run:      CheckLoopAppend,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1012": {
-		Name:     "S1012",
-		Run:      LintTimeSince,
-		Doc:      Docs["S1012"].String(),
+		Run:      CheckTimeSince,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1016": {
-		Name:     "S1016",
-		Run:      LintSimplerStructConversion,
-		Doc:      Docs["S1016"].String(),
+		Run:      CheckSimplerStructConversion,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1017": {
-		Name:     "S1017",
-		Run:      LintTrim,
-		Doc:      Docs["S1017"].String(),
+		Run:      CheckTrim,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1018": {
-		Name:     "S1018",
-		Run:      LintLoopSlide,
-		Doc:      Docs["S1018"].String(),
+		Run:      CheckLoopSlide,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1019": {
-		Name:     "S1019",
-		Run:      LintMakeLenCap,
-		Doc:      Docs["S1019"].String(),
+		Run:      CheckMakeLenCap,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1020": {
-		Name:     "S1020",
-		Run:      LintAssertNotNil,
-		Doc:      Docs["S1020"].String(),
+		Run:      CheckAssertNotNil,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1021": {
-		Name:     "S1021",
-		Run:      LintDeclareAssign,
-		Doc:      Docs["S1021"].String(),
+		Run:      CheckDeclareAssign,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1023": {
-		Name:     "S1023",
-		Run:      LintRedundantBreak,
-		Doc:      Docs["S1023"].String(),
+		Run:      CheckRedundantBreak,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1024": {
-		Name:     "S1024",
-		Run:      LintTimeUntil,
-		Doc:      Docs["S1024"].String(),
+		Run:      CheckTimeUntil,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1025": {
-		Name:     "S1025",
-		Run:      LintRedundantSprintf,
-		Doc:      Docs["S1025"].String(),
-		Requires: []*analysis.Analyzer{buildssa.Analyzer, inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
+		Run:      CheckRedundantSprintf,
+		Requires: []*analysis.Analyzer{buildir.Analyzer, inspect.Analyzer, facts.Generated},
 	},
 	"S1028": {
-		Name:     "S1028",
-		Run:      LintErrorsNewSprintf,
-		Doc:      Docs["S1028"].String(),
+		Run:      CheckErrorsNewSprintf,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1029": {
-		Name:     "S1029",
-		Run:      LintRangeStringRunes,
-		Doc:      Docs["S1029"].String(),
-		Requires: []*analysis.Analyzer{buildssa.Analyzer},
-		Flags:    newFlagSet(),
+		Run:      CheckRangeStringRunes,
+		Requires: []*analysis.Analyzer{buildir.Analyzer},
 	},
 	"S1030": {
-		Name:     "S1030",
-		Run:      LintBytesBufferConversions,
-		Doc:      Docs["S1030"].String(),
+		Run:      CheckBytesBufferConversions,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1031": {
-		Name:     "S1031",
-		Run:      LintNilCheckAroundRange,
-		Doc:      Docs["S1031"].String(),
+		Run:      CheckNilCheckAroundRange,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1032": {
-		Name:     "S1032",
-		Run:      LintSortHelpers,
-		Doc:      Docs["S1032"].String(),
+		Run:      CheckSortHelpers,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1033": {
-		Name:     "S1033",
-		Run:      LintGuardedDelete,
-		Doc:      Docs["S1033"].String(),
+		Run:      CheckGuardedDelete,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
 	"S1034": {
-		Name:     "S1034",
-		Run:      LintSimplifyTypeSwitch,
-		Doc:      Docs["S1034"].String(),
+		Run:      CheckSimplifyTypeSwitch,
 		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
-		Flags:    newFlagSet(),
 	},
-}
+	"S1035": {
+		Run:      CheckRedundantCanonicalHeaderKey,
+		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
+	},
+	"S1036": {
+		Run:      CheckUnnecessaryGuard,
+		Requires: []*analysis.Analyzer{inspect.Analyzer},
+	},
+	"S1037": {
+		Run:      CheckElaborateSleep,
+		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
+	},
+	"S1038": {
+		Run:      CheckPrintSprintf,
+		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
+	},
+	"S1039": {
+		Run:      CheckSprintLiteral,
+		Requires: []*analysis.Analyzer{inspect.Analyzer, facts.Generated},
+	},
+})

@@ -12,13 +12,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
@@ -33,7 +33,7 @@ func TestTransferOut(t *testing.T) {
 	// Push some data into our original ingester
 	ctx := user.InjectOrgID(context.Background(), "test")
 	_, err := ing.Push(ctx, &logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Entries: []logproto.Entry{
 					{Line: "line 0", Timestamp: time.Unix(0, 0)},
@@ -59,7 +59,7 @@ func TestTransferOut(t *testing.T) {
 
 	// verify we get out of order exception on adding an entry with older timestamps
 	_, err2 := ing.Push(ctx, &logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Entries: []logproto.Entry{
 					{Line: "out of order line", Timestamp: time.Unix(0, 0)},
@@ -76,7 +76,8 @@ func TestTransferOut(t *testing.T) {
 
 	// Create a new ingester and transfer data to it
 	ing2 := f.getIngester(time.Second*60, t)
-	ing.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), ing2) //nolint:errcheck
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	assert.Len(t, ing2.instances, 1)
 	if assert.Contains(t, ing2.instances, "test") {
@@ -141,19 +142,13 @@ func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T)
 	cfg.LifecyclerConfig.JoinAfter = joinAfter
 	cfg.LifecyclerConfig.Addr = cfg.LifecyclerConfig.ID
 
-	cfg.ingesterClientFactory = func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error) {
+	cfg.ingesterClientFactory = func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error) {
 		ingester, ok := f.ingesters[addr]
 		if !ok {
 			return nil, fmt.Errorf("no ingester %s", addr)
 		}
 
-		return struct {
-			logproto.PusherClient
-			logproto.QuerierClient
-			logproto.IngesterClient
-			grpc_health_v1.HealthClient
-			io.Closer
-		}{
+		return client.ClosableHealthAndIngesterClient{
 			PusherClient:   nil,
 			QuerierClient:  nil,
 			IngesterClient: &testIngesterClient{t: f.t, i: ingester},

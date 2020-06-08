@@ -41,16 +41,16 @@ func (o observableVecCollector) After(method, statusCode string, start time.Time
 
 // MemcachedConfig is config to make a Memcached
 type MemcachedConfig struct {
-	Expiration time.Duration `yaml:"expiration,omitempty"`
+	Expiration time.Duration `yaml:"expiration"`
 
-	BatchSize   int `yaml:"batch_size,omitempty"`
-	Parallelism int `yaml:"parallelism,omitempty"`
+	BatchSize   int `yaml:"batch_size"`
+	Parallelism int `yaml:"parallelism"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.Expiration, prefix+"memcached.expiration", 0, description+"How long keys stay in the memcache.")
-	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 0, description+"How many keys to fetch in each batch.")
+	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 1024, description+"How many keys to fetch in each batch.")
 	f.IntVar(&cfg.Parallelism, prefix+"memcached.parallelism", 100, description+"Maximum active requests to memcache.")
 }
 
@@ -149,8 +149,8 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	err := instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
-		sp := opentracing.SpanFromContext(ctx)
+	err := instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
+		sp := opentracing.SpanFromContext(innerCtx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
 		var err error

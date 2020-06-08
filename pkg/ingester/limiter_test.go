@@ -11,80 +11,6 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-func TestLimiter_maxStreamsPerUser(t *testing.T) {
-	tests := map[string]struct {
-		maxLocalStreamsPerUser  int
-		maxGlobalStreamsPerUser int
-		ringReplicationFactor   int
-		ringIngesterCount       int
-		expected                int
-	}{
-		"both local and global limits are disabled": {
-			maxLocalStreamsPerUser:  0,
-			maxGlobalStreamsPerUser: 0,
-			ringReplicationFactor:   1,
-			ringIngesterCount:       1,
-			expected:                math.MaxInt32,
-		},
-		"only local limit is enabled": {
-			maxLocalStreamsPerUser:  1000,
-			maxGlobalStreamsPerUser: 0,
-			ringReplicationFactor:   1,
-			ringIngesterCount:       1,
-			expected:                1000,
-		},
-		"only global limit is enabled with replication-factor=1": {
-			maxLocalStreamsPerUser:  0,
-			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   1,
-			ringIngesterCount:       10,
-			expected:                100,
-		},
-		"only global limit is enabled with replication-factor=3": {
-			maxLocalStreamsPerUser:  0,
-			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
-			expected:                300,
-		},
-		"both local and global limits are set with local limit < global limit": {
-			maxLocalStreamsPerUser:  150,
-			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
-			expected:                150,
-		},
-		"both local and global limits are set with local limit > global limit": {
-			maxLocalStreamsPerUser:  500,
-			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
-			expected:                300,
-		},
-	}
-
-	for testName, testData := range tests {
-		testData := testData
-
-		t.Run(testName, func(t *testing.T) {
-			// Mock the ring
-			ring := &ringCountMock{count: testData.ringIngesterCount}
-
-			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
-				MaxLocalStreamsPerUser:  testData.maxLocalStreamsPerUser,
-				MaxGlobalStreamsPerUser: testData.maxGlobalStreamsPerUser,
-			}, nil)
-			require.NoError(t, err)
-
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor)
-			actual := limiter.maxStreamsPerUser("test")
-
-			assert.Equal(t, testData.expected, actual)
-		})
-	}
-}
-
 func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
 	tests := map[string]struct {
 		maxLocalStreamsPerUser  int
@@ -116,7 +42,55 @@ func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
 			ringReplicationFactor:   3,
 			ringIngesterCount:       10,
 			streams:                 300,
-			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, 0, 1000, 300),
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 300, 300, 0, 1000, 300),
+		},
+		"both local and global limits are disabled": {
+			maxLocalStreamsPerUser:  0,
+			maxGlobalStreamsPerUser: 0,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       1,
+			streams:                 math.MaxInt32 - 1,
+			expected:                nil,
+		},
+		"only local limit is enabled": {
+			maxLocalStreamsPerUser:  1000,
+			maxGlobalStreamsPerUser: 0,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       1,
+			streams:                 3000,
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 1000, 1000, 0, 0),
+		},
+		"only global limit is enabled with replication-factor=1": {
+			maxLocalStreamsPerUser:  0,
+			maxGlobalStreamsPerUser: 1000,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       10,
+			streams:                 3000,
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 100, 0, 1000, 100),
+		},
+		"only global limit is enabled with replication-factor=3": {
+			maxLocalStreamsPerUser:  0,
+			maxGlobalStreamsPerUser: 1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			streams:                 3000,
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 300, 0, 1000, 300),
+		},
+		"both local and global limits are set with local limit < global limit": {
+			maxLocalStreamsPerUser:  150,
+			maxGlobalStreamsPerUser: 1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			streams:                 3000,
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 150, 150, 1000, 300),
+		},
+		"both local and global limits are set with local limit > global limit": {
+			maxLocalStreamsPerUser:  500,
+			maxGlobalStreamsPerUser: 1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			streams:                 3000,
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 300, 500, 1000, 300),
 		},
 	}
 

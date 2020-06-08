@@ -45,6 +45,13 @@ pipeline_stages:
       config:
         match_all: true
         action: inc
+    total_bytes_count:
+      type: Counter
+      description: nothing to see here...
+      config:
+        match_all: true
+        count_entry_bytes: true
+        action: add
     payload_size_bytes:
       type: Histogram
       description: grrrragh
@@ -93,6 +100,9 @@ promtail_custom_payload_size_bytes_bucket{test="app",le="20"} 2
 promtail_custom_payload_size_bytes_bucket{test="app",le="+Inf"} 2
 promtail_custom_payload_size_bytes_sum{test="app"} 30
 promtail_custom_payload_size_bytes_count{test="app"} 2
+# HELP promtail_custom_total_bytes_count nothing to see here...
+# TYPE promtail_custom_total_bytes_count counter
+promtail_custom_total_bytes_count{test="app"} 255
 # HELP promtail_custom_total_lines_count nothing to see here...
 # TYPE promtail_custom_total_lines_count counter
 promtail_custom_total_lines_count{test="app"} 2
@@ -115,7 +125,7 @@ func TestMetricsPipeline(t *testing.T) {
 
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedMetrics)); err != nil {
-		t.Fatalf("missmatch metrics: %v", err)
+		t.Fatalf("mismatch metrics: %v", err)
 	}
 }
 
@@ -182,7 +192,7 @@ func TestMetricsWithDropInPipeline(t *testing.T) {
 
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedDropMetrics)); err != nil {
-		t.Fatalf("missmatch metrics: %v", err)
+		t.Fatalf("mismatch metrics: %v", err)
 	}
 }
 
@@ -200,10 +210,10 @@ func Test(t *testing.T) {
 		"invalid metric type": {
 			MetricsConfig{
 				"metric1": MetricConfig{
-					MetricType: "Piplne",
+					MetricType: "Pipe_line",
 				},
 			},
-			errors.Errorf(ErrMetricsStageInvalidType, "piplne"),
+			errors.Errorf(ErrMetricsStageInvalidType, "pipe_line"),
 		},
 		"invalid idle duration": {
 			MetricsConfig{
@@ -374,7 +384,7 @@ func TestMetricStage_Process(t *testing.T) {
 	names := metricNames(metricsConfig)
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(goldenMetrics), names...); err != nil {
-		t.Fatalf("missmatch metrics: %v", err)
+		t.Fatalf("mismatch metrics: %v", err)
 	}
 }
 

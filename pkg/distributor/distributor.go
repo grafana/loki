@@ -4,19 +4,17 @@ import (
 	"context"
 	"flag"
 	"net/http"
-	"os"
 	"sync/atomic"
 	"time"
 
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/pkg/errors"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -30,11 +28,6 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-const (
-	metricName = "logs"
-)
-
-var readinessProbeSuccess = []byte("Ready")
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -65,7 +58,7 @@ type Config struct {
 	DistributorRing cortex_distributor.RingConfig `yaml:"ring,omitempty"`
 
 	// For testing.
-	factory func(addr string) (grpc_health_v1.HealthClient, error) `yaml:"-"`
+	factory ring_client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
@@ -75,15 +68,20 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
+	services.Service
+
 	cfg           Config
 	clientCfg     client.Config
 	ingestersRing ring.ReadRing
 	validator     *Validator
-	pool          *cortex_client.Pool
+	pool          *ring_client.Pool
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
 	distributorsRing *ring.Lifecycler
+
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
@@ -93,7 +91,7 @@ type Distributor struct {
 func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overrides *validation.Overrides) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
-		factory = func(addr string) (grpc_health_v1.HealthClient, error) {
+		factory = func(addr string) (ring_client.PoolClient, error) {
 			return client.New(clientCfg, addr)
 		}
 	}
@@ -107,6 +105,8 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsRing *ring.Lifecycler
 
+	var servs []services.Service
+
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		var err error
 		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false)
@@ -114,18 +114,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 			return nil, err
 		}
 
-		distributorsRing.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
-			// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
-			// for now we just simulate old behaviour here. When Distributor itself becomes a service, it will enter Failed state as well.
-			level.Error(cortex_util.Logger).Log("msg", "lifecycler failed", "err", err)
-			os.Exit(1)
-		}))
-
-		err = services.StartAndAwaitRunning(context.Background(), distributorsRing)
-		if err != nil {
-			return nil, err
-		}
-
+		servs = append(servs, distributorsRing)
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
@@ -137,27 +126,42 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		ingestersRing:        ingestersRing,
 		distributorsRing:     distributorsRing,
 		validator:            validator,
-		pool:                 cortex_client.NewPool(clientCfg.PoolConfig, ingestersRing, factory, cortex_util.Logger),
+		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, cortex_util.Logger),
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 	}
 
-	if err := services.StartAndAwaitRunning(context.Background(), d.pool); err != nil {
-		return nil, errors.Wrap(err, "starting client pool")
+	servs = append(servs, d.pool)
+	d.subservices, err = services.NewManager(servs...)
+	if err != nil {
+		return nil, errors.Wrap(err, "services manager")
 	}
+	d.subservicesWatcher = services.NewFailureWatcher()
+	d.subservicesWatcher.WatchManager(d.subservices)
+	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 
 	return &d, nil
 }
 
-func (d *Distributor) Stop() {
-	if d.distributorsRing != nil {
-		_ = services.StopAndAwaitTerminated(context.Background(), d.distributorsRing)
+func (d *Distributor) starting(ctx context.Context) error {
+	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
+}
+
+func (d *Distributor) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-d.subservicesWatcher.Chan():
+		return errors.Wrap(err, "distributor subservice failed")
 	}
-	_ = services.StopAndAwaitTerminated(context.Background(), d.pool)
+}
+
+func (d *Distributor) stopping(_ error) error {
+	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
-	stream      *logproto.Stream
+	stream      logproto.Stream
 	minSuccess  int
 	maxFailures int
 	succeeded   int32
@@ -170,21 +174,6 @@ type pushTracker struct {
 	samplesFailed  int32
 	done           chan struct{}
 	err            chan error
-}
-
-// ReadinessHandler is used to indicate to k8s when the distributor is ready.
-// Returns 200 when the distributor is ready, 500 otherwise.
-func (d *Distributor) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := d.ingestersRing.GetAll()
-	if err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(cortex_util.Logger).Log("msg", "error writing success message", "error", err)
-	}
 }
 
 // Push a set of streams.
@@ -216,14 +205,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
-		if err := d.validator.ValidateLabels(userID, stream.Labels); err != nil {
+		if err := d.validator.ValidateLabels(userID, stream); err != nil {
 			validationErr = err
 			continue
 		}
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
-			if err := d.validator.ValidateEntry(userID, entry); err != nil {
+			if err := d.validator.ValidateEntry(userID, stream.Labels, entry); err != nil {
 				validationErr = err
 				continue
 			}
@@ -248,11 +237,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	now := time.Now()
 	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
-		// Return a 4xx here to have the client discard the data and not retry. If a client
-		// is sending too much data consistently we will unlikely ever catch up otherwise.
+		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%d bytes) exceeded while adding %d lines for a total size of %d bytes", int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize))
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
@@ -341,7 +329,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 	}
 
 	req := &logproto.PushRequest{
-		Streams: make([]*logproto.Stream, len(streams)),
+		Streams: make([]logproto.Stream, len(streams)),
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream

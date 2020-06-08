@@ -20,6 +20,7 @@ type badResponseLoggingWriter struct {
 	logBody       bool
 	bodyBytesLeft int
 	statusCode    int
+	writeError    error // The error returned when downstream Write() fails.
 }
 
 // newBadResponseLoggingWriter makes a new badResponseLoggingWriter.
@@ -49,6 +50,9 @@ func (b *badResponseLoggingWriter) Write(data []byte) (int, error) {
 	n, err := b.rw.Write(data)
 	if b.logBody {
 		b.captureResponseBody(data)
+	}
+	if err != nil {
+		b.writeError = err
 	}
 	return n, err
 }

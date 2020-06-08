@@ -52,55 +52,131 @@ func (r *LokiRequest) WithQuery(query string) queryrange.Request {
 	return &new
 }
 
+func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
+	new := *r
+	new.Shards = shards.Encode()
+	return &new
+}
+
+func (r *LokiSeriesRequest) GetEnd() int64 {
+	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiSeriesRequest) GetStart() int64 {
+	return r.StartTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiSeriesRequest) WithStartEnd(s int64, e int64) queryrange.Request {
+	new := *r
+	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &new
+}
+
+func (r *LokiSeriesRequest) WithQuery(query string) queryrange.Request {
+	new := *r
+	return &new
+}
+
+func (r *LokiSeriesRequest) GetQuery() string {
+	return ""
+}
+
+func (r *LokiSeriesRequest) GetStep() int64 {
+	return 0
+}
+
 func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
-	req, err := loghttp.ParseRangeQuery(r)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+
+	switch op := getOperation(r); op {
+	case QueryRangeOp:
+		req, err := loghttp.ParseRangeQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &LokiRequest{
+			Query:     req.Query,
+			Limit:     req.Limit,
+			Direction: req.Direction,
+			StartTs:   req.Start.UTC(),
+			EndTs:     req.End.UTC(),
+			// GetStep must return milliseconds
+			Step:   int64(req.Step) / 1e6,
+			Path:   r.URL.Path,
+			Shards: req.Shards,
+		}, nil
+	case SeriesOp:
+		req, err := loghttp.ParseSeriesQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &LokiSeriesRequest{
+			Match:   req.Groups,
+			StartTs: req.Start.UTC(),
+			EndTs:   req.End.UTC(),
+			Path:    r.URL.Path,
+		}, nil
+	default:
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
-	return &LokiRequest{
-		Query:     req.Query,
-		Limit:     req.Limit,
-		Direction: req.Direction,
-		StartTs:   req.Start.UTC(),
-		EndTs:     req.End.UTC(),
-		// GetStep must return milliseconds
-		Step: int64(req.Step) / 1e6,
-		Path: r.URL.Path,
-	}, nil
+
 }
 
 func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Request, error) {
-	lokiReq, ok := r.(*LokiRequest)
-	if !ok {
+	switch request := r.(type) {
+	case *LokiRequest:
+		params := url.Values{
+			"start":     []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
+			"end":       []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
+			"query":     []string{request.Query},
+			"direction": []string{request.Direction.String()},
+			"limit":     []string{fmt.Sprintf("%d", request.Limit)},
+		}
+		if len(request.Shards) > 0 {
+			params["shards"] = request.Shards
+		}
+		if request.Step != 0 {
+			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
+		}
+		u := &url.URL{
+			// the request could come /api/prom/query but we want to only use the new api.
+			Path:     "/loki/api/v1/query_range",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     http.Header{},
+		}
+
+		return req.WithContext(ctx), nil
+	case *LokiSeriesRequest:
+		params := url.Values{
+			"start":   []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
+			"end":     []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
+			"match[]": request.Match,
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/series",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     http.Header{},
+		}
+		return req.WithContext(ctx), nil
+	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
 	}
-	params := url.Values{
-		"start":     []string{fmt.Sprintf("%d", lokiReq.StartTs.UnixNano())},
-		"end":       []string{fmt.Sprintf("%d", lokiReq.EndTs.UnixNano())},
-		"query":     []string{lokiReq.Query},
-		"direction": []string{lokiReq.Direction.String()},
-		"limit":     []string{fmt.Sprintf("%d", lokiReq.Limit)},
-	}
-	if lokiReq.Step != 0 {
-		params["step"] = []string{fmt.Sprintf("%f", float64(lokiReq.Step)/float64(1e3))}
-	}
-	u := &url.URL{
-		// the request could come /api/prom/query but we want to only use the new api.
-		Path:     "/loki/api/v1/query_range",
-		RawQuery: params.Encode(),
-	}
-	req := &http.Request{
-		Method:     "GET",
-		RequestURI: u.String(), // This is what the httpgrpc code looks at.
-		URL:        u,
-		Body:       http.NoBody,
-		Header:     http.Header{},
-	}
-
-	return req.WithContext(ctx), nil
 }
 
 func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrange.Request) (queryrange.Response, error) {
@@ -120,85 +196,125 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 
 	sp.LogFields(otlog.Int("bytes", len(buf)))
 
-	var resp loghttp.QueryResponse
-	if err := json.Unmarshal(buf, &resp); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
-	}
-	switch string(resp.Data.ResultType) {
-	case loghttp.ResultTypeMatrix:
-		return &LokiPromResponse{
-			Response: &queryrange.PrometheusResponse{
-				Status: resp.Status,
-				Data: queryrange.PrometheusData{
-					ResultType: loghttp.ResultTypeMatrix,
-					Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
-				},
-			},
-			Statistics: resp.Data.Statistics,
-		}, nil
-	case loghttp.ResultTypeStream:
-		return &LokiResponse{
-			Status:     resp.Status,
-			Direction:  req.(*LokiRequest).Direction,
-			Limit:      req.(*LokiRequest).Limit,
-			Version:    uint32(loghttp.GetVersion(req.(*LokiRequest).Path)),
-			Statistics: resp.Data.Statistics,
-			Data: LokiData{
-				ResultType: loghttp.ResultTypeStream,
-				Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
-			},
+	switch req := req.(type) {
+	case *LokiSeriesRequest:
+		var resp loghttp.SeriesResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+
+		data := make([]logproto.SeriesIdentifier, 0, len(resp.Data))
+		for _, label := range resp.Data {
+			d := logproto.SeriesIdentifier{
+				Labels: label.Map(),
+			}
+			data = append(data, d)
+		}
+
+		return &LokiSeriesResponse{
+			Status:  resp.Status,
+			Version: uint32(loghttp.GetVersion(req.Path)),
+			Data:    data,
 		}, nil
 	default:
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, "unsupported response type")
+		var resp loghttp.QueryResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		switch string(resp.Data.ResultType) {
+		case loghttp.ResultTypeMatrix:
+			return &LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: resp.Status,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
+					},
+				},
+				Statistics: resp.Data.Statistics,
+			}, nil
+		case loghttp.ResultTypeStream:
+			return &LokiResponse{
+				Status:     resp.Status,
+				Direction:  req.(*LokiRequest).Direction,
+				Limit:      req.(*LokiRequest).Limit,
+				Version:    uint32(loghttp.GetVersion(req.(*LokiRequest).Path)),
+				Statistics: resp.Data.Statistics,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
+				},
+			}, nil
+		default:
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "unsupported response type")
+		}
 	}
+
 }
 
 func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 
-	if promRes, ok := res.(*LokiPromResponse); ok {
-		return promRes.encode(ctx)
-	}
+	switch response := res.(type) {
+	case *LokiPromResponse:
+		return response.encode(ctx)
+	case *LokiResponse:
+		streams := make([]logproto.Stream, len(response.Data.Result))
 
-	proto, ok := res.(*LokiResponse)
-	if !ok {
+		for i, stream := range response.Data.Result {
+			streams[i] = logproto.Stream{
+				Labels:  stream.Labels,
+				Entries: stream.Entries,
+			}
+		}
+		result := logql.Result{
+			Data:       logql.Streams(streams),
+			Statistics: response.Statistics,
+		}
+		var buf bytes.Buffer
+		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
+			if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
+				return nil, err
+			}
+		}
+
+		sp.LogFields(otlog.Int("bytes", buf.Len()))
+
+		resp := http.Response{
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body:       ioutil.NopCloser(&buf),
+			StatusCode: http.StatusOK,
+		}
+		return &resp, nil
+	case *LokiSeriesResponse:
+		result := logproto.SeriesResponse{
+			Series: response.Data,
+		}
+		var buf bytes.Buffer
+		if err := marshal.WriteSeriesResponseJSON(result, &buf); err != nil {
+			return nil, err
+		}
+
+		sp.LogFields(otlog.Int("bytes", buf.Len()))
+
+		resp := http.Response{
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body:       ioutil.NopCloser(&buf),
+			StatusCode: http.StatusOK,
+		}
+		return &resp, nil
+	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
-
-	streams := make([]*logproto.Stream, len(proto.Data.Result))
-
-	for i, stream := range proto.Data.Result {
-		streams[i] = &logproto.Stream{
-			Labels:  stream.Labels,
-			Entries: stream.Entries,
-		}
-	}
-	result := logql.Result{
-		Data:       logql.Streams(streams),
-		Statistics: proto.Statistics,
-	}
-	var buf bytes.Buffer
-	if loghttp.Version(proto.Version) == loghttp.VersionLegacy {
-		if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
-			return nil, err
-		}
-	}
-
-	sp.LogFields(otlog.Int("bytes", buf.Len()))
-
-	resp := http.Response{
-		Header: http.Header{
-			"Content-Type": []string{"application/json"},
-		},
-		Body:       ioutil.NopCloser(&buf),
-		StatusCode: http.StatusOK,
-	}
-	return &resp, nil
 }
 
 func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Response, error) {
@@ -206,7 +322,9 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 		return nil, errors.New("merging responses requires at least one response")
 	}
 	var mergedStats stats.Result
-	if _, ok := responses[0].(*LokiPromResponse); ok {
+	switch responses[0].(type) {
+	case *LokiPromResponse:
+
 		promResponses := make([]queryrange.Response, 0, len(responses))
 		for _, res := range responses {
 			mergedStats.Merge(res.(*LokiPromResponse).Statistics)
@@ -220,32 +338,55 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 			Response:   promRes.(*queryrange.PrometheusResponse),
 			Statistics: mergedStats,
 		}, nil
-	}
-	lokiRes, ok := responses[0].(*LokiResponse)
-	if !ok {
-		return nil, errors.New("unexpected response type while merging")
-	}
+	case *LokiResponse:
+		lokiRes := responses[0].(*LokiResponse)
 
-	lokiResponses := make([]*LokiResponse, 0, len(responses))
-	for _, res := range responses {
-		lokiResult := res.(*LokiResponse)
-		mergedStats.Merge(lokiResult.Statistics)
-		lokiResponses = append(lokiResponses, lokiResult)
-	}
+		lokiResponses := make([]*LokiResponse, 0, len(responses))
+		for _, res := range responses {
+			lokiResult := res.(*LokiResponse)
+			mergedStats.Merge(lokiResult.Statistics)
+			lokiResponses = append(lokiResponses, lokiResult)
+		}
 
-	return &LokiResponse{
-		Status:     loghttp.QueryStatusSuccess,
-		Direction:  lokiRes.Direction,
-		Limit:      lokiRes.Limit,
-		Version:    lokiRes.Version,
-		ErrorType:  lokiRes.ErrorType,
-		Error:      lokiRes.Error,
-		Statistics: mergedStats,
-		Data: LokiData{
-			ResultType: loghttp.ResultTypeStream,
-			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
-		},
-	}, nil
+		return &LokiResponse{
+			Status:     loghttp.QueryStatusSuccess,
+			Direction:  lokiRes.Direction,
+			Limit:      lokiRes.Limit,
+			Version:    lokiRes.Version,
+			ErrorType:  lokiRes.ErrorType,
+			Error:      lokiRes.Error,
+			Statistics: mergedStats,
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
+			},
+		}, nil
+	case *LokiSeriesResponse:
+		lokiSeriesRes := responses[0].(*LokiSeriesResponse)
+
+		var lokiSeriesData []logproto.SeriesIdentifier
+		uniqueSeries := make(map[string]struct{})
+
+		// only unique series should be merged
+		for _, res := range responses {
+			lokiResult := res.(*LokiSeriesResponse)
+			for _, series := range lokiResult.Data {
+				if _, ok := uniqueSeries[series.String()]; !ok {
+					lokiSeriesData = append(lokiSeriesData, series)
+					uniqueSeries[series.String()] = struct{}{}
+				}
+
+			}
+		}
+
+		return &LokiSeriesResponse{
+			Status:  lokiSeriesRes.Status,
+			Version: lokiSeriesRes.Version,
+			Data:    lokiSeriesData,
+		}, nil
+	default:
+		return nil, errors.New("unknown response in merging responses")
+	}
 }
 
 // mergeOrderedNonOverlappingStreams merges a set of ordered, nonoverlapping responses by concatenating matching streams then running them through a heap to pull out limit values
@@ -397,9 +538,11 @@ func (p paramsWrapper) End() time.Time {
 func (p paramsWrapper) Step() time.Duration {
 	return time.Duration(p.LokiRequest.Step * 1e6)
 }
-func (p paramsWrapper) Limit() uint32 {
-	return p.LokiRequest.Limit
-}
+func (p paramsWrapper) Interval() time.Duration { return 0 }
 func (p paramsWrapper) Direction() logproto.Direction {
 	return p.LokiRequest.Direction
+}
+func (p paramsWrapper) Limit() uint32 { return p.LokiRequest.Limit }
+func (p paramsWrapper) Shards() []string {
+	return p.LokiRequest.Shards
 }

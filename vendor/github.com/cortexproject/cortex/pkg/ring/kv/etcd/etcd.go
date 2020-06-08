@@ -41,6 +41,23 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
+		// Configure the keepalive to make sure that the client reconnects
+		// to the etcd service endpoint(s) in case the current connection is
+		// dead (ie. the node where etcd is running is dead or a network
+		// partition occurs).
+		//
+		// The settings:
+		// - DialKeepAliveTime: time before the client pings the server to
+		//   see if transport is alive (10s hardcoded)
+		// - DialKeepAliveTimeout: time the client waits for a response for
+		//   the keep-alive probe (set to 2x dial timeout, in order to avoid
+		//   exposing another config option which is likely to be a factor of
+		//   the dial timeout anyway)
+		// - PermitWithoutStream: whether the client should send keepalive pings
+		//   to server without any active streams (enabled)
+		DialKeepAliveTime:    10 * time.Second,
+		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
+		PermitWithoutStream:  true,
 	})
 	if err != nil {
 		return nil, err
@@ -195,14 +212,35 @@ outer:
 	}
 }
 
+// List implements kv.Client.
+func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
+	resp, err := c.cli.Get(ctx, prefix, clientv3.WithPrefix(), clientv3.WithKeysOnly())
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		keys = append(keys, string(kv.Key))
+	}
+	return keys, nil
+}
+
 // Get implements kv.Client.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	resp, err := c.cli.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	if len(resp.Kvs) != 1 {
-		return nil, fmt.Errorf("got %d kvs, expected 1", len(resp.Kvs))
+	if len(resp.Kvs) == 0 {
+		return nil, nil
+	} else if len(resp.Kvs) != 1 {
+		return nil, fmt.Errorf("got %d kvs, expected 1 or 0", len(resp.Kvs))
 	}
 	return c.codec.Decode(resp.Kvs[0].Value)
+}
+
+// Delete implements kv.Client.
+func (c *Client) Delete(ctx context.Context, key string) error {
+	_, err := c.cli.Delete(ctx, key)
+	return err
 }

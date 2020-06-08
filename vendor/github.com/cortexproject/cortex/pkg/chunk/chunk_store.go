@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -15,23 +14,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
+	ErrQueryMustContainMetricName = QueryError("query must contain metric name")
 	ErrMetricNameLabelMissing     = errors.New("metric name label missing")
 	ErrParialDeleteChunkNoOverlap = errors.New("interval for partial deletion has not overlap with chunk interval")
-)
 
-var (
 	indexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_entries_per_chunk",
@@ -45,52 +40,67 @@ var (
 	})
 )
 
+// Query errors are to be treated as user errors, rather than storage errors.
+type QueryError string
+
+func (e QueryError) Error() string {
+	return string(e)
+}
+
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config,omitempty"`
-	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config,omitempty"`
+	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config"`
+	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config"`
 
-	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than,omitempty"`
+	CacheLookupsOlderThan model.Duration `yaml:"cache_lookups_older_than"`
 
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
-	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
+	MaxLookBackPeriod model.Duration `yaml:"max_look_back_period"`
 
-	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers
+	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers.
+	// This exists in case we don't want to cache all the chunks but still want to take advantage of
+	// ingester chunk write deduplication. But for the queriers we need the full value. So when this option
+	// is set, use different caches for ingesters and queriers.
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("", "Cache config for chunks. ", f)
-	f.BoolVar(&cfg.chunkCacheStubs, "store.chunk-cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
+	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("store.chunks-cache.", "Cache config for chunks. ", f)
+	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
-	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
-	f.DurationVar(&cfg.MaxLookBackPeriod, "store.max-look-back-period", 0, "Limit how long back data can be queried")
-
-	// Deprecated.
-	flagext.DeprecatedFlag(f, "store.cardinality-cache-size", "DEPRECATED. Use store.index-cache-read.enable-fifocache and store.index-cache-read.fifocache.size instead.")
-	flagext.DeprecatedFlag(f, "store.cardinality-cache-validity", "DEPRECATED. Use store.index-cache-read.enable-fifocache and store.index-cache-read.fifocache.duration instead.")
+	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
+	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Limit how long back data can be queried")
 }
 
-// store implements Store
-type store struct {
+func (cfg *StoreConfig) Validate() error {
+	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.WriteDedupeCacheConfig.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type baseStore struct {
 	cfg StoreConfig
 
 	index  IndexClient
 	chunks Client
-	schema Schema
+	schema BaseSchema
 	limits StoreLimits
 	*Fetcher
 }
 
-func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
+func newBaseStore(cfg StoreConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
+	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, chunks)
 	if err != nil {
-		return nil, err
+		return baseStore{}, err
 	}
 
-	return &store{
+	return baseStore{
 		cfg:     cfg,
 		index:   index,
 		chunks:  chunks,
@@ -100,10 +110,29 @@ func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, 
 	}, nil
 }
 
+// store implements Store
+type store struct {
+	baseStore
+	schema StoreSchema
+}
+
+func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (Store, error) {
+	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
+	if err != nil {
+		return nil, err
+	}
+
+	return &store{
+		baseStore: rs,
+		schema:    schema,
+	}, nil
+}
+
 // Stop any background goroutines (ie in the cache.)
 func (c *store) Stop() {
 	c.storage.Stop()
 	c.Fetcher.Stop()
+	c.index.Stop()
 }
 
 // Put implements ChunkStore
@@ -188,7 +217,7 @@ func (c *store) GetChunkRefs(ctx context.Context, userID string, from, through m
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c *store) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string) ([]string, error) {
+func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
@@ -254,18 +283,18 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 	return labelNamesFromChunks(allChunks), nil
 }
 
-func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
+func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
 	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
 	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
 
 	if *through < *from {
-		return false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
+		return false, QueryError(fmt.Sprintf("invalid query, through < from (%s < %s)", through, from))
 	}
 
 	maxQueryLength := c.limits.MaxQueryLength(userID)
 	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
-		return false, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength)
+		return false, QueryError(fmt.Sprintf(validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength))
 	}
 
 	now := model.Now()
@@ -277,7 +306,7 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 	}
 
 	if c.cfg.MaxLookBackPeriod != 0 {
-		oldestStartTime := model.Now().Add(-c.cfg.MaxLookBackPeriod)
+		oldestStartTime := model.Now().Add(-time.Duration(c.cfg.MaxLookBackPeriod))
 		if oldestStartTime.After(*from) {
 			*from = oldestStartTime
 		}
@@ -292,7 +321,7 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 	return false, nil
 }
 
-func (c *store) validateQuery(ctx context.Context, userID string, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
+func (c *baseStore) validateQuery(ctx context.Context, userID string, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQuery")
 	defer log.Span.Finish()
 
@@ -307,7 +336,7 @@ func (c *store) validateQuery(ctx context.Context, userID string, from *model.Ti
 	// Check there is a metric name matcher of type equal,
 	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(matchers)
 	if !ok || metricNameMatcher.Type != labels.MatchEqual {
-		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "query must contain metric name")
+		return "", nil, false, ErrQueryMustContainMetricName
 	}
 
 	return metricNameMatcher.Value, matchers, false, nil
@@ -331,7 +360,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
 	if maxChunksPerQuery > 0 && len(filtered) > maxChunksPerQuery {
-		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), maxChunksPerQuery)
+		err := QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), maxChunksPerQuery))
 		level.Error(log).Log("err", err)
 		return nil, err
 	}
@@ -340,7 +369,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 	keys := keysFromChunks(filtered)
 	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
-		return nil, promql.ErrStorage{Err: err}
+		return nil, err
 	}
 
 	// Filter out chunks based on the empty matchers in the query.
@@ -380,36 +409,12 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
-			// Lookup IndexQuery's
-			var queries []IndexQuery
-			var err error
-			if matcher.Type != labels.MatchEqual {
-				queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
+			chunkIDs, err := c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, nil)
+			if err != nil {
+				incomingErrors <- err
 			} else {
-				queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
+				incomingChunkIDs <- chunkIDs
 			}
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			level.Debug(log).Log("matcher", matcher, "queries", len(queries))
-
-			// Lookup IndexEntry's
-			entries, err := c.lookupEntriesByQueries(ctx, queries)
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			level.Debug(log).Log("matcher", matcher, "entries", len(entries))
-
-			// Convert IndexEntry's to chunk IDs, filter out non-matchers at the same time.
-			chunkIDs, err := c.parseIndexEntries(ctx, entries, matcher)
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			level.Debug(log).Log("matcher", matcher, "chunkIDs", len(chunkIDs))
-			incomingChunkIDs <- chunkIDs
 		}(matcher)
 	}
 
@@ -437,7 +442,62 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	return c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 }
 
-func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
+	defer log.Span.Finish()
+
+	var err error
+	var queries []IndexQuery
+	var labelName string
+	if matcher == nil {
+		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
+	} else if matcher.Type == labels.MatchEqual {
+		labelName = matcher.Name
+		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
+	} else if matcher.Type == labels.MatchRegexp && len(FindSetMatches(matcher.Value)) > 0 {
+		set := FindSetMatches(matcher.Value)
+		for _, v := range set {
+			var qs []IndexQuery
+			qs, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, v)
+			if err != nil {
+				break
+			}
+			queries = append(queries, qs...)
+		}
+	} else {
+		labelName = matcher.Name
+		queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("matcher", matcher, "queries", len(queries))
+
+	if filter != nil {
+		queries = filter(queries)
+		level.Debug(log).Log("matcher", matcher, "filteredQueries", len(queries))
+	}
+
+	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	if e, ok := err.(CardinalityExceededError); ok {
+		e.MetricName = metricName
+		e.LabelName = labelName
+		return nil, e
+	} else if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("matcher", matcher, "entries", len(entries))
+
+	ids, err := c.parseIndexEntries(ctx, entries, matcher)
+	if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("matcher", matcher, "ids", len(ids))
+
+	return ids, nil
+}
+
+func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
 	log, ctx := spanlogger.New(ctx, "store.lookupEntriesByQueries")
 	defer log.Span.Finish()
 
@@ -463,7 +523,7 @@ func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 	return entries, err
 }
 
-func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+func (c *baseStore) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
@@ -482,7 +542,7 @@ func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, mat
 	return result, nil
 }
 
-func (c *store) convertChunkIDsToChunks(ctx context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
+func (c *baseStore) convertChunkIDsToChunks(ctx context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
 	chunkSet := make([]Chunk, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
 		chunk, err := ParseExternalKey(userID, chunkID)
@@ -511,7 +571,7 @@ func (c *store) DeleteChunk(ctx context.Context, from, through model.Time, userI
 	})
 }
 
-func (c *store) deleteChunk(ctx context.Context,
+func (c *baseStore) deleteChunk(ctx context.Context,
 	userID string,
 	chunkID string,
 	metric labels.Labels,
@@ -553,7 +613,7 @@ func (c *store) deleteChunk(ctx context.Context,
 	return nil
 }
 
-func (c *store) reboundChunk(ctx context.Context, userID, chunkID string, partiallyDeletedInterval model.Interval, putChunkFunc func(chunk Chunk) error) error {
+func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, partiallyDeletedInterval model.Interval, putChunkFunc func(chunk Chunk) error) error {
 	chunk, err := ParseExternalKey(userID, chunkID)
 	if err != nil {
 		return errors.Wrap(err, "when parsing external key")

@@ -3,6 +3,7 @@ package cassandra
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -11,33 +12,36 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
+	pkgutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config for a StorageClient
 type Config struct {
-	Addresses                string              `yaml:"addresses,omitempty"`
-	Port                     int                 `yaml:"port,omitempty"`
-	Keyspace                 string              `yaml:"keyspace,omitempty"`
-	Consistency              string              `yaml:"consistency,omitempty"`
-	ReplicationFactor        int                 `yaml:"replication_factor,omitempty"`
-	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup,omitempty"`
-	SSL                      bool                `yaml:"SSL,omitempty"`
-	HostVerification         bool                `yaml:"host_verification,omitempty"`
-	CAPath                   string              `yaml:"CA_path,omitempty"`
-	Auth                     bool                `yaml:"auth,omitempty"`
-	Username                 string              `yaml:"username,omitempty"`
-	Password                 flagext.Secret      `yaml:"password,omitempty"`
-	PasswordFile             string              `yaml:"password_file,omitempty"`
+	Addresses                string              `yaml:"addresses"`
+	Port                     int                 `yaml:"port"`
+	Keyspace                 string              `yaml:"keyspace"`
+	Consistency              string              `yaml:"consistency"`
+	ReplicationFactor        int                 `yaml:"replication_factor"`
+	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup"`
+	SSL                      bool                `yaml:"SSL"`
+	HostVerification         bool                `yaml:"host_verification"`
+	CAPath                   string              `yaml:"CA_path"`
+	Auth                     bool                `yaml:"auth"`
+	Username                 string              `yaml:"username"`
+	Password                 flagext.Secret      `yaml:"password"`
+	PasswordFile             string              `yaml:"password_file"`
 	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticators"`
-	Timeout                  time.Duration       `yaml:"timeout,omitempty"`
-	ConnectTimeout           time.Duration       `yaml:"connect_timeout,omitempty"`
+	Timeout                  time.Duration       `yaml:"timeout"`
+	ConnectTimeout           time.Duration       `yaml:"connect_timeout"`
 	Retries                  int                 `yaml:"max_retries"`
 	MaxBackoff               time.Duration       `yaml:"retry_max_backoff"`
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
+	QueryConcurrency         int                 `yaml:"query_concurrency"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -61,11 +65,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
 	f.DurationVar(&cfg.MinBackoff, "cassandra.retry-min-backoff", 100*time.Millisecond, "Minimum time to wait before retrying a failed request. (Default = 100ms)")
 	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
+	f.IntVar(&cfg.QueryConcurrency, "cassandra.query-concurrency", 0, "Limit number of concurrent queries to Cassandra. (Default is 0: no limit)")
 }
 
 func (cfg *Config) Validate() error {
 	if cfg.Password.Value != "" && cfg.PasswordFile != "" {
 		return errors.Errorf("The password and password_file config options are mutually exclusive.")
+	}
+	if cfg.SSL && cfg.HostVerification && len(strings.Split(cfg.Addresses, ",")) != 1 {
+		return errors.Errorf("Host verification is only possible for a single host.")
 	}
 	return nil
 }
@@ -117,9 +125,18 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
 	if cfg.SSL {
-		cluster.SslOpts = &gocql.SslOptions{
-			CaPath:                 cfg.CAPath,
-			EnableHostVerification: cfg.HostVerification,
+		if cfg.HostVerification {
+			cluster.SslOpts = &gocql.SslOptions{
+				CaPath:                 cfg.CAPath,
+				EnableHostVerification: true,
+				Config: &tls.Config{
+					ServerName: strings.Split(cfg.Addresses, ",")[0],
+				},
+			}
+		} else {
+			cluster.SslOpts = &gocql.SslOptions{
+				EnableHostVerification: false,
+			}
 		}
 	}
 	if cfg.Auth {
@@ -178,22 +195,31 @@ func (cfg *Config) createKeyspace() error {
 
 // StorageClient implements chunk.IndexClient and chunk.ObjectClient for Cassandra.
 type StorageClient struct {
-	cfg       Config
-	schemaCfg chunk.SchemaConfig
-	session   *gocql.Session
+	cfg            Config
+	schemaCfg      chunk.SchemaConfig
+	session        *gocql.Session
+	querySemaphore *semaphore.Weighted
 }
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
+	pkgutil.WarnExperimentalUse("Cassandra Backend")
+
 	session, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
+	var querySemaphore *semaphore.Weighted
+	if cfg.QueryConcurrency > 0 {
+		querySemaphore = semaphore.NewWeighted(int64(cfg.QueryConcurrency))
+	}
+
 	client := &StorageClient{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		session:   session,
+		cfg:            cfg,
+		schemaCfg:      schemaCfg,
+		session:        session,
+		querySemaphore: querySemaphore,
 	}
 	return client, nil
 }
@@ -207,6 +233,7 @@ func (s *StorageClient) Stop() {
 // atomic writes.  Therefore we just do a bunch of writes in parallel.
 type writeBatch struct {
 	entries []chunk.IndexEntry
+	deletes []chunk.IndexEntry
 }
 
 // NewWriteBatch implement chunk.IndexClient.
@@ -224,8 +251,11 @@ func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value [
 }
 
 func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	// ToDo: implement this to support deleting index entries from Cassandra
-	panic("Cassandra does not support Deleting index entries yet")
+	b.deletes = append(b.deletes, chunk.IndexEntry{
+		TableName:  tableName,
+		HashValue:  hashValue,
+		RangeValue: rangeValue,
+	})
 }
 
 // BatchWrite implement chunk.IndexClient.
@@ -240,6 +270,14 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		}
 	}
 
+	for _, entry := range b.deletes {
+		err := s.session.Query(fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
+			entry.TableName), entry.HashValue, entry.RangeValue).WithContext(ctx).Exec()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
 	return nil
 }
 
@@ -248,7 +286,14 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	return util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback util.Callback) error {
+	if s.querySemaphore != nil {
+		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
+			return err
+		}
+		defer s.querySemaphore.Release(1)
+	}
+
 	var q *gocql.Query
 
 	switch {
@@ -273,7 +318,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 			query.TableName), query.HashValue)
 
 	case query.ValueEqual != nil:
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? value = ? ALLOW FILTERING",
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND value = ? ALLOW FILTERING",
 			query.TableName), query.HashValue, query.ValueEqual)
 	}
 
@@ -285,7 +330,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
 			return errors.WithStack(err)
 		}
-		if !callback(b) {
+		if !callback(query, b) {
 			return nil
 		}
 	}
@@ -355,6 +400,13 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 }
 
 func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+	if s.querySemaphore != nil {
+		if err := s.querySemaphore.Acquire(ctx, 1); err != nil {
+			return input, err
+		}
+		defer s.querySemaphore.Release(1)
+	}
+
 	tableName, err := s.schemaCfg.ChunkTableFor(input.From)
 	if err != nil {
 		return input, err

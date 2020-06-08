@@ -9,7 +9,7 @@ import (
 
 func Test_SimplifiedRegex(t *testing.T) {
 	fixtures := []string{
-		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba", "foofoofoo", "b", "foob", "bfoo",
+		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba", "foofoofoo", "b", "foob", "bfoo", "FoO",
 	}
 	for _, test := range []struct {
 		re         string
@@ -18,40 +18,41 @@ func Test_SimplifiedRegex(t *testing.T) {
 		match      bool
 	}{
 		// regex we intend to support.
-		{"foo", true, containsFilter("foo"), true},
-		{"not", true, newNotFilter(containsFilter("not")), false},
-		{"(foo)", true, containsFilter("foo"), true},
-		{"(foo|ba)", true, newOrFilter(containsFilter("foo"), containsFilter("ba")), true},
-		{"(foo|ba|ar)", true, newOrFilter(newOrFilter(containsFilter("foo"), containsFilter("ba")), containsFilter("ar")), true},
-		{"(foo|(ba|ar))", true, newOrFilter(containsFilter("foo"), newOrFilter(containsFilter("ba"), containsFilter("ar"))), true},
-		{"foo.*", true, containsFilter("foo"), true},
-		{".*foo", true, newNotFilter(containsFilter("foo")), false},
-		{".*foo.*", true, containsFilter("foo"), true},
-		{"(.*)(foo).*", true, containsFilter("foo"), true},
-		{"(foo.*|.*ba)", true, newOrFilter(containsFilter("foo"), containsFilter("ba")), true},
-		{"(foo.*|.*bar.*)", true, newNotFilter(newOrFilter(containsFilter("foo"), containsFilter("bar"))), false},
-		{".*foo.*|bar", true, newNotFilter(newOrFilter(containsFilter("foo"), containsFilter("bar"))), false},
-		{".*foo|bar", true, newNotFilter(newOrFilter(containsFilter("foo"), containsFilter("bar"))), false},
+		{"foo", true, newContainsFilter([]byte("foo"), false), true},
+		{"not", true, newNotFilter(newContainsFilter([]byte("not"), false)), false},
+		{"(foo)", true, newContainsFilter([]byte("foo"), false), true},
+		{"(foo|ba)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), true},
+		{"(foo|ba|ar)", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), newContainsFilter([]byte("ar"), false)), true},
+		{"(foo|(ba|ar))", true, newOrFilter(newContainsFilter([]byte("foo"), false), newOrFilter(newContainsFilter([]byte("ba"), false), newContainsFilter([]byte("ar"), false))), true},
+		{"foo.*", true, newContainsFilter([]byte("foo"), false), true},
+		{".*foo", true, newNotFilter(newContainsFilter([]byte("foo"), false)), false},
+		{".*foo.*", true, newContainsFilter([]byte("foo"), false), true},
+		{"(.*)(foo).*", true, newContainsFilter([]byte("foo"), false), true},
+		{"(foo.*|.*ba)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), true},
+		{"(foo.*|.*bar.*)", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{".*foo.*|bar", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{".*foo|bar", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
 		// This construct is similar to (...), but won't create a capture group.
-		{"(?:.*foo.*|bar)", true, newOrFilter(containsFilter("foo"), containsFilter("bar")), true},
+		{"(?:.*foo.*|bar)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false)), true},
 		// named capture group
-		{"(?P<foo>.*foo.*|bar)", true, newOrFilter(containsFilter("foo"), containsFilter("bar")), true},
+		{"(?P<foo>.*foo.*|bar)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false)), true},
 		// parsed as (?-s:.)*foo(?-s:.)*|b(?:ar|uzz)
-		{".*foo.*|bar|buzz", true, newOrFilter(containsFilter("foo"), newOrFilter(containsFilter("bar"), containsFilter("buzz"))), true},
+		{".*foo.*|bar|buzz", true, newOrFilter(newContainsFilter([]byte("foo"), false), newOrFilter(newContainsFilter([]byte("bar"), false), newContainsFilter([]byte("buzz"), false))), true},
 		// parsed as (?-s:.)*foo(?-s:.)*|bar|uzz
-		{".*foo.*|bar|uzz", true, newOrFilter(newOrFilter(containsFilter("foo"), containsFilter("bar")), containsFilter("uzz")), true},
+		{".*foo.*|bar|uzz", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false)), newContainsFilter([]byte("uzz"), false)), true},
 		// parsed as foo|b(?:ar|(?:)|uzz)|zz
-		{"foo|bar|b|buzz|zz", true, newOrFilter(newOrFilter(containsFilter("foo"), newOrFilter(newOrFilter(containsFilter("bar"), containsFilter("b")), containsFilter("buzz"))), containsFilter("zz")), true},
+		{"foo|bar|b|buzz|zz", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newOrFilter(newOrFilter(newContainsFilter([]byte("bar"), false), newContainsFilter([]byte("b"), false)), newContainsFilter([]byte("buzz"), false))), newContainsFilter([]byte("zz"), false)), true},
 		// parsed as f(?:(?:)|oo(?:(?:)|bar))
-		{"f|foo|foobar", true, newOrFilter(containsFilter("f"), newOrFilter(containsFilter("foo"), containsFilter("foobar"))), true},
+		{"f|foo|foobar", true, newOrFilter(newContainsFilter([]byte("f"), false), newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("foobar"), false))), true},
 		// parsed as f(?:(?-s:.)*|oobar(?-s:.)*)|(?-s:.)*buzz
-		{"f.*|foobar.*|.*buzz", true, newOrFilter(newOrFilter(containsFilter("f"), containsFilter("foobar")), containsFilter("buzz")), true},
+		{"f.*|foobar.*|.*buzz", true, newOrFilter(newOrFilter(newContainsFilter([]byte("f"), false), newContainsFilter([]byte("foobar"), false)), newContainsFilter([]byte("buzz"), false)), true},
 		// parsed as ((f(?-s:.)*)|foobar(?-s:.)*)|(?-s:.)*buzz
-		{"((f.*)|foobar.*)|.*buzz", true, newOrFilter(newOrFilter(containsFilter("f"), containsFilter("foobar")), containsFilter("buzz")), true},
+		{"((f.*)|foobar.*)|.*buzz", true, newOrFilter(newOrFilter(newContainsFilter([]byte("f"), false), newContainsFilter([]byte("foobar"), false)), newContainsFilter([]byte("buzz"), false)), true},
 		{".*", true, TrueFilter, true},
 		{".*|.*", true, TrueFilter, true},
 		{".*||||", true, TrueFilter, true},
 		{"", true, TrueFilter, true},
+		{"(?i)foo", true, newContainsFilter([]byte("foo"), true), true},
 
 		// regex we are not supporting.
 		{"[a-z]+foo", false, nil, false},
@@ -93,26 +94,27 @@ func Test_SimplifiedRegex(t *testing.T) {
 }
 
 func Test_TrueFilter(t *testing.T) {
+	empty := []byte("")
 	for _, test := range []struct {
 		name       string
 		f          LineFilter
 		expectTrue bool
 	}{
-		{"empty match", newContainsFilter(""), true},
-		{"not empty match", newNotFilter(newContainsFilter("")), false},
-		{"match", newContainsFilter("foo"), false},
-		{"empty match and", newAndFilter(newContainsFilter(""), newContainsFilter("")), true},
-		{"empty match or", newOrFilter(newContainsFilter(""), newContainsFilter("")), true},
-		{"nil right and", newAndFilter(newContainsFilter(""), nil), true},
-		{"nil left or", newOrFilter(nil, newContainsFilter("")), true},
-		{"nil right and not empty", newAndFilter(newContainsFilter("foo"), nil), false},
-		{"nil left or not empty", newOrFilter(nil, newContainsFilter("foo")), false},
-		{"nil both and", newAndFilter(nil, nil), true},
-		{"nil both or", newOrFilter(nil, nil), true},
-		{"empty match and chained", newAndFilter(newContainsFilter(""), newAndFilter(newContainsFilter(""), newAndFilter(newContainsFilter(""), newContainsFilter("")))), true},
-		{"empty match or chained", newOrFilter(newContainsFilter(""), newOrFilter(newContainsFilter(""), newOrFilter(newContainsFilter(""), newContainsFilter("")))), true},
-		{"empty match and", newNotFilter(newAndFilter(newContainsFilter(""), newContainsFilter(""))), false},
-		{"empty match or", newNotFilter(newOrFilter(newContainsFilter(""), newContainsFilter(""))), false},
+		{"empty match", newContainsFilter(empty, false), true},
+		{"not empty match", newNotFilter(newContainsFilter(empty, true)), false},
+		{"match", newContainsFilter([]byte("foo"), false), false},
+		{"empty match and", newAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
+		{"empty match or", newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
+		{"nil right and", newAndFilter(newContainsFilter(empty, false), nil), true},
+		{"nil left or", newOrFilter(nil, newContainsFilter(empty, false)), true},
+		{"nil right and not empty", newAndFilter(newContainsFilter([]byte("foo"), false), nil), false},
+		{"nil left or not empty", newOrFilter(nil, newContainsFilter([]byte("foo"), false)), false},
+		{"nil both and", newAndFilter(nil, nil), false}, // returns nil
+		{"nil both or", newOrFilter(nil, nil), false},   // returns nil
+		{"empty match and chained", newAndFilter(newContainsFilter(empty, false), newAndFilter(newContainsFilter(empty, false), newAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
+		{"empty match or chained", newOrFilter(newContainsFilter(empty, false), newOrFilter(newContainsFilter(empty, true), newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
+		{"empty match and", newNotFilter(newAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
+		{"empty match or", newNotFilter(newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if test.expectTrue {
@@ -131,6 +133,7 @@ func Benchmark_LineFilter(b *testing.B) {
 		re string
 	}{
 		{"foo.*"},
+		{"(?i)foo"},
 		{".*foo.*"},
 		{".*foo"},
 		{"foo|bar"},
@@ -147,7 +150,7 @@ func Benchmark_LineFilter(b *testing.B) {
 }
 
 // see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go
-// A note on compiler optimisations
+// A note on compiler optimizations
 var res bool
 
 func benchmarkRegex(b *testing.B, re, line string, match bool) {

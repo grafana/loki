@@ -283,11 +283,22 @@ func (m *MultiClient) runWithPrimaryClient(origCtx context.Context, fn func(newC
 	}
 }
 
+// List is a part of the kv.Client interface.
+func (m *MultiClient) List(ctx context.Context, prefix string) ([]string, error) {
+	_, kv := m.getPrimaryClient()
+	return kv.client.List(ctx, prefix)
+}
+
 // Get is a part of kv.Client interface.
 func (m *MultiClient) Get(ctx context.Context, key string) (interface{}, error) {
 	_, kv := m.getPrimaryClient()
-	val, err := kv.client.Get(ctx, key)
-	return val, err
+	return kv.client.Get(ctx, key)
+}
+
+// Delete is a part of the kv.Client interface.
+func (m *MultiClient) Delete(ctx context.Context, key string) error {
+	_, kv := m.getPrimaryClient()
+	return kv.client.Delete(ctx, key)
 }
 
 // CAS is a part of kv.Client interface.

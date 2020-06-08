@@ -2,10 +2,12 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,16 +28,23 @@ var (
 		Help:      "LogQL query timings",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"query_type"})
+	lastEntryMinTime = time.Unix(-100, 0)
 )
 
 // ValueTypeStreams promql.ValueType for log streams
 const ValueTypeStreams = "streams"
 
 // Streams is promql.Value
-type Streams []*logproto.Stream
+type Streams []logproto.Stream
+
+func (streams Streams) Len() int      { return len(streams) }
+func (streams Streams) Swap(i, j int) { streams[i], streams[j] = streams[j], streams[i] }
+func (streams Streams) Less(i, j int) bool {
+	return streams[i].Labels <= streams[j].Labels
+}
 
 // Type implements `promql.Value`
-func (Streams) Type() promql.ValueType { return ValueTypeStreams }
+func (Streams) Type() parser.ValueType { return ValueTypeStreams }
 
 // String implements `promql.Value`
 func (Streams) String() string {
@@ -44,7 +53,7 @@ func (Streams) String() string {
 
 // Result is the result of a query execution.
 type Result struct {
-	Data       promql.Value
+	Data       parser.Value
 	Statistics stats.Result
 }
 
@@ -66,31 +75,29 @@ func (opts *EngineOpts) applyDefault() {
 	}
 }
 
-// Engine interface used to construct queries
-type Engine interface {
-	NewRangeQuery(qs string, start, end time.Time, step time.Duration, direction logproto.Direction, limit uint32) Query
-	NewInstantQuery(qs string, ts time.Time, direction logproto.Direction, limit uint32) Query
-}
-
-// engine is the LogQL engine.
-type engine struct {
+// Engine is the LogQL engine.
+type Engine struct {
 	timeout   time.Duration
 	evaluator Evaluator
 }
 
-// NewEngine creates a new LogQL engine.
-func NewEngine(opts EngineOpts, q Querier) Engine {
-	if q == nil {
-		panic("nil Querier")
-	}
-
+// NewEngine creates a new LogQL Engine.
+func NewEngine(opts EngineOpts, q Querier) *Engine {
 	opts.applyDefault()
+	return &Engine{
+		timeout:   opts.Timeout,
+		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+	}
+}
 
-	return &engine{
-		timeout: opts.Timeout,
-		evaluator: &defaultEvaluator{
-			querier:           q,
-			maxLookBackPeriod: opts.MaxLookBackPeriod,
+// Query creates a new LogQL query. Instant/Range type is derived from the parameters.
+func (ng *Engine) Query(params Params) Query {
+	return &query{
+		timeout:   ng.timeout,
+		params:    params,
+		evaluator: ng.evaluator,
+		parse: func(_ context.Context, query string) (Expr, error) {
+			return ParseExpr(query)
 		},
 	}
 }
@@ -102,17 +109,18 @@ type Query interface {
 }
 
 type query struct {
-	LiteralParams
-
-	ng *engine
+	timeout   time.Duration
+	params    Params
+	parse     func(context.Context, string) (Expr, error)
+	evaluator Evaluator
 }
 
-// Exec Implements `Query`
+// Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (Result, error) {
-	log, ctx := spanlogger.New(ctx, "Engine.Exec")
+	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
 
-	rangeType := GetRangeType(q)
+	rangeType := GetRangeType(q.params)
 	timer := prometheus.NewTimer(queryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
 
@@ -121,7 +129,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	start := time.Now()
 	ctx = stats.NewContext(ctx)
 
-	data, err := q.ng.exec(ctx, q)
+	data, err := q.Eval(ctx)
 
 	statResult = stats.Snapshot(ctx, time.Since(start))
 	statResult.Log(level.Debug(log))
@@ -133,7 +141,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 			status = "400"
 		}
 	}
-	RecordMetrics(ctx, q, status, statResult)
+	RecordMetrics(ctx, q.params, status, statResult)
 
 	return Result{
 		Data:       data,
@@ -141,87 +149,50 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	}, err
 }
 
-// NewRangeQuery creates a new LogQL range query.
-func (ng *engine) NewRangeQuery(
-	qs string,
-	start, end time.Time, step time.Duration,
-	direction logproto.Direction, limit uint32) Query {
-	return &query{
-		LiteralParams: LiteralParams{
-			qs:        qs,
-			start:     start,
-			end:       end,
-			step:      step,
-			direction: direction,
-			limit:     limit,
-		},
-		ng: ng,
-	}
-}
-
-// NewInstantQuery creates a new LogQL instant query.
-func (ng *engine) NewInstantQuery(
-	qs string,
-	ts time.Time,
-	direction logproto.Direction, limit uint32) Query {
-	return &query{
-		LiteralParams: LiteralParams{
-			qs:        qs,
-			start:     ts,
-			end:       ts,
-			step:      0,
-			direction: direction,
-			limit:     limit,
-		},
-		ng: ng,
-	}
-}
-
-func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
-	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
+func (q *query) Eval(ctx context.Context) (parser.Value, error) {
+	ctx, cancel := context.WithTimeout(ctx, q.timeout)
 	defer cancel()
 
-	qs := q.Query()
-
-	expr, err := ParseExpr(qs)
+	expr, err := q.parse(ctx, q.params.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	switch e := expr.(type) {
 	case SampleExpr:
-		value, err := ng.evalSample(ctx, e, q)
+		value, err := q.evalSample(ctx, e)
 		return value, err
 
 	case LogSelectorExpr:
-		iter, err := ng.evaluator.Iterator(ctx, e, q)
+		iter, err := q.evaluator.Iterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
 		}
-		defer helpers.LogError("closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.limit)
-		return streams, err
-	}
 
-	return nil, nil
+		defer helpers.LogErrorWithContext(ctx, "closing iterator", iter.Close)
+		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
+		return streams, err
+	default:
+		return nil, errors.New("Unexpected type (%T): cannot evaluate")
+	}
 }
 
 // evalSample evaluate a sampleExpr
-func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (promql.Value, error) {
+func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, error) {
 	if lit, ok := expr.(*literalExpr); ok {
-		return ng.evalLiteral(ctx, lit, q)
+		return q.evalLiteral(ctx, lit)
 	}
 
-	stepEvaluator, err := ng.evaluator.StepEvaluator(ctx, ng.evaluator, expr, q)
+	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
-	defer helpers.LogError("closing SampleExpr", stepEvaluator.Close)
+	defer helpers.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
-	if GetRangeType(q) == InstantType {
+	if GetRangeType(q.params) == InstantType {
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
@@ -259,21 +230,21 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	return result, nil
 }
 
-func (ng *engine) evalLiteral(_ context.Context, expr *literalExpr, q *query) (promql.Value, error) {
+func (q *query) evalLiteral(_ context.Context, expr *literalExpr) (parser.Value, error) {
 	s := promql.Scalar{
-		T: q.Start().UnixNano() / int64(time.Millisecond),
+		T: q.params.Start().UnixNano() / int64(time.Millisecond),
 		V: expr.value,
 	}
 
-	if GetRangeType(q) == InstantType {
+	if GetRangeType(q.params) == InstantType {
 		return s, nil
 	}
 
-	return PopulateMatrixFromScalar(s, q.LiteralParams), nil
+	return PopulateMatrixFromScalar(s, q.params), nil
 
 }
 
-func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.Matrix {
+func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	var (
 		start  = params.Start()
 		end    = params.End()
@@ -283,7 +254,7 @@ func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.M
 				[]promql.Point,
 				0,
 				// allocate enough space for all needed entries
-				int(params.End().Sub(params.Start())/params.Step())+1,
+				int(end.Sub(start)/step)+1,
 			),
 		}
 	)
@@ -297,25 +268,40 @@ func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.M
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32) (Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
-	for ; respSize < size && i.Next(); respSize++ {
+	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
+	// value here because many unit tests start at time.Unix(0,0)
+	lastEntry := lastEntryMinTime
+	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
-		stream, ok := streams[labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels: labels,
+		forwardShouldOutput := dir == logproto.FORWARD &&
+			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
+		backwardShouldOutput := dir == logproto.BACKWARD &&
+			(i.Entry().Timestamp.Equal(lastEntry.Add(-interval)) || i.Entry().Timestamp.Before(lastEntry.Add(-interval)))
+		// If step == 0 output every line.
+		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
+		// Then check to see if the entry is equal to, or past a forward or reverse step
+		if interval == 0 || lastEntry.Unix() < 0 || forwardShouldOutput || backwardShouldOutput {
+			stream, ok := streams[labels]
+			if !ok {
+				stream = &logproto.Stream{
+					Labels: labels,
+				}
+				streams[labels] = stream
 			}
-			streams[labels] = stream
+			stream.Entries = append(stream.Entries, entry)
+			lastEntry = i.Entry().Timestamp
+			respSize++
 		}
-		stream.Entries = append(stream.Entries, entry)
 	}
 
-	result := make([]*logproto.Stream, 0, len(streams))
+	result := make(Streams, 0, len(streams))
 	for _, stream := range streams {
-		result = append(result, stream)
+		result = append(result, *stream)
 	}
+	sort.Sort(result)
 	return result, i.Error()
 }
 
@@ -326,16 +312,4 @@ type groupedAggregation struct {
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
-}
-
-// rate calculate the per-second rate of log lines.
-func rate(selRange time.Duration) func(ts int64, samples []promql.Point) float64 {
-	return func(ts int64, samples []promql.Point) float64 {
-		return float64(len(samples)) / selRange.Seconds()
-	}
-}
-
-// count counts the amount of log lines.
-func count(ts int64, samples []promql.Point) float64 {
-	return float64(len(samples))
 }

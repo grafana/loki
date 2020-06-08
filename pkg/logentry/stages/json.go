@@ -94,7 +94,7 @@ func parseJSONConfig(config interface{}) (*JSONConfig, error) {
 // Process implements Stage
 func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	// If a source key is provided, the json stage should process it
-	// from the exctracted map, otherwise should fallback to the entry
+	// from the extracted map, otherwise should fallback to the entry
 	input := entry
 
 	if j.cfg.Source != nil {

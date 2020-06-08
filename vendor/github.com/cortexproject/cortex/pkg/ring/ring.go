@@ -44,7 +44,7 @@ type ReadRing interface {
 	// buf is a slice to be overwritten for the return value
 	// to avoid memory allocation; can be nil.
 	Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error)
-	GetAll() (ReplicationSet, error)
+	GetAll(op Operation) (ReplicationSet, error)
 	ReplicationFactor() int
 	IngesterCount() int
 	Subring(key uint32, n int) (ReadRing, error)
@@ -58,16 +58,28 @@ const (
 	Read Operation = iota
 	Write
 	Reporting // Special value for inquiring about health
+
+	// BlocksSync is the operation run by the store-gateway to sync blocks.
+	BlocksSync
+
+	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
+	BlocksRead
 )
 
-// ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
-var ErrEmptyRing = errors.New("empty ring")
+var (
+	// ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
+	ErrEmptyRing = errors.New("empty ring")
+
+	// ErrInstanceNotFound is the error returned when trying to get information for an instance
+	// not registered within the ring.
+	ErrInstanceNotFound = errors.New("instance not found in the ring")
+)
 
 // Config for a Ring
 type Config struct {
-	KVStore           kv.Config     `yaml:"kvstore,omitempty"`
-	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
-	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
+	KVStore           kv.Config     `yaml:"kvstore"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor int           `yaml:"replication_factor"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -87,10 +99,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 type Ring struct {
 	services.Service
 
-	name     string
 	key      string
 	cfg      Config
 	KVClient kv.Client
+	strategy ReplicationStrategy
 
 	mtx        sync.RWMutex
 	ringDesc   *Desc
@@ -105,45 +117,55 @@ type Ring struct {
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
 func New(cfg Config, name, key string) (*Ring, error) {
-	if cfg.ReplicationFactor <= 0 {
-		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
-	}
 	codec := GetCodec()
 	store, err := kv.NewClient(cfg.KVStore, codec)
 	if err != nil {
 		return nil, err
 	}
 
+	return NewWithStoreClientAndStrategy(cfg, name, key, store, &DefaultReplicationStrategy{})
+}
+
+func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client, strategy ReplicationStrategy) (*Ring, error) {
+	if cfg.ReplicationFactor <= 0 {
+		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
+	}
+
 	r := &Ring{
-		name:     name,
 		key:      key,
 		cfg:      cfg,
 		KVClient: store,
+		strategy: strategy,
 		ringDesc: &Desc{},
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
 			"The percent ownership of the ring by member",
-			[]string{"member", "name"}, nil,
+			[]string{"member"},
+			map[string]string{"name": name},
 		),
 		numMembersDesc: prometheus.NewDesc(
 			"cortex_ring_members",
 			"Number of members in the ring",
-			[]string{"state", "name"}, nil,
+			[]string{"state"},
+			map[string]string{"name": name},
 		),
 		totalTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_total",
 			"Number of tokens in the ring",
-			[]string{"name"}, nil,
+			nil,
+			map[string]string{"name": name},
 		),
 		numTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_owned",
 			"The number of tokens in the ring owned by the member",
-			[]string{"member", "name"}, nil,
+			[]string{"member"},
+			map[string]string{"name": name},
 		),
 		oldestTimestampDesc: prometheus.NewDesc(
 			"cortex_ring_oldest_member_timestamp",
 			"Timestamp of the oldest member in the ring.",
-			[]string{"state", "name"}, nil,
+			[]string{"state"},
+			map[string]string{"name": name},
 		),
 	}
 
@@ -182,6 +204,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		n             = r.cfg.ReplicationFactor
 		ingesters     = buf[:0]
 		distinctHosts = map[string]struct{}{}
+		distinctZones = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0
 	)
@@ -190,30 +213,30 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		// Wrap i around in the ring.
 		i %= len(r.ringTokens)
 
-		// We want n *distinct* ingesters.
+		// We want n *distinct* ingesters && distinct zones.
 		token := r.ringTokens[i]
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
 		}
+		if token.Zone != "" { // Ignore if the ingesters don't have a zone set.
+			if _, ok := distinctZones[token.Zone]; ok {
+				continue
+			}
+			distinctZones[token.Zone] = struct{}{}
+		}
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
-		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
-		// to write the extra replica somewhere.  So we increase the size of the set
-		// of replicas for the key. This means we have to also increase the
-		// size of the replica set for read, but we can read from Leaving ingesters,
-		// so don't skip it in this case.
-		// NB dead ingester will be filtered later (by replication_strategy.go).
-		if op == Write && ingester.State != ACTIVE {
-			n++
-		} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
+		// Check whether the replica set should be extended given we're including
+		// this instance.
+		if r.strategy.ShouldExtendReplicaSet(ingester, op) {
 			n++
 		}
 
 		ingesters = append(ingesters, ingester)
 	}
 
-	liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, op)
+	liveIngesters, maxFailure, err := r.strategy.Filter(ingesters, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout)
 	if err != nil {
 		return ReplicationSet{}, err
 	}
@@ -225,7 +248,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 }
 
 // GetAll returns all available ingesters in the ring.
-func (r *Ring) GetAll() (ReplicationSet, error) {
+func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -233,24 +256,29 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-	maxErrors := r.cfg.ReplicationFactor / 2
+	// Calculate the number of required ingesters;
+	// ensure we always require at least RF-1 when RF=3.
+	numRequired := len(r.ringDesc.Ingesters)
+	if numRequired < r.cfg.ReplicationFactor {
+		numRequired = r.cfg.ReplicationFactor
+	}
+	maxUnavailable := r.cfg.ReplicationFactor / 2
+	numRequired -= maxUnavailable
 
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(&ingester, Read) {
-			maxErrors--
-			continue
+		if r.IsHealthy(&ingester, op) {
+			ingesters = append(ingesters, ingester)
 		}
-		ingesters = append(ingesters, ingester)
 	}
 
-	if maxErrors < 0 {
+	if len(ingesters) < numRequired {
 		return ReplicationSet{}, fmt.Errorf("too many failed ingesters")
 	}
 
 	return ReplicationSet{
 		Ingesters: ingesters,
-		MaxErrors: maxErrors,
+		MaxErrors: len(ingesters) - numRequired,
 	}, nil
 }
 
@@ -269,6 +297,7 @@ func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.memberOwnershipDesc
 	ch <- r.numMembersDesc
 	ch <- r.totalTokensDesc
+	ch <- r.oldestTimestampDesc
 	ch <- r.numTokensDesc
 }
 
@@ -308,14 +337,12 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(totalOwned)/float64(math.MaxUint32),
 			id,
-			r.name,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			r.numTokensDesc,
 			prometheus.GaugeValue,
 			float64(numTokens[id]),
 			id,
-			r.name,
 		)
 	}
 
@@ -345,7 +372,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(count),
 			state,
-			r.name,
 		)
 	}
 	for state, timestamp := range oldestTimestampByState {
@@ -354,7 +380,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(timestamp),
 			state,
-			r.name,
 		)
 	}
 
@@ -362,7 +387,6 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		r.totalTokensDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringTokens)),
-		r.name,
 	)
 }
 
@@ -413,8 +437,8 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 	}
 
 	sub := &Ring{
-		name: "subring",
-		cfg:  r.cfg,
+		cfg:      r.cfg,
+		strategy: r.strategy,
 		ringDesc: &Desc{
 			Ingesters: ingesters,
 		},
@@ -429,4 +453,19 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 	}
 
 	return sub, nil
+}
+
+// GetInstanceState returns the current state of an instance or an error if the
+// instance does not exist in the ring.
+func (r *Ring) GetInstanceState(instanceID string) (IngesterState, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	instances := r.ringDesc.GetIngesters()
+	instance, ok := instances[instanceID]
+	if !ok {
+		return PENDING, ErrInstanceNotFound
+	}
+
+	return instance.GetState(), nil
 }

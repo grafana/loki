@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -134,8 +135,8 @@ func SetupTestChunkStore() (chunk.Store, error) {
 	var storeCfg chunk.StoreConfig
 	flagext.DefaultValues(&storeCfg)
 
-	store := chunk.NewCompositeStore()
-	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides)
+	store := chunk.NewCompositeStore(nil)
+	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides, cache.NewNoopCache(), cache.NewNoopCache())
 	if err != nil {
 		return nil, err
 	}

@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	errEndBeforeStart = errors.New("end timestamp must not be before or equal to start time")
-	errNegativeStep   = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall   = errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+	errEndBeforeStart   = errors.New("end timestamp must not be before or equal to start time")
+	errNegativeStep     = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
+	errStepTooSmall     = errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+	errNegativeInterval = errors.New("interval must be >= 0")
 )
 
 // QueryStatus holds the status of a query
@@ -239,9 +240,11 @@ type RangeQuery struct {
 	Start     time.Time
 	End       time.Time
 	Step      time.Duration
+	Interval  time.Duration
 	Query     string
 	Direction logproto.Direction
 	Limit     uint32
+	Shards    []string
 }
 
 // ParseRangeQuery parses a RangeQuery request from an http request.
@@ -278,10 +281,21 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, errNegativeStep
 	}
 
+	result.Shards = shards(r)
+
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 	if (result.End.Sub(result.Start) / result.Step) > 11000 {
 		return nil, errStepTooSmall
+	}
+
+	result.Interval, err = interval(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Interval < 0 {
+		return nil, errNegativeInterval
 	}
 
 	return &result, nil

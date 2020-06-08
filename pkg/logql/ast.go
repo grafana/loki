@@ -131,11 +131,15 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 		if err != nil {
 			return nil, err
 		}
-		f = newAndFilter(nextFilter, f)
+		if nextFilter != nil {
+			f = newAndFilter(nextFilter, f)
+		}
 	}
+
 	if f == TrueFilter {
 		return nil, nil
 	}
+
 	return f, nil
 }
 
@@ -194,8 +198,10 @@ const (
 	OpTypeTopK    = "topk"
 
 	// range vector ops
-	OpTypeCountOverTime = "count_over_time"
-	OpTypeRate          = "rate"
+	OpRangeTypeCount     = "count_over_time"
+	OpRangeTypeRate      = "rate"
+	OpRangeTypeBytes     = "bytes_over_time"
+	OpRangeTypeBytesRate = "bytes_rate"
 
 	// binops - logical/set
 	OpTypeOr     = "or"
@@ -209,11 +215,33 @@ const (
 	OpTypeDiv = "/"
 	OpTypeMod = "%"
 	OpTypePow = "^"
+
+	// binops - comparison
+	OpTypeCmpEQ = "=="
+	OpTypeNEQ   = "!="
+	OpTypeGT    = ">"
+	OpTypeGTE   = ">="
+	OpTypeLT    = "<"
+	OpTypeLTE   = "<="
 )
+
+func IsComparisonOperator(op string) bool {
+	switch op {
+	case OpTypeCmpEQ, OpTypeNEQ, OpTypeGT, OpTypeGTE, OpTypeLT, OpTypeLTE:
+		return true
+	default:
+		return false
+	}
+}
 
 // IsLogicalBinOp tests whether an operation is a logical/set binary operation
 func IsLogicalBinOp(op string) bool {
-	return op == OpTypeOr || op == OpTypeAnd || op == OpTypeUnless
+	switch op {
+	case OpTypeOr, OpTypeAnd, OpTypeUnless:
+		return true
+	default:
+		return false
+	}
 }
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
@@ -335,13 +363,21 @@ func (e *vectorAggregationExpr) Operations() []string {
 	return append(e.left.Operations(), e.operation)
 }
 
+type BinOpOptions struct {
+	ReturnBool bool
+}
+
 type binOpExpr struct {
 	SampleExpr
-	RHS SampleExpr
-	op  string
+	RHS  SampleExpr
+	op   string
+	opts BinOpOptions
 }
 
 func (e *binOpExpr) String() string {
+	if e.opts.ReturnBool {
+		return fmt.Sprintf("%s %s bool %s", e.SampleExpr.String(), e.op, e.RHS.String())
+	}
 	return fmt.Sprintf("%s %s %s", e.SampleExpr.String(), e.op, e.RHS.String())
 }
 
@@ -351,7 +387,7 @@ func (e *binOpExpr) Operations() []string {
 	return append(ops, e.op)
 }
 
-func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
+func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
 		panic(newParseError(fmt.Sprintf(
@@ -400,10 +436,11 @@ func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
 		SampleExpr: left,
 		RHS:        right,
 		op:         op,
+		opts:       opts,
 	}
 }
 
-// Reduces a binary operation expression. A binop is reducable if both of its legs are literal expressions.
+// Reduces a binary operation expression. A binop is reducible if both of its legs are literal expressions.
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
 func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
@@ -411,6 +448,8 @@ func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
 		op,
 		&promql.Sample{Point: promql.Point{V: left.value}},
 		&promql.Sample{Point: promql.Point{V: right.value}},
+		false,
+		false,
 	)
 	return &literalExpr{value: merged.V}
 }

@@ -11,6 +11,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -145,14 +147,8 @@ type entry struct {
 	s string
 }
 
-// NewMemChunk returns a new in-mem chunk for query.
-func NewMemChunk(enc Encoding) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024, 0)
-}
-
-// NewMemChunkSize returns a new in-mem chunk.
-// Mainly for config push size.
-func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
+// NewMemChunk returns a new in-mem chunk.
+func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 	c := &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
@@ -170,9 +166,11 @@ func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
-func NewByteChunk(b []byte) (*MemChunk, error) {
+func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 	bc := &MemChunk{
-		head: &headBlock{}, // Dummy, empty headblock.
+		head:       &headBlock{}, // Dummy, empty headblock.
+		blockSize:  blockSize,
+		targetSize: targetSize,
 	}
 	db := decbuf{b: b}
 
@@ -230,10 +228,14 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
 		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			return bc, ErrInvalidChecksum
+			level.Error(util.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
+			continue
 		}
 
 		bc.blocks = append(bc.blocks, blk)
+
+		// Update the counter used to track the size of cut blocks.
+		bc.cutBlockSize += len(blk.b)
 
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "decoding block meta")
@@ -472,9 +474,10 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
 	for _, b := range c.blocks {
-		if maxt > b.mint && b.maxt > mint {
-			its = append(its, b.iterator(ctx, c.readers, filter))
+		if maxt < b.mint || b.maxt < mint {
+			continue
 		}
+		its = append(its, b.iterator(ctx, c.readers, filter))
 	}
 
 	if !c.head.isEmpty() {
@@ -491,7 +494,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		return iterForward, nil
 	}
 
-	return iter.NewReversedIter(iterForward, 0, false)
+	return iter.NewEntryReversedIter(iterForward)
 }
 
 func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.LineFilter) iter.EntryIterator {

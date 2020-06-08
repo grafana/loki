@@ -46,9 +46,19 @@ func NewClient(kv *KV, codec codec.Codec) (*Client, error) {
 	}, nil
 }
 
+// List is part of kv.Client interface.
+func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
+	return c.kv.List(prefix), nil
+}
+
 // Get is part of kv.Client interface.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	return c.kv.Get(key, c.codec)
+}
+
+// Delete is part of kv.Client interface.
+func (c *Client) Delete(ctx context.Context, key string) error {
+	return errors.New("memberlist does not support Delete")
 }
 
 // CAS is part of kv.Client interface
@@ -189,11 +199,11 @@ var (
 	errTooManyRetries   = errors.New("too many retries")
 )
 
-// NewMemberlistClient creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
+// NewKV creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
 // to these members and join the cluster. If that fails and AbortIfJoinFails is true, error is returned and no
 // client is created.
 func NewKV(cfg KVConfig) (*KV, error) {
-	level.Warn(util.Logger).Log("msg", "Using memberlist-based KV store is EXPERIMENTAL and not tested in production")
+	util.WarnExperimentalUse("Gossip memberlist ring")
 
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
@@ -338,6 +348,21 @@ func (m *KV) Stop() {
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error when shutting down memberlist client", "err", err)
 	}
+}
+
+// List returns all known keys under a given prefix.
+// No communication with other nodes in the cluster is done here.
+func (m *KV) List(prefix string) []string {
+	m.storeMu.Lock()
+	defer m.storeMu.Unlock()
+
+	var keys []string
+	for k := range m.store {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	return keys
 }
 
 // Get returns current value associated with given key.

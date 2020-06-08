@@ -18,9 +18,9 @@ import (
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore          kv.Config     `yaml:"kvstore,omitempty"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
-	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout,omitempty"`
+	KVStore          kv.Config     `yaml:"kvstore"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -71,7 +71,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 
 	// Configure lifecycler
 	lc.RingConfig = rc
-	lc.ListenPort = &cfg.ListenPort
+	lc.ListenPort = cfg.ListenPort
 	lc.Addr = cfg.InstanceAddr
 	lc.Port = cfg.InstancePort
 	lc.ID = cfg.InstanceID

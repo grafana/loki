@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +23,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -40,7 +42,7 @@ var (
 type Config struct {
 	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
 	CompressResponses       bool          `yaml:"compress_responses"`
-	DownstreamURL           string        `yaml:"downstream"`
+	DownstreamURL           string        `yaml:"downstream_url"`
 	LogQueriesLongerThan    time.Duration `yaml:"log_queries_longer_than"`
 }
 
@@ -61,7 +63,7 @@ type Frontend struct {
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
-	queues map[string]chan *request
+	queues *queueIterator
 
 	// Metrics.
 	queueDuration prometheus.Histogram
@@ -83,7 +85,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
-		queues: map[string]chan *request{},
+		queues: newQueueIterator(cfg.MaxOutstandingPerTenant),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_duration_seconds",
@@ -108,6 +110,11 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 		}
 
 		f.roundTripper = RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(r.Context())
+			if tracer != nil && span != nil {
+				carrier := opentracing.HTTPHeadersCarrier(r.Header)
+				tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
+			}
 			r.URL.Scheme = u.Scheme
 			r.URL.Host = u.Host
 			r.URL.Path = path.Join(u.Path, r.URL.Path)
@@ -138,7 +145,7 @@ func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 func (f *Frontend) Close() {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
-	for len(f.queues) > 0 {
+	for f.queues.len() > 0 {
 		f.cond.Wait()
 	}
 }
@@ -152,18 +159,26 @@ func (f *Frontend) Handler() http.Handler {
 }
 
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
-	userID, err := user.ExtractOrgID(r.Context())
-	if err != nil {
-		server.WriteError(w, err)
-		return
-	}
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
 	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
-		level.Info(f.log).Log("msg", "slow query", "org_id", userID, "url", fmt.Sprintf("http://%s", r.Host+r.RequestURI), "time_taken", queryResponseTime.String())
+		logMessage := []interface{}{
+			"msg", "slow query",
+			"host", r.Host,
+			"path", r.URL.Path,
+			"time_taken", queryResponseTime.String(),
+		}
+		for k, v := range r.URL.Query() {
+			logMessage = append(logMessage, fmt.Sprintf("qs_%s", k), strings.Join(v, ","))
+		}
+		pf := r.PostForm.Encode()
+		if pf != "" {
+			logMessage = append(logMessage, "body", pf)
+		}
+		level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
 	}
 
 	if err != nil {
@@ -328,11 +343,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	queue, ok := f.queues[userID]
-	if !ok {
-		queue = make(chan *request, f.cfg.MaxOutstandingPerTenant)
-		f.queues[userID] = queue
-	}
+	queue := f.queues.getOrAddQueue(userID)
 
 	select {
 	case queue <- req:
@@ -351,7 +362,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	defer f.mtx.Unlock()
 
 FindQueue:
-	for len(f.queues) == 0 && ctx.Err() == nil {
+	for f.queues.len() == 0 && ctx.Err() == nil {
 		f.cond.Wait()
 	}
 
@@ -359,13 +370,11 @@ FindQueue:
 		return nil, err
 	}
 
-	i, n := 0, rand.Intn(len(f.queues))
-	for userID, queue := range f.queues {
-		if i < n {
-			i++
-			continue
+	for {
+		queue, userID := f.queues.getNextQueue()
+		if queue == nil {
+			break
 		}
-
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
 		  The chance of choosing a particular tenant for dequeueing is (1/active_tenants).
@@ -383,7 +392,7 @@ FindQueue:
 			lastRequest := false
 			request := <-queue
 			if len(queue) == 0 {
-				delete(f.queues, userID)
+				f.queues.deleteQueue(userID)
 				lastRequest = true
 			}
 

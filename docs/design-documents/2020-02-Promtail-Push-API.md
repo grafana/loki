@@ -87,7 +87,7 @@ and is essentially just code duplication.
 The
 [logproto.Pusher](https://github.com/grafana/loki/blob/f7ee1c753c76ef63338d53cfba782188a165144d/pkg/logproto/logproto.proto#L8-L10)
 service could be exposed through Promtail. This would enable clients stubs to be
-generated for lanuages that have gRPC support, and, for HTTP1 support, a
+generated for languages that have gRPC support, and, for HTTP1 support, a
 [gRPC Gateway](https://github.com/grpc-ecosystem/grpc-gateway) would be embedded
 in Promtail itself.
 
@@ -101,7 +101,7 @@ Loki uses. There are some concerns with this approach:
 3. Log lines will be double-encoded thanks to the reverse proxy.
 4. A small overhead of using a reverse proxy in-process will be introduced.
 5. This breaks our normal pattern of writing our own shim functions; may add
-   some cognative overhead of having to deal with the gRPC gateway as an outlier
+   some cognitive overhead of having to deal with the gRPC gateway as an outlier
    in the code.
 
 ### Option 3: Plaintext Payload

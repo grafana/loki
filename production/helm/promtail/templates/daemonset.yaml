@@ -24,7 +24,7 @@ spec:
         release: {{ .Release.Name }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}          
+        {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
@@ -46,6 +46,12 @@ spec:
         securityContext:
           privileged: true
     {{- end }}
+      {{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.image.pullSecrets }}
+        - name: {{ . }}
+      {{- end}}
+      {{- end }}
       containers:
         - name: promtail
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

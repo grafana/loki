@@ -22,23 +22,26 @@ const (
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate          float64             `yaml:"ingestion_rate"`
-	IngestionRateStrategy  string              `yaml:"ingestion_rate_strategy"`
-	IngestionBurstSize     int                 `yaml:"ingestion_burst_size"`
-	AcceptHASamples        bool                `yaml:"accept_ha_samples"`
-	HAClusterLabel         string              `yaml:"ha_cluster_label"`
-	HAReplicaLabel         string              `yaml:"ha_replica_label"`
-	DropLabels             flagext.StringSlice `yaml:"drop_labels"`
-	MaxLabelNameLength     int                 `yaml:"max_label_name_length"`
-	MaxLabelValueLength    int                 `yaml:"max_label_value_length"`
-	MaxLabelNamesPerSeries int                 `yaml:"max_label_names_per_series"`
-	RejectOldSamples       bool                `yaml:"reject_old_samples"`
-	RejectOldSamplesMaxAge time.Duration       `yaml:"reject_old_samples_max_age"`
-	CreationGracePeriod    time.Duration       `yaml:"creation_grace_period"`
-	EnforceMetricName      bool                `yaml:"enforce_metric_name"`
-	SubringSize            int                 `yaml:"user_subring_size"`
+	IngestionRate             float64             `yaml:"ingestion_rate"`
+	IngestionRateStrategy     string              `yaml:"ingestion_rate_strategy"`
+	IngestionBurstSize        int                 `yaml:"ingestion_burst_size"`
+	AcceptHASamples           bool                `yaml:"accept_ha_samples"`
+	HAClusterLabel            string              `yaml:"ha_cluster_label"`
+	HAReplicaLabel            string              `yaml:"ha_replica_label"`
+	DropLabels                flagext.StringSlice `yaml:"drop_labels"`
+	MaxLabelNameLength        int                 `yaml:"max_label_name_length"`
+	MaxLabelValueLength       int                 `yaml:"max_label_value_length"`
+	MaxLabelNamesPerSeries    int                 `yaml:"max_label_names_per_series"`
+	MaxMetadataLength         int                 `yaml:"max_metadata_length"`
+	RejectOldSamples          bool                `yaml:"reject_old_samples"`
+	RejectOldSamplesMaxAge    time.Duration       `yaml:"reject_old_samples_max_age"`
+	CreationGracePeriod       time.Duration       `yaml:"creation_grace_period"`
+	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name"`
+	EnforceMetricName         bool                `yaml:"enforce_metric_name"`
+	SubringSize               int                 `yaml:"user_subring_size"`
 
 	// Ingester enforced limits.
+	// Series
 	MaxSeriesPerQuery        int `yaml:"max_series_per_query"`
 	MaxSamplesPerQuery       int `yaml:"max_samples_per_query"`
 	MaxLocalSeriesPerUser    int `yaml:"max_series_per_user"`
@@ -46,12 +49,18 @@ type Limits struct {
 	MaxGlobalSeriesPerUser   int `yaml:"max_global_series_per_user"`
 	MaxGlobalSeriesPerMetric int `yaml:"max_global_series_per_metric"`
 	MinChunkLength           int `yaml:"min_chunk_length"`
+	// Metadata
+	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user"`
+	MaxLocalMetadataPerMetric           int `yaml:"max_metadata_per_metric"`
+	MaxGlobalMetricsWithMetadataPerUser int `yaml:"max_global_metadata_per_user"`
+	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery   int           `yaml:"max_chunks_per_query"`
 	MaxQueryLength      time.Duration `yaml:"max_query_length"`
 	MaxQueryParallelism int           `yaml:"max_query_parallelism"`
 	CardinalityLimit    int           `yaml:"cardinality_limit"`
+	MaxCacheFreshness   time.Duration `yaml:"max_cache_freshness"`
 
 	// Config for overrides, convenient if it goes here. [Deprecated in favor of RuntimeConfig flag in cortex.Config]
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
@@ -71,10 +80,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
+	f.IntVar(&l.MaxMetadataLength, "validation.max-metadata-length", 1024, "Maximum length accepted for metric metadata. Metadata refers to Metric Name, HELP and UNIT.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
+	f.BoolVar(&l.EnforceMetadataMetricName, "validation.enforce-metadata-metric-name", true, "Enforce every metadata has a metric name.")
 
 	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series that a query can return.")
 	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return.")
@@ -84,10 +95,16 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster. 0 to disable.")
 	f.IntVar(&l.MinChunkLength, "ingester.min-chunk-length", 0, "Minimum number of samples in an idle chunk to flush it to the store. Use with care, if chunks are less than this size they will be discarded.")
 
+	f.IntVar(&l.MaxLocalMetricsWithMetadataPerUser, "ingester.max-metadata-per-user", 8000, "The maximum number of active metrics with metadata per user, per ingester. 0 to disable.")
+	f.IntVar(&l.MaxLocalMetadataPerMetric, "ingester.max-metadata-per-metric", 10, "The maximum number of metadata per metric, per ingester. 0 to disable.")
+	f.IntVar(&l.MaxGlobalMetricsWithMetadataPerUser, "ingester.max-global-metadata-per-user", 0, "The maximum number of active metrics with metadata per user, across the cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
+	f.IntVar(&l.MaxGlobalMetadataPerMetric, "ingester.max-global-metadata-per-metric", 0, "The maximum number of metadata per metric, across the cluster. 0 to disable.")
+
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
+	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
@@ -204,6 +221,12 @@ func (o *Overrides) MaxLabelNamesPerSeries(userID string) int {
 	return o.getOverridesForUser(userID).MaxLabelNamesPerSeries
 }
 
+// MaxMetadataLength returns maximum length metadata can be. Metadata refers
+// to the Metric Name, HELP and UNIT.
+func (o *Overrides) MaxMetadataLength(userID string) int {
+	return o.getOverridesForUser(userID).MaxMetadataLength
+}
+
 // RejectOldSamples returns true when we should reject samples older than certain
 // age.
 func (o *Overrides) RejectOldSamples(userID string) bool {
@@ -261,6 +284,11 @@ func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxQueryLength
 }
 
+// MaxCacheFreshness returns the limit of the length (in time) of a query.
+func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
+	return o.getOverridesForUser(userID).MaxCacheFreshness
+}
+
 // MaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
@@ -272,6 +300,11 @@ func (o *Overrides) EnforceMetricName(userID string) bool {
 	return o.getOverridesForUser(userID).EnforceMetricName
 }
 
+// EnforceMetadataMetricName whether to enforce the presence of a metric name on metadata.
+func (o *Overrides) EnforceMetadataMetricName(userID string) bool {
+	return o.getOverridesForUser(userID).EnforceMetadataMetricName
+}
+
 // CardinalityLimit returns the maximum number of timeseries allowed in a query.
 func (o *Overrides) CardinalityLimit(userID string) int {
 	return o.getOverridesForUser(userID).CardinalityLimit
@@ -280,6 +313,26 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 // MinChunkLength returns the minimum size of chunk that will be saved by ingesters
 func (o *Overrides) MinChunkLength(userID string) int {
 	return o.getOverridesForUser(userID).MinChunkLength
+}
+
+// MaxLocalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store in a single ingester.
+func (o *Overrides) MaxLocalMetricsWithMetadataPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxLocalMetricsWithMetadataPerUser
+}
+
+// MaxLocalMetadataPerMetric returns the maximum number of metadata allowed per metric in a single ingester.
+func (o *Overrides) MaxLocalMetadataPerMetric(userID string) int {
+	return o.getOverridesForUser(userID).MaxLocalMetadataPerMetric
+}
+
+// MaxGlobalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store across the cluster.
+func (o *Overrides) MaxGlobalMetricsWithMetadataPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxGlobalMetricsWithMetadataPerUser
+}
+
+// MaxGlobalMetadataPerMetric returns the maximum number of metadata allowed per metric across the cluster.
+func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
+	return o.getOverridesForUser(userID).MaxGlobalMetadataPerMetric
 }
 
 // SubringSize returns the size of the subring for a given user.

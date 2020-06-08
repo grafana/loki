@@ -13,7 +13,7 @@ Then you can update statistics by mutating data by using:
 
 Finally to get a snapshot of the current query statistic use
 
-	stats.Snapshot(ctx,time.Since(start))
+	stats.Snapshot(ctx, time.Since(start))
 
 Ingester statistics are sent across the GRPC stream using Trailers
 see https://github.com/grpc/grpc-go/blob/master/Documentation/grpc-metadata.md
@@ -22,6 +22,9 @@ package stats
 
 import (
 	"context"
+	"errors"
+	fmt "fmt"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -35,6 +38,8 @@ const (
 	chunksKey   ctxKeyType = "chunks"
 	ingesterKey ctxKeyType = "ingester"
 	storeKey    ctxKeyType = "store"
+	resultKey   ctxKeyType = "result" // key for pre-computed results to be merged in  `Snapshot`
+	lockKey     ctxKeyType = "lock"   // key for locking a context when stats is used concurrently
 )
 
 // Log logs a query statistics result.
@@ -68,8 +73,8 @@ func (r Result) Log(log log.Logger) {
 
 func (s Summary) Log(log log.Logger) {
 	_ = log.Log(
-		"Summary.BytesProcessedPerSeconds", humanize.Bytes(uint64(s.BytesProcessedPerSeconds)),
-		"Summary.LinesProcessedPerSeconds", s.LinesProcessedPerSeconds,
+		"Summary.BytesProcessedPerSecond", humanize.Bytes(uint64(s.BytesProcessedPerSecond)),
+		"Summary.LinesProcessedPerSecond", s.LinesProcessedPerSecond,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
 		"Summary.ExecTime", time.Duration(int64(s.ExecTime*float64(time.Second))),
@@ -82,6 +87,8 @@ func NewContext(ctx context.Context) context.Context {
 	ctx = context.WithValue(ctx, storeKey, &StoreData{})
 	ctx = context.WithValue(ctx, chunksKey, &ChunkData{})
 	ctx = context.WithValue(ctx, ingesterKey, &IngesterData{})
+	ctx = context.WithValue(ctx, resultKey, &Result{})
+	ctx = context.WithValue(ctx, lockKey, &sync.Mutex{})
 	return ctx
 }
 
@@ -138,9 +145,8 @@ func GetStoreData(ctx context.Context) *StoreData {
 
 // Snapshot compute query statistics from a context using the total exec time.
 func Snapshot(ctx context.Context, execTime time.Duration) Result {
-	var res Result
 	// ingester data is decoded from grpc trailers.
-	res.Ingester = decodeTrailers(ctx)
+	res := decodeTrailers(ctx)
 	// collect data from store.
 	s, ok := ctx.Value(storeKey).(*StoreData)
 	if ok {
@@ -158,8 +164,17 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 		res.Store.CompressedBytes = c.CompressedBytes
 		res.Store.TotalDuplicates = c.TotalDuplicates
 	}
-	res.ComputeSummary(execTime)
-	return res
+
+	existing, err := GetResult(ctx)
+	if err != nil {
+		res.ComputeSummary(execTime)
+		return res
+	}
+
+	existing.Merge(res)
+	existing.ComputeSummary(execTime)
+	return *existing
+
 }
 
 // ComputeSummary calculates the summary based on store and ingester data.
@@ -171,10 +186,10 @@ func (r *Result) ComputeSummary(execTime time.Duration) {
 		r.Ingester.DecompressedLines + r.Ingester.HeadChunkLines
 	r.Summary.ExecTime = execTime.Seconds()
 	if execTime != 0 {
-		r.Summary.BytesProcessedPerSeconds =
+		r.Summary.BytesProcessedPerSecond =
 			int64(float64(r.Summary.TotalBytesProcessed) /
 				execTime.Seconds())
-		r.Summary.LinesProcessedPerSeconds =
+		r.Summary.LinesProcessedPerSecond =
 			int64(float64(r.Summary.TotalLinesProcessed) /
 				execTime.Seconds())
 	}
@@ -204,4 +219,38 @@ func (r *Result) Merge(m Result) {
 	r.Ingester.TotalDuplicates += m.Ingester.TotalDuplicates
 
 	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime + m.Summary.ExecTime) * float64(time.Second))))
+}
+
+// JoinResults merges a Result with the embedded Result in a context in a concurrency-safe manner.
+func JoinResults(ctx context.Context, res Result) error {
+	mtx, err := GetMutex(ctx)
+	if err != nil {
+		return err
+	}
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	v, err := GetResult(ctx)
+	if err != nil {
+		return err
+	}
+	v.Merge(res)
+	return nil
+}
+
+func GetResult(ctx context.Context) (*Result, error) {
+	v, ok := ctx.Value(resultKey).(*Result)
+	if !ok {
+		return nil, errors.New("unpopulated Results key")
+	}
+	return v, nil
+}
+
+// GetChunkData returns the chunks statistics data from the current context.
+func GetMutex(ctx context.Context) (*sync.Mutex, error) {
+	res, ok := ctx.Value(lockKey).(*sync.Mutex)
+	if !ok {
+		return nil, fmt.Errorf("no mutex available under %s", string(lockKey))
+	}
+	return res, nil
 }

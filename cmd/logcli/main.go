@@ -70,8 +70,8 @@ LogQL documentation:
 https://github.com/grafana/loki/blob/master/docs/logql.md`)
 	instantQuery = newQuery(true, instantQueryCmd)
 
-	labelsCmd = app.Command("labels", "Find values for a given label.")
-	labelName = labelsCmd.Arg("label", "The name of the label.").HintAction(hintActionLabelNames).String()
+	labelsCmd   = app.Command("labels", "Find values for a given label.")
+	labelsQuery = newLabelQuery(labelsCmd)
 
 	seriesCmd   = app.Command("series", "Run series query.")
 	seriesQuery = newSeriesQuery(seriesCmd)
@@ -122,18 +122,10 @@ func main() {
 
 		instantQuery.DoQuery(queryClient, out, *statistics)
 	case labelsCmd.FullCommand():
-		q := newLabelQuery(*labelName, *quiet)
-
-		q.DoLabels(queryClient)
+		labelsQuery.DoLabels(queryClient)
 	case seriesCmd.FullCommand():
 		seriesQuery.DoSeries(queryClient)
 	}
-}
-
-func hintActionLabelNames() []string {
-	q := newLabelQuery("", *quiet)
-
-	return q.ListLabels(queryClient)
 }
 
 func newQueryClient(app *kingpin.Application) *client.Client {
@@ -163,11 +155,31 @@ func newQueryClient(app *kingpin.Application) *client.Client {
 	return client
 }
 
-func newLabelQuery(labelName string, quiet bool) *labelquery.LabelQuery {
-	return &labelquery.LabelQuery{
-		LabelName: labelName,
-		Quiet:     quiet,
-	}
+func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
+	var labelName, from, to string
+	var since time.Duration
+
+	q := &labelquery.LabelQuery{}
+
+	// executed after all command flags are parsed
+	cmd.Action(func(c *kingpin.ParseContext) error {
+
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+		q.LabelName = labelName
+		q.Quiet = *quiet
+		return nil
+	})
+
+	cmd.Arg("label", "The name of the label.").Default("").StringVar(&labelName)
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start looking for labels at this absolute time (inclusive)").StringVar(&from)
+	cmd.Flag("to", "Stop looking for labels at this absolute time (exclusive)").StringVar(&to)
+
+	return q
 }
 
 func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
@@ -229,7 +241,8 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 		cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
-		cmd.Flag("step", "Query resolution step width").DurationVar(&q.Step)
+		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
+		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)

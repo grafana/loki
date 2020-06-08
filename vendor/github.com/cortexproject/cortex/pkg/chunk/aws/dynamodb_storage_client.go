@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"golang.org/x/time/rate"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -21,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
@@ -99,13 +101,12 @@ func init() {
 
 // DynamoDBConfig specifies config for a DynamoDB database.
 type DynamoDBConfig struct {
-	DynamoDB               flagext.URLValue
-	APILimit               float64
-	ThrottleLimit          float64
-	ApplicationAutoScaling flagext.URLValue
-	Metrics                MetricsAutoScalingConfig
-	ChunkGangSize          int
-	ChunkGetMaxParallelism int
+	DynamoDB               flagext.URLValue         `yaml:"dynamodb_url"`
+	APILimit               float64                  `yaml:"api_limit"`
+	ThrottleLimit          float64                  `yaml:"throttle_limit"`
+	Metrics                MetricsAutoScalingConfig `yaml:"metrics"`
+	ChunkGangSize          int                      `yaml:"chunk_gang_size"`
+	ChunkGetMaxParallelism int                      `yaml:"chunk_get_max_parallelism"`
 	backoffConfig          util.BackoffConfig
 }
 
@@ -115,9 +116,8 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
 	f.Float64Var(&cfg.APILimit, "dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
 	f.Float64Var(&cfg.ThrottleLimit, "dynamodb.throttle-limit", 10.0, "DynamoDB rate cap to back off when throttled.")
-	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
-	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
-	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
+	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk-gang-size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
+	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get-max-parallelism", 32, "Max number of chunk-get operations to start in parallel")
 	f.DurationVar(&cfg.backoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
 	f.DurationVar(&cfg.backoffConfig.MaxBackoff, "dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
 	f.IntVar(&cfg.backoffConfig.MaxRetries, "dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
@@ -126,8 +126,8 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 
 // StorageConfig specifies config for storing data on AWS.
 type StorageConfig struct {
-	DynamoDBConfig
-	S3Config `yaml:",inline"`
+	DynamoDBConfig `yaml:"dynamodb"`
+	S3Config       `yaml:",inline"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -146,7 +146,6 @@ type dynamoDBStorageClient struct {
 
 	// These functions exists for mocking, so we don't have to write a whole load
 	// of boilerplate.
-	queryRequestFn          func(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest
 	batchGetItemRequestFn   func(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest
 	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
 }
@@ -174,7 +173,6 @@ func newDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) 
 		DynamoDB:      dynamoDB,
 		writeThrottle: rate.NewLimiter(rate.Limit(cfg.ThrottleLimit), dynamoDBMaxWriteBatchSize),
 	}
-	client.queryRequestFn = client.queryRequest
 	client.batchGetItemRequestFn = client.batchGetItemRequest
 	client.batchWriteItemRequestFn = client.batchWriteItemRequest
 	return client, nil
@@ -289,7 +287,7 @@ func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	return chunk_util.DoParallelQueries(ctx, a.query, queries, callback)
 }
 
-func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(query.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{
@@ -329,86 +327,42 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 		}
 	}
 
-	request := a.queryRequestFn(ctx, input)
 	pageCount := 0
 	defer func() {
 		dynamoQueryPagesCount.Observe(float64(pageCount))
 	}()
 
-	for page := request; page != nil; page = page.NextPage() {
-		pageCount++
-
-		response, err := a.queryPage(ctx, input, page, query.HashValue, pageCount)
-		if err != nil {
-			return err
+	retryer := newRetryer(ctx, a.cfg.backoffConfig)
+	err := instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, instrument.ErrorCode, func(innerCtx context.Context) error {
+		if sp := ot.SpanFromContext(innerCtx); sp != nil {
+			sp.SetTag("tableName", query.TableName)
+			sp.SetTag("hashValue", query.HashValue)
 		}
-
-		if !callback(response) {
-			if err != nil {
-				return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error())
-			}
-			return nil
-		}
-		if !page.HasNextPage() {
-			return nil
-		}
-	}
-	return nil
-}
-
-func (a dynamoDBStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest, hashValue string, pageCount int) (*dynamoDBReadResponse, error) {
-	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
-
-	var err error
-	for backoff.Ongoing() {
-		err = instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, instrument.ErrorCode, func(innerCtx context.Context) error {
+		return a.DynamoDB.QueryPagesWithContext(innerCtx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
+			pageCount++
 			if sp := ot.SpanFromContext(innerCtx); sp != nil {
-				sp.SetTag("tableName", aws.StringValue(input.TableName))
-				sp.SetTag("hashValue", hashValue)
-				sp.SetTag("page", pageCount)
-				sp.SetTag("retry", backoff.NumRetries())
+				sp.LogFields(otlog.Int("page", pageCount))
 			}
-			return page.Send()
-		})
 
-		if cc := page.Data().(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
-			dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
-				Add(float64(*cc.CapacityUnits))
-		}
-
-		if err != nil {
-			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
-			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || page.Retryable()) {
-				if awsErr.Code() != dynamodb.ErrCodeProvisionedThroughputExceededException {
-					level.Warn(util.Logger).Log("msg", "DynamoDB error", "retry", backoff.NumRetries(), "table", *input.TableName, "err", err)
-				}
-				backoff.Wait()
-				continue
+			if cc := output.ConsumedCapacity; cc != nil {
+				dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
+					Add(float64(*cc.CapacityUnits))
 			}
-			return nil, fmt.Errorf("QueryPage error: table=%v, err=%v", *input.TableName, err)
-		}
 
-		queryOutput := page.Data().(*dynamodb.QueryOutput)
-		return &dynamoDBReadResponse{
-			items: queryOutput.Items,
-		}, nil
+			return callback(query, &dynamoDBReadResponse{items: output.Items})
+		}, retryer.withRetries, withErrorHandler(query.TableName, "DynamoDB.QueryPages"))
+	})
+	if err != nil {
+		return errors.Wrapf(err, "QueryPages error: table=%v", query.TableName)
 	}
-	return nil, fmt.Errorf("QueryPage error: %s for table %v, last error %v", backoff.Err(), *input.TableName, err)
+	return err
 }
 
 type dynamoDBRequest interface {
-	NextPage() dynamoDBRequest
 	Send() error
 	Data() interface{}
 	Error() error
-	HasNextPage() bool
 	Retryable() bool
-}
-
-func (a dynamoDBStorageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
-	req, _ := a.DynamoDB.QueryRequest(input)
-	req.SetContext(ctx)
-	return dynamoDBRequestAdapter{req}
 }
 
 func (a dynamoDBStorageClient) batchGetItemRequest(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
@@ -427,31 +381,16 @@ type dynamoDBRequestAdapter struct {
 	request *request.Request
 }
 
-func (a dynamoDBRequestAdapter) NextPage() dynamoDBRequest {
-	next := a.request.NextPage()
-	if next == nil {
-		return nil
-	}
-	return dynamoDBRequestAdapter{next}
-}
-
 func (a dynamoDBRequestAdapter) Data() interface{} {
 	return a.request.Data
 }
 
 func (a dynamoDBRequestAdapter) Send() error {
-	// Clear error in case we are retrying the same operation - if we
-	// don't do this then the same error will come back again immediately
-	a.request.Error = nil
 	return a.request.Send()
 }
 
 func (a dynamoDBRequestAdapter) Error() error {
 	return a.request.Error
-}
-
-func (a dynamoDBRequestAdapter) HasNextPage() bool {
-	return a.request.HasNextPage()
 }
 
 func (a dynamoDBRequestAdapter) Retryable() bool {
@@ -757,8 +696,14 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 }
 
 func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	// ToDo: implement this to support deleting index entries from DynamoDB
-	panic("DynamoDB does not support Deleting index entries yet")
+	b[tableName] = append(b[tableName], &dynamodb.WriteRequest{
+		DeleteRequest: &dynamodb.DeleteRequest{
+			Key: map[string]*dynamodb.AttributeValue{
+				hashKey:  {S: aws.String(hashValue)},
+				rangeKey: {B: rangeValue},
+			},
+		},
+	})
 }
 
 // Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
@@ -833,6 +778,16 @@ func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
 				toFill -= taken
 			}
 		}
+	}
+}
+
+func withErrorHandler(tableName, operation string) func(req *request.Request) {
+	return func(req *request.Request) {
+		req.Handlers.CompleteAttempt.PushBack(func(req *request.Request) {
+			if req.Error != nil {
+				recordDynamoError(tableName, req.Error, operation)
+			}
+		})
 	}
 }
 

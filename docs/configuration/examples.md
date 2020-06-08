@@ -27,7 +27,7 @@ ingester:
 
 schema_config:
   configs:
-  - from: 2018-04-15
+  - from: 2020-05-15
     store: boltdb
     object_store: filesystem
     schema: v11
@@ -47,22 +47,6 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
-chunk_store_config:
-  max_look_back_period: 0
-
-table_manager:
-  chunk_tables_provisioning:
-    inactive_read_throughput: 0
-    inactive_write_throughput: 0
-    provisioned_read_throughput: 0
-    provisioned_write_throughput: 0
-  index_tables_provisioning:
-    inactive_read_throughput: 0
-    inactive_write_throughput: 0
-    provisioned_read_throughput: 0
-    provisioned_write_throughput: 0
-  retention_deletes_enabled: false
-  retention_period: 0
 ```
 
 ## Google Cloud Storage
@@ -73,7 +57,7 @@ stores, respectively.
 ```yaml
 schema_config:
   configs:
-  - from: 2018-04-15
+  - from: 2020-05-15
     store: bigtable
     object_store: gcs
     schema: v11
@@ -97,7 +81,7 @@ Cassandra for the index storage:
 ```yaml
 schema_config:
   configs:
-  - from: 2018-04-15
+  - from: 2020-05-15
     store: cassandra
     object_store: filesystem
     schema: v11
@@ -125,18 +109,17 @@ index storage:
 ```yaml
 schema_config:
   configs:
-    - from: 2018-04-15
-      store: aws
-      object_store: s3
-      schema: v11
-      index:
-        prefix: dynamodb_table_name
-        period: 0
+  - from: 2020-05-15
+    store: aws
+    object_store: s3
+    schema: v11
+    index:
+      prefix: loki_
 storage_config:
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodbconfig:
-      dynamodb: dynamodb://access_key:secret_access_key@region
+    dynamodb:
+      dynamodb_url: dynamodb://access_key:secret_access_key@region
 ```
 
 If you don't wish to hard-code S3 credentials, you can also configure an EC2
@@ -146,8 +129,8 @@ instance role by changing the `storage_config` section:
 storage_config:
   aws:
     s3: s3://region/bucket_name
-    dynamodbconfig:
-      dynamodb: dynamodb://region
+    dynamodb:
+      dynamodb_url: dynamodb://region
 ```
 
 ### S3-compatible APIs

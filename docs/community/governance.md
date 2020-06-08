@@ -20,16 +20,17 @@ Established members are expected to demonstrate their adherence to the principle
 
 The current team members are:
 
-- Cyril Tovena                  [cyriltovena](https://github.com/cyriltovena)
-- David Kaltschmidt             [davkal](https://github.com/davkal)
-- Edward Welch                  [slim-bean](https://github.com/slim-bean)
-- Goutham Veeramachaneni        [gouthamve](https://github.com/gouthamve)
-- Joe Elliott                   [joe-elliot](https://github.com/joe-elliot)
-- Owen Diehl                    [owen-d](https://github.com/owen-d)
-- Robert Fratto                 [rfratto](https://github.com/rfratto)
-- Sandeep Sukhani               [sandeepsukhani](https://github.com/sandeepsukhani)
-- Tom Braack                    [sh0rez](https://github.com/sh0rez)
-- Tom Wilkie                    [tomwilkie](https://github.com/tomwilkie)
+- Aditya C S                              [adityacs](https://github.com/adityacs)
+- Cyril Tovena (Grafana Labs)             [cyriltovena](https://github.com/cyriltovena)
+- David Kaltschmidt (Grafana Labs)        [davkal](https://github.com/davkal)
+- Edward Welch (Grafana Labs)             [slim-bean](https://github.com/slim-bean)
+- Goutham Veeramachaneni (Grafana Labs)   [gouthamve](https://github.com/gouthamve)
+- Joe Elliott (Grafana Labs)              [joe-elliott](https://github.com/joe-elliott)
+- Owen Diehl (Grafana Labs)               [owen-d](https://github.com/owen-d)
+- Robert Fratto (Grafana Labs)            [rfratto](https://github.com/rfratto)
+- Sandeep Sukhani (Grafana Labs)          [sandeepsukhani](https://github.com/sandeepsukhani)
+- Tom Braack (Grafana Labs)               [sh0rez](https://github.com/sh0rez)
+- Tom Wilkie (Grafana Labs)               [tomwilkie](https://github.com/tomwilkie)
 
 ### Responsibilities and privileges
 

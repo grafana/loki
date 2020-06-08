@@ -25,7 +25,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -453,7 +453,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recMtx.Lock()
 	for _, s := range req.Streams {
-		parsedLabels, err := promql.ParseMetric(s.Labels)
+		parsedLabels, err := parser.ParseMetric(s.Labels)
 		if err != nil {
 			h.t.Error("Failed to parse incoming labels", err)
 			return
@@ -470,17 +470,8 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if _, ok := h.receivedMap[file]; ok {
-			h.receivedMap[file] = append(h.receivedMap[file], s.Entries...)
-		} else {
-			h.receivedMap[file] = s.Entries
-		}
-
-		if _, ok := h.receivedLabels[file]; ok {
-			h.receivedLabels[file] = append(h.receivedLabels[file], parsedLabels)
-		} else {
-			h.receivedLabels[file] = []labels.Labels{parsedLabels}
-		}
+		h.receivedMap[file] = append(h.receivedMap[file], s.Entries...)
+		h.receivedLabels[file] = append(h.receivedLabels[file], parsedLabels)
 
 	}
 

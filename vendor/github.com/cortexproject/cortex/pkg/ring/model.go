@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -17,6 +17,13 @@ type ByToken []TokenDesc
 func (ts ByToken) Len() int           { return len(ts) }
 func (ts ByToken) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts ByToken) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
+
+// ByAddr is a sortable list of IngesterDesc.
+type ByAddr []IngesterDesc
+
+func (ts ByAddr) Len() int           { return len(ts) }
+func (ts ByAddr) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
+func (ts ByAddr) Less(i, j int) bool { return ts[i].Addr < ts[j].Addr }
 
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
@@ -37,7 +44,7 @@ func NewDesc() *Desc {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState) IngesterDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
@@ -47,9 +54,11 @@ func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState
 		Timestamp: time.Now().Unix(),
 		State:     state,
 		Tokens:    tokens,
+		Zone:      zone,
 	}
 
 	d.Ingesters[id] = ingester
+	return ingester
 }
 
 // RemoveIngester removes the given ingester and all its tokens.
@@ -124,13 +133,19 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 
 	switch op {
 	case Write:
-		healthy = (i.State == ACTIVE)
+		healthy = i.State == ACTIVE
 
 	case Read:
 		healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
 
 	case Reporting:
 		healthy = true
+
+	case BlocksSync:
+		healthy = (i.State == JOINING) || (i.State == ACTIVE) || (i.State == LEAVING)
+
+	case BlocksRead:
+		healthy = i.State == ACTIVE
 	}
 
 	return healthy && time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
@@ -377,9 +392,10 @@ func (d *Desc) RemoveTombstones(limit time.Time) {
 type TokenDesc struct {
 	Token    uint32
 	Ingester string
+	Zone     string
 }
 
-// Returns sorted list of tokens with ingester names.
+// getTokens returns sorted list of tokens with ingester IDs, owned by each ingester in the ring.
 func (d *Desc) getTokens() []TokenDesc {
 	numTokens := 0
 	for _, ing := range d.Ingesters {
@@ -388,10 +404,17 @@ func (d *Desc) getTokens() []TokenDesc {
 	tokens := make([]TokenDesc, 0, numTokens)
 	for key, ing := range d.Ingesters {
 		for _, token := range ing.Tokens {
-			tokens = append(tokens, TokenDesc{Token: token, Ingester: key})
+			tokens = append(tokens, TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
 		}
 	}
 
 	sort.Sort(ByToken(tokens))
 	return tokens
+}
+
+func GetOrCreateRingDesc(d interface{}) *Desc {
+	if d == nil {
+		return NewDesc()
+	}
+	return d.(*Desc)
 }

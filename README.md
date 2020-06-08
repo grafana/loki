@@ -29,11 +29,9 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 ## Getting started
 
-* [Installing Loki](https://github.com/grafana/loki/tree/v1.4.1/docs/installation/README.md)
-* [Installing
-Promtail](https://github.com/grafana/loki/tree/v1.4.1/docs/clients/promtail/installation.md)
-* [Getting
-Started Guide](https://github.com/grafana/loki/tree/v1.4.1/docs/getting-started/README.md)
+* [Installing Loki](https://github.com/grafana/loki/tree/v1.5.0/docs/installation/README.md)
+* [Installing Promtail](https://github.com/grafana/loki/tree/v1.5.0/docs/clients/promtail/installation.md)
+* [Getting Started Guide](https://github.com/grafana/loki/tree/v1.5.0/docs/getting-started/README.md)
 
 ## Upgrading
 
@@ -42,6 +40,7 @@ Started Guide](https://github.com/grafana/loki/tree/v1.4.1/docs/getting-started/
 ### Documentation
 
 * [master](./docs/README.md)
+* [v1.5.0](https://github.com/grafana/loki/tree/v1.5.0/docs/README.md)
 * [v1.4.1](https://github.com/grafana/loki/tree/v1.4.1/docs/README.md)
 * [v1.4.0](https://github.com/grafana/loki/tree/v1.4.0/docs/README.md)
 * [v1.3.0](https://github.com/grafana/loki/tree/v1.3.0/docs/README.md)
@@ -49,17 +48,18 @@ Started Guide](https://github.com/grafana/loki/tree/v1.4.1/docs/getting-started/
 * [v1.1.0](https://github.com/grafana/loki/tree/v1.1.0/docs/README.md)
 * [v1.0.0](https://github.com/grafana/loki/tree/v1.0.0/docs/README.md)
 
-Commonly used sections (from the latest release v1.4.1):
+Commonly used sections (from the latest release v1.5.0):
 
-- [API documentation](https://github.com/grafana/loki/tree/v1.4.1/docs/api.md) for alternative ways of getting logs into Loki.
-- [Operations](https://github.com/grafana/loki/tree/v1.4.1/docs/operations) for important aspects of running Loki.
-- [Promtail](https://github.com/grafana/loki/tree/v1.4.1/docs/clients/promtail) is an agent which can tail your log files and push them to Loki.
-- [Pipelines](https://github.com/grafana/loki/tree/v1.4.1/docs/clients/promtail/pipelines.md) for detailed log processing pipeline documentation
-- [Docker Logging Driver](https://github.com/grafana/loki/tree/v1.4.1/docs/clients/docker-driver) is a docker plugin to send logs directly to Loki from Docker containers.
-- [LogCLI](https://github.com/grafana/loki/tree/v1.4.1/docs/getting-started/logcli.md) on how to query your logs without Grafana.
-- [Loki Canary](https://github.com/grafana/loki/tree/v1.4.1/docs/operations/loki-canary.md) for monitoring your Loki installation for missing logs.
-- [Troubleshooting](https://github.com/grafana/loki/tree/v1.4.1/docs/getting-started/troubleshooting.md) for help around frequent error messages.
-- [Loki in Grafana](https://github.com/grafana/loki/tree/v1.4.1/docs/getting-started/grafana.md) for how to set up a Loki datasource in Grafana and query your logs.
+- [API documentation](https://github.com/grafana/loki/tree/v1.5.0/docs/api.md) for alternative ways of getting logs into Loki.
+- [Labels](https://github.com/grafana/loki/blob/master/docs/getting-started/labels.md)
+- [Operations](https://github.com/grafana/loki/tree/v1.5.0/docs/operations) for important aspects of running Loki.
+- [Promtail](https://github.com/grafana/loki/tree/v1.5.0/docs/clients/promtail) is an agent which can tail your log files and push them to Loki.
+- [Pipelines](https://github.com/grafana/loki/tree/v1.5.0/docs/clients/promtail/pipelines.md) for detailed log processing pipeline documentation
+- [Docker Logging Driver](https://github.com/grafana/loki/tree/v1.5.0/docs/clients/docker-driver) is a docker plugin to send logs directly to Loki from Docker containers.
+- [LogCLI](https://github.com/grafana/loki/tree/v1.5.0/docs/getting-started/logcli.md) on how to query your logs without Grafana.
+- [Loki Canary](https://github.com/grafana/loki/tree/v1.5.0/docs/operations/loki-canary.md) for monitoring your Loki installation for missing logs.
+- [Troubleshooting](https://github.com/grafana/loki/tree/v1.5.0/docs/getting-started/troubleshooting.md) for help around frequent error messages.
+- [Loki in Grafana](https://github.com/grafana/loki/tree/v1.5.0/docs/getting-started/grafana.md) for how to set up a Loki datasource in Grafana and query your logs.
 
 ## Getting Help
 
@@ -94,6 +94,52 @@ Your feedback is always welcome.
 ## Contributing
 
 Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
+
+### Building from source
+
+Loki can be run in a single host, no-dependencies mode using the following commands.
+
+You need `go` [v1.10+](https://golang.org/dl/) installed locally.
+
+```bash
+
+$ go get github.com/grafana/loki
+$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
+
+$ go build ./cmd/loki
+$ ./loki -config.file=./cmd/loki/loki-local-config.yaml
+...
+```
+
+To build Promtail on non-Linux platforms, use the following command:
+
+```bash
+$ go build ./cmd/promtail
+```
+
+On Linux, Promtail requires the systemd headers to be installed for
+Journal support.
+
+With Journal support on Ubuntu, run with the following commands:
+
+```bash
+$ sudo apt install -y libsystemd-dev
+$ go build ./cmd/promtail
+```
+
+With Journal support on CentOS, run with the following commands:
+
+```bash
+$ sudo yum install -y systemd-devel
+$ go build ./cmd/promtail
+```
+
+Otherwise, to build Promtail without Journal support, run `go build`
+with CGO disabled:
+
+```bash
+$ CGO_ENABLED=0 go build ./cmd/promtail
+```
 
 ## License
 

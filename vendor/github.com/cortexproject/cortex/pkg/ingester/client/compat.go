@@ -12,17 +12,19 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/textparse"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-// ToWriteRequest converts matched slices of Labels and Samples into a WriteRequest proto.
+// ToWriteRequest converts matched slices of Labels, Samples and Metadata into a WriteRequest proto.
 // It gets timeseries from the pool, so ReuseSlice() should be called when done.
-func ToWriteRequest(lbls []labels.Labels, samples []Sample, source WriteRequest_SourceEnum) *WriteRequest {
+func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMetadata, source WriteRequest_SourceEnum) *WriteRequest {
 	req := &WriteRequest{
 		Timeseries: slicePool.Get().([]PreallocTimeseries),
+		Metadata:   metadata,
 		Source:     source,
 	}
 
@@ -137,6 +139,31 @@ func FromMetricsForLabelMatchersResponse(resp *MetricsForLabelMatchersResponse) 
 	return metrics
 }
 
+// MetricMetadataMetricTypeToMetricType converts a metric type from our internal client
+// to a Prometheus one.
+func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) textparse.MetricType {
+	switch mt {
+	case UNKNOWN:
+		return textparse.MetricTypeUnknown
+	case COUNTER:
+		return textparse.MetricTypeCounter
+	case GAUGE:
+		return textparse.MetricTypeGauge
+	case HISTOGRAM:
+		return textparse.MetricTypeHistogram
+	case GAUGEHISTOGRAM:
+		return textparse.MetricTypeGaugeHistogram
+	case SUMMARY:
+		return textparse.MetricTypeSummary
+	case INFO:
+		return textparse.MetricTypeInfo
+	case STATESET:
+		return textparse.MetricTypeStateset
+	default:
+		return textparse.MetricTypeUnknown
+	}
+}
+
 func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {
 	result := make([]*LabelMatcher, 0, len(matchers))
 	for _, matcher := range matchers {
@@ -202,15 +229,19 @@ func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
 // get in input labels whose data structure is reused.
 func FromLabelAdaptersToLabelsWithCopy(input []LabelAdapter) labels.Labels {
 	result := make(labels.Labels, len(input))
-
 	for i, l := range input {
 		result[i] = labels.Label{
-			Name:  l.Name,
-			Value: l.Value,
+			Name:  copyString(l.Name),
+			Value: copyString(l.Value),
 		}
 	}
-
 	return result
+}
+
+func copyString(in string) string {
+	out := make([]byte, len(in))
+	copy(out, in)
+	return string(out)
 }
 
 // FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.

@@ -38,7 +38,7 @@ func main() {
 	flag.StringVar(&auth.Username, "username", "", "username for docker hub")
 	flag.StringVar(&auth.Password, "password", "", "password for docker hub")
 	flag.StringVar(&repo, "repo", "grafana/loki", "repo to delete tags for")
-	flag.StringVar(&filter, "filter", "master-", "delete tags only containing this name")
+	flag.StringVar(&filter, "filter", "master-", "delete tags only containing this prefix")
 	flag.DurationVar(&maxAge, "max-age", 24*time.Hour*90, "delete tags older than this age")
 	flag.Parse()
 
@@ -69,7 +69,7 @@ func main() {
 	filtered := make([]tag, 0, len(tags))
 
 	for _, t := range tags {
-		if !strings.Contains(t.Name, filter) {
+		if !strings.HasPrefix(t.Name, filter) {
 			continue
 		}
 		age := time.Since(t.LastUpdated)

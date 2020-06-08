@@ -18,7 +18,7 @@ var (
 	ErrOutOfOrder      = errors.New("entry out of order")
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidFlag     = errors.New("invalid flag")
-	ErrInvalidChecksum = errors.New("invalid checksum")
+	ErrInvalidChecksum = errors.New("invalid chunk checksum")
 )
 
 // Encoding is the identifier for a chunk encoding.
@@ -40,6 +40,7 @@ const (
 )
 
 var supportedEncoding = []Encoding{
+	EncNone,
 	EncGZIP,
 	EncLZ4_64k,
 	EncSnappy,

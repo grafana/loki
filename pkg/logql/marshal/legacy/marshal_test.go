@@ -21,7 +21,7 @@ var queryTests = []struct {
 }{
 	{
 		logql.Streams{
-			&logproto.Stream{
+			logproto.Stream{
 				Entries: []logproto.Entry{
 					{
 						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
@@ -68,9 +68,9 @@ var queryTests = []struct {
 					"totalDuplicates": 0
 				},
 				"summary": {
-					"bytesProcessedPerSeconds": 0,
+					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
-					"linesProcessedPerSeconds": 0,
+					"linesProcessedPerSecond": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
 				}

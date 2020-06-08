@@ -58,10 +58,11 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 type S3ObjectClient struct {
 	bucketNames []string
 	S3          s3iface.S3API
+	delimiter   string
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
+func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
 	if cfg.S3.URL == nil {
 		return nil, fmt.Errorf("no URL specified for S3")
 	}
@@ -86,6 +87,7 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	client := S3ObjectClient{
 		S3:          s3Client,
 		bucketNames: bucketNames,
+		delimiter:   delimiter,
 	}
 	return &client, nil
 }
@@ -166,16 +168,17 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 	})
 }
 
-// List only objects from the store non-recursively
-func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+// List objects and common-prefixes i.e synthetic directories from the store non-recursively
+func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
+	var commonPrefixes []chunk.StorageCommonPrefix
 
 	for i := range a.bucketNames {
 		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := s3.ListObjectsV2Input{
 				Bucket:    aws.String(a.bucketNames[i]),
 				Prefix:    aws.String(prefix),
-				Delimiter: aws.String(chunk.DirDelim),
+				Delimiter: aws.String(a.delimiter),
 			}
 
 			for {
@@ -191,6 +194,10 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 					})
 				}
 
+				for _, commonPrefix := range output.CommonPrefixes {
+					commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(commonPrefix.String()))
+				}
+
 				if !*output.IsTruncated {
 					// No more results to fetch
 					break
@@ -203,9 +210,9 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 		})
 
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
-	return storageObjects, nil
+	return storageObjects, commonPrefixes, nil
 }

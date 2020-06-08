@@ -565,6 +565,7 @@ func (c *RaftCluster) SetVersion(ver *semver.Version, onSet func(*zap.Logger, *s
 			plog.Noticef("set the initial cluster version to %v", version.Cluster(ver.String()))
 		}
 	}
+	oldVer := c.version
 	c.version = ver
 	mustDetectDowngrade(c.lg, c.version)
 	if c.v2store != nil {
@@ -573,7 +574,10 @@ func (c *RaftCluster) SetVersion(ver *semver.Version, onSet func(*zap.Logger, *s
 	if c.be != nil {
 		mustSaveClusterVersionToBackend(c.be, ver)
 	}
-	ClusterVersionMetrics.With(prometheus.Labels{"cluster_version": ver.String()}).Set(1)
+	if oldVer != nil {
+		ClusterVersionMetrics.With(prometheus.Labels{"cluster_version": version.Cluster(oldVer.String())}).Set(0)
+	}
+	ClusterVersionMetrics.With(prometheus.Labels{"cluster_version": version.Cluster(ver.String())}).Set(1)
 	onSet(c.lg, ver)
 }
 
@@ -653,8 +657,8 @@ func (c *RaftCluster) IsReadyToRemoveVotingMember(id uint64) bool {
 }
 
 func (c *RaftCluster) IsReadyToPromoteMember(id uint64) bool {
-	nmembers := 1
-	nstarted := 0
+	nmembers := 1 // We count the learner to be promoted for the future quorum
+	nstarted := 1 // and we also count it as started.
 
 	for _, member := range c.VotingMembers() {
 		if member.IsStarted() {

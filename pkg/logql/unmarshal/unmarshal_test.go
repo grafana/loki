@@ -13,11 +13,11 @@ import (
 
 // covers requests to /loki/api/v1/push
 var pushTests = []struct {
-	expected []*logproto.Stream
+	expected []logproto.Stream
 	actual   string
 }{
 	{
-		[]*logproto.Stream{
+		[]logproto.Stream{
 			{
 				Entries: []logproto.Entry{
 					{

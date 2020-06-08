@@ -13,7 +13,8 @@
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
-    container.mixin.readinessProbe.withTimeoutSeconds(1),
+    container.mixin.readinessProbe.withTimeoutSeconds(1) +
+    $.util.resourcesRequests('4', '2Gi'),
 
   local deployment = $.apps.v1.deployment,
 

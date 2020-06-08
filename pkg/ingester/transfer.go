@@ -36,6 +36,7 @@ var (
 // TransferChunks receives all chunks from another ingester. The Ingester
 // must be in PENDING state or else the call will fail.
 func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer) error {
+	logger := util.WithContext(stream.Context(), util.Logger)
 	// Prevent a shutdown from happening until we've completely finished a handoff
 	// from a leaving ingester.
 	i.shutdownMtx.Lock()
@@ -54,12 +55,12 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 			return
 		}
 
-		level.Error(util.Logger).Log("msg", "TransferChunks failed, not in ACTIVE state.", "state", state)
+		level.Error(logger).Log("msg", "TransferChunks failed, not in ACTIVE state.", "state", state)
 
 		// Enter PENDING state (only valid from JOINING)
 		if i.lifecycler.GetState() == ring.JOINING {
 			if err := i.lifecycler.ChangeState(stream.Context(), ring.PENDING); err != nil {
-				level.Error(util.Logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
+				level.Error(logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
 				os.Exit(1)
 			}
 		}
@@ -81,7 +82,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 		// this loop.
 		if fromIngesterID == "" {
 			fromIngesterID = chunkSet.FromIngesterId
-			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+			level.Info(logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
 
 			// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
 			err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
@@ -109,10 +110,10 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 	}
 
 	if seriesReceived == 0 {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
+		level.Error(logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
 		return fmt.Errorf("no series")
 	} else if fromIngesterID == "" {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
+		level.Error(logger).Log("msg", "received TransferChunks request with no ID from ingester")
 		return fmt.Errorf("no ingester id")
 	}
 
@@ -127,10 +128,10 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 	// Close the stream last, as this is what tells the "from" ingester that
 	// it's OK to shut down.
 	if err := stream.SendAndClose(&logproto.TransferChunksResponse{}); err != nil {
-		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "from_ingester", fromIngesterID, "err", err)
+		level.Error(logger).Log("msg", "Error closing TransferChunks stream", "from_ingester", fromIngesterID, "err", err)
 		return err
 	}
-	level.Info(util.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID, "series_received", seriesReceived)
+	level.Info(logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID, "series_received", seriesReceived)
 	return nil
 }
 
@@ -173,7 +174,7 @@ func (i *Ingester) stopIncomingRequests() {
 // TransferOut implements ring.Lifecycler.
 func (i *Ingester) TransferOut(ctx context.Context) error {
 	if i.cfg.MaxTransferRetries <= 0 {
-		return fmt.Errorf("transfers disabled")
+		return ring.ErrTransferDisabled
 	}
 
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
@@ -188,7 +189,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			return nil
 		}
 
-		level.Error(util.Logger).Log("msg", "transfer failed", "err", err)
+		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "transfer failed", "err", err)
 		backoff.Wait()
 	}
 
@@ -196,18 +197,19 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 }
 
 func (i *Ingester) transferOut(ctx context.Context) error {
+	logger := util.WithContext(ctx, util.Logger)
 	targetIngester, err := i.findTransferTarget(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
 	}
 
-	level.Info(util.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
+	level.Info(logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
 	c, err := i.cfg.ingesterClientFactory(i.clientConfig, targetIngester.Addr)
 	if err != nil {
 		return err
 	}
 	if c, ok := c.(io.Closer); ok {
-		defer helpers.LogError("closing client", c.Close)
+		defer helpers.LogErrorWithContext(ctx, "closing client", c.Close)
 	}
 	ic := c.(logproto.IngesterClient)
 
@@ -244,7 +246,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				FromIngesterId: i.lifecycler.ID,
 			})
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "failed sending stream's chunks to ingester", "to_ingester", targetIngester.Addr, "err", err)
+				level.Error(logger).Log("msg", "failed sending stream's chunks to ingester", "to_ingester", targetIngester.Addr, "err", err)
 				return err
 			}
 
@@ -262,7 +264,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 	}
 	i.flushQueuesDone.Wait()
 
-	level.Info(util.Logger).Log("msg", "successfully sent chunks", "to_ingester", targetIngester.Addr)
+	level.Info(logger).Log("msg", "successfully sent chunks", "to_ingester", targetIngester.Addr)
 	return nil
 }
 

@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -70,10 +71,14 @@ func (c *querierClientMock) Context() context.Context {
 	return context.Background()
 }
 
+func (c *querierClientMock) Close() error {
+	return nil
+}
+
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
-func newIngesterClientMockFactory(c *querierClientMock) cortex_client.Factory {
-	return func(addr string) (grpc_health_v1.HealthClient, error) {
+func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
+	return func(addr string) (ring_client.PoolClient, error) {
 		return c, nil
 	}
 }
@@ -81,7 +86,7 @@ func newIngesterClientMockFactory(c *querierClientMock) cortex_client.Factory {
 // mockIngesterClientConfig returns an ingester client config suitable for testing
 func mockIngesterClientConfig() client.Config {
 	return client.Config{
-		PoolConfig: cortex_client.PoolConfig{
+		PoolConfig: distributor.PoolConfig{
 			ClientCleanupPeriod:  1 * time.Minute,
 			HealthCheckIngesters: false,
 			RemoteTimeout:        1 * time.Second,
@@ -164,6 +169,10 @@ func (c *tailClientMock) Trailer() grpc_metadata.MD {
 
 func (c *tailClientMock) CloseSend() error {
 	return nil
+}
+
+func (c *tailClientMock) Context() context.Context {
+	return context.Background()
 }
 
 func (c *tailClientMock) SendMsg(m interface{}) error {
@@ -285,7 +294,7 @@ func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.Replic
 	return []ring.ReplicationSet{r.replicationSet}, nil
 }
 
-func (r *readRingMock) GetAll() (ring.ReplicationSet, error) {
+func (r *readRingMock) GetAll(op ring.Operation) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
@@ -325,11 +334,11 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 
 // mockStream return a stream with quantity entries, where entries timestamp and
 // line string are constructed as sequential numbers starting at from
-func mockStream(from int, quantity int) *logproto.Stream {
+func mockStream(from int, quantity int) logproto.Stream {
 	return mockStreamWithLabels(from, quantity, `{type="test"}`)
 }
 
-func mockStreamWithLabels(from int, quantity int, labels string) *logproto.Stream {
+func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream {
 	entries := make([]logproto.Entry, 0, quantity)
 
 	for i := from; i < from+quantity; i++ {
@@ -339,7 +348,7 @@ func mockStreamWithLabels(from int, quantity int, labels string) *logproto.Strea
 		})
 	}
 
-	return &logproto.Stream{
+	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	}

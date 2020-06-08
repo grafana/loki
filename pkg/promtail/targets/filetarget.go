@@ -56,11 +56,13 @@ const (
 // Config describes behavior for Target
 type Config struct {
 	SyncPeriod time.Duration `yaml:"sync_period"`
+	Stdin      bool          `yaml:"stdin"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&cfg.SyncPeriod, "target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
+	flags.BoolVar(&cfg.Stdin, "stdin", false, "Set to true to pipe logs to promtail.")
 }
 
 // FileTarget describes a particular set of logs.
@@ -199,6 +201,10 @@ func (t *FileTarget) sync() error {
 	matches, err := doublestar.Glob(t.path)
 	if err != nil {
 		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+	}
+
+	if len(matches) == 0 {
+		level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path)
 	}
 
 	// Gets absolute path for each pattern.

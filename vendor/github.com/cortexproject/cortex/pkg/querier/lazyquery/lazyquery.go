@@ -43,12 +43,12 @@ func NewLazyQuerier(next storage.Querier) storage.Querier {
 	return LazyQuerier{next}
 }
 
-func (l LazyQuerier) createSeriesSet(params *storage.SelectParams, matchers []*labels.Matcher, selectFunc func(*storage.SelectParams, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error)) chan storage.SeriesSet {
+func (l LazyQuerier) createSeriesSet(selectSorted bool, params *storage.SelectHints, matchers []*labels.Matcher) chan storage.SeriesSet {
 	// make sure there is space in the buffer, to unblock the goroutine and let it die even if nobody is
 	// waiting for the result yet (or anymore).
 	future := make(chan storage.SeriesSet, 1)
 	go func() {
-		set, _, err := selectFunc(params, matchers...)
+		set, _, err := l.next.Select(selectSorted, params, matchers...)
 		if err != nil {
 			future <- errSeriesSet{err}
 		} else {
@@ -59,16 +59,8 @@ func (l LazyQuerier) createSeriesSet(params *storage.SelectParams, matchers []*l
 }
 
 // Select implements Storage.Querier
-func (l LazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	future := l.createSeriesSet(params, matchers, l.next.Select)
-	return &lazySeriesSet{
-		future: future,
-	}, nil, nil
-}
-
-// SelectSorted implements Storage.Querier
-func (l LazyQuerier) SelectSorted(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	future := l.createSeriesSet(params, matchers, l.next.SelectSorted)
+func (l LazyQuerier) Select(selectSorted bool, params *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	future := l.createSeriesSet(selectSorted, params, matchers)
 	return &lazySeriesSet{
 		future: future,
 	}, nil, nil

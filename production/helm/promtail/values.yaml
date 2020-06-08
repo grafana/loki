@@ -17,8 +17,14 @@ initContainer:
 
 image:
   repository: grafana/promtail
-  tag: 1.4.1
+  tag: 1.5.0
   pullPolicy: IfNotPresent
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be manually created in the namespace.
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  ##
+  # pullSecrets:
+  #   - myRegistryKeySecretName
 
 livenessProbe: {}
 
@@ -115,6 +121,14 @@ volumeMounts:
 # Custom volumeMounts together with the default ones
 extraVolumeMounts: []
 
+# Add extra Commandline args while starting up promtail.
+# more info : https://github.com/grafana/loki/pull/1530
+
+extraCommandlineArgs: []
+# example:
+# extraCommandlineArgs:
+#   - -client.external-labels=hostname=$(HOSTNAME)
+
 config:
   client:
     # Maximum wait period before sending batch
@@ -127,11 +141,11 @@ config:
 
     backoff_config:
       # Initial backoff time between retries
-      minbackoff: 100ms
+      min_period: 100ms
       # Maximum backoff time between retries
-      maxbackoff: 5s
+      max_period: 5s
       # Maximum number of retries when sending batches, 0 means infinite retries
-      maxretries: 20
+      max_retries: 20
 
     # The labels to add to any time series or alerts when communicating with loki
     external_labels: {}

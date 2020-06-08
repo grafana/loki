@@ -14,18 +14,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -43,10 +43,20 @@ var (
 		Name:      "distributor_received_samples_total",
 		Help:      "The total number of received samples, excluding rejected and deduped samples.",
 	}, []string{"user"})
+	receivedMetadata = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_received_metadata_total",
+		Help:      "The total number of received metadata, excluding rejected.",
+	}, []string{"user"})
 	incomingSamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_samples_in_total",
 		Help:      "The total number of samples that have come in to the distributor, including rejected or deduped samples.",
+	}, []string{"user"})
+	incomingMetadata = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_metadata_in_total",
+		Help:      "The total number of metadata the have come in to the distributor, including rejected.",
 	}, []string{"user"})
 	nonHASamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
@@ -68,12 +78,12 @@ var (
 		Namespace: "cortex",
 		Name:      "distributor_ingester_appends_total",
 		Help:      "The total number of batch appends sent to ingesters.",
-	}, []string{"ingester"})
+	}, []string{"ingester", "type"})
 	ingesterAppendFailures = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_ingester_append_failures_total",
 		Help:      "The total number of failed batch appends sent to ingesters.",
-	}, []string{"ingester"})
+	}, []string{"ingester", "type"})
 	ingesterQueries = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_ingester_queries_total",
@@ -89,7 +99,16 @@ var (
 		Name:      "distributor_replication_factor",
 		Help:      "The configured replication factor.",
 	})
+	latestSeenSampleTimestampPerUser = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
+		Help: "Unix timestamp of latest received sample per user.",
+	}, []string{"user"})
 	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
+)
+
+const (
+	typeSamples  = "samples"
+	typeMetadata = "metadata"
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -99,7 +118,7 @@ type Distributor struct {
 
 	cfg           Config
 	ingestersRing ring.ReadRing
-	ingesterPool  *ingester_client.Pool
+	ingesterPool  *ring_client.Pool
 	limits        *validation.Overrides
 
 	// The global rate limiter requires a distributors ring to count
@@ -107,7 +126,7 @@ type Distributor struct {
 	distributorsRing *ring.Lifecycler
 
 	// For handling HA replicas.
-	Replicas *haTracker
+	HATracker *haTracker
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
@@ -120,21 +139,21 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	PoolConfig ingester_client.PoolConfig `yaml:"pool,omitempty"`
+	PoolConfig PoolConfig `yaml:"pool"`
 
-	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
+	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 
 	MaxRecvMsgSize  int           `yaml:"max_recv_msg_size"`
-	RemoteTimeout   time.Duration `yaml:"remote_timeout,omitempty"`
-	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay,omitempty"`
+	RemoteTimeout   time.Duration `yaml:"remote_timeout"`
+	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
 
-	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
+	ShardByAllLabels bool `yaml:"shard_by_all_labels"`
 
 	// Distributors ring
-	DistributorRing RingConfig `yaml:"ring,omitempty"`
+	DistributorRing RingConfig `yaml:"ring"`
 
 	// for testing
-	ingesterClientFactory client.Factory `yaml:"-"`
+	ingesterClientFactory ring_client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -146,7 +165,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	flagext.DeprecatedFlag(f, "distributor.limiter-reload-period", "DEPRECATED. No more required because the local limiter is reconfigured as soon as the overrides change.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
@@ -158,7 +176,7 @@ func (cfg *Config) Validate() error {
 // New constructs a new Distributor
 func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
-		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
+		cfg.ingesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
 		}
 	}
@@ -198,11 +216,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	d := &Distributor{
 		cfg:                  cfg,
 		ingestersRing:        ingestersRing,
-		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
+		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		Replicas:             replicas,
+		HATracker:            replicas,
 	}
 
 	subservices = append(subservices, d.ingesterPool)
@@ -248,17 +266,29 @@ func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter
 	return shardByMetricName(userID, metricName), nil
 }
 
+func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 {
+	if d.cfg.ShardByAllLabels {
+		return shardByMetricName(userID, metricName)
+	}
+
+	return shardByUser(userID)
+}
+
 func shardByMetricName(userID string, metricName string) uint32 {
+	h := shardByUser(userID)
+	h = client.HashAdd32(h, metricName)
+	return h
+}
+
+func shardByUser(userID string) uint32 {
 	h := client.HashNew32()
 	h = client.HashAdd32(h, userID)
-	h = client.HashAdd32(h, metricName)
 	return h
 }
 
 // This function generates different values for different order of same labels.
 func shardByAllLabels(userID string, labels []client.LabelAdapter) uint32 {
-	h := client.HashNew32()
-	h = client.HashAdd32(h, userID)
+	h := shardByUser(userID)
 	for _, label := range labels {
 		h = client.HashAdd32(h, label.Name)
 		h = client.HashAdd32(h, label.Value)
@@ -289,7 +319,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 
 	// At this point we know we have both HA labels, we should lookup
 	// the cluster/instance here to see if we want to accept this sample.
-	err := d.Replicas.checkReplica(ctx, userID, cluster, replica)
+	err := d.HATracker.checkReplica(ctx, userID, cluster, replica)
 	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
 	if err != nil { // Don't accept the sample.
 		return false, err
@@ -331,7 +361,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 
-	var lastPartialErr error
+	var firstPartialErr error
 	removeReplica := false
 
 	numSamples := 0
@@ -340,6 +370,17 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 	// Count the total samples in, prior to validation or deduplication, for comparison with other metrics.
 	incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
+	// Count the total number of metadata in.
+	incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
+
+	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
+	// For each timeseries or samples, we compute a hash to distribute across ingesters;
+	// check each sample/metadata and discard if outside limits.
+	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
+	validatedMetadata := make([]*client.MetricMetadata, 0, len(req.Metadata))
+	metadataKeys := make([]uint32, 0, len(req.Metadata))
+	seriesKeys := make([]uint32, 0, len(req.Timeseries))
+	validatedSamples := 0
 
 	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
@@ -361,12 +402,22 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 	}
 
+	latestSampleTimestampMs := int64(0)
+	defer func() {
+		// Update this metric even in case of errors.
+		if latestSampleTimestampMs > 0 {
+			latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
+		}
+	}()
+
 	// For each timeseries, compute a hash to distribute across ingesters;
 	// check each sample and discard if outside limits.
-	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
-	keys := make([]uint32, 0, len(req.Timeseries))
-	validatedSamples := 0
 	for _, ts := range req.Timeseries {
+		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
+		if len(ts.Samples) > 0 {
+			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+		}
+
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
 		// series we're trying to dedupe when HA tracking moves over to a different replica.
@@ -400,8 +451,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
-		if err != nil {
-			lastPartialErr = err
+		if err != nil && firstPartialErr == nil {
+			firstPartialErr = err
 		}
 
 		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
@@ -409,28 +460,47 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			continue
 		}
 
-		keys = append(keys, key)
+		seriesKeys = append(seriesKeys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedSamples += len(ts.Samples)
 	}
-	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
 
-	if len(keys) == 0 {
-		// Ensure the request slice is reused if there's no series passing the validation.
+	for _, m := range req.Metadata {
+		err := validation.ValidateMetadata(d.limits, userID, m)
+
+		if err != nil {
+			if firstPartialErr == nil {
+				firstPartialErr = err
+			}
+
+			continue
+		}
+
+		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricName))
+		validatedMetadata = append(validatedMetadata, m)
+	}
+
+	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
+	receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
+
+	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
+		// Ensure the request slice is reused if there's no series or metadata passing the validation.
 		client.ReuseSlice(req.Timeseries)
 
-		return &client.WriteResponse{}, lastPartialErr
+		return &client.WriteResponse{}, firstPartialErr
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamples) {
+	totalN := validatedSamples + len(validatedMetadata)
+	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		client.ReuseSlice(req.Timeseries)
 
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", d.ingestionRateLimiter.Limit(now, userID), numSamples)
+		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
 	}
 
 	var subRing ring.ReadRing
@@ -445,10 +515,19 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 	}
 
+	keys := append(seriesKeys, metadataKeys...)
+	initialMetadataIndex := len(seriesKeys)
+
 	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
+		var metadata []*client.MetricMetadata
+
 		for _, i := range indexes {
-			timeseries = append(timeseries, validatedTimeseries[i])
+			if i >= initialMetadataIndex {
+				metadata = append(metadata, validatedMetadata[i-initialMetadataIndex])
+			} else {
+				timeseries = append(timeseries, validatedTimeseries[i])
+			}
 		}
 
 		// Use a background context to make sure all ingesters get samples even if we return early
@@ -458,12 +537,12 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
-		return d.sendSamples(localCtx, ingester, timeseries)
+		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { client.ReuseSlice(req.Timeseries) })
 	if err != nil {
 		return nil, err
 	}
-	return &client.WriteResponse{}, lastPartialErr
+	return &client.WriteResponse{}, firstPartialErr
 }
 
 func sortLabelsIfNeeded(labels []client.LabelAdapter) {
@@ -488,7 +567,7 @@ func sortLabelsIfNeeded(labels []client.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries, metadata []*client.MetricMetadata, source client.WriteRequest_SourceEnum) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -497,19 +576,30 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 
 	req := client.WriteRequest{
 		Timeseries: timeseries,
+		Metadata:   metadata,
+		Source:     source,
 	}
 	_, err = c.Push(ctx, &req)
 
-	ingesterAppends.WithLabelValues(ingester.Addr).Inc()
-	if err != nil {
-		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+	if len(metadata) > 0 {
+		ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+		if err != nil {
+			ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+		}
 	}
+	if len(timeseries) > 0 {
+		ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
+		if err != nil {
+			ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples).Inc()
+		}
+	}
+
 	return err
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
 func (d *Distributor) forAllIngesters(ctx context.Context, reallyAll bool, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
-	replicationSet, err := d.ingestersRing.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -612,6 +702,41 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 	return result, nil
 }
 
+// MetricsMetadata returns all metric metadata of a user.
+func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+	req := &ingester_client.MetricsMetadataRequest{}
+	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
+	resps, err := d.forAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+		return client.MetricsMetadata(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := []scrape.MetricMetadata{}
+	dedupTracker := map[ingester_client.MetricMetadata]struct{}{}
+	for _, resp := range resps {
+		r := resp.(*client.MetricsMetadataResponse)
+		for _, m := range r.Metadata {
+			// Given we look across all ingesters - dedup the metadata.
+			_, ok := dedupTracker[*m]
+			if ok {
+				continue
+			}
+			dedupTracker[*m] = struct{}{}
+
+			result = append(result, scrape.MetricMetadata{
+				Metric: m.MetricName,
+				Help:   m.Help,
+				Unit:   m.Unit,
+				Type:   client.MetricMetadataMetricTypeToMetricType(m.GetType()),
+			})
+		}
+	}
+
+	return result, nil
+}
+
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	req := &client.UserStatsRequest{}
@@ -652,7 +777,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.forAllIngesters(), so we can fail after first error.
-	replicationSet, err := d.ingestersRing.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}

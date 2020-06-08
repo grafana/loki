@@ -10,8 +10,6 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 
@@ -21,7 +19,7 @@ import (
 )
 
 var defaultFactory = func() chunkenc.Chunk {
-	return chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 512, 0)
+	return chunkenc.NewMemChunk(chunkenc.EncGZIP, 512, 0)
 }
 
 func TestLabelsCollisions(t *testing.T) {
@@ -35,7 +33,7 @@ func TestLabelsCollisions(t *testing.T) {
 	tt := time.Now().Add(-5 * time.Minute)
 
 	// Notice how labels aren't sorted.
-	err = i.Push(context.Background(), &logproto.PushRequest{Streams: []*logproto.Stream{
+	err = i.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
 		// both label sets have FastFingerprint=e002a3a451262627
 		{Labels: "{app=\"l\",uniq0=\"0\",uniq1=\"1\"}", Entries: entries(5, tt.Add(time.Minute))},
 		{Labels: "{uniq0=\"1\",app=\"m\",uniq1=\"1\"}", Entries: entries(5, tt)},
@@ -84,7 +82,7 @@ func TestConcurrentPushes(t *testing.T) {
 			tt := time.Now().Add(-5 * time.Minute)
 
 			for i := 0; i < iterations; i++ {
-				err := inst.Push(context.Background(), &logproto.PushRequest{Streams: []*logproto.Stream{
+				err := inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
 					{Labels: labels, Entries: entries(entriesPerIteration, tt)},
 				}})
 
@@ -124,15 +122,12 @@ func TestSyncPeriod(t *testing.T) {
 		result = append(result, logproto.Entry{Timestamp: tt, Line: fmt.Sprintf("hello %d", i)})
 		tt = tt.Add(time.Duration(1 + rand.Int63n(randomStep.Nanoseconds())))
 	}
-
-	err = inst.Push(context.Background(), &logproto.PushRequest{Streams: []*logproto.Stream{{Labels: lbls, Entries: result}}})
+	pr := &logproto.PushRequest{Streams: []logproto.Stream{{Labels: lbls, Entries: result}}}
+	err = inst.Push(context.Background(), pr)
 	require.NoError(t, err)
 
-	// let's verify results.
-	ls, err := util.ToClientLabels(lbls)
-	require.NoError(t, err)
-
-	s, err := inst.getOrCreateStream(ls)
+	// let's verify results
+	s, err := inst.getOrCreateStream(pr.Streams[0])
 	require.NoError(t, err)
 
 	// make sure each chunk spans max 'sync period' time
