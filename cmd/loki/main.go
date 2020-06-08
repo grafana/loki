@@ -58,19 +58,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace, err := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
-	}
-	defer func() {
-		if trace != nil {
-			if err := trace.Close(); err != nil {
-				level.Error(util.Logger).Log("msg", "error closing tracing", "err", err)
-			}
+	if config.Tracing.Enabled {
+		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+		trace, err := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
+		defer func() {
+			if trace != nil {
+				if err := trace.Close(); err != nil {
+					level.Error(util.Logger).Log("msg", "error closing tracing", "err", err)
+				}
+			}
 
-	}()
+		}()
+	}
 
 	// Start Loki
 	t, err := loki.New(config)
