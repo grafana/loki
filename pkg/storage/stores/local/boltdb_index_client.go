@@ -58,7 +58,7 @@ func (b *BoltdbIndexClientWithShipper) query(ctx context.Context, query chunk.In
 	}
 
 	return instrument.CollectedRequest(ctx, "QUERY", instrument.NewHistogramCollector(b.shipper.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
-		return b.shipper.forEach(query.TableName, func(db *bbolt.DB) error {
+		return b.shipper.forEach(ctx, query.TableName, func(db *bbolt.DB) error {
 			return b.QueryDB(ctx, db, query, callback)
 		})
 	})

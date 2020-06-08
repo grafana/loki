@@ -68,9 +68,9 @@ type Shipper struct {
 	cfg          ShipperConfig
 	boltDBGetter BoltDBGetter
 
-	// downloadedPeriods holds mapping for period -> filesCollection.
+	// downloadedPeriods holds mapping for period -> FilesCollection.
 	// Here period is name of the file created by ingesters for a specific period.
-	downloadedPeriods    map[string]*filesCollection
+	downloadedPeriods    map[string]*FilesCollection
 	downloadedPeriodsMtx sync.RWMutex
 	storageClient        chunk.ObjectClient
 
@@ -93,7 +93,7 @@ func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGette
 	shipper := Shipper{
 		cfg:                cfg,
 		boltDBGetter:       boltDBGetter,
-		downloadedPeriods:  map[string]*filesCollection{},
+		downloadedPeriods:  map[string]*FilesCollection{},
 		storageClient:      util.NewPrefixedObjectClient(storageClient, storageKeyPrefix),
 		done:               make(chan struct{}),
 		uploadedFilesMtime: map[string]time.Time{},
@@ -192,12 +192,13 @@ func (s *Shipper) Stop() {
 	s.downloadedPeriodsMtx.Lock()
 	defer s.downloadedPeriodsMtx.Unlock()
 
-	for _, fc := range s.downloadedPeriods {
-		fc.Lock()
-		_ = fc.iter(func(uploader string, df *downloadedFile) error {
+	for period, fc := range s.downloadedPeriods {
+		err := fc.ForEach(func(uploader string, df *downloadedFile) error {
 			return df.boltdb.Close()
 		})
-		fc.Unlock()
+		if err != nil {
+			level.Error(pkg_util.Logger).Log("msg", "failed to close boltdb files", "period", period, "err", err)
+		}
 	}
 }
 
@@ -207,18 +208,15 @@ func (s *Shipper) cleanupCache() error {
 	defer s.downloadedPeriodsMtx.Unlock()
 
 	for period, fc := range s.downloadedPeriods {
-		fc.Lock()
-		lastUsedAt := fc.lastUsedTime()
+		lastUsedAt := fc.LastUsedAt()
 		if lastUsedAt.Add(s.cfg.CacheTTL).Before(time.Now()) {
-			err := fc.cleanupAllFiles()
+			err := fc.CleanupAllFiles()
 			if err != nil {
-				fc.Unlock()
 				return err
 			}
 
 			delete(s.downloadedPeriods, period)
 		}
-		fc.Unlock()
 	}
 
 	return nil
@@ -227,6 +225,10 @@ func (s *Shipper) cleanupCache() error {
 // syncLocalWithStorage syncs all the periods that we have in the cache with the storage
 // i.e download new and updated files and remove files which were delete from the storage.
 func (s *Shipper) syncLocalWithStorage(ctx context.Context) (err error) {
+	if s.cfg.Mode == ShipperModeWriteOnly {
+		return
+	}
+
 	s.downloadedPeriodsMtx.RLock()
 	defer s.downloadedPeriodsMtx.RUnlock()
 
@@ -235,11 +237,11 @@ func (s *Shipper) syncLocalWithStorage(ctx context.Context) (err error) {
 		if err != nil {
 			status = statusFailure
 		}
-		s.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
+		s.metrics.downloaderMetrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
 	}()
 
 	for period := range s.downloadedPeriods {
-		if err := s.syncFilesForPeriod(ctx, period, s.downloadedPeriods[period]); err != nil {
+		if err := s.downloadedPeriods[period].Sync(ctx); err != nil {
 			return err
 		}
 	}
@@ -247,16 +249,7 @@ func (s *Shipper) syncLocalWithStorage(ctx context.Context) (err error) {
 	return
 }
 
-// deleteFileFromCache removes a file from cache.
-// It takes care of locking the filesCollection, closing the boltdb file and removing the file from cache
-func (s *Shipper) deleteFileFromCache(uploader string, fc *filesCollection) error {
-	fc.Lock()
-	defer fc.Unlock()
-
-	return fc.cleanupFile(uploader)
-}
-
-func (s *Shipper) forEach(period string, callback func(db *bbolt.DB) error) error {
+func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *bbolt.DB) error) error {
 	s.downloadedPeriodsMtx.RLock()
 	fc, ok := s.downloadedPeriods[period]
 	s.downloadedPeriodsMtx.RUnlock()
@@ -264,34 +257,35 @@ func (s *Shipper) forEach(period string, callback func(db *bbolt.DB) error) erro
 	if !ok {
 		s.downloadedPeriodsMtx.Lock()
 		fc, ok = s.downloadedPeriods[period]
-		if ok {
-			s.downloadedPeriodsMtx.Unlock()
-		} else {
+		if !ok {
 			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("downloading all files for period %s", period))
 
-			fc = newFilesCollection()
+			fc = NewFilesCollection(period, s.cfg.CacheLocation, s.metrics.downloaderMetrics, s.storageClient)
 			s.downloadedPeriods[period] = fc
-			s.downloadedPeriodsMtx.Unlock()
-
-			// Using background context to avoid cancellation of download when request times out.
-			// We would anyways need the files for serving next requests.
-			if err := s.downloadFilesForPeriod(context.Background(), period, fc); err != nil {
-				s.downloadedPeriodsMtx.Lock()
-				defer s.downloadedPeriodsMtx.Unlock()
-
-				// cleaning up fc since it is in invalid state anyways.
-				delete(s.downloadedPeriods, period)
-				return err
-			}
 		}
-
+		s.downloadedPeriodsMtx.Unlock()
 	}
 
-	fc.RLock()
-	defer fc.RUnlock()
+	// let us check if FilesCollection is ready for use while also honoring the context timeout
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-fc.IsReady():
+	}
 
-	fc.updateLastUsedAt()
-	return fc.iter(func(uploader string, df *downloadedFile) error {
+	fc.UpdateLastUsedAt()
+	err := fc.ForEach(func(uploader string, df *downloadedFile) error {
 		return callback(df.boltdb)
 	})
+
+	// the request which started the download could have timed out and returned so cleaning up the reference here
+	if err != nil && fc.Err() != nil {
+		s.downloadedPeriodsMtx.Lock()
+		defer s.downloadedPeriodsMtx.Unlock()
+
+		// cleaning up fc since it is in invalid state anyways.
+		delete(s.downloadedPeriods, period)
+	}
+
+	return err
 }
