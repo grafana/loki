@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -125,8 +124,8 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		}
 	}
 	r := stats.Snapshot(ctx, time.Since(start))
-	statsB, _ := json.MarshalIndent(r, "", "  ")
-	b.Log(string(statsB))
+	b.Log("Total chunks:" + fmt.Sprintf("%d", r.Store.TotalChunksRef))
+	b.Log("Total chunks overlap:" + fmt.Sprintf("%d", r.Store.TotalChunksOverlapping))
 }
 
 func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
