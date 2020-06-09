@@ -24,7 +24,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/cache"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
-	"github.com/thanos-io/thanos/pkg/tracing"
 )
 
 const (
@@ -280,14 +279,7 @@ func (cb *CachingBucket) GetRange(ctx context.Context, name string, off, length 
 		return cb.Bucket.GetRange(ctx, name, off, length)
 	}
 
-	var (
-		r   io.ReadCloser
-		err error
-	)
-	tracing.DoInSpan(ctx, "cachingbucket_getrange", func(ctx context.Context) {
-		r, err = cb.cachedGetRange(ctx, name, off, length, cfgName, cfg)
-	})
-	return r, err
+	return cb.cachedGetRange(ctx, name, off, length, cfgName, cfg)
 }
 
 func (cb *CachingBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {

@@ -24,6 +24,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -243,7 +244,9 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	LogToSpan(r.Context(), request)
+	if span := opentracing.SpanFromContext(r.Context()); span != nil {
+		request.LogToSpan(span)
+	}
 
 	response, err := q.handler.Do(r.Context(), request)
 	if err != nil {

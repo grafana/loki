@@ -199,8 +199,8 @@ func (l *BasicLifecycler) stopping(runningError error) error {
 	// state transferring / flushing while we continue to heartbeat.
 	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		l.delegate.OnRingInstanceStopping(l)
-		close(done)
 	}()
 
 	// Heartbeat while the stopping delegate function is running.

@@ -173,7 +173,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, store, limits)
+	ing, err := New(cfg, client.Config{}, store, limits, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -182,7 +182,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 
 // nolint
 func defaultIngesterTestConfig(t *testing.T) Config {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec())
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil)
 	require.NoError(t, err)
 
 	cfg := Config{}

@@ -190,7 +190,11 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 	}
 
 	if cfg.EnableSharding {
-		ringStore, err := kv.NewClient(cfg.Ring.KVStore, ring.GetCodec())
+		ringStore, err := kv.NewClient(
+			cfg.Ring.KVStore,
+			ring.GetCodec(),
+			kv.RegistererWithKVName(reg, "ruler"),
+		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
 		}

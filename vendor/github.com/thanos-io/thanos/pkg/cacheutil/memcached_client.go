@@ -19,7 +19,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/model"
-	"github.com/thanos-io/thanos/pkg/tracing"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -282,13 +281,10 @@ func (c *memcachedClient) SetAsync(ctx context.Context, key string, value []byte
 		start := time.Now()
 		c.operations.WithLabelValues(opSet).Inc()
 
-		var err error
-		tracing.DoInSpan(ctx, "memcached_set", func(ctx context.Context) {
-			err = c.client.Set(&memcache.Item{
-				Key:        key,
-				Value:      value,
-				Expiration: int32(time.Now().Add(ttl).Unix()),
-			})
+		err := c.client.Set(&memcache.Item{
+			Key:        key,
+			Value:      value,
+			Expiration: int32(time.Now().Add(ttl).Unix()),
 		})
 		if err != nil {
 			c.failures.WithLabelValues(opSet).Inc()
@@ -392,11 +388,7 @@ func (c *memcachedClient) getMultiSingle(ctx context.Context, keys []string) (it
 	// Wait until we get a free slot from the gate, if the max
 	// concurrency should be enforced.
 	if c.config.MaxGetMultiConcurrency > 0 {
-		tracing.DoInSpan(ctx, "memcached_getmulti_gate_ismyturn", func(ctx context.Context) {
-			// TODO(bwplotka): Consider putting span directly in gate.
-			err = c.getMultiGate.IsMyTurn(ctx)
-		})
-		if err != nil {
+		if err := c.getMultiGate.IsMyTurn(ctx); err != nil {
 			return nil, errors.Wrapf(err, "failed to wait for turn")
 		}
 		defer c.getMultiGate.Done()
@@ -404,9 +396,7 @@ func (c *memcachedClient) getMultiSingle(ctx context.Context, keys []string) (it
 
 	start := time.Now()
 	c.operations.WithLabelValues(opGetMulti).Inc()
-	tracing.DoInSpan(ctx, "memcached_getmulti", func(ctx context.Context) {
-		items, err = c.client.GetMulti(keys)
-	})
+	items, err = c.client.GetMulti(keys)
 	if err != nil {
 		c.failures.WithLabelValues(opGetMulti).Inc()
 	} else {

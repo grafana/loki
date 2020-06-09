@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	strings "strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -17,6 +18,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -58,6 +60,18 @@ func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
 	return &new
 }
 
+func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("query", r.GetQuery()),
+		otlog.String("start", timestamp.Time(r.GetStart()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
+		otlog.Int64("step (ms)", r.GetStep()),
+		otlog.Int64("limit", int64(r.GetLimit())),
+		otlog.String("direction", r.GetDirection().String()),
+		otlog.String("shards", strings.Join(r.GetShards(), ",")),
+	)
+}
+
 func (r *LokiSeriesRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
@@ -84,6 +98,14 @@ func (r *LokiSeriesRequest) GetQuery() string {
 
 func (r *LokiSeriesRequest) GetStep() int64 {
 	return 0
+}
+
+func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("matchers", strings.Join(r.GetMatch(), ",")),
+		otlog.String("start", timestamp.Time(r.GetStart()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
+	)
 }
 
 func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {

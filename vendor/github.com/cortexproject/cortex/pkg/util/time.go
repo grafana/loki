@@ -2,6 +2,7 @@ package util
 
 import (
 	"math"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"time"
@@ -33,4 +34,11 @@ func ParseTime(s string) (int64, error) {
 		return TimeToMillis(t), nil
 	}
 	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
+}
+
+func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration {
+	variance := int64(float64(input) * variancePerc)
+	jitter := rand.Int63n(variance*2) - variance
+
+	return input + time.Duration(jitter)
 }

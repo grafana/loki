@@ -160,40 +160,35 @@ type blockQuerierSeriesSet struct {
 	// next response to process
 	next int
 
-	currLabels []storepb.Label
-	currChunks []storepb.AggrChunk
+	currSeries storage.Series
 }
 
 func (bqss *blockQuerierSeriesSet) Next() bool {
-	bqss.currChunks = nil
-	bqss.currLabels = nil
+	bqss.currSeries = nil
 
 	if bqss.next >= len(bqss.series) {
 		return false
 	}
 
-	bqss.currLabels = bqss.series[bqss.next].Labels
-	bqss.currChunks = bqss.series[bqss.next].Chunks
+	currLabels := bqss.series[bqss.next].Labels
+	currChunks := bqss.series[bqss.next].Chunks
 
 	bqss.next++
 
 	// Merge chunks for current series. Chunks may come in multiple responses, but as soon
 	// as the response has chunks for a new series, we can stop searching. Series are sorted.
 	// See documentation for StoreClient.Series call for details.
-	for bqss.next < len(bqss.series) && storepb.CompareLabels(bqss.currLabels, bqss.series[bqss.next].Labels) == 0 {
-		bqss.currChunks = append(bqss.currChunks, bqss.series[bqss.next].Chunks...)
+	for bqss.next < len(bqss.series) && storepb.CompareLabels(currLabels, bqss.series[bqss.next].Labels) == 0 {
+		currChunks = append(currChunks, bqss.series[bqss.next].Chunks...)
 		bqss.next++
 	}
 
+	bqss.currSeries = newBlockQuerierSeries(currLabels, currChunks)
 	return true
 }
 
 func (bqss *blockQuerierSeriesSet) At() storage.Series {
-	if bqss.currLabels == nil {
-		return nil
-	}
-
-	return newBlockQuerierSeries(bqss.currLabels, bqss.currChunks)
+	return bqss.currSeries
 }
 
 func (bqss *blockQuerierSeriesSet) Err() error {
