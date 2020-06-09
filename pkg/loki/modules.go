@@ -338,6 +338,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		ruler.LokiDelayedQueryFunc(engine),
 		ruler.InMemoryAppendableHistory,
 		prometheus.DefaultRegisterer,
+		func(s string) (fmt.Stringer, error) { return logql.ParseExpr(s) },
 		util.Logger,
 	)
 
