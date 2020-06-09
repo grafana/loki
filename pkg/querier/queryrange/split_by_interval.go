@@ -153,8 +153,6 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult) {
 }
 
 func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
-	//lokiRequest := r.(*LokiRequest)
-
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())

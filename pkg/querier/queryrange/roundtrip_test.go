@@ -146,7 +146,7 @@ func TestMetricsTripperware(t *testing.T) {
 	count, h = counter()
 	rt.setHandler(h)
 	cacheResp, err := tpw(rt).RoundTrip(req)
-	// 0 queries result are cached.
+	// 0 queries, results are cached.
 	require.Equal(t, 0, *count)
 	require.NoError(t, err)
 	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
@@ -204,7 +204,6 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -216,7 +215,7 @@ func TestSeriesTripperware(t *testing.T) {
 
 	lreq := &LokiSeriesRequest{
 		Match:   []string{`{job="varlogs"}`},
-		StartTs: testTime.Add(-6 * time.Hour), // bigger than the limit
+		StartTs: testTime.Add(-6 * time.Hour),
 		EndTs:   testTime,
 		Path:    "/loki/api/v1/series",
 	}
@@ -231,18 +230,28 @@ func TestSeriesTripperware(t *testing.T) {
 
 	count, h := seriesResult(series)
 	rt.setHandler(h)
+
 	resp, err := tpw(rt).RoundTrip(req)
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
 	lokiSeriesResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.NoError(t, err)
 	res, ok := lokiSeriesResponse.(*LokiSeriesResponse)
 	require.Equal(t, true, ok)
-
-	// make sure we return unique series since responses from
-	// SplitByInterval middleware might have duplicate series
 	require.Equal(t, series.Series, res.Data)
+
+	// testing cache
+	count, h = counter()
+	rt.setHandler(h)
+	cacheResp, err := tpw(rt).RoundTrip(req)
+	// 0 queries, results are cached.
+	require.Equal(t, 0, *count)
 	require.NoError(t, err)
+	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
+	require.NoError(t, err)
+
+	require.Equal(t, lokiSeriesResponse.(*LokiSeriesResponse).Data, lokiCacheResponse.(*LokiSeriesResponse).Data)
 }
 func TestLogNoRegex(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)

@@ -64,7 +64,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
+	seriesTripperware, cache, err := NewSeriesTripperware(cfg, log, limits, lokiCodec, SeriesExtractor{}, instrumentMetrics, retryMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -236,14 +236,38 @@ func NewSeriesTripperware(
 	log log.Logger,
 	limits Limits,
 	codec queryrange.Codec,
+	extractor queryrange.Extractor,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	splitByMetrics *SplitByMetrics,
-) (frontend.Tripperware, error) {
+) (frontend.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByMetrics))
 	}
+
+	var c cache.Cache
+	if cfg.CacheResults {
+		queryCacheMiddleware, cache, err := queryrange.NewResultsCacheMiddleware(
+			log,
+			cfg.ResultsCacheConfig,
+			cacheKeyLimits{limits},
+			limits,
+			codec,
+			extractor,
+			nil,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		c = cache
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("results_cache", instrumentMetrics),
+			queryCacheMiddleware,
+		)
+	}
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
@@ -253,7 +277,7 @@ func NewSeriesTripperware(
 			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
 		}
 		return next
-	}, nil
+	}, c, nil
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries

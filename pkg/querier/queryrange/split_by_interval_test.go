@@ -306,7 +306,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 		want *LokiSeriesResponse
 	}{
 		{
-			"backward",
+			"series split by interval",
 			&LokiSeriesRequest{
 				StartTs: time.Unix(0, 0),
 				EndTs:   time.Unix(0, (4 * time.Hour).Nanoseconds()),
