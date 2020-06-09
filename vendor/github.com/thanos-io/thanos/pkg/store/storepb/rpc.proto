@@ -102,6 +102,11 @@ message SeriesRequest {
 
   // skip_chunks controls whether sending chunks or not in series responses.
   bool skip_chunks = 8;
+
+  // hints is an opaque data structure that can be used to carry additional information.
+  // The content of this field and whether it's supported depends on the
+  // implementation of a specific store.
+  google.protobuf.Any hints = 9;
 }
 
 enum Aggr {
@@ -115,6 +120,7 @@ enum Aggr {
 
 message SeriesResponse {
   oneof result {
+    /// series contains 1 response series. The series labels are sorted by name.
     Series series = 1;
 
     /// warning is considered an information piece in place of series for warning purposes.

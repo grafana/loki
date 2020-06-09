@@ -126,7 +126,7 @@ type ChunkStore interface {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -148,7 +148,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		},
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
 	if err != nil {
 		return nil, err
 	}

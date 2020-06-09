@@ -10,8 +10,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/tracing"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
@@ -235,6 +237,7 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex.setupAuthMiddleware()
+	cortex.setupThanosTracing()
 
 	if err := cortex.setupModuleManager(); err != nil {
 		return nil, err
@@ -272,6 +275,18 @@ func (t *Cortex) setupAuthMiddleware() {
 		)
 		t.Cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
 	}
+}
+
+// setupThanosTracing appends a gRPC middleware used to inject our tracer into the custom
+// context used by Thanos, in order to get Thanos spans correctly attached to our traces.
+func (t *Cortex) setupThanosTracing() {
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
+		tracing.UnaryServerInterceptor(opentracing.GlobalTracer()),
+	)
+
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
+		tracing.StreamServerInterceptor(opentracing.GlobalTracer()),
+	)
 }
 
 // Run starts Cortex running, and blocks until a Cortex stops.

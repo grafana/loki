@@ -525,14 +525,14 @@ func NewLabelShardedMetaFilter(relabelConfig []*relabel.Config) *LabelShardedMet
 }
 
 // Special label that will have an ULID of the meta.json being referenced to.
-const blockIDLabel = "__block_id"
+const BlockIDLabel = "__block_id"
 
 // Filter filters out blocks that have no labels after relabelling of each block external (Thanos) labels.
 func (f *LabelShardedMetaFilter) Filter(_ context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
 	var lbls labels.Labels
 	for id, m := range metas {
 		lbls = lbls[:0]
-		lbls = append(lbls, labels.Label{Name: blockIDLabel, Value: id.String()})
+		lbls = append(lbls, labels.Label{Name: BlockIDLabel, Value: id.String()})
 		for k, v := range m.Thanos.Labels {
 			lbls = append(lbls, labels.Label{Name: k, Value: v})
 		}

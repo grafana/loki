@@ -886,3 +886,17 @@ func (r BinaryReader) LabelNames() []string {
 }
 
 func (r *BinaryReader) Close() error { return r.c.Close() }
+
+type realByteSlice []byte
+
+func (b realByteSlice) Len() int {
+	return len(b)
+}
+
+func (b realByteSlice) Range(start, end int) []byte {
+	return b[start:end]
+}
+
+func (b realByteSlice) Sub(start, end int) index.ByteSlice {
+	return b[start:end]
+}

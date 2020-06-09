@@ -3,21 +3,20 @@ package batch
 import (
 	"github.com/prometheus/common/model"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
 // chunkIterator implement batchIterator over a chunk.  Its is designed to be
 // reused by calling reset() with a fresh chunk.
 type chunkIterator struct {
-	chunk chunk.Chunk
+	chunk GenericChunk
 	it    promchunk.Iterator
 	batch promchunk.Batch
 }
 
-func (i *chunkIterator) reset(chunk chunk.Chunk) {
+func (i *chunkIterator) reset(chunk GenericChunk) {
 	i.chunk = chunk
-	i.it = chunk.Data.NewIterator(i.it)
+	i.it = chunk.Iterator(i.it)
 	i.batch.Length = 0
 	i.batch.Index = 0
 }
@@ -27,7 +26,7 @@ func (i *chunkIterator) reset(chunk chunk.Chunk) {
 func (i *chunkIterator) Seek(t int64, size int) bool {
 	// We assume seeks only care about a specific window; if this chunk doesn't
 	// contain samples in that window, we can shortcut.
-	if int64(i.chunk.Through) < t {
+	if i.chunk.MaxTime < t {
 		return false
 	}
 

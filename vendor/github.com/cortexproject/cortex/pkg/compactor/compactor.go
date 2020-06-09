@@ -111,6 +111,7 @@ type Compactor struct {
 	compactionRunsFailed      prometheus.Counter
 	compactionRunsLastSuccess prometheus.Gauge
 	blocksMarkedForDeletion   prometheus.Counter
+	garbageCollectedBlocks    prometheus.Counter
 
 	// TSDB syncer metrics
 	syncerMetrics *syncerMetrics
@@ -172,6 +173,10 @@ func newCompactor(
 			Name: "cortex_compactor_blocks_marked_for_deletion_total",
 			Help: "Total number of blocks marked for deletion in compactor.",
 		}),
+		garbageCollectedBlocks: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_compactor_garbage_collected_blocks_total",
+			Help: "Total number of blocks marked for deletion by compactor.",
+		}),
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -195,12 +200,12 @@ func (c *Compactor) starting(ctx context.Context) error {
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {
 		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
-		c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false)
+		c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ring.CompactorRingKey, false, c.registerer)
 		if err != nil {
 			return errors.Wrap(err, "unable to initialize compactor ring lifecycler")
 		}
 
-		c.ring, err = ring.New(lifecyclerCfg.RingConfig, "compactor", ring.CompactorRingKey)
+		c.ring, err = ring.New(lifecyclerCfg.RingConfig, "compactor", ring.CompactorRingKey, c.registerer)
 		if err != nil {
 			return errors.Wrap(err, "unable to initialize compactor ring")
 		}
@@ -390,17 +395,27 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		deduplicateBlocksFilter,
 		ignoreDeletionMarkFilter,
 		c.blocksMarkedForDeletion,
+		c.garbageCollectedBlocks,
 		c.compactorCfg.BlockSyncConcurrency,
-		false, // Do not accept malformed indexes
-		true,  // Enable vertical compaction
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create syncer")
 	}
 
+	grouper := compact.NewDefaultGrouper(
+		ulogger,
+		bucket,
+		false, // Do not accept malformed indexes
+		true,  // Enable vertical compaction
+		reg,
+		c.blocksMarkedForDeletion,
+		c.garbageCollectedBlocks,
+	)
+
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
+		grouper,
 		c.tsdbCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,

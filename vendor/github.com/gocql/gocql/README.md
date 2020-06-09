@@ -166,6 +166,22 @@ func main() {
 }
 ```
 
+
+Authentication 
+-------
+
+```go
+cluster := gocql.NewCluster("192.168.1.1", "192.168.1.2", "192.168.1.3")
+cluster.Authenticator = gocql.PasswordAuthenticator{
+	Username: "user",
+	Password: "password"
+}
+cluster.Keyspace = "example"
+cluster.Consistency = gocql.Quorum
+session, _ := cluster.CreateSession()
+defer session.Close()
+```
+
 Data Binding
 ------------
 

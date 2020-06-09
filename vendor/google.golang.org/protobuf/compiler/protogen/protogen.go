@@ -104,6 +104,11 @@ type Plugin struct {
 	Files       []*File
 	FilesByPath map[string]*File
 
+	// SupportedFeatures is the set of protobuf language features supported by
+	// this generator plugin. See the documentation for
+	// google.protobuf.CodeGeneratorResponse.supported_features for details.
+	SupportedFeatures uint64
+
 	fileReg        *protoregistry.Files
 	enumsByName    map[protoreflect.FullName]*Enum
 	messagesByName map[protoreflect.FullName]*Message
@@ -336,11 +341,21 @@ func (opts Options) New(req *pluginpb.CodeGeneratorRequest) (*Plugin, error) {
 				"\n", fdesc.GetName(), goPkgOpt)
 		case packageName == "" && importPath == "":
 			// No Go package information provided.
-			warn("Missing 'go_package' option in %q, please specify:\n"+
-				"\toption go_package = %q;\n"+
-				"A future release of protoc-gen-go will require this be specified.\n"+
-				"See "+goPackageDocURL+" for more information.\n"+
-				"\n", fdesc.GetName(), goPkgOpt)
+			dotIdx := strings.Index(goPkgOpt, ".")   // heuristic for top-level domain
+			slashIdx := strings.Index(goPkgOpt, "/") // heuristic for multi-segment path
+			if isFull := 0 <= dotIdx && dotIdx <= slashIdx; isFull {
+				warn("Missing 'go_package' option in %q, please specify:\n"+
+					"\toption go_package = %q;\n"+
+					"A future release of protoc-gen-go will require this be specified.\n"+
+					"See "+goPackageDocURL+" for more information.\n"+
+					"\n", fdesc.GetName(), goPkgOpt)
+			} else {
+				warn("Missing 'go_package' option in %q,\n"+
+					"please specify it with the full Go package path as\n"+
+					"a future release of protoc-gen-go will require this be specified.\n"+
+					"See "+goPackageDocURL+" for more information.\n"+
+					"\n", fdesc.GetName())
+			}
 		}
 	}
 
@@ -437,6 +452,9 @@ func (gen *Plugin) Response() *pluginpb.CodeGeneratorResponse {
 				Content: proto.String(meta),
 			})
 		}
+	}
+	if gen.SupportedFeatures > 0 {
+		resp.SupportedFeatures = proto.Uint64(gen.SupportedFeatures)
 	}
 	return resp
 }
@@ -1089,6 +1107,12 @@ func (g *GeneratedFile) Write(p []byte) (n int, err error) {
 // Skip removes the generated file from the plugin output.
 func (g *GeneratedFile) Skip() {
 	g.skip = true
+}
+
+// Unskip reverts a previous call to Skip, re-including the generated file in
+// the plugin output.
+func (g *GeneratedFile) Unskip() {
+	g.skip = false
 }
 
 // Annotate associates a symbol in a generated Go file with a location in a

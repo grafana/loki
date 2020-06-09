@@ -57,3 +57,5 @@ func (c *TableClient) DescribeTable(ctx context.Context, name string) (desc chun
 func (c *TableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
 	return nil
 }
+
+func (*TableClient) Stop() {}

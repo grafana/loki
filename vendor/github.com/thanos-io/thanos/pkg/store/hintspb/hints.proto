@@ -5,6 +5,7 @@ syntax = "proto3";
 package hintspb;
 
 import "gogoproto/gogo.proto";
+import "store/storepb/types.proto";
 
 option go_package = "hintspb";
 
@@ -17,6 +18,13 @@ option (gogoproto.goproto_getters_all) = false;
 option (gogoproto.goproto_unkeyed_all) = false;
 option (gogoproto.goproto_unrecognized_all) = false;
 option (gogoproto.goproto_sizecache_all) = false;
+
+message SeriesRequestHints {
+    /// block_matchers is a list of label matchers that are evaluated against each single block's
+    /// labels to filter which blocks get queried. If the list is empty, no per-block filtering
+    /// is applied.
+    repeated thanos.LabelMatcher block_matchers = 1 [(gogoproto.nullable) = false];
+}
 
 message SeriesResponseHints {
     /// queried_blocks is the list of blocks that have been queried.
