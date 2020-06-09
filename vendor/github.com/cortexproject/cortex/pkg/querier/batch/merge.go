@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
@@ -22,7 +21,7 @@ type mergeIterator struct {
 	currErr error
 }
 
-func newMergeIterator(cs []chunk.Chunk) *mergeIterator {
+func newMergeIterator(cs []GenericChunk) *mergeIterator {
 	css := partitionChunks(cs)
 	its := make([]*nonOverlappingIterator, 0, len(css))
 	for _, cs := range css {
@@ -162,19 +161,19 @@ func (h *iteratorHeap) Pop() interface{} {
 }
 
 // Build a list of lists of non-overlapping chunks.
-func partitionChunks(cs []chunk.Chunk) [][]chunk.Chunk {
-	sort.Sort(byFrom(cs))
+func partitionChunks(cs []GenericChunk) [][]GenericChunk {
+	sort.Sort(byMinTime(cs))
 
-	css := [][]chunk.Chunk{}
+	css := [][]GenericChunk{}
 outer:
 	for _, c := range cs {
 		for i, cs := range css {
-			if cs[len(cs)-1].Through.Before(c.From) {
+			if cs[len(cs)-1].MaxTime < c.MinTime {
 				css[i] = append(css[i], c)
 				continue outer
 			}
 		}
-		cs := make([]chunk.Chunk, 0, len(cs)/(len(css)+1))
+		cs := make([]GenericChunk, 0, len(cs)/(len(css)+1))
 		cs = append(cs, c)
 		css = append(css, cs)
 	}
@@ -182,8 +181,8 @@ outer:
 	return css
 }
 
-type byFrom []chunk.Chunk
+type byMinTime []GenericChunk
 
-func (b byFrom) Len() int           { return len(b) }
-func (b byFrom) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
-func (b byFrom) Less(i, j int) bool { return b[i].From < b[j].From }
+func (b byMinTime) Len() int           { return len(b) }
+func (b byMinTime) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b byMinTime) Less(i, j int) bool { return b[i].MinTime < b[j].MinTime }

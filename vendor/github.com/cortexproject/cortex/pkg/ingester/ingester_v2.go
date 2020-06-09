@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -46,7 +47,10 @@ type Shipper interface {
 
 type userTSDB struct {
 	*tsdb.DB
-	refCache *cortex_tsdb.RefCache
+	userID         string
+	refCache       *cortex_tsdb.RefCache
+	seriesInMetric *metricCounter
+	limiter        *Limiter
 
 	// Thanos shipper used to ship blocks to the storage.
 	shipper       Shipper
@@ -56,6 +60,51 @@ type userTSDB struct {
 	// for statistics
 	ingestedAPISamples  *ewmaRate
 	ingestedRuleSamples *ewmaRate
+}
+
+// PreCreation implements SeriesLifecycleCallback interface.
+func (u *userTSDB) PreCreation(metric labels.Labels) error {
+	if u.limiter == nil {
+		return nil
+	}
+
+	// Total series limit.
+	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.DB.Head().NumSeries())); err != nil {
+		return makeLimitError(perUserSeriesLimit, err)
+	}
+
+	// Series per metric name limit.
+	metricName, err := extract.MetricNameFromLabels(metric)
+	if err != nil {
+		return err
+	}
+	if err := u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
+		return makeMetricLimitError(perMetricSeriesLimit, metric, err)
+	}
+
+	return nil
+}
+
+// PostCreation implements SeriesLifecycleCallback interface.
+func (u *userTSDB) PostCreation(metric labels.Labels) {
+	metricName, err := extract.MetricNameFromLabels(metric)
+	if err != nil {
+		// This should never happen because it has already been checked in PreCreation().
+		return
+	}
+	u.seriesInMetric.increaseSeriesForMetric(metricName)
+}
+
+// PostDeletion implements SeriesLifecycleCallback interface.
+func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
+	for _, metric := range metrics {
+		metricName, err := extract.MetricNameFromLabels(metric)
+		if err != nil {
+			// This should never happen because it has already been checked in PreCreation().
+			continue
+		}
+		u.seriesInMetric.decreaseSeriesForMetric(metricName)
+	}
 }
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -146,7 +195,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		}, i.numSeriesInTSDB)
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +397,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			cause := errors.Cause(err)
 			if cause == storage.ErrOutOfBounds || cause == storage.ErrOutOfOrderSample || cause == storage.ErrDuplicateSampleForTimestamp {
 				if firstPartialErr == nil {
-					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().Format(time.RFC3339Nano))
+					firstPartialErr = errors.Wrapf(err, "series=%s, timestamp=%v", client.FromLabelAdaptersToLabels(ts.Labels).String(), model.Time(s.TimestampMs).Time().UTC().Format(time.RFC3339Nano))
 				}
 
 				switch cause {
@@ -360,6 +409,16 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 					validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Inc()
 				}
 
+				continue
+			}
+
+			var ve *validationError
+			if errors.As(cause, &ve) {
+				// Caused by limits.
+				if firstPartialErr == nil {
+					firstPartialErr = ve
+				}
+				validation.DiscardedSamples.WithLabelValues(ve.errorType, userID).Inc()
 				continue
 			}
 
@@ -397,7 +456,12 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	}
 
 	if firstPartialErr != nil {
-		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(firstPartialErr, userID).Error())
+		code := http.StatusBadRequest
+		var ve *validationError
+		if errors.As(firstPartialErr, &ve) {
+			code = ve.code
+		}
+		return &client.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 
 	return &client.WriteResponse{}, nil
@@ -788,26 +852,33 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	blockRanges := i.cfg.TSDBConfig.BlockRanges.ToMilliseconds()
 
+	userDB := &userTSDB{
+		userID:              userID,
+		refCache:            cortex_tsdb.NewRefCache(),
+		seriesInMetric:      newMetricCounter(i.limiter),
+		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+	}
+
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
-		RetentionDuration: i.cfg.TSDBConfig.Retention.Milliseconds(),
-		MinBlockDuration:  blockRanges[0],
-		MaxBlockDuration:  blockRanges[len(blockRanges)-1],
-		NoLockfile:        true,
-		StripeSize:        i.cfg.TSDBConfig.StripeSize,
-		WALCompression:    i.cfg.TSDBConfig.WALCompressionEnabled,
+		RetentionDuration:       i.cfg.TSDBConfig.Retention.Milliseconds(),
+		MinBlockDuration:        blockRanges[0],
+		MaxBlockDuration:        blockRanges[len(blockRanges)-1],
+		NoLockfile:              true,
+		StripeSize:              i.cfg.TSDBConfig.StripeSize,
+		WALCompression:          i.cfg.TSDBConfig.WALCompressionEnabled,
+		SeriesLifecycleCallback: userDB,
 	})
 	if err != nil {
 		return nil, err
 	}
 	db.DisableCompactions() // we will compact on our own schedule
 
-	userDB := &userTSDB{
-		DB:                  db,
-		refCache:            cortex_tsdb.NewRefCache(),
-		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
-		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
-	}
+	userDB.DB = db
+	// We set the limiter here because we don't want to limit
+	// series during WAL replay.
+	userDB.limiter = i.limiter
 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading

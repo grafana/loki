@@ -70,8 +70,8 @@ func (s *blocksStoreReplicationSet) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
-func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID) ([]BlocksStoreClient, error) {
-	var sets []ring.ReplicationSet
+func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID) (map[BlocksStoreClient][]ulid.ULID, error) {
+	shards := map[string][]ulid.ULID{}
 
 	// Find the replication set of each block we need to query.
 	for _, blockID := range blockIDs {
@@ -85,66 +85,23 @@ func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID) ([]Block
 			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", blockID.String())
 		}
 
-		sets = append(sets, set)
+		// Pick the first store-gateway instance.
+		addr := set.Ingesters[0].Addr
+
+		shards[addr] = append(shards[addr], blockID)
 	}
 
-	var clients []BlocksStoreClient
+	clients := map[BlocksStoreClient][]ulid.ULID{}
 
 	// Get the client for each store-gateway.
-	for _, addr := range findSmallestInstanceSet(sets) {
+	for addr, blockIDs := range shards {
 		c, err := s.clientsPool.GetClientFor(addr)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get store-gateway client for %s", addr)
 		}
 
-		clients = append(clients, c.(BlocksStoreClient))
+		clients[c.(BlocksStoreClient)] = blockIDs
 	}
 
 	return clients, nil
-}
-
-// findSmallestInstanceSet returns the minimal set of store-gateway instances including all required blocks.
-// Blocks may be replicated across store-gateway instances, but we want to query the lowest number of instances
-// possible, so this function tries to find the smallest set of store-gateway instances containing all blocks
-// we need to query.
-func findSmallestInstanceSet(sets []ring.ReplicationSet) []string {
-	addr := findHighestInstanceOccurrences(sets)
-	if addr == "" {
-		return nil
-	}
-
-	// Remove any replication set containing the selected instance address.
-	for i := 0; i < len(sets); {
-		if sets[i].Includes(addr) {
-			sets = append(sets[:i], sets[i+1:]...)
-		} else {
-			i++
-		}
-	}
-
-	return append([]string{addr}, findSmallestInstanceSet(sets)...)
-}
-
-func findHighestInstanceOccurrences(sets []ring.ReplicationSet) string {
-	var highestAddr string
-	var highestCount int
-
-	occurrences := map[string]int{}
-
-	for _, set := range sets {
-		for _, i := range set.Ingesters {
-			if v, ok := occurrences[i.Addr]; ok {
-				occurrences[i.Addr] = v + 1
-			} else {
-				occurrences[i.Addr] = 1
-			}
-
-			if occurrences[i.Addr] > highestCount {
-				highestAddr = i.Addr
-				highestCount = occurrences[i.Addr]
-			}
-		}
-	}
-
-	return highestAddr
 }

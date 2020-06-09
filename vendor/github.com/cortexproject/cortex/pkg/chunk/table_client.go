@@ -9,6 +9,7 @@ type TableClient interface {
 	DeleteTable(ctx context.Context, name string) error
 	DescribeTable(ctx context.Context, name string) (desc TableDesc, isActive bool, err error)
 	UpdateTable(ctx context.Context, current, expected TableDesc) error
+	Stop()
 }
 
 // TableDesc describes a table.

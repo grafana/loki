@@ -287,6 +287,13 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 			return nil
 		}
 
+		// We only ship of the first compacted block level as normal flow.
+		if m.Compaction.Level > 1 {
+			if !s.uploadCompacted {
+				return nil
+			}
+		}
+
 		// Check against bucket if the meta file for this block exists.
 		ok, err := s.bucket.Exists(ctx, path.Join(m.ULID.String(), block.MetaFilename))
 		if err != nil {
@@ -296,12 +303,7 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 			return nil
 		}
 
-		// We only ship of the first compacted block level as normal flow.
 		if m.Compaction.Level > 1 {
-			if !s.uploadCompacted {
-				return nil
-			}
-
 			if err := checker.IsOverlapping(ctx, m.BlockMeta); err != nil {
 				level.Error(s.logger).Log("msg", "found overlap or error during sync, cannot upload compacted block", "err", err)
 				uploadErrs++

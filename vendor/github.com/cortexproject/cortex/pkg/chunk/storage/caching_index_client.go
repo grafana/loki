@@ -49,7 +49,7 @@ type cachingIndexClient struct {
 }
 
 func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits) chunk.IndexClient {
-	if c == nil {
+	if c == nil || cache.IsEmptyTieredCache(c) {
 		return client
 	}
 

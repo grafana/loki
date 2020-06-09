@@ -43,81 +43,81 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 		regs: map[string]*prometheus.Registry{},
 
 		blockLoads: prometheus.NewDesc(
-			"bucket_store_block_loads_total",
+			"cortex_bucket_store_block_loads_total",
 			"Total number of remote block loading attempts.",
 			nil, nil),
 		blockLoadFailures: prometheus.NewDesc(
-			"bucket_store_block_load_failures_total",
+			"cortex_bucket_store_block_load_failures_total",
 			"Total number of failed remote block loading attempts.",
 			nil, nil),
 		blockDrops: prometheus.NewDesc(
-			"bucket_store_block_drops_total",
+			"cortex_bucket_store_block_drops_total",
 			"Total number of local blocks that were dropped.",
 			nil, nil),
 		blockDropFailures: prometheus.NewDesc(
-			"bucket_store_block_drop_failures_total",
+			"cortex_bucket_store_block_drop_failures_total",
 			"Total number of local blocks that failed to be dropped.",
 			nil, nil),
 		blocksLoaded: prometheus.NewDesc(
-			"bucket_store_blocks_loaded",
+			"cortex_bucket_store_blocks_loaded",
 			"Number of currently loaded blocks.",
 			nil, nil),
 		seriesDataTouched: prometheus.NewDesc(
-			"bucket_store_series_data_touched",
+			"cortex_bucket_store_series_data_touched",
 			"How many items of a data type in a block were touched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataFetched: prometheus.NewDesc(
-			"bucket_store_series_data_fetched",
+			"cortex_bucket_store_series_data_fetched",
 			"How many items of a data type in a block were fetched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataSizeTouched: prometheus.NewDesc(
-			"bucket_store_series_data_size_touched_bytes",
+			"cortex_bucket_store_series_data_size_touched_bytes",
 			"Size of all items of a data type in a block were touched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesDataSizeFetched: prometheus.NewDesc(
-			"bucket_store_series_data_size_fetched_bytes",
+			"cortex_bucket_store_series_data_size_fetched_bytes",
 			"Size of all items of a data type in a block were fetched for a single series request.",
 			[]string{"data_type"}, nil),
 		seriesBlocksQueried: prometheus.NewDesc(
-			"bucket_store_series_blocks_queried",
+			"cortex_bucket_store_series_blocks_queried",
 			"Number of blocks in a bucket store that were touched to satisfy a query.",
 			nil, nil),
 
 		seriesGetAllDuration: prometheus.NewDesc(
-			"bucket_store_series_get_all_duration_seconds",
+			"cortex_bucket_store_series_get_all_duration_seconds",
 			"Time it takes until all per-block prepares and preloads for a query are finished.",
 			nil, nil),
 		seriesMergeDuration: prometheus.NewDesc(
-			"bucket_store_series_merge_duration_seconds",
+			"cortex_bucket_store_series_merge_duration_seconds",
 			"Time it takes to merge sub-results from all queried blocks into a single result.",
 			nil, nil),
 		seriesRefetches: prometheus.NewDesc(
-			"bucket_store_series_refetches_total",
+			"cortex_bucket_store_series_refetches_total",
 			"Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.",
 			nil, nil),
 		resultSeriesCount: prometheus.NewDesc(
-			"bucket_store_series_result_series",
+			"cortex_bucket_store_series_result_series",
 			"Number of series observed in the final result of a query.",
 			nil, nil),
 
 		cachedPostingsCompressions: prometheus.NewDesc(
-			"bucket_store_cached_postings_compressions_total",
+			"cortex_bucket_store_cached_postings_compressions_total",
 			"Number of postings compressions and decompressions when storing to index cache.",
 			[]string{"op"}, nil),
 		cachedPostingsCompressionErrors: prometheus.NewDesc(
-			"bucket_store_cached_postings_compression_errors_total",
+			"cortex_bucket_store_cached_postings_compression_errors_total",
 			"Number of postings compression and decompression errors.",
 			[]string{"op"}, nil),
 		cachedPostingsCompressionTimeSeconds: prometheus.NewDesc(
-			"bucket_store_cached_postings_compression_time_seconds",
+			"cortex_bucket_store_cached_postings_compression_time_seconds",
 			"Time spent compressing and decompressing postings when storing to / reading from postings cache.",
 			[]string{"op"}, nil),
 		cachedPostingsOriginalSizeBytes: prometheus.NewDesc(
-			"bucket_store_cached_postings_original_size_bytes_total",
+			"cortex_bucket_store_cached_postings_original_size_bytes_total",
 			"Original size of postings stored into cache.",
 			nil, nil),
 		cachedPostingsCompressedSizeBytes: prometheus.NewDesc(
-			"bucket_store_cached_postings_compressed_size_bytes_total",
+			"cortex_bucket_store_cached_postings_compressed_size_bytes_total",
 			"Compressed size of postings stored into cache.",
 			nil, nil),
 	}

@@ -85,10 +85,13 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 	}
 
 	if reg != nil {
-		prometheus.WrapRegistererWithPrefix("cortex_querier_", reg).MustRegister(d.fetchersMetrics)
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg).MustRegister(d.fetchersMetrics)
 	}
 
-	d.Service = services.NewTimerService(cfg.ScanInterval, d.starting, d.scan, nil)
+	// Apply a jitter to the sync frequency in order to increase the probability
+	// of hitting the shared cache (if any).
+	scanInterval := util.DurationWithJitter(cfg.ScanInterval, 0.2)
+	d.Service = services.NewTimerService(scanInterval, d.starting, d.scan, nil)
 
 	return d
 }
