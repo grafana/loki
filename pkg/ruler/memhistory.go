@@ -134,10 +134,8 @@ func (m *ForStateAppender) Add(ls labels.Labels, t int64, v float64) (uint64, er
 
 }
 
-func (m *ForStateAppender) AddFast(ls labels.Labels, _ uint64, t int64, v float64) error {
-	_, err := m.Add(ls, t, v)
-	return err
-
+func (m *ForStateAppender) AddFast(ref uint64, t int64, v float64) error {
+	return errors.New("unimplemented")
 }
 
 func (m *ForStateAppender) Commit() error { return nil }
@@ -166,7 +164,12 @@ type ForStateAppenderQuerier struct {
 }
 
 // Select returns a set of series that matches the given label matchers.
-func (q ForStateAppenderQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q ForStateAppenderQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	if sortSeries {
+		return nil, nil, errors.New("ForStateAppenderQuerier does not support sorted selects")
+
+	}
+
 	var filtered []storage.Series
 outer:
 	for _, s := range q.data {
@@ -207,11 +210,6 @@ outer:
 	}
 
 	return series.NewConcreteSeriesSet(filtered), nil, nil
-}
-
-// SelectSorted returns a sorted set of series that matches the given label matchers.
-func (ForStateAppenderQuerier) SelectSorted(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return nil, nil, errors.New("unimplemented")
 }
 
 // LabelValues returns all potential values for a label name.
