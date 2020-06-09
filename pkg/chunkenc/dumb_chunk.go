@@ -92,6 +92,9 @@ func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, directi
 		entries:   c.entries[i:j],
 	}, nil
 }
+func (c *dumbChunk) BlocksIterator(_ context.Context, from, through time.Time, direction logproto.Direction, _ logql.LineFilter) []*Block {
+	return nil
+}
 
 func (c *dumbChunk) Bytes() ([]byte, error) {
 	return nil, nil

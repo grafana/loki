@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"log"
 	"sort"
 	"time"
 
@@ -172,52 +173,89 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
 	it.storeStats.TotalChunksOverlapping += int64(len(it.lastOverlapping))
-	// pop the next batch of chunks and append/prepend previous overlapping chunks
-	// so we can merge/de-dupe overlapping entries.
-	batch := make([]*chunkenc.LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
-	if it.req.Direction == logproto.FORWARD {
-		batch = append(batch, it.lastOverlapping...)
-	}
-	batch = append(batch, it.chunks.pop(it.batchSize)...)
-	if it.req.Direction == logproto.BACKWARD {
-		batch = append(batch, it.lastOverlapping...)
-	}
-
 	from, through := it.req.Start, it.req.End
-	if it.chunks.Len() > 0 {
-		nextChunk := it.chunks.Peek()
-		// we max out our iterator boundaries to the next chunks in the queue
-		// so that overlapping chunks are together
+	// fromString, throughString, diffString := from.UTC().String(), through.UTC().String(), through.Sub(from).String()
+	batch := make([]*chunkenc.LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
+	var nextChunk *chunkenc.LazyChunk
+
+	for it.chunks.Len() > 0 {
+
+		// pop the next batch of chunks and append/prepend previous overlapping chunks
+		// so we can merge/de-dupe overlapping entries.
+		if it.req.Direction == logproto.FORWARD {
+			batch = append(batch, it.lastOverlapping...)
+		}
+		batch = append(batch, it.chunks.pop(it.batchSize)...)
 		if it.req.Direction == logproto.BACKWARD {
-			from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
+			batch = append(batch, it.lastOverlapping...)
+		}
+
+		if it.chunks.Len() > 0 {
+			nextChunk = it.chunks.Peek()
+			// we max out our iterator boundaries to the next chunks in the queue
+			// so that overlapping chunks are together
+			if it.req.Direction == logproto.BACKWARD {
+				from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
+
+				// we have to reverse the inclusivity of the chunk iterator from
+				// [from, through) to (from, through] for backward queries, except when
+				// the batch's `from` is equal to the query's Start. This can be achieved
+				// by shifting `from` by one nanosecond.
+				if !from.Equal(it.req.Start) {
+					from = from.Add(time.Nanosecond)
+				}
+			} else {
+				through = time.Unix(0, nextChunk.Chunk.From.UnixNano())
+			}
+			// we save all overlapping chunks as they are also needed in the next batch to properly order entries.
+			// If we have chunks like below:
+			//      ┌──────────────┐
+			//      │     # 47     │
+			//      └──────────────┘
+			//          ┌──────────────────────────┐
+			//          │           # 48           |
+			//          └──────────────────────────┘
+			//              ┌──────────────┐
+			//              │     # 49     │
+			//              └──────────────┘
+			//                        ┌────────────────────┐
+			//                        │        # 50        │
+			//                        └────────────────────┘
+			//
+			//  And nextChunk is # 49, we need to keep references to #47 and #48 as they won't be
+			//  iterated over completely (we're clipping through to #49's from) and then add them to the next batch.
+
+		}
+
+		if it.req.Direction == logproto.BACKWARD {
+			through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
+
+			if through.After(it.req.End) {
+				through = it.req.End
+			}
 
 			// we have to reverse the inclusivity of the chunk iterator from
 			// [from, through) to (from, through] for backward queries, except when
-			// the batch's `from` is equal to the query's Start. This can be achieved
-			// by shifting `from` by one nanosecond.
-			if !from.Equal(it.req.Start) {
-				from = from.Add(time.Nanosecond)
+			// the batch's `through` is equal to the query's End. This can be achieved
+			// by shifting `through` by one nanosecond.
+			if !through.Equal(it.req.End) {
+				through = through.Add(time.Nanosecond)
 			}
 		} else {
-			through = time.Unix(0, nextChunk.Chunk.From.UnixNano())
+			from = time.Unix(0, headChunk.Chunk.From.UnixNano())
+
+			if from.Before(it.req.Start) {
+				from = it.req.Start
+			}
 		}
-		// we save all overlapping chunks as they are also needed in the next batch to properly order entries.
-		// If we have chunks like below:
-		//      ┌──────────────┐
-		//      │     # 47     │
-		//      └──────────────┘
-		//          ┌──────────────────────────┐
-		//          │           # 48           |
-		//          └──────────────────────────┘
-		//              ┌──────────────┐
-		//              │     # 49     │
-		//              └──────────────┘
-		//                        ┌────────────────────┐
-		//                        │        # 50        │
-		//                        └────────────────────┘
-		//
-		//  And nextChunk is # 49, we need to keep references to #47 and #48 as they won't be
-		//  iterated over completely (we're clipping through to #49's from) and then add them to the next batch.
+		fromString, throughString, diffString := from.UTC().String(), through.UTC().String(), through.Sub(from).String()
+		log.Print(fromString, throughString, diffString)
+		if through.Sub(from) > 0 {
+			break
+		}
+	}
+
+	if it.chunks.Len() > 0 {
 		it.lastOverlapping = it.lastOverlapping[:0]
 		for _, c := range batch {
 			if it.req.Direction == logproto.BACKWARD {
@@ -229,28 +267,6 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 					it.lastOverlapping = append(it.lastOverlapping, c)
 				}
 			}
-		}
-	}
-
-	if it.req.Direction == logproto.BACKWARD {
-		through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
-
-		if through.After(it.req.End) {
-			through = it.req.End
-		}
-
-		// we have to reverse the inclusivity of the chunk iterator from
-		// [from, through) to (from, through] for backward queries, except when
-		// the batch's `through` is equal to the query's End. This can be achieved
-		// by shifting `through` by one nanosecond.
-		if !through.Equal(it.req.End) {
-			through = through.Add(time.Nanosecond)
-		}
-	} else {
-		from = time.Unix(0, headChunk.Chunk.From.UnixNano())
-
-		if from.Before(it.req.Start) {
-			from = it.req.Start
 		}
 	}
 

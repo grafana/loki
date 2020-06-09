@@ -475,10 +475,15 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 
 	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
+			// log.Print("block position")
+			// log.Print(i + 1)
 			its = append(its, b.iterator(ctx, c.readers, filter))
 		}
 	}
-
+	// log.Print("total blocks")
+	// log.Print(len(c.blocks))
+	// log.Print("block deserialized")
+	// log.Print(len(its))
 	if !c.head.isEmpty() {
 		its = append(its, c.head.iterator(ctx, mint, maxt, filter))
 	}
@@ -494,6 +499,46 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	}
 
 	return iter.NewEntryReversedIter(iterForward)
+}
+
+// Iterator implements Chunk.
+func (c *MemChunk) BlocksIterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, filter logql.LineFilter) []*Block {
+	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
+	blocks := make([]*Block, 0, len(c.blocks))
+
+	for _, b := range c.blocks {
+		if maxt > b.mint && b.maxt > mint {
+			blocks = append(blocks, b.Block(ctx, c.readers, filter))
+		}
+	}
+	return blocks
+}
+
+type Block struct {
+	ctx    context.Context
+	pool   ReaderPool
+	filter logql.LineFilter
+	b      []byte
+
+	Mint, Maxt int64
+
+	Offset int // The offset of the block in the chunk.
+}
+
+func (b Block) Iterator() iter.EntryIterator {
+	return newBufferedIterator(b.ctx, b.pool, b.b, b.filter)
+}
+
+func (b block) Block(ctx context.Context, pool ReaderPool, filter logql.LineFilter) *Block {
+	return &Block{
+		ctx:    ctx,
+		pool:   pool,
+		b:      b.b,
+		filter: filter,
+		Maxt:   b.maxt,
+		Mint:   b.mint,
+		Offset: b.offset,
+	}
 }
 
 func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.LineFilter) iter.EntryIterator {
