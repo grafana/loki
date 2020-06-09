@@ -56,8 +56,10 @@ func InMemoryAppendableHistory(userID string, opts *rules.ManagerOptions) (rules
 
 type NoopAppender struct{}
 
-func (a NoopAppender) Appender() (storage.Appender, error)                           { return a, nil }
-func (a NoopAppender) Add(l labels.Labels, t int64, v float64) (uint64, error)       { return 0, nil }
-func (a NoopAppender) AddFast(l labels.Labels, ref uint64, t int64, v float64) error { return nil }
-func (a NoopAppender) Commit() error                                                 { return nil }
-func (a NoopAppender) Rollback() error                                               { return nil }
+func (a NoopAppender) Appender() (storage.Appender, error)                     { return a, nil }
+func (a NoopAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) { return 0, nil }
+func (a NoopAppender) AddFast(ref uint64, t int64, v float64) error {
+	return errors.New("unimplemented")
+}
+func (a NoopAppender) Commit() error   { return nil }
+func (a NoopAppender) Rollback() error { return nil }
