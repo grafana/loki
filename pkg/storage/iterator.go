@@ -257,14 +257,8 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	if it.chunks.Len() > 0 {
 		it.lastOverlapping = it.lastOverlapping[:0]
 		for _, c := range batch {
-			if it.req.Direction == logproto.BACKWARD {
-				if c.Chunk.From.Before(nextChunk.Chunk.Through) || c.Chunk.From == nextChunk.Chunk.Through {
-					it.lastOverlapping = append(it.lastOverlapping, c)
-				}
-			} else {
-				if !c.Chunk.Through.Before(nextChunk.Chunk.From) {
-					it.lastOverlapping = append(it.lastOverlapping, c)
-				}
+			if c.IsOverlapping(nextChunk.Chunk.From, nextChunk.Chunk.Through, it.req.Direction) {
+				it.lastOverlapping = append(it.lastOverlapping, c)
 			}
 		}
 	}
@@ -272,7 +266,7 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	// log.Println("from: ", fromString, "\tthrough: ", throughString, "\tdiff: ", diffString, "\tchunks: ", len(batch))
 
 	// create the new chunks iterator from the current batch.
-	return newChunksIterator(it.ctx, batch, it.matchers, it.filter, it.req.Direction, from, through)
+	return newChunksIterator(it.ctx, batch, it.matchers, it.filter, it.req.Direction, from, through, nextChunk)
 }
 
 func (it *batchChunkIterator) Entry() logproto.Entry {
@@ -302,7 +296,7 @@ func (it *batchChunkIterator) Close() error {
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
-func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matchers []*labels.Matcher, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
+func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matchers []*labels.Matcher, filter logql.LineFilter, direction logproto.Direction, from, through time.Time, nextChunk *chunkenc.LazyChunk) (iter.EntryIterator, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
 	// Make sure the initial chunks are loaded. This is not one chunk
@@ -327,7 +321,7 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 		return nil, err
 	}
 
-	iters, err := buildIterators(ctx, chksBySeries, filter, direction, from, through)
+	iters, err := buildIterators(ctx, chksBySeries, filter, direction, from, through, nextChunk)
 	if err != nil {
 		return nil, err
 	}
@@ -335,10 +329,10 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 	return iter.NewHeapIterator(ctx, iters, direction), nil
 }
 
-func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) ([]iter.EntryIterator, error) {
+func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.LineFilter, direction logproto.Direction, from, through time.Time, nextChunk *chunkenc.LazyChunk) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
-		iterator, err := buildHeapIterator(ctx, chunks, filter, direction, from, through)
+		iterator, err := buildHeapIterator(ctx, chunks, filter, direction, from, through, nextChunk)
 		if err != nil {
 			return nil, err
 		}
@@ -348,7 +342,7 @@ func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunken
 	return result, nil
 }
 
-func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
+func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter logql.LineFilter, direction logproto.Direction, from, through time.Time, nextChunk *chunkenc.LazyChunk) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 
 	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
@@ -359,7 +353,7 @@ func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(ctx, from, through, direction, filter)
+			iterator, err := chks[i][j].Iterator(ctx, from, through, direction, filter, nextChunk)
 			if err != nil {
 				return nil, err
 			}

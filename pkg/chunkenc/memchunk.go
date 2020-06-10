@@ -520,8 +520,8 @@ type Block struct {
 	b      []byte
 
 	Mint, Maxt int64
-
-	Offset int // The offset of the block in the chunk.
+	NumEntries int
+	Offset     int // The offset of the block in the chunk.
 }
 
 func (b Block) Iterator() iter.EntryIterator {
@@ -533,13 +533,14 @@ func (b Block) Iterator() iter.EntryIterator {
 
 func (b block) Block(ctx context.Context, pool ReaderPool, filter logql.LineFilter) *Block {
 	return &Block{
-		ctx:    ctx,
-		pool:   pool,
-		b:      b.b,
-		filter: filter,
-		Maxt:   b.maxt,
-		Mint:   b.mint,
-		Offset: b.offset,
+		ctx:        ctx,
+		pool:       pool,
+		b:          b.b,
+		filter:     filter,
+		Maxt:       b.maxt,
+		Mint:       b.mint,
+		Offset:     b.offset,
+		NumEntries: b.numEntries,
 	}
 }
 
