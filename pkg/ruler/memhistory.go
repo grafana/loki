@@ -8,30 +8,15 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 )
 
-type Metrics struct {
-	groupMetrics *rules.Metrics
-}
-
-func NewMetrics(registerer prometheus.Registerer, groupMetrics *rules.Metrics) *Metrics {
-	if groupMetrics == nil {
-		groupMetrics = rules.NewGroupMetrics(registerer)
-	}
-	return &Metrics{
-		groupMetrics: groupMetrics,
-	}
-}
-
 type MemHistory struct {
 	userId    string
 	opts      *rules.ManagerOptions
 	appenders map[*rules.AlertingRule]*ForStateAppender
-	metrics   *Metrics
 }
 
 func NewMemHistory(userId string, opts *rules.ManagerOptions) *MemHistory {
@@ -39,7 +24,6 @@ func NewMemHistory(userId string, opts *rules.ManagerOptions) *MemHistory {
 		userId:    userId,
 		opts:      opts,
 		appenders: make(map[*rules.AlertingRule]*ForStateAppender),
-		metrics:   NewMetrics(opts.Registerer, opts.Metrics),
 	}
 }
 
@@ -81,7 +65,7 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 	if err != nil {
 		alertRule.SetHealth(rules.HealthBad)
 		alertRule.SetLastError(err)
-		m.metrics.groupMetrics.FailedEvaluate()
+		m.opts.Metrics.FailedEvaluate()
 	}
 
 	for _, smpl := range vec {

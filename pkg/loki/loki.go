@@ -83,6 +83,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.LimitsConfig.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
+	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
