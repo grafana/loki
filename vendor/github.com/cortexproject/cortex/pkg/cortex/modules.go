@@ -107,7 +107,7 @@ func (t *Cortex) initServer() (services.Service, error) {
 func (t *Cortex) initRing() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
+	t.Ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	// ruler's dependency)
 	canJoinDistributorsRing := (t.Cfg.Target == All || t.Cfg.Target == Distributor)
 
-	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing)
+	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -383,7 +383,18 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 	bucketClient, err := storage.NewBucketClient(t.Cfg.Storage)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.TableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.Schema, t.Cfg.Ingester.MaxChunkAge, tableClient, bucketClient, prometheus.DefaultRegisterer)
+	var extraTables []chunk.ExtraTables
+	if t.Cfg.DataPurgerConfig.Enable {
+		deleteStoreTableClient, err := storage.NewTableClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage)
+		if err != nil {
+			return nil, err
+		}
+
+		extraTables = append(extraTables, chunk.ExtraTables{TableClient: deleteStoreTableClient, Tables: t.Cfg.Storage.DeleteStoreConfig.GetTables()})
+	}
+
+	t.TableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.Schema, t.Cfg.Ingester.MaxChunkAge, tableClient,
+		bucketClient, extraTables, prometheus.DefaultRegisterer)
 	return t.TableManager, err
 }
 

@@ -138,7 +138,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult) {
 	for data := range ch {
 
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
-		queryrange.LogToSpan(ctx, data.req)
+		data.req.LogToSpan(sp)
 
 		resp, err := h.next.Do(ctx, data.req)
 

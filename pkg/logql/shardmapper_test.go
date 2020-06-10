@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStringer(t *testing.T) {
+func TestShardedStringer(t *testing.T) {
 	for _, tc := range []struct {
 		in  Expr
 		out string
@@ -645,7 +645,7 @@ func TestMapping(t *testing.T) {
 			in: `1 + sum by (cluster) (rate({foo="bar"}[5m]))`,
 			expr: &binOpExpr{
 				op:         OpTypeAdd,
-				SampleExpr: &literalExpr{1},
+				SampleExpr: &literalExpr{value: 1},
 				RHS: &vectorAggregationExpr{
 					grouping: &grouping{
 						groups: []string{"cluster"},

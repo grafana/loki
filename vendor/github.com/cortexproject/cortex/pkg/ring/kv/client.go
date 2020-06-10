@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
@@ -97,19 +99,19 @@ type Client interface {
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
 // encodes and decodes data for storage using the codec.
-func NewClient(cfg Config, codec codec.Codec) (Client, error) {
+func NewClient(cfg Config, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	if cfg.Mock != nil {
 		return cfg.Mock, nil
 	}
 
-	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec)
+	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, reg)
 }
 
-func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec) (Client, error) {
+func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	var client Client
 	var err error
 
-	switch name {
+	switch backend {
 	case "consul":
 		client, err = consul.NewClient(cfg.Consul, codec)
 
@@ -135,10 +137,10 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		}
 
 	case "multi":
-		client, err = buildMultiClient(cfg, codec)
+		client, err = buildMultiClient(cfg, codec, reg)
 
 	default:
-		return nil, fmt.Errorf("invalid KV store type: %s", name)
+		return nil, fmt.Errorf("invalid KV store type: %s", backend)
 	}
 
 	if err != nil {
@@ -149,10 +151,20 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		client = PrefixClient(client, prefix)
 	}
 
-	return metrics{client}, nil
+	// If no Registerer is provided return the raw client
+	if reg == nil {
+		return client, nil
+	}
+
+	return newMetricsClient(backend, client, reg), nil
 }
 
-func buildMultiClient(cfg StoreConfig, codec codec.Codec) (Client, error) {
+func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
+	var (
+		primaryLabel   = prometheus.Labels{"role": "primary"}
+		secondaryLabel = prometheus.Labels{"role": "secondary"}
+	)
+
 	if cfg.Multi.Primary == "" || cfg.Multi.Secondary == "" {
 		return nil, fmt.Errorf("primary or secondary store not set")
 	}
@@ -163,12 +175,12 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec) (Client, error) {
 		return nil, fmt.Errorf("primary and secondary stores must be different")
 	}
 
-	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec)
+	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec, prometheus.WrapRegistererWith(primaryLabel, reg))
 	if err != nil {
 		return nil, err
 	}
 
-	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec)
+	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec, prometheus.WrapRegistererWith(secondaryLabel, reg))
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 var (
@@ -32,6 +35,8 @@ func init() {
 // Ensure that the atomic variable is aligned to a 64bit boundary
 // so that atomic operations can be applied on 32bit architectures.
 type controlConn struct {
+	logger log.Logger
+
 	started      int32
 	reconnecting int32
 
@@ -43,8 +48,9 @@ type controlConn struct {
 	quit chan struct{}
 }
 
-func createControlConn(session *Session) *controlConn {
+func createControlConn(logger log.Logger, session *Session) *controlConn {
 	control := &controlConn{
+		logger:  logger,
 		session: session,
 		quit:    make(chan struct{}),
 		retry:   &SimpleRetryPolicy{NumRetries: 3},
@@ -172,12 +178,12 @@ func (c *controlConn) shuffleDial(endpoints []*HostInfo) (*Conn, error) {
 	var err error
 	for _, host := range shuffled {
 		var conn *Conn
-		conn, err = c.session.dial(c.session.ctx, host, &cfg, c)
+		conn, err = c.session.dial(c.session.ctx, c.logger, host, &cfg, c)
 		if err == nil {
 			return conn, nil
 		}
 
-		Logger.Printf("gocql: unable to dial control conn %v: %v\n", host.ConnectAddress(), err)
+		level.Error(c.logger).Log("msg", "unable to dial control conn", "address", host.ConnectAddress(), "error", err)
 	}
 
 	return nil, err
@@ -221,7 +227,7 @@ func (c *controlConn) discoverProtocol(hosts []*HostInfo) (int, error) {
 	var err error
 	for _, host := range hosts {
 		var conn *Conn
-		conn, err = c.session.dial(c.session.ctx, host, &connCfg, handler)
+		conn, err = c.session.dial(c.session.ctx, c.logger, host, &connCfg, handler)
 		if conn != nil {
 			conn.Close()
 		}
@@ -343,7 +349,7 @@ func (c *controlConn) reconnect(refreshring bool) {
 	var newConn *Conn
 	if host != nil {
 		// try to connect to the old host
-		conn, err := c.session.connect(c.session.ctx, host, c)
+		conn, err := c.session.connect(c.session.ctx, c.logger, host, c)
 		if err != nil {
 			// host is dead
 			// TODO: this is replicated in a few places
@@ -360,21 +366,24 @@ func (c *controlConn) reconnect(refreshring bool) {
 	if newConn == nil {
 		host := c.session.ring.rrHost()
 		if host == nil {
-			c.connect(c.session.ring.endpoints)
+			err := c.connect(c.session.ring.endpoints)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "error making control connection", "error", err)
+			}
 			return
 		}
 
 		var err error
-		newConn, err = c.session.connect(c.session.ctx, host, c)
+		newConn, err = c.session.connect(c.session.ctx, c.logger, host, c)
 		if err != nil {
-			// TODO: add log handler for things like this
+			level.Error(c.logger).Log("msg", "error making control connection", "error", err)
 			return
 		}
 	}
 
 	if err := c.setupConn(newConn); err != nil {
 		newConn.Close()
-		Logger.Printf("gocql: control unable to register events: %v\n", err)
+		level.Error(c.logger).Log("msg", "control unable to register events", "error", err)
 		return
 	}
 
@@ -456,7 +465,7 @@ func (c *controlConn) query(statement string, values ...interface{}) (iter *Iter
 		})
 
 		if gocqlDebug && iter.err != nil {
-			Logger.Printf("control: error executing %q: %v\n", statement, iter.err)
+			level.Error(c.logger).Log("msg", "error executing control", "query", statement, "error", iter.err)
 		}
 
 		q.AddAttempts(1, c.getConn().host)

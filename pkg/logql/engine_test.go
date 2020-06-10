@@ -320,6 +320,103 @@ func TestEngine_InstantQuery(t *testing.T) {
 			[]SelectParams{},
 			promql.Scalar{T: 60 * 1000, V: 2},
 		},
+		{
+			// single comparison
+			`1 == 1`,
+			time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]logproto.Stream{},
+			[]SelectParams{},
+			promql.Scalar{T: 60 * 1000, V: 1},
+		},
+		{
+			// single comparison, reduce away bool modifier between scalars
+			`1 == bool 1`,
+			time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]logproto.Stream{},
+			[]SelectParams{},
+			promql.Scalar{T: 60 * 1000, V: 1},
+		},
+		{
+			`count_over_time({app="foo"}[1m]) > 1`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 60}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+			},
+		},
+		{
+			`count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+				{},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="bar"}`}},
+			},
+			promql.Vector{},
+		},
+		{
+			`count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+				{},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="bar"}`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+			},
+		},
+		{
+			`sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+				{},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="bar"}`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0}, Metric: labels.Labels{}},
+			},
+		},
+		{
+			`sum without(app) (count_over_time({app="foo"}[1m])) >= sum without(app) (count_over_time({app="bar"}[1m]))`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Stream{
+				{newStream(testSize, identity, `{app="foo"}`)},
+				{newStream(testSize, identity, `{app="bar"}`)},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `{app="bar"}`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 60}, Metric: labels.Labels{}},
+			},
+		},
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
@@ -1204,6 +1301,84 @@ func TestEngine_RangeQuery(t *testing.T) {
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
 					Points: []promql.Point{{T: 60 * 1000, V: 5.}, {T: 75 * 1000, V: 0}, {T: 90 * 1000, V: 0}, {T: 105 * 1000, V: 4.}, {T: 120 * 1000, V: 4.}},
+				},
+			},
+		},
+		{
+			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Stream{
+				{logproto.Stream{
+					Labels: `{app="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(45, 0), Line: "01234"}, // 5 bytes
+						{Timestamp: time.Unix(60, 0), Line: ""},
+						{Timestamp: time.Unix(75, 0), Line: ""},
+						{Timestamp: time.Unix(90, 0), Line: ""},
+						{Timestamp: time.Unix(105, 0), Line: "0123"}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(30, 0), End: time.Unix(120, 0), Limit: 0, Selector: `{app="foo"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "foo"}},
+					Points: []promql.Point{{T: 60 * 1000, V: 1.}, {T: 75 * 1000, V: 0}, {T: 90 * 1000, V: 0}, {T: 105 * 1000, V: 1.}, {T: 120 * 1000, V: 1.}},
+				},
+			},
+		},
+		{
+			`bytes_over_time({app="foo"}[30s]) > 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Stream{
+				{logproto.Stream{
+					Labels: `{app="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(45, 0), Line: "01234"}, // 5 bytes
+						{Timestamp: time.Unix(60, 0), Line: ""},
+						{Timestamp: time.Unix(75, 0), Line: ""},
+						{Timestamp: time.Unix(90, 0), Line: ""},
+						{Timestamp: time.Unix(105, 0), Line: "0123"}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(30, 0), End: time.Unix(120, 0), Limit: 0, Selector: `{app="foo"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "foo"}},
+					Points: []promql.Point{{T: 60 * 1000, V: 5.}, {T: 105 * 1000, V: 4.}, {T: 120 * 1000, V: 4.}},
+				},
+			},
+		},
+		{
+			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Stream{
+				{logproto.Stream{
+					Labels: `{app="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(45, 0), Line: "01234"}, // 5 bytes
+						{Timestamp: time.Unix(60, 0), Line: ""},
+						{Timestamp: time.Unix(75, 0), Line: ""},
+						{Timestamp: time.Unix(90, 0), Line: ""},
+						{Timestamp: time.Unix(105, 0), Line: "0123"}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(30, 0), End: time.Unix(120, 0), Limit: 0, Selector: `{app="foo"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}},
+					Points: []promql.Point{
+						{T: 60000, V: 1},
+						{T: 75000, V: 0},
+						{T: 90000, V: 0},
+						{T: 105000, V: 1},
+						{T: 120000, V: 1},
+					},
 				},
 			},
 		},

@@ -140,10 +140,14 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 
 		ingesters = append(ingesters, struct {
-			ID, State, Address, Timestamp, Zone string
-			Tokens                              []uint32
-			NumTokens                           int
-			Ownership                           float64
+			ID        string   `json:"id"`
+			State     string   `json:"state"`
+			Address   string   `json:"address"`
+			Timestamp string   `json:"timestamp"`
+			Zone      string   `json:"zone"`
+			Tokens    []uint32 `json:"tokens"`
+			NumTokens int      `json:"-"`
+			Ownership float64  `json:"-"`
 		}{
 			ID:        id,
 			State:     state,
@@ -158,16 +162,13 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	tokensParam := req.URL.Query().Get("tokens")
 
-	if err := pageTemplate.Execute(w, struct {
-		Ingesters  []interface{}
-		Now        time.Time
-		ShowTokens bool
+	util.RenderHTTPResponse(w, struct {
+		Ingesters  []interface{} `json:"shards"`
+		Now        time.Time     `json:"now"`
+		ShowTokens bool          `json:"-"`
 	}{
 		Ingesters:  ingesters,
 		Now:        time.Now(),
 		ShowTokens: tokensParam == "true",
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	}, pageTemplate, req)
 }

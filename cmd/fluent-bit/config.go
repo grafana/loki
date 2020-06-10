@@ -36,6 +36,11 @@ const (
 	kvPairFormat
 )
 
+const (
+	falseStr = "false"
+	trueStr  = "true"
+)
+
 type config struct {
 	clientConfig         client.Config
 	bufferConfig         bufferConfig
@@ -112,9 +117,9 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 
 	autoKubernetesLabels := cfg.Get("AutoKubernetesLabels")
 	switch autoKubernetesLabels {
-	case "false", "":
+	case falseStr, "":
 		res.autoKubernetesLabels = false
-	case "true":
+	case trueStr:
 		res.autoKubernetesLabels = true
 	default:
 		return nil, fmt.Errorf("invalid boolean AutoKubernetesLabels: %v", autoKubernetesLabels)
@@ -132,9 +137,9 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 
 	dropSingleKey := cfg.Get("DropSingleKey")
 	switch dropSingleKey {
-	case "false":
+	case falseStr:
 		res.dropSingleKey = false
-	case "true", "":
+	case trueStr, "":
 		res.dropSingleKey = true
 	default:
 		return nil, fmt.Errorf("invalid boolean DropSingleKey: %v", dropSingleKey)
@@ -165,9 +170,9 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	// enable loki plugin buffering
 	buffer := cfg.Get("Buffer")
 	switch buffer {
-	case "false", "":
+	case falseStr, "":
 		res.bufferConfig.buffer = false
-	case "true":
+	case trueStr:
 		res.bufferConfig.buffer = true
 	default:
 		return nil, fmt.Errorf("invalid boolean Buffer: %v", buffer)

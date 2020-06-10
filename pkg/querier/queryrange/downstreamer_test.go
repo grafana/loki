@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 )
 
 func testSampleStreams() []queryrange.SampleStream {
@@ -275,10 +275,10 @@ func TestInstanceFor(t *testing.T) {
 	require.Equal(
 		t,
 		[]logql.Result{
-			logql.Result{
+			{
 				Data: logql.Streams{{Labels: "0_of_2"}},
 			},
-			logql.Result{
+			{
 				Data: logql.Streams{{Labels: "1_of_2"}},
 			},
 		},

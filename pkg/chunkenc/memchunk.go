@@ -474,11 +474,10 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
 	for _, b := range c.blocks {
-		if maxt > b.mint && b.maxt > mint {
-			// log.Print("block position")
-			// log.Print(i + 1)
-			its = append(its, b.iterator(ctx, c.readers, filter))
+		if maxt < b.mint || b.maxt < mint {
+			continue
 		}
+		its = append(its, b.iterator(ctx, c.readers, filter))
 	}
 	// log.Print("total blocks")
 	// log.Print(len(c.blocks))

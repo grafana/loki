@@ -93,6 +93,8 @@ func NewCachingBucketFromYaml(yamlContent []byte, bucket objstore.Bucket, logger
 		return nil, errors.Errorf("unsupported cache type: %s", config.Type)
 	}
 
+	// Include interactions with cache in the traces.
+	c = cache.NewTracingCache(c)
 	cfg := NewCachingBucketConfig()
 
 	// Configure cache.

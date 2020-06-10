@@ -1,19 +1,18 @@
 package batch
 
 import (
-	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
 type nonOverlappingIterator struct {
 	curr   int
-	chunks []chunk.Chunk
+	chunks []GenericChunk
 	iter   chunkIterator
 }
 
 // newNonOverlappingIterator returns a single iterator over an slice of sorted,
 // non-overlapping iterators.
-func newNonOverlappingIterator(chunks []chunk.Chunk) *nonOverlappingIterator {
+func newNonOverlappingIterator(chunks []GenericChunk) *nonOverlappingIterator {
 	it := &nonOverlappingIterator{
 		chunks: chunks,
 	}

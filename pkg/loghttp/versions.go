@@ -15,7 +15,7 @@ const (
 
 // GetVersion returns the loghttp version for a given path.
 func GetVersion(uri string) Version {
-	if strings.HasPrefix(strings.ToLower(uri), "/loki/api/v1") {
+	if strings.Contains(strings.ToLower(uri), "/loki/api/v1") {
 		return VersionV1
 	}
 

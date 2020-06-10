@@ -104,7 +104,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v6.0.53"
+	libraryVersion = "v6.0.56"
 )
 
 // User Agent should always following the below style.
@@ -683,7 +683,7 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 				// handle this appropriately.
 				if metadata.bucketName != "" {
 					// Gather Cached location only if bucketName is present.
-					if _, cachedOk := c.bucketLocCache.Get(metadata.bucketName); cachedOk {
+					if location, cachedOk := c.bucketLocCache.Get(metadata.bucketName); cachedOk && location != errResponse.Region {
 						c.bucketLocCache.Set(metadata.bucketName, errResponse.Region)
 						continue // Retry.
 					}

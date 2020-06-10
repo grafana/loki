@@ -10,7 +10,7 @@ require (
 	github.com/containerd/containerd v1.3.2 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.1.1-0.20200529121946-014195920b4f
+	github.com/cortexproject/cortex v1.1.1-0.20200609120740-6bd667db776a
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v0.7.3-0.20190817195342-4760db040282
@@ -43,23 +43,23 @@ require (
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/pierrec/lz4 v2.5.3-0.20200429092203-e876bbd321b3+incompatible
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.6.0
+	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200528145419-83619aa9ac56
+	github.com/prometheus/prometheus v1.8.2-0.20200609052543-1627d234da06
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/stretchr/testify v1.5.1
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
-	github.com/uber/jaeger-client-go v2.23.0+incompatible
+	github.com/uber/jaeger-client-go v2.23.1+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/weaveworks/common v0.0.0-20200512154658-384f10054ec5
 	go.etcd.io/bbolt v1.3.4
-	golang.org/x/net v0.0.0-20200421231249-e086a090c8fd
-	google.golang.org/grpc v1.29.0
+	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
+	google.golang.org/grpc v1.29.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
-	gopkg.in/yaml.v2 v2.2.8
+	gopkg.in/yaml.v2 v2.3.0
 	k8s.io/klog v1.0.0
 )
 
@@ -69,9 +69,10 @@ replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v
 
 replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+incompatible
 
-// Without this, it attempts to upgrade to v0.18.x which has some conflicts with upstream Prometheus.
-// Also, v0.17.5 is chosen to be consistent with Thanos and more clear than using a commit hash.
-replace k8s.io/client-go => k8s.io/client-go v0.17.5
+replace k8s.io/client-go => k8s.io/client-go v0.18.3
 
 // >v1.2.0 has some conflict with prometheus/alertmanager. Hence prevent the upgrade till it's fixed.
 replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
+
+// Use fork of gocql that has gokit logs and Prometheus metrics.
+replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85

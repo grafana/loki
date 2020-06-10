@@ -414,11 +414,13 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
-	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
-	if len(found) > 0 {
-		dedupedChunksTotal.Inc()
-		return nil
+	if !c.cfg.DisableChunksDeduplication {
+		// If this chunk is in cache it must already be in the database so we don't need to write it again
+		found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+		if len(found) > 0 {
+			dedupedChunksTotal.Inc()
+			return nil
+		}
 	}
 
 	chunks := []Chunk{chunk}
