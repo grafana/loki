@@ -19,16 +19,17 @@ func LokiDelayedQueryFunc(engine *logql.Engine) ruler.DelayedQueryFunc {
 	return func(delay time.Duration) rules.QueryFunc {
 		return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 			adjusted := t.Add(-delay)
-			q := engine.Query(logql.NewLiteralParams(
+			params := logql.NewLiteralParams(
 				qs,
 				adjusted,
 				adjusted,
 				0,
 				0,
-				logproto.BACKWARD,
+				logproto.FORWARD,
 				0,
 				nil,
-			))
+			)
+			q := engine.Query(params)
 
 			res, err := q.Exec(ctx)
 			if err != nil {
