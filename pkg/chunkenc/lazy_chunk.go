@@ -130,6 +130,9 @@ func (it *CachedIterator) Next() bool {
 }
 
 func (it *CachedIterator) Entry() logproto.Entry {
+	if it.curr < 0 {
+		it.curr = 0
+	}
 	return *it.cache[it.curr]
 }
 
