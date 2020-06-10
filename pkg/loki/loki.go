@@ -313,7 +313,7 @@ func (t *Loki) setupModuleManager() error {
 		QueryFrontend: {Server, Overrides},
 		Ruler:         {Server, Ring, Store, Overrides},
 		TableManager:  {Server},
-		All:           {Querier, Ingester, Distributor, TableManager},
+		All:           {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
 
 	for mod, targets := range deps {
