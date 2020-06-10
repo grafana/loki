@@ -526,6 +526,9 @@ type Block struct {
 }
 
 func (b Block) Iterator() iter.EntryIterator {
+	if len(b.b) == 0 {
+		return emptyIterator
+	}
 	return newBufferedIterator(b.ctx, b.pool, b.b, b.filter)
 }
 

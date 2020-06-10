@@ -248,8 +248,6 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 				from = it.req.Start
 			}
 		}
-		fromString, throughString, diffString := from.UTC().String(), through.UTC().String(), through.Sub(from).String()
-		log.Print(fromString, throughString, diffString)
 		if through.Sub(from) > 0 {
 			break
 		}
@@ -269,7 +267,8 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 			}
 		}
 	}
-
+	fromString, throughString, diffString := from.UTC().String(), through.UTC().String(), through.Sub(from).String()
+	log.Println("from: ", fromString, "\tthrough: ", throughString, "\tdiff: ", diffString, "\tchunks: ", len(batch))
 	// create the new chunks iterator from the current batch.
 	return newChunksIterator(it.ctx, batch, it.matchers, it.filter, it.req.Direction, from, through)
 }

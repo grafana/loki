@@ -94,6 +94,10 @@ func (it *CachedIterator) reset() {
 
 func (it *CachedIterator) load() {
 	if it.base != nil {
+		defer func() {
+			it.base.Close()
+			it.base = nil
+		}()
 		// set labels using the first entry
 		if !it.base.Next() {
 			return
@@ -108,8 +112,7 @@ func (it *CachedIterator) load() {
 				break
 			}
 		}
-		it.base.Close()
-		it.base = nil
+
 	}
 }
 
