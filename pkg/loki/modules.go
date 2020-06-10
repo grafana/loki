@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
@@ -178,7 +179,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
 
 	// We want ingester to also query the store when using boltdb-shipper
-	pc := activePeriodConfig(t.cfg.SchemaConfig)
+	pc := t.cfg.SchemaConfig.Configs[activePeriodConfig(t.cfg.SchemaConfig)]
 	if pc.IndexType == local.BoltDBShipperType {
 		t.cfg.Ingester.QueryStore = true
 		mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
@@ -240,7 +241,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
-	if activePeriodConfig(t.cfg.SchemaConfig).IndexType == local.BoltDBShipperType {
+	if t.cfg.SchemaConfig.Configs[activePeriodConfig(t.cfg.SchemaConfig)].IndexType == local.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
@@ -252,6 +253,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		default:
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadWrite
 		}
+	}
+
+	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable both chunks dedupe and write dedupe cache.
+	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
+	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && usingBoltdbShipper(t.cfg.SchemaConfig) {
+		t.cfg.ChunkStoreConfig.DisableChunksDeduplication = true
+		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
 	}
 
 	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
@@ -329,9 +337,9 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	return t.memberlistKV, nil
 }
 
-// activePeriodConfig type returns index type which would be applicable to logs that would be pushed starting now
-// Note: Another periodic config can be applicable in future which can change index type
-func activePeriodConfig(cfg chunk.SchemaConfig) chunk.PeriodConfig {
+// activePeriodConfig type returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
+// Note: Another PeriodicConfig might be applicable for future logs which can change index type.
+func activePeriodConfig(cfg chunk.SchemaConfig) int {
 	now := model.Now()
 	i := sort.Search(len(cfg.Configs), func(i int) bool {
 		return cfg.Configs[i].From.Time > now
@@ -339,7 +347,18 @@ func activePeriodConfig(cfg chunk.SchemaConfig) chunk.PeriodConfig {
 	if i > 0 {
 		i--
 	}
-	return cfg.Configs[i]
+	return i
+}
+
+// usingBoltdbShipper check whether current or the next index type is boltdb-shipper, returns true if yes.
+func usingBoltdbShipper(cfg chunk.SchemaConfig) bool {
+	activePCIndex := activePeriodConfig(cfg)
+	if cfg.Configs[activePCIndex].IndexType == local.BoltDBShipperType ||
+		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == local.BoltDBShipperType) {
+		return true
+	}
+
+	return false
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge time.Duration) (time.Duration, error) {
