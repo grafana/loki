@@ -121,7 +121,7 @@ type Loki struct {
 	store         storage.Store
 	tableManager  *chunk.TableManager
 	frontend      *frontend.Frontend
-	stopper       queryrange.Stopper
+	stoppers      []queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
 	memberlistKV  *memberlist.KVInit
 

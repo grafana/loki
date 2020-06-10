@@ -25,6 +25,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
@@ -78,13 +79,41 @@ var (
 		},
 	}
 
-	series = logproto.SeriesResponse{
-		Series: []logproto.SeriesIdentifier{
-			{
-				Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+	seriesIdentifierData = []logproto.SeriesIdentifier{
+		{
+			Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+		},
+		{
+			Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+		},
+		{
+			Labels: map[string]string{"filename": "xyz.log", "job": "varlogs"},
+		},
+		{
+			Labels: map[string]string{"filename": "/var/hostlog/other.log", "job": "varlogs"},
+		},
+	}
+	series = []mockSeries{
+		{
+			testTime.Add(-6 * time.Hour),
+			testTime.Add(-2 * time.Hour),
+			[]logproto.SeriesIdentifier{
+				seriesIdentifierData[0],
+				seriesIdentifierData[1],
 			},
-			{
-				Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+		},
+		{
+			testTime.Add(-1 * time.Hour),
+			testTime,
+			[]logproto.SeriesIdentifier{
+				seriesIdentifierData[2],
+			},
+		},
+		{
+			testTime.Add(1 * time.Hour),
+			testTime.Add(6 * time.Hour),
+			[]logproto.SeriesIdentifier{
+				seriesIdentifierData[3],
 			},
 		},
 	}
@@ -93,10 +122,8 @@ var (
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
+	tpw, stoppers, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	defer stopCache(stoppers)
 	require.NoError(t, err)
 
 	lreq := &LokiRequest{
@@ -157,11 +184,10 @@ func TestMetricsTripperware(t *testing.T) {
 
 func TestLogFilterTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
+	tpw, stoppers, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	defer stopCache(stoppers)
 	require.NoError(t, err)
+
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
@@ -204,11 +230,10 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
+	tpw, stoppers, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	defer stopCache(stoppers)
 	require.NoError(t, err)
+
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
@@ -239,26 +264,87 @@ func TestSeriesTripperware(t *testing.T) {
 	require.NoError(t, err)
 	res, ok := lokiSeriesResponse.(*LokiSeriesResponse)
 	require.Equal(t, true, ok)
-	require.Equal(t, series.Series, res.Data)
+	expectedResponse := make([]logproto.SeriesIdentifier, 0, 3)
+	expectedResponse = append(expectedResponse, series[0].seriesIndentifier...)
+	expectedResponse = append(expectedResponse, series[1].seriesIndentifier...)
+	require.Equal(t, expectedResponse, res.Data)
 
 	// testing cache
-	count, h = counter()
-	rt.setHandler(h)
-	cacheResp, err := tpw(rt).RoundTrip(req)
-	// 0 queries, results are cached.
-	require.Equal(t, 0, *count)
-	require.NoError(t, err)
-	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
-	require.NoError(t, err)
+	tests := []struct {
+		name             string
+		request          LokiSeriesRequest
+		expectedResponse []logproto.SeriesIdentifier
+		expectedCount    int
+	}{
+		{
+			"no requests, results are cached",
+			LokiSeriesRequest{
+				Match:   []string{`{job="varlogs"}`},
+				StartTs: testTime.Add(-6 * time.Hour),
+				EndTs:   testTime,
+				Path:    "/loki/api/v1/series",
+			},
+			[]logproto.SeriesIdentifier{
+				seriesIdentifierData[0],
+				seriesIdentifierData[1],
+				seriesIdentifierData[2],
+			},
+			0,
+		},
+		{
+			"2 requests, one of the results are cached",
+			LokiSeriesRequest{
+				Match:   []string{`{job="varlogs"}`},
+				StartTs: testTime.Add(-6 * time.Hour),
+				EndTs:   testTime.Add(6 * time.Hour),
+				Path:    "/loki/api/v1/series",
+			},
+			[]logproto.SeriesIdentifier{
+				seriesIdentifierData[0],
+				seriesIdentifierData[1],
+				seriesIdentifierData[2],
+				seriesIdentifierData[3],
+			},
+			2,
+		},
+		{
+			"1 request, no results are cached",
+			LokiSeriesRequest{
+				Match:   []string{`{job="varlogs"}`},
+				StartTs: testTime.Add(-1 * time.Hour),
+				EndTs:   testTime,
+				Path:    "/loki/api/v1/series",
+			},
+			[]logproto.SeriesIdentifier{
+				seriesIdentifierData[2],
+			},
+			1,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "1")
+			req, err := lokiCodec.EncodeRequest(ctx, &tc.request)
+			require.NoError(t, err)
 
-	require.Equal(t, lokiSeriesResponse.(*LokiSeriesResponse).Data, lokiCacheResponse.(*LokiSeriesResponse).Data)
+			count, h = seriesResult(series)
+			rt.setHandler(h)
+
+			cacheResp, err := tpw(rt).RoundTrip(req)
+			require.Equal(t, tc.expectedCount, *count)
+			require.NoError(t, err)
+
+			lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedResponse, lokiCacheResponse.(*LokiSeriesResponse).Data)
+		})
+	}
 }
 func TestLogNoRegex(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
+	tpw, stoppers, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	defer stopCache(stoppers)
 	require.NoError(t, err)
+
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
@@ -288,11 +374,10 @@ func TestLogNoRegex(t *testing.T) {
 }
 
 func TestUnhandledPath(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
+	tpw, stoppers, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	defer stopCache(stoppers)
 	require.NoError(t, err)
+
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
@@ -312,11 +397,10 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
+	tpw, stoppers, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	defer stopCache(stoppers)
 	require.NoError(t, err)
+
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
@@ -387,11 +471,10 @@ func TestPostQueries(t *testing.T) {
 }
 
 func TestEntriesLimitsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000}, chunk.SchemaConfig{}, 0, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
+	tpw, stoppers, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000}, chunk.SchemaConfig{}, 0, nil)
+	defer stopCache(stoppers)
 	require.NoError(t, err)
+
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
@@ -418,11 +501,10 @@ func TestEntriesLimitsTripperware(t *testing.T) {
 }
 
 func TestEntriesLimitWithZeroTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
+	tpw, stoppers, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	defer stopCache(stoppers)
 	require.NoError(t, err)
+
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
 	defer rt.Close()
@@ -446,6 +528,16 @@ func TestEntriesLimitWithZeroTripperware(t *testing.T) {
 
 	_, err = tpw(rt).RoundTrip(req)
 	require.NoError(t, err)
+}
+
+func stopCache(stoppers []Stopper) {
+	for _, stopper := range stoppers {
+		if stopper != nil {
+			go func() {
+				stopper.Stop()
+			}()
+		}
+	}
 }
 
 type fakeLimits struct {
@@ -514,13 +606,35 @@ func promqlResult(v parser.Value) (*int, http.Handler) {
 	})
 }
 
-func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
+type mockSeries struct {
+	start             time.Time
+	end               time.Time
+	seriesIndentifier []logproto.SeriesIdentifier
+}
+
+func seriesResult(v []mockSeries) (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := r.ParseForm()
+		if err != nil {
+			panic(err)
+		}
+		req, err := loghttp.ParseSeriesQuery(r)
+		if err != nil {
+			panic(err)
+		}
+		var seriesResponse logproto.SeriesResponse
+		for _, series := range v {
+			if req.Start.UnixNano() >= series.end.UnixNano() || req.End.UnixNano() <= series.start.UnixNano() {
+				continue
+			}
+			seriesResponse.Series = append(seriesResponse.Series, series.seriesIndentifier...)
+		}
+
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteSeriesResponseJSON(v, w); err != nil {
+		if err := marshal.WriteSeriesResponseJSON(seriesResponse, w); err != nil {
 			panic(err)
 		}
 		count++

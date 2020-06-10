@@ -275,7 +275,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
 		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
 	)
-	tripperware, stopper, err := queryrange.NewTripperware(
+	tripperware, stoppers, err := queryrange.NewTripperware(
 		t.cfg.QueryRange,
 		util.Logger,
 		t.overrides,
@@ -286,7 +286,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	if err != nil {
 		return
 	}
-	t.stopper = stopper
+	t.stoppers = stoppers
 	t.frontend.Wrap(tripperware)
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
@@ -312,9 +312,14 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
-		if t.stopper != nil {
-			t.stopper.Stop()
+		for _, stopper := range t.stoppers {
+			if stopper != nil {
+				go func() {
+					stopper.Stop()
+				}()
+			}
 		}
+
 		return nil
 	}), nil
 }
