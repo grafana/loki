@@ -225,7 +225,9 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 	if err != nil {
 		return nil, err
 	}
-
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
+	}
 	return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.QueryRequest), nil
 
 }

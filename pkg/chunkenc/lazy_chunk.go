@@ -38,6 +38,7 @@ func (c *LazyChunk) Iterator(ctx context.Context, from, through time.Time, direc
 		for i, b := range blocks {
 			if c.lastBlock != nil && b.Offset == c.lastblockOffset {
 				fcop := *c.lastBlock
+				fcop.reset()
 				its = append(its, &fcop)
 				continue
 			}
@@ -81,11 +82,13 @@ type CachedIterator struct {
 // NewCachedIterator creates an iterator that cache iteration result and can be iterated again
 // after closing it without re-using the underlaying iterator `it`.
 func NewCachedIterator(it iter.EntryIterator) *CachedIterator {
-	return &CachedIterator{
+	c := &CachedIterator{
 		base:  it,
-		cache: make([]*logproto.Entry, 0, 1024),
+		cache: nil, //make([]*logproto.Entry, 0, 1024),
 		curr:  -1,
 	}
+	c.load()
+	return c
 }
 
 func (it *CachedIterator) reset() {
@@ -95,8 +98,9 @@ func (it *CachedIterator) reset() {
 func (it *CachedIterator) load() {
 	if it.base != nil {
 		defer func() {
-			it.base.Close()
+			_ = it.base.Close()
 			it.base = nil
+			it.reset()
 		}()
 		// set labels using the first entry
 		if !it.base.Next() {
@@ -117,7 +121,6 @@ func (it *CachedIterator) load() {
 }
 
 func (it *CachedIterator) Next() bool {
-	it.load()
 	if len(it.cache) == 0 {
 		it.cache = nil
 		return false
@@ -138,8 +141,5 @@ func (it *CachedIterator) Error() error { return nil }
 
 func (it *CachedIterator) Close() error {
 	it.reset()
-	if it.base != nil {
-		return it.base.Close()
-	}
 	return nil
 }

@@ -57,7 +57,7 @@ func (r *rangeVectorIterator) Next() bool {
 	// load samples
 	r.popBack(rangeStart)
 	r.load(rangeStart, rangeEnd)
-	return true
+	return len(r.window) != 0
 }
 
 func (r *rangeVectorIterator) Close() error {
