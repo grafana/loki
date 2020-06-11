@@ -3,7 +3,6 @@ package logql
 import (
 	"context"
 	"errors"
-	"log"
 	"math"
 	"sort"
 	"time"
@@ -199,7 +198,9 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 		return vec, nil
 	}
 	stepCount := int(math.Ceil(float64(q.params.End().Sub(q.params.Start()).Nanoseconds()) / float64(q.params.Step().Nanoseconds())))
-	log.Print(stepCount)
+	if stepCount <= 0 {
+		stepCount = 1
+	}
 	for next {
 
 		for _, p := range vec {

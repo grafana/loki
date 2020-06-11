@@ -263,9 +263,6 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 			}
 		}
 	}
-	fromString, throughString, diffString := from.UTC().String(), through.UTC().String(), through.Sub(from).String()
-	log.Println("from: ", fromString, "\tthrough: ", throughString, "\tdiff: ", diffString, "\tchunks: ", len(batch))
-
 	// create the new chunks iterator from the current batch.
 	return newChunksIterator(it.ctx, batch, it.matchers, it.filter, it.req.Direction, from, through, nextChunk)
 }
@@ -324,7 +321,6 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 		return nil, err
 	}
 
-	log.Print(len(allChunks))
 	iters, err := buildIterators(ctx, chksBySeries, filter, direction, from, through, nextChunk)
 	if err != nil {
 		log.Print(err)
@@ -352,7 +348,7 @@ func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter
 	result := make([]iter.EntryIterator, 0, len(chks))
 
 	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
-	labels := dropLabels(chks[0][0].Chunk.Metric, labels.MetricName).String()
+	labels := chks[0][0].Labels()
 	for i := range chks {
 		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
 		for j := range chks[i] {
@@ -526,21 +522,4 @@ outer:
 	}
 
 	return css
-}
-
-// dropLabels returns a new label set with certain labels dropped
-func dropLabels(ls labels.Labels, removals ...string) (dst labels.Labels) {
-	toDel := make(map[string]struct{})
-	for _, r := range removals {
-		toDel[r] = struct{}{}
-	}
-
-	for _, l := range ls {
-		_, remove := toDel[l.Name]
-		if !remove {
-			dst = append(dst, l)
-		}
-	}
-
-	return dst
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -18,6 +19,7 @@ type LazyChunk struct {
 	Chunk   chunk.Chunk
 	IsValid bool
 	Fetcher *chunk.Fetcher
+	labels  string
 
 	overlappingBlocks map[int]*CachedIterator
 }
@@ -77,6 +79,30 @@ func (c *LazyChunk) Iterator(
 
 	return iter.NewEntryReversedIter(iterForward)
 
+}
+
+// dropLabels returns a new label set with certain labels dropped
+func dropLabels(ls labels.Labels, removals ...string) (dst labels.Labels) {
+	toDel := make(map[string]struct{})
+	for _, r := range removals {
+		toDel[r] = struct{}{}
+	}
+
+	for _, l := range ls {
+		_, remove := toDel[l.Name]
+		if !remove {
+			dst = append(dst, l)
+		}
+	}
+
+	return dst
+}
+
+func (c *LazyChunk) Labels() string {
+	if c.labels == "" {
+		c.labels = dropLabels(c.Chunk.Metric, labels.MetricName).String()
+	}
+	return c.labels
 }
 
 func (b Block) IsOverlapping(from, through model.Time, direction logproto.Direction) bool {
