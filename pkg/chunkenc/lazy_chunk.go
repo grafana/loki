@@ -21,7 +21,6 @@ type LazyChunk struct {
 	Fetcher *chunk.Fetcher
 
 	overlappingBlocks map[int]*CachedIterator
-	lock              sync.Mutex
 }
 
 // Iterator returns an entry iterator.
@@ -32,8 +31,6 @@ func (c *LazyChunk) Iterator(
 	filter logql.LineFilter,
 	nextChunk *LazyChunk,
 ) (iter.EntryIterator, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
 	// If the chunk is not already loaded, then error out.
 	if c.Chunk.Data == nil {
 		return nil, errors.New("chunk is not loaded")
@@ -64,7 +61,9 @@ func (c *LazyChunk) Iterator(
 			c.overlappingBlocks[b.Offset] = it
 			continue
 		}
-		delete(c.overlappingBlocks, b.Offset)
+		if nextChunk != nil {
+			delete(c.overlappingBlocks, b.Offset)
+		}
 		its = append(its, b.Iterator())
 	}
 	iterForward := iter.NewTimeRangedIterator(
