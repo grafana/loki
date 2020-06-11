@@ -3,7 +3,6 @@ package chunkenc
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
