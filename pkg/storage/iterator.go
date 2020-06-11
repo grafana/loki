@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"log"
 	"sort"
 	"time"
 
@@ -262,8 +263,8 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 			}
 		}
 	}
-	// fromString, throughString, diffString := from.UTC().String(), through.UTC().String(), through.Sub(from).String()
-	// log.Println("from: ", fromString, "\tthrough: ", throughString, "\tdiff: ", diffString, "\tchunks: ", len(batch))
+	fromString, throughString, diffString := from.UTC().String(), through.UTC().String(), through.Sub(from).String()
+	log.Println("from: ", fromString, "\tthrough: ", throughString, "\tdiff: ", diffString, "\tchunks: ", len(batch))
 
 	// create the new chunks iterator from the current batch.
 	return newChunksIterator(it.ctx, batch, it.matchers, it.filter, it.req.Direction, from, through, nextChunk)
@@ -298,10 +299,11 @@ func (it *batchChunkIterator) Close() error {
 // newChunksIterator creates an iterator over a set of lazychunks.
 func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matchers []*labels.Matcher, filter logql.LineFilter, direction logproto.Direction, from, through time.Time, nextChunk *chunkenc.LazyChunk) (iter.EntryIterator, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
-
 	// Make sure the initial chunks are loaded. This is not one chunk
 	// per series, but rather a chunk per non-overlapping iterator.
 	if err := loadFirstChunks(ctx, chksBySeries); err != nil {
+		log.Print(err)
+
 		return nil, err
 	}
 
@@ -315,14 +317,18 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 			allChunks = append(allChunks, chunks...)
 		}
 	}
-
 	// Finally we load all chunks not already loaded
 	if err := fetchLazyChunks(ctx, allChunks); err != nil {
+		log.Print(err)
+
 		return nil, err
 	}
 
+	log.Print(len(allChunks))
 	iters, err := buildIterators(ctx, chksBySeries, filter, direction, from, through, nextChunk)
 	if err != nil {
+		log.Print(err)
+
 		return nil, err
 	}
 

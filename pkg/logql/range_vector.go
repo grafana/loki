@@ -26,6 +26,7 @@ type rangeVectorIterator struct {
 	selRange, step, end, current int64
 	window                       map[string]*promql.Series
 	metrics                      map[string]labels.Labels
+	at                           []promql.Sample
 }
 
 func newRangeVectorIterator(
@@ -62,6 +63,11 @@ func (r *rangeVectorIterator) Next() bool {
 
 func (r *rangeVectorIterator) Close() error {
 	return r.iter.Close()
+}
+
+// Error implements `EntryIterator`
+func (r *rangeVectorIterator) Error() error {
+	return r.iter.Error()
 }
 
 // popBack removes all entries out of the current window from the back.
@@ -130,11 +136,14 @@ func (r *rangeVectorIterator) load(start, end int64) {
 }
 
 func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promql.Vector) {
-	result := make([]promql.Sample, 0, len(r.window))
+	if r.at == nil {
+		r.at = make([]promql.Sample, 0, len(r.window))
+	}
+	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
 	ts := r.current / 1e+6
 	for _, series := range r.window {
-		result = append(result, promql.Sample{
+		r.at = append(r.at, promql.Sample{
 			Point: promql.Point{
 				V: aggregator(series.Points),
 				T: ts,
@@ -142,7 +151,7 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 			Metric: series.Metric,
 		})
 	}
-	return ts, result
+	return ts, r.at
 }
 
 var seriesPool sync.Pool

@@ -3,6 +3,8 @@ package logql
 import (
 	"context"
 	"errors"
+	"log"
+	"math"
 	"sort"
 	"time"
 
@@ -196,7 +198,8 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
-
+	stepCount := int(math.Ceil(float64(q.params.End().Sub(q.params.Start()).Nanoseconds()) / float64(q.params.Step().Nanoseconds())))
+	log.Print(stepCount)
 	for next {
 
 		for _, p := range vec {
@@ -210,6 +213,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 			if !ok {
 				series = &promql.Series{
 					Metric: p.Metric,
+					Points: make([]promql.Point, 0, stepCount),
 				}
 				seriesIndex[hash] = series
 			}

@@ -15,6 +15,7 @@ type SeriesIterator interface {
 	Close() error
 	Next() bool
 	Peek() (Sample, bool)
+	Error() error
 }
 
 // Sample is a series sample
@@ -46,6 +47,10 @@ func (e *seriesIterator) Close() error {
 func (e *seriesIterator) Next() bool {
 	e.updated = false
 	return e.iter.Next()
+}
+
+func (e *seriesIterator) Error() error {
+	return e.iter.Error()
 }
 
 func (e *seriesIterator) Peek() (Sample, bool) {

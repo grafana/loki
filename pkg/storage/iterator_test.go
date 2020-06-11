@@ -751,7 +751,7 @@ func TestBuildHeapIterator(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			ctx = user.InjectOrgID(context.Background(), "test-user")
-			it, err := buildHeapIterator(ctx, tc.input, nil, logproto.FORWARD, from, from.Add(6*time.Millisecond))
+			it, err := buildHeapIterator(ctx, tc.input, nil, logproto.FORWARD, from, from.Add(6*time.Millisecond), nil)
 			if err != nil {
 				t.Errorf("buildHeapIterator error = %v", err)
 				return

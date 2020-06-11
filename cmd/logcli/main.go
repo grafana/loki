@@ -2,9 +2,12 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"time"
+
+	_ "net/http/pprof"
 
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
@@ -79,7 +82,9 @@ https://github.com/grafana/loki/blob/master/docs/logql.md`)
 
 func main() {
 	log.SetOutput(os.Stderr)
-
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	switch cmd {

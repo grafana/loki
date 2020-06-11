@@ -3,6 +3,7 @@ package chunkenc
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -20,6 +21,7 @@ type LazyChunk struct {
 	Fetcher *chunk.Fetcher
 
 	overlappingBlocks map[int]*CachedIterator
+	lock              sync.Mutex
 }
 
 // Iterator returns an entry iterator.
@@ -30,6 +32,8 @@ func (c *LazyChunk) Iterator(
 	filter logql.LineFilter,
 	nextChunk *LazyChunk,
 ) (iter.EntryIterator, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	// If the chunk is not already loaded, then error out.
 	if c.Chunk.Data == nil {
 		return nil, errors.New("chunk is not loaded")
@@ -45,8 +49,9 @@ func (c *LazyChunk) Iterator(
 	for _, b := range blocks {
 		// if we already processed that block let's use it.
 		if cache, ok := c.overlappingBlocks[b.Offset]; ok {
-			cache.reset()
-			its = append(its, cache)
+			cop := *cache
+			cop.reset()
+			its = append(its, &cop)
 			continue
 		}
 		// if the block is overlapping cache it.
@@ -62,7 +67,6 @@ func (c *LazyChunk) Iterator(
 		delete(c.overlappingBlocks, b.Offset)
 		its = append(its, b.Iterator())
 	}
-
 	iterForward := iter.NewTimeRangedIterator(
 		iter.NewNonOverlappingIterator(its, ""),
 		from,
