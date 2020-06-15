@@ -17,12 +17,21 @@ wget NEED DOWNLOAD COMMAND
 wget NEED DOWNLOAD COMMAND
 ```
 6. Enter the following command to start Loki:
-```
- .\loki-windows-amd64.exe --config.file=loki-local-config.yaml
- ```
-   Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
 
-Congratulations, Loki is installed and running! 
+**Windows**
+
+```
+.\loki-windows-amd64.exe --config.file=loki-local-config.yaml
+```
+
+**Linux**
+```
+NEED COMMAND
+```
+
+Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
+
+Congratulations, Loki is installed and running! Next, you might want edit the Promtail config file to [get logs into Loki](./getting-started/get-logs-into-loki.md).
 
 ## Release binaries - openSUSE Linux only
 
