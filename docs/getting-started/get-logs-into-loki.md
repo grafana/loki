@@ -37,7 +37,7 @@ scrape_configs:
       __path__: /var/log/*log
 ```
 
-The seven lines under `scrape_configs` are what send the logs that Loki generates to Loki, which then outputs them in the command line and http://localhost:3100/metrics.
+   The seven lines under `scrape_configs` are what send the logs that Loki generates to Loki, which then outputs them in the command line and http://localhost:3100/metrics.
 
 3. Copy the seven lines under `scrape_configs`, and then paste them under the original job (you can also just edit the original seven lines). 
    
@@ -57,4 +57,18 @@ The seven lines under `scrape_configs` are what send the logs that Loki generate
       __path__: "C:/Program Files/GrafanaLabs/grafana/data/log/grafana.log"
 ```
 
-4. Restart Promtail, and then restart Loki. You should now see your application logs.
+4. Enter the following command to run Promtail:
+
+**Windows**
+
+```
+`.\promtail-windows-amd64.exe --config.file=promtail-local-config.yaml`
+```
+
+**Linux**
+
+```
+NEED COMMAND
+```
+
+5. Restart Loki. You should now see your application logs.
