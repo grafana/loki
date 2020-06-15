@@ -102,6 +102,13 @@ type DataPurger struct {
 	inProcessRequestIDs    map[string]string
 	inProcessRequestIDsMtx sync.RWMutex
 
+	// We do not want to limit pulling new delete requests to a fixed interval which otherwise would limit number of delete requests we process per user.
+	// While loading delete requests if we find more requests from user pending to be processed, we just set their id in usersWithPendingRequests and
+	// when a user's delete request gets processed we just check this map to see whether we want to load more requests without waiting for next ticker to load new batch.
+	usersWithPendingRequests    map[string]struct{}
+	usersWithPendingRequestsMtx sync.Mutex
+	pullNewRequestsChan         chan struct{}
+
 	pendingPlansCount    map[string]int // per request pending plan count
 	pendingPlansCountMtx sync.Mutex
 
@@ -113,29 +120,21 @@ func NewDataPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store,
 	util.WarnExperimentalUse("Delete series API")
 
 	dataPurger := DataPurger{
-		cfg:                 cfg,
-		deleteStore:         deleteStore,
-		chunkStore:          chunkStore,
-		objectClient:        storageClient,
-		metrics:             newPurgerMetrics(registerer),
-		executePlansChan:    make(chan deleteRequestWithLogger, 50),
-		workerJobChan:       make(chan workerJob, 50),
-		inProcessRequestIDs: map[string]string{},
-		pendingPlansCount:   map[string]int{},
+		cfg:                      cfg,
+		deleteStore:              deleteStore,
+		chunkStore:               chunkStore,
+		objectClient:             storageClient,
+		metrics:                  newPurgerMetrics(registerer),
+		pullNewRequestsChan:      make(chan struct{}, 1),
+		executePlansChan:         make(chan deleteRequestWithLogger, 50),
+		workerJobChan:            make(chan workerJob, 50),
+		inProcessRequestIDs:      map[string]string{},
+		usersWithPendingRequests: map[string]struct{}{},
+		pendingPlansCount:        map[string]int{},
 	}
 
-	dataPurger.Service = services.NewTimerService(time.Hour, dataPurger.init, dataPurger.runOneIteration, dataPurger.stop)
+	dataPurger.Service = services.NewBasicService(dataPurger.init, dataPurger.loop, dataPurger.stop)
 	return &dataPurger, nil
-}
-
-// Run keeps pulling delete requests for planning after initializing necessary things
-func (dp *DataPurger) runOneIteration(ctx context.Context) error {
-	err := dp.pullDeleteRequestsToPlanDeletes()
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
-	}
-	// Don't return error here, or Timer service will stop.
-	return nil
 }
 
 // init starts workers, scheduler and then loads in process delete requests
@@ -149,6 +148,29 @@ func (dp *DataPurger) init(ctx context.Context) error {
 	go dp.jobScheduler(ctx)
 
 	return dp.loadInprocessDeleteRequests()
+}
+
+func (dp *DataPurger) loop(ctx context.Context) error {
+	loadRequestsTicker := time.NewTicker(time.Hour)
+	defer loadRequestsTicker.Stop()
+
+	loadRequests := func() {
+		err := dp.pullDeleteRequestsToPlanDeletes()
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
+		}
+	}
+
+	for {
+		select {
+		case <-loadRequestsTicker.C:
+			loadRequests()
+		case <-dp.pullNewRequestsChan:
+			loadRequests()
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
 
 // Stop waits until all background tasks stop.
@@ -183,6 +205,21 @@ func (dp *DataPurger) workerJobCleanup(job workerJob) {
 		dp.inProcessRequestIDsMtx.Lock()
 		delete(dp.inProcessRequestIDs, job.userID)
 		dp.inProcessRequestIDsMtx.Unlock()
+
+		// request loading of more delete request if
+		// - user has more pending requests and
+		// - we do not have a pending request to load more requests
+		dp.usersWithPendingRequestsMtx.Lock()
+		defer dp.usersWithPendingRequestsMtx.Unlock()
+		if _, ok := dp.usersWithPendingRequests[job.userID]; ok {
+			delete(dp.usersWithPendingRequests, job.userID)
+			select {
+			case dp.pullNewRequestsChan <- struct{}{}:
+				// sent
+			default:
+				// already sent
+			}
+		}
 	} else {
 		dp.pendingPlansCountMtx.Unlock()
 	}
@@ -345,12 +382,16 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		}
 
 		dp.inProcessRequestIDsMtx.RLock()
-		inprocessDeleteRequstID := dp.inProcessRequestIDs[deleteRequest.UserID]
+		inprocessDeleteRequestID := dp.inProcessRequestIDs[deleteRequest.UserID]
 		dp.inProcessRequestIDsMtx.RUnlock()
 
-		if inprocessDeleteRequstID != "" {
+		if inprocessDeleteRequestID != "" {
+			dp.usersWithPendingRequestsMtx.Lock()
+			dp.usersWithPendingRequests[deleteRequest.UserID] = struct{}{}
+			dp.usersWithPendingRequestsMtx.Unlock()
+
 			level.Debug(util.Logger).Log("msg", "skipping delete request processing for now since another request from same user is already in process",
-				"inprocess_request_id", inprocessDeleteRequstID,
+				"inprocess_request_id", inprocessDeleteRequestID,
 				"skipped_request_id", deleteRequest.RequestID, "user_id", deleteRequest.UserID)
 			continue
 		}
