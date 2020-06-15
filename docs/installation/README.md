@@ -7,7 +7,7 @@ Instructions for different methods of installing Loki and Promtail.
 - [Install using Tanka (recommended)](./tanka.md)
 - [Install through Helm](./helm.md)
 - [Install through Docker or Docker Compose](./docker.md)
-- [Install locally](./local.md)
+- [Install and run locally](./local.md)
 - [Install locally for manual build](./install-for-manual-build.md)
 
 ## General process
