@@ -7,7 +7,8 @@ This document describes the rules and governance of the project. It is meant to 
 * **Maintainers**: Maintainers lead an individual project or parts thereof ([`MAINTAINERS.md`][maintainers]).
 
 * **Projects**: A single repository in the Grafana GitHub organization and listed below is referred to as a project:
-  * tanka
+  * loki
+  * puppet-promtail
 
 * **The Loki project**: The sum of all activities performed under this governance, concerning one or more repositories or the community.
 
