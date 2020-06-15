@@ -2,7 +2,7 @@
 
 Loki comes with its own PromQL-inspired language for queries called *LogQL*.
 LogQL can be considered a distributed `grep` that aggregates log sources,
-using labels and operators for filtering.
+LogQL uses labels and operators for filtering.
 
 There are two types of LogQL queries: 
 
