@@ -250,14 +250,17 @@ func (s *Shipper) syncLocalWithStorage(ctx context.Context) (err error) {
 }
 
 func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *bbolt.DB) error) error {
+	// if filesCollection is already there, use it.
 	s.downloadedPeriodsMtx.RLock()
 	fc, ok := s.downloadedPeriods[period]
 	s.downloadedPeriodsMtx.RUnlock()
 
 	if !ok {
 		s.downloadedPeriodsMtx.Lock()
+		// check if some other competing goroutine got the lock before us and created the filesCollection, use it if so.
 		fc, ok = s.downloadedPeriods[period]
 		if !ok {
+			// filesCollection not found, creating one.
 			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("downloading all files for period %s", period))
 
 			fc = NewFilesCollection(period, s.cfg.CacheLocation, s.metrics.downloaderMetrics, s.storageClient)
