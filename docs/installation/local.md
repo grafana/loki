@@ -20,7 +20,7 @@ wget NEED DOWNLOAD COMMAND
 ```
  .\loki-windows-amd64.exe --config.file=loki-local-config.yaml
  ```
- Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
+   Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
 
 Congratulations, Loki is installed and running! 
 
