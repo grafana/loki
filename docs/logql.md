@@ -1,26 +1,28 @@
 # LogQL: Log Query Language
 
 Loki comes with its own PromQL-inspired language for queries called *LogQL*.
-LogQL can be considered a distributed `grep` that aggregates log sources and
-using labels and operators for filtering.
+LogQL can be considered a distributed `grep` that aggregates log sources,
+LogQL uses labels and operators for filtering.
 
-There are two types of LogQL queries: *log queries* which return the contents of
-log lines, and *metric queries* which extend log queries and calculates values
-based on the counts of logs from a log query.
+There are two types of LogQL queries: 
 
-A basic log query consists of two parts: the **log stream selector** and a
-**filter expression**. Due to Loki's design, all LogQL queries are required to
-contain a log stream selector.
+-*Log queries* return the contents of log lines.
+-*Metric queries* extend log queries and calculate values based on the counts of logs from a log query.
+
+A basic log query consists of two parts: 
+-**log stream selector**
+-**filter expression**
+Due to Loki's design, all LogQL queries must contain a log stream selector.
 
 The log stream selector determines how many log streams (unique sources of log
-content, such as files) will be searched. A more granular log stream selector
+content, such as files) will be searched. A more granular log stream selector then
 reduces the number of searched streams to a manageable volume. This means that
 the labels passed to the log stream selector will affect the relative
 performance of the query's execution. The filter expression is then used to do a
 distributed `grep` over the aggregated logs from the matching log streams.
 
 > To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
-For example `` `\w+` `` is the same as `"\\w+"`, this is specially useful when writing regular expression which can contains many backslash that require escaping.
+For example `` `\w+` `` is the same as `"\\w+"`. This is specially useful when writing a regular expression which contains multiple backslashes that require escaping.
 
 ### Log Stream Selector
 
@@ -35,7 +37,7 @@ curly braces:
 {app="mysql",name="mysql-backup"}
 ```
 
-In this example, log streams that have a label of `app` whose value is `mysql`
+In this example, all log streams that have a label of `app` whose value is `mysql`
 _and_ a label of `name` whose value is `mysql-backup` will be included in the
 query results. Note that this will match any log stream whose labels _at least_
 contain `mysql-backup` for their name label; if there are multiple streams that
@@ -62,9 +64,7 @@ apply for Loki log stream selectors.
 
 ### Filter Expression
 
-After writing the log stream selector, the resulting set of logs can be filtered
-further with a search expression. The search expression can be just text or
-regex:
+After writing the log stream selector, the resulting set of logs can be further filtered with a search expression. The search expression can be just text or regex:
 
 - `{job="mysql"} |= "error"`
 - `{name="kafka"} |~ "tsdb-ops.*io:2003"`
@@ -125,7 +125,7 @@ aggregation syntax, including filter expressions. This example gets the
 per-second rate of all non-timeout errors within the last ten seconds for the
 MySQL job.
 
-It should be noted that the range notation `[5m]` can be placed at end of the log stream filter or right after the log stream matcher. For example those two syntaxes below are equivalent.
+It should be noted that the range notation `[5m]` can be placed at end of the log stream filter or right after the log stream matcher. For example, the two syntaxes below are equivalent:
 
 ```logql
 rate({job="mysql"} |= "error" != "timeout" [5m])
@@ -161,7 +161,7 @@ values or a set of distinct label values by including a `without` or a
 samples, including the original labels, are returned in the result vector. `by`
 and `without` are only used to group the input vector.
 
-The `without` cause removes the listed labels from the resulting vector, keeping
+The `without` clause removes the listed labels from the resulting vector, keeping
 all others. The `by` clause does the opposite, dropping labels that are not
 listed in the clause, even if their label values are identical between all
 elements of the vector.
@@ -172,7 +172,7 @@ Get the top 10 applications by the highest log throughput:
 
 > `topk(10,sum(rate({region="us-east1"}[5m])) by (name))`
 
-Get the count of logs during the last five minutes, grouping
+Get the count of logs for the last five minutes, grouping
 by level:
 
 > `sum(count_over_time({job="mysql"}[5m])) by (level)`
