@@ -1,5 +1,29 @@
 # Install and run Loki locally
 
+In order to log events with Loki, you must download and install both Promtail and Loki. 
+- Loki is the logging engine.
+- Promtail sends logs to Loki.
+
+## Install and run
+
+1. Navigate to the [release page](https://github.com/grafana/loki/releases/). 
+2. Scroll down to the Assets section under the version that you want to install.
+3. Download the Loki and Promtail .zip files that correspond to your system.
+   **Note:** Do not download LogCLI or Loki Canary at this time. [LogCLI](./getting-started/logcli.md) allows you to run Loki queries in a command line interface. [Loki Canary](./operations/loki-canary.md) is a tool to audit Loki performance.
+4. Unzip the package contents into the same directory. This is where the two programs will run.
+5. In the command line, change directory (`cd` on most systems) to the directory with Loki and Promtail. Copy and paste the commands below into your command line to download generic configuration files:
+```
+wget NEED DOWNLOAD COMMAND
+wget NEED DOWNLOAD COMMAND
+```
+6. Enter the following command to start Loki:
+```
+ .\loki-windows-amd64.exe --config.file=loki-local-config.yaml
+ ```
+ Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
+
+Congratulations, Loki is installed and running! 
+
 ## Release binaries - openSUSE Linux only
 
 Every release includes binaries for Loki which can be found on the
@@ -18,29 +42,3 @@ The community provides packages of Loki for openSUSE Linux. To install:
   - `systemd start promtail && systemd enable promtail`
 1. Modify the configuration files as needed: `/etc/loki/promtail.yaml` and
    `/etc/loki/loki.yaml`.
-
-## Install locally for manual build
-
-### Prerequisites
-
-- Go 1.13 or later
-- Make
-- Docker (for updating protobuf files and yacc files)
-
-### Building
-
-Clone Loki to `$GOPATH/src/github.com/grafana/loki`:
-
-```bash
-$ git clone https://github.com/grafana/loki $GOPATH/src/github.com/grafana/loki
-```
-
-Then change into that directory and run `make loki`:
-
-```bash
-$ cd $GOPATH/src/github.com/grafana/loki
-$ make loki
-
-# A file at ./cmd/loki/loki will be created and is the
-# final built binary.
-```
