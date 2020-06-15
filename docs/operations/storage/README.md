@@ -26,7 +26,7 @@ The following are supported for the index:
 * [Google Bigtable](https://cloud.google.com/bigtable)
 * [Apache Cassandra](https://cassandra.apache.org)
 * [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
-* [Boltb-Shipper](boltdb-shipper.md) EXPERIMENTAL index store which stores boltdb index files in the object store 
+* [BoltDB Shipper](boltdb-shipper.md) EXPERIMENTAL index store which stores boltdb index files in the object store 
 
 The following are supported for the chunks:
 
