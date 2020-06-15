@@ -13,3 +13,48 @@ The following instructions should help you get started.
 ```
 wget NEED DOWNLOAD LINK
 ```
+
+2. Open the config file in the text editor of your choice. It should look similar to this:
+   
+```
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: system
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: varlogs
+      __path__: /var/log/*log
+```
+
+The seven lines under `scrape_configs` are what send the logs that Loki generates to Loki, which then outputs them in the command line and http://localhost:3100/metrics.
+
+3. Copy the seven lines under `scrape_configs`, and then paste them under the original job (you can also just edit the original seven lines). 
+   
+   Below is an example that sends logs from a default Grafana installation to Loki. We updated the following fields:
+   - job_name - This differentiates the logs collected from other log groups.
+   - targets - NEED DEFINITION
+   - labels - NEED DEFINITION
+   - __path__ - The path to where the logs are stored that I want Loki to consume.
+
+```
+- job_name: grafana
+  static_configs:
+  - targets:
+      - grafana
+    labels:
+      job: grafana
+      __path__: "C:/Program Files/GrafanaLabs/grafana/data/log/grafana.log"
+```
+
+4. Restart Promtail, and then restart Loki. You should now see your application logs.
