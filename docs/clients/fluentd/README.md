@@ -211,7 +211,7 @@ Specify a pair of client certificate and private key with `cert` and `key` if a 
 ```
 
 ### server certificate verification
-A flag to enable a server certificate verification. By default the `verify_tls` is set to true.
+A flag to disable a server certificate verification. By default the `insecure_tls` is set to false.
 
 ```
 <match **>
@@ -219,7 +219,7 @@ A flag to enable a server certificate verification. By default the `verify_tls` 
 
   url "https://loki"
 
-  verify_tls true
+  insecure_tls true
 
   ...
 </match>
