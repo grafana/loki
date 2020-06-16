@@ -266,6 +266,8 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
 
+	sp.LogFields(otlog.Int("series", len(a.Data.Result)))
+
 	b, err := json.Marshal(a)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error encoding response: %v", err)

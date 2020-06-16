@@ -182,6 +182,11 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 	level.Debug(log).Log("chunks-post-filtering", len(chunks))
 	chunksPerQuery.Observe(float64(len(chunks)))
 
+	// We should return an empty chunks slice if there are no chunks.
+	if len(chunks) == 0 {
+		return [][]Chunk{}, []*Fetcher{}, nil
+	}
+
 	return [][]Chunk{chunks}, []*Fetcher{c.baseStore.Fetcher}, nil
 }
 

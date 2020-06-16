@@ -162,6 +162,11 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 			return err
 		}
 
+		// Skip it if there are no chunks.
+		if len(ids) == 0 {
+			return nil
+		}
+
 		chunkIDs = append(chunkIDs, ids...)
 		fetchers = append(fetchers, fetcher...)
 		return nil
