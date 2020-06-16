@@ -503,11 +503,18 @@ func (i *timeRangedIterator) Next() bool {
 	ts := i.EntryIterator.Entry().Timestamp
 	for ok && i.mint.After(ts) {
 		ok = i.EntryIterator.Next()
+		if !ok {
+			continue
+		}
 		ts = i.EntryIterator.Entry().Timestamp
 	}
-
-	if ok && (i.maxt.Before(ts) || i.maxt.Equal(ts)) { // The maxt is exclusive.
-		ok = false
+	if ok {
+		if ts.Equal(i.mint) { // The mint is inclusive
+			return true
+		}
+		if i.maxt.Before(ts) || i.maxt.Equal(ts) { // The maxt is exclusive.
+			ok = false
+		}
 	}
 	if !ok {
 		i.EntryIterator.Close()

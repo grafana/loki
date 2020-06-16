@@ -125,13 +125,17 @@ func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (
 	return b.bkt.Object(name).NewRangeReader(ctx, off, length)
 }
 
-// ObjectSize returns the size of the specified object.
-func (b *Bucket) ObjectSize(ctx context.Context, name string) (uint64, error) {
-	obj, err := b.bkt.Object(name).Attrs(ctx)
+// Attributes returns information about the specified object.
+func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+	attrs, err := b.bkt.Object(name).Attrs(ctx)
 	if err != nil {
-		return 0, err
+		return objstore.ObjectAttributes{}, err
 	}
-	return uint64(obj.Size), nil
+
+	return objstore.ObjectAttributes{
+		Size:         attrs.Size,
+		LastModified: attrs.Updated,
+	}, nil
 }
 
 // Handle returns the underlying GCS bucket handle.

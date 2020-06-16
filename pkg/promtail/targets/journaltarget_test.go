@@ -3,6 +3,7 @@
 package targets
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -113,7 +114,7 @@ func TestJournalTarget(t *testing.T) {
 		})
 		assert.NoError(t, err)
 	}
-
+	fmt.Println(client.messages)
 	assert.Len(t, client.messages, 10)
 	require.NoError(t, jt.Stop())
 }
@@ -298,4 +299,20 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 	r := jt.r.(*mockJournalReader)
 	require.Equal(t, r.config.Since, time.Duration(0))
 	require.Equal(t, r.config.Cursor, "foobar")
+}
+
+func Test_MakeJournalFields(t *testing.T) {
+	entryFields := map[string]string{
+		"CODE_FILE":   "journaltarget_test.go",
+		"OTHER_FIELD": "foobar",
+		"PRIORITY":    "6",
+	}
+	receivedFields := makeJournalFields(entryFields)
+	expectedFields := map[string]string{
+		"__journal_code_file":        "journaltarget_test.go",
+		"__journal_other_field":      "foobar",
+		"__journal_priority":         "6",
+		"__journal_priority_keyword": "info",
+	}
+	assert.Equal(t, expectedFields, receivedFields)
 }

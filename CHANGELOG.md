@@ -183,7 +183,7 @@ We now GPG sign helm packages!
 * [1906](https://github.com/grafana/loki/pull/1906) **cyriltovena**: Add no-file and keep-file log option for docker driver.
 * [1903](https://github.com/grafana/loki/pull/1903) **cyriltovena**: Log docker driver config map.
 
-#### FluentD
+#### Fluentd
 * [2074](https://github.com/grafana/loki/pull/2074) **osela**: fluentd plugin: support placeholders in tenant field
 * [2006](https://github.com/grafana/loki/pull/2006) **Skeen**: fluent-plugin-loki: Restructuring and CI
 * [1909](https://github.com/grafana/loki/pull/1909) **jgehrcke**: fluentd loki plugin README: add note about labels
@@ -330,7 +330,7 @@ These two configs let you set the max time a chunk can stay in memory in Loki, t
 This isn't a feature but it's an important fix, this is the second time our canaries have tried to DDOS our Loki clusters so you should update to prevent them from trying to attack you.  Aggressive little things these canaries...
 
 * [1840](https://github.com/grafana/loki/pull/1840) **slim-bean**: promtail: Retry 429 rate limit errors from Loki, increase default retry limits
-* [1845](https://github.com/grafana/loki/pull/1845) **wardbekker**: throw exceptions on HTTPTooManyRequests and HTTPServerError so FluentD will retry
+* [1845](https://github.com/grafana/loki/pull/1845) **wardbekker**: throw exceptions on HTTPTooManyRequests and HTTPServerError so Fluentd will retry
 
 These two PR's change how 429 HTTP Response codes are handled (Rate Limiting), previously these responses were dropped, now they will be retried for these clients
 
@@ -442,7 +442,7 @@ There are many other important fixes and improvements to Loki, way too many to c
 * [1791](https://github.com/grafana/loki/pull/1791) **cyriltovena**: Improve fluentbit logfmt.
 * [1717](https://github.com/grafana/loki/pull/1717) **adityacs**: Fluent-bit: Fix panic error when AutoKubernetesLabels is true
 
-#### FluentD
+#### Fluentd
 * [1811](https://github.com/grafana/loki/pull/1811) **JamesJJ**: Error handling: Show data stream at "debug" level, not "warn"
 * [1728](https://github.com/grafana/loki/pull/1728) **irake99**: docs: fix outdated link to fluentd
 * [1703](https://github.com/grafana/loki/pull/1703) **Skeen**:  fluent-plugin-grafana-loki: Update fluentd base image to current images (edge)
@@ -606,7 +606,7 @@ Once again we can't thank our community and contributors enough for the signific
 * [1294](https://github.com/grafana/loki/pull/1294) **JensErat**: fluent-bit: multi-instance support
 * [1514](https://github.com/grafana/loki/pull/1514) **shane-axiom**: fluent-plugin-grafana-loki: Add `fluentd_thread` label when `flush_thread_count` > 1
 
-#### FluentD
+#### Fluentd
 * [1500](https://github.com/grafana/loki/pull/1500) **cyriltovena**: Bump fluentd plugin to 1.2.6.
 * [1475](https://github.com/grafana/loki/pull/1475) **Horkyze**: fluentd-plugin: call gsub for strings only
 

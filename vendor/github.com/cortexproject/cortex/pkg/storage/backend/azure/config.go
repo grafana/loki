@@ -17,9 +17,14 @@ type Config struct {
 
 // RegisterFlags registers the flags for TSDB Azure storage
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.StorageAccountName, "experimental.tsdb.azure.account-name", "", "Azure storage account name")
-	f.Var(&cfg.StorageAccountKey, "experimental.tsdb.azure.account-key", "Azure storage account key")
-	f.StringVar(&cfg.ContainerName, "experimental.tsdb.azure.container-name", "", "Azure storage container name")
-	f.StringVar(&cfg.Endpoint, "experimental.tsdb.azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN")
-	f.IntVar(&cfg.MaxRetries, "experimental.tsdb.azure.max-retries", 20, "Number of retries for recoverable errors")
+	cfg.RegisterFlagsWithPrefix("experimental.tsdb.", f)
+}
+
+// RegisterFlagsWithPrefix registers the flags for TSDB Azure storage
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.StorageAccountName, prefix+"azure.account-name", "", "Azure storage account name")
+	f.Var(&cfg.StorageAccountKey, prefix+"azure.account-key", "Azure storage account key")
+	f.StringVar(&cfg.ContainerName, prefix+"azure.container-name", "", "Azure storage container name")
+	f.StringVar(&cfg.Endpoint, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN")
+	f.IntVar(&cfg.MaxRetries, prefix+"azure.max-retries", 20, "Number of retries for recoverable errors")
 }

@@ -8,22 +8,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
-
-// SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(limits Limits, merger queryrange.Merger) queryrange.Middleware {
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return &splitByInterval{
-			next:   next,
-			limits: limits,
-			merger: merger,
-		}
-	})
-}
 
 type lokiResult struct {
 	req queryrange.Request
@@ -35,10 +26,38 @@ type packedResp struct {
 	err  error
 }
 
+type SplitByMetrics struct {
+	splits prometheus.Histogram
+}
+
+func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
+	return &SplitByMetrics{
+		splits: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Name:      "query_frontend_partitions",
+			Help:      "Number of time-based partitions (sub-requests) per request",
+			Buckets:   prometheus.ExponentialBuckets(1, 4, 5), // 1 -> 1024
+		}),
+	}
+}
+
 type splitByInterval struct {
-	next   queryrange.Handler
-	limits Limits
-	merger queryrange.Merger
+	next    queryrange.Handler
+	limits  Limits
+	merger  queryrange.Merger
+	metrics *SplitByMetrics
+}
+
+// SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
+func SplitByIntervalMiddleware(limits Limits, merger queryrange.Merger, metrics *SplitByMetrics) queryrange.Middleware {
+	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+		return &splitByInterval{
+			next:    next,
+			limits:  limits,
+			merger:  merger,
+			metrics: metrics,
+		}
+	})
 }
 
 func (h *splitByInterval) Feed(ctx context.Context, input []*lokiResult) chan *lokiResult {
@@ -119,7 +138,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult) {
 	for data := range ch {
 
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
-		queryrange.LogToSpan(ctx, data.req)
+		data.req.LogToSpan(sp)
 
 		resp, err := h.next.Do(ctx, data.req)
 
@@ -134,7 +153,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult) {
 }
 
 func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
-	lokiRequest := r.(*LokiRequest)
+	//lokiRequest := r.(*LokiRequest)
 
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -147,7 +166,8 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 		return h.next.Do(ctx, r)
 	}
 
-	intervals := splitByTime(lokiRequest, interval)
+	intervals := splitByTime(r, interval)
+	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {
@@ -159,10 +179,20 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	}
 
-	if lokiRequest.Direction == logproto.BACKWARD {
-		for i, j := 0, len(intervals)-1; i < j; i, j = i+1, j-1 {
-			intervals[i], intervals[j] = intervals[j], intervals[i]
+	var limit int64
+	switch req := r.(type) {
+	case *LokiRequest:
+		limit = int64(req.Limit)
+		if req.Direction == logproto.BACKWARD {
+			for i, j := 0, len(intervals)-1; i < j; i, j = i+1, j-1 {
+				intervals[i], intervals[j] = intervals[j], intervals[i]
+			}
 		}
+	case *LokiSeriesRequest:
+		// Set this to 0 since this is not used in Series Request.
+		limit = 0
+	default:
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "unknown request type")
 	}
 
 	input := make([]*lokiResult, 0, len(intervals))
@@ -173,29 +203,49 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 		})
 	}
 
-	resps, err := h.Process(ctx, h.limits.MaxQueryParallelism(userid), int64(lokiRequest.Limit), input)
+	resps, err := h.Process(ctx, h.limits.MaxQueryParallelism(userid), limit, input)
 	if err != nil {
 		return nil, err
 	}
 	return h.merger.MergeResponse(resps...)
 }
 
-func splitByTime(r *LokiRequest, interval time.Duration) []queryrange.Request {
+func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Request {
 	var reqs []queryrange.Request
-	for start := r.StartTs; start.Before(r.EndTs); start = start.Add(interval) {
-		end := start.Add(interval)
-		if end.After(r.EndTs) {
-			end = r.EndTs
+
+	switch r := req.(type) {
+	case *LokiRequest:
+		for start := r.StartTs; start.Before(r.EndTs); start = start.Add(interval) {
+			end := start.Add(interval)
+			if end.After(r.EndTs) {
+				end = r.EndTs
+			}
+			reqs = append(reqs, &LokiRequest{
+				Query:     r.Query,
+				Limit:     r.Limit,
+				Step:      r.Step,
+				Direction: r.Direction,
+				Path:      r.Path,
+				StartTs:   start,
+				EndTs:     end,
+			})
 		}
-		reqs = append(reqs, &LokiRequest{
-			Query:     r.Query,
-			Limit:     r.Limit,
-			Step:      r.Step,
-			Direction: r.Direction,
-			Path:      r.Path,
-			StartTs:   start,
-			EndTs:     end,
-		})
+		return reqs
+	case *LokiSeriesRequest:
+		for start := r.StartTs; start.Before(r.EndTs); start = start.Add(interval) {
+			end := start.Add(interval)
+			if end.After(r.EndTs) {
+				end = r.EndTs
+			}
+			reqs = append(reqs, &LokiSeriesRequest{
+				Match:   r.Match,
+				Path:    r.Path,
+				StartTs: start,
+				EndTs:   end,
+			})
+		}
+		return reqs
+	default:
+		return nil
 	}
-	return reqs
 }

@@ -14,7 +14,6 @@ type syncerMetrics struct {
 	metaSyncFailures          prometheus.Counter
 	metaSyncDuration          *util.HistogramDataCollector // was prometheus.Histogram before
 	metaSyncConsistencyDelay  prometheus.Gauge
-	garbageCollectedBlocks    prometheus.Counter
 	garbageCollections        prometheus.Counter
 	garbageCollectionFailures prometheus.Counter
 	garbageCollectionDuration *util.HistogramDataCollector // was prometheus.Histogram before
@@ -32,57 +31,53 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 
 	m.metaSync = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_meta_syncs_total",
-		Help: "TSDB Syncer: Total blocks metadata synchronization attempts.",
+		Help: "Total blocks metadata synchronization attempts.",
 	})
 	m.metaSyncFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_meta_sync_failures_total",
-		Help: "TSDB Syncer: Total blocks metadata synchronization failures.",
+		Help: "Total blocks metadata synchronization failures.",
 	})
 	m.metaSyncDuration = util.NewHistogramDataCollector(prometheus.NewDesc(
 		"cortex_compactor_meta_sync_duration_seconds",
-		"TSDB Syncer: Duration of the blocks metadata synchronization in seconds.",
+		"Duration of the blocks metadata synchronization in seconds.",
 		nil, nil))
 	m.metaSyncConsistencyDelay = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_compactor_meta_sync_consistency_delay_seconds",
-		Help: "TSDB Syncer: Configured consistency delay in seconds.",
+		Help: "Configured consistency delay in seconds.",
 	})
 
-	m.garbageCollectedBlocks = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_compactor_garbage_collected_blocks_total",
-		Help: "TSDB Syncer: Total number of deleted blocks by compactor.",
-	})
 	m.garbageCollections = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collection_total",
-		Help: "TSDB Syncer: Total number of garbage collection operations.",
+		Help: "Total number of garbage collection operations.",
 	})
 	m.garbageCollectionFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collection_failures_total",
-		Help: "TSDB Syncer: Total number of failed garbage collection operations.",
+		Help: "Total number of failed garbage collection operations.",
 	})
 	m.garbageCollectionDuration = util.NewHistogramDataCollector(prometheus.NewDesc(
 		"cortex_compactor_garbage_collection_duration_seconds",
-		"TSDB Syncer: Time it took to perform garbage collection iteration.",
+		"Time it took to perform garbage collection iteration.",
 		nil, nil))
 
 	m.compactions = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compactions_total",
-		Help: "TSDB Syncer: Total number of group compaction attempts that resulted in a new block.",
+		Help: "Total number of group compaction attempts that resulted in a new block.",
 	})
 	m.compactionRunsStarted = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compaction_runs_started_total",
-		Help: "TSDB Syncer: Total number of group compaction attempts.",
+		Help: "Total number of group compaction attempts.",
 	})
 	m.compactionRunsCompleted = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compaction_runs_completed_total",
-		Help: "TSDB Syncer: Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.",
+		Help: "Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.",
 	})
 	m.compactionFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compactions_failures_total",
-		Help: "TSDB Syncer: Total number of failed group compactions.",
+		Help: "Total number of failed group compactions.",
 	})
 	m.verticalCompactions = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_vertical_compactions_total",
-		Help: "TSDB Syncer: Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
+		Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
 	})
 
 	if reg != nil {
@@ -91,7 +86,6 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 			m.metaSyncFailures,
 			m.metaSyncDuration,
 			m.metaSyncConsistencyDelay,
-			m.garbageCollectedBlocks,
 			m.garbageCollections,
 			m.garbageCollectionFailures,
 			m.garbageCollectionDuration,
@@ -127,7 +121,6 @@ func (m *syncerMetrics) gatherThanosSyncerMetrics(reg *prometheus.Registry) {
 	m.metaSyncDuration.Add(mfm.SumHistograms("blocks_meta_sync_duration_seconds"))
 	m.metaSyncConsistencyDelay.Set(mfm.MaxGauges("consistency_delay_seconds"))
 
-	m.garbageCollectedBlocks.Add(mfm.SumCounters("thanos_compact_garbage_collected_blocks_total"))
 	m.garbageCollections.Add(mfm.SumCounters("thanos_compact_garbage_collection_total"))
 	m.garbageCollectionFailures.Add(mfm.SumCounters("thanos_compact_garbage_collection_failures_total"))
 	m.garbageCollectionDuration.Add(mfm.SumHistograms("thanos_compact_garbage_collection_duration_seconds"))

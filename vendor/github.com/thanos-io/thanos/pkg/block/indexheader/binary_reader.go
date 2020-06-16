@@ -131,9 +131,9 @@ type chunkedIndexReader struct {
 
 func newChunkedIndexReader(ctx context.Context, bkt objstore.BucketReader, id ulid.ULID) (*chunkedIndexReader, int, error) {
 	indexFilepath := filepath.Join(id.String(), block.IndexFilename)
-	size, err := bkt.ObjectSize(ctx, indexFilepath)
+	attrs, err := bkt.Attributes(ctx, indexFilepath)
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "get object size of %s", indexFilepath)
+		return nil, 0, errors.Wrapf(err, "get object attributes of %s", indexFilepath)
 	}
 
 	rc, err := bkt.GetRange(ctx, indexFilepath, 0, index.HeaderLen)
@@ -164,7 +164,7 @@ func newChunkedIndexReader(ctx context.Context, bkt objstore.BucketReader, id ul
 	ir := &chunkedIndexReader{
 		ctx:  ctx,
 		path: indexFilepath,
-		size: size,
+		size: uint64(attrs.Size),
 		bkt:  bkt,
 	}
 
@@ -886,3 +886,17 @@ func (r BinaryReader) LabelNames() []string {
 }
 
 func (r *BinaryReader) Close() error { return r.c.Close() }
+
+type realByteSlice []byte
+
+func (b realByteSlice) Len() int {
+	return len(b)
+}
+
+func (b realByteSlice) Range(start, end int) []byte {
+	return b[start:end]
+}
+
+func (b realByteSlice) Sub(start, end int) index.ByteSlice {
+	return b[start:end]
+}

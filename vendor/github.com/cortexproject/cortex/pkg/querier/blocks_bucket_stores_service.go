@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"io"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -10,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -32,12 +32,7 @@ type BucketStoresService struct {
 }
 
 func NewBucketStoresService(cfg tsdb.Config, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, registerer prometheus.Registerer) (*BucketStoresService, error) {
-	var storesReg prometheus.Registerer
-	if registerer != nil {
-		storesReg = prometheus.WrapRegistererWithPrefix("cortex_querier_", registerer)
-	}
-
-	stores, err := storegateway.NewBucketStores(cfg, nil, bucketClient, logLevel, logger, storesReg)
+	stores, err := storegateway.NewBucketStores(cfg, nil, bucketClient, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +80,7 @@ func (s *BucketStoresService) syncStoresLoop(ctx context.Context) error {
 
 	err := runutil.Repeat(syncInterval, ctx.Done(), func() error {
 		level.Info(s.logger).Log("msg", "synchronizing TSDB blocks for all users")
-		if err := s.stores.SyncBlocks(ctx); err != nil && err != io.EOF {
+		if err := s.stores.SyncBlocks(ctx); err != nil {
 			level.Warn(s.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
 		} else {
 			level.Info(s.logger).Log("msg", "successfully synchronized TSDB blocks for all users")

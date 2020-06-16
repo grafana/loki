@@ -137,6 +137,7 @@ const (
 	epCleanTombstones = apiPrefix + "/admin/tsdb/clean_tombstones"
 	epConfig          = apiPrefix + "/status/config"
 	epFlags           = apiPrefix + "/status/flags"
+	epRuntimeinfo     = apiPrefix + "/status/runtimeinfo"
 )
 
 // AlertState models the state of an alert.
@@ -238,6 +239,8 @@ type API interface {
 	Query(ctx context.Context, query string, ts time.Time) (model.Value, Warnings, error)
 	// QueryRange performs a query for the given range.
 	QueryRange(ctx context.Context, query string, r Range) (model.Value, Warnings, error)
+	// Runtimeinfo returns the various runtime information properties about the Prometheus server.
+	Runtimeinfo(ctx context.Context) (RuntimeinfoResult, error)
 	// Series finds series by label matchers.
 	Series(ctx context.Context, matches []string, startTime time.Time, endTime time.Time) ([]model.LabelSet, Warnings, error)
 	// Snapshot creates a snapshot of all current data into snapshots/<datetime>-<rand>
@@ -276,6 +279,22 @@ type ConfigResult struct {
 
 // FlagsResult contains the result from querying the flag endpoint.
 type FlagsResult map[string]string
+
+// RuntimeinfoResult contains the result from querying the runtimeinfo endpoint.
+type RuntimeinfoResult struct {
+	StartTime           string `json:"startTime"`
+	CWD                 string `json:"CWD"`
+	ReloadConfigSuccess bool   `json:"reloadConfigSuccess"`
+	LastConfigTime      string `json:"lastConfigTime"`
+	ChunkCount          int    `json:"chunkCount"`
+	TimeSeriesCount     int    `json:"timeSeriesCount"`
+	CorruptionCount     int    `json:"corruptionCount"`
+	GoroutineCount      int    `json:"goroutineCount"`
+	GOMAXPROCS          int    `json:"GOMAXPROCS"`
+	GOGC                string `json:"GOGC"`
+	GODEBUG             string `json:"GODEBUG"`
+	StorageRetention    string `json:"storageRetention"`
+}
 
 // SnapshotResult contains the result from querying the snapshot endpoint.
 type SnapshotResult struct {
@@ -640,6 +659,23 @@ func (h *httpAPI) Flags(ctx context.Context) (FlagsResult, error) {
 	return res, json.Unmarshal(body, &res)
 }
 
+func (h *httpAPI) Runtimeinfo(ctx context.Context) (RuntimeinfoResult, error) {
+	u := h.client.URL(epRuntimeinfo, nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return RuntimeinfoResult{}, err
+	}
+
+	_, body, _, err := h.client.Do(ctx, req)
+	if err != nil {
+		return RuntimeinfoResult{}, err
+	}
+
+	var res RuntimeinfoResult
+	return res, json.Unmarshal(body, &res)
+}
+
 func (h *httpAPI) LabelNames(ctx context.Context) ([]string, Warnings, error) {
 	u := h.client.URL(epLabels, nil)
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
@@ -905,14 +941,14 @@ func (h *apiClientImpl) Do(ctx context.Context, req *http.Request) (*http.Respon
 		}
 	}
 
-	if apiError(code) != (result.Status == "error") {
+	if apiError(code) && result.Status == "success" {
 		err = &Error{
 			Type: ErrBadResponse,
 			Msg:  "inconsistent body for response code",
 		}
 	}
 
-	if apiError(code) && result.Status == "error" {
+	if result.Status == "error" {
 		err = &Error{
 			Type: result.ErrorType,
 			Msg:  result.Error,

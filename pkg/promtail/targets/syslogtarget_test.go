@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -183,6 +184,43 @@ func TestSyslogTarget_InvalidData(t *testing.T) {
 	buf := make([]byte, 1)
 	_, err = c.Read(buf)
 	require.EqualError(t, err, "EOF")
+}
+
+func TestSyslogTarget_NonUTF8Message(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+	client := &TestLabeledClient{log: logger}
+
+	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrape.SyslogTargetConfig{
+		ListenAddress: "127.0.0.1:0",
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, tgt.Stop())
+	}()
+
+	addr := tgt.ListenAddress().String()
+	c, err := net.Dial("tcp", addr)
+	require.NoError(t, err)
+
+	msg1 := "Some non utf8 \xF8\xF7\xE3\xE4 characters"
+	require.False(t, utf8.ValidString(msg1), "msg must no be valid utf8")
+	msg2 := "\xF8 other \xF7\xE3\xE4 characters \xE3"
+	require.False(t, utf8.ValidString(msg2), "msg must no be valid utf8")
+
+	err = writeMessagesToStream(c, []string{
+		"<165>1 - - - - - - " + msg1,
+		"<123>1 - - - - - - " + msg2,
+	}, true)
+	require.NoError(t, err)
+	require.NoError(t, c.Close())
+
+	require.Eventuallyf(t, func() bool {
+		return len(client.Messages()) == 2
+	}, time.Second, time.Millisecond, "Expected to receive 2 messages, got %d.", len(client.Messages()))
+
+	require.Equal(t, msg1, client.Messages()[0].Message)
+	require.Equal(t, msg2, client.Messages()[1].Message)
 }
 
 func TestSyslogTarget_IdleTimeout(t *testing.T) {

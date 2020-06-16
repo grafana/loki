@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -11,6 +12,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+)
+
+const (
+	// If a ruler is unable to heartbeat the ring, its better to quickly remove it and resume
+	// the evaluation of all rules since the worst case scenario is that some rulers will
+	// receive duplicate/out-of-order sample errors.
+	ringAutoForgetUnhealthyPeriods = 2
 )
 
 // RingConfig masks the ring lifecycler config which contains
@@ -60,34 +68,30 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the ruler
 // ring config.
-func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
-	// We have to make sure that the ring.LifecyclerConfig and ring.Config
-	// defaults are preserved
-	lc := ring.LifecyclerConfig{}
-	rc := ring.Config{}
+func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) {
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames)
+	if err != nil {
+		return ring.BasicLifecyclerConfig{}, err
+	}
 
-	flagext.DefaultValues(&lc)
+	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
+
+	return ring.BasicLifecyclerConfig{
+		ID:                  cfg.InstanceID,
+		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		HeartbeatPeriod:     cfg.HeartbeatPeriod,
+		TokensObservePeriod: 0,
+		NumTokens:           cfg.NumTokens,
+	}, nil
+}
+
+func (cfg *RingConfig) ToRingConfig() ring.Config {
+	rc := ring.Config{}
 	flagext.DefaultValues(&rc)
 
-	// Configure ring
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ReplicationFactor = 1
 
-	// Configure lifecycler
-	lc.RingConfig = rc
-	lc.ListenPort = cfg.ListenPort
-	lc.Addr = cfg.InstanceAddr
-	lc.Port = cfg.InstancePort
-	lc.ID = cfg.InstanceID
-	lc.InfNames = cfg.InstanceInterfaceNames
-	lc.SkipUnregister = cfg.SkipUnregister
-	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
-	lc.NumTokens = cfg.NumTokens
-	lc.ObservePeriod = 0
-	lc.JoinAfter = 0
-	lc.MinReadyDuration = 0
-	lc.FinalSleep = 0
-
-	return lc
+	return rc
 }

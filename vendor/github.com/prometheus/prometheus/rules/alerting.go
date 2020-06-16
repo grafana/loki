@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/template"
 	"github.com/prometheus/prometheus/util/strutil"
 )
@@ -112,7 +113,7 @@ type AlertingRule struct {
 	// The name of the alert.
 	name string
 	// The vector expression from which to generate alerts.
-	vector promql.Expr
+	vector parser.Expr
 	// The duration for which a labelset needs to persist in the expression
 	// output vector before an alert transitions from Pending to Firing state.
 	holdDuration time.Duration
@@ -144,7 +145,7 @@ type AlertingRule struct {
 
 // NewAlertingRule constructs a new AlertingRule.
 func NewAlertingRule(
-	name string, vec promql.Expr, hold time.Duration,
+	name string, vec parser.Expr, hold time.Duration,
 	labels, annotations, externalLabels labels.Labels,
 	restored bool, logger log.Logger,
 ) *AlertingRule {
@@ -201,12 +202,12 @@ func (r *AlertingRule) Health() RuleHealth {
 }
 
 // Query returns the query expression of the alerting rule.
-func (r *AlertingRule) Query() promql.Expr {
+func (r *AlertingRule) Query() parser.Expr {
 	return r.vector
 }
 
-// Duration returns the hold duration of the alerting rule.
-func (r *AlertingRule) Duration() time.Duration {
+// HoldDuration returns the hold duration of the alerting rule.
+func (r *AlertingRule) HoldDuration() time.Duration {
 	return r.holdDuration
 }
 
@@ -484,12 +485,12 @@ func (r *AlertingRule) sendAlerts(ctx context.Context, ts time.Time, resendDelay
 	r.ForEachActiveAlert(func(alert *Alert) {
 		if alert.needsSending(ts, resendDelay) {
 			alert.LastSentAt = ts
-			// Allow for a couple Eval or Alertmanager send failures
+			// Allow for two Eval or Alertmanager send failures.
 			delta := resendDelay
 			if interval > resendDelay {
 				delta = interval
 			}
-			alert.ValidUntil = ts.Add(3 * delta)
+			alert.ValidUntil = ts.Add(4 * delta)
 			anew := *alert
 			alerts = append(alerts, &anew)
 		}
@@ -546,9 +547,4 @@ func (r *AlertingRule) HTMLSnippet(pathPrefix string) html_template.HTML {
 		return html_template.HTML(fmt.Sprintf("error marshaling alerting rule: %q", html_template.HTMLEscapeString(err.Error())))
 	}
 	return html_template.HTML(byt)
-}
-
-// HoldDuration returns the holdDuration of the alerting rule.
-func (r *AlertingRule) HoldDuration() time.Duration {
-	return r.holdDuration
 }

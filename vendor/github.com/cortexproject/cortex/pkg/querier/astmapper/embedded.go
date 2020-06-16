@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 /*
@@ -56,7 +56,7 @@ func (c jsonCodec) Decode(encoded string) (queries []string, err error) {
 // VectorSquash reduces an AST into a single vector query which can be hijacked by a Queryable impl.
 // It always uses a VectorSelector as the substitution node.
 // This is important because logical/set binops can only be applied against vectors and not matrices.
-func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
+func VectorSquasher(nodes ...parser.Node) (parser.Expr, error) {
 
 	// concat OR legs
 	strs := make([]string, 0, len(nodes))
@@ -74,7 +74,7 @@ func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
 		return nil, err
 	}
 
-	return &promql.VectorSelector{
+	return &parser.VectorSelector{
 		Name:          EmbeddedQueriesMetricName,
 		LabelMatchers: []*labels.Matcher{embeddedQuery},
 	}, nil

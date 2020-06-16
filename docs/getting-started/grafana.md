@@ -14,7 +14,7 @@ recommended to take advantage of new LogQL functionality.
 5. The http URL field should be the address of your Loki server. For example,
    when running locally or with Docker using port mapping, the address is
    likely `http://localhost:3100`. When running with docker-compose or
-   Kubernetes, the address is likely `https://loki:3100`.
+   Kubernetes, the address is likely `http://loki:3100`.
 6. To see the logs, click <kbd>Explore</kbd> on the sidebar, select the Loki
    datasource in the top-left dropdown, and then choose a log stream using the
    <kbd>Log labels</kbd> button.

@@ -63,7 +63,7 @@ type Querier struct {
 	ring   ring.ReadRing
 	pool   *ring_client.Pool
 	store  storage.Store
-	engine logql.Engine
+	engine *logql.Engine
 	limits *validation.Overrides
 }
 
@@ -86,6 +86,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		store:  store,
 		limits: limits,
 	}
+
 	querier.engine = logql.NewEngine(cfg.Engine, &querier)
 	err := services.StartAndAwaitRunning(context.Background(), querier.pool)
 	if err != nil {
@@ -558,10 +559,10 @@ func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
 			maxCnt = r
 		}
 	}
-
-	if maxCnt >= uint32(q.limits.MaxConcurrentTailRequests(userID)) {
+	l := uint32(q.limits.MaxConcurrentTailRequests(userID))
+	if maxCnt >= l {
 		return httpgrpc.Errorf(http.StatusBadRequest,
-			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, 1)
+			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, l)
 	}
 
 	return nil

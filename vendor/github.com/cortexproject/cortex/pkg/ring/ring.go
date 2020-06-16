@@ -116,9 +116,14 @@ type Ring struct {
 }
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
-func New(cfg Config, name, key string) (*Ring, error) {
+func New(cfg Config, name, key string, reg prometheus.Registerer) (*Ring, error) {
 	codec := GetCodec()
-	store, err := kv.NewClient(cfg.KVStore, codec)
+	// Suffix all client names with "-ring" to denote this kv client is used by the ring
+	store, err := kv.NewClient(
+		cfg.KVStore,
+		codec,
+		kv.RegistererWithKVName(reg, name+"-ring"),
+	)
 	if err != nil {
 		return nil, err
 	}

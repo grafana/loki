@@ -3,7 +3,6 @@ package storegateway
 import (
 	"context"
 	"flag"
-	"io"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -12,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -81,7 +82,11 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, logLevel 
 	}
 
 	if gatewayCfg.ShardingEnabled {
-		ringStore, err = kv.NewClient(gatewayCfg.ShardingRing.KVStore, ring.GetCodec())
+		ringStore, err = kv.NewClient(
+			gatewayCfg.ShardingRing.KVStore,
+			ring.GetCodec(),
+			kv.RegistererWithKVName(reg, "store-gateway"),
+		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
 		}
@@ -142,12 +147,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.Config, bucketCli
 		filters = append(filters, NewShardingMetadataFilter(g.ring, lifecyclerCfg.Addr, logger))
 	}
 
-	var storesReg prometheus.Registerer
-	if reg != nil {
-		storesReg = prometheus.WrapRegistererWithPrefix("cortex_storegateway_", reg)
-	}
-
-	g.stores, err = NewBucketStores(storageCfg, filters, bucketClient, logLevel, logger, storesReg)
+	g.stores, err = NewBucketStores(storageCfg, filters, bucketClient, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket stores")
 	}
@@ -227,12 +227,14 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	var ringTickerChan <-chan time.Time
 	var ringLastState ring.ReplicationSet
 
-	syncTicker := time.NewTicker(g.storageCfg.BucketStore.SyncInterval)
+	// Apply a jitter to the sync frequency in order to increase the probability
+	// of hitting the shared cache (if any).
+	syncTicker := time.NewTicker(util.DurationWithJitter(g.storageCfg.BucketStore.SyncInterval, 0.2))
 	defer syncTicker.Stop()
 
 	if g.gatewayCfg.ShardingEnabled {
 		ringLastState, _ = g.ring.GetAll(ring.BlocksSync) // nolint:errcheck
-		ringTicker := time.NewTicker(g.gatewayCfg.ShardingRing.RingCheckPeriod)
+		ringTicker := time.NewTicker(util.DurationWithJitter(g.gatewayCfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
 	}
@@ -269,7 +271,7 @@ func (g *StoreGateway) syncStores(ctx context.Context, reason string) {
 	level.Info(g.logger).Log("msg", "synchronizing TSDB blocks for all users", "reason", reason)
 	g.bucketSync.WithLabelValues(reason).Inc()
 
-	if err := g.stores.SyncBlocks(ctx); err != nil && err != io.EOF {
+	if err := g.stores.SyncBlocks(ctx); err != nil {
 		level.Warn(g.logger).Log("msg", "failed to synchronize TSDB blocks", "reason", reason, "err", err)
 	} else {
 		level.Info(g.logger).Log("msg", "successfully synchronized TSDB blocks for all users", "reason", reason)
@@ -304,13 +306,9 @@ func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.
 }
 
 func createBucketClient(cfg cortex_tsdb.Config, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg, "cortex-bucket-stores", logger)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg, "store-gateway", logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket client")
-	}
-
-	if reg != nil {
-		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_storegateway_", reg))
 	}
 
 	return bucketClient, nil

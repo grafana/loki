@@ -25,7 +25,9 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [table_manager_config](#table_manager_config)
   * [provision_config](#provision_config)
     * [auto_scaling_config](#auto_scaling_config)
+* [tracing_config](#tracing_config)
 * [Runtime Configuration file](#runtime-configuration-file)
+
 
 ## Configuration File Reference
 
@@ -97,6 +99,9 @@ Supported contents and default values of `loki.yaml`:
 
 # Configuration for "runtime config" module, responsible for reloading runtime configuration file.
 [runtime_config: <runtime_config>]
+
+#Configuration for tracing
+[tracing: <tracing_config>]
 ```
 
 ## server_config
@@ -376,7 +381,7 @@ kvstore:
   # is "consul"
   consul:
     # The hostname and port of Consul.
-    [host: <string> | duration = "localhost:8500"]
+    [host: <string> | default = "localhost:8500"]
 
     # The ACL Token used to interact with Consul.
     [acl_token: <string>]
@@ -856,7 +861,7 @@ logs in Loki.
 [max_line_size: <string> | default = none ]
 
 # Maximum number of log entries that will be returned for a query. 0 to disable.
-[max_entries_limit: <int> | default = 5000 ]
+[max_entries_limit_per_query: <int> | default = 5000 ]
 
 # Maximum number of active streams per user, across the cluster. 0 to disable.
 # When the global limit is enabled, each ingester is configured with a dynamic
@@ -1042,6 +1047,15 @@ The `auto_scaling_config` block configures autoscaling for DynamoDB.
 
 # DynamoDB target ratio of consumed capacity to provisioned capacity.
 [target: <float> | default = 80]
+```
+
+## tracing_config
+
+The `tracing_config` block configures tracing for Jaeger. Currently limited to disable auto-configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+
+```yaml
+# Whether or not tracing should be enabled.
+[enabled: <boolean>: default = true]
 ```
 
 ## Runtime Configuration file

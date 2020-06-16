@@ -9,7 +9,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -26,8 +26,8 @@ const (
 )
 
 type QueryResponse struct {
-	ResultType promql.ValueType `json:"resultType"`
-	Result     promql.Value     `json:"result"`
+	ResultType parser.ValueType `json:"resultType"`
+	Result     parser.Value     `json:"result"`
 }
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
@@ -47,7 +47,17 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Interval, request.Direction, request.Limit)
+	params := logql.NewLiteralParams(
+		request.Query,
+		request.Start,
+		request.End,
+		request.Step,
+		request.Interval,
+		request.Direction,
+		request.Limit,
+		request.Shards,
+	)
+	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -77,7 +87,17 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := q.engine.NewInstantQuery(request.Query, request.Ts, request.Direction, request.Limit)
+	params := logql.NewLiteralParams(
+		request.Query,
+		request.Ts,
+		request.Ts,
+		0,
+		0,
+		request.Direction,
+		request.Limit,
+		nil,
+	)
+	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -124,7 +144,18 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Interval, request.Direction, request.Limit)
+	params := logql.NewLiteralParams(
+		request.Query,
+		request.Start,
+		request.End,
+		request.Step,
+		request.Interval,
+		request.Direction,
+		request.Limit,
+		request.Shards,
+	)
+	query := q.engine.Query(params)
+
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)

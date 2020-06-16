@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -42,47 +41,25 @@ import (
 
 const maxChunkAgeForTableManager = 12 * time.Hour
 
-type moduleName string
-
 // The various modules that make up Loki.
 const (
-	Ring          moduleName = "ring"
-	RuntimeConfig moduleName = "runtime-config"
-	Overrides     moduleName = "overrides"
-	Server        moduleName = "server"
-	Distributor   moduleName = "distributor"
-	Ingester      moduleName = "ingester"
-	Querier       moduleName = "querier"
-	QueryFrontend moduleName = "query-frontend"
-	Store         moduleName = "store"
-	TableManager  moduleName = "table-manager"
-	MemberlistKV  moduleName = "memberlist-kv"
-	All           moduleName = "all"
+	Ring          string = "ring"
+	RuntimeConfig string = "runtime-config"
+	Overrides     string = "overrides"
+	Server        string = "server"
+	Distributor   string = "distributor"
+	Ingester      string = "ingester"
+	Querier       string = "querier"
+	QueryFrontend string = "query-frontend"
+	Store         string = "store"
+	TableManager  string = "table-manager"
+	MemberlistKV  string = "memberlist-kv"
+	All           string = "all"
 )
 
-func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var val string
-	if err := unmarshal(&val); err != nil {
-		return err
-	}
-
-	return m.Set(val)
-}
-
-func (m moduleName) String() string {
-	return string(m)
-}
-
-func (m *moduleName) Set(s string) error {
-	l := moduleName(strings.ToLower(s))
-	if _, ok := modules[l]; !ok {
-		return fmt.Errorf("unrecognised module name: %s", s)
-	}
-	*m = l
-	return nil
-}
-
 func (t *Loki) initServer() (services.Service, error) {
+	// Loki handles signals on its own.
+	cortex.DisableSignalHandling(&t.cfg.Server)
 	serv, err := server.New(t.cfg.Server)
 	if err != nil {
 		return nil, err
@@ -109,7 +86,7 @@ func (t *Loki) initServer() (services.Service, error) {
 func (t *Loki) initRing() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
+	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -143,7 +120,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	var err error
-	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides)
+	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +188,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
 	}
 
-	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -254,7 +231,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, prometheus.DefaultRegisterer)
+	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +275,14 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
 		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
 	)
-	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides, prometheus.DefaultRegisterer)
+	tripperware, stopper, err := queryrange.NewTripperware(
+		t.cfg.QueryRange,
+		util.Logger,
+		t.overrides,
+		t.cfg.SchemaConfig,
+		t.cfg.Querier.QueryIngestersWithin,
+		prometheus.DefaultRegisterer,
+	)
 	if err != nil {
 		return
 	}
@@ -345,149 +329,6 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 		t.memberlistKV.Stop()
 		return nil
 	}), nil
-}
-
-// listDeps recursively gets a list of dependencies for a passed moduleName
-func listDeps(m moduleName) []moduleName {
-	deps := modules[m].deps
-	for _, d := range modules[m].deps {
-		deps = append(deps, listDeps(d)...)
-	}
-	return deps
-}
-
-// orderedDeps gets a list of all dependencies ordered so that items are always after any of their dependencies.
-func orderedDeps(m moduleName) []moduleName {
-	// get a unique list of dependencies and init a map to keep whether they have been added to our result
-	deps := uniqueDeps(listDeps(m))
-	added := map[moduleName]bool{}
-
-	result := make([]moduleName, 0, len(deps))
-
-	// keep looping through all modules until they have all been added to the result.
-	for len(result) < len(deps) {
-	OUTER:
-		for _, name := range deps {
-			if added[name] {
-				continue
-			}
-
-			for _, dep := range modules[name].deps {
-				// stop processing this module if one of its dependencies has
-				// not been added to the result yet.
-				if !added[dep] {
-					continue OUTER
-				}
-			}
-
-			// if all of the module's dependencies have been added to the result slice,
-			// then we can safely add this module to the result slice as well.
-			added[name] = true
-			result = append(result, name)
-		}
-	}
-
-	return result
-}
-
-// uniqueDeps returns the unique list of input dependencies, guaranteeing input order stability
-func uniqueDeps(deps []moduleName) []moduleName {
-	result := make([]moduleName, 0, len(deps))
-	uniq := map[moduleName]bool{}
-
-	for _, dep := range deps {
-		if !uniq[dep] {
-			result = append(result, dep)
-			uniq[dep] = true
-		}
-	}
-
-	return result
-}
-
-// find modules in the supplied list, that depend on mod
-func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
-	result := []moduleName(nil)
-
-	for _, n := range mods {
-		for _, d := range modules[n].deps {
-			if d == mod {
-				result = append(result, n)
-				break
-			}
-		}
-	}
-
-	return result
-}
-
-type module struct {
-	deps []moduleName
-
-	// service for this module (can return nil)
-	service func(t *Loki) (services.Service, error)
-
-	// service that will be wrapped into moduleServiceWrapper, to wait for dependencies to start / end
-	// (can return nil)
-	wrappedService func(t *Loki) (services.Service, error)
-}
-
-var modules = map[moduleName]module{
-	Server: {
-		service: (*Loki).initServer,
-	},
-
-	RuntimeConfig: {
-		wrappedService: (*Loki).initRuntimeConfig,
-	},
-
-	MemberlistKV: {
-		wrappedService: (*Loki).initMemberlistKV,
-	},
-
-	Ring: {
-		deps:           []moduleName{RuntimeConfig, Server, MemberlistKV},
-		wrappedService: (*Loki).initRing,
-	},
-
-	Overrides: {
-		deps:           []moduleName{RuntimeConfig},
-		wrappedService: (*Loki).initOverrides,
-	},
-
-	Distributor: {
-		deps:           []moduleName{Ring, Server, Overrides},
-		wrappedService: (*Loki).initDistributor,
-	},
-
-	Store: {
-		deps:           []moduleName{Overrides},
-		wrappedService: (*Loki).initStore,
-	},
-
-	Ingester: {
-		deps:           []moduleName{Store, Server, MemberlistKV},
-		wrappedService: (*Loki).initIngester,
-	},
-
-	Querier: {
-		deps:           []moduleName{Store, Ring, Server},
-		wrappedService: (*Loki).initQuerier,
-	},
-
-	QueryFrontend: {
-		deps:           []moduleName{Server, Overrides},
-		wrappedService: (*Loki).initQueryFrontend,
-	},
-
-	TableManager: {
-		deps:           []moduleName{Server},
-		wrappedService: (*Loki).initTableManager,
-	},
-
-	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
-	},
 }
 
 // activePeriodConfig type returns index type which would be applicable to logs that would be pushed starting now

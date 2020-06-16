@@ -3,6 +3,7 @@ package objectclient
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io/ioutil"
 	strings "strings"
 
@@ -16,8 +17,12 @@ import (
 
 // Object Rule Storage Schema
 // =======================
-// Object Name: "rules/<user_id>/<namespace>/<group_name>"
+// Object Name: "rules/<user_id>/<base64 URL Encoded: namespace>/<base64 URL Encoded: group_name>"
 // Storage Format: Encoded RuleGroupDesc
+//
+// Prometheus Rule Groups can include a large number of characters that are not valid object names
+// in common object storage systems. A URL Base64 encoding allows for generic consistent naming
+// across all backends
 
 const (
 	rulePrefix = "rules/"
@@ -152,7 +157,7 @@ func generateRuleObjectKey(id, namespace, name string) string {
 	if namespace == "" {
 		return prefix
 	}
-	return prefix + namespace + "/" + name
+	return prefix + base64.URLEncoding.EncodeToString([]byte(namespace)) + "/" + base64.URLEncoding.EncodeToString([]byte(name))
 }
 
 func decomposeRuleObjectKey(handle string) string {

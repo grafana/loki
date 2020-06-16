@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/stats"
@@ -522,6 +521,43 @@ func Test_DuplicateCount(t *testing.T) {
 			for it.Next() {
 			}
 			require.Equal(t, test.expectedDuplicates, stats.GetChunkData(ctx).TotalDuplicates)
+		})
+	}
+}
+
+func Test_timeRangedIterator_Next(t *testing.T) {
+
+	tests := []struct {
+		mint   time.Time
+		maxt   time.Time
+		expect []bool // array of expected values for next call in sequence
+	}{
+		{time.Unix(0, 0), time.Unix(0, 0), []bool{false}},
+		{time.Unix(0, 0), time.Unix(0, 1), []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 1), []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 2), []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 3), []bool{true, true, false}},
+		{time.Unix(0, 3), time.Unix(0, 3), []bool{true, false}},
+		{time.Unix(0, 4), time.Unix(0, 10), []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 10), []bool{true, true, true, false}},
+		{time.Unix(0, 0), time.Unix(0, 10), []bool{true, true, true, false}},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("mint:%d maxt:%d", tt.mint.UnixNano(), tt.maxt.UnixNano()), func(t *testing.T) {
+			i := NewTimeRangedIterator(
+				NewStreamIterator(
+					logproto.Stream{Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1)},
+						{Timestamp: time.Unix(0, 2)},
+						{Timestamp: time.Unix(0, 3)},
+					}}),
+				tt.mint,
+				tt.maxt,
+			)
+			for _, b := range tt.expect {
+				require.Equal(t, b, i.Next())
+			}
+			require.NoError(t, i.Close())
 		})
 	}
 }

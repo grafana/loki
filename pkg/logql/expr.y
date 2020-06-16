@@ -27,6 +27,7 @@ import (
   str                     string
   duration                time.Duration
   LiteralExpr             *literalExpr
+  BinOpModifier           BinOpOptions
 }
 
 %start root
@@ -47,15 +48,18 @@ import (
 %type <VectorOp>              vectorOp
 %type <BinOpExpr>             binOpExpr
 %type <LiteralExpr>           literalExpr
+%type <BinOpModifier>         binOpModifier
 
 %token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION
-%token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
+%token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
+                  BYTES_OVER_TIME BYTES_RATE BOOL
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
 %left <binOp> AND UNLESS
+%left <binOp> CMP_EQ NEQ LT LTE GT GTE
 %left <binOp> ADD SUB
 %left <binOp> MUL DIV MOD
 %right <binOp> POW
@@ -131,21 +135,29 @@ matcher:
     ;
 
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr
-// Comparison operators are currently avoided due to symbol collisions in our grammar: "!=" means not equal in prometheus,
-// but is part of our filter grammar.
-// reference: https://prometheus.io/docs/prometheus/latest/querying/operators/
 // Operator precedence only works if each of these is listed separately.
 binOpExpr:
-         expr OR expr          { $$ = mustNewBinOpExpr("or", $1, $3) }
-         | expr AND expr       { $$ = mustNewBinOpExpr("and", $1, $3) }
-         | expr UNLESS expr    { $$ = mustNewBinOpExpr("unless", $1, $3) }
-         | expr ADD expr       { $$ = mustNewBinOpExpr("+", $1, $3) }
-         | expr SUB expr       { $$ = mustNewBinOpExpr("-", $1, $3) }
-         | expr MUL expr       { $$ = mustNewBinOpExpr("*", $1, $3) }
-         | expr DIV expr       { $$ = mustNewBinOpExpr("/", $1, $3) }
-         | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
-         | expr POW expr       { $$ = mustNewBinOpExpr("^", $1, $3) }
+         expr OR binOpModifier expr          { $$ = mustNewBinOpExpr("or", $3, $1, $4) }
+         | expr AND binOpModifier expr       { $$ = mustNewBinOpExpr("and", $3, $1, $4) }
+         | expr UNLESS binOpModifier expr    { $$ = mustNewBinOpExpr("unless", $3, $1, $4) }
+         | expr ADD binOpModifier expr       { $$ = mustNewBinOpExpr("+", $3, $1, $4) }
+         | expr SUB binOpModifier expr       { $$ = mustNewBinOpExpr("-", $3, $1, $4) }
+         | expr MUL binOpModifier expr       { $$ = mustNewBinOpExpr("*", $3, $1, $4) }
+         | expr DIV binOpModifier expr       { $$ = mustNewBinOpExpr("/", $3, $1, $4) }
+         | expr MOD binOpModifier expr       { $$ = mustNewBinOpExpr("%", $3, $1, $4) }
+         | expr POW binOpModifier expr       { $$ = mustNewBinOpExpr("^", $3, $1, $4) }
+         | expr CMP_EQ binOpModifier expr    { $$ = mustNewBinOpExpr("==", $3, $1, $4) }
+         | expr NEQ binOpModifier expr       { $$ = mustNewBinOpExpr("!=", $3, $1, $4) }
+         | expr GT binOpModifier expr        { $$ = mustNewBinOpExpr(">", $3, $1, $4) }
+         | expr GTE binOpModifier expr       { $$ = mustNewBinOpExpr(">=", $3, $1, $4) }
+         | expr LT binOpModifier expr        { $$ = mustNewBinOpExpr("<", $3, $1, $4) }
+         | expr LTE binOpModifier expr       { $$ = mustNewBinOpExpr("<=", $3, $1, $4) }
          ;
+
+binOpModifier:
+           { $$ = BinOpOptions{} }
+           | BOOL { $$ = BinOpOptions{ ReturnBool: true } }
+           ;
 
 literalExpr:
            NUMBER         { $$ = mustNewLiteralExpr( $1, false ) }
@@ -166,8 +178,10 @@ vectorOp:
       ;
 
 rangeOp:
-      COUNT_OVER_TIME { $$ = OpTypeCountOverTime }
-    | RATE            { $$ = OpTypeRate }
+      COUNT_OVER_TIME { $$ = OpRangeTypeCount }
+    | RATE            { $$ = OpRangeTypeRate }
+    | BYTES_OVER_TIME { $$ = OpRangeTypeBytes }
+    | BYTES_RATE      { $$ = OpRangeTypeBytesRate }
     ;
 
 

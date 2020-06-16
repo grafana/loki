@@ -52,13 +52,13 @@ This may affect people in a couple ways:
 
 #### Loki Port
 
-If you are running Loki with a config that opens a port number above 1000 (which is the default, 3100 for HTTP and 9095 for GRPC) everything should work fine in regards to ports.
+If you are running Loki with a config that opens a port number above 1024 (which is the default, 3100 for HTTP and 9095 for GRPC) everything should work fine in regards to ports.
 
-If you are running Loki with a config that opens a port number less than 1000 Linux normally requires root permissions to do this, HOWEVER in the Docker container we run `setcap cap_net_bind_service=+ep /usr/bin/loki`
+If you are running Loki with a config that opens a port number less than 1024 Linux normally requires root permissions to do this, HOWEVER in the Docker container we run `setcap cap_net_bind_service=+ep /usr/bin/loki`
 
-This capability lets the loki process bind to a port less than 1000 when run as a non root user.
+This capability lets the loki process bind to a port less than 1024 when run as a non root user.
 
-Not every environment will allow this capability however, it's possible to restrict this capability in linux.  If this restriction is in place, you will be forced to run Loki with a config that has HTTP and GRPC ports above 1000.
+Not every environment will allow this capability however, it's possible to restrict this capability in linux.  If this restriction is in place, you will be forced to run Loki with a config that has HTTP and GRPC ports above 1024.
 
 #### Filesystem
 
@@ -105,6 +105,49 @@ Notice the change in the `target=/loki` for 1.5.0 to the new data directory loca
 The intermediate step of using an ubuntu image to change the ownership of the Loki files to the new user might not be necessary if you can easily access these files to run the `chown` command directly.  
 That is if you have access to `/var/lib/docker/volumes` or if you mounted to a different local filesystem directory, you can change the ownership directly without using a container. 
 
+
+### Loki Duration Configs
+
+If you get an error like:
+
+```nohighlight
+ ./loki-linux-amd64-1.5.0 -log.level=debug -config.file=/etc/loki/config.yml
+failed parsing config: /etc/loki/config.yml: not a valid duration string: "0"
+```
+
+This is because of some underlying changes that no longer allow durations without a unit.
+
+Unfortunately the yaml parser doesn't give a line number but it's likely to be one of these two:
+
+```yaml
+chunk_store_config:
+  max_look_back_period: 0s # DURATION VALUES MUST HAVE A UNIT EVEN IF THEY ARE ZERO
+
+table_manager:
+  retention_deletes_enabled: false
+  retention_period: 0s # DURATION VALUES MUST HAVE A UNIT EVEN IF THEY ARE ZERO
+```
+
+### Promtail Config Changes
+
+The underlying backoff library used in promtail had a config change which wasn't originally noted in the release notes:
+
+If you get this error:
+
+```nohighlight
+Unable to parse config: /etc/promtail/promtail.yaml: yaml: unmarshal errors:
+  line 3: field maxbackoff not found in type util.BackoffConfig
+  line 4: field maxretries not found in type util.BackoffConfig
+  line 5: field minbackoff not found in type util.BackoffConfig
+```
+
+The new values are:
+
+```yaml
+min_period:
+max_period:
+max_retries: 
+```
 
 ## 1.4.0
 

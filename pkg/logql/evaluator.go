@@ -28,8 +28,30 @@ type Params interface {
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
+	Interval() time.Duration
 	Limit() uint32
 	Direction() logproto.Direction
+	Shards() []string
+}
+
+func NewLiteralParams(
+	qs string,
+	start, end time.Time,
+	step, interval time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+) LiteralParams {
+	return LiteralParams{
+		qs:        qs,
+		start:     start,
+		end:       end,
+		step:      step,
+		interval:  interval,
+		direction: direction,
+		limit:     limit,
+		shards:    shards,
+	}
 }
 
 // LiteralParams impls Params
@@ -40,7 +62,10 @@ type LiteralParams struct {
 	interval   time.Duration
 	direction  logproto.Direction
 	limit      uint32
+	shards     []string
 }
+
+func (p LiteralParams) Copy() LiteralParams { return p }
 
 // String impls Params
 func (p LiteralParams) Query() string { return p.qs }
@@ -54,11 +79,17 @@ func (p LiteralParams) End() time.Time { return p.end }
 // Step impls Params
 func (p LiteralParams) Step() time.Duration { return p.step }
 
+// Interval impls Params
+func (p LiteralParams) Interval() time.Duration { return p.interval }
+
 // Limit impls Params
 func (p LiteralParams) Limit() uint32 { return p.limit }
 
 // Direction impls Params
 func (p LiteralParams) Direction() logproto.Direction { return p.direction }
+
+// Shards impls Params
+func (p LiteralParams) Shards() []string { return p.shards }
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
@@ -82,12 +113,21 @@ func EvaluatorUnsupportedType(expr Expr, ev Evaluator) error {
 	return errors.Errorf("unexpected expr type (%T) for Evaluator type (%T) ", expr, ev)
 }
 
-type defaultEvaluator struct {
+type DefaultEvaluator struct {
 	maxLookBackPeriod time.Duration
 	querier           Querier
 }
 
-func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
+// NewDefaultEvaluator constructs a DefaultEvaluator
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *DefaultEvaluator {
+	return &DefaultEvaluator{
+		querier:           querier,
+		maxLookBackPeriod: maxLookBackPeriod,
+	}
+
+}
+
+func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
 	params := SelectParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     q.Start(),
@@ -95,6 +135,7 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 			Limit:     q.Limit(),
 			Direction: q.Direction(),
 			Selector:  expr.String(),
+			Shards:    q.Shards(),
 		},
 	}
 
@@ -106,7 +147,7 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 
 }
 
-func (ev *defaultEvaluator) StepEvaluator(
+func (ev *DefaultEvaluator) StepEvaluator(
 	ctx context.Context,
 	nextEv Evaluator,
 	expr SampleExpr,
@@ -123,6 +164,7 @@ func (ev *defaultEvaluator) StepEvaluator(
 				Limit:     0,
 				Direction: logproto.FORWARD,
 				Selector:  expr.Selector().String(),
+				Shards:    q.Shards(),
 			},
 		})
 		if err != nil {
@@ -336,27 +378,41 @@ func rangeAggEvaluator(
 	expr *rangeAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	vecIter := newRangeVectorIterator(entryIter, expr.left.interval.Nanoseconds(), q.Step().Nanoseconds(),
-		q.Start().UnixNano(), q.End().UnixNano())
 
-	var fn RangeVectorAggregator
-	switch expr.operation {
-	case OpTypeRate:
-		fn = rate(expr.left.interval)
-	case OpTypeCountOverTime:
-		fn = count
+	agg, err := expr.aggregator()
+	if err != nil {
+		return nil, err
 	}
-
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
-		next := vecIter.Next()
-		if !next {
-			return false, 0, promql.Vector{}
-		}
-		ts, vec := vecIter.At(fn)
-		return true, ts, vec
-
-	}, vecIter.Close)
+	extractor, err := expr.extractor()
+	if err != nil {
+		return nil, err
+	}
+	return rangeVectorEvaluator{
+		iter: newRangeVectorIterator(
+			newSeriesIterator(entryIter, extractor),
+			expr.left.interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(),
+		),
+		agg: agg,
+	}, nil
 }
+
+type rangeVectorEvaluator struct {
+	agg  RangeVectorAggregator
+	iter RangeVectorIterator
+}
+
+func (r rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
+	next := r.iter.Next()
+	if !next {
+		return false, 0, promql.Vector{}
+	}
+	ts, vec := r.iter.At(r.agg)
+	return true, ts, vec
+}
+
+func (r rangeVectorEvaluator) Close() error { return r.iter.Close() }
 
 // binOpExpr explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
@@ -376,14 +432,26 @@ func binOpStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return literalStepEvaluator(expr.op, leftLit, rhs, false)
+		return literalStepEvaluator(
+			expr.op,
+			leftLit,
+			rhs,
+			false,
+			expr.opts.ReturnBool,
+		)
 	}
 	if rOk {
 		lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
-		return literalStepEvaluator(expr.op, rightLit, lhs, true)
+		return literalStepEvaluator(
+			expr.op,
+			rightLit,
+			lhs,
+			true,
+			expr.opts.ReturnBool,
+		)
 	}
 
 	// we have two non literal legs
@@ -429,7 +497,7 @@ func binOpStepEvaluator(
 		for _, pair := range pairs {
 
 			// merge
-			if merged := mergeBinOp(expr.op, pair[0], pair[1]); merged != nil {
+			if merged := mergeBinOp(expr.op, pair[0], pair[1], !expr.opts.ReturnBool, IsComparisonOperator(expr.op)); merged != nil {
 				results = append(results, *merged)
 			}
 		}
@@ -445,7 +513,7 @@ func binOpStepEvaluator(
 	})
 }
 
-func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
+func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -566,11 +634,164 @@ func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 			return &res
 		}
 
+	case OpTypeCmpEQ:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V == right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeNEQ:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V != right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeGT:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V > right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeGTE:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V >= right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeLT:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V < right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
+	case OpTypeLTE:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := &promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+
+			val := 0.
+			if left.Point.V <= right.Point.V {
+				val = 1.
+			} else if filter {
+				return nil
+			}
+			res.Point.V = val
+			return res
+		}
+
 	default:
 		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
 	}
 
-	return merger(left, right)
+	res := merger(left, right)
+	if !isVectorComparison {
+		return res
+	}
+
+	if filter {
+		// if a filter-enabled vector-wise comparison has returned non-nil,
+		// ensure we return the left hand side's value (2) instead of the
+		// comparison operator's result (1: the truthy answer)
+		if res != nil {
+			return left
+		}
+
+		// otherwise it's been filtered out
+		return res
+	}
+
+	// This only leaves vector comparisons which are not filters.
+	// If we could not find a match but we have a left node to compare, create an entry with a 0 value.
+	// This can occur when we don't find a matching label set in the vectors.
+	if res == nil && left != nil && right == nil {
+		res = &promql.Sample{
+			Metric: left.Metric,
+			Point:  left.Point,
+		}
+		res.Point.V = 0
+	}
+	return res
 
 }
 
@@ -581,6 +802,7 @@ func literalStepEvaluator(
 	lit *literalExpr,
 	eval StepEvaluator,
 	inverted bool,
+	returnBool bool,
 ) (StepEvaluator, error) {
 	return newStepEvaluator(
 		func() (bool, int64, promql.Vector) {
@@ -602,6 +824,8 @@ func literalStepEvaluator(
 					op,
 					left,
 					right,
+					!returnBool,
+					IsComparisonOperator(op),
 				); merged != nil {
 					results = append(results, *merged)
 				}

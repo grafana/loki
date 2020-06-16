@@ -10,10 +10,13 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/tracing"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
@@ -44,6 +47,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
+	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -68,10 +72,10 @@ import (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      ModuleName `yaml:"target"`
-	AuthEnabled bool       `yaml:"auth_enabled"`
-	PrintConfig bool       `yaml:"-"`
-	HTTPPrefix  string     `yaml:"http_prefix"`
+	Target      string `yaml:"target"`
+	AuthEnabled bool   `yaml:"auth_enabled"`
+	PrintConfig bool   `yaml:"-"`
+	HTTPPrefix  string `yaml:"http_prefix"`
 
 	API              api.Config               `yaml:"api"`
 	Server           server.Config            `yaml:"server"`
@@ -105,9 +109,8 @@ type Config struct {
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
-	c.Target = All
 	c.Server.ExcludeRequestInLog = true
-	f.Var(&c.Target, "target", "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
+	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
@@ -185,38 +188,39 @@ func (c *Config) Validate(log log.Logger) error {
 
 // Cortex is the root datastructure for Cortex.
 type Cortex struct {
-	target ModuleName
+	Cfg Config
 
 	// set during initialization
-	serviceMap map[ModuleName]services.Service
+	ServiceMap    map[string]services.Service
+	ModuleManager *modules.Manager
 
-	api              *api.API
-	server           *server.Server
-	ring             *ring.Ring
-	overrides        *validation.Overrides
-	distributor      *distributor.Distributor
-	ingester         *ingester.Ingester
-	flusher          *flusher.Flusher
-	store            chunk.Store
-	deletesStore     *purger.DeleteStore
-	frontend         *frontend.Frontend
-	tableManager     *chunk.TableManager
-	cache            cache.Cache
-	runtimeConfig    *runtimeconfig.Manager
-	dataPurger       *purger.DataPurger
-	tombstonesLoader *purger.TombstonesLoader
+	API              *api.API
+	Server           *server.Server
+	Ring             *ring.Ring
+	Overrides        *validation.Overrides
+	Distributor      *distributor.Distributor
+	Ingester         *ingester.Ingester
+	Flusher          *flusher.Flusher
+	Store            chunk.Store
+	DeletesStore     *purger.DeleteStore
+	Frontend         *frontend.Frontend
+	TableManager     *chunk.TableManager
+	Cache            cache.Cache
+	RuntimeConfig    *runtimeconfig.Manager
+	DataPurger       *purger.DataPurger
+	TombstonesLoader *purger.TombstonesLoader
 
-	ruler        *ruler.Ruler
-	configAPI    *configAPI.API
-	configDB     db.DB
-	alertmanager *alertmanager.MultitenantAlertmanager
-	compactor    *compactor.Compactor
-	storeGateway *storegateway.StoreGateway
-	memberlistKV *memberlist.KVInit
+	Ruler        *ruler.Ruler
+	ConfigAPI    *configAPI.API
+	ConfigDB     db.DB
+	Alertmanager *alertmanager.MultitenantAlertmanager
+	Compactor    *compactor.Compactor
+	StoreGateway *storegateway.StoreGateway
+	MemberlistKV *memberlist.KVInit
 
 	// Queryable that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
-	storeQueryable prom_storage.Queryable
+	StoreQueryable prom_storage.Queryable
 }
 
 // New makes a new Cortex.
@@ -229,28 +233,25 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex := &Cortex{
-		target: cfg.Target,
+		Cfg: cfg,
 	}
 
-	cortex.setupAuthMiddleware(&cfg)
+	cortex.setupAuthMiddleware()
+	cortex.setupThanosTracing()
 
-	serviceMap, err := cortex.initModuleServices(&cfg, cfg.Target)
-	if err != nil {
+	if err := cortex.setupModuleManager(); err != nil {
 		return nil, err
 	}
-
-	cortex.serviceMap = serviceMap
-	cortex.api.RegisterServiceMapHandler(http.HandlerFunc(cortex.servicesHandler))
 
 	return cortex, nil
 }
 
-func (t *Cortex) setupAuthMiddleware(cfg *Config) {
-	if cfg.AuthEnabled {
-		cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
+func (t *Cortex) setupAuthMiddleware() {
+	if t.Cfg.AuthEnabled {
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
 			middleware.ServerUserHeaderInterceptor,
-		}
-		cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+		)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
 			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 				switch info.FullMethod {
 				// Don't check auth header on TransferChunks, as we weren't originally
@@ -264,61 +265,43 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 				}
 			},
-		}
+		)
 	} else {
-		cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
 			fakeGRPCAuthUniaryMiddleware,
-		}
-		cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+		)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
 			fakeGRPCAuthStreamMiddleware,
-		}
-		cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
+		)
+		t.Cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
 	}
 }
 
-func (t *Cortex) initModuleServices(cfg *Config, target ModuleName) (map[ModuleName]services.Service, error) {
-	servicesMap := map[ModuleName]services.Service{}
+// setupThanosTracing appends a gRPC middleware used to inject our tracer into the custom
+// context used by Thanos, in order to get Thanos spans correctly attached to our traces.
+func (t *Cortex) setupThanosTracing() {
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
+		tracing.UnaryServerInterceptor(opentracing.GlobalTracer()),
+	)
 
-	// initialize all of our dependencies first
-	deps := orderedDeps(target)
-	deps = append(deps, target) // lastly, initialize the requested module
-
-	for ix, n := range deps {
-		mod := modules[n]
-
-		var serv services.Service
-
-		if mod.service != nil {
-			s, err := mod.service(t, cfg)
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
-			}
-			serv = s
-		} else if mod.wrappedService != nil {
-			s, err := mod.wrappedService(t, cfg)
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
-			}
-			if s != nil {
-				// We pass servicesMap, which isn't yet finished. By the time service starts,
-				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, findInverseDependencies(n, deps[ix+1:]))
-			}
-		}
-
-		if serv != nil {
-			servicesMap[n] = serv
-		}
-	}
-
-	return servicesMap, nil
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
+		tracing.StreamServerInterceptor(opentracing.GlobalTracer()),
+	)
 }
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
+	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
+	if err != nil {
+		return err
+	}
+
+	t.ServiceMap = serviceMap
+	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
+
 	// get all services, create service manager and tell it to start
 	servs := []services.Service(nil)
-	for _, s := range t.serviceMap {
+	for _, s := range t.ServiceMap {
 		servs = append(servs, s)
 	}
 
@@ -329,8 +312,8 @@ func (t *Cortex) Run() error {
 
 	// before starting servers, register /ready handler and gRPC health check service.
 	// It should reflect entire Cortex.
-	t.server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
-	grpc_health_v1.RegisterHealthServer(t.server.GRPC, healthcheck.New(sm))
+	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
+	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthcheck.New(sm))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }
@@ -340,7 +323,7 @@ func (t *Cortex) Run() error {
 		sm.StopAsync()
 
 		// let's find out which module failed
-		for m, s := range t.serviceMap {
+		for m, s := range t.ServiceMap {
 			if s == service {
 				if service.FailureCase() == util.ErrStopProcess {
 					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
@@ -356,30 +339,25 @@ func (t *Cortex) Run() error {
 
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
 
-	// Currently it's the Server that reacts on signal handler,
-	// so get Server service, and wait until it gets to Stopping state.
-	// It will also be stopped via service manager if any service fails (see attached service listener)
-	// Attach listener before starting services, or we may miss the notification.
-	serverStopping := make(chan struct{})
-	t.serviceMap[Server].AddListener(services.NewListener(nil, nil, func(from services.State) {
-		close(serverStopping)
-	}, nil, nil))
+	// Setup signal handler. If signal arrives, we stop the manager, which stops all the services.
+	handler := signals.NewHandler(t.Server.Log)
+	go func() {
+		handler.Loop()
+		sm.StopAsync()
+	}()
 
 	// Start all services. This can really only fail if some service is already
 	// in other state than New, which should not be the case.
 	err = sm.StartAsync(context.Background())
 	if err == nil {
-		// no error starting the services, now let's just wait until Server module
-		// transitions to Stopping (after SIGTERM or when some service fails),
-		// and then initiate shutdown
-		<-serverStopping
+		// Wait until service manager stops. It can stop in two ways:
+		// 1) Signal is received and manager is stopped.
+		// 2) Any service fails.
+		err = sm.AwaitStopped(context.Background())
 	}
 
-	// Stop all the services, and wait until they are all done.
-	// We don't care about this error, as it cannot really fail.
-	_ = services.StopManagerAndAwaitStopped(context.Background(), sm)
-
-	// if any service failed, report that as an error to caller
+	// If there is no error yet (= service manager started and then stopped without problems),
+	// but any service failed, report that failure as an error to caller.
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
 			for _, f := range failed {
@@ -411,8 +389,8 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 
 		// Ingester has a special check that makes sure that it was able to register into the ring,
 		// and that all other ring entries are OK too.
-		if t.ingester != nil {
-			if err := t.ingester.CheckReady(r.Context()); err != nil {
+		if t.Ingester != nil {
+			if err := t.Ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			}
@@ -420,66 +398,4 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 
 		http.Error(w, "ready", http.StatusOK)
 	}
-}
-
-// listDeps recursively gets a list of dependencies for a passed moduleName
-func listDeps(m ModuleName) []ModuleName {
-	deps := modules[m].deps
-	for _, d := range modules[m].deps {
-		deps = append(deps, listDeps(d)...)
-	}
-	return deps
-}
-
-// orderedDeps gets a list of all dependencies ordered so that items are always after any of their dependencies.
-func orderedDeps(m ModuleName) []ModuleName {
-	deps := listDeps(m)
-
-	// get a unique list of moduleNames, with a flag for whether they have been added to our result
-	uniq := map[ModuleName]bool{}
-	for _, dep := range deps {
-		uniq[dep] = false
-	}
-
-	result := make([]ModuleName, 0, len(uniq))
-
-	// keep looping through all modules until they have all been added to the result.
-
-	for len(result) < len(uniq) {
-	OUTER:
-		for name, added := range uniq {
-			if added {
-				continue
-			}
-			for _, dep := range modules[name].deps {
-				// stop processing this module if one of its dependencies has
-				// not been added to the result yet.
-				if !uniq[dep] {
-					continue OUTER
-				}
-			}
-
-			// if all of the module's dependencies have been added to the result slice,
-			// then we can safely add this module to the result slice as well.
-			uniq[name] = true
-			result = append(result, name)
-		}
-	}
-	return result
-}
-
-// find modules in the supplied list, that depend on mod
-func findInverseDependencies(mod ModuleName, mods []ModuleName) []ModuleName {
-	result := []ModuleName(nil)
-
-	for _, n := range mods {
-		for _, d := range modules[n].deps {
-			if d == mod {
-				result = append(result, n)
-				break
-			}
-		}
-	}
-
-	return result
 }

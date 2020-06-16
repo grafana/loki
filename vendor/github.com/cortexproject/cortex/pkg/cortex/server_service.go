@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/server"
@@ -14,6 +15,7 @@ import (
 // servicesToWaitFor is called when server is stopping, and should return all
 // services that need to terminate before server actually stops.
 // N.B.: this function is NOT Cortex specific, please let's keep it that way.
+// Passed server should not react on signals. Early return from Run function is considered to be an error.
 func NewServerService(serv *server.Server, servicesToWaitFor func() []services.Service) services.Service {
 	serverDone := make(chan error, 1)
 
@@ -28,9 +30,9 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 			return nil
 		case err := <-serverDone:
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "server failed", "err", err)
+				return err
 			}
-			return err
+			return fmt.Errorf("server stopped unexpectedly")
 		}
 	}
 
@@ -50,4 +52,18 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 	}
 
 	return services.NewBasicService(nil, runFn, stoppingFn)
+}
+
+func DisableSignalHandling(config *server.Config) {
+	config.SignalHandler = make(ignoreSignalHandler)
+}
+
+type ignoreSignalHandler chan struct{}
+
+func (dh ignoreSignalHandler) Loop() {
+	<-dh
+}
+
+func (dh ignoreSignalHandler) Stop() {
+	close(dh)
 }

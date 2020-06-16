@@ -5,6 +5,7 @@ package cacheutil
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/model"
-	"github.com/thanos-io/thanos/pkg/tracing"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -181,12 +181,14 @@ func NewMemcachedClientWithConfig(logger log.Logger, name string, config Memcach
 	client.Timeout = config.Timeout
 	client.MaxIdleConns = config.MaxIdleConnections
 
-	return newMemcachedClient(logger, name, client, selector, config, reg)
+	if reg != nil {
+		reg = prometheus.WrapRegistererWith(prometheus.Labels{"name": name}, reg)
+	}
+	return newMemcachedClient(logger, client, selector, config, reg)
 }
 
 func newMemcachedClient(
 	logger log.Logger,
-	name string,
 	client memcachedClientBackend,
 	selector *MemcachedJumpHashSelector,
 	config MemcachedClientConfig,
@@ -195,7 +197,7 @@ func newMemcachedClient(
 	dnsProvider := dns.NewProvider(
 		logger,
 		extprom.WrapRegistererWithPrefix("thanos_memcached_", reg),
-		dns.ResolverType(dns.GolangResolverType),
+		dns.GolangResolverType,
 	)
 
 	c := &memcachedClient{
@@ -213,34 +215,30 @@ func newMemcachedClient(
 	}
 
 	c.operations = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name:        "thanos_memcached_operations_total",
-		Help:        "Total number of operations against memcached.",
-		ConstLabels: prometheus.Labels{"name": name},
+		Name: "thanos_memcached_operations_total",
+		Help: "Total number of operations against memcached.",
 	}, []string{"operation"})
 	c.operations.WithLabelValues(opGetMulti)
 	c.operations.WithLabelValues(opSet)
 
 	c.failures = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name:        "thanos_memcached_operation_failures_total",
-		Help:        "Total number of operations against memcached that failed.",
-		ConstLabels: prometheus.Labels{"name": name},
+		Name: "thanos_memcached_operation_failures_total",
+		Help: "Total number of operations against memcached that failed.",
 	}, []string{"operation"})
 	c.failures.WithLabelValues(opGetMulti)
 	c.failures.WithLabelValues(opSet)
 
 	c.skipped = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name:        "thanos_memcached_operation_skipped_total",
-		Help:        "Total number of operations against memcached that have been skipped.",
-		ConstLabels: prometheus.Labels{"name": name},
+		Name: "thanos_memcached_operation_skipped_total",
+		Help: "Total number of operations against memcached that have been skipped.",
 	}, []string{"operation", "reason"})
 	c.skipped.WithLabelValues(opGetMulti, reasonMaxItemSize)
 	c.skipped.WithLabelValues(opSet, reasonMaxItemSize)
 
 	c.duration = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:        "thanos_memcached_operation_duration_seconds",
-		Help:        "Duration of operations against memcached.",
-		ConstLabels: prometheus.Labels{"name": name},
-		Buckets:     []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1},
+		Name:    "thanos_memcached_operation_duration_seconds",
+		Help:    "Duration of operations against memcached.",
+		Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 3, 6, 10},
 	}, []string{"operation"})
 	c.duration.WithLabelValues(opGetMulti)
 	c.duration.WithLabelValues(opSet)
@@ -272,7 +270,7 @@ func (c *memcachedClient) Stop() {
 	c.workers.Wait()
 }
 
-func (c *memcachedClient) SetAsync(ctx context.Context, key string, value []byte, ttl time.Duration) (err error) {
+func (c *memcachedClient) SetAsync(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	// Skip hitting memcached at all if the item is bigger than the max allowed size.
 	if c.config.MaxItemSize > 0 && uint64(len(value)) > uint64(c.config.MaxItemSize) {
 		c.skipped.WithLabelValues(opSet, reasonMaxItemSize).Inc()
@@ -283,12 +281,10 @@ func (c *memcachedClient) SetAsync(ctx context.Context, key string, value []byte
 		start := time.Now()
 		c.operations.WithLabelValues(opSet).Inc()
 
-		tracing.DoInSpan(ctx, "memcached_set", func(ctx context.Context) {
-			err = c.client.Set(&memcache.Item{
-				Key:        key,
-				Value:      value,
-				Expiration: int32(time.Now().Add(ttl).Unix()),
-			})
+		err := c.client.Set(&memcache.Item{
+			Key:        key,
+			Value:      value,
+			Expiration: int32(time.Now().Add(ttl).Unix()),
 		})
 		if err != nil {
 			c.failures.WithLabelValues(opSet).Inc()
@@ -392,11 +388,7 @@ func (c *memcachedClient) getMultiSingle(ctx context.Context, keys []string) (it
 	// Wait until we get a free slot from the gate, if the max
 	// concurrency should be enforced.
 	if c.config.MaxGetMultiConcurrency > 0 {
-		tracing.DoInSpan(ctx, "memcached_getmulti_gate_ismyturn", func(ctx context.Context) {
-			// TODO(bwplotka): Consider putting span directly in gate.
-			err = c.getMultiGate.IsMyTurn(ctx)
-		})
-		if err != nil {
+		if err := c.getMultiGate.IsMyTurn(ctx); err != nil {
 			return nil, errors.Wrapf(err, "failed to wait for turn")
 		}
 		defer c.getMultiGate.Done()
@@ -404,9 +396,7 @@ func (c *memcachedClient) getMultiSingle(ctx context.Context, keys []string) (it
 
 	start := time.Now()
 	c.operations.WithLabelValues(opGetMulti).Inc()
-	tracing.DoInSpan(ctx, "memcached_getmulti", func(ctx context.Context) {
-		items, err = c.client.GetMulti(keys)
-	})
+	items, err = c.client.GetMulti(keys)
 	if err != nil {
 		c.failures.WithLabelValues(opGetMulti).Inc()
 	} else {
@@ -462,8 +452,10 @@ func (c *memcachedClient) resolveAddrs() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	c.dnsProvider.Resolve(ctx, c.config.Addresses)
-
+	// If some of the dns resolution fails, log the error.
+	if err := c.dnsProvider.Resolve(ctx, c.config.Addresses); err != nil {
+		level.Error(c.logger).Log("msg", "failed to resolve addresses for storeAPIs", "addresses", strings.Join(c.config.Addresses, ","), "err", err)
+	}
 	// Fail in case no server address is resolved.
 	servers := c.dnsProvider.Addresses()
 	if len(servers) == 0 {

@@ -6,8 +6,6 @@ package gocql
 
 import (
 	"context"
-	crand "crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -17,6 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/hailocab/go-hostpool"
 )
 
@@ -238,6 +238,7 @@ func (e *ExponentialBackoffRetryPolicy) GetRetryType(err error) RetryType {
 // operation is retried with the next provided consistency level.
 
 type DowngradingConsistencyRetryPolicy struct {
+	logger                 log.Logger
 	ConsistencyLevelsToTry []Consistency
 }
 
@@ -248,10 +249,8 @@ func (d *DowngradingConsistencyRetryPolicy) Attempt(q RetryableQuery) bool {
 		return false
 	} else if currentAttempt > 0 {
 		q.SetConsistency(d.ConsistencyLevelsToTry[currentAttempt-1])
-		if gocqlDebug {
-			Logger.Printf("%T: set consistency to %q\n",
-				d,
-				d.ConsistencyLevelsToTry[currentAttempt-1])
+		if d.logger != nil {
+			level.Info(d.logger).Log("msg", "DowngradingConsistencyRetryPolicy set consistency", "consistency", d.ConsistencyLevelsToTry[currentAttempt-1])
 		}
 	}
 	return true
@@ -335,7 +334,8 @@ func RoundRobinHostPolicy() HostSelectionPolicy {
 }
 
 type roundRobinHostPolicy struct {
-	hosts cowHostList
+	hosts           cowHostList
+	lastUsedHostIdx uint64
 }
 
 func (r *roundRobinHostPolicy) IsLocal(*HostInfo) bool              { return true }
@@ -344,16 +344,8 @@ func (r *roundRobinHostPolicy) SetPartitioner(partitioner string)   {}
 func (r *roundRobinHostPolicy) Init(*Session)                       {}
 
 func (r *roundRobinHostPolicy) Pick(qry ExecutableQuery) NextHost {
-	src := r.hosts.get()
-	hosts := make([]*HostInfo, len(src))
-	copy(hosts, src)
-
-	rand := rand.New(randSource())
-	rand.Shuffle(len(hosts), func(i, j int) {
-		hosts[i], hosts[j] = hosts[j], hosts[i]
-	})
-
-	return roundRobbin(hosts)
+	nextStartOffset := atomic.AddUint64(&r.lastUsedHostIdx, 1)
+	return roundRobbin(int(nextStartOffset), r.hosts.get())
 }
 
 func (r *roundRobinHostPolicy) AddHost(host *HostInfo) {
@@ -559,21 +551,21 @@ func (t *tokenAwareHostPolicy) getMetadataForUpdate() *clusterMeta {
 
 // resetTokenRing creates a new tokenRing.
 // It must be called with t.mu locked.
-func (m *clusterMeta) resetTokenRing(partitioner string, hosts []*HostInfo) {
+func (m *clusterMeta) resetTokenRing(partitioner string, hosts []*HostInfo) error {
 	if partitioner == "" {
 		// partitioner not yet set
-		return
+		return nil
 	}
 
 	// create a new token ring
 	tokenRing, err := newTokenRing(partitioner, hosts)
 	if err != nil {
-		Logger.Printf("Unable to update the token ring due to error: %s", err)
-		return
+		return err
 	}
 
 	// replace the token ring
 	m.tokenRing = tokenRing
+	return nil
 }
 
 func (t *tokenAwareHostPolicy) Pick(qry ExecutableQuery) NextHost {
@@ -600,10 +592,11 @@ func (t *tokenAwareHostPolicy) Pick(qry ExecutableQuery) NextHost {
 	if ht == nil {
 		host, _ := meta.tokenRing.GetHostForToken(token)
 		replicas = []*HostInfo{host}
-	} else if t.shuffleReplicas {
-		replicas = shuffleHosts(replicas)
 	} else {
 		replicas = ht.hosts
+		if t.shuffleReplicas {
+			replicas = shuffleHosts(replicas)
+		}
 	}
 
 	var (
@@ -801,9 +794,10 @@ func (host selectedHostPoolHost) Mark(err error) {
 }
 
 type dcAwareRR struct {
-	local       string
-	localHosts  cowHostList
-	remoteHosts cowHostList
+	local           string
+	localHosts      cowHostList
+	remoteHosts     cowHostList
+	lastUsedHostIdx uint64
 }
 
 // DCAwareRoundRobinPolicy is a host selection policies which will prioritize and
@@ -840,54 +834,51 @@ func (d *dcAwareRR) RemoveHost(host *HostInfo) {
 func (d *dcAwareRR) HostUp(host *HostInfo)   { d.AddHost(host) }
 func (d *dcAwareRR) HostDown(host *HostInfo) { d.RemoveHost(host) }
 
-var randSeed int64
+// This function is supposed to be called in a fashion
+// roundRobbin(offset, hostsPriority1, hostsPriority2, hostsPriority3 ... )
+//
+// E.g. for DC-naive strategy:
+// roundRobbin(offset, allHosts)
+//
+// For tiered and DC-aware strategy:
+// roundRobbin(offset, localHosts, remoteHosts)
+func roundRobbin(shift int, hosts ...[]*HostInfo) NextHost {
+	currentLayer := 0
+	currentlyObserved := 0
 
-func init() {
-	p := make([]byte, 8)
-	if _, err := crand.Read(p); err != nil {
-		panic(err)
-	}
-	randSeed = int64(binary.BigEndian.Uint64(p))
-}
-
-func randSource() rand.Source {
-	return rand.NewSource(atomic.AddInt64(&randSeed, 1))
-}
-
-func roundRobbin(hosts []*HostInfo) NextHost {
-	var i int
 	return func() SelectedHost {
-		for i < len(hosts) {
-			h := hosts[i]
-			i++
 
-			if h.IsUp() {
-				return (*selectedHost)(h)
+		// iterate over layers
+		for {
+			if currentLayer == len(hosts) {
+				return nil
+			}
+
+			currentLayerSize := len(hosts[currentLayer])
+
+			// iterate over hosts within a layer
+			for {
+				currentlyObserved++
+				if currentlyObserved > currentLayerSize {
+					currentLayer++
+					currentlyObserved = 0
+					break
+				}
+
+				h := hosts[currentLayer][(shift+currentlyObserved)%currentLayerSize]
+
+				if h.IsUp() {
+					return (*selectedHost)(h)
+				}
+
 			}
 		}
-
-		return nil
 	}
 }
 
 func (d *dcAwareRR) Pick(q ExecutableQuery) NextHost {
-	local := d.localHosts.get()
-	remote := d.remoteHosts.get()
-
-	hosts := make([]*HostInfo, len(local)+len(remote))
-	n := copy(hosts, local)
-	copy(hosts[n:], remote)
-
-	// TODO: use random chose-2 but that will require plumbing information
-	// about connection/host load to here
-	r := rand.New(randSource())
-	for _, l := range [][]*HostInfo{hosts[:len(local)], hosts[len(local):]} {
-		r.Shuffle(len(l), func(i, j int) {
-			l[i], l[j] = l[j], l[i]
-		})
-	}
-
-	return roundRobbin(hosts)
+	nextStartOffset := atomic.AddUint64(&d.lastUsedHostIdx, 1)
+	return roundRobbin(int(nextStartOffset), d.localHosts.get(), d.remoteHosts.get())
 }
 
 // ConvictionPolicy interface is used by gocql to determine if a host should be
@@ -942,10 +933,15 @@ func (c *ConstantReconnectionPolicy) GetMaxRetries() int {
 type ExponentialReconnectionPolicy struct {
 	MaxRetries      int
 	InitialInterval time.Duration
+	MaxInterval     time.Duration
 }
 
 func (e *ExponentialReconnectionPolicy) GetInterval(currentRetry int) time.Duration {
-	return getExponentialTime(e.InitialInterval, math.MaxInt16*time.Second, currentRetry)
+	max := e.MaxInterval
+	if max < e.InitialInterval {
+		max = math.MaxInt16 * time.Second
+	}
+	return getExponentialTime(e.InitialInterval, max, currentRetry)
 }
 
 func (e *ExponentialReconnectionPolicy) GetMaxRetries() int {

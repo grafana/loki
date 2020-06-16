@@ -244,6 +244,7 @@ type RangeQuery struct {
 	Query     string
 	Direction logproto.Direction
 	Limit     uint32
+	Shards    []string
 }
 
 // ParseRangeQuery parses a RangeQuery request from an http request.
@@ -279,6 +280,8 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	if result.Step <= 0 {
 		return nil, errNegativeStep
 	}
+
+	result.Shards = shards(r)
 
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.

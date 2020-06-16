@@ -35,7 +35,7 @@ func NewShardingMetadataFilter(r *ring.Ring, instanceAddr string, logger log.Log
 }
 
 // Filter filters out blocks not included within the current shard.
-func (f *ShardingMetadataFilter) Filter(_ context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec, _ bool) error {
+func (f *ShardingMetadataFilter) Filter(_ context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
 	// Buffer internally used by the ring (give extra room for a JOINING + LEAVING instance).
 	buf := make([]ring.IngesterDesc, 0, f.r.ReplicationFactor()+2)
 

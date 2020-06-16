@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
@@ -37,7 +37,7 @@ func ChunksHandler(queryable storage.Queryable) http.Handler {
 			return
 		}
 
-		matchers, err := promql.ParseMetricSelector(r.FormValue("matcher"))
+		matchers, err := parser.ParseMetricSelector(r.FormValue("matcher"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

@@ -19,17 +19,20 @@ import (
 	"unicode"
 
 	. "honnef.co/go/tools/arg"
+	"honnef.co/go/tools/code"
 	"honnef.co/go/tools/deprecated"
+	"honnef.co/go/tools/edit"
 	"honnef.co/go/tools/facts"
 	"honnef.co/go/tools/functions"
-	"honnef.co/go/tools/internal/passes/buildssa"
+	"honnef.co/go/tools/internal/passes/buildir"
 	"honnef.co/go/tools/internal/sharedcheck"
+	"honnef.co/go/tools/ir"
+	"honnef.co/go/tools/ir/irutil"
 	"honnef.co/go/tools/lint"
 	. "honnef.co/go/tools/lint/lintdsl"
+	"honnef.co/go/tools/pattern"
 	"honnef.co/go/tools/printf"
-	"honnef.co/go/tools/ssa"
-	"honnef.co/go/tools/ssautil"
-	"honnef.co/go/tools/staticcheck/vrp"
+	"honnef.co/go/tools/report"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -37,6 +40,27 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/types/typeutil"
 )
+
+func checkSortSlice(call *Call) {
+	c := call.Instr.Common().StaticCallee()
+	arg := call.Args[0]
+
+	T := arg.Value.Value.Type().Underlying()
+	switch T.(type) {
+	case *types.Interface:
+		// we don't know.
+		// TODO(dh): if the value is a phi node we can look at its edges
+		if k, ok := arg.Value.Value.(*ir.Const); ok && k.Value == nil {
+			// literal nil, e.g. sort.Sort(nil, ...)
+			arg.Invalid(fmt.Sprintf("cannot call %s on nil literal", c))
+		}
+	case *types.Slice:
+		// this is fine
+	default:
+		// this is not fine
+		arg.Invalid(fmt.Sprintf("%s must only be called on slices, was called on %s", c, T))
+	}
+}
 
 func validRegexp(call *Call) {
 	arg := call.Args[0]
@@ -76,7 +100,7 @@ func unmarshalPointer(name string, arg int) CallCheck {
 
 func pointlessIntMath(call *Call) {
 	if ConvertedFromInt(call.Args[0].Value) {
-		call.Invalid(fmt.Sprintf("calling %s on a converted integer is pointless", CallName(call.Instr.Common())))
+		call.Invalid(fmt.Sprintf("calling %s on a converted integer is pointless", code.CallName(call.Instr.Common())))
 	}
 }
 
@@ -130,7 +154,7 @@ var (
 		"(*sync.Pool).Put": func(call *Call) {
 			arg := call.Args[Arg("(*sync.Pool).Put.x")]
 			typ := arg.Value.Value.Type()
-			if !IsPointerLike(typ) {
+			if !code.IsPointerLike(typ) {
 				arg.Invalid("argument should be pointer-like to avoid allocations")
 			}
 		},
@@ -251,31 +275,42 @@ var (
 
 	// TODO(dh): detect printf wrappers
 	checkPrintfRules = map[string]CallCheck{
-		"fmt.Errorf":  func(call *Call) { checkPrintfCall(call, 0, 1) },
-		"fmt.Printf":  func(call *Call) { checkPrintfCall(call, 0, 1) },
-		"fmt.Sprintf": func(call *Call) { checkPrintfCall(call, 0, 1) },
-		"fmt.Fprintf": func(call *Call) { checkPrintfCall(call, 1, 2) },
+		"fmt.Errorf":                  func(call *Call) { checkPrintfCall(call, 0, 1) },
+		"fmt.Printf":                  func(call *Call) { checkPrintfCall(call, 0, 1) },
+		"fmt.Sprintf":                 func(call *Call) { checkPrintfCall(call, 0, 1) },
+		"fmt.Fprintf":                 func(call *Call) { checkPrintfCall(call, 1, 2) },
+		"golang.org/x/xerrors.Errorf": func(call *Call) { checkPrintfCall(call, 0, 1) },
+	}
+
+	checkSortSliceRules = map[string]CallCheck{
+		"sort.Slice":         checkSortSlice,
+		"sort.SliceIsSorted": checkSortSlice,
+		"sort.SliceStable":   checkSortSlice,
+	}
+
+	checkWithValueKeyRules = map[string]CallCheck{
+		"context.WithValue": checkWithValueKey,
 	}
 )
 
 func checkPrintfCall(call *Call, fIdx, vIdx int) {
 	f := call.Args[fIdx]
-	var args []ssa.Value
+	var args []ir.Value
 	switch v := call.Args[vIdx].Value.Value.(type) {
-	case *ssa.Slice:
+	case *ir.Slice:
 		var ok bool
-		args, ok = ssautil.Vararg(v)
+		args, ok = irutil.Vararg(v)
 		if !ok {
 			// We don't know what the actual arguments to the function are
 			return
 		}
-	case *ssa.Const:
+	case *ir.Const:
 		// nil, i.e. no arguments
 	default:
 		// We don't know what the actual arguments to the function are
 		return
 	}
-	checkPrintfCallImpl(call, f.Value.Value, args)
+	checkPrintfCallImpl(f, f.Value.Value, args)
 }
 
 type verbFlag int
@@ -286,6 +321,9 @@ const (
 	isFP
 	isString
 	isPointer
+	// Verbs that accept "pseudo pointers" will sometimes dereference
+	// non-nil pointers. For example, %x on a non-nil *struct will print the
+	// individual fields, but on a nil pointer it will print the address.
 	isPseudoPointer
 	isSlice
 	isAny
@@ -303,6 +341,7 @@ var verbs = [...]verbFlag{
 	'g': isFP,
 	'G': isFP,
 	'o': isPseudoPointer | isInt,
+	'O': isPseudoPointer | isInt,
 	'p': isSlice | isPointer | noRecurse,
 	'q': isInt | isString,
 	's': isString,
@@ -310,11 +349,11 @@ var verbs = [...]verbFlag{
 	'T': isAny,
 	'U': isInt,
 	'v': isAny,
-	'X': isPseudoPointer | isInt | isString,
-	'x': isPseudoPointer | isInt | isString,
+	'X': isPseudoPointer | isInt | isFP | isString,
+	'x': isPseudoPointer | isInt | isFP | isString,
 }
 
-func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
+func checkPrintfCallImpl(carg *Argument, f ir.Value, args []ir.Value) {
 	var msCache *typeutil.MethodSetCache
 	if f.Parent() != nil {
 		msCache = &f.Parent().Prog.MethodSets
@@ -329,7 +368,7 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 			if verbs[verb]&isSlice != 0 {
 				return []types.Type{T}, false
 			}
-			if verbs[verb]&isString != 0 && IsType(T.Elem().Underlying(), "byte") {
+			if verbs[verb]&isString != 0 && code.IsType(T.Elem().Underlying(), "byte") {
 				return []types.Type{T}, false
 			}
 			return []types.Type{T.Elem()}, true
@@ -371,7 +410,7 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 		if sig.Results().Len() != 1 {
 			return false
 		}
-		if !IsType(sig.Results().At(0).Type(), "string") {
+		if !code.IsType(sig.Results().At(0).Type(), "string") {
 			return false
 		}
 		return true
@@ -393,7 +432,7 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 		if sig.Results().Len() != 1 {
 			return false
 		}
-		if !IsType(sig.Results().At(0).Type(), "string") {
+		if !code.IsType(sig.Results().At(0).Type(), "string") {
 			return false
 		}
 		return true
@@ -457,10 +496,10 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 
 		T = T.Underlying()
 		if flags&(isPointer|isPseudoPointer) == 0 && top {
-			T = Dereference(T)
+			T = code.Dereference(T)
 		}
 		if flags&isPseudoPointer != 0 && top {
-			t := Dereference(T)
+			t := code.Dereference(T)
 			if _, ok := t.Underlying().(*types.Struct); ok {
 				T = t
 			}
@@ -489,11 +528,11 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 			return true
 		}
 
-		if flags&isString != 0 && (IsType(T, "[]byte") || isStringer(T, ms) || isError(T, ms)) {
+		if flags&isString != 0 && (code.IsType(T, "[]byte") || isStringer(T, ms) || isError(T, ms)) {
 			return true
 		}
 
-		if flags&isPointer != 0 && IsPointerLike(T) {
+		if flags&isPointer != 0 && code.IsPointerLike(T) {
 			return true
 		}
 		if flags&isPseudoPointer != 0 {
@@ -504,10 +543,29 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 				}
 
 				if _, ok := U.Elem().Underlying().(*types.Struct); !ok {
+					// TODO(dh): can this condition ever be false? For
+					// *T, if T is a struct, we'll already have
+					// dereferenced it, meaning the *types.Pointer
+					// branch couldn't have been taken. For T that
+					// aren't structs, this condition will always
+					// evaluate to true.
 					return true
 				}
 			case *types.Chan, *types.Signature:
+				// Channels and functions are always treated as
+				// pointers and never recursed into.
 				return true
+			case *types.Basic:
+				if U.Kind() == types.UnsafePointer {
+					return true
+				}
+			case *types.Interface:
+				// we will already have bailed if the type is an
+				// interface.
+				panic("unreachable")
+			default:
+				// other pointer-like types, such as maps or slices,
+				// will be printed element-wise.
 			}
 		}
 
@@ -534,13 +592,13 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 		return true
 	}
 
-	k, ok := f.(*ssa.Const)
+	k, ok := f.(*ir.Const)
 	if !ok {
 		return
 	}
 	actions, err := printf.Parse(constant.StringVal(k.Value))
 	if err != nil {
-		call.Invalid("couldn't parse format string")
+		carg.Invalid("couldn't parse format string")
 		return
 	}
 
@@ -559,18 +617,18 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 				ptr = star.Index + 1
 			}
 			if idx == 0 {
-				call.Invalid(fmt.Sprintf("Printf format %s reads invalid arg 0; indices are 1-based", verb.Raw))
+				carg.Invalid(fmt.Sprintf("Printf format %s reads invalid arg 0; indices are 1-based", verb.Raw))
 				return false
 			}
 			if idx > len(args) {
-				call.Invalid(
+				carg.Invalid(
 					fmt.Sprintf("Printf format %s reads arg #%d, but call has only %d args",
 						verb.Raw, idx, len(args)))
 				return false
 			}
-			if arg, ok := args[idx-1].(*ssa.MakeInterface); ok {
+			if arg, ok := args[idx-1].(*ir.MakeInterface); ok {
 				if !isInfo(arg.X.Type(), types.IsInteger) {
-					call.Invalid(fmt.Sprintf("Printf format %s reads non-int arg #%d as argument of *", verb.Raw, idx))
+					carg.Invalid(fmt.Sprintf("Printf format %s reads non-int arg #%d as argument of *", verb.Raw, idx))
 				}
 			}
 		}
@@ -596,19 +654,19 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 			off = verb.Value
 		}
 		if off > len(args) {
-			call.Invalid(
+			carg.Invalid(
 				fmt.Sprintf("Printf format %s reads arg #%d, but call has only %d args",
 					verb.Raw, off, len(args)))
 			return
 		} else if verb.Value == 0 && verb.Letter != '%' {
-			call.Invalid(fmt.Sprintf("Printf format %s reads invalid arg 0; indices are 1-based", verb.Raw))
+			carg.Invalid(fmt.Sprintf("Printf format %s reads invalid arg 0; indices are 1-based", verb.Raw))
 			return
 		} else if off != 0 {
-			arg, ok := args[off-1].(*ssa.MakeInterface)
+			arg, ok := args[off-1].(*ir.MakeInterface)
 			if ok {
 				if !checkType(verb.Letter, arg.X.Type(), true) {
-					call.Invalid(fmt.Sprintf("Printf format %s has arg #%d of wrong type %s",
-						verb.Raw, ptr, args[ptr-1].(*ssa.MakeInterface).X.Type()))
+					carg.Invalid(fmt.Sprintf("Printf format %s has arg #%d of wrong type %s",
+						verb.Raw, ptr, args[ptr-1].(*ir.MakeInterface).X.Type()))
 					return
 				}
 			}
@@ -626,7 +684,7 @@ func checkPrintfCallImpl(call *Call, f ssa.Value, args []ssa.Value) {
 	}
 
 	if !hasExplicit && ptr <= len(args) {
-		call.Invalid(fmt.Sprintf("Printf call needs %d args but has %d args", ptr-1, len(args)))
+		carg.Invalid(fmt.Sprintf("Printf call needs %d args but has %d args", ptr-1, len(args)))
 	}
 }
 
@@ -636,7 +694,7 @@ func checkAtomicAlignmentImpl(call *Call) {
 		// Not running on a 32-bit platform
 		return
 	}
-	v, ok := call.Args[0].Value.Value.(*ssa.FieldAddr)
+	v, ok := call.Args[0].Value.Value.(*ir.FieldAddr)
 	if !ok {
 		// TODO(dh): also check indexing into arrays and slices
 		return
@@ -651,26 +709,26 @@ func checkAtomicAlignmentImpl(call *Call) {
 	if off%8 != 0 {
 		msg := fmt.Sprintf("address of non 64-bit aligned field %s passed to %s",
 			T.Field(v.Field).Name(),
-			CallName(call.Instr.Common()))
+			code.CallName(call.Instr.Common()))
 		call.Invalid(msg)
 	}
 }
 
 func checkNoopMarshalImpl(argN int, meths ...string) CallCheck {
 	return func(call *Call) {
-		if IsGenerated(call.Pass, call.Instr.Pos()) {
+		if code.IsGenerated(call.Pass, call.Instr.Pos()) {
 			return
 		}
 		arg := call.Args[argN]
 		T := arg.Value.Value.Type()
-		Ts, ok := Dereference(T).Underlying().(*types.Struct)
+		Ts, ok := code.Dereference(T).Underlying().(*types.Struct)
 		if !ok {
 			return
 		}
 		if Ts.NumFields() == 0 {
 			return
 		}
-		fields := FlattenFields(Ts)
+		fields := code.FlattenFields(Ts)
 		for _, field := range fields {
 			if field.Var.Exported() {
 				return
@@ -696,7 +754,7 @@ func checkUnsupportedMarshalImpl(argN int, tag string, meths ...string) CallChec
 
 		arg := call.Args[argN]
 		T := arg.Value.Value.Type()
-		Ts, ok := Dereference(T).Underlying().(*types.Struct)
+		Ts, ok := code.Dereference(T).Underlying().(*types.Struct)
 		if !ok {
 			return
 		}
@@ -708,7 +766,7 @@ func checkUnsupportedMarshalImpl(argN int, tag string, meths ...string) CallChec
 				return
 			}
 		}
-		fields := FlattenFields(Ts)
+		fields := code.FlattenFields(Ts)
 		for _, field := range fields {
 			if !(field.Var.Exported()) {
 				continue
@@ -735,14 +793,14 @@ func checkUnsupportedMarshalImpl(argN int, tag string, meths ...string) CallChec
 func fieldPath(start types.Type, indices []int) string {
 	p := start.String()
 	for _, idx := range indices {
-		field := Dereference(start).Underlying().(*types.Struct).Field(idx)
+		field := code.Dereference(start).Underlying().(*types.Struct).Field(idx)
 		start = field.Type()
 		p += "." + field.Name()
 	}
 	return p
 }
 
-func isInLoop(b *ssa.BasicBlock) bool {
+func isInLoop(b *ir.BasicBlock) bool {
 	sets := functions.FindLoops(b.Parent())
 	for _, set := range sets {
 		if set.Has(b) {
@@ -755,24 +813,70 @@ func isInLoop(b *ssa.BasicBlock) bool {
 func CheckUntrappableSignal(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
 		call := node.(*ast.CallExpr)
-		if !IsCallToAnyAST(pass, call,
+		if !code.IsCallToAnyAST(pass, call,
 			"os/signal.Ignore", "os/signal.Notify", "os/signal.Reset") {
 			return
 		}
+
+		hasSigterm := false
 		for _, arg := range call.Args {
 			if conv, ok := arg.(*ast.CallExpr); ok && isName(pass, conv.Fun, "os.Signal") {
 				arg = conv.Args[0]
 			}
 
+			if isName(pass, arg, "syscall.SIGTERM") {
+				hasSigterm = true
+				break
+			}
+
+		}
+		for i, arg := range call.Args {
+			if conv, ok := arg.(*ast.CallExpr); ok && isName(pass, conv.Fun, "os.Signal") {
+				arg = conv.Args[0]
+			}
+
 			if isName(pass, arg, "os.Kill") || isName(pass, arg, "syscall.SIGKILL") {
-				ReportNodef(pass, arg, "%s cannot be trapped (did you mean syscall.SIGTERM?)", Render(pass, arg))
+				var fixes []analysis.SuggestedFix
+				if !hasSigterm {
+					nargs := make([]ast.Expr, len(call.Args))
+					for j, a := range call.Args {
+						if i == j {
+							nargs[j] = Selector("syscall", "SIGTERM")
+						} else {
+							nargs[j] = a
+						}
+					}
+					ncall := *call
+					ncall.Args = nargs
+					fixes = append(fixes, edit.Fix(fmt.Sprintf("use syscall.SIGTERM instead of %s", report.Render(pass, arg)), edit.ReplaceWithNode(pass.Fset, call, &ncall)))
+				}
+				nargs := make([]ast.Expr, 0, len(call.Args))
+				for j, a := range call.Args {
+					if i == j {
+						continue
+					}
+					nargs = append(nargs, a)
+				}
+				ncall := *call
+				ncall.Args = nargs
+				fixes = append(fixes, edit.Fix(fmt.Sprintf("remove %s from list of arguments", report.Render(pass, arg)), edit.ReplaceWithNode(pass.Fset, call, &ncall)))
+				report.Report(pass, arg, fmt.Sprintf("%s cannot be trapped (did you mean syscall.SIGTERM?)", report.Render(pass, arg)), report.Fixes(fixes...))
 			}
 			if isName(pass, arg, "syscall.SIGSTOP") {
-				ReportNodef(pass, arg, "%s signal cannot be trapped", Render(pass, arg))
+				nargs := make([]ast.Expr, 0, len(call.Args)-1)
+				for j, a := range call.Args {
+					if i == j {
+						continue
+					}
+					nargs = append(nargs, a)
+				}
+				ncall := *call
+				ncall.Args = nargs
+				report.Report(pass, arg, "syscall.SIGSTOP cannot be trapped", report.Fixes(edit.Fix("remove syscall.SIGSTOP from list of arguments", edit.ReplaceWithNode(pass.Fset, call, &ncall))))
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
 
@@ -780,23 +884,23 @@ func CheckTemplate(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
 		call := node.(*ast.CallExpr)
 		var kind string
-		if IsCallToAST(pass, call, "(*text/template.Template).Parse") {
+		switch code.CallNameAST(pass, call) {
+		case "(*text/template.Template).Parse":
 			kind = "text"
-		} else if IsCallToAST(pass, call, "(*html/template.Template).Parse") {
+		case "(*html/template.Template).Parse":
 			kind = "html"
-		} else {
+		default:
 			return
 		}
 		sel := call.Fun.(*ast.SelectorExpr)
-		if !IsCallToAST(pass, sel.X, "text/template.New") &&
-			!IsCallToAST(pass, sel.X, "html/template.New") {
+		if !code.IsCallToAnyAST(pass, sel.X, "text/template.New", "html/template.New") {
 			// TODO(dh): this is a cheap workaround for templates with
 			// different delims. A better solution with less false
 			// negatives would use data flow analysis to see where the
 			// template comes from and where it has been
 			return
 		}
-		s, ok := ExprToString(pass, call.Args[Arg("(*text/template.Template).Parse.text")])
+		s, ok := code.ExprToString(pass, call.Args[Arg("(*text/template.Template).Parse.text")])
 		if !ok {
 			return
 		}
@@ -810,18 +914,23 @@ func CheckTemplate(pass *analysis.Pass) (interface{}, error) {
 		if err != nil {
 			// TODO(dominikh): whitelist other parse errors, if any
 			if strings.Contains(err.Error(), "unexpected") {
-				ReportNodef(pass, call.Args[Arg("(*text/template.Template).Parse.text")], "%s", err)
+				report.Report(pass, call.Args[Arg("(*text/template.Template).Parse.text")], err.Error())
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
+
+var (
+	checkTimeSleepConstantPatternRns = pattern.MustParse(`(BinaryExpr duration "*" (SelectorExpr (Ident "time") (Ident "Nanosecond")))`)
+	checkTimeSleepConstantPatternRs  = pattern.MustParse(`(BinaryExpr duration "*" (SelectorExpr (Ident "time") (Ident "Second")))`)
+)
 
 func CheckTimeSleepConstant(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
 		call := node.(*ast.CallExpr)
-		if !IsCallToAST(pass, call, "time.Sleep") {
+		if !code.IsCallToAST(pass, call, "time.Sleep") {
 			return
 		}
 		lit, ok := call.Args[Arg("time.Sleep.d")].(*ast.BasicLit)
@@ -838,37 +947,31 @@ func CheckTimeSleepConstant(pass *analysis.Pass) (interface{}, error) {
 			// because the user could've meant 2 minutes.
 			return
 		}
-		recommendation := "time.Sleep(time.Nanosecond)"
-		if n != 1 {
-			recommendation = fmt.Sprintf("time.Sleep(%d * time.Nanosecond)", n)
-		}
-		ReportNodef(pass, call.Args[Arg("time.Sleep.d")],
-			"sleeping for %d nanoseconds is probably a bug. Be explicit if it isn't: %s", n, recommendation)
+
+		report.Report(pass, lit,
+			fmt.Sprintf("sleeping for %d nanoseconds is probably a bug; be explicit if it isn't", n), report.Fixes(
+				edit.Fix("explicitly use nanoseconds", edit.ReplaceWithPattern(pass, checkTimeSleepConstantPatternRns, pattern.State{"duration": lit}, lit)),
+				edit.Fix("use seconds", edit.ReplaceWithPattern(pass, checkTimeSleepConstantPatternRs, pattern.State{"duration": lit}, lit))))
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
 
+var checkWaitgroupAddQ = pattern.MustParse(`
+	(GoStmt
+		(CallExpr
+			(FuncLit
+				_
+				call@(CallExpr (Function "(*sync.WaitGroup).Add") _):_) _))`)
+
 func CheckWaitgroupAdd(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
-		g := node.(*ast.GoStmt)
-		fun, ok := g.Call.Fun.(*ast.FuncLit)
-		if !ok {
-			return
-		}
-		if len(fun.Body.List) == 0 {
-			return
-		}
-		stmt, ok := fun.Body.List[0].(*ast.ExprStmt)
-		if !ok {
-			return
-		}
-		if IsCallToAST(pass, stmt.X, "(*sync.WaitGroup).Add") {
-			ReportNodef(pass, stmt, "should call %s before starting the goroutine to avoid a race",
-				Render(pass, stmt))
+		if m, ok := Match(pass, checkWaitgroupAddQ, node); ok {
+			call := m.State["call"].(ast.Node)
+			report.Report(pass, call, fmt.Sprintf("should call %s before starting the goroutine to avoid a race", report.Render(pass, call)))
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.GoStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.GoStmt)(nil))
 	return nil, nil
 }
 
@@ -897,7 +1000,7 @@ func CheckInfiniteEmptyLoop(pass *analysis.Pass) (interface{}, error) {
 		// channel receives.
 
 		if loop.Cond != nil {
-			if hasSideEffects(loop.Cond) {
+			if code.MayHaveSideEffects(pass, loop.Cond, nil) {
 				return
 			}
 			if ident, ok := loop.Cond.(*ast.Ident); ok {
@@ -908,11 +1011,11 @@ func CheckInfiniteEmptyLoop(pass *analysis.Pass) (interface{}, error) {
 					}
 				}
 			}
-			ReportNodef(pass, loop, "loop condition never changes or has a race condition")
+			report.Report(pass, loop, "loop condition never changes or has a race condition")
 		}
-		ReportNodef(pass, loop, "this loop will spin, using 100%% CPU")
+		report.Report(pass, loop, "this loop will spin, using 100%% CPU", report.ShortRange())
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.ForStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.ForStmt)(nil))
 	return nil, nil
 }
 
@@ -951,10 +1054,10 @@ func CheckDeferInInfiniteLoop(pass *analysis.Pass) (interface{}, error) {
 			return
 		}
 		for _, stmt := range defers {
-			ReportNodef(pass, stmt, "defers in this infinite loop will never run")
+			report.Report(pass, stmt, "defers in this infinite loop will never run")
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.ForStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.ForStmt)(nil))
 	return nil, nil
 }
 
@@ -969,7 +1072,7 @@ func CheckDubiousDeferInChannelRangeLoop(pass *analysis.Pass) (interface{}, erro
 		fn2 := func(node ast.Node) bool {
 			switch stmt := node.(type) {
 			case *ast.DeferStmt:
-				ReportNodef(pass, stmt, "defers in this range loop won't run unless the channel gets closed")
+				report.Report(pass, stmt, "defers in this range loop won't run unless the channel gets closed")
 			case *ast.FuncLit:
 				// Don't look into function bodies
 				return false
@@ -978,7 +1081,7 @@ func CheckDubiousDeferInChannelRangeLoop(pass *analysis.Pass) (interface{}, erro
 		}
 		ast.Inspect(loop.Body, fn2)
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.RangeStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.RangeStmt)(nil))
 	return nil, nil
 }
 
@@ -993,7 +1096,7 @@ func CheckTestMainExit(pass *analysis.Pass) (interface{}, error) {
 		if !push {
 			if fnmain != nil && node == fnmain {
 				if !callsExit && callsRun {
-					ReportNodef(pass, fnmain, "TestMain should call os.Exit to set exit code")
+					report.Report(pass, fnmain, "TestMain should call os.Exit to set exit code")
 				}
 				fnmain = nil
 				callsExit = false
@@ -1015,7 +1118,7 @@ func CheckTestMainExit(pass *analysis.Pass) (interface{}, error) {
 			arg = pass.TypesInfo.ObjectOf(node.Type.Params.List[0].Names[0])
 			return true
 		case *ast.CallExpr:
-			if IsCallToAST(pass, node, "os.Exit") {
+			if code.IsCallToAST(pass, node, "os.Exit") {
 				callsExit = true
 				return false
 			}
@@ -1036,7 +1139,7 @@ func CheckTestMainExit(pass *analysis.Pass) (interface{}, error) {
 			}
 			return true
 		default:
-			// unreachable
+			ExhaustiveTypeSwitch(node)
 			return true
 		}
 	}
@@ -1055,26 +1158,26 @@ func isTestMain(pass *analysis.Pass, decl *ast.FuncDecl) bool {
 	if len(arg.Names) != 1 {
 		return false
 	}
-	return IsOfType(pass, arg.Type, "*testing.M")
+	return code.IsOfType(pass, arg.Type, "*testing.M")
 }
 
 func CheckExec(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
 		call := node.(*ast.CallExpr)
-		if !IsCallToAST(pass, call, "os/exec.Command") {
+		if !code.IsCallToAST(pass, call, "os/exec.Command") {
 			return
 		}
-		val, ok := ExprToString(pass, call.Args[Arg("os/exec.Command.name")])
+		val, ok := code.ExprToString(pass, call.Args[Arg("os/exec.Command.name")])
 		if !ok {
 			return
 		}
 		if !strings.Contains(val, " ") || strings.Contains(val, `\`) || strings.Contains(val, "/") {
 			return
 		}
-		ReportNodef(pass, call.Args[Arg("os/exec.Command.name")],
+		report.Report(pass, call.Args[Arg("os/exec.Command.name")],
 			"first argument to exec.Command looks like a shell command, but a program name or path are expected")
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
 
@@ -1089,25 +1192,53 @@ func CheckLoopEmptyDefault(pass *analysis.Pass) (interface{}, error) {
 			return
 		}
 		for _, c := range sel.Body.List {
+			// FIXME this leaves behind an empty line, and possibly
+			// comments in the default branch. We can't easily fix
+			// either.
 			if comm, ok := c.(*ast.CommClause); ok && comm.Comm == nil && len(comm.Body) == 0 {
-				ReportNodef(pass, comm, "should not have an empty default case in a for+select loop. The loop will spin.")
+				report.Report(pass, comm, "should not have an empty default case in a for+select loop; the loop will spin",
+					report.Fixes(edit.Fix("remove empty default branch", edit.Delete(comm))))
+				// there can only be one default case
+				break
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.ForStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.ForStmt)(nil))
 	return nil, nil
 }
 
 func CheckLhsRhsIdentical(pass *analysis.Pass) (interface{}, error) {
+	var isFloat func(T types.Type) bool
+	isFloat = func(T types.Type) bool {
+		switch T := T.Underlying().(type) {
+		case *types.Basic:
+			kind := T.Kind()
+			return kind == types.Float32 || kind == types.Float64
+		case *types.Array:
+			return isFloat(T.Elem())
+		case *types.Struct:
+			for i := 0; i < T.NumFields(); i++ {
+				if !isFloat(T.Field(i).Type()) {
+					return false
+				}
+			}
+			return true
+		default:
+			return false
+		}
+	}
+
+	// TODO(dh): this check ignores the existence of side-effects and
+	// happily flags fn() == fn() – so far, we've had nobody complain
+	// about a false positive, and it's caught several bugs in real
+	// code.
 	fn := func(node ast.Node) {
 		op := node.(*ast.BinaryExpr)
 		switch op.Op {
 		case token.EQL, token.NEQ:
-			if basic, ok := pass.TypesInfo.TypeOf(op.X).Underlying().(*types.Basic); ok {
-				if kind := basic.Kind(); kind == types.Float32 || kind == types.Float64 {
-					// f == f and f != f might be used to check for NaN
-					return
-				}
+			if isFloat(pass.TypesInfo.TypeOf(op.X)) {
+				// f == f and f != f might be used to check for NaN
+				return
 			}
 		case token.SUB, token.QUO, token.AND, token.REM, token.OR, token.XOR, token.AND_NOT,
 			token.LAND, token.LOR, token.LSS, token.GTR, token.LEQ, token.GEQ:
@@ -1117,12 +1248,15 @@ func CheckLhsRhsIdentical(pass *analysis.Pass) (interface{}, error) {
 			return
 		}
 
-		if Render(pass, op.X) != Render(pass, op.Y) {
+		if reflect.TypeOf(op.X) != reflect.TypeOf(op.Y) {
+			return
+		}
+		if report.Render(pass, op.X) != report.Render(pass, op.Y) {
 			return
 		}
 		l1, ok1 := op.X.(*ast.BasicLit)
 		l2, ok2 := op.Y.(*ast.BasicLit)
-		if ok1 && ok2 && l1.Kind == token.INT && l2.Kind == l1.Kind && l1.Value == "0" && l2.Value == l1.Value && IsGenerated(pass, l1.Pos()) {
+		if ok1 && ok2 && l1.Kind == token.INT && l2.Kind == l1.Kind && l1.Value == "0" && l2.Value == l1.Value && code.IsGenerated(pass, l1.Pos()) {
 			// cgo generates the following function call:
 			// _cgoCheckPointer(_cgoBase0, 0 == 0) – it uses 0 == 0
 			// instead of true in case the user shadowed the
@@ -1135,9 +1269,9 @@ func CheckLhsRhsIdentical(pass *analysis.Pass) (interface{}, error) {
 			// 0 == 0 are slim.
 			return
 		}
-		ReportNodef(pass, op, "identical expressions on the left and right side of the '%s' operator", op.Op)
+		report.Report(pass, op, fmt.Sprintf("identical expressions on the left and right side of the '%s' operator", op.Op))
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.BinaryExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.BinaryExpr)(nil))
 	return nil, nil
 }
 
@@ -1150,7 +1284,7 @@ func CheckScopedBreak(pass *analysis.Pass) (interface{}, error) {
 		case *ast.RangeStmt:
 			body = node.Body
 		default:
-			panic(fmt.Sprintf("unreachable: %T", node))
+			ExhaustiveTypeSwitch(node)
 		}
 		for _, stmt := range body.List {
 			var blocks [][]ast.Stmt
@@ -1191,24 +1325,27 @@ func CheckScopedBreak(pass *analysis.Pass) (interface{}, error) {
 					if !ok || branch.Tok != token.BREAK || branch.Label != nil {
 						continue
 					}
-					ReportNodef(pass, branch, "ineffective break statement. Did you mean to break out of the outer loop?")
+					report.Report(pass, branch, "ineffective break statement. Did you mean to break out of the outer loop?")
 				}
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.ForStmt)(nil), (*ast.RangeStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.ForStmt)(nil), (*ast.RangeStmt)(nil))
 	return nil, nil
 }
 
 func CheckUnsafePrintf(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
 		call := node.(*ast.CallExpr)
+		name := code.CallNameAST(pass, call)
 		var arg int
-		if IsCallToAnyAST(pass, call, "fmt.Printf", "fmt.Sprintf", "log.Printf") {
+
+		switch name {
+		case "fmt.Printf", "fmt.Sprintf", "log.Printf":
 			arg = Arg("fmt.Printf.format")
-		} else if IsCallToAnyAST(pass, call, "fmt.Fprintf") {
+		case "fmt.Fprintf":
 			arg = Arg("fmt.Fprintf.format")
-		} else {
+		default:
 			return
 		}
 		if len(call.Args) != arg+1 {
@@ -1219,10 +1356,13 @@ func CheckUnsafePrintf(pass *analysis.Pass) (interface{}, error) {
 		default:
 			return
 		}
-		ReportNodef(pass, call.Args[arg],
-			"printf-style function with dynamic format string and no further arguments should use print-style function instead")
+
+		alt := name[:len(name)-1]
+		report.Report(pass, call,
+			"printf-style function with dynamic format string and no further arguments should use print-style function instead",
+			report.Fixes(edit.Fix(fmt.Sprintf("use %s instead of %s", alt, name), edit.ReplaceWithString(pass.Fset, call.Fun, alt))))
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
 
@@ -1288,10 +1428,10 @@ func CheckEarlyDefer(pass *analysis.Pass) (interface{}, error) {
 			if sel.Sel.Name != "Close" {
 				continue
 			}
-			ReportNodef(pass, def, "should check returned error before deferring %s", Render(pass, def.Call))
+			report.Report(pass, def, fmt.Sprintf("should check returned error before deferring %s", report.Render(pass, def.Call)))
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.BlockStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.BlockStmt)(nil))
 	return nil, nil
 }
 
@@ -1305,15 +1445,20 @@ func selectorX(sel *ast.SelectorExpr) ast.Node {
 }
 
 func CheckEmptyCriticalSection(pass *analysis.Pass) (interface{}, error) {
+	if pass.Pkg.Path() == "sync_test" {
+		// exception for the sync package's tests
+		return nil, nil
+	}
+
 	// Initially it might seem like this check would be easier to
-	// implement in SSA. After all, we're only checking for two
+	// implement using IR. After all, we're only checking for two
 	// consecutive method calls. In reality, however, there may be any
 	// number of other instructions between the lock and unlock, while
 	// still constituting an empty critical section. For example,
 	// given `m.x().Lock(); m.x().Unlock()`, there will be a call to
 	// x(). In the AST-based approach, this has a tiny potential for a
 	// false positive (the second call to x might be doing work that
-	// is protected by the mutex). In an SSA-based approach, however,
+	// is protected by the mutex). In an IR-based approach, however,
 	// it would miss a lot of real bugs.
 
 	mutexParams := func(s ast.Stmt) (x ast.Expr, funcName string, ok bool) {
@@ -1351,73 +1496,38 @@ func CheckEmptyCriticalSection(pass *analysis.Pass) (interface{}, error) {
 			sel1, method1, ok1 := mutexParams(block.List[i])
 			sel2, method2, ok2 := mutexParams(block.List[i+1])
 
-			if !ok1 || !ok2 || Render(pass, sel1) != Render(pass, sel2) {
+			if !ok1 || !ok2 || report.Render(pass, sel1) != report.Render(pass, sel2) {
 				continue
 			}
 			if (method1 == "Lock" && method2 == "Unlock") ||
 				(method1 == "RLock" && method2 == "RUnlock") {
-				ReportNodef(pass, block.List[i+1], "empty critical section")
+				report.Report(pass, block.List[i+1], "empty critical section")
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.BlockStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.BlockStmt)(nil))
 	return nil, nil
 }
 
-// cgo produces code like fn(&*_Cvar_kSomeCallbacks) which we don't
-// want to flag.
-var cgoIdent = regexp.MustCompile(`^_C(func|var)_.+$`)
+var (
+	// cgo produces code like fn(&*_Cvar_kSomeCallbacks) which we don't
+	// want to flag.
+	cgoIdent               = regexp.MustCompile(`^_C(func|var)_.+$`)
+	checkIneffectiveCopyQ1 = pattern.MustParse(`(UnaryExpr "&" (StarExpr obj))`)
+	checkIneffectiveCopyQ2 = pattern.MustParse(`(StarExpr (UnaryExpr "&" _))`)
+)
 
 func CheckIneffectiveCopy(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
-		if unary, ok := node.(*ast.UnaryExpr); ok {
-			if star, ok := unary.X.(*ast.StarExpr); ok && unary.Op == token.AND {
-				ident, ok := star.X.(*ast.Ident)
-				if !ok || !cgoIdent.MatchString(ident.Name) {
-					ReportNodef(pass, unary, "&*x will be simplified to x. It will not copy x.")
-				}
+		if m, ok := Match(pass, checkIneffectiveCopyQ1, node); ok {
+			if ident, ok := m.State["obj"].(*ast.Ident); !ok || !cgoIdent.MatchString(ident.Name) {
+				report.Report(pass, node, "&*x will be simplified to x. It will not copy x.")
 			}
-		}
-
-		if star, ok := node.(*ast.StarExpr); ok {
-			if unary, ok := star.X.(*ast.UnaryExpr); ok && unary.Op == token.AND {
-				ReportNodef(pass, star, "*&x will be simplified to x. It will not copy x.")
-			}
+		} else if _, ok := Match(pass, checkIneffectiveCopyQ2, node); ok {
+			report.Report(pass, node, "*&x will be simplified to x. It will not copy x.")
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.UnaryExpr)(nil), (*ast.StarExpr)(nil)}, fn)
-	return nil, nil
-}
-
-func CheckDiffSizeComparison(pass *analysis.Pass) (interface{}, error) {
-	ranges := pass.ResultOf[valueRangesAnalyzer].(map[*ssa.Function]vrp.Ranges)
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, b := range ssafn.Blocks {
-			for _, ins := range b.Instrs {
-				binop, ok := ins.(*ssa.BinOp)
-				if !ok {
-					continue
-				}
-				if binop.Op != token.EQL && binop.Op != token.NEQ {
-					continue
-				}
-				_, ok1 := binop.X.(*ssa.Slice)
-				_, ok2 := binop.Y.(*ssa.Slice)
-				if !ok1 && !ok2 {
-					continue
-				}
-				r := ranges[ssafn]
-				r1, ok1 := r.Get(binop.X).(vrp.StringInterval)
-				r2, ok2 := r.Get(binop.Y).(vrp.StringInterval)
-				if !ok1 || !ok2 {
-					continue
-				}
-				if r1.Length.Intersection(r2.Length).Empty() {
-					pass.Reportf(binop.Pos(), "comparing strings of different sizes for equality will always return false")
-				}
-			}
-		}
-	}
+	code.Preorder(pass, fn, (*ast.UnaryExpr)(nil), (*ast.StarExpr)(nil))
 	return nil, nil
 }
 
@@ -1436,7 +1546,7 @@ func CheckCanonicalHeaderKey(pass *analysis.Pass) (interface{}, error) {
 				if !ok {
 					continue
 				}
-				if IsOfType(pass, op.X, "net/http.Header") {
+				if code.IsOfType(pass, op.X, "net/http.Header") {
 					return false
 				}
 			}
@@ -1446,17 +1556,34 @@ func CheckCanonicalHeaderKey(pass *analysis.Pass) (interface{}, error) {
 		if !ok {
 			return true
 		}
-		if !IsOfType(pass, op.X, "net/http.Header") {
+		if !code.IsOfType(pass, op.X, "net/http.Header") {
 			return true
 		}
-		s, ok := ExprToString(pass, op.Index)
+		s, ok := code.ExprToString(pass, op.Index)
 		if !ok {
 			return true
 		}
-		if s == http.CanonicalHeaderKey(s) {
+		canonical := http.CanonicalHeaderKey(s)
+		if s == canonical {
 			return true
 		}
-		ReportNodef(pass, op, "keys in http.Header are canonicalized, %q is not canonical; fix the constant or use http.CanonicalHeaderKey", s)
+		var fix analysis.SuggestedFix
+		switch op.Index.(type) {
+		case *ast.BasicLit:
+			fix = edit.Fix("canonicalize header key", edit.ReplaceWithString(pass.Fset, op.Index, strconv.Quote(canonical)))
+		case *ast.Ident:
+			call := &ast.CallExpr{
+				Fun:  Selector("http", "CanonicalHeaderKey"),
+				Args: []ast.Expr{op.Index},
+			}
+			fix = edit.Fix("wrap in http.CanonicalHeaderKey", edit.ReplaceWithNode(pass.Fset, op.Index, call))
+		}
+		msg := fmt.Sprintf("keys in http.Header are canonicalized, %q is not canonical; fix the constant or use http.CanonicalHeaderKey", s)
+		if fix.Message != "" {
+			report.Report(pass, op, msg, report.Fixes(fix))
+		} else {
+			report.Report(pass, op, msg)
+		}
 		return true
 	}
 	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Nodes([]ast.Node{(*ast.AssignStmt)(nil), (*ast.IndexExpr)(nil)}, fn)
@@ -1476,43 +1603,48 @@ func CheckBenchmarkN(pass *analysis.Pass) (interface{}, error) {
 		if sel.Sel.Name != "N" {
 			return
 		}
-		if !IsOfType(pass, sel.X, "*testing.B") {
+		if !code.IsOfType(pass, sel.X, "*testing.B") {
 			return
 		}
-		ReportNodef(pass, assign, "should not assign to %s", Render(pass, sel))
+		report.Report(pass, assign, fmt.Sprintf("should not assign to %s", report.Render(pass, sel)))
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.AssignStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.AssignStmt)(nil))
 	return nil, nil
 }
 
 func CheckUnreadVariableValues(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		if IsExample(ssafn) {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		if code.IsExample(fn) {
 			continue
 		}
-		node := ssafn.Syntax()
+		node := fn.Source()
 		if node == nil {
 			continue
 		}
-		if gen, ok := Generator(pass, node.Pos()); ok && gen == facts.Goyacc {
+		if gen, ok := code.Generator(pass, node.Pos()); ok && gen == facts.Goyacc {
 			// Don't flag unused values in code generated by goyacc.
 			// There may be hundreds of those due to the way the state
 			// machine is constructed.
 			continue
 		}
 
-		switchTags := map[ssa.Value]struct{}{}
+		switchTags := map[ir.Value]struct{}{}
 		ast.Inspect(node, func(node ast.Node) bool {
 			s, ok := node.(*ast.SwitchStmt)
 			if !ok {
 				return true
 			}
-			v, _ := ssafn.ValueForExpr(s.Tag)
+			v, _ := fn.ValueForExpr(s.Tag)
 			switchTags[v] = struct{}{}
 			return true
 		})
 
-		hasUse := func(v ssa.Value) bool {
+		// OPT(dh): don't use a map, possibly use a bitset
+		var hasUse func(v ir.Value, seen map[ir.Value]struct{}) bool
+		hasUse = func(v ir.Value, seen map[ir.Value]struct{}) bool {
+			if _, ok := seen[v]; ok {
+				return false
+			}
 			if _, ok := switchTags[v]; ok {
 				return true
 			}
@@ -1521,7 +1653,30 @@ func CheckUnreadVariableValues(pass *analysis.Pass) (interface{}, error) {
 				// TODO investigate why refs can be nil
 				return true
 			}
-			return len(FilterDebug(*refs)) > 0
+			for _, ref := range *refs {
+				switch ref := ref.(type) {
+				case *ir.DebugRef:
+				case *ir.Sigma:
+					if seen == nil {
+						seen = map[ir.Value]struct{}{}
+					}
+					seen[v] = struct{}{}
+					if hasUse(ref, seen) {
+						return true
+					}
+				case *ir.Phi:
+					if seen == nil {
+						seen = map[ir.Value]struct{}{}
+					}
+					seen[v] = struct{}{}
+					if hasUse(ref, seen) {
+						return true
+					}
+				default:
+					return true
+				}
+			}
+			return false
 		}
 
 		ast.Inspect(node, func(node ast.Node) bool {
@@ -1533,7 +1688,7 @@ func CheckUnreadVariableValues(pass *analysis.Pass) (interface{}, error) {
 				// Either a function call with multiple return values,
 				// or a comma-ok assignment
 
-				val, _ := ssafn.ValueForExpr(assign.Rhs[0])
+				val, _ := fn.ValueForExpr(assign.Rhs[0])
 				if val == nil {
 					return true
 				}
@@ -1542,16 +1697,16 @@ func CheckUnreadVariableValues(pass *analysis.Pass) (interface{}, error) {
 					return true
 				}
 				for _, ref := range *refs {
-					ex, ok := ref.(*ssa.Extract)
+					ex, ok := ref.(*ir.Extract)
 					if !ok {
 						continue
 					}
-					if !hasUse(ex) {
+					if !hasUse(ex, nil) {
 						lhs := assign.Lhs[ex.Index]
 						if ident, ok := lhs.(*ast.Ident); !ok || ok && ident.Name == "_" {
 							continue
 						}
-						ReportNodef(pass, lhs, "this value of %s is never used", lhs)
+						report.Report(pass, assign, fmt.Sprintf("this value of %s is never used", lhs))
 					}
 				}
 				return true
@@ -1561,13 +1716,13 @@ func CheckUnreadVariableValues(pass *analysis.Pass) (interface{}, error) {
 				if ident, ok := lhs.(*ast.Ident); !ok || ok && ident.Name == "_" {
 					continue
 				}
-				val, _ := ssafn.ValueForExpr(rhs)
+				val, _ := fn.ValueForExpr(rhs)
 				if val == nil {
 					continue
 				}
 
-				if !hasUse(val) {
-					ReportNodef(pass, lhs, "this value of %s is never used", lhs)
+				if !hasUse(val, nil) {
+					report.Report(pass, assign, fmt.Sprintf("this value of %s is never used", lhs))
 				}
 			}
 			return true
@@ -1577,21 +1732,21 @@ func CheckUnreadVariableValues(pass *analysis.Pass) (interface{}, error) {
 }
 
 func CheckPredeterminedBooleanExprs(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, block := range ssafn.Blocks {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
-				ssabinop, ok := ins.(*ssa.BinOp)
+				binop, ok := ins.(*ir.BinOp)
 				if !ok {
 					continue
 				}
-				switch ssabinop.Op {
+				switch binop.Op {
 				case token.GTR, token.LSS, token.EQL, token.NEQ, token.LEQ, token.GEQ:
 				default:
 					continue
 				}
 
-				xs, ok1 := consts(ssabinop.X, nil, nil)
-				ys, ok2 := consts(ssabinop.Y, nil, nil)
+				xs, ok1 := consts(binop.X, nil, nil)
+				ys, ok2 := consts(binop.Y, nil, nil)
 				if !ok1 || !ok2 || len(xs) == 0 || len(ys) == 0 {
 					continue
 				}
@@ -1605,15 +1760,14 @@ func CheckPredeterminedBooleanExprs(pass *analysis.Pass) (interface{}, error) {
 							}
 							continue
 						}
-						if constant.Compare(x.Value, ssabinop.Op, y.Value) {
+						if constant.Compare(x.Value, binop.Op, y.Value) {
 							trues++
 						}
 					}
 				}
 				b := trues != 0
 				if trues == 0 || trues == len(xs)*len(ys) {
-					pass.Reportf(ssabinop.Pos(), "binary expression is always %t for all possible values (%s %s %s)",
-						b, xs, ssabinop.Op, ys)
+					report.Report(pass, binop, fmt.Sprintf("binary expression is always %t for all possible values (%s %s %s)", b, xs, binop.Op, ys))
 				}
 			}
 		}
@@ -1622,21 +1776,21 @@ func CheckPredeterminedBooleanExprs(pass *analysis.Pass) (interface{}, error) {
 }
 
 func CheckNilMaps(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, block := range ssafn.Blocks {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
-				mu, ok := ins.(*ssa.MapUpdate)
+				mu, ok := ins.(*ir.MapUpdate)
 				if !ok {
 					continue
 				}
-				c, ok := mu.Map.(*ssa.Const)
+				c, ok := mu.Map.(*ir.Const)
 				if !ok {
 					continue
 				}
 				if c.Value != nil {
 					continue
 				}
-				pass.Reportf(mu.Pos(), "assignment to nil map")
+				report.Report(pass, mu, "assignment to nil map")
 			}
 		}
 	}
@@ -1649,7 +1803,7 @@ func CheckExtremeComparison(pass *analysis.Pass) (interface{}, error) {
 		if !ok {
 			return false
 		}
-		return IsObject(pass.TypesInfo.ObjectOf(sel.Sel), name)
+		return code.IsObject(pass.TypesInfo.ObjectOf(sel.Sel), name)
 	}
 
 	fn := func(node ast.Node) {
@@ -1694,45 +1848,45 @@ func CheckExtremeComparison(pass *analysis.Pass) (interface{}, error) {
 
 		if (expr.Op == token.GTR || expr.Op == token.GEQ) && isobj(expr.Y, max) ||
 			(expr.Op == token.LSS || expr.Op == token.LEQ) && isobj(expr.X, max) {
-			ReportNodef(pass, expr, "no value of type %s is greater than %s", basic, max)
+			report.Report(pass, expr, fmt.Sprintf("no value of type %s is greater than %s", basic, max))
 		}
 		if expr.Op == token.LEQ && isobj(expr.Y, max) ||
 			expr.Op == token.GEQ && isobj(expr.X, max) {
-			ReportNodef(pass, expr, "every value of type %s is <= %s", basic, max)
+			report.Report(pass, expr, fmt.Sprintf("every value of type %s is <= %s", basic, max))
 		}
 
 		if (basic.Info() & types.IsUnsigned) != 0 {
-			if (expr.Op == token.LSS || expr.Op == token.LEQ) && IsIntLiteral(expr.Y, "0") ||
-				(expr.Op == token.GTR || expr.Op == token.GEQ) && IsIntLiteral(expr.X, "0") {
-				ReportNodef(pass, expr, "no value of type %s is less than 0", basic)
+			if (expr.Op == token.LSS && code.IsIntLiteral(expr.Y, "0")) ||
+				(expr.Op == token.GTR && code.IsIntLiteral(expr.X, "0")) {
+				report.Report(pass, expr, fmt.Sprintf("no value of type %s is less than 0", basic))
 			}
-			if expr.Op == token.GEQ && IsIntLiteral(expr.Y, "0") ||
-				expr.Op == token.LEQ && IsIntLiteral(expr.X, "0") {
-				ReportNodef(pass, expr, "every value of type %s is >= 0", basic)
+			if expr.Op == token.GEQ && code.IsIntLiteral(expr.Y, "0") ||
+				expr.Op == token.LEQ && code.IsIntLiteral(expr.X, "0") {
+				report.Report(pass, expr, fmt.Sprintf("every value of type %s is >= 0", basic))
 			}
 		} else {
 			if (expr.Op == token.LSS || expr.Op == token.LEQ) && isobj(expr.Y, min) ||
 				(expr.Op == token.GTR || expr.Op == token.GEQ) && isobj(expr.X, min) {
-				ReportNodef(pass, expr, "no value of type %s is less than %s", basic, min)
+				report.Report(pass, expr, fmt.Sprintf("no value of type %s is less than %s", basic, min))
 			}
 			if expr.Op == token.GEQ && isobj(expr.Y, min) ||
 				expr.Op == token.LEQ && isobj(expr.X, min) {
-				ReportNodef(pass, expr, "every value of type %s is >= %s", basic, min)
+				report.Report(pass, expr, fmt.Sprintf("every value of type %s is >= %s", basic, min))
 			}
 		}
 
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.BinaryExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.BinaryExpr)(nil))
 	return nil, nil
 }
 
-func consts(val ssa.Value, out []*ssa.Const, visitedPhis map[string]bool) ([]*ssa.Const, bool) {
+func consts(val ir.Value, out []*ir.Const, visitedPhis map[string]bool) ([]*ir.Const, bool) {
 	if visitedPhis == nil {
 		visitedPhis = map[string]bool{}
 	}
 	var ok bool
 	switch val := val.(type) {
-	case *ssa.Phi:
+	case *ir.Phi:
 		if visitedPhis[val.Name()] {
 			break
 		}
@@ -1744,9 +1898,9 @@ func consts(val ssa.Value, out []*ssa.Const, visitedPhis map[string]bool) ([]*ss
 				return nil, false
 			}
 		}
-	case *ssa.Const:
+	case *ir.Const:
 		out = append(out, val)
-	case *ssa.Convert:
+	case *ir.Convert:
 		out, ok = consts(val.X, out, visitedPhis)
 		if !ok {
 			return nil, false
@@ -1757,7 +1911,7 @@ func consts(val ssa.Value, out []*ssa.Const, visitedPhis map[string]bool) ([]*ss
 	if len(out) < 2 {
 		return out, true
 	}
-	uniq := []*ssa.Const{out[0]}
+	uniq := []*ir.Const{out[0]}
 	for _, val := range out[1:] {
 		if val.Value == uniq[len(uniq)-1].Value {
 			continue
@@ -1768,8 +1922,8 @@ func consts(val ssa.Value, out []*ssa.Const, visitedPhis map[string]bool) ([]*ss
 }
 
 func CheckLoopCondition(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		fn := func(node ast.Node) bool {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		cb := func(node ast.Node) bool {
 			loop, ok := node.(*ast.ForStmt)
 			if !ok {
 				return true
@@ -1800,42 +1954,42 @@ func CheckLoopCondition(pass *analysis.Pass) (interface{}, error) {
 				return true
 			}
 
-			v, isAddr := ssafn.ValueForExpr(cond.X)
+			v, isAddr := fn.ValueForExpr(cond.X)
 			if v == nil || isAddr {
 				return true
 			}
 			switch v := v.(type) {
-			case *ssa.Phi:
+			case *ir.Phi:
 				ops := v.Operands(nil)
 				if len(ops) != 2 {
 					return true
 				}
-				_, ok := (*ops[0]).(*ssa.Const)
+				_, ok := (*ops[0]).(*ir.Const)
 				if !ok {
 					return true
 				}
-				sigma, ok := (*ops[1]).(*ssa.Sigma)
+				sigma, ok := (*ops[1]).(*ir.Sigma)
 				if !ok {
 					return true
 				}
 				if sigma.X != v {
 					return true
 				}
-			case *ssa.UnOp:
+			case *ir.Load:
 				return true
 			}
-			ReportNodef(pass, cond, "variable in loop condition never changes")
+			report.Report(pass, cond, "variable in loop condition never changes")
 
 			return true
 		}
-		Inspect(ssafn.Syntax(), fn)
+		Inspect(fn.Source(), cb)
 	}
 	return nil, nil
 }
 
 func CheckArgOverwritten(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		fn := func(node ast.Node) bool {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		cb := func(node ast.Node) bool {
 			var typ *ast.FuncType
 			var body *ast.BlockStmt
 			switch fn := node.(type) {
@@ -1855,26 +2009,29 @@ func CheckArgOverwritten(pass *analysis.Pass) (interface{}, error) {
 			for _, field := range typ.Params.List {
 				for _, arg := range field.Names {
 					obj := pass.TypesInfo.ObjectOf(arg)
-					var ssaobj *ssa.Parameter
-					for _, param := range ssafn.Params {
+					var irobj *ir.Parameter
+					for _, param := range fn.Params {
 						if param.Object() == obj {
-							ssaobj = param
+							irobj = param
 							break
 						}
 					}
-					if ssaobj == nil {
+					if irobj == nil {
 						continue
 					}
-					refs := ssaobj.Referrers()
+					refs := irobj.Referrers()
 					if refs == nil {
 						continue
 					}
-					if len(FilterDebug(*refs)) != 0 {
+					if len(code.FilterDebug(*refs)) != 0 {
 						continue
 					}
 
-					assigned := false
+					var assignment ast.Node
 					ast.Inspect(body, func(node ast.Node) bool {
+						if assignment != nil {
+							return false
+						}
 						assign, ok := node.(*ast.AssignStmt)
 						if !ok {
 							return true
@@ -1885,20 +2042,21 @@ func CheckArgOverwritten(pass *analysis.Pass) (interface{}, error) {
 								continue
 							}
 							if pass.TypesInfo.ObjectOf(ident) == obj {
-								assigned = true
+								assignment = assign
 								return false
 							}
 						}
 						return true
 					})
-					if assigned {
-						ReportNodef(pass, arg, "argument %s is overwritten before first use", arg)
+					if assignment != nil {
+						report.Report(pass, arg, fmt.Sprintf("argument %s is overwritten before first use", arg),
+							report.Related(assignment, fmt.Sprintf("assignment to %s", arg)))
 					}
 				}
 			}
 			return true
 		}
-		Inspect(ssafn.Syntax(), fn)
+		Inspect(fn.Source(), cb)
 	}
 	return nil, nil
 }
@@ -1920,7 +2078,7 @@ func CheckIneffectiveLoop(pass *analysis.Pass) (interface{}, error) {
 		case *ast.FuncLit:
 			body = fn.Body
 		default:
-			panic(fmt.Sprintf("unreachable: %T", node))
+			ExhaustiveTypeSwitch(node)
 		}
 		if body == nil {
 			return
@@ -2003,136 +2161,133 @@ func CheckIneffectiveLoop(pass *analysis.Pass) (interface{}, error) {
 				return true
 			})
 			if unconditionalExit != nil {
-				ReportNodef(pass, unconditionalExit, "the surrounding loop is unconditionally terminated")
+				report.Report(pass, unconditionalExit, "the surrounding loop is unconditionally terminated")
 			}
 			return true
 		})
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.FuncDecl)(nil), (*ast.FuncLit)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.FuncDecl)(nil), (*ast.FuncLit)(nil))
 	return nil, nil
 }
 
+var checkNilContextQ = pattern.MustParse(`(CallExpr fun@(Function _) (Builtin "nil"):_)`)
+
 func CheckNilContext(pass *analysis.Pass) (interface{}, error) {
+	todo := &ast.CallExpr{
+		Fun: Selector("context", "TODO"),
+	}
+	bg := &ast.CallExpr{
+		Fun: Selector("context", "Background"),
+	}
 	fn := func(node ast.Node) {
-		call := node.(*ast.CallExpr)
-		if len(call.Args) == 0 {
-			return
-		}
-		if typ, ok := pass.TypesInfo.TypeOf(call.Args[0]).(*types.Basic); !ok || typ.Kind() != types.UntypedNil {
-			return
-		}
-		sig, ok := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature)
+		m, ok := Match(pass, checkNilContextQ, node)
 		if !ok {
 			return
 		}
+
+		call := node.(*ast.CallExpr)
+		fun, ok := m.State["fun"].(*types.Func)
+		if !ok {
+			// it might also be a builtin
+			return
+		}
+		sig := fun.Type().(*types.Signature)
 		if sig.Params().Len() == 0 {
+			// Our CallExpr might've matched a method expression, like
+			// (*T).Foo(nil) – here, nil isn't the first argument of
+			// the Foo method, but the method receiver.
 			return
 		}
-		if !IsType(sig.Params().At(0).Type(), "context.Context") {
+		if !code.IsType(sig.Params().At(0).Type(), "context.Context") {
 			return
 		}
-		ReportNodef(pass, call.Args[0],
-			"do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use")
+		report.Report(pass, call.Args[0],
+			"do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use", report.Fixes(
+				edit.Fix("use context.TODO", edit.ReplaceWithNode(pass.Fset, call.Args[0], todo)),
+				edit.Fix("use context.Background", edit.ReplaceWithNode(pass.Fset, call.Args[0], bg))))
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
+
+var (
+	checkSeekerQ = pattern.MustParse(`(CallExpr fun@(SelectorExpr _ (Ident "Seek")) [arg1@(SelectorExpr (Ident "io") (Ident (Or "SeekStart" "SeekCurrent" "SeekEnd"))) arg2])`)
+	checkSeekerR = pattern.MustParse(`(CallExpr fun [arg2 arg1])`)
+)
 
 func CheckSeeker(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
-		call := node.(*ast.CallExpr)
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return
+		if _, edits, ok := MatchAndEdit(pass, checkSeekerQ, checkSeekerR, node); ok {
+			report.Report(pass, node, "the first argument of io.Seeker is the offset, but an io.Seek* constant is being used instead",
+				report.Fixes(edit.Fix("swap arguments", edits...)))
 		}
-		if sel.Sel.Name != "Seek" {
-			return
-		}
-		if len(call.Args) != 2 {
-			return
-		}
-		arg0, ok := call.Args[Arg("(io.Seeker).Seek.offset")].(*ast.SelectorExpr)
-		if !ok {
-			return
-		}
-		switch arg0.Sel.Name {
-		case "SeekStart", "SeekCurrent", "SeekEnd":
-		default:
-			return
-		}
-		pkg, ok := arg0.X.(*ast.Ident)
-		if !ok {
-			return
-		}
-		if pkg.Name != "io" {
-			return
-		}
-		ReportNodef(pass, call, "the first argument of io.Seeker is the offset, but an io.Seek* constant is being used instead")
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
 
 func CheckIneffectiveAppend(pass *analysis.Pass) (interface{}, error) {
-	isAppend := func(ins ssa.Value) bool {
-		call, ok := ins.(*ssa.Call)
+	isAppend := func(ins ir.Value) bool {
+		call, ok := ins.(*ir.Call)
 		if !ok {
 			return false
 		}
 		if call.Call.IsInvoke() {
 			return false
 		}
-		if builtin, ok := call.Call.Value.(*ssa.Builtin); !ok || builtin.Name() != "append" {
+		if builtin, ok := call.Call.Value.(*ir.Builtin); !ok || builtin.Name() != "append" {
 			return false
 		}
 		return true
 	}
 
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, block := range ssafn.Blocks {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
-				val, ok := ins.(ssa.Value)
+				val, ok := ins.(ir.Value)
 				if !ok || !isAppend(val) {
 					continue
 				}
 
 				isUsed := false
-				visited := map[ssa.Instruction]bool{}
-				var walkRefs func(refs []ssa.Instruction)
-				walkRefs = func(refs []ssa.Instruction) {
+				visited := map[ir.Instruction]bool{}
+				var walkRefs func(refs []ir.Instruction)
+				walkRefs = func(refs []ir.Instruction) {
 				loop:
 					for _, ref := range refs {
 						if visited[ref] {
 							continue
 						}
 						visited[ref] = true
-						if _, ok := ref.(*ssa.DebugRef); ok {
+						if _, ok := ref.(*ir.DebugRef); ok {
 							continue
 						}
 						switch ref := ref.(type) {
-						case *ssa.Phi:
+						case *ir.Phi:
 							walkRefs(*ref.Referrers())
-						case *ssa.Sigma:
+						case *ir.Sigma:
 							walkRefs(*ref.Referrers())
-						case ssa.Value:
+						case ir.Value:
 							if !isAppend(ref) {
 								isUsed = true
 							} else {
 								walkRefs(*ref.Referrers())
 							}
-						case ssa.Instruction:
+						case ir.Instruction:
 							isUsed = true
 							break loop
 						}
 					}
 				}
+
 				refs := val.Referrers()
 				if refs == nil {
 					continue
 				}
 				walkRefs(*refs)
+
 				if !isUsed {
-					pass.Reportf(ins.Pos(), "this result of append is never used, except maybe in other appends")
+					report.Report(pass, ins, "this result of append is never used, except maybe in other appends")
 				}
 			}
 		}
@@ -2141,19 +2296,19 @@ func CheckIneffectiveAppend(pass *analysis.Pass) (interface{}, error) {
 }
 
 func CheckConcurrentTesting(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, block := range ssafn.Blocks {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
-				gostmt, ok := ins.(*ssa.Go)
+				gostmt, ok := ins.(*ir.Go)
 				if !ok {
 					continue
 				}
-				var fn *ssa.Function
+				var fn *ir.Function
 				switch val := gostmt.Call.Value.(type) {
-				case *ssa.Function:
+				case *ir.Function:
 					fn = val
-				case *ssa.MakeClosure:
-					fn = val.Fn.(*ssa.Function)
+				case *ir.MakeClosure:
+					fn = val.Fn.(*ir.Function)
 				default:
 					continue
 				}
@@ -2162,7 +2317,7 @@ func CheckConcurrentTesting(pass *analysis.Pass) (interface{}, error) {
 				}
 				for _, block := range fn.Blocks {
 					for _, ins := range block.Instrs {
-						call, ok := ins.(*ssa.Call)
+						call, ok := ins.(*ir.Call)
 						if !ok {
 							continue
 						}
@@ -2177,7 +2332,7 @@ func CheckConcurrentTesting(pass *analysis.Pass) (interface{}, error) {
 						if recv == nil {
 							continue
 						}
-						if !IsType(recv.Type(), "*testing.common") {
+						if !code.IsType(recv.Type(), "*testing.common") {
 							continue
 						}
 						fn, ok := call.Call.StaticCallee().Object().(*types.Func)
@@ -2190,7 +2345,11 @@ func CheckConcurrentTesting(pass *analysis.Pass) (interface{}, error) {
 						default:
 							continue
 						}
-						pass.Reportf(gostmt.Pos(), "the goroutine calls T.%s, which must be called in the same goroutine as the test", name)
+						// TODO(dh): don't report multiple diagnostics
+						// for multiple calls to T.Fatal, but do
+						// collect all of them as related information
+						report.Report(pass, gostmt, fmt.Sprintf("the goroutine calls T.%s, which must be called in the same goroutine as the test", name),
+							report.Related(call, fmt.Sprintf("call to T.%s", name)))
 					}
 				}
 			}
@@ -2199,12 +2358,12 @@ func CheckConcurrentTesting(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
-func eachCall(ssafn *ssa.Function, fn func(caller *ssa.Function, site ssa.CallInstruction, callee *ssa.Function)) {
-	for _, b := range ssafn.Blocks {
+func eachCall(fn *ir.Function, cb func(caller *ir.Function, site ir.CallInstruction, callee *ir.Function)) {
+	for _, b := range fn.Blocks {
 		for _, instr := range b.Instrs {
-			if site, ok := instr.(ssa.CallInstruction); ok {
+			if site, ok := instr.(ir.CallInstruction); ok {
 				if g := site.Common().StaticCallee(); g != nil {
-					fn(ssafn, site, g)
+					cb(fn, site, g)
 				}
 			}
 		}
@@ -2212,62 +2371,62 @@ func eachCall(ssafn *ssa.Function, fn func(caller *ssa.Function, site ssa.CallIn
 }
 
 func CheckCyclicFinalizer(pass *analysis.Pass) (interface{}, error) {
-	fn := func(caller *ssa.Function, site ssa.CallInstruction, callee *ssa.Function) {
+	cb := func(caller *ir.Function, site ir.CallInstruction, callee *ir.Function) {
 		if callee.RelString(nil) != "runtime.SetFinalizer" {
 			return
 		}
 		arg0 := site.Common().Args[Arg("runtime.SetFinalizer.obj")]
-		if iface, ok := arg0.(*ssa.MakeInterface); ok {
+		if iface, ok := arg0.(*ir.MakeInterface); ok {
 			arg0 = iface.X
 		}
-		unop, ok := arg0.(*ssa.UnOp)
+		load, ok := arg0.(*ir.Load)
 		if !ok {
 			return
 		}
-		v, ok := unop.X.(*ssa.Alloc)
+		v, ok := load.X.(*ir.Alloc)
 		if !ok {
 			return
 		}
 		arg1 := site.Common().Args[Arg("runtime.SetFinalizer.finalizer")]
-		if iface, ok := arg1.(*ssa.MakeInterface); ok {
+		if iface, ok := arg1.(*ir.MakeInterface); ok {
 			arg1 = iface.X
 		}
-		mc, ok := arg1.(*ssa.MakeClosure)
+		mc, ok := arg1.(*ir.MakeClosure)
 		if !ok {
 			return
 		}
 		for _, b := range mc.Bindings {
 			if b == v {
 				pos := lint.DisplayPosition(pass.Fset, mc.Fn.Pos())
-				pass.Reportf(site.Pos(), "the finalizer closes over the object, preventing the finalizer from ever running (at %s)", pos)
+				report.Report(pass, site, fmt.Sprintf("the finalizer closes over the object, preventing the finalizer from ever running (at %s)", pos))
 			}
 		}
 	}
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		eachCall(ssafn, fn)
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		eachCall(fn, cb)
 	}
 	return nil, nil
 }
 
 /*
 func CheckSliceOutOfBounds(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, block := range ssafn.Blocks {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
-				ia, ok := ins.(*ssa.IndexAddr)
+				ia, ok := ins.(*ir.IndexAddr)
 				if !ok {
 					continue
 				}
 				if _, ok := ia.X.Type().Underlying().(*types.Slice); !ok {
 					continue
 				}
-				sr, ok1 := c.funcDescs.Get(ssafn).Ranges[ia.X].(vrp.SliceInterval)
-				idxr, ok2 := c.funcDescs.Get(ssafn).Ranges[ia.Index].(vrp.IntInterval)
+				sr, ok1 := c.funcDescs.Get(fn).Ranges[ia.X].(vrp.SliceInterval)
+				idxr, ok2 := c.funcDescs.Get(fn).Ranges[ia.Index].(vrp.IntInterval)
 				if !ok1 || !ok2 || !sr.IsKnown() || !idxr.IsKnown() || sr.Length.Empty() || idxr.Empty() {
 					continue
 				}
 				if idxr.Lower.Cmp(sr.Length.Upper) >= 0 {
-					ReportNodef(pass, ia, "index out of bounds")
+					report.Nodef(pass, ia, "index out of bounds")
 				}
 			}
 		}
@@ -2277,25 +2436,25 @@ func CheckSliceOutOfBounds(pass *analysis.Pass) (interface{}, error) {
 */
 
 func CheckDeferLock(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, block := range ssafn.Blocks {
-			instrs := FilterDebug(block.Instrs)
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		for _, block := range fn.Blocks {
+			instrs := code.FilterDebug(block.Instrs)
 			if len(instrs) < 2 {
 				continue
 			}
 			for i, ins := range instrs[:len(instrs)-1] {
-				call, ok := ins.(*ssa.Call)
+				call, ok := ins.(*ir.Call)
 				if !ok {
 					continue
 				}
-				if !IsCallTo(call.Common(), "(*sync.Mutex).Lock") && !IsCallTo(call.Common(), "(*sync.RWMutex).RLock") {
+				if !code.IsCallToAny(call.Common(), "(*sync.Mutex).Lock", "(*sync.RWMutex).RLock") {
 					continue
 				}
-				nins, ok := instrs[i+1].(*ssa.Defer)
+				nins, ok := instrs[i+1].(*ir.Defer)
 				if !ok {
 					continue
 				}
-				if !IsCallTo(&nins.Call, "(*sync.Mutex).Lock") && !IsCallTo(&nins.Call, "(*sync.RWMutex).RLock") {
+				if !code.IsCallToAny(&nins.Call, "(*sync.Mutex).Lock", "(*sync.RWMutex).RLock") {
 					continue
 				}
 				if call.Common().Args[0] != nins.Call.Args[0] {
@@ -2309,7 +2468,7 @@ func CheckDeferLock(pass *analysis.Pass) (interface{}, error) {
 				case "RLock":
 					alt = "RUnlock"
 				}
-				pass.Reportf(nins.Pos(), "deferring %s right after having locked already; did you mean to defer %s?", name, alt)
+				report.Report(pass, nins, fmt.Sprintf("deferring %s right after having locked already; did you mean to defer %s?", name, alt))
 			}
 		}
 	}
@@ -2317,22 +2476,22 @@ func CheckDeferLock(pass *analysis.Pass) (interface{}, error) {
 }
 
 func CheckNaNComparison(pass *analysis.Pass) (interface{}, error) {
-	isNaN := func(v ssa.Value) bool {
-		call, ok := v.(*ssa.Call)
+	isNaN := func(v ir.Value) bool {
+		call, ok := v.(*ir.Call)
 		if !ok {
 			return false
 		}
-		return IsCallTo(call.Common(), "math.NaN")
+		return code.IsCallTo(call.Common(), "math.NaN")
 	}
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, block := range ssafn.Blocks {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
-				ins, ok := ins.(*ssa.BinOp)
+				ins, ok := ins.(*ir.BinOp)
 				if !ok {
 					continue
 				}
 				if isNaN(ins.X) || isNaN(ins.Y) {
-					pass.Reportf(ins.Pos(), "no value is equal to NaN, not even NaN itself")
+					report.Report(pass, ins, "no value is equal to NaN, not even NaN itself")
 				}
 			}
 		}
@@ -2341,12 +2500,12 @@ func CheckNaNComparison(pass *analysis.Pass) (interface{}, error) {
 }
 
 func CheckInfiniteRecursion(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		eachCall(ssafn, func(caller *ssa.Function, site ssa.CallInstruction, callee *ssa.Function) {
-			if callee != ssafn {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		eachCall(fn, func(caller *ir.Function, site ir.CallInstruction, callee *ir.Function) {
+			if callee != fn {
 				return
 			}
-			if _, ok := site.(*ssa.Go); ok {
+			if _, ok := site.(*ir.Go); ok {
 				// Recursively spawning goroutines doesn't consume
 				// stack space infinitely, so don't flag it.
 				return
@@ -2354,14 +2513,14 @@ func CheckInfiniteRecursion(pass *analysis.Pass) (interface{}, error) {
 
 			block := site.Block()
 			canReturn := false
-			for _, b := range ssafn.Blocks {
+			for _, b := range fn.Blocks {
 				if block.Dominates(b) {
 					continue
 				}
 				if len(b.Instrs) == 0 {
 					continue
 				}
-				if _, ok := b.Instrs[len(b.Instrs)-1].(*ssa.Return); ok {
+				if _, ok := b.Control().(*ir.Return); ok {
 					canReturn = true
 					break
 				}
@@ -2369,7 +2528,7 @@ func CheckInfiniteRecursion(pass *analysis.Pass) (interface{}, error) {
 			if canReturn {
 				return
 			}
-			pass.Reportf(site.Pos(), "infinite recursive call")
+			report.Report(pass, site, "infinite recursive call")
 		})
 	}
 	return nil, nil
@@ -2402,139 +2561,209 @@ func isName(pass *analysis.Pass, expr ast.Expr, name string) bool {
 }
 
 func CheckLeakyTimeTick(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		if IsInMain(pass, ssafn) || IsInTest(pass, ssafn) {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		if code.IsMainLike(pass) || code.IsInTest(pass, fn) {
 			continue
 		}
-		for _, block := range ssafn.Blocks {
+		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
-				call, ok := ins.(*ssa.Call)
-				if !ok || !IsCallTo(call.Common(), "time.Tick") {
+				call, ok := ins.(*ir.Call)
+				if !ok || !code.IsCallTo(call.Common(), "time.Tick") {
 					continue
 				}
 				if !functions.Terminates(call.Parent()) {
 					continue
 				}
-				pass.Reportf(call.Pos(), "using time.Tick leaks the underlying ticker, consider using it only in endless functions, tests and the main package, and use time.NewTicker here")
+				report.Report(pass, call, "using time.Tick leaks the underlying ticker, consider using it only in endless functions, tests and the main package, and use time.NewTicker here")
 			}
 		}
 	}
 	return nil, nil
 }
+
+var checkDoubleNegationQ = pattern.MustParse(`(UnaryExpr "!" single@(UnaryExpr "!" x))`)
 
 func CheckDoubleNegation(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
-		unary1 := node.(*ast.UnaryExpr)
-		unary2, ok := unary1.X.(*ast.UnaryExpr)
-		if !ok {
-			return
+		if m, ok := Match(pass, checkDoubleNegationQ, node); ok {
+			report.Report(pass, node, "negating a boolean twice has no effect; is this a typo?", report.Fixes(
+				edit.Fix("turn into single negation", edit.ReplaceWithNode(pass.Fset, node, m.State["single"].(ast.Node))),
+				edit.Fix("remove double negation", edit.ReplaceWithNode(pass.Fset, node, m.State["x"].(ast.Node)))))
 		}
-		if unary1.Op != token.NOT || unary2.Op != token.NOT {
-			return
-		}
-		ReportNodef(pass, unary1, "negating a boolean twice has no effect; is this a typo?")
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.UnaryExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.UnaryExpr)(nil))
 	return nil, nil
-}
-
-func hasSideEffects(node ast.Node) bool {
-	dynamic := false
-	ast.Inspect(node, func(node ast.Node) bool {
-		switch node := node.(type) {
-		case *ast.CallExpr:
-			dynamic = true
-			return false
-		case *ast.UnaryExpr:
-			if node.Op == token.ARROW {
-				dynamic = true
-				return false
-			}
-		}
-		return true
-	})
-	return dynamic
 }
 
 func CheckRepeatedIfElse(pass *analysis.Pass) (interface{}, error) {
 	seen := map[ast.Node]bool{}
 
-	var collectConds func(ifstmt *ast.IfStmt, inits []ast.Stmt, conds []ast.Expr) ([]ast.Stmt, []ast.Expr)
-	collectConds = func(ifstmt *ast.IfStmt, inits []ast.Stmt, conds []ast.Expr) ([]ast.Stmt, []ast.Expr) {
+	var collectConds func(ifstmt *ast.IfStmt, conds []ast.Expr) ([]ast.Expr, bool)
+	collectConds = func(ifstmt *ast.IfStmt, conds []ast.Expr) ([]ast.Expr, bool) {
 		seen[ifstmt] = true
+		// Bail if any if-statement has an Init statement or side effects in its condition
 		if ifstmt.Init != nil {
-			inits = append(inits, ifstmt.Init)
+			return nil, false
 		}
+		if code.MayHaveSideEffects(pass, ifstmt.Cond, nil) {
+			return nil, false
+		}
+
 		conds = append(conds, ifstmt.Cond)
 		if elsestmt, ok := ifstmt.Else.(*ast.IfStmt); ok {
-			return collectConds(elsestmt, inits, conds)
+			return collectConds(elsestmt, conds)
 		}
-		return inits, conds
+		return conds, true
 	}
 	fn := func(node ast.Node) {
 		ifstmt := node.(*ast.IfStmt)
 		if seen[ifstmt] {
+			// this if-statement is part of an if/else-if chain that we've already processed
 			return
 		}
-		inits, conds := collectConds(ifstmt, nil, nil)
-		if len(inits) > 0 {
+		if ifstmt.Else == nil {
+			// there can be at most one condition
 			return
 		}
-		for _, cond := range conds {
-			if hasSideEffects(cond) {
-				return
-			}
+		conds, ok := collectConds(ifstmt, nil)
+		if !ok {
+			return
+		}
+		if len(conds) < 2 {
+			return
 		}
 		counts := map[string]int{}
 		for _, cond := range conds {
-			s := Render(pass, cond)
+			s := report.Render(pass, cond)
 			counts[s]++
 			if counts[s] == 2 {
-				ReportNodef(pass, cond, "this condition occurs multiple times in this if/else if chain")
+				report.Report(pass, cond, "this condition occurs multiple times in this if/else if chain")
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.IfStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.IfStmt)(nil))
 	return nil, nil
 }
 
 func CheckSillyBitwiseOps(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		for _, block := range ssafn.Blocks {
-			for _, ins := range block.Instrs {
-				ins, ok := ins.(*ssa.BinOp)
-				if !ok {
-					continue
-				}
+	// FIXME(dh): what happened here?
+	if false {
+		for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+			for _, block := range fn.Blocks {
+				for _, ins := range block.Instrs {
+					ins, ok := ins.(*ir.BinOp)
+					if !ok {
+						continue
+					}
 
-				if c, ok := ins.Y.(*ssa.Const); !ok || c.Value == nil || c.Value.Kind() != constant.Int || c.Uint64() != 0 {
-					continue
-				}
-				switch ins.Op {
-				case token.AND, token.OR, token.XOR:
-				default:
-					// we do not flag shifts because too often, x<<0 is part
-					// of a pattern, x<<0, x<<8, x<<16, ...
-					continue
-				}
-				path, _ := astutil.PathEnclosingInterval(File(pass, ins), ins.Pos(), ins.Pos())
-				if len(path) == 0 {
-					continue
-				}
-				if node, ok := path[0].(*ast.BinaryExpr); !ok || !IsZero(node.Y) {
-					continue
-				}
+					if c, ok := ins.Y.(*ir.Const); !ok || c.Value == nil || c.Value.Kind() != constant.Int || c.Uint64() != 0 {
+						continue
+					}
+					switch ins.Op {
+					case token.AND, token.OR, token.XOR:
+					default:
+						// we do not flag shifts because too often, x<<0 is part
+						// of a pattern, x<<0, x<<8, x<<16, ...
+						continue
+					}
+					path, _ := astutil.PathEnclosingInterval(code.File(pass, ins), ins.Pos(), ins.Pos())
+					if len(path) == 0 {
+						continue
+					}
 
-				switch ins.Op {
-				case token.AND:
-					pass.Reportf(ins.Pos(), "x & 0 always equals 0")
-				case token.OR, token.XOR:
-					pass.Reportf(ins.Pos(), "x %s 0 always equals x", ins.Op)
+					if node, ok := path[0].(*ast.BinaryExpr); !ok || !code.IsIntLiteral(node.Y, "0") {
+						continue
+					}
+
+					switch ins.Op {
+					case token.AND:
+						report.Report(pass, ins, "x & 0 always equals 0")
+					case token.OR, token.XOR:
+						report.Report(pass, ins, fmt.Sprintf("x %s 0 always equals x", ins.Op))
+					}
 				}
 			}
 		}
 	}
+	fn := func(node ast.Node) {
+		binop := node.(*ast.BinaryExpr)
+		b, ok := pass.TypesInfo.TypeOf(binop).Underlying().(*types.Basic)
+		if !ok {
+			return
+		}
+		if (b.Info() & types.IsInteger) == 0 {
+			return
+		}
+		switch binop.Op {
+		case token.AND, token.OR, token.XOR:
+		default:
+			// we do not flag shifts because too often, x<<0 is part
+			// of a pattern, x<<0, x<<8, x<<16, ...
+			return
+		}
+		switch y := binop.Y.(type) {
+		case *ast.Ident:
+			obj, ok := pass.TypesInfo.ObjectOf(y).(*types.Const)
+			if !ok {
+				return
+			}
+			if v, _ := constant.Int64Val(obj.Val()); v != 0 {
+				return
+			}
+			path, _ := astutil.PathEnclosingInterval(code.File(pass, obj), obj.Pos(), obj.Pos())
+			if len(path) < 2 {
+				return
+			}
+			spec, ok := path[1].(*ast.ValueSpec)
+			if !ok {
+				return
+			}
+			if len(spec.Names) != 1 || len(spec.Values) != 1 {
+				// TODO(dh): we could support this
+				return
+			}
+			ident, ok := spec.Values[0].(*ast.Ident)
+			if !ok {
+				return
+			}
+			if !isIota(pass.TypesInfo.ObjectOf(ident)) {
+				return
+			}
+			switch binop.Op {
+			case token.AND:
+				report.Report(pass, node,
+					fmt.Sprintf("%s always equals 0; %s is defined as iota and has value 0, maybe %s is meant to be 1 << iota?", report.Render(pass, binop), report.Render(pass, binop.Y), report.Render(pass, binop.Y)))
+			case token.OR, token.XOR:
+				report.Report(pass, node,
+					fmt.Sprintf("%s always equals %s; %s is defined as iota and has value 0, maybe %s is meant to be 1 << iota?", report.Render(pass, binop), report.Render(pass, binop.X), report.Render(pass, binop.Y), report.Render(pass, binop.Y)))
+			}
+		case *ast.BasicLit:
+			if !code.IsIntLiteral(binop.Y, "0") {
+				return
+			}
+			switch binop.Op {
+			case token.AND:
+				report.Report(pass, node, fmt.Sprintf("%s always equals 0", report.Render(pass, binop)))
+			case token.OR, token.XOR:
+				report.Report(pass, node, fmt.Sprintf("%s always equals %s", report.Render(pass, binop), report.Render(pass, binop.X)))
+			}
+		default:
+			return
+		}
+	}
+	code.Preorder(pass, fn, (*ast.BinaryExpr)(nil))
 	return nil, nil
+}
+
+func isIota(obj types.Object) bool {
+	if obj.Name() != "iota" {
+		return false
+	}
+	c, ok := obj.(*types.Const)
+	if !ok {
+		return false
+	}
+	return c.Pkg() == nil
 }
 
 func CheckNonOctalFileMode(pass *analysis.Pass) (interface{}, error) {
@@ -2545,14 +2774,12 @@ func CheckNonOctalFileMode(pass *analysis.Pass) (interface{}, error) {
 			return
 		}
 		n := sig.Params().Len()
-		var args []int
 		for i := 0; i < n; i++ {
 			typ := sig.Params().At(i).Type()
-			if IsType(typ, "os.FileMode") {
-				args = append(args, i)
+			if !code.IsType(typ, "os.FileMode") {
+				continue
 			}
-		}
-		for _, i := range args {
+
 			lit, ok := call.Args[i].(*ast.BasicLit)
 			if !ok {
 				continue
@@ -2567,11 +2794,12 @@ func CheckNonOctalFileMode(pass *analysis.Pass) (interface{}, error) {
 				if err != nil {
 					continue
 				}
-				ReportNodef(pass, call.Args[i], "file mode '%s' evaluates to %#o; did you mean '0%s'?", lit.Value, v, lit.Value)
+				report.Report(pass, call.Args[i], fmt.Sprintf("file mode '%s' evaluates to %#o; did you mean '0%s'?", lit.Value, v, lit.Value),
+					report.Fixes(edit.Fix("fix octal literal", edit.ReplaceWithString(pass.Fset, call.Args[i], "0"+lit.Value))))
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
 
@@ -2579,12 +2807,12 @@ func CheckPureFunctions(pass *analysis.Pass) (interface{}, error) {
 	pure := pass.ResultOf[facts.Purity].(facts.PurityResult)
 
 fnLoop:
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		if IsInTest(pass, ssafn) {
-			params := ssafn.Signature.Params()
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		if code.IsInTest(pass, fn) {
+			params := fn.Signature.Params()
 			for i := 0; i < params.Len(); i++ {
 				param := params.At(i)
-				if IsType(param.Type(), "*testing.B") {
+				if code.IsType(param.Type(), "*testing.B") {
 					// Ignore discarded pure functions in code related
 					// to benchmarks. Instead of matching BenchmarkFoo
 					// functions, we match any function accepting a
@@ -2597,16 +2825,17 @@ fnLoop:
 			}
 		}
 
-		for _, b := range ssafn.Blocks {
+		for _, b := range fn.Blocks {
 			for _, ins := range b.Instrs {
-				ins, ok := ins.(*ssa.Call)
+				ins, ok := ins.(*ir.Call)
 				if !ok {
 					continue
 				}
 				refs := ins.Referrers()
-				if refs == nil || len(FilterDebug(*refs)) > 0 {
+				if refs == nil || len(code.FilterDebug(*refs)) > 0 {
 					continue
 				}
+
 				callee := ins.Common().StaticCallee()
 				if callee == nil {
 					continue
@@ -2616,8 +2845,11 @@ fnLoop:
 					continue
 				}
 				if _, ok := pure[callee.Object().(*types.Func)]; ok {
-					pass.Reportf(ins.Pos(), "%s is a pure function but its return value is ignored", callee.Name())
-					continue
+					if pass.Pkg.Path() == "fmt_test" && callee.Object().(*types.Func).FullName() == "fmt.Sprintf" {
+						// special case for benchmarks in the fmt package
+						continue
+					}
+					report.Report(pass, ins, fmt.Sprintf("%s is a pure function but its return value is ignored", callee.Name()))
 				}
 			}
 		}
@@ -2665,8 +2897,8 @@ func CheckDeprecated(pass *analysis.Pass) (interface{}, error) {
 			// already in 1.0, and we're targeting 1.2, it still
 			// makes sense to use the alternative from 1.0, to be
 			// future-proof.
-			minVersion := deprecated.Stdlib[SelectorName(pass, sel)].AlternativeAvailableSince
-			if !IsGoVersion(pass, minVersion) {
+			minVersion := deprecated.Stdlib[code.SelectorName(pass, sel)].AlternativeAvailableSince
+			if !code.IsGoVersion(pass, minVersion) {
 				return true
 			}
 
@@ -2677,27 +2909,29 @@ func CheckDeprecated(pass *analysis.Pass) (interface{}, error) {
 					return true
 				}
 			}
-			ReportNodef(pass, sel, "%s is deprecated: %s", Render(pass, sel), depr.Msg)
+			report.Report(pass, sel, fmt.Sprintf("%s is deprecated: %s", report.Render(pass, sel), depr.Msg))
 			return true
 		}
 		return true
 	}
 
-	imps := map[string]*types.Package{}
-	for _, imp := range pass.Pkg.Imports() {
-		imps[imp.Path()] = imp
-	}
 	fn2 := func(node ast.Node) {
 		spec := node.(*ast.ImportSpec)
+		var imp *types.Package
+		if spec.Name != nil {
+			imp = pass.TypesInfo.ObjectOf(spec.Name).(*types.PkgName).Imported()
+		} else {
+			imp = pass.TypesInfo.Implicits[spec].(*types.PkgName).Imported()
+		}
+
 		p := spec.Path.Value
 		path := p[1 : len(p)-1]
-		imp := imps[path]
 		if depr, ok := deprs.Packages[imp]; ok {
-			ReportNodef(pass, spec, "Package %s is deprecated: %s", path, depr.Msg)
+			report.Report(pass, spec, fmt.Sprintf("package %s is deprecated: %s", path, depr.Msg))
 		}
 	}
 	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Nodes(nil, fn)
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.ImportSpec)(nil)}, fn2)
+	code.Preorder(pass, fn2, (*ast.ImportSpec)(nil))
 	return nil, nil
 }
 
@@ -2708,8 +2942,7 @@ func callChecker(rules map[string]CallCheck) func(pass *analysis.Pass) (interfac
 }
 
 func checkCalls(pass *analysis.Pass, rules map[string]CallCheck) (interface{}, error) {
-	ranges := pass.ResultOf[valueRangesAnalyzer].(map[*ssa.Function]vrp.Ranges)
-	fn := func(caller *ssa.Function, site ssa.CallInstruction, callee *ssa.Function) {
+	cb := func(caller *ir.Function, site ir.CallInstruction, callee *ir.Function) {
 		obj, ok := callee.Object().(*types.Func)
 		if !ok {
 			return
@@ -2720,16 +2953,15 @@ func checkCalls(pass *analysis.Pass, rules map[string]CallCheck) (interface{}, e
 			return
 		}
 		var args []*Argument
-		ssaargs := site.Common().Args
+		irargs := site.Common().Args
 		if callee.Signature.Recv() != nil {
-			ssaargs = ssaargs[1:]
+			irargs = irargs[1:]
 		}
-		for _, arg := range ssaargs {
-			if iarg, ok := arg.(*ssa.MakeInterface); ok {
+		for _, arg := range irargs {
+			if iarg, ok := arg.(*ir.MakeInterface); ok {
 				arg = iarg.X
 			}
-			vr := ranges[site.Parent()][arg]
-			args = append(args, &Argument{Value: Value{arg, vr}})
+			args = append(args, &Argument{Value: Value{arg}})
 		}
 		call := &Call{
 			Pass:   pass,
@@ -2738,44 +2970,45 @@ func checkCalls(pass *analysis.Pass, rules map[string]CallCheck) (interface{}, e
 			Parent: site.Parent(),
 		}
 		r(call)
+		path, _ := astutil.PathEnclosingInterval(code.File(pass, site), site.Pos(), site.Pos())
+		var astcall *ast.CallExpr
+		for _, el := range path {
+			if expr, ok := el.(*ast.CallExpr); ok {
+				astcall = expr
+				break
+			}
+		}
 		for idx, arg := range call.Args {
-			_ = idx
 			for _, e := range arg.invalids {
-				// path, _ := astutil.PathEnclosingInterval(f.File, edge.Site.Pos(), edge.Site.Pos())
-				// if len(path) < 2 {
-				// 	continue
-				// }
-				// astcall, ok := path[0].(*ast.CallExpr)
-				// if !ok {
-				// 	continue
-				// }
-				// pass.Reportf(astcall.Args[idx], "%s", e)
-
-				pass.Reportf(site.Pos(), "%s", e)
+				if astcall != nil {
+					report.Report(pass, astcall.Args[idx], e)
+				} else {
+					report.Report(pass, site, e)
+				}
 			}
 		}
 		for _, e := range call.invalids {
-			pass.Reportf(call.Instr.Common().Pos(), "%s", e)
+			report.Report(pass, call.Instr, e)
 		}
 	}
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		eachCall(ssafn, fn)
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		eachCall(fn, cb)
 	}
 	return nil, nil
 }
 
-func shortCallName(call *ssa.CallCommon) string {
+func shortCallName(call *ir.CallCommon) string {
 	if call.IsInvoke() {
 		return ""
 	}
 	switch v := call.Value.(type) {
-	case *ssa.Function:
+	case *ir.Function:
 		fn, ok := v.Object().(*types.Func)
 		if !ok {
 			return ""
 		}
 		return fn.Name()
-	case *ssa.Builtin:
+	case *ir.Builtin:
 		return v.Name()
 	}
 	return ""
@@ -2786,9 +3019,9 @@ func CheckWriterBufferModified(pass *analysis.Pass) (interface{}, error) {
 	// Taint the argument as MUST_NOT_MODIFY, then propagate that
 	// through functions like bytes.Split
 
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		sig := ssafn.Signature
-		if ssafn.Name() != "Write" || sig.Recv() == nil || sig.Params().Len() != 1 || sig.Results().Len() != 2 {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		sig := fn.Signature
+		if fn.Name() != "Write" || sig.Recv() == nil || sig.Params().Len() != 1 || sig.Results().Len() != 2 {
 			continue
 		}
 		tArg, ok := sig.Params().At(0).Type().(*types.Slice)
@@ -2801,30 +3034,30 @@ func CheckWriterBufferModified(pass *analysis.Pass) (interface{}, error) {
 		if basic, ok := sig.Results().At(0).Type().(*types.Basic); !ok || basic.Kind() != types.Int {
 			continue
 		}
-		if named, ok := sig.Results().At(1).Type().(*types.Named); !ok || !IsType(named, "error") {
+		if named, ok := sig.Results().At(1).Type().(*types.Named); !ok || !code.IsType(named, "error") {
 			continue
 		}
 
-		for _, block := range ssafn.Blocks {
+		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
 				switch ins := ins.(type) {
-				case *ssa.Store:
-					addr, ok := ins.Addr.(*ssa.IndexAddr)
+				case *ir.Store:
+					addr, ok := ins.Addr.(*ir.IndexAddr)
 					if !ok {
 						continue
 					}
-					if addr.X != ssafn.Params[1] {
+					if addr.X != fn.Params[1] {
 						continue
 					}
-					pass.Reportf(ins.Pos(), "io.Writer.Write must not modify the provided buffer, not even temporarily")
-				case *ssa.Call:
-					if !IsCallTo(ins.Common(), "append") {
+					report.Report(pass, ins, "io.Writer.Write must not modify the provided buffer, not even temporarily")
+				case *ir.Call:
+					if !code.IsCallTo(ins.Common(), "append") {
 						continue
 					}
-					if ins.Common().Args[0] != ssafn.Params[1] {
+					if ins.Common().Args[0] != fn.Params[1] {
 						continue
 					}
-					pass.Reportf(ins.Pos(), "io.Writer.Write must not modify the provided buffer, not even temporarily")
+					report.Report(pass, ins, "io.Writer.Write must not modify the provided buffer, not even temporarily")
 				}
 			}
 		}
@@ -2845,14 +3078,14 @@ func loopedRegexp(name string) CallCheck {
 }
 
 func CheckEmptyBranch(pass *analysis.Pass) (interface{}, error) {
-	for _, ssafn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
-		if ssafn.Syntax() == nil {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		if fn.Source() == nil {
 			continue
 		}
-		if IsExample(ssafn) {
+		if code.IsExample(fn) {
 			continue
 		}
-		fn := func(node ast.Node) bool {
+		cb := func(node ast.Node) bool {
 			ifstmt, ok := node.(*ast.IfStmt)
 			if !ok {
 				return true
@@ -2862,26 +3095,26 @@ func CheckEmptyBranch(pass *analysis.Pass) (interface{}, error) {
 				if !ok || len(b.List) != 0 {
 					return true
 				}
-				ReportfFG(pass, ifstmt.Else.Pos(), "empty branch")
+				report.Report(pass, ifstmt.Else, "empty branch", report.FilterGenerated(), report.ShortRange())
 			}
 			if len(ifstmt.Body.List) != 0 {
 				return true
 			}
-			ReportfFG(pass, ifstmt.Pos(), "empty branch")
+			report.Report(pass, ifstmt, "empty branch", report.FilterGenerated(), report.ShortRange())
 			return true
 		}
-		Inspect(ssafn.Syntax(), fn)
+		Inspect(fn.Source(), cb)
 	}
 	return nil, nil
 }
 
 func CheckMapBytesKey(pass *analysis.Pass) (interface{}, error) {
-	for _, fn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
 		for _, b := range fn.Blocks {
 		insLoop:
 			for _, ins := range b.Instrs {
 				// find []byte -> string conversions
-				conv, ok := ins.(*ssa.Convert)
+				conv, ok := ins.(*ir.Convert)
 				if !ok || conv.Type() != types.Universe.Lookup("string").Type() {
 					continue
 				}
@@ -2898,7 +3131,7 @@ func CheckMapBytesKey(pass *analysis.Pass) (interface{}, error) {
 				// skip first reference, that's the conversion itself
 				for _, ref := range (*refs)[1:] {
 					switch ref := ref.(type) {
-					case *ssa.DebugRef:
+					case *ir.DebugRef:
 						if _, ok := ref.Expr.(*ast.Ident); !ok {
 							// the string seems to be used somewhere
 							// unexpected; the default branch should
@@ -2907,7 +3140,7 @@ func CheckMapBytesKey(pass *analysis.Pass) (interface{}, error) {
 						} else {
 							ident = true
 						}
-					case *ssa.Lookup:
+					case *ir.MapLookup:
 					default:
 						// the string is used somewhere else than a
 						// map lookup
@@ -2920,7 +3153,7 @@ func CheckMapBytesKey(pass *analysis.Pass) (interface{}, error) {
 				if !ident {
 					continue
 				}
-				pass.Reportf(conv.Pos(), "m[string(key)] would be more efficient than k := string(key); m[k]")
+				report.Report(pass, conv, "m[string(key)] would be more efficient than k := string(key); m[k]")
 			}
 		}
 	}
@@ -2932,20 +3165,30 @@ func CheckRangeStringRunes(pass *analysis.Pass) (interface{}, error) {
 }
 
 func CheckSelfAssignment(pass *analysis.Pass) (interface{}, error) {
+	pure := pass.ResultOf[facts.Purity].(facts.PurityResult)
+
 	fn := func(node ast.Node) {
 		assign := node.(*ast.AssignStmt)
 		if assign.Tok != token.ASSIGN || len(assign.Lhs) != len(assign.Rhs) {
 			return
 		}
-		for i, stmt := range assign.Lhs {
-			rlh := Render(pass, stmt)
-			rrh := Render(pass, assign.Rhs[i])
+		for i, lhs := range assign.Lhs {
+			rhs := assign.Rhs[i]
+			if reflect.TypeOf(lhs) != reflect.TypeOf(rhs) {
+				continue
+			}
+			if code.MayHaveSideEffects(pass, lhs, pure) || code.MayHaveSideEffects(pass, rhs, pure) {
+				continue
+			}
+
+			rlh := report.Render(pass, lhs)
+			rrh := report.Render(pass, rhs)
 			if rlh == rrh {
-				ReportfFG(pass, assign.Pos(), "self-assignment of %s to %s", rrh, rlh)
+				report.Report(pass, assign, fmt.Sprintf("self-assignment of %s to %s", rrh, rlh), report.FilterGenerated())
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.AssignStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.AssignStmt)(nil))
 	return nil, nil
 }
 
@@ -2976,9 +3219,10 @@ func CheckDuplicateBuildConstraints(pass *analysis.Pass) (interface{}, error) {
 					continue
 				}
 				if buildTagsIdentical(constraint1, constraint2) {
-					ReportfFG(pass, f.Pos(), "identical build constraints %q and %q",
+					msg := fmt.Sprintf("identical build constraints %q and %q",
 						strings.Join(constraint1, " "),
 						strings.Join(constraint2, " "))
+					report.Report(pass, f, msg, report.FilterGenerated(), report.ShortRange())
 				}
 			}
 		}
@@ -2989,19 +3233,17 @@ func CheckDuplicateBuildConstraints(pass *analysis.Pass) (interface{}, error) {
 func CheckSillyRegexp(pass *analysis.Pass) (interface{}, error) {
 	// We could use the rule checking engine for this, but the
 	// arguments aren't really invalid.
-	for _, fn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
 		for _, b := range fn.Blocks {
 			for _, ins := range b.Instrs {
-				call, ok := ins.(*ssa.Call)
+				call, ok := ins.(*ir.Call)
 				if !ok {
 					continue
 				}
-				switch CallName(call.Common()) {
-				case "regexp.MustCompile", "regexp.Compile", "regexp.Match", "regexp.MatchReader", "regexp.MatchString":
-				default:
+				if !code.IsCallToAny(call.Common(), "regexp.MustCompile", "regexp.Compile", "regexp.Match", "regexp.MatchReader", "regexp.MatchString") {
 					continue
 				}
-				c, ok := call.Common().Args[0].(*ssa.Const)
+				c, ok := call.Common().Args[0].(*ir.Const)
 				if !ok {
 					continue
 				}
@@ -3013,7 +3255,7 @@ func CheckSillyRegexp(pass *analysis.Pass) (interface{}, error) {
 				if re.Op != syntax.OpLiteral && re.Op != syntax.OpEmptyMatch {
 					continue
 				}
-				pass.Reportf(call.Pos(), "regular expression does not contain any meta characters")
+				report.Report(pass, call, "regular expression does not contain any meta characters")
 			}
 		}
 	}
@@ -3030,7 +3272,7 @@ func CheckMissingEnumTypesInDeclaration(pass *analysis.Pass) (interface{}, error
 			return
 		}
 
-		groups := GroupSpecs(pass.Fset, decl.Specs)
+		groups := code.GroupSpecs(pass.Fset, decl.Specs)
 	groupLoop:
 		for _, group := range groups {
 			if len(group) < 2 {
@@ -3063,30 +3305,37 @@ func CheckMissingEnumTypesInDeclaration(pass *analysis.Pass) (interface{}, error
 					continue groupLoop
 				}
 			}
-			ReportNodef(pass, group[0], "only the first constant in this group has an explicit type")
+			var edits []analysis.TextEdit
+			typ := group[0].(*ast.ValueSpec).Type
+			for _, spec := range group[1:] {
+				nspec := *spec.(*ast.ValueSpec)
+				nspec.Type = typ
+				edits = append(edits, edit.ReplaceWithNode(pass.Fset, spec, &nspec))
+			}
+			report.Report(pass, group[0], "only the first constant in this group has an explicit type", report.Fixes(edit.Fix("add type to all constants in group", edits...)))
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.GenDecl)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.GenDecl)(nil))
 	return nil, nil
 }
 
 func CheckTimerResetReturnValue(pass *analysis.Pass) (interface{}, error) {
-	for _, fn := range pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs {
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
 		for _, block := range fn.Blocks {
 			for _, ins := range block.Instrs {
-				call, ok := ins.(*ssa.Call)
+				call, ok := ins.(*ir.Call)
 				if !ok {
 					continue
 				}
-				if !IsCallTo(call.Common(), "(*time.Timer).Reset") {
+				if !code.IsCallTo(call.Common(), "(*time.Timer).Reset") {
 					continue
 				}
 				refs := call.Referrers()
 				if refs == nil {
 					continue
 				}
-				for _, ref := range FilterDebug(*refs) {
-					ifstmt, ok := ref.(*ssa.If)
+				for _, ref := range code.FilterDebug(*refs) {
+					ifstmt, ok := ref.(*ir.If)
 					if !ok {
 						continue
 					}
@@ -3101,7 +3350,7 @@ func CheckTimerResetReturnValue(pass *analysis.Pass) (interface{}, error) {
 							// statements a la "if x || y"
 							continue
 						}
-						ssautil.Walk(succ, func(b *ssa.BasicBlock) bool {
+						irutil.Walk(succ, func(b *ir.BasicBlock) bool {
 							if !succ.Dominates(b) {
 								// We've reached the end of the branch
 								return false
@@ -3114,7 +3363,7 @@ func CheckTimerResetReturnValue(pass *analysis.Pass) (interface{}, error) {
 								// priority, considering the rarity of
 								// Reset and the tiny likeliness of a
 								// false positive
-								if ins, ok := ins.(*ssa.UnOp); ok && ins.Op == token.ARROW && IsType(ins.X.Type(), "<-chan time.Time") {
+								if ins, ok := ins.(*ir.Recv); ok && code.IsType(ins.Chan.Type(), "<-chan time.Time") {
 									found = true
 									return false
 								}
@@ -3124,7 +3373,7 @@ func CheckTimerResetReturnValue(pass *analysis.Pass) (interface{}, error) {
 					}
 
 					if found {
-						pass.Reportf(call.Pos(), "it is not possible to use Reset's return value correctly, as there is a race condition between draining the channel and the new timer expiring")
+						report.Report(pass, call, "it is not possible to use Reset's return value correctly, as there is a race condition between draining the channel and the new timer expiring")
 					}
 				}
 			}
@@ -3133,43 +3382,33 @@ func CheckTimerResetReturnValue(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
+var (
+	checkToLowerToUpperComparisonQ = pattern.MustParse(`
+	(BinaryExpr
+		(CallExpr fun@(Function (Or "strings.ToLower" "strings.ToUpper")) [a])
+ 		tok@(Or "==" "!=")
+ 		(CallExpr fun [b]))`)
+	checkToLowerToUpperComparisonR = pattern.MustParse(`(CallExpr (SelectorExpr (Ident "strings") (Ident "EqualFold")) [a b])`)
+)
+
 func CheckToLowerToUpperComparison(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
-		binExpr := node.(*ast.BinaryExpr)
-
-		var negative bool
-		switch binExpr.Op {
-		case token.EQL:
-			negative = false
-		case token.NEQ:
-			negative = true
-		default:
+		m, ok := Match(pass, checkToLowerToUpperComparisonQ, node)
+		if !ok {
 			return
 		}
-
-		const (
-			lo = "strings.ToLower"
-			up = "strings.ToUpper"
-		)
-
-		var call string
-		if IsCallToAST(pass, binExpr.X, lo) && IsCallToAST(pass, binExpr.Y, lo) {
-			call = lo
-		} else if IsCallToAST(pass, binExpr.X, up) && IsCallToAST(pass, binExpr.Y, up) {
-			call = up
-		} else {
-			return
+		rn := pattern.NodeToAST(checkToLowerToUpperComparisonR.Root, m.State).(ast.Expr)
+		if m.State["tok"].(token.Token) == token.NEQ {
+			rn = &ast.UnaryExpr{
+				Op: token.NOT,
+				X:  rn,
+			}
 		}
 
-		bang := ""
-		if negative {
-			bang = "!"
-		}
-
-		ReportNodef(pass, binExpr, "should use %sstrings.EqualFold(a, b) instead of %s(a) %s %s(b)", bang, call, binExpr.Op, call)
+		report.Report(pass, node, "should use strings.EqualFold instead", report.Fixes(edit.Fix("replace with strings.EqualFold", edit.ReplaceWithNode(pass.Fset, node, rn))))
 	}
 
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.BinaryExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.BinaryExpr)(nil))
 	return nil, nil
 }
 
@@ -3231,32 +3470,47 @@ func CheckUnreachableTypeCases(pass *analysis.Pass) (interface{}, error) {
 		for i, cc := range ccs[:len(ccs)-1] {
 			for _, next := range ccs[i+1:] {
 				if T, V, yes := subsumesAny(cc.types, next.types); yes {
-					ReportNodef(pass, next.cc, "unreachable case clause: %s will always match before %s", T.String(), V.String())
+					report.Report(pass, next.cc, fmt.Sprintf("unreachable case clause: %s will always match before %s", T.String(), V.String()),
+						report.ShortRange())
 				}
 			}
 		}
 	}
 
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.TypeSwitchStmt)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.TypeSwitchStmt)(nil))
 	return nil, nil
 }
 
+var checkSingleArgAppendQ = pattern.MustParse(`(CallExpr (Builtin "append") [_])`)
+
 func CheckSingleArgAppend(pass *analysis.Pass) (interface{}, error) {
 	fn := func(node ast.Node) {
-		if !IsCallToAST(pass, node, "append") {
+		_, ok := Match(pass, checkSingleArgAppendQ, node)
+		if !ok {
 			return
 		}
-		call := node.(*ast.CallExpr)
-		if len(call.Args) != 1 {
-			return
-		}
-		ReportfFG(pass, call.Pos(), "x = append(y) is equivalent to x = y")
+		report.Report(pass, node, "x = append(y) is equivalent to x = y", report.FilterGenerated())
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.CallExpr)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.CallExpr)(nil))
 	return nil, nil
 }
 
 func CheckStructTags(pass *analysis.Pass) (interface{}, error) {
+	importsGoFlags := false
+
+	// we use the AST instead of (*types.Package).Imports to work
+	// around vendored packages in GOPATH mode. A vendored package's
+	// path will include the vendoring subtree as a prefix.
+	for _, f := range pass.Files {
+		for _, imp := range f.Imports {
+			v := imp.Path.Value
+			if v[1:len(v)-1] == "github.com/jessevdk/go-flags" {
+				importsGoFlags = true
+				break
+			}
+		}
+	}
+
 	fn := func(node ast.Node) {
 		for _, field := range node.(*ast.StructType).Fields.List {
 			if field.Tag == nil {
@@ -3264,13 +3518,16 @@ func CheckStructTags(pass *analysis.Pass) (interface{}, error) {
 			}
 			tags, err := parseStructTag(field.Tag.Value[1 : len(field.Tag.Value)-1])
 			if err != nil {
-				ReportNodef(pass, field.Tag, "unparseable struct tag: %s", err)
+				report.Report(pass, field.Tag, fmt.Sprintf("unparseable struct tag: %s", err))
 				continue
 			}
 			for k, v := range tags {
 				if len(v) > 1 {
-					ReportNodef(pass, field.Tag, "duplicate struct tag %q", k)
-					continue
+					isGoFlagsTag := importsGoFlags &&
+						(k == "choice" || k == "optional-value" || k == "default")
+					if !isGoFlagsTag {
+						report.Report(pass, field.Tag, fmt.Sprintf("duplicate struct tag %q", k))
+					}
 				}
 
 				switch k {
@@ -3282,18 +3539,24 @@ func CheckStructTags(pass *analysis.Pass) (interface{}, error) {
 			}
 		}
 	}
-	pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Preorder([]ast.Node{(*ast.StructType)(nil)}, fn)
+	code.Preorder(pass, fn, (*ast.StructType)(nil))
 	return nil, nil
 }
 
 func checkJSONTag(pass *analysis.Pass, field *ast.Field, tag string) {
+	if pass.Pkg.Path() == "encoding/json" || pass.Pkg.Path() == "encoding/json_test" {
+		// don't flag malformed JSON tags in the encoding/json
+		// package; it knows what it is doing, and it is testing
+		// itself.
+		return
+	}
 	//lint:ignore SA9003 TODO(dh): should we flag empty tags?
 	if len(tag) == 0 {
 	}
 	fields := strings.Split(tag, ",")
 	for _, r := range fields[0] {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("!#$%&()*+-./:<=>?@[]^_{|}~ ", r) {
-			ReportNodef(pass, field.Tag, "invalid JSON field name %q", fields[0])
+			report.Report(pass, field.Tag, fmt.Sprintf("invalid JSON field name %q", fields[0]))
 		}
 	}
 	var co, cs, ci int
@@ -3306,25 +3569,25 @@ func checkJSONTag(pass *analysis.Pass, field *ast.Field, tag string) {
 		case "string":
 			cs++
 			// only for string, floating point, integer and bool
-			T := Dereference(pass.TypesInfo.TypeOf(field.Type).Underlying()).Underlying()
+			T := code.Dereference(pass.TypesInfo.TypeOf(field.Type).Underlying()).Underlying()
 			basic, ok := T.(*types.Basic)
 			if !ok || (basic.Info()&(types.IsBoolean|types.IsInteger|types.IsFloat|types.IsString)) == 0 {
-				ReportNodef(pass, field.Tag, "the JSON string option only applies to fields of type string, floating point, integer or bool, or pointers to those")
+				report.Report(pass, field.Tag, "the JSON string option only applies to fields of type string, floating point, integer or bool, or pointers to those")
 			}
 		case "inline":
 			ci++
 		default:
-			ReportNodef(pass, field.Tag, "unknown JSON option %q", s)
+			report.Report(pass, field.Tag, fmt.Sprintf("unknown JSON option %q", s))
 		}
 	}
 	if co > 1 {
-		ReportNodef(pass, field.Tag, `duplicate JSON option "omitempty"`)
+		report.Report(pass, field.Tag, `duplicate JSON option "omitempty"`)
 	}
 	if cs > 1 {
-		ReportNodef(pass, field.Tag, `duplicate JSON option "string"`)
+		report.Report(pass, field.Tag, `duplicate JSON option "string"`)
 	}
 	if ci > 1 {
-		ReportNodef(pass, field.Tag, `duplicate JSON option "inline"`)
+		report.Report(pass, field.Tag, `duplicate JSON option "inline"`)
 	}
 }
 
@@ -3346,15 +3609,211 @@ func checkXMLTag(pass *analysis.Pass, field *ast.Field, tag string) {
 			counts[s]++
 		case "":
 		default:
-			ReportNodef(pass, field.Tag, "unknown XML option %q", s)
+			report.Report(pass, field.Tag, fmt.Sprintf("unknown XML option %q", s))
 		}
 	}
 	for k, v := range counts {
 		if v > 1 {
-			ReportNodef(pass, field.Tag, "duplicate XML option %q", k)
+			report.Report(pass, field.Tag, fmt.Sprintf("duplicate XML option %q", k))
 		}
 	}
 	if len(exclusives) > 1 {
-		ReportNodef(pass, field.Tag, "XML options %s are mutually exclusive", strings.Join(exclusives, " and "))
+		report.Report(pass, field.Tag, fmt.Sprintf("XML options %s are mutually exclusive", strings.Join(exclusives, " and ")))
 	}
+}
+
+func CheckImpossibleTypeAssertion(pass *analysis.Pass) (interface{}, error) {
+	type entry struct {
+		l, r *types.Func
+	}
+
+	msc := &pass.ResultOf[buildir.Analyzer].(*buildir.IR).Pkg.Prog.MethodSets
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		for _, b := range fn.Blocks {
+			for _, instr := range b.Instrs {
+				assert, ok := instr.(*ir.TypeAssert)
+				if !ok {
+					continue
+				}
+				var wrong []entry
+				left := assert.X.Type()
+				right := assert.AssertedType
+				righti, ok := right.Underlying().(*types.Interface)
+
+				if !ok {
+					// We only care about interface->interface
+					// assertions. The Go compiler already catches
+					// impossible interface->concrete assertions.
+					continue
+				}
+
+				ms := msc.MethodSet(left)
+				for i := 0; i < righti.NumMethods(); i++ {
+					mr := righti.Method(i)
+					sel := ms.Lookup(mr.Pkg(), mr.Name())
+					if sel == nil {
+						continue
+					}
+					ml := sel.Obj().(*types.Func)
+					if types.AssignableTo(ml.Type(), mr.Type()) {
+						continue
+					}
+
+					wrong = append(wrong, entry{ml, mr})
+				}
+
+				if len(wrong) != 0 {
+					s := fmt.Sprintf("impossible type assertion; %s and %s contradict each other:",
+						types.TypeString(left, types.RelativeTo(pass.Pkg)),
+						types.TypeString(right, types.RelativeTo(pass.Pkg)))
+					for _, e := range wrong {
+						s += fmt.Sprintf("\n\twrong type for %s method", e.l.Name())
+						s += fmt.Sprintf("\n\t\thave %s", e.l.Type())
+						s += fmt.Sprintf("\n\t\twant %s", e.r.Type())
+					}
+					report.Report(pass, assert, s)
+				}
+			}
+		}
+	}
+	return nil, nil
+}
+
+func checkWithValueKey(call *Call) {
+	arg := call.Args[1]
+	T := arg.Value.Value.Type()
+	if T, ok := T.(*types.Basic); ok {
+		arg.Invalid(
+			fmt.Sprintf("should not use built-in type %s as key for value; define your own type to avoid collisions", T))
+	}
+	if !types.Comparable(T) {
+		arg.Invalid(fmt.Sprintf("keys used with context.WithValue must be comparable, but type %s is not comparable", T))
+	}
+}
+
+func CheckMaybeNil(pass *analysis.Pass) (interface{}, error) {
+	// This is an extremely trivial check that doesn't try to reason
+	// about control flow. That is, phis and sigmas do not propagate
+	// any information. As such, we can flag this:
+	//
+	// 	_ = *x
+	// 	if x == nil { return }
+	//
+	// but we cannot flag this:
+	//
+	// 	if x == nil { println(x) }
+	// 	_ = *x
+	//
+	// nor many other variations of conditional uses of or assignments to x.
+	//
+	// However, even this trivial implementation finds plenty of
+	// real-world bugs, such as dereference before nil pointer check,
+	// or using t.Error instead of t.Fatal when encountering nil
+	// pointers.
+	//
+	// On the flip side, our naive implementation avoids false positives in branches, such as
+	//
+	// 	if x != nil { _ = *x }
+	//
+	// due to the same lack of propagating information through sigma
+	// nodes. x inside the branch will be independent of the x in the
+	// nil pointer check.
+	//
+	//
+	// We could implement a more powerful check, but then we'd be
+	// getting false positives instead of false negatives because
+	// we're incapable of deducing relationships between variables.
+	// For example, a function might return a pointer and an error,
+	// and the error being nil guarantees that the pointer is not nil.
+	// Depending on the surrounding code, the pointer may still end up
+	// being checked against nil in one place, and guarded by a check
+	// on the error in another, which would lead to us marking some
+	// loads as unsafe.
+	//
+	// Unfortunately, simply hard-coding the relationship between
+	// return values wouldn't eliminate all false positives, either.
+	// Many other more subtle relationships exist. An abridged example
+	// from real code:
+	//
+	// if a == nil && b == nil { return }
+	// c := fn(a)
+	// if c != "" { _ = *a }
+	//
+	// where `fn` is guaranteed to return a non-empty string if a
+	// isn't nil.
+	//
+	// We choose to err on the side of false negatives.
+
+	isNilConst := func(v ir.Value) bool {
+		if code.IsPointerLike(v.Type()) {
+			if k, ok := v.(*ir.Const); ok {
+				return k.IsNil()
+			}
+		}
+		return false
+	}
+
+	for _, fn := range pass.ResultOf[buildir.Analyzer].(*buildir.IR).SrcFuncs {
+		maybeNil := map[ir.Value]ir.Instruction{}
+		for _, b := range fn.Blocks {
+			for _, instr := range b.Instrs {
+				if instr, ok := instr.(*ir.BinOp); ok {
+					var ptr ir.Value
+					if isNilConst(instr.X) {
+						ptr = instr.Y
+					} else if isNilConst(instr.Y) {
+						ptr = instr.X
+					}
+					maybeNil[ptr] = instr
+				}
+			}
+		}
+
+		for _, b := range fn.Blocks {
+			for _, instr := range b.Instrs {
+				var ptr ir.Value
+				switch instr := instr.(type) {
+				case *ir.Load:
+					ptr = instr.X
+				case *ir.Store:
+					ptr = instr.Addr
+				case *ir.IndexAddr:
+					ptr = instr.X
+				case *ir.FieldAddr:
+					ptr = instr.X
+				}
+				if ptr != nil {
+					switch ptr.(type) {
+					case *ir.Alloc, *ir.FieldAddr, *ir.IndexAddr:
+						// these cannot be nil
+						continue
+					}
+					if r, ok := maybeNil[ptr]; ok {
+						report.Report(pass, instr, "possible nil pointer dereference",
+							report.Related(r, "this check suggests that the pointer can be nil"))
+					}
+				}
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+var checkAddressIsNilQ = pattern.MustParse(
+	`(BinaryExpr
+		(UnaryExpr "&" _)
+		(Or "==" "!=")
+		(Builtin "nil"))`)
+
+func CheckAddressIsNil(pass *analysis.Pass) (interface{}, error) {
+	fn := func(node ast.Node) {
+		_, ok := Match(pass, checkAddressIsNilQ, node)
+		if !ok {
+			return
+		}
+		report.Report(pass, node, "the address of a variable cannot be nil")
+	}
+	code.Preorder(pass, fn, (*ast.BinaryExpr)(nil))
+	return nil, nil
 }

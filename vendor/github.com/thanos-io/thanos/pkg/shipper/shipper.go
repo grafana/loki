@@ -287,6 +287,13 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 			return nil
 		}
 
+		// We only ship of the first compacted block level as normal flow.
+		if m.Compaction.Level > 1 {
+			if !s.uploadCompacted {
+				return nil
+			}
+		}
+
 		// Check against bucket if the meta file for this block exists.
 		ok, err := s.bucket.Exists(ctx, path.Join(m.ULID.String(), block.MetaFilename))
 		if err != nil {
@@ -296,12 +303,7 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 			return nil
 		}
 
-		// We only ship of the first compacted block level as normal flow.
 		if m.Compaction.Level > 1 {
-			if !s.uploadCompacted {
-				return nil
-			}
-
 			if err := checker.IsOverlapping(ctx, m.BlockMeta); err != nil {
 				level.Error(s.logger).Log("msg", "found overlap or error during sync, cannot upload compacted block", "err", err)
 				uploadErrs++
@@ -384,9 +386,13 @@ func (s *Shipper) upload(ctx context.Context, meta *metadata.Meta) error {
 // If f returns an error, the function returns with the same error.
 func (s *Shipper) iterBlockMetas(f func(m *metadata.Meta) error) error {
 	var metas []*metadata.Meta
-	names, err := fileutil.ReadDir(s.dir)
+	fis, err := ioutil.ReadDir(s.dir)
 	if err != nil {
 		return errors.Wrap(err, "read dir")
+	}
+	names := make([]string, 0, len(fis))
+	for _, fi := range fis {
+		names = append(names, fi.Name())
 	}
 	for _, n := range names {
 		if _, ok := block.IsBlockDir(n); !ok {
@@ -428,9 +434,13 @@ func hardlinkBlock(src, dst string) error {
 		return errors.Wrap(err, "create chunks dir")
 	}
 
-	files, err := fileutil.ReadDir(filepath.Join(src, block.ChunksDirname))
+	fis, err := ioutil.ReadDir(filepath.Join(src, block.ChunksDirname))
 	if err != nil {
 		return errors.Wrap(err, "read chunk dir")
+	}
+	files := make([]string, 0, len(fis))
+	for _, fi := range fis {
+		files = append(files, fi.Name())
 	}
 	for i, fn := range files {
 		files[i] = filepath.Join(block.ChunksDirname, fn)
