@@ -210,7 +210,7 @@ Specify a pair of client certificate and private key with `cert` and `key` if a 
 </match>
 ```
 
-### server certificate verification
+### Server certificate verification
 A flag to disable a server certificate verification. By default the `insecure_tls` is set to false.
 
 ```
