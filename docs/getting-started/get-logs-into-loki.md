@@ -8,7 +8,7 @@ Detailed information about configuring Promtail is available in [Promtail config
 
 The following instructions should help you get started.
 
-1. If you haven't already, download a Promtail configuration file and put it in the same directory as promtail.exe.
+1. If you haven't already, download a Promtail configuration file and put it in the same directory as promtail binary.
 
 ```
 wget NEED DOWNLOAD LINK
