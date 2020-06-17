@@ -22,48 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-// lazyChunks is a slice of lazy chunks that can ordered by chunk boundaries
-// in ascending or descending depending on the direction
-type lazyChunks struct {
-	chunks    []*chunkenc.LazyChunk
-	direction logproto.Direction
-}
-
-func (l lazyChunks) Len() int                  { return len(l.chunks) }
-func (l lazyChunks) Swap(i, j int)             { l.chunks[i], l.chunks[j] = l.chunks[j], l.chunks[i] }
-func (l lazyChunks) Peek() *chunkenc.LazyChunk { return l.chunks[0] }
-func (l lazyChunks) Less(i, j int) bool {
-	if l.direction == logproto.FORWARD {
-		t1, t2 := l.chunks[i].Chunk.From, l.chunks[j].Chunk.From
-		if !t1.Equal(t2) {
-			return t1.Before(t2)
-		}
-		return l.chunks[i].Chunk.Fingerprint < l.chunks[j].Chunk.Fingerprint
-	}
-	t1, t2 := l.chunks[i].Chunk.Through, l.chunks[j].Chunk.Through
-	if !t1.Equal(t2) {
-		return t1.After(t2)
-	}
-	return l.chunks[i].Chunk.Fingerprint > l.chunks[j].Chunk.Fingerprint
-}
-
-// pop returns the top `count` lazychunks, the original slice is splitted an copied
-// to avoid retaining chunks in the slice backing array.
-func (l *lazyChunks) pop(count int) []*chunkenc.LazyChunk {
-	if len(l.chunks) <= count {
-		old := l.chunks
-		l.chunks = nil
-		return old
-	}
-	// split slices into two new ones and copy parts to each so we don't keep old reference
-	res := make([]*chunkenc.LazyChunk, count)
-	copy(res, l.chunks[0:count])
-	new := make([]*chunkenc.LazyChunk, len(l.chunks)-count)
-	copy(new, l.chunks[count:len(l.chunks)])
-	l.chunks = new
-	return res
-}
-
 // batchChunkIterator is an EntryIterator that iterates through chunks by batch of `batchSize`.
 // Since chunks can overlap across batches for each iteration the iterator will keep all overlapping
 // chunks with the next chunk from the next batch and added it to the next iteration. In this case the boundaries of the batch
@@ -73,7 +31,8 @@ type batchChunkIterator struct {
 	batchSize       int
 	err             error
 	curr            iter.EntryIterator
-	lastOverlapping []*chunkenc.LazyChunk
+	lastOverlapping []*LazyChunk
+	labels          map[model.Fingerprint]string
 
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -87,7 +46,7 @@ type batchChunkIterator struct {
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
-func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.LineFilter, req *logproto.QueryRequest) *batchChunkIterator {
+func newBatchChunkIterator(ctx context.Context, chunks []*LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.LineFilter, req *logproto.QueryRequest) *batchChunkIterator {
 	// __name__ is not something we filter by because it's a constant in loki
 	// and only used for upstream compatibility; therefore remove it.
 	// The same applies to the sharding label which is injected by the cortex storage code.
@@ -109,6 +68,7 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 		ctx:       ctx,
 		cancel:    cancel,
 		chunks:    lazyChunks{direction: req.Direction, chunks: chunks},
+		labels:    map[model.Fingerprint]string{},
 		next: make(chan *struct {
 			iter iter.EntryIterator
 			err  error
@@ -144,6 +104,7 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 	}()
 	return res
 }
+
 func (it *batchChunkIterator) Next() bool {
 	var err error
 	// for loop to avoid recursion
@@ -170,93 +131,100 @@ func (it *batchChunkIterator) Next() bool {
 func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
-
-	// pop the next batch of chunks and append/prepend previous overlapping chunks
-	// so we can merge/de-dupe overlapping entries.
-	batch := make([]*chunkenc.LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
-	if it.req.Direction == logproto.FORWARD {
-		batch = append(batch, it.lastOverlapping...)
-	}
-	batch = append(batch, it.chunks.pop(it.batchSize)...)
-	if it.req.Direction == logproto.BACKWARD {
-		batch = append(batch, it.lastOverlapping...)
-	}
-
 	from, through := it.req.Start, it.req.End
-	if it.chunks.Len() > 0 {
-		nextChunk := it.chunks.Peek()
-		// we max out our iterator boundaries to the next chunks in the queue
-		// so that overlapping chunks are together
+	batch := make([]*LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
+	var nextChunk *LazyChunk
+
+	for it.chunks.Len() > 0 {
+
+		// pop the next batch of chunks and append/prepend previous overlapping chunks
+		// so we can merge/de-dupe overlapping entries.
+		if it.req.Direction == logproto.FORWARD {
+			batch = append(batch, it.lastOverlapping...)
+		}
+		batch = append(batch, it.chunks.pop(it.batchSize)...)
 		if it.req.Direction == logproto.BACKWARD {
-			from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
+			batch = append(batch, it.lastOverlapping...)
+		}
+
+		if it.chunks.Len() > 0 {
+			nextChunk = it.chunks.Peek()
+			// we max out our iterator boundaries to the next chunks in the queue
+			// so that overlapping chunks are together
+			if it.req.Direction == logproto.BACKWARD {
+				from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
+
+				// we have to reverse the inclusivity of the chunk iterator from
+				// [from, through) to (from, through] for backward queries, except when
+				// the batch's `from` is equal to the query's Start. This can be achieved
+				// by shifting `from` by one nanosecond.
+				if !from.Equal(it.req.Start) {
+					from = from.Add(time.Nanosecond)
+				}
+			} else {
+				through = time.Unix(0, nextChunk.Chunk.From.UnixNano())
+			}
+			// we save all overlapping chunks as they are also needed in the next batch to properly order entries.
+			// If we have chunks like below:
+			//      ┌──────────────┐
+			//      │     # 47     │
+			//      └──────────────┘
+			//          ┌──────────────────────────┐
+			//          │           # 48           |
+			//          └──────────────────────────┘
+			//              ┌──────────────┐
+			//              │     # 49     │
+			//              └──────────────┘
+			//                        ┌────────────────────┐
+			//                        │        # 50        │
+			//                        └────────────────────┘
+			//
+			//  And nextChunk is # 49, we need to keep references to #47 and #48 as they won't be
+			//  iterated over completely (we're clipping through to #49's from) and then add them to the next batch.
+
+		}
+
+		if it.req.Direction == logproto.BACKWARD {
+			through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
+
+			if through.After(it.req.End) {
+				through = it.req.End
+			}
 
 			// we have to reverse the inclusivity of the chunk iterator from
 			// [from, through) to (from, through] for backward queries, except when
-			// the batch's `from` is equal to the query's Start. This can be achieved
-			// by shifting `from` by one nanosecond.
-			if !from.Equal(it.req.Start) {
-				from = from.Add(time.Nanosecond)
+			// the batch's `through` is equal to the query's End. This can be achieved
+			// by shifting `through` by one nanosecond.
+			if !through.Equal(it.req.End) {
+				through = through.Add(time.Nanosecond)
 			}
 		} else {
-			through = time.Unix(0, nextChunk.Chunk.From.UnixNano())
+			from = time.Unix(0, headChunk.Chunk.From.UnixNano())
+
+			// when clipping the from it should never be before the start or equal to the end.
+			// Doing so would include entries not requested.
+			if from.Before(it.req.Start) || from.Equal(it.req.End) {
+				from = it.req.Start
+			}
 		}
-		// we save all overlapping chunks as they are also needed in the next batch to properly order entries.
-		// If we have chunks like below:
-		//      ┌──────────────┐
-		//      │     # 47     │
-		//      └──────────────┘
-		//          ┌──────────────────────────┐
-		//          │           # 48           |
-		//          └──────────────────────────┘
-		//              ┌──────────────┐
-		//              │     # 49     │
-		//              └──────────────┘
-		//                        ┌────────────────────┐
-		//                        │        # 50        │
-		//                        └────────────────────┘
-		//
-		//  And nextChunk is # 49, we need to keep references to #47 and #48 as they won't be
-		//  iterated over completely (we're clipping through to #49's from) and then add them to the next batch.
+
+		// it's possible that the current batch and the next batch are fully overlapping in which case
+		// we should keep adding more items until the batch boundaries difference is positive.
+		if through.Sub(from) > 0 {
+			break
+		}
+	}
+
+	if it.chunks.Len() > 0 {
 		it.lastOverlapping = it.lastOverlapping[:0]
 		for _, c := range batch {
-			if it.req.Direction == logproto.BACKWARD {
-				if c.Chunk.From.Before(nextChunk.Chunk.Through) || c.Chunk.From == nextChunk.Chunk.Through {
-					it.lastOverlapping = append(it.lastOverlapping, c)
-				}
-			} else {
-				if !c.Chunk.Through.Before(nextChunk.Chunk.From) {
-					it.lastOverlapping = append(it.lastOverlapping, c)
-				}
+			if c.IsOverlapping(nextChunk, it.req.Direction) {
+				it.lastOverlapping = append(it.lastOverlapping, c)
 			}
 		}
 	}
-
-	if it.req.Direction == logproto.BACKWARD {
-		through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
-
-		if through.After(it.req.End) {
-			through = it.req.End
-		}
-
-		// we have to reverse the inclusivity of the chunk iterator from
-		// [from, through) to (from, through] for backward queries, except when
-		// the batch's `through` is equal to the query's End. This can be achieved
-		// by shifting `through` by one nanosecond.
-		if !through.Equal(it.req.End) {
-			through = through.Add(time.Nanosecond)
-		}
-	} else {
-		from = time.Unix(0, headChunk.Chunk.From.UnixNano())
-
-		// when clipping the from it should never be before the start or equal to the end.
-		// Doing so would include entries not requested.
-		if from.Before(it.req.Start) || from.Equal(it.req.End) {
-			from = it.req.Start
-		}
-	}
-
 	// create the new chunks iterator from the current batch.
-	return newChunksIterator(it.ctx, batch, it.matchers, it.filter, it.req.Direction, from, through)
+	return it.newChunksIterator(batch, from, through, nextChunk)
 }
 
 func (it *batchChunkIterator) Entry() logproto.Entry {
@@ -286,20 +254,20 @@ func (it *batchChunkIterator) Close() error {
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
-func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matchers []*labels.Matcher, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
+func (it *batchChunkIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.EntryIterator, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
 	// Make sure the initial chunks are loaded. This is not one chunk
 	// per series, but rather a chunk per non-overlapping iterator.
-	if err := loadFirstChunks(ctx, chksBySeries); err != nil {
+	if err := loadFirstChunks(it.ctx, chksBySeries); err != nil {
 		return nil, err
 	}
 
 	// Now that we have the first chunk for each series loaded,
 	// we can proceed to filter the series that don't match.
-	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
+	chksBySeries = filterSeriesByMatchers(chksBySeries, it.matchers)
 
-	var allChunks []*chunkenc.LazyChunk
+	var allChunks []*LazyChunk
 	for _, series := range chksBySeries {
 		for _, chunks := range series {
 			allChunks = append(allChunks, chunks...)
@@ -307,22 +275,22 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 	}
 
 	// Finally we load all chunks not already loaded
-	if err := fetchLazyChunks(ctx, allChunks); err != nil {
+	if err := fetchLazyChunks(it.ctx, allChunks); err != nil {
 		return nil, err
 	}
 
-	iters, err := buildIterators(ctx, chksBySeries, filter, direction, from, through)
+	iters, err := it.buildIterators(chksBySeries, from, through, nextChunk)
 	if err != nil {
 		return nil, err
 	}
 
-	return iter.NewHeapIterator(ctx, iters, direction), nil
+	return iter.NewHeapIterator(it.ctx, iters, it.req.Direction), nil
 }
 
-func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) ([]iter.EntryIterator, error) {
+func (it *batchChunkIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
-		iterator, err := buildHeapIterator(ctx, chunks, filter, direction, from, through)
+		iterator, err := it.buildHeapIterator(chunks, from, through, nextChunk)
 		if err != nil {
 			return nil, err
 		}
@@ -332,24 +300,34 @@ func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunken
 	return result, nil
 }
 
-func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
+// computeLabels compute the labels string representation, uses a map to cache result per fingerprint.
+func (it *batchChunkIterator) computeLabels(c *LazyChunk) string {
+	if lbs, ok := it.labels[c.Chunk.Fingerprint]; ok {
+		return lbs
+	}
+	lbs := dropLabels(c.Chunk.Metric, labels.MetricName).String()
+	it.labels[c.Chunk.Fingerprint] = lbs
+	return lbs
+}
+
+func (it *batchChunkIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 
 	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
-	labels := dropLabels(chks[0][0].Chunk.Metric, labels.MetricName).String()
+	labels := it.computeLabels(chks[0][0])
 	for i := range chks {
 		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
 		for j := range chks[i] {
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(ctx, from, through, direction, filter)
+			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.req.Direction, it.filter, nextChunk)
 			if err != nil {
 				return nil, err
 			}
 			iterators = append(iterators, iterator)
 		}
-		if direction == logproto.BACKWARD {
+		if it.req.Direction == logproto.BACKWARD {
 			for i, j := 0, len(iterators)-1; i < j; i, j = i+1, j-1 {
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
@@ -357,10 +335,10 @@ func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
 	}
 
-	return iter.NewHeapIterator(ctx, result, direction), nil
+	return iter.NewHeapIterator(it.ctx, result, it.req.Direction), nil
 }
 
-func filterSeriesByMatchers(chks map[model.Fingerprint][][]*chunkenc.LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]*chunkenc.LazyChunk {
+func filterSeriesByMatchers(chks map[model.Fingerprint][][]*LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]*LazyChunk {
 outer:
 	for fp, chunks := range chks {
 		for _, matcher := range matchers {
@@ -373,7 +351,7 @@ outer:
 	return chks
 }
 
-func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
+func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
 	defer log.Finish()
 	start := time.Now()
@@ -384,7 +362,7 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 		storeStats.TotalChunksDownloaded += totalChunks
 	}()
 
-	chksByFetcher := map[*chunk.Fetcher][]*chunkenc.LazyChunk{}
+	chksByFetcher := map[*chunk.Fetcher][]*LazyChunk{}
 	for _, c := range chunks {
 		if c.Chunk.Data == nil {
 			chksByFetcher[c.Fetcher] = append(chksByFetcher[c.Fetcher], c)
@@ -398,10 +376,10 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 
 	errChan := make(chan error)
 	for fetcher, chunks := range chksByFetcher {
-		go func(fetcher *chunk.Fetcher, chunks []*chunkenc.LazyChunk) {
+		go func(fetcher *chunk.Fetcher, chunks []*LazyChunk) {
 			keys := make([]string, 0, len(chunks))
 			chks := make([]chunk.Chunk, 0, len(chunks))
-			index := make(map[string]*chunkenc.LazyChunk, len(chunks))
+			index := make(map[string]*LazyChunk, len(chunks))
 
 			// FetchChunks requires chunks to be ordered by external key.
 			sort.Slice(chunks, func(i, j int) bool { return chunks[i].Chunk.ExternalKey() < chunks[j].Chunk.ExternalKey() })
@@ -458,8 +436,8 @@ func isInvalidChunkError(err error) bool {
 	return false
 }
 
-func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk) error {
-	var toLoad []*chunkenc.LazyChunk
+func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]*LazyChunk) error {
+	var toLoad []*LazyChunk
 	for _, lchks := range chks {
 		for _, lchk := range lchks {
 			if len(lchk) == 0 {
@@ -471,13 +449,13 @@ func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]*chunke
 	return fetchLazyChunks(ctx, toLoad)
 }
 
-func partitionBySeriesChunks(chunks []*chunkenc.LazyChunk) map[model.Fingerprint][][]*chunkenc.LazyChunk {
-	chunksByFp := map[model.Fingerprint][]*chunkenc.LazyChunk{}
+func partitionBySeriesChunks(chunks []*LazyChunk) map[model.Fingerprint][][]*LazyChunk {
+	chunksByFp := map[model.Fingerprint][]*LazyChunk{}
 	for _, c := range chunks {
 		fp := c.Chunk.Fingerprint
 		chunksByFp[fp] = append(chunksByFp[fp], c)
 	}
-	result := make(map[model.Fingerprint][][]*chunkenc.LazyChunk, len(chunksByFp))
+	result := make(map[model.Fingerprint][][]*LazyChunk, len(chunksByFp))
 
 	for fp, chks := range chunksByFp {
 		result[fp] = partitionOverlappingChunks(chks)
@@ -488,12 +466,12 @@ func partitionBySeriesChunks(chunks []*chunkenc.LazyChunk) map[model.Fingerprint
 
 // partitionOverlappingChunks splits the list of chunks into different non-overlapping lists.
 // todo this might reverse the order.
-func partitionOverlappingChunks(chunks []*chunkenc.LazyChunk) [][]*chunkenc.LazyChunk {
+func partitionOverlappingChunks(chunks []*LazyChunk) [][]*LazyChunk {
 	sort.Slice(chunks, func(i, j int) bool {
 		return chunks[i].Chunk.From < chunks[j].Chunk.From
 	})
 
-	css := [][]*chunkenc.LazyChunk{}
+	css := [][]*LazyChunk{}
 outer:
 	for _, c := range chunks {
 		for i, cs := range css {
@@ -504,7 +482,7 @@ outer:
 			}
 		}
 		// If the chunk overlaps with every existing list, then create a new list.
-		cs := make([]*chunkenc.LazyChunk, 0, len(chunks)/(len(css)+1))
+		cs := make([]*LazyChunk, 0, len(chunks)/(len(css)+1))
 		cs = append(cs, c)
 		css = append(css, cs)
 	}

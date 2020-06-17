@@ -47,16 +47,16 @@ func assertStream(t *testing.T, expected, actual []logproto.Stream) {
 	}
 }
 
-func newLazyChunk(stream logproto.Stream) *chunkenc.LazyChunk {
-	return &chunkenc.LazyChunk{
+func newLazyChunk(stream logproto.Stream) *LazyChunk {
+	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: true,
 		Chunk:   newChunk(stream),
 	}
 }
 
-func newLazyInvalidChunk(stream logproto.Stream) *chunkenc.LazyChunk {
-	return &chunkenc.LazyChunk{
+func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
+	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: false,
 		Chunk:   newChunk(stream),
