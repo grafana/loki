@@ -192,13 +192,13 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
+
 	if GetRangeType(q.params) == InstantType {
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
 
 	for next {
-
 		for _, p := range vec {
 			var (
 				series *promql.Series
@@ -227,7 +227,9 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 	}
 	result := promql.Matrix(series)
 	sort.Sort(result)
-	return result, nil
+
+	err = stepEvaluator.Error()
+	return result, err
 }
 
 func (q *query) evalLiteral(_ context.Context, expr *literalExpr) (parser.Value, error) {

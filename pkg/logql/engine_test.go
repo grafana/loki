@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -19,7 +20,11 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-var testSize = int64(300)
+var (
+	testSize        = int64(300)
+	ErrMock         = errors.New("mock error")
+	ErrMockMultiple = errors.New("Multiple errors: [mock error mock error]")
+)
 
 func TestEngine_InstantQuery(t *testing.T) {
 	t.Parallel()
@@ -902,9 +907,9 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`
-		rate({app=~"foo|bar"}[1m]) unless
-		rate({app="bar"}[1m])
-		`,
+			rate({app=~"foo|bar"}[1m]) unless
+			rate({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -928,9 +933,9 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`
-		rate({app=~"foo|bar"}[1m]) +
-		rate({app="bar"}[1m])
-		`,
+			rate({app=~"foo|bar"}[1m]) +
+			rate({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -954,9 +959,9 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`
-		rate({app=~"foo|bar"}[1m]) -
-		rate({app="bar"}[1m])
-		`,
+			rate({app=~"foo|bar"}[1m]) -
+			rate({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -980,9 +985,9 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`
-		count_over_time({app=~"foo|bar"}[1m]) *
-		count_over_time({app="bar"}[1m])
-		`,
+			count_over_time({app=~"foo|bar"}[1m]) *
+			count_over_time({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -1006,9 +1011,9 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`
-		count_over_time({app=~"foo|bar"}[1m]) *
-		count_over_time({app="bar"}[1m])
-		`,
+			count_over_time({app=~"foo|bar"}[1m]) *
+			count_over_time({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -1032,9 +1037,9 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`
-		count_over_time({app=~"foo|bar"}[1m]) /
-		count_over_time({app="bar"}[1m])
-		`,
+			count_over_time({app=~"foo|bar"}[1m]) /
+			count_over_time({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -1058,9 +1063,9 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`
-		count_over_time({app=~"foo|bar"}[1m]) %
-		count_over_time({app="bar"}[1m])
-		`,
+			count_over_time({app=~"foo|bar"}[1m]) %
+			count_over_time({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -1085,10 +1090,10 @@ func TestEngine_RangeQuery(t *testing.T) {
 		// tests precedence: should be x + (x/x)
 		{
 			`
-		sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) +
-		sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) /
-		sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
-		`,
+			sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) +
+			sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) /
+			sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -1115,8 +1120,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) +
 				sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) /
 				sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
-			) * 2
-		`,
+				) * 2
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Stream{
 				{
@@ -1426,6 +1431,49 @@ func TestEngine_Stats(t *testing.T) {
 	require.Equal(t, int64(1), r.Statistics.Store.DecompressedBytes)
 }
 
+func TestStepEvaluator_Error(t *testing.T) {
+	tests := []struct {
+		name  string
+		qs    string
+		iters []iter.EntryIterator
+		err   error
+	}{
+		{
+			"rangeAggEvaluator",
+			`count_over_time({app="foo"}[1m])`,
+			[]iter.EntryIterator{
+				iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
+				NewMockStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
+			},
+			ErrMock,
+		},
+		{
+			"binOpStepEvaluator",
+			`count_over_time({app="foo"}[1m]) / count_over_time({app="foo"}[1m])`,
+			[]iter.EntryIterator{
+				iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
+				NewMockStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
+			},
+			ErrMockMultiple,
+		},
+	}
+
+	for _, tc := range tests {
+		queryfunc := QuerierFunc(func(ctx context.Context, p SelectParams) (iter.EntryIterator, error) {
+			return iter.NewHeapIterator(ctx, tc.iters, p.Direction), nil
+		})
+		eng := NewEngine(EngineOpts{}, queryfunc)
+		q := eng.Query(LiteralParams{
+			qs:    tc.qs,
+			start: time.Unix(0, 0),
+			end:   time.Unix(180, 0),
+			step:  1 * time.Second,
+		})
+		_, err := q.Exec(context.Background())
+		require.Equal(t, tc.err, err)
+	}
+}
+
 // go test -mod=vendor ./pkg/logql/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 func BenchmarkRangeQuery100000(b *testing.B) {
 	benchmarkRangeQuery(int64(100000), b)
@@ -1642,4 +1690,42 @@ func inverse(g generator) generator {
 	return func(i int64) logproto.Entry {
 		return g(-i)
 	}
+}
+
+// mockstreamIterator mocks error in iterator
+type mockStreamIterator struct {
+	i       int
+	entries []logproto.Entry
+	labels  string
+	err     error
+}
+
+// NewMockStreamIterator mocks error in iterator
+func NewMockStreamIterator(stream logproto.Stream) iter.EntryIterator {
+	return &mockStreamIterator{
+		i:       -1,
+		entries: stream.Entries,
+		labels:  stream.Labels,
+	}
+}
+
+func (i *mockStreamIterator) Next() bool {
+	i.err = ErrMock
+	return false
+}
+
+func (i *mockStreamIterator) Error() error {
+	return i.err
+}
+
+func (i *mockStreamIterator) Labels() string {
+	return i.labels
+}
+
+func (i *mockStreamIterator) Entry() logproto.Entry {
+	return i.entries[i.i]
+}
+
+func (i *mockStreamIterator) Close() error {
+	return nil
 }

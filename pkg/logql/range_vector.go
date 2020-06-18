@@ -19,6 +19,7 @@ type RangeVectorIterator interface {
 	Next() bool
 	At(aggregator RangeVectorAggregator) (int64, promql.Vector)
 	Close() error
+	Error() error
 }
 
 type rangeVectorIterator struct {
@@ -62,6 +63,10 @@ func (r *rangeVectorIterator) Next() bool {
 
 func (r *rangeVectorIterator) Close() error {
 	return r.iter.Close()
+}
+
+func (r *rangeVectorIterator) Error() error {
+	return r.iter.Error()
 }
 
 // popBack removes all entries out of the current window from the back.
