@@ -505,6 +505,11 @@ func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQ
 	log, ctx := spanlogger.New(ctx, "store.lookupEntriesByQueries")
 	defer log.Span.Finish()
 
+	// Nothing to do if there are no queries.
+	if len(queries) == 0 {
+		return nil, nil
+	}
+
 	var lock sync.Mutex
 	var entries []IndexEntry
 	err := c.index.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
@@ -527,7 +532,12 @@ func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQ
 	return entries, err
 }
 
-func (c *baseStore) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+	// Nothing to do if there are no entries.
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)

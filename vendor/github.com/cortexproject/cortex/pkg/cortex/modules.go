@@ -475,12 +475,8 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
-	t.MemberlistKV = memberlist.NewKVInit(&t.Cfg.MemberlistKV)
-
-	return services.NewIdleService(nil, func(_ error) error {
-		t.MemberlistKV.Stop()
-		return nil
-	}), nil
+	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV)
+	return t.MemberlistKV, nil
 }
 
 func (t *Cortex) initDataPurger() (services.Service, error) {

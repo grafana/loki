@@ -216,7 +216,7 @@ type Cortex struct {
 	Alertmanager *alertmanager.MultitenantAlertmanager
 	Compactor    *compactor.Compactor
 	StoreGateway *storegateway.StoreGateway
-	MemberlistKV *memberlist.KVInit
+	MemberlistKV *memberlist.KVInitService
 
 	// Queryable that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
