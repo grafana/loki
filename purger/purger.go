@@ -28,12 +28,17 @@ import (
 const (
 	millisecondPerDay                 = int64(24 * time.Hour / time.Millisecond)
 	deleteRequestCancellationDeadline = 24 * time.Hour
+	statusSuccess                     = "success"
+	statusFail                        = "fail"
 )
 
 type purgerMetrics struct {
-	deleteRequestsProcessedTotal      *prometheus.CounterVec
-	deleteRequestsChunksSelectedTotal *prometheus.CounterVec
-	deleteRequestsProcessingFailures  *prometheus.CounterVec
+	deleteRequestsProcessedTotal         *prometheus.CounterVec
+	deleteRequestsChunksSelectedTotal    *prometheus.CounterVec
+	deleteRequestsProcessingFailures     *prometheus.CounterVec
+	loadPendingRequestsAttempsTotal      *prometheus.CounterVec
+	oldestPendingDeleteRequestAgeSeconds prometheus.Gauge
+	pendingDeleteRequestsCount           prometheus.Gauge
 }
 
 func newPurgerMetrics(r prometheus.Registerer) *purgerMetrics {
@@ -54,6 +59,21 @@ func newPurgerMetrics(r prometheus.Registerer) *purgerMetrics {
 		Name:      "purger_delete_requests_processing_failures_total",
 		Help:      "Number of delete requests processing failures per user",
 	}, []string{"user"})
+	m.loadPendingRequestsAttempsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "purger_load_pending_requests_attempts_total",
+		Help:      "Number of attempts that were made to load pending requests with status",
+	}, []string{"status"})
+	m.oldestPendingDeleteRequestAgeSeconds = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "purger_oldest_pending_delete_request_age_seconds",
+		Help:      "Age of oldest pending delete request in seconds",
+	})
+	m.pendingDeleteRequestsCount = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "purger_pending_delete_requests_count",
+		Help:      "Count of requests which are in process or are ready to be processed",
+	})
 
 	return &m
 }
@@ -99,7 +119,7 @@ type DataPurger struct {
 
 	// we would only allow processing of singe delete request at a time since delete requests touching same chunks could change the chunk IDs of partially deleted chunks
 	// and break the purge plan for other requests
-	inProcessRequestIDs    map[string]string
+	inProcessRequests      map[string]DeleteRequest
 	inProcessRequestIDsMtx sync.RWMutex
 
 	// We do not want to limit pulling new delete requests to a fixed interval which otherwise would limit number of delete requests we process per user.
@@ -128,7 +148,7 @@ func NewDataPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store,
 		pullNewRequestsChan:      make(chan struct{}, 1),
 		executePlansChan:         make(chan deleteRequestWithLogger, 50),
 		workerJobChan:            make(chan workerJob, 50),
-		inProcessRequestIDs:      map[string]string{},
+		inProcessRequests:        map[string]DeleteRequest{},
 		usersWithPendingRequests: map[string]struct{}{},
 		pendingPlansCount:        map[string]int{},
 	}
@@ -151,15 +171,23 @@ func (dp *DataPurger) init(ctx context.Context) error {
 }
 
 func (dp *DataPurger) loop(ctx context.Context) error {
-	loadRequestsTicker := time.NewTicker(time.Hour)
-	defer loadRequestsTicker.Stop()
-
 	loadRequests := func() {
+		status := statusSuccess
+
 		err := dp.pullDeleteRequestsToPlanDeletes()
 		if err != nil {
+			status = statusFail
 			level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
 		}
+
+		dp.metrics.loadPendingRequestsAttempsTotal.WithLabelValues(status).Inc()
 	}
+
+	// load requests on startup instead of waiting for first ticker
+	loadRequests()
+
+	loadRequestsTicker := time.NewTicker(time.Hour)
+	defer loadRequestsTicker.Stop()
 
 	for {
 		select {
@@ -203,7 +231,7 @@ func (dp *DataPurger) workerJobCleanup(job workerJob) {
 		dp.pendingPlansCountMtx.Unlock()
 
 		dp.inProcessRequestIDsMtx.Lock()
-		delete(dp.inProcessRequestIDs, job.userID)
+		delete(dp.inProcessRequests, job.userID)
 		dp.inProcessRequestIDsMtx.Unlock()
 
 		// request loading of more delete request if
@@ -339,7 +367,7 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status building plan")
 
-		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
+		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
 		err := dp.buildDeletePlan(req)
 		if err != nil {
 			dp.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
@@ -360,7 +388,7 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status deleting")
 
-		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
+		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
 		dp.executePlansChan <- req
 	}
 
@@ -375,23 +403,43 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		return err
 	}
 
+	dp.inProcessRequestIDsMtx.RLock()
+	pendingDeleteRequestsCount := len(dp.inProcessRequests)
+	dp.inProcessRequestIDsMtx.RUnlock()
+
+	now := model.Now()
+	oldestPendingRequestCreatedAt := now
+
+	// requests which are still being processed are also considered pending
+	if pendingDeleteRequestsCount != 0 {
+		oldestInProcessRequest := dp.getOldestInProcessRequest()
+		if oldestInProcessRequest != nil {
+			oldestPendingRequestCreatedAt = oldestInProcessRequest.CreatedAt
+		}
+	}
+
 	for _, deleteRequest := range deleteRequests {
 		// adding an extra minute here to avoid a race between cancellation of request and picking of the request for processing
 		if deleteRequest.CreatedAt.Add(deleteRequestCancellationDeadline).Add(time.Minute).After(model.Now()) {
 			continue
 		}
 
+		pendingDeleteRequestsCount++
+		if deleteRequest.CreatedAt.Before(oldestPendingRequestCreatedAt) {
+			oldestPendingRequestCreatedAt = deleteRequest.CreatedAt
+		}
+
 		dp.inProcessRequestIDsMtx.RLock()
-		inprocessDeleteRequestID := dp.inProcessRequestIDs[deleteRequest.UserID]
+		inprocessDeleteRequest, ok := dp.inProcessRequests[deleteRequest.UserID]
 		dp.inProcessRequestIDsMtx.RUnlock()
 
-		if inprocessDeleteRequestID != "" {
+		if ok {
 			dp.usersWithPendingRequestsMtx.Lock()
 			dp.usersWithPendingRequests[deleteRequest.UserID] = struct{}{}
 			dp.usersWithPendingRequestsMtx.Unlock()
 
 			level.Debug(util.Logger).Log("msg", "skipping delete request processing for now since another request from same user is already in process",
-				"inprocess_request_id", inprocessDeleteRequestID,
+				"inprocess_request_id", inprocessDeleteRequest.RequestID,
 				"skipped_request_id", deleteRequest.RequestID, "user_id", deleteRequest.UserID)
 			continue
 		}
@@ -402,7 +450,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		}
 
 		dp.inProcessRequestIDsMtx.Lock()
-		dp.inProcessRequestIDs[deleteRequest.UserID] = deleteRequest.RequestID
+		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
 		dp.inProcessRequestIDsMtx.Unlock()
 
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
@@ -413,7 +461,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		if err != nil {
 			dp.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
 
-			// We do not want to remove this delete request from inProcessRequestIDs to make sure
+			// We do not want to remove this delete request from inProcessRequests to make sure
 			// we do not move multiple deleting requests in deletion process.
 			// None of the other delete requests from the user would be considered for processing until then.
 			level.Error(req.logger).Log("msg", "error building delete plan", "err", err)
@@ -423,6 +471,9 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		level.Info(req.logger).Log("msg", "sending delete request for execution")
 		dp.executePlansChan <- req
 	}
+
+	dp.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(now.Sub(oldestPendingRequestCreatedAt) / time.Second))
+	dp.metrics.pendingDeleteRequestsCount.Set(float64(pendingDeleteRequestsCount))
 
 	return nil
 }
@@ -536,6 +587,20 @@ func (dp *DataPurger) getDeletePlan(ctx context.Context, userID, requestID strin
 func (dp *DataPurger) removeDeletePlan(ctx context.Context, userID, requestID string, planNo int) error {
 	objectKey := buildObjectKeyForPlan(userID, requestID, planNo)
 	return dp.objectClient.DeleteObject(ctx, objectKey)
+}
+
+func (dp *DataPurger) getOldestInProcessRequest() *DeleteRequest {
+	dp.inProcessRequestIDsMtx.RLock()
+	defer dp.inProcessRequestIDsMtx.RUnlock()
+
+	var oldestRequest *DeleteRequest
+	for _, request := range dp.inProcessRequests {
+		if oldestRequest == nil || request.CreatedAt.Before(oldestRequest.CreatedAt) {
+			oldestRequest = &request
+		}
+	}
+
+	return oldestRequest
 }
 
 // returns interval per plan
