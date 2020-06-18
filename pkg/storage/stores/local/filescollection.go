@@ -13,6 +13,9 @@ import (
 	"go.etcd.io/bbolt"
 )
 
+// timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
+const downloadTimeout = 5 * time.Minute
+
 type downloadedFile struct {
 	mtime  time.Time
 	boltdb *bbolt.DB
@@ -21,12 +24,11 @@ type downloadedFile struct {
 // FilesCollection holds info about shipped boltdb index files by other uploaders(ingesters).
 // It is used to hold boltdb files created by all the ingesters for same period i.e with same name.
 // In the object store files are uploaded as <boltdb-filename>/<uploader-id> to manage files with same name from different ingesters.
-// Note: FilesCollection does not manage the locks on mutex to allow users of it to
-// do batch operations or single operation or operations requiring intermittent locking.
+// Note: FilesCollection takes care of locking with all the exported/public methods.
 // Note2: It has an err variable which is set when FilesCollection is in invalid state due to some issue.
 // All operations which try to access/update the files except cleanup returns an error if set.
 type FilesCollection struct {
-	sync.RWMutex
+	mtx sync.RWMutex
 
 	period        string
 	cacheLocation string
@@ -50,14 +52,17 @@ func NewFilesCollection(period, cacheLocation string, metrics *downloaderMetrics
 	}
 
 	// keep the files collection locked until all the files are downloaded.
-	fc.Lock()
+	fc.mtx.Lock()
 	go func() {
-		defer fc.Unlock()
+		defer fc.mtx.Unlock()
 		defer close(fc.ready)
+
+		ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+		defer cancel()
 
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
-		if err := fc.downloadAllFilesForPeriod(context.Background()); err != nil {
+		if err := fc.downloadAllFilesForPeriod(ctx); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to download files", "period", fc.period)
 		}
 	}()
@@ -87,8 +92,8 @@ func (fc *FilesCollection) ForEach(callback func(fileName string, df *downloaded
 		return fc.err
 	}
 
-	fc.RLock()
-	defer fc.RUnlock()
+	fc.mtx.RLock()
+	defer fc.mtx.RUnlock()
 
 	for fileName, df := range fc.files {
 		if err := callback(fileName, df); err != nil {
@@ -100,8 +105,8 @@ func (fc *FilesCollection) ForEach(callback func(fileName string, df *downloaded
 }
 
 func (fc *FilesCollection) CleanupAllFiles() error {
-	fc.Lock()
-	defer fc.Unlock()
+	fc.mtx.Lock()
+	defer fc.mtx.Unlock()
 
 	for fileName := range fc.files {
 		if err := fc.cleanupFile(fileName); err != nil {

@@ -27,7 +27,7 @@ func (fc *FilesCollection) checkStorageForUpdates(ctx context.Context) (toDownlo
 
 	listedUploaders := make(map[string]struct{}, len(objects))
 
-	fc.RLock()
+	fc.mtx.RLock()
 	for _, object := range objects {
 		uploader := strings.Split(object.Key, "/")[1]
 		listedUploaders[uploader] = struct{}{}
@@ -38,7 +38,7 @@ func (fc *FilesCollection) checkStorageForUpdates(ctx context.Context) (toDownlo
 			toDownload = append(toDownload, object)
 		}
 	}
-	fc.RUnlock()
+	fc.mtx.RUnlock()
 
 	err = fc.ForEach(func(uploader string, df *downloadedFile) error {
 		if _, isOK := listedUploaders[uploader]; !isOK {
@@ -66,8 +66,8 @@ func (fc *FilesCollection) Sync(ctx context.Context) error {
 		}
 	}
 
-	fc.Lock()
-	defer fc.Unlock()
+	fc.mtx.Lock()
+	defer fc.mtx.Unlock()
 
 	for _, uploader := range toDelete {
 		err := fc.cleanupFile(uploader)
@@ -93,8 +93,8 @@ func (fc *FilesCollection) downloadFile(ctx context.Context, storageObject chunk
 		return err
 	}
 
-	fc.Lock()
-	defer fc.Unlock()
+	fc.mtx.Lock()
+	defer fc.mtx.Unlock()
 
 	df, ok := fc.files[uploader]
 	if ok {
