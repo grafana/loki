@@ -26,7 +26,7 @@ type LazyChunk struct {
 
 // Iterator returns an entry iterator.
 // The iterator returned will cache overlapping block's entries with the next chunk if passed.
-// This way when we re-use them for ordering accross batches we don't re-decompress the data again.
+// This way when we re-use them for ordering across batches we don't re-decompress the data again.
 func (c *LazyChunk) Iterator(
 	ctx context.Context,
 	from, through time.Time,
@@ -88,11 +88,13 @@ func (c *LazyChunk) Iterator(
 
 func IsBlockOverlapping(b chunkenc.Block, with *LazyChunk, direction logproto.Direction) bool {
 	if direction == logproto.BACKWARD {
-		if b.MinTime() < with.Chunk.Through.UnixNano() || b.MinTime() == with.Chunk.Through.UnixNano() {
+		through := int64(with.Chunk.Through) * int64(time.Millisecond)
+		if b.MinTime() <= through {
 			return true
 		}
 	} else {
-		if !(b.MaxTime() < with.Chunk.From.UnixNano()) {
+		from := int64(with.Chunk.From) * int64(time.Millisecond)
+		if b.MaxTime() >= from {
 			return true
 		}
 	}

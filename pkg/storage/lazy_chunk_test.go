@@ -3,17 +3,19 @@ package storage
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/prometheus/common/model"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsBlockOverlapping(t *testing.T) {
+func TestIsOverlapping(t *testing.T) {
 	tests := []struct {
 		name      string
 		direction logproto.Direction
@@ -24,30 +26,71 @@ func TestIsBlockOverlapping(t *testing.T) {
 		{
 			"equal forward",
 			logproto.FORWARD,
-			lazyChunkWithBounds(model.TimeFromUnixNano(0), model.TimeFromUnixNano(10)),
-			blockWithBounds(0, 10),
+			lazyChunkWithBounds(time.Unix(0, 0), time.Unix(0, int64(time.Millisecond*5))),
+			blockWithBounds(0, int64(time.Millisecond*5)),
 			true,
 		},
 		{
 			"equal backward",
 			logproto.BACKWARD,
-			lazyChunkWithBounds(model.TimeFromUnixNano(0), model.TimeFromUnixNano(10)),
-			blockWithBounds(0, 10),
+			lazyChunkWithBounds(time.Unix(0, 0), time.Unix(0, int64(time.Millisecond*5))),
+			blockWithBounds(0, int64(time.Millisecond*5)),
+			true,
+		},
+		{
+			"equal through backward",
+			logproto.BACKWARD,
+			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*5)), time.Unix(0, int64(time.Millisecond*10))),
+			blockWithBounds(0, int64(time.Millisecond*10)),
+			true,
+		},
+		{
+			"< through backward",
+			logproto.BACKWARD,
+			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*5)), time.Unix(0, int64(time.Millisecond*10))),
+			blockWithBounds(0, int64(time.Millisecond*5)),
+			true,
+		},
+		{
+			"from > forward",
+			logproto.FORWARD,
+			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*4)), time.Unix(0, int64(time.Millisecond*10))),
+			blockWithBounds(int64(time.Millisecond*3), int64(time.Millisecond*5)),
+			true,
+		},
+		{
+			"from < forward",
+			logproto.FORWARD,
+			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*5)), time.Unix(0, int64(time.Millisecond*10))),
+			blockWithBounds(int64(time.Millisecond*3), int64(time.Millisecond*4)),
+			false,
+		},
+		{
+			"from = forward",
+			logproto.FORWARD,
+			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*5)), time.Unix(0, int64(time.Millisecond*10))),
+			blockWithBounds(int64(time.Millisecond*3), int64(time.Millisecond*5)),
 			true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// testing the block one
 			require.Equal(t, tt.want, IsBlockOverlapping(tt.b, tt.with, tt.direction))
+			// testing the chunk one
+			l := lazyChunkWithBounds(time.Unix(0, tt.b.MinTime()), time.Unix(0, tt.b.MaxTime()))
+			require.Equal(t, tt.want, l.IsOverlapping(tt.with, tt.direction))
 		})
 	}
 }
 
-func lazyChunkWithBounds(from, through model.Time) *LazyChunk {
+func lazyChunkWithBounds(from, through time.Time) *LazyChunk {
+	// In loki chunks are rounded when flushed fro nanoseconds to milliseconds.
+	fromM, throughM := util.RoundToMilliseconds(from, through)
 	return &LazyChunk{
 		Chunk: chunk.Chunk{
-			From:    from,
-			Through: through,
+			From:    fromM,
+			Through: throughM,
 		},
 	}
 }
