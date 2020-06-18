@@ -41,6 +41,22 @@ func TestRawOutput_Format(t *testing.T) {
 			"Hello world",
 			"Hello world",
 		},
+		"line with single newline at the end": {
+			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
+			timestamp,
+			someLabels,
+			0,
+			"Hello world\n",
+			"Hello world",
+		},
+		"line with multiple newlines at the end": {
+			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
+			timestamp,
+			someLabels,
+			0,
+			"Hello world\n\n\n",
+			"Hello world\n\n",
+		},
 	}
 
 	for testName, testData := range tests {
