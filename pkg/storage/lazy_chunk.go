@@ -19,10 +19,14 @@ type LazyChunk struct {
 	IsValid bool
 	Fetcher *chunk.Fetcher
 
+	// cache of overlapping block.
+	// We use the offset of the block as key since it's unique per chunk.
 	overlappingBlocks map[int]*cachedIterator
 }
 
 // Iterator returns an entry iterator.
+// The iterator returned will cache overlapping block's entries with the next chunk if passed.
+// This way when we re-use them for ordering accross batches we don't re-decompress the data again.
 func (c *LazyChunk) Iterator(
 	ctx context.Context,
 	from, through time.Time,
@@ -44,14 +48,14 @@ func (c *LazyChunk) Iterator(
 	its := make([]iter.EntryIterator, 0, len(blocks))
 
 	for _, b := range blocks {
-		// if we already processed that block let's use it.
+		// if we have already processed and cache block let's use it.
 		if cache, ok := c.overlappingBlocks[b.Offset()]; ok {
-			cop := *cache
-			cop.reset()
-			its = append(its, &cop)
+			clone := *cache
+			clone.reset()
+			its = append(its, &clone)
 			continue
 		}
-		// if the block is overlapping cache it.
+		// if the block is overlapping cache it with the next chunk boundaries.
 		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, direction) {
 			it := newCachedIterator(b.Iterator(ctx, filter), b.Entries())
 			its = append(its, it)
@@ -64,8 +68,11 @@ func (c *LazyChunk) Iterator(
 		if nextChunk != nil {
 			delete(c.overlappingBlocks, b.Offset())
 		}
+		// non-overlapping block with the next chunk are not cached.
 		its = append(its, b.Iterator(ctx, filter))
 	}
+
+	// build the final iterator bound to the requested time range.
 	iterForward := iter.NewTimeRangedIterator(
 		iter.NewNonOverlappingIterator(its, ""),
 		from,
