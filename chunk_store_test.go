@@ -868,7 +868,7 @@ func TestIndexCachingWorks(t *testing.T) {
 	require.NoError(t, err)
 	err = store.Put(ctx, []Chunk{fooChunk1})
 	require.NoError(t, err)
-	n := storage.numWrites
+	n := storage.numIndexWrites
 
 	// Only one extra entry for the new chunk of same series.
 	fooChunk2 := dummyChunkFor(model.Time(0).Add(30*time.Second), metric)
@@ -876,7 +876,7 @@ func TestIndexCachingWorks(t *testing.T) {
 	require.NoError(t, err)
 	err = store.Put(ctx, []Chunk{fooChunk2})
 	require.NoError(t, err)
-	require.Equal(t, n+1, storage.numWrites)
+	require.Equal(t, n+1, storage.numIndexWrites)
 }
 
 func BenchmarkIndexCaching(b *testing.B) {
@@ -1300,4 +1300,54 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), seriesIDs[0])
 		})
 	}
+}
+
+func TestDisableIndexDeduplication(t *testing.T) {
+	for i, disableIndexDeduplication := range []bool{
+		false, true,
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			ctx := context.Background()
+			metric := labels.Labels{
+				{Name: labels.MetricName, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+			}
+			storeMaker := stores[0]
+			storeCfg := storeMaker.configFn()
+			storeCfg.ChunkCacheConfig.Cache = cache.NewFifoCache("chunk-cache", cache.FifoCacheConfig{
+				MaxSizeItems: 5,
+			})
+			storeCfg.DisableIndexDeduplication = disableIndexDeduplication
+
+			store := newTestChunkStoreConfig(t, "v9", storeCfg)
+			defer store.Stop()
+
+			storage := store.(CompositeStore).stores[0].Store.(*seriesStore).storage.(*MockStorage)
+
+			fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
+			err := fooChunk1.Encode()
+			require.NoError(t, err)
+			err = store.Put(ctx, []Chunk{fooChunk1})
+			require.NoError(t, err)
+			n := storage.numIndexWrites
+
+			// see if we have written the chunk to the store
+			require.Equal(t, 1, storage.numChunkWrites)
+
+			// Put the same chunk again
+			err = store.Put(ctx, []Chunk{fooChunk1})
+			require.NoError(t, err)
+
+			expectedTotalWrites := n
+			if disableIndexDeduplication {
+				expectedTotalWrites *= 2
+			}
+			require.Equal(t, expectedTotalWrites, storage.numIndexWrites)
+
+			// see if we deduped the chunk and the number of chunks we wrote is still 1
+			require.Equal(t, 1, storage.numChunkWrites)
+		})
+
+	}
+
 }
