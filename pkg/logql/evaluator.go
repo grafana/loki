@@ -189,6 +189,8 @@ func vectorAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
+	lb := labels.NewBuilder(nil)
+	buf := make([]byte, 0, 1024)
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
@@ -210,9 +212,9 @@ func vectorAggEvaluator(
 				groupingKey uint64
 			)
 			if expr.grouping.without {
-				groupingKey, _ = metric.HashWithoutLabels(make([]byte, 0, 1024), expr.grouping.groups...)
+				groupingKey, buf = metric.HashWithoutLabels(buf, expr.grouping.groups...)
 			} else {
-				groupingKey, _ = metric.HashForLabels(make([]byte, 0, 1024), expr.grouping.groups...)
+				groupingKey, buf = metric.HashForLabels(buf, expr.grouping.groups...)
 			}
 			group, ok := result[groupingKey]
 			// Add a new group if it doesn't exist.
@@ -220,7 +222,7 @@ func vectorAggEvaluator(
 				var m labels.Labels
 
 				if expr.grouping.without {
-					lb := labels.NewBuilder(metric)
+					lb.Reset(metric)
 					lb.Del(expr.grouping.groups...)
 					lb.Del(labels.MetricName)
 					m = lb.Labels()
