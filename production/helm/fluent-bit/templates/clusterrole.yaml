@@ -8,7 +8,6 @@ metadata:
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
   name: {{ template "fluent-bit-loki.fullname" . }}-clusterrole
-  namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups: [""] # "" indicates the core API group
   resources:
