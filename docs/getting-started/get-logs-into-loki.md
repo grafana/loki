@@ -71,4 +71,4 @@ scrape_configs:
 ./promtail-linux-amd64 -config.file=promtail-local-config.yaml
 ```
 
-5. Restart Loki. You should now see your application logs.
+You should now see your application logs. If you are using Grafana, you might need to refresh your instance in order to see the logs.
