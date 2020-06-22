@@ -43,8 +43,8 @@ scrape_configs:
    
    Below is an example that sends logs from a default Grafana installation to Loki. We updated the following fields:
    - job_name - This differentiates the logs collected from other log groups.
-   - targets - is now optional for static_configs, however is often defined because in older versions of Promtail it was not optional.  This was an artifact from directly using the Prometheus service discovery code which required this entry.
-   - labels - any number of static labels to apply to every log line scraped by this definition, good examples here might be things like environment and/or job or app.
+   - targets - Optional for static_configs, however is often defined because in older versions of Promtail it was not optional. This was an artifact from directly using the Prometheus service discovery code which required this entry.
+   - labels - Static label to apply to every log line scraped by this definition. Good examples would be environment name, job name, or app name.
    - __path__ - The path to where the logs are stored that I want Loki to consume.
 
 ```

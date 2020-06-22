@@ -8,7 +8,7 @@ Instructions for different methods of installing Loki and Promtail.
 - [Install through Helm](./helm.md)
 - [Install through Docker or Docker Compose](./docker.md)
 - [Install and run locally](./local.md)
-- [Install from source](./install-for-manual-build.md)
+- [Install from source](./install-from-source.md)
 
 ## General process
 
