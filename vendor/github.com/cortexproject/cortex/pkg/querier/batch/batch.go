@@ -5,8 +5,30 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
+
+// GenericChunk is a generic chunk used by the batch iterator, in order to make the batch
+// iterator general purpose.
+type GenericChunk struct {
+	MinTime int64
+	MaxTime int64
+
+	iterator func(reuse encoding.Iterator) encoding.Iterator
+}
+
+func NewGenericChunk(minTime, maxTime int64, iterator func(reuse encoding.Iterator) encoding.Iterator) GenericChunk {
+	return GenericChunk{
+		MinTime:  minTime,
+		MaxTime:  maxTime,
+		iterator: iterator,
+	}
+}
+
+func (c GenericChunk) Iterator(reuse encoding.Iterator) encoding.Iterator {
+	return c.iterator(reuse)
+}
 
 // iterator iterates over batches.
 type iterator interface {
@@ -27,8 +49,18 @@ type iterator interface {
 	Err() error
 }
 
-// NewChunkMergeIterator returns a storage.SeriesIterator that merges chunks together.
+// NewChunkMergeIterator returns a storage.SeriesIterator that merges Cortex chunks together.
 func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
+	converted := make([]GenericChunk, len(chunks))
+	for i, c := range chunks {
+		converted[i] = NewGenericChunk(int64(c.From), int64(c.Through), c.Data.NewIterator)
+	}
+
+	return NewGenericChunkMergeIterator(converted)
+}
+
+// NewGenericChunkMergeIterator returns a storage.SeriesIterator that merges generic chunks together.
+func NewGenericChunkMergeIterator(chunks []GenericChunk) chunkenc.Iterator {
 	iter := newMergeIterator(chunks)
 	return newIteratorAdapter(iter)
 }

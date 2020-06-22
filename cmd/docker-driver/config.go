@@ -9,17 +9,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/templates"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/targets"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -44,6 +47,7 @@ const (
 	cfgTenantIDKey           = "loki-tenant-id"
 	cfgNofile                = "no-file"
 	cfgKeepFile              = "keep-file"
+	cfgRelabelKey            = "loki-relabel-config"
 
 	swarmServiceLabelKey = "com.docker.swarm.service.name"
 	swarmStackLabelKey   = "com.docker.stack.namespace"
@@ -65,7 +69,7 @@ var (
 	defaultClientConfig = client.Config{
 		BatchWait: 1 * time.Second,
 		BatchSize: 100 * 1024,
-		BackoffConfig: util.BackoffConfig{
+		BackoffConfig: cortex_util.BackoffConfig{
 			MinBackoff: 100 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
 			MaxRetries: 10,
@@ -106,6 +110,7 @@ func validateDriverOpt(loggerInfo logger.Info) error {
 		case cfgPipelineStagesKey:
 		case cfgPipelineStagesFileKey:
 		case cfgTenantIDKey:
+		case cfgRelabelKey:
 		case cfgNofile:
 		case cfgKeepFile:
 		case "labels":
@@ -280,6 +285,15 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	}
 	labels[targets.FilenameLabel] = model.LabelValue(logCtx.LogPath)
 
+	// Process relabel configs.
+	if relabelString, ok := logCtx.Config[cfgRelabelKey]; ok && relabelString != "" {
+		relabeled, err := relabelConfig(relabelString, labels)
+		if err != nil {
+			return nil, fmt.Errorf("error applying relabel config: %s err:%s", relabelString, err)
+		}
+		labels = relabeled
+	}
+
 	// parse pipeline stages
 	pipeline, err := parsePipeline(logCtx)
 	if err != nil {
@@ -345,6 +359,15 @@ func parseInt(key string, logCtx logger.Info, set func(i int)) error {
 		set(val)
 	}
 	return nil
+}
+
+func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
+	relabelConfig := make([]*relabel.Config, 0)
+	if err := yaml.UnmarshalStrict([]byte(config), &relabelConfig); err != nil {
+		return nil, err
+	}
+	relabed := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
+	return model.LabelSet(util.LabelsToMetric(relabed)), nil
 }
 
 func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, error) {

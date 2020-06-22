@@ -65,3 +65,5 @@ func (m *MatrixStepper) Next() (bool, int64, promql.Vector) {
 }
 
 func (m *MatrixStepper) Close() error { return nil }
+
+func (m *MatrixStepper) Error() error { return nil }

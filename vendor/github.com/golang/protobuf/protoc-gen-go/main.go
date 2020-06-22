@@ -68,6 +68,7 @@ func main() {
 				gengogrpc.GenerateFileContent(gen, f, g)
 			}
 		}
+		gen.SupportedFeatures = gengo.SupportedFeatures
 		return nil
 	})
 }

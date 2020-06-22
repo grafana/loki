@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func (m *KV) createAndRegisterMetrics() {
@@ -69,7 +70,11 @@ func (m *KV) createAndRegisterMetrics() {
 		Name:      "messages_in_broadcast_queue",
 		Help:      "Number of user messages in the broadcast queue",
 	}, func() float64 {
-		return float64(m.broadcasts.NumQueued())
+		// m.broadcasts is not set before Starting state
+		if m.State() == services.Running || m.State() == services.Stopping {
+			return float64(m.broadcasts.NumQueued())
+		}
+		return 0
 	})
 
 	m.totalSizeOfBroadcastMessagesInQueue = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -116,7 +121,11 @@ func (m *KV) createAndRegisterMetrics() {
 		Name:      "cluster_members_count",
 		Help:      "Number of members in memberlist cluster",
 	}, func() float64 {
-		return float64(m.memberlist.NumMembers())
+		// m.memberlist is not set before Starting state
+		if m.State() == services.Running || m.State() == services.Stopping {
+			return float64(m.memberlist.NumMembers())
+		}
+		return 0
 	})
 
 	m.memberlistHealthScore = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
@@ -125,7 +134,11 @@ func (m *KV) createAndRegisterMetrics() {
 		Name:      "cluster_node_health_score",
 		Help:      "Health score of this cluster. Lower value is better. 0 = healthy",
 	}, func() float64 {
-		return float64(m.memberlist.GetHealthScore())
+		// m.memberlist is not set before Starting state
+		if m.State() == services.Running || m.State() == services.Stopping {
+			return float64(m.memberlist.GetHealthScore())
+		}
+		return 0
 	})
 
 	m.watchPrefixDroppedNotifications = prometheus.NewCounterVec(prometheus.CounterOpts{

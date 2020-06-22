@@ -15,6 +15,7 @@ type SeriesIterator interface {
 	Close() error
 	Next() bool
 	Peek() (Sample, bool)
+	Error() error
 }
 
 // Sample is a series sample
@@ -70,6 +71,10 @@ func (e *seriesIterator) Peek() (Sample, bool) {
 	}
 	e.updated = true
 	return e.cur, true
+}
+
+func (e *seriesIterator) Error() error {
+	return e.iter.Error()
 }
 
 // SampleExtractor transforms a log entry into a sample.

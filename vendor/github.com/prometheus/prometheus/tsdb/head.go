@@ -255,9 +255,7 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 				Name: "prometheus_tsdb_isolation_high_watermark",
 				Help: "The highest TSDB append ID that has been given out.",
 			}, func() float64 {
-				h.iso.appendMtx.Lock()
-				defer h.iso.appendMtx.Unlock()
-				return float64(h.iso.lastAppendID)
+				return float64(h.iso.lastAppendID())
 			}),
 		)
 	}
@@ -1539,9 +1537,16 @@ func (h *headIndexReader) Symbols() index.StringIter {
 	return index.NewStringListIter(res)
 }
 
-// LabelValues returns the possible label values
+// LabelValues returns label values present in the head for the
+// specific label name that are within the time range mint to maxt.
 func (h *headIndexReader) LabelValues(name string) ([]string, error) {
 	h.head.symMtx.RLock()
+
+	if h.maxt < h.head.MinTime() || h.mint > h.head.MaxTime() {
+		h.head.symMtx.RUnlock()
+		return []string{}, nil
+	}
+
 	sl := make([]string, 0, len(h.head.values[name]))
 	for s := range h.head.values[name] {
 		sl = append(sl, s)
@@ -1551,10 +1556,16 @@ func (h *headIndexReader) LabelValues(name string) ([]string, error) {
 	return sl, nil
 }
 
-// LabelNames returns all the unique label names present in the head.
+// LabelNames returns all the unique label names present in the head
+// that are within the time range mint to maxt.
 func (h *headIndexReader) LabelNames() ([]string, error) {
 	h.head.symMtx.RLock()
 	defer h.head.symMtx.RUnlock()
+
+	if h.maxt < h.head.MinTime() || h.mint > h.head.MaxTime() {
+		return []string{}, nil
+	}
+
 	labelNames := make([]string, 0, len(h.head.values))
 	for name := range h.head.values {
 		if name == "" {

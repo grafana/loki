@@ -49,6 +49,9 @@ module Fluent
       desc 'TLS'
       config_param :ca_cert, :string, default: nil
 
+      desc 'Disable server certificate verification'
+      config_param :insecure_tls, :bool, default: false
+
       desc 'Loki tenant id'
       config_param :tenant, :string, default: nil
 
@@ -153,14 +156,22 @@ module Fluent
           use_ssl: uri.scheme == 'https'
         }
 
+        # Disable server TLS certificate verification
+        if @insecure_tls
+          opts = opts.merge(
+            verify_mode: OpenSSL::SSL::VERIFY_NONE
+          )
+        end
+
+        # Verify client TLS certificate
         if !@cert.nil? && !@key.nil?
           opts = opts.merge(
-            verify_mode: OpenSSL::SSL::VERIFY_PEER,
             cert: @cert,
             key: @key
           )
         end
 
+        # Specify custom certificate authority
         unless @ca_cert.nil?
           opts = opts.merge(
             ca_file: @ca_cert

@@ -63,7 +63,7 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []*BlockMeta, knownDelet
 		// - Blocks uploaded by ingesters: we will continue querying them from ingesters for a while (depends
 		//   on the configured retention period).
 		// - Blocks uploaded by compactor: the source blocks are marked for deletion but will continue to be
-		//   queried by store-gateways for a while (depends on the configured deletion marks delay).
+		//   queried by queriers for a while (depends on the configured deletion marks delay).
 		if c.uploadGracePeriod > 0 && time.Since(meta.UploadedAt) < c.uploadGracePeriod {
 			level.Debug(c.logger).Log("msg", "block skipped from consistency check because it was uploaded recently", "block", meta.ULID.String(), "uploadedAt", meta.UploadedAt.String())
 			continue

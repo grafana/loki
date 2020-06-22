@@ -1,6 +1,7 @@
 package local
 
 import (
+	"io"
 	"io/ioutil"
 	"os"
 	"time"
@@ -23,7 +24,7 @@ func (f *fixture) Name() string {
 
 func (f *fixture) Clients() (
 	indexClient chunk.IndexClient, chunkClient chunk.Client, tableClient chunk.TableClient,
-	schemaConfig chunk.SchemaConfig, err error,
+	schemaConfig chunk.SchemaConfig, closer io.Closer, err error,
 ) {
 	f.dirname, err = ioutil.TempDir(os.TempDir(), "boltdb")
 	if err != nil {
@@ -66,11 +67,11 @@ func (f *fixture) Clients() (
 		}},
 	}
 
-	return
-}
+	closer = testutils.CloserFunc(func() error {
+		return os.RemoveAll(f.dirname)
+	})
 
-func (f *fixture) Teardown() error {
-	return os.RemoveAll(f.dirname)
+	return
 }
 
 // Fixtures for unit testing GCP storage.

@@ -15,6 +15,7 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [ingester_config](#ingester_config)
   * [lifecycler_config](#lifecycler_config)
   * [ring_config](#ring_config)
+* [memberlist_config](#memberlist_config)
 * [storage_config](#storage_config)
   * [cache_config](#cache_config)
 * [chunk_store_config](#chunk_store_config)
@@ -25,7 +26,9 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [table_manager_config](#table_manager_config)
   * [provision_config](#provision_config)
     * [auto_scaling_config](#auto_scaling_config)
+* [tracing_config](#tracing_config)
 * [Runtime Configuration file](#runtime-configuration-file)
+
 
 ## Configuration File Reference
 
@@ -76,6 +79,10 @@ Supported contents and default values of `loki.yaml`:
 # key value store.
 [ingester: <ingester_config>]
 
+# Configuration for an memberlist gossip ring. Only applies if
+# store is "memberlist"
+[memberlist: <memberlist_config>]
+
 # Configures where Loki will store data.
 [storage_config: <storage_config>]
 
@@ -97,6 +104,9 @@ Supported contents and default values of `loki.yaml`:
 
 # Configuration for "runtime config" module, responsible for reloading runtime configuration file.
 [runtime_config: <runtime_config>]
+
+#Configuration for tracing
+[tracing: <tracing_config>]
 ```
 
 ## server_config
@@ -366,7 +376,7 @@ The `ring_config` is used to discover and connect to Ingesters.
 ```yaml
 kvstore:
   # The backend storage to use for the ring. Supported values are
-  # consul, etcd, inmemory
+  # consul, etcd, inmemory, memberlist
   store: <string>
 
   # The prefix for the keys in the store. Should end with a /.
@@ -407,6 +417,107 @@ kvstore:
 # The number of ingesters to write to and read from. Must be at least
 # 1.
 [replication_factor: <int> | default = 3]
+```
+
+## memberlist_config
+
+The `memberlist_config` block configures the gossip ring to discover and connect
+between distributors, ingesters and queriers. The configuration is unique for all
+three components to ensure a  single shared ring.
+
+```yaml
+# Name of the node in memberlist cluster. Defaults to hostname.
+# CLI flag: -memberlist.nodename
+[node_name: <string> | default = ""]
+
+# Add random suffix to the node name.
+# CLI flag: -memberlist.randomize-node-name
+[randomize_node_name: <boolean> | default = true]
+
+# The timeout for establishing a connection with a remote node, and for
+# read/write operations. Uses memberlist LAN defaults if 0.
+# CLI flag: -memberlist.stream-timeout
+[stream_timeout: <duration> | default = 0s]
+
+# Multiplication factor used when sending out messages (factor * log(N+1)).
+# CLI flag: -memberlist.retransmit-factor
+[retransmit_factor: <int> | default = 0]
+
+# How often to use pull/push sync. Uses memberlist LAN defaults if 0.
+# CLI flag: -memberlist.pullpush-interval
+[pull_push_interval: <duration> | default = 0s]
+
+# How often to gossip. Uses memberlist LAN defaults if 0.
+# CLI flag: -memberlist.gossip-interval
+[gossip_interval: <duration> | default = 0s]
+
+# How many nodes to gossip to. Uses memberlist LAN defaults if 0.
+# CLI flag: -memberlist.gossip-nodes
+[gossip_nodes: <int> | default = 0]
+
+# How long to keep gossiping to dead nodes, to give them chance to refute their
+# death. Uses memberlist LAN defaults if 0.
+# CLI flag: -memberlist.gossip-to-dead-nodes-time
+[gossip_to_dead_nodes_time: <duration> | default = 0s]
+
+# How soon can dead node's name be reclaimed with new address. Defaults to 0,
+# which is disabled.
+# CLI flag: -memberlist.dead-node-reclaim-time
+[dead_node_reclaim_time: <duration> | default = 0s]
+
+# Other cluster members to join. Can be specified multiple times.
+# CLI flag: -memberlist.join
+[join_members: <list of string> | default = ]
+
+# Min backoff duration to join other cluster members.
+# CLI flag: -memberlist.min-join-backoff
+[min_join_backoff: <duration> | default = 1s]
+
+# Max backoff duration to join other cluster members.
+# CLI flag: -memberlist.max-join-backoff
+[max_join_backoff: <duration> | default = 1m]
+
+# Max number of retries to join other cluster members.
+# CLI flag: -memberlist.max-join-retries
+[max_join_retries: <int> | default = 10]
+
+# If this node fails to join memberlist cluster, abort.
+# CLI flag: -memberlist.abort-if-join-fails
+[abort_if_cluster_join_fails: <boolean> | default = true]
+
+# If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix
+# the cluster split issue, and is harmless otherwise. For example when using
+# only few components as a seed nodes (via -memberlist.join), then it's
+# recommended to use rejoin. If -memberlist.join points to dynamic service that
+# resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin
+# is not needed.
+# CLI flag: -memberlist.rejoin-interval
+[rejoin_interval: <duration> | default = 0s]
+
+# How long to keep LEFT ingesters in the ring.
+# CLI flag: -memberlist.left-ingesters-timeout
+[left_ingesters_timeout: <duration> | default = 5m]
+
+# Timeout for leaving memberlist cluster.
+# CLI flag: -memberlist.leave-timeout
+[leave_timeout: <duration> | default = 5s]
+
+# IP address to listen on for gossip messages. Multiple addresses may be
+# specified. Defaults to 0.0.0.0
+# CLI flag: -memberlist.bind-addr
+[bind_addr: <list of string> | default = ]
+
+# Port to listen on for gossip messages.
+# CLI flag: -memberlist.bind-port
+[bind_port: <int> | default = 7946]
+
+# Timeout used when connecting to other nodes to send packet.
+# CLI flag: -memberlist.packet-dial-timeout
+[packet_dial_timeout: <duration> | default = 5s]
+
+# Timeout for writing 'packet' data.
+# CLI flag: -memberlist.packet-write-timeout
+[packet_write_timeout: <duration> | default = 5s]
 ```
 
 ## storage_config
@@ -1042,6 +1153,15 @@ The `auto_scaling_config` block configures autoscaling for DynamoDB.
 
 # DynamoDB target ratio of consumed capacity to provisioned capacity.
 [target: <float> | default = 80]
+```
+
+## tracing_config
+
+The `tracing_config` block configures tracing for Jaeger. Currently limited to disable auto-configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+
+```yaml
+# Whether or not tracing should be enabled.
+[enabled: <boolean>: default = true]
 ```
 
 ## Runtime Configuration file

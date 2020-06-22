@@ -13,5 +13,8 @@ type RawOutput struct {
 
 // Format a log entry as is
 func (o *RawOutput) Format(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) string {
+	if len(line) > 0 && line[len(line)-1] == '\n' {
+		line = line[:len(line)-1]
+	}
 	return line
 }

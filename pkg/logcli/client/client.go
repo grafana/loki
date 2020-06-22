@@ -15,6 +15,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
 
+	"github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
@@ -27,6 +28,10 @@ const (
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	seriesPath      = "/loki/api/v1/series"
 	tailPath        = "/loki/api/v1/tail"
+)
+
+var (
+	userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
 )
 
 // Client contains fields necessary to query a Loki instance
@@ -141,6 +146,7 @@ func (c *Client) doRequest(path, query string, quiet bool, out interface{}) erro
 	}
 
 	req.SetBasicAuth(c.Username, c.Password)
+	req.Header.Set("User-Agent", userAgent)
 
 	if c.OrgID != "" {
 		req.Header.Set("X-Scope-OrgID", c.OrgID)

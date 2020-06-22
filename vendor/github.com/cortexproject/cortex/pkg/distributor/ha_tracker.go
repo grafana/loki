@@ -143,7 +143,7 @@ func GetReplicaDescCodec() codec.Proto {
 
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store. Tracker must be started via StartAsync().
-func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
+func newClusterTracker(cfg HATrackerConfig, reg prometheus.Registerer) (*haTracker, error) {
 	var jitter time.Duration
 	if cfg.UpdateTimeoutJitterMax > 0 {
 		jitter = time.Duration(rand.Int63n(int64(2*cfg.UpdateTimeoutJitterMax))) - cfg.UpdateTimeoutJitterMax
@@ -157,7 +157,11 @@ func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
 	}
 
 	if cfg.EnableHATracker {
-		client, err := kv.NewClient(cfg.KVStore, GetReplicaDescCodec())
+		client, err := kv.NewClient(
+			cfg.KVStore,
+			GetReplicaDescCodec(),
+			kv.RegistererWithKVName(reg, "distributor-hatracker"),
+		)
 		if err != nil {
 			return nil, err
 		}

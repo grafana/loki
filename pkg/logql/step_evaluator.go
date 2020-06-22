@@ -12,14 +12,17 @@ type StepEvaluator interface {
 	Next() (bool, int64, promql.Vector)
 	// Close all resources used.
 	Close() error
+	// Reports any error
+	Error() error
 }
 
 type stepEvaluator struct {
 	fn    func() (bool, int64, promql.Vector)
 	close func() error
+	err   func() error
 }
 
-func newStepEvaluator(fn func() (bool, int64, promql.Vector), close func() error) (StepEvaluator, error) {
+func newStepEvaluator(fn func() (bool, int64, promql.Vector), close func() error, err func() error) (StepEvaluator, error) {
 	if fn == nil {
 		return nil, errors.New("nil step evaluator fn")
 	}
@@ -28,9 +31,13 @@ func newStepEvaluator(fn func() (bool, int64, promql.Vector), close func() error
 		close = func() error { return nil }
 	}
 
+	if err == nil {
+		err = func() error { return nil }
+	}
 	return &stepEvaluator{
 		fn:    fn,
 		close: close,
+		err:   err,
 	}, nil
 }
 
@@ -40,4 +47,8 @@ func (e *stepEvaluator) Next() (bool, int64, promql.Vector) {
 
 func (e *stepEvaluator) Close() error {
 	return e.close()
+}
+
+func (e *stepEvaluator) Error() error {
+	return e.err()
 }

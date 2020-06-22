@@ -182,6 +182,11 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 	level.Debug(log).Log("chunks-post-filtering", len(chunks))
 	chunksPerQuery.Observe(float64(len(chunks)))
 
+	// We should return an empty chunks slice if there are no chunks.
+	if len(chunks) == 0 {
+		return [][]Chunk{}, []*Fetcher{}, nil
+	}
+
 	return [][]Chunk{chunks}, []*Fetcher{c.baseStore.Fetcher}, nil
 }
 
@@ -414,11 +419,13 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
-	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
-	if len(found) > 0 {
-		dedupedChunksTotal.Inc()
-		return nil
+	if !c.cfg.DisableChunksDeduplication {
+		// If this chunk is in cache it must already be in the database so we don't need to write it again
+		found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+		if len(found) > 0 {
+			dedupedChunksTotal.Inc()
+			return nil
+		}
 	}
 
 	chunks := []Chunk{chunk}

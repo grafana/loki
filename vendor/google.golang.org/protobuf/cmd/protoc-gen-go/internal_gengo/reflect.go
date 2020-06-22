@@ -191,8 +191,10 @@ func genReflectFileDescriptor(gen *protogen.Plugin, g *protogen.GeneratedFile, f
 				// Associate the wrapper types by directly passing them to the MessageInfo.
 				g.P(typesVar, "[", idx, "].OneofWrappers = []interface{} {")
 				for _, oneof := range message.Oneofs {
-					for _, field := range oneof.Fields {
-						g.P("(*", field.GoIdent, ")(nil),")
+					if !oneof.Desc.IsSynthetic() {
+						for _, field := range oneof.Fields {
+							g.P("(*", field.GoIdent, ")(nil),")
+						}
 					}
 				}
 				g.P("}")

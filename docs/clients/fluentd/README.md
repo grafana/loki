@@ -210,6 +210,21 @@ Specify a pair of client certificate and private key with `cert` and `key` if a 
 </match>
 ```
 
+### Server certificate verification
+A flag to disable a server certificate verification. By default the `insecure_tls` is set to false.
+
+```
+<match **>
+  @type loki
+
+  url "https://loki"
+
+  insecure_tls true
+
+  ...
+</match>
+```
+
 ### output format
 Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
 

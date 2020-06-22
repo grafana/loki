@@ -350,6 +350,22 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 			}
 			return lastErr
 		},
+		func() error {
+			var errs []error
+			for _, eval := range evaluators {
+				if err := eval.Error(); err != nil {
+					errs = append(errs, err)
+				}
+			}
+			switch len(errs) {
+			case 0:
+				return nil
+			case 1:
+				return errs[0]
+			default:
+				return fmt.Errorf("Multiple errors: %+v", errs)
+			}
+		},
 	)
 }
 
@@ -370,7 +386,7 @@ func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
 				return true, start.UnixNano() / int64(time.Millisecond), data
 			}
 			return false, 0, nil
-		}, nil)
+		}, nil, nil)
 	case promql.Matrix:
 		return NewMatrixStepper(start, end, step, data), nil
 	default:

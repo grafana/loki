@@ -4,7 +4,8 @@
 2. [Google Cloud Storage](#google-cloud-storage)
 3. [Cassandra Index](#cassandra-index)
 4. [AWS](#aws)
-5. [Using the query-frontend](#query-frontend)
+5. [Almost zero dependencies setup with Memberlist and BoltDB Shipper](#almost-zero-dependencies-setup)
+6. [Using the query-frontend](#query-frontend)
 
 ## Complete Local config
 
@@ -144,6 +145,77 @@ storage_config:
   aws:
     s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
     s3forcepathstyle: true
+```
+
+## Almost zero dependencies setup
+
+This is a configuration to deploy Loki depending only on storage solution, e.g. an
+S3-compatible API like minio. The ring configuration is based on the gossip memberlist
+and the index is shipped to storage via [boltdb-shipper](../operations/storage/boltdb-shipper.md).
+
+
+```yaml
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+distributor:
+  ring:
+    store: memberlist
+
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: memberlist
+      replication_factor: 1
+    final_sleep: 0s
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
+
+memberlist:
+  abort_if_cluster_join_fails: false
+
+  # Expose this port on all distributor, ingester
+  # and querier replicas.
+  bind_port: 7946
+
+  # You can use a headless k8s service for all distributor,
+  # ingester and querier components.
+  join_members:
+  - loki-gossip-ring.loki.svc.cluster.local:7946
+
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb_shipper
+    object_store: s3
+    schema: v11
+    index:
+      prefix: index_
+      period: 168h
+
+storage_config:
+ boltdb_shipper:
+   active_index_directory: /data/loki/index
+   cache_location: /data/loki/index_cache
+   resync_interval: 5s
+   shared_store: s3
+
+ aws:
+   s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
+   s3forcepathstyle: true
+
+limits_config:
+  enforce_metric_name: false
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+
 ```
 
 ## Query Frontend

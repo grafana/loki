@@ -38,7 +38,6 @@ type BucketStores struct {
 	logLevel           logging.Level
 	bucketStoreMetrics *BucketStoreMetrics
 	metaFetcherMetrics *MetadataFetcherMetrics
-	indexCacheMetrics  prometheus.Collector
 	filters            []block.MetadataFilter
 
 	// Index cache shared across all tenants.
@@ -60,8 +59,6 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		return nil, errors.Wrapf(err, "create caching bucket")
 	}
 
-	indexCacheRegistry := prometheus.NewRegistry()
-
 	u := &BucketStores{
 		logger:             logger,
 		cfg:                cfg,
@@ -71,25 +68,24 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
-		indexCacheMetrics:  tsdb.MustNewIndexCacheMetrics(cfg.BucketStore.IndexCache.Backend, indexCacheRegistry),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "blocks_sync_seconds",
+			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
 			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
 		}),
 		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "blocks_last_successful_sync_timestamp_seconds",
+			Name: "cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds",
 			Help: "Unix timestamp of the last successful blocks sync.",
 		}),
 	}
 
 	// Init the index cache.
-	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, indexCacheRegistry); err != nil {
+	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, reg); err != nil {
 		return nil, errors.Wrap(err, "create index cache")
 	}
 
 	if reg != nil {
-		reg.MustRegister(u.bucketStoreMetrics, u.metaFetcherMetrics, u.indexCacheMetrics)
+		reg.MustRegister(u.bucketStoreMetrics, u.metaFetcherMetrics)
 	}
 
 	return u, nil
@@ -186,10 +182,10 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 // Series makes a series request to the underlying user bucket store.
 func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
-	log, ctx := spanlogger.New(srv.Context(), "BucketStores.Series")
-	defer log.Span.Finish()
+	spanLog, spanCtx := spanlogger.New(srv.Context(), "BucketStores.Series")
+	defer spanLog.Span.Finish()
 
-	userID := getUserIDFromGRPCContext(ctx)
+	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
 		return fmt.Errorf("no userID")
 	}
@@ -199,7 +195,10 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return nil
 	}
 
-	return store.Series(req, srv)
+	return store.Series(req, spanSeriesServer{
+		Store_SeriesServer: srv,
+		ctx:                spanCtx,
+	})
 }
 
 func (u *BucketStores) getStore(userID string) *store.BucketStore {
@@ -276,7 +275,6 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
-		u.cfg.BucketStore.BinaryIndexHeader,
 		u.cfg.BucketStore.IndexCache.PostingsCompression,
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
@@ -331,4 +329,14 @@ func (r *ReplicaLabelRemover) Modify(_ context.Context, metas map[ulid.ULID]*tha
 		metas[u].Thanos.Labels = l
 	}
 	return nil
+}
+
+type spanSeriesServer struct {
+	storepb.Store_SeriesServer
+
+	ctx context.Context
+}
+
+func (s spanSeriesServer) Context() context.Context {
+	return s.ctx
 }

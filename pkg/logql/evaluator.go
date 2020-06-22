@@ -3,6 +3,7 @@ package logql
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"time"
@@ -188,6 +189,8 @@ func vectorAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
+	lb := labels.NewBuilder(nil)
+	buf := make([]byte, 0, 1024)
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
@@ -209,9 +212,9 @@ func vectorAggEvaluator(
 				groupingKey uint64
 			)
 			if expr.grouping.without {
-				groupingKey, _ = metric.HashWithoutLabels(make([]byte, 0, 1024), expr.grouping.groups...)
+				groupingKey, buf = metric.HashWithoutLabels(buf, expr.grouping.groups...)
 			} else {
-				groupingKey, _ = metric.HashForLabels(make([]byte, 0, 1024), expr.grouping.groups...)
+				groupingKey, buf = metric.HashForLabels(buf, expr.grouping.groups...)
 			}
 			group, ok := result[groupingKey]
 			// Add a new group if it doesn't exist.
@@ -219,7 +222,7 @@ func vectorAggEvaluator(
 				var m labels.Labels
 
 				if expr.grouping.without {
-					lb := labels.NewBuilder(metric)
+					lb.Reset(metric)
 					lb.Del(expr.grouping.groups...)
 					lb.Del(labels.MetricName)
 					m = lb.Labels()
@@ -370,7 +373,7 @@ func vectorAggEvaluator(
 		}
 		return next, ts, vec
 
-	}, nextEvaluator.Close)
+	}, nextEvaluator.Close, nextEvaluator.Error)
 }
 
 func rangeAggEvaluator(
@@ -378,7 +381,6 @@ func rangeAggEvaluator(
 	expr *rangeAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
-
 	agg, err := expr.aggregator()
 	if err != nil {
 		return nil, err
@@ -413,6 +415,8 @@ func (r rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 }
 
 func (r rangeVectorEvaluator) Close() error { return r.iter.Close() }
+
+func (r rangeVectorEvaluator) Error() error { return r.iter.Error() }
 
 // binOpExpr explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
@@ -510,6 +514,21 @@ func binOpStepEvaluator(
 			}
 		}
 		return lastError
+	}, func() error {
+		var errs []error
+		for _, ev := range []StepEvaluator{lhs, rhs} {
+			if err := ev.Error(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		switch len(errs) {
+		case 0:
+			return nil
+		case 1:
+			return errs[0]
+		default:
+			return fmt.Errorf("Multiple errors: %+v", errs)
+		}
 	})
 }
 
@@ -834,5 +853,6 @@ func literalStepEvaluator(
 			return ok, ts, results
 		},
 		eval.Close,
+		eval.Error,
 	)
 }

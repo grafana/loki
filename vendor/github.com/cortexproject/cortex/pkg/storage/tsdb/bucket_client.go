@@ -32,7 +32,7 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 		return nil, err
 	}
 
-	return bucketWithMetrics(client, name, reg), nil
+	return objstore.NewTracingBucket(bucketWithMetrics(client, name, reg)), nil
 }
 
 func bucketWithMetrics(bucketClient objstore.Bucket, name string, reg prometheus.Registerer) objstore.Bucket {
