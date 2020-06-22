@@ -152,7 +152,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronize
 			chunk.closed = true
 
 			samplesPerChunk.Observe(float64(chunk.chunk.Size()))
-			blocksPerChunk.Observe(float64(chunk.chunk.Blocks()))
+			blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
 			chunksCreatedTotal.Inc()
 
 			s.chunks = append(s.chunks, chunkDesc{

@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -119,7 +118,7 @@ func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, mod
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
-func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*chunkenc.LazyChunk, error) {
+func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -139,10 +138,10 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 		totalChunks += len(chks[i])
 	}
 	// creates lazychunks with chunks ref.
-	lazyChunks := make([]*chunkenc.LazyChunk, 0, totalChunks)
+	lazyChunks := make([]*LazyChunk, 0, totalChunks)
 	for i := range chks {
 		for _, c := range chks[i] {
-			lazyChunks = append(lazyChunks, &chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
+			lazyChunks = append(lazyChunks, &LazyChunk{Chunk: c, Fetcher: fetchers[i]})
 		}
 	}
 	return lazyChunks, nil
@@ -162,7 +161,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 	// group chunks by series
 	chunksBySeries := partitionBySeriesChunks(lazyChunks)
 
-	firstChunksPerSeries := make([]*chunkenc.LazyChunk, 0, len(chunksBySeries))
+	firstChunksPerSeries := make([]*LazyChunk, 0, len(chunksBySeries))
 
 	// discard all but one chunk per series
 	for _, chks := range chunksBySeries {
@@ -172,7 +171,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 	results := make(logproto.SeriesIdentifiers, 0, len(firstChunksPerSeries))
 
 	// bound concurrency
-	groups := make([][]*chunkenc.LazyChunk, 0, len(firstChunksPerSeries)/s.cfg.MaxChunkBatchSize+1)
+	groups := make([][]*LazyChunk, 0, len(firstChunksPerSeries)/s.cfg.MaxChunkBatchSize+1)
 
 	split := s.cfg.MaxChunkBatchSize
 	if len(firstChunksPerSeries) < split {
@@ -224,6 +223,10 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
 	}
 
 	return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.QueryRequest), nil

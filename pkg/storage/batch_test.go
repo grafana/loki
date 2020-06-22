@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -16,12 +17,14 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 func Test_newBatchChunkIterator(t *testing.T) {
 
 	tests := map[string]struct {
-		chunks     []*chunkenc.LazyChunk
+		chunks     []*LazyChunk
 		expected   []logproto.Stream
 		matchers   string
 		start, end time.Time
@@ -29,7 +32,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 		batchSize  int
 	}{
 		"forward with overlap": {
-			[]*chunkenc.LazyChunk{
+			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName,
 					Entries: []logproto.Entry{
@@ -138,7 +141,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			2,
 		},
 		"forward with overlapping non-continuous entries": {
-			[]*chunkenc.LazyChunk{
+			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName,
 					Entries: []logproto.Entry{
@@ -221,7 +224,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			2,
 		},
 		"backward with overlap": {
-			[]*chunkenc.LazyChunk{
+			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName,
 					Entries: []logproto.Entry{
@@ -330,7 +333,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			2,
 		},
 		"backward with overlapping non-continuous entries": {
-			[]*chunkenc.LazyChunk{
+			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName,
 					Entries: []logproto.Entry{
@@ -429,7 +432,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			2,
 		},
 		"forward without overlap": {
-			[]*chunkenc.LazyChunk{
+			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName,
 					Entries: []logproto.Entry{
@@ -487,7 +490,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			2,
 		},
 		"backward without overlap": {
-			[]*chunkenc.LazyChunk{
+			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
 					Labels: fooLabelsWithName,
 					Entries: []logproto.Entry{
@@ -598,39 +601,39 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 	)
 
 	for i, tc := range []struct {
-		input    []*chunkenc.LazyChunk
-		expected [][]*chunkenc.LazyChunk
+		input    []*LazyChunk
+		expected [][]*LazyChunk
 	}{
 		{
-			input: []*chunkenc.LazyChunk{
+			input: []*LazyChunk{
 				oneThroughFour,
 				two,
 				three,
 			},
-			expected: [][]*chunkenc.LazyChunk{
+			expected: [][]*LazyChunk{
 				{oneThroughFour},
 				{two, three},
 			},
 		},
 		{
-			input: []*chunkenc.LazyChunk{
+			input: []*LazyChunk{
 				two,
 				oneThroughFour,
 				three,
 			},
-			expected: [][]*chunkenc.LazyChunk{
+			expected: [][]*LazyChunk{
 				{oneThroughFour},
 				{two, three},
 			},
 		},
 		{
-			input: []*chunkenc.LazyChunk{
+			input: []*LazyChunk{
 				two,
 				two,
 				three,
 				three,
 			},
-			expected: [][]*chunkenc.LazyChunk{
+			expected: [][]*LazyChunk{
 				{two, three},
 				{two, three},
 			},
@@ -687,11 +690,11 @@ func TestBuildHeapIterator(t *testing.T) {
 	)
 
 	for i, tc := range []struct {
-		input    [][]*chunkenc.LazyChunk
+		input    [][]*LazyChunk
 		expected []logproto.Stream
 	}{
 		{
-			[][]*chunkenc.LazyChunk{
+			[][]*LazyChunk{
 				{firstChunk},
 				{thirdChunk},
 			},
@@ -720,7 +723,7 @@ func TestBuildHeapIterator(t *testing.T) {
 			},
 		},
 		{
-			[][]*chunkenc.LazyChunk{
+			[][]*LazyChunk{
 				{secondChunk},
 				{firstChunk, thirdChunk},
 			},
@@ -751,7 +754,12 @@ func TestBuildHeapIterator(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			ctx = user.InjectOrgID(context.Background(), "test-user")
-			it, err := buildHeapIterator(ctx, tc.input, nil, logproto.FORWARD, from, from.Add(6*time.Millisecond))
+			b := &batchChunkIterator{
+				ctx:    ctx,
+				req:    &logproto.QueryRequest{Direction: logproto.FORWARD},
+				labels: map[model.Fingerprint]string{},
+			}
+			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), nil)
 			if err != nil {
 				t.Errorf("buildHeapIterator error = %v", err)
 				return
@@ -840,4 +848,58 @@ func Test_IsInvalidChunkError(t *testing.T) {
 		result := isInvalidChunkError(tc.err)
 		require.Equal(t, tc.expectedResult, result)
 	}
+}
+
+var entry logproto.Entry
+
+func Benchmark_store_OverlappingChunks(b *testing.B) {
+	b.ReportAllocs()
+	st := &store{
+		cfg: Config{
+			MaxChunkBatchSize: 50,
+		},
+		Store: newMockChunkStore(newOverlappingStreams(200, 200)),
+	}
+	b.ResetTimer()
+	ctx := user.InjectOrgID(stats.NewContext(context.Background()), "fake")
+	start := time.Now()
+	for i := 0; i < b.N; i++ {
+		it, err := st.LazyQuery(ctx, logql.SelectParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  `{foo="bar"}`,
+			Direction: logproto.BACKWARD,
+			Limit:     0,
+			Shards:    nil,
+			Start:     time.Unix(0, 1),
+			End:       time.Unix(0, time.Now().UnixNano()),
+		}})
+		if err != nil {
+			b.Fatal(err)
+		}
+		for it.Next() {
+			entry = it.Entry()
+		}
+		if err := it.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	r := stats.Snapshot(ctx, time.Since(start))
+	b.Log("Total chunks:" + fmt.Sprintf("%d", r.Store.TotalChunksRef))
+	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.Store.DecompressedBytes))
+}
+
+func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
+	streams := make([]*logproto.Stream, streamCount)
+	for i := range streams {
+		streams[i] = &logproto.Stream{
+			Labels:  fmt.Sprintf(`{foo="bar",id="%d"}`, i),
+			Entries: make([]logproto.Entry, entryCount),
+		}
+		for j := range streams[i].Entries {
+			streams[i].Entries[j] = logproto.Entry{
+				Timestamp: time.Unix(0, int64(1+j)),
+				Line:      "a very compressible log line duh",
+			}
+		}
+	}
+	return streams
 }

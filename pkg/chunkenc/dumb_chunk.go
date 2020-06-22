@@ -97,7 +97,11 @@ func (c *dumbChunk) Bytes() ([]byte, error) {
 	return nil, nil
 }
 
-func (c *dumbChunk) Blocks() int {
+func (c *dumbChunk) Blocks(_ time.Time, _ time.Time) []Block {
+	return nil
+}
+
+func (c *dumbChunk) BlockCount() int {
 	return 0
 }
 
