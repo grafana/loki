@@ -64,27 +64,13 @@ func (cfg *ShipperConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 }
 
-type downloadedFiles struct {
-	mtime  time.Time
-	boltdb *bbolt.DB
-}
-
-// filesCollection holds info about shipped boltdb index files by other uploaders(ingesters).
-// It is generally used to hold boltdb files created by all the ingesters for same period i.e with same name.
-// In the object store files are uploaded as <boltdb-filename>/<uploader-id> to manage files with same name from different ingesters
-type filesCollection struct {
-	sync.RWMutex
-	lastUsedAt time.Time
-	files      map[string]downloadedFiles
-}
-
 type Shipper struct {
 	cfg          ShipperConfig
 	boltDBGetter BoltDBGetter
 
-	// downloadedPeriods holds mapping for period -> filesCollection.
+	// downloadedPeriods holds mapping for period -> FilesCollection.
 	// Here period is name of the file created by ingesters for a specific period.
-	downloadedPeriods    map[string]*filesCollection
+	downloadedPeriods    map[string]*FilesCollection
 	downloadedPeriodsMtx sync.RWMutex
 	storageClient        chunk.ObjectClient
 
@@ -107,7 +93,7 @@ func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGette
 	shipper := Shipper{
 		cfg:                cfg,
 		boltDBGetter:       boltDBGetter,
-		downloadedPeriods:  map[string]*filesCollection{},
+		downloadedPeriods:  map[string]*FilesCollection{},
 		storageClient:      util.NewPrefixedObjectClient(storageClient, storageKeyPrefix),
 		done:               make(chan struct{}),
 		uploadedFilesMtime: map[string]time.Time{},
@@ -206,12 +192,13 @@ func (s *Shipper) Stop() {
 	s.downloadedPeriodsMtx.Lock()
 	defer s.downloadedPeriodsMtx.Unlock()
 
-	for _, fc := range s.downloadedPeriods {
-		fc.Lock()
-		for _, fl := range fc.files {
-			_ = fl.boltdb.Close()
+	for period, fc := range s.downloadedPeriods {
+		err := fc.ForEach(func(uploader string, df *downloadedFile) error {
+			return df.boltdb.Close()
+		})
+		if err != nil {
+			level.Error(pkg_util.Logger).Log("msg", "failed to close boltdb files", "period", period, "err", err)
 		}
-		fc.Unlock()
 	}
 }
 
@@ -221,11 +208,11 @@ func (s *Shipper) cleanupCache() error {
 	defer s.downloadedPeriodsMtx.Unlock()
 
 	for period, fc := range s.downloadedPeriods {
-		if fc.lastUsedAt.Add(s.cfg.CacheTTL).Before(time.Now()) {
-			for uploader := range fc.files {
-				if err := s.deleteFileFromCache(period, uploader, fc); err != nil {
-					return err
-				}
+		lastUsedAt := fc.LastUsedAt()
+		if lastUsedAt.Add(s.cfg.CacheTTL).Before(time.Now()) {
+			err := fc.CleanupAllFiles()
+			if err != nil {
+				return err
 			}
 
 			delete(s.downloadedPeriods, period)
@@ -238,6 +225,10 @@ func (s *Shipper) cleanupCache() error {
 // syncLocalWithStorage syncs all the periods that we have in the cache with the storage
 // i.e download new and updated files and remove files which were delete from the storage.
 func (s *Shipper) syncLocalWithStorage(ctx context.Context) (err error) {
+	if s.cfg.Mode == ShipperModeWriteOnly {
+		return
+	}
+
 	s.downloadedPeriodsMtx.RLock()
 	defer s.downloadedPeriodsMtx.RUnlock()
 
@@ -246,11 +237,11 @@ func (s *Shipper) syncLocalWithStorage(ctx context.Context) (err error) {
 		if err != nil {
 			status = statusFailure
 		}
-		s.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
+		s.metrics.downloaderMetrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
 	}()
 
 	for period := range s.downloadedPeriods {
-		if err := s.syncFilesForPeriod(ctx, period, s.downloadedPeriods[period]); err != nil {
+		if err := s.downloadedPeriods[period].Sync(ctx); err != nil {
 			return err
 		}
 	}
@@ -258,55 +249,46 @@ func (s *Shipper) syncLocalWithStorage(ctx context.Context) (err error) {
 	return
 }
 
-// deleteFileFromCache removes a file from cache.
-// It takes care of locking the filesCollection, closing the boltdb file and removing the file from cache
-func (s *Shipper) deleteFileFromCache(period, uploader string, fc *filesCollection) error {
-	fc.Lock()
-	defer fc.Unlock()
-
-	if err := fc.files[uploader].boltdb.Close(); err != nil {
-		return err
-	}
-
-	delete(fc.files, uploader)
-
-	return os.Remove(path.Join(s.cfg.CacheLocation, period, uploader))
-}
-
 func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *bbolt.DB) error) error {
+	// if filesCollection is already there, use it.
 	s.downloadedPeriodsMtx.RLock()
 	fc, ok := s.downloadedPeriods[period]
 	s.downloadedPeriodsMtx.RUnlock()
 
 	if !ok {
 		s.downloadedPeriodsMtx.Lock()
+		// check if some other competing goroutine got the lock before us and created the filesCollection, use it if so.
 		fc, ok = s.downloadedPeriods[period]
-		if ok {
-			s.downloadedPeriodsMtx.Unlock()
-		} else {
+		if !ok {
+			// filesCollection not found, creating one.
 			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("downloading all files for period %s", period))
 
-			fc = &filesCollection{files: map[string]downloadedFiles{}}
+			fc = NewFilesCollection(period, s.cfg.CacheLocation, s.metrics.downloaderMetrics, s.storageClient)
 			s.downloadedPeriods[period] = fc
-			s.downloadedPeriodsMtx.Unlock()
-
-			if err := s.downloadFilesForPeriod(ctx, period, fc); err != nil {
-				return err
-			}
 		}
-
+		s.downloadedPeriodsMtx.Unlock()
 	}
 
-	fc.RLock()
-	defer fc.RUnlock()
-
-	fc.lastUsedAt = time.Now()
-
-	for uploader := range fc.files {
-		if err := callback(fc.files[uploader].boltdb); err != nil {
-			return err
-		}
+	// let us check if FilesCollection is ready for use while also honoring the context timeout
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-fc.IsReady():
 	}
 
-	return nil
+	fc.UpdateLastUsedAt()
+	err := fc.ForEach(func(uploader string, df *downloadedFile) error {
+		return callback(df.boltdb)
+	})
+
+	// the request which started the download could have timed out and returned so cleaning up the reference here
+	if err != nil && fc.Err() != nil {
+		s.downloadedPeriodsMtx.Lock()
+		defer s.downloadedPeriodsMtx.Unlock()
+
+		// cleaning up fc since it is in invalid state anyways.
+		delete(s.downloadedPeriods, period)
+	}
+
+	return err
 }
