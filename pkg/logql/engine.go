@@ -100,6 +100,7 @@ func (ng *Engine) Query(params Params) Query {
 		parse: func(_ context.Context, query string) (Expr, error) {
 			return ParseExpr(query)
 		},
+		record: true,
 	}
 }
 
@@ -114,6 +115,7 @@ type query struct {
 	params    Params
 	parse     func(context.Context, string) (Expr, error)
 	evaluator Evaluator
+	record    bool
 }
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
@@ -142,7 +144,10 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 			status = "400"
 		}
 	}
-	RecordMetrics(ctx, q.params, status, statResult)
+
+	if q.record {
+		RecordMetrics(ctx, q.params, status, statResult)
+	}
 
 	return Result{
 		Data:       data,
