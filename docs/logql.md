@@ -69,7 +69,7 @@ After writing the log stream selector, the resulting set of logs can be further 
 - `{job="mysql"} |= "error"`
 - `{name="kafka"} |~ "tsdb-ops.*io:2003"`
 - `` {name="cassandra"} |~  `error=\w+` ``
-- `{instance=~"kafka-[23]",name="kafka"} != kafka.server:type=ReplicaManager`
+- `{instance=~"kafka-[23]",name="kafka"} != "kafka.server:type=ReplicaManager"`
 
 In the previous examples, `|=`, `|~`, and `!=` act as **filter operators** and
 the following filter operators are supported:
