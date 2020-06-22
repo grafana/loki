@@ -26,10 +26,9 @@ import (
 )
 
 const (
-	millisecondPerDay                 = int64(24 * time.Hour / time.Millisecond)
-	deleteRequestCancellationDeadline = 24 * time.Hour
-	statusSuccess                     = "success"
-	statusFail                        = "fail"
+	millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
+	statusSuccess     = "success"
+	statusFail        = "fail"
 )
 
 type purgerMetrics struct {
@@ -83,11 +82,12 @@ type deleteRequestWithLogger struct {
 	logger log.Logger // logger is initialized with userID and requestID to add context to every log generated using this
 }
 
-// Config holds config for DataPurger
+// Config holds config for Purger
 type Config struct {
-	Enable          bool   `yaml:"enable"`
-	NumWorkers      int    `yaml:"num_workers"`
-	ObjectStoreType string `yaml:"object_store_type"`
+	Enable                    bool          `yaml:"enable"`
+	NumWorkers                int           `yaml:"num_workers"`
+	ObjectStoreType           string        `yaml:"object_store_type"`
+	DeleteRequestCancelPeriod time.Duration `yaml:"delete_request_cancel_period"`
 }
 
 // RegisterFlags registers CLI flags for Config
@@ -95,6 +95,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enable, "purger.enable", false, "Enable purger to allow deletion of series. Be aware that Delete series feature is still experimental")
 	f.IntVar(&cfg.NumWorkers, "purger.num-workers", 2, "Number of workers executing delete plans in parallel")
 	f.StringVar(&cfg.ObjectStoreType, "purger.object-store-type", "", "Name of the object store to use for storing delete plans")
+	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "purger.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 }
 
 type workerJob struct {
@@ -104,8 +105,8 @@ type workerJob struct {
 	logger          log.Logger
 }
 
-// DataPurger does the purging of data which is requested to be deleted
-type DataPurger struct {
+// Purger does the purging of data which is requested to be deleted
+type Purger struct {
 	services.Service
 
 	cfg          Config
@@ -135,11 +136,11 @@ type DataPurger struct {
 	wg sync.WaitGroup
 }
 
-// NewDataPurger creates a new DataPurger
-func NewDataPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (*DataPurger, error) {
+// NewPurger creates a new Purger
+func NewPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (*Purger, error) {
 	util.WarnExperimentalUse("Delete series API")
 
-	dataPurger := DataPurger{
+	purger := Purger{
 		cfg:                      cfg,
 		deleteStore:              deleteStore,
 		chunkStore:               chunkStore,
@@ -153,34 +154,34 @@ func NewDataPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store,
 		pendingPlansCount:        map[string]int{},
 	}
 
-	dataPurger.Service = services.NewBasicService(dataPurger.init, dataPurger.loop, dataPurger.stop)
-	return &dataPurger, nil
+	purger.Service = services.NewBasicService(purger.init, purger.loop, purger.stop)
+	return &purger, nil
 }
 
 // init starts workers, scheduler and then loads in process delete requests
-func (dp *DataPurger) init(ctx context.Context) error {
-	for i := 0; i < dp.cfg.NumWorkers; i++ {
-		dp.wg.Add(1)
-		go dp.worker()
+func (p *Purger) init(ctx context.Context) error {
+	for i := 0; i < p.cfg.NumWorkers; i++ {
+		p.wg.Add(1)
+		go p.worker()
 	}
 
-	dp.wg.Add(1)
-	go dp.jobScheduler(ctx)
+	p.wg.Add(1)
+	go p.jobScheduler(ctx)
 
-	return dp.loadInprocessDeleteRequests()
+	return p.loadInprocessDeleteRequests()
 }
 
-func (dp *DataPurger) loop(ctx context.Context) error {
+func (p *Purger) loop(ctx context.Context) error {
 	loadRequests := func() {
 		status := statusSuccess
 
-		err := dp.pullDeleteRequestsToPlanDeletes()
+		err := p.pullDeleteRequestsToPlanDeletes()
 		if err != nil {
 			status = statusFail
 			level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
 		}
 
-		dp.metrics.loadPendingRequestsAttempsTotal.WithLabelValues(status).Inc()
+		p.metrics.loadPendingRequestsAttempsTotal.WithLabelValues(status).Inc()
 	}
 
 	// load requests on startup instead of waiting for first ticker
@@ -193,7 +194,7 @@ func (dp *DataPurger) loop(ctx context.Context) error {
 		select {
 		case <-loadRequestsTicker.C:
 			loadRequests()
-		case <-dp.pullNewRequestsChan:
+		case <-p.pullNewRequestsChan:
 			loadRequests()
 		case <-ctx.Done():
 			return nil
@@ -202,102 +203,102 @@ func (dp *DataPurger) loop(ctx context.Context) error {
 }
 
 // Stop waits until all background tasks stop.
-func (dp *DataPurger) stop(_ error) error {
-	dp.wg.Wait()
+func (p *Purger) stop(_ error) error {
+	p.wg.Wait()
 	return nil
 }
 
-func (dp *DataPurger) workerJobCleanup(job workerJob) {
-	err := dp.removeDeletePlan(context.Background(), job.userID, job.deleteRequestID, job.planNo)
+func (p *Purger) workerJobCleanup(job workerJob) {
+	err := p.removeDeletePlan(context.Background(), job.userID, job.deleteRequestID, job.planNo)
 	if err != nil {
 		level.Error(job.logger).Log("msg", "error removing delete plan",
 			"plan_no", job.planNo, "err", err)
 		return
 	}
 
-	dp.pendingPlansCountMtx.Lock()
-	dp.pendingPlansCount[job.deleteRequestID]--
+	p.pendingPlansCountMtx.Lock()
+	p.pendingPlansCount[job.deleteRequestID]--
 
-	if dp.pendingPlansCount[job.deleteRequestID] == 0 {
+	if p.pendingPlansCount[job.deleteRequestID] == 0 {
 		level.Info(job.logger).Log("msg", "finished execution of all plans, cleaning up and updating status of request")
 
-		err := dp.deleteStore.UpdateStatus(context.Background(), job.userID, job.deleteRequestID, StatusProcessed)
+		err := p.deleteStore.UpdateStatus(context.Background(), job.userID, job.deleteRequestID, StatusProcessed)
 		if err != nil {
 			level.Error(job.logger).Log("msg", "error updating delete request status to process", "err", err)
 		}
 
-		dp.metrics.deleteRequestsProcessedTotal.WithLabelValues(job.userID).Inc()
-		delete(dp.pendingPlansCount, job.deleteRequestID)
-		dp.pendingPlansCountMtx.Unlock()
+		p.metrics.deleteRequestsProcessedTotal.WithLabelValues(job.userID).Inc()
+		delete(p.pendingPlansCount, job.deleteRequestID)
+		p.pendingPlansCountMtx.Unlock()
 
-		dp.inProcessRequestIDsMtx.Lock()
-		delete(dp.inProcessRequests, job.userID)
-		dp.inProcessRequestIDsMtx.Unlock()
+		p.inProcessRequestIDsMtx.Lock()
+		delete(p.inProcessRequests, job.userID)
+		p.inProcessRequestIDsMtx.Unlock()
 
 		// request loading of more delete request if
 		// - user has more pending requests and
 		// - we do not have a pending request to load more requests
-		dp.usersWithPendingRequestsMtx.Lock()
-		defer dp.usersWithPendingRequestsMtx.Unlock()
-		if _, ok := dp.usersWithPendingRequests[job.userID]; ok {
-			delete(dp.usersWithPendingRequests, job.userID)
+		p.usersWithPendingRequestsMtx.Lock()
+		defer p.usersWithPendingRequestsMtx.Unlock()
+		if _, ok := p.usersWithPendingRequests[job.userID]; ok {
+			delete(p.usersWithPendingRequests, job.userID)
 			select {
-			case dp.pullNewRequestsChan <- struct{}{}:
+			case p.pullNewRequestsChan <- struct{}{}:
 				// sent
 			default:
 				// already sent
 			}
 		}
 	} else {
-		dp.pendingPlansCountMtx.Unlock()
+		p.pendingPlansCountMtx.Unlock()
 	}
 }
 
 // we send all the delete plans to workerJobChan
-func (dp *DataPurger) jobScheduler(ctx context.Context) {
-	defer dp.wg.Done()
+func (p *Purger) jobScheduler(ctx context.Context) {
+	defer p.wg.Done()
 
 	for {
 		select {
-		case req := <-dp.executePlansChan:
+		case req := <-p.executePlansChan:
 			numPlans := numPlans(req.StartTime, req.EndTime)
 			level.Info(req.logger).Log("msg", "sending jobs to workers for purging data", "num_jobs", numPlans)
 
-			dp.pendingPlansCountMtx.Lock()
-			dp.pendingPlansCount[req.RequestID] = numPlans
-			dp.pendingPlansCountMtx.Unlock()
+			p.pendingPlansCountMtx.Lock()
+			p.pendingPlansCount[req.RequestID] = numPlans
+			p.pendingPlansCountMtx.Unlock()
 
 			for i := 0; i < numPlans; i++ {
-				dp.workerJobChan <- workerJob{planNo: i, userID: req.UserID,
+				p.workerJobChan <- workerJob{planNo: i, userID: req.UserID,
 					deleteRequestID: req.RequestID, logger: req.logger}
 			}
 		case <-ctx.Done():
-			close(dp.workerJobChan)
+			close(p.workerJobChan)
 			return
 		}
 	}
 }
 
-func (dp *DataPurger) worker() {
-	defer dp.wg.Done()
+func (p *Purger) worker() {
+	defer p.wg.Done()
 
-	for job := range dp.workerJobChan {
-		err := dp.executePlan(job.userID, job.deleteRequestID, job.planNo, job.logger)
+	for job := range p.workerJobChan {
+		err := p.executePlan(job.userID, job.deleteRequestID, job.planNo, job.logger)
 		if err != nil {
-			dp.metrics.deleteRequestsProcessingFailures.WithLabelValues(job.userID).Inc()
+			p.metrics.deleteRequestsProcessingFailures.WithLabelValues(job.userID).Inc()
 			level.Error(job.logger).Log("msg", "error executing delete plan",
 				"plan_no", job.planNo, "err", err)
 			continue
 		}
 
-		dp.workerJobCleanup(job)
+		p.workerJobCleanup(job)
 	}
 }
 
-func (dp *DataPurger) executePlan(userID, requestID string, planNo int, logger log.Logger) error {
+func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Logger) error {
 	logger = log.With(logger, "plan_no", planNo)
 
-	plan, err := dp.getDeletePlan(context.Background(), userID, requestID, planNo)
+	plan, err := p.getDeletePlan(context.Background(), userID, requestID, planNo)
 	if err != nil {
 		if err == chunk.ErrStorageObjectNotFound {
 			level.Info(logger).Log("msg", "plan not found, must have been executed already")
@@ -328,7 +329,7 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int, logger l
 				}
 			}
 
-			err = dp.chunkStore.DeleteChunk(ctx, chunkRef.From, chunkRef.Through, chunkRef.UserID,
+			err = p.chunkStore.DeleteChunk(ctx, chunkRef.From, chunkRef.Through, chunkRef.UserID,
 				chunkDetails.ID, client.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels), partiallyDeletedInterval)
 			if err != nil {
 				if isMissingChunkErr(err) {
@@ -343,7 +344,7 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int, logger l
 		level.Debug(logger).Log("msg", "deleting series", "labels", plan.ChunksGroup[i].Labels)
 
 		// this is mostly required to clean up series ids from series store
-		err := dp.chunkStore.DeleteSeriesIDs(ctx, model.Time(plan.PlanInterval.StartTimestampMs), model.Time(plan.PlanInterval.EndTimestampMs),
+		err := p.chunkStore.DeleteSeriesIDs(ctx, model.Time(plan.PlanInterval.StartTimestampMs), model.Time(plan.PlanInterval.EndTimestampMs),
 			userID, client.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels))
 		if err != nil {
 			return err
@@ -356,8 +357,8 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int, logger l
 }
 
 // we need to load all in process delete requests on startup to finish them first
-func (dp *DataPurger) loadInprocessDeleteRequests() error {
-	requestsWithBuildingPlanStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusBuildingPlan)
+func (p *Purger) loadInprocessDeleteRequests() error {
+	requestsWithBuildingPlanStatus, err := p.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusBuildingPlan)
 	if err != nil {
 		return err
 	}
@@ -367,19 +368,19 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status building plan")
 
-		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
-		err := dp.buildDeletePlan(req)
+		p.inProcessRequests[deleteRequest.UserID] = deleteRequest
+		err := p.buildDeletePlan(req)
 		if err != nil {
-			dp.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
+			p.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
 			level.Error(req.logger).Log("msg", "error building delete plan", "err", err)
 			continue
 		}
 
 		level.Info(req.logger).Log("msg", "sending delete request for execution")
-		dp.executePlansChan <- req
+		p.executePlansChan <- req
 	}
 
-	requestsWithDeletingStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusDeleting)
+	requestsWithDeletingStatus, err := p.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusDeleting)
 	if err != nil {
 		return err
 	}
@@ -388,8 +389,8 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 		level.Info(req.logger).Log("msg", "loaded in process delete requests with status deleting")
 
-		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
-		dp.executePlansChan <- req
+		p.inProcessRequests[deleteRequest.UserID] = deleteRequest
+		p.executePlansChan <- req
 	}
 
 	return nil
@@ -397,22 +398,22 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 
 // pullDeleteRequestsToPlanDeletes pulls delete requests which do not have their delete plans built yet and sends them for building delete plans
 // after pulling delete requests for building plans, it updates its status to StatusBuildingPlan status to avoid picking this up again next time
-func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
-	deleteRequests, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
+	deleteRequests, err := p.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	if err != nil {
 		return err
 	}
 
-	dp.inProcessRequestIDsMtx.RLock()
-	pendingDeleteRequestsCount := len(dp.inProcessRequests)
-	dp.inProcessRequestIDsMtx.RUnlock()
+	p.inProcessRequestIDsMtx.RLock()
+	pendingDeleteRequestsCount := len(p.inProcessRequests)
+	p.inProcessRequestIDsMtx.RUnlock()
 
 	now := model.Now()
 	oldestPendingRequestCreatedAt := now
 
 	// requests which are still being processed are also considered pending
 	if pendingDeleteRequestsCount != 0 {
-		oldestInProcessRequest := dp.getOldestInProcessRequest()
+		oldestInProcessRequest := p.getOldestInProcessRequest()
 		if oldestInProcessRequest != nil {
 			oldestPendingRequestCreatedAt = oldestInProcessRequest.CreatedAt
 		}
@@ -420,7 +421,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 
 	for _, deleteRequest := range deleteRequests {
 		// adding an extra minute here to avoid a race between cancellation of request and picking of the request for processing
-		if deleteRequest.CreatedAt.Add(deleteRequestCancellationDeadline).Add(time.Minute).After(model.Now()) {
+		if deleteRequest.CreatedAt.Add(p.cfg.DeleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
 
@@ -429,14 +430,14 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 			oldestPendingRequestCreatedAt = deleteRequest.CreatedAt
 		}
 
-		dp.inProcessRequestIDsMtx.RLock()
-		inprocessDeleteRequest, ok := dp.inProcessRequests[deleteRequest.UserID]
-		dp.inProcessRequestIDsMtx.RUnlock()
+		p.inProcessRequestIDsMtx.RLock()
+		inprocessDeleteRequest, ok := p.inProcessRequests[deleteRequest.UserID]
+		p.inProcessRequestIDsMtx.RUnlock()
 
 		if ok {
-			dp.usersWithPendingRequestsMtx.Lock()
-			dp.usersWithPendingRequests[deleteRequest.UserID] = struct{}{}
-			dp.usersWithPendingRequestsMtx.Unlock()
+			p.usersWithPendingRequestsMtx.Lock()
+			p.usersWithPendingRequests[deleteRequest.UserID] = struct{}{}
+			p.usersWithPendingRequestsMtx.Unlock()
 
 			level.Debug(util.Logger).Log("msg", "skipping delete request processing for now since another request from same user is already in process",
 				"inprocess_request_id", inprocessDeleteRequest.RequestID,
@@ -444,22 +445,22 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 			continue
 		}
 
-		err = dp.deleteStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusBuildingPlan)
+		err = p.deleteStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusBuildingPlan)
 		if err != nil {
 			return err
 		}
 
-		dp.inProcessRequestIDsMtx.Lock()
-		dp.inProcessRequests[deleteRequest.UserID] = deleteRequest
-		dp.inProcessRequestIDsMtx.Unlock()
+		p.inProcessRequestIDsMtx.Lock()
+		p.inProcessRequests[deleteRequest.UserID] = deleteRequest
+		p.inProcessRequestIDsMtx.Unlock()
 
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 
 		level.Info(req.logger).Log("msg", "building plan for a new delete request")
 
-		err := dp.buildDeletePlan(req)
+		err := p.buildDeletePlan(req)
 		if err != nil {
-			dp.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
+			p.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
 
 			// We do not want to remove this delete request from inProcessRequests to make sure
 			// we do not move multiple deleting requests in deletion process.
@@ -469,11 +470,11 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 		}
 
 		level.Info(req.logger).Log("msg", "sending delete request for execution")
-		dp.executePlansChan <- req
+		p.executePlansChan <- req
 	}
 
-	dp.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(now.Sub(oldestPendingRequestCreatedAt) / time.Second))
-	dp.metrics.pendingDeleteRequestsCount.Set(float64(pendingDeleteRequestsCount))
+	p.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(now.Sub(oldestPendingRequestCreatedAt) / time.Second))
+	p.metrics.pendingDeleteRequestsCount.Set(float64(pendingDeleteRequestsCount))
 
 	return nil
 }
@@ -482,7 +483,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 // A days plan will include chunk ids and labels of all the chunks which are supposed to be deleted.
 // Chunks are grouped together by labels to avoid storing labels repetitively.
 // After building delete plans it updates status of delete request to StatusDeleting and sends it for execution
-func (dp *DataPurger) buildDeletePlan(req deleteRequestWithLogger) error {
+func (p *Purger) buildDeletePlan(req deleteRequestWithLogger) error {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, req.UserID)
 
@@ -501,7 +502,7 @@ func (dp *DataPurger) buildDeletePlan(req deleteRequestWithLogger) error {
 				return err
 			}
 
-			chunks, err := dp.chunkStore.Get(ctx, req.UserID, planRange.Start, planRange.End, matchers...)
+			chunks, err := p.chunkStore.Get(ctx, req.UserID, planRange.Start, planRange.End, matchers...)
 			if err != nil {
 				return err
 			}
@@ -530,28 +531,28 @@ func (dp *DataPurger) buildDeletePlan(req deleteRequestWithLogger) error {
 		plans[i] = pb
 	}
 
-	err := dp.putDeletePlans(ctx, req.UserID, req.RequestID, plans)
+	err := p.putDeletePlans(ctx, req.UserID, req.RequestID, plans)
 	if err != nil {
 		return err
 	}
 
-	err = dp.deleteStore.UpdateStatus(ctx, req.UserID, req.RequestID, StatusDeleting)
+	err = p.deleteStore.UpdateStatus(ctx, req.UserID, req.RequestID, StatusDeleting)
 	if err != nil {
 		return err
 	}
 
-	dp.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(req.UserID).Add(float64(len(includedChunkIDs)))
+	p.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(req.UserID).Add(float64(len(includedChunkIDs)))
 
 	level.Info(req.logger).Log("msg", "built delete plans", "num_plans", len(perDayTimeRange))
 
 	return nil
 }
 
-func (dp *DataPurger) putDeletePlans(ctx context.Context, userID, requestID string, plans [][]byte) error {
+func (p *Purger) putDeletePlans(ctx context.Context, userID, requestID string, plans [][]byte) error {
 	for i, plan := range plans {
 		objectKey := buildObjectKeyForPlan(userID, requestID, i)
 
-		err := dp.objectClient.PutObject(ctx, objectKey, bytes.NewReader(plan))
+		err := p.objectClient.PutObject(ctx, objectKey, bytes.NewReader(plan))
 		if err != nil {
 			return err
 		}
@@ -560,10 +561,10 @@ func (dp *DataPurger) putDeletePlans(ctx context.Context, userID, requestID stri
 	return nil
 }
 
-func (dp *DataPurger) getDeletePlan(ctx context.Context, userID, requestID string, planNo int) (*DeletePlan, error) {
+func (p *Purger) getDeletePlan(ctx context.Context, userID, requestID string, planNo int) (*DeletePlan, error) {
 	objectKey := buildObjectKeyForPlan(userID, requestID, planNo)
 
-	readCloser, err := dp.objectClient.GetObject(ctx, objectKey)
+	readCloser, err := p.objectClient.GetObject(ctx, objectKey)
 	if err != nil {
 		return nil, err
 	}
@@ -584,17 +585,17 @@ func (dp *DataPurger) getDeletePlan(ctx context.Context, userID, requestID strin
 	return &plan, nil
 }
 
-func (dp *DataPurger) removeDeletePlan(ctx context.Context, userID, requestID string, planNo int) error {
+func (p *Purger) removeDeletePlan(ctx context.Context, userID, requestID string, planNo int) error {
 	objectKey := buildObjectKeyForPlan(userID, requestID, planNo)
-	return dp.objectClient.DeleteObject(ctx, objectKey)
+	return p.objectClient.DeleteObject(ctx, objectKey)
 }
 
-func (dp *DataPurger) getOldestInProcessRequest() *DeleteRequest {
-	dp.inProcessRequestIDsMtx.RLock()
-	defer dp.inProcessRequestIDsMtx.RUnlock()
+func (p *Purger) getOldestInProcessRequest() *DeleteRequest {
+	p.inProcessRequestIDsMtx.RLock()
+	defer p.inProcessRequestIDsMtx.RUnlock()
 
 	var oldestRequest *DeleteRequest
-	for _, request := range dp.inProcessRequests {
+	for _, request := range p.inProcessRequests {
 		if oldestRequest == nil || request.CreatedAt.Before(oldestRequest.CreatedAt) {
 			oldestRequest = &request
 		}

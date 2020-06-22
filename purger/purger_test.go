@@ -52,7 +52,7 @@ func setupTestDeleteStore(t *testing.T) *DeleteStore {
 	return deleteStore
 }
 
-func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.ObjectClient, *DataPurger, *prometheus.Registry) {
+func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.ObjectClient, *Purger, *prometheus.Registry) {
 	registry := prometheus.NewRegistry()
 
 	deleteStore := setupTestDeleteStore(t)
@@ -66,10 +66,10 @@ func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.Object
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 
-	dataPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient, registry)
+	purger, err := NewPurger(cfg, deleteStore, chunkStore, storageClient, registry)
 	require.NoError(t, err)
 
-	return deleteStore, chunkStore, storageClient, dataPurger, registry
+	return deleteStore, chunkStore, storageClient, purger, registry
 }
 
 func buildChunks(from, through model.Time, batchSize int) ([]chunk.Chunk, error) {
@@ -173,13 +173,13 @@ var purgePlanTestCases = []struct {
 	},
 }
 
-func TestDataPurger_BuildPlan(t *testing.T) {
+func TestPurger_BuildPlan(t *testing.T) {
 	for _, tc := range purgePlanTestCases {
 		for batchSize := 1; batchSize <= 5; batchSize++ {
 			t.Run(fmt.Sprintf("%s/batch-size=%d", tc.name, batchSize), func(t *testing.T) {
-				deleteStore, chunkStore, storageClient, dataPurger, _ := setupStoresAndPurger(t)
+				deleteStore, chunkStore, storageClient, purger, _ := setupStoresAndPurger(t)
 				defer func() {
-					dataPurger.StopAsync()
+					purger.StopAsync()
 					chunkStore.Stop()
 				}()
 
@@ -198,7 +198,7 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 				deleteRequest := deleteRequests[0]
 				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 
-				err = dataPurger.buildDeletePlan(requestWithLogger)
+				err = purger.buildDeletePlan(requestWithLogger)
 				require.NoError(t, err)
 				planPath := fmt.Sprintf("%s:%s/", userID, deleteRequest.RequestID)
 
@@ -213,7 +213,7 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 				chunkIDs := map[string]struct{}{}
 
 				for i := range plans {
-					deletePlan, err := dataPurger.getDeletePlan(context.Background(), userID, deleteRequest.RequestID, i)
+					deletePlan, err := purger.getDeletePlan(context.Background(), userID, deleteRequest.RequestID, i)
 					require.NoError(t, err)
 					for _, chunksGroup := range deletePlan.ChunksGroup {
 						numChunksInGroup := len(chunksGroup.Chunks)
@@ -244,13 +244,13 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 				}
 
 				require.Equal(t, tc.numChunksToDelete*batchSize, len(chunkIDs))
-				require.Equal(t, float64(tc.numChunksToDelete*batchSize), testutil.ToFloat64(dataPurger.metrics.deleteRequestsChunksSelectedTotal))
+				require.Equal(t, float64(tc.numChunksToDelete*batchSize), testutil.ToFloat64(purger.metrics.deleteRequestsChunksSelectedTotal))
 			})
 		}
 	}
 }
 
-func TestDataPurger_ExecutePlan(t *testing.T) {
+func TestPurger_ExecutePlan(t *testing.T) {
 	fooMetricNameMatcher, err := parser.ParseMetricSelector(`foo`)
 	if err != nil {
 		t.Fatal(err)
@@ -259,9 +259,9 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 	for _, tc := range purgePlanTestCases {
 		for batchSize := 1; batchSize <= 5; batchSize++ {
 			t.Run(fmt.Sprintf("%s/batch-size=%d", tc.name, batchSize), func(t *testing.T) {
-				deleteStore, chunkStore, _, dataPurger, _ := setupStoresAndPurger(t)
+				deleteStore, chunkStore, _, purger, _ := setupStoresAndPurger(t)
 				defer func() {
-					dataPurger.StopAsync()
+					purger.StopAsync()
 					chunkStore.Stop()
 				}()
 
@@ -290,12 +290,12 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 
 				deleteRequest := deleteRequests[0]
 				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
-				err = dataPurger.buildDeletePlan(requestWithLogger)
+				err = purger.buildDeletePlan(requestWithLogger)
 				require.NoError(t, err)
 
 				// execute all the plans
 				for i := 0; i < tc.expectedNumberOfPlans; i++ {
-					err := dataPurger.executePlan(userID, deleteRequest.RequestID, i, requestWithLogger.logger)
+					err := purger.executePlan(userID, deleteRequest.RequestID, i, requestWithLogger.logger)
 					require.NoError(t, err)
 				}
 
@@ -314,13 +314,13 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 	}
 }
 
-func TestDataPurger_Restarts(t *testing.T) {
+func TestPurger_Restarts(t *testing.T) {
 	fooMetricNameMatcher, err := parser.ParseMetricSelector(`foo`)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	deleteStore, chunkStore, storageClient, dataPurger, _ := setupStoresAndPurger(t)
+	deleteStore, chunkStore, storageClient, purger, _ := setupStoresAndPurger(t)
 	defer func() {
 		chunkStore.Stop()
 	}()
@@ -341,16 +341,16 @@ func TestDataPurger_Restarts(t *testing.T) {
 
 	deleteRequest := deleteRequests[0]
 	requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
-	err = dataPurger.buildDeletePlan(requestWithLogger)
+	err = purger.buildDeletePlan(requestWithLogger)
 	require.NoError(t, err)
 
 	// stop the existing purger
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), dataPurger))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), purger))
 
 	// create a new purger to check whether it picks up in process delete requests
 	var cfg Config
 	flagext.DefaultValues(&cfg)
-	newPurger, err := NewDataPurger(cfg, deleteStore, chunkStore, storageClient, prometheus.NewPedanticRegistry())
+	newPurger, err := NewPurger(cfg, deleteStore, chunkStore, storageClient, prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
 
 	// load in process delete requests by calling Run
