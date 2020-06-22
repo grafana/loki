@@ -44,7 +44,7 @@ scrape_configs:
    Below is an example that sends logs from a default Grafana installation to Loki. We updated the following fields:
    - job_name - This differentiates the logs collected from other log groups.
    - targets - NEED DEFINITION
-   - labels - NEED DEFINITION
+   - labels - any number of static labels to apply to every log line scraped by this definition, good examples here might be things like environment and/or job or app.
    - __path__ - The path to where the logs are stored that I want Loki to consume.
 
 ```
