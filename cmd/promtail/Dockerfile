@@ -15,6 +15,6 @@ RUN apt-get update && \
   tzdata ca-certificates libsystemd-dev && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/cmd/promtail/promtail /usr/bin/promtail
-COPY cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
-COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/docker-config.yaml
+COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
 ENTRYPOINT ["/usr/bin/promtail"]
+CMD ["-config.file=/etc/promtail/config.yml"]
