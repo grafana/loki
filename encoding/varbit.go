@@ -318,6 +318,7 @@ func (c varbitChunk) Utilization() float64 {
 }
 
 // marshalLen returns the number of bytes that should be marshalled for this chunk
+// (if someone has used a version of this code that doesn't just send 1024 every time)
 func (c varbitChunk) marshalLen() int {
 	bits := c.nextSampleOffset()
 	if bits < varbitThirdSampleBitOffset {
@@ -340,10 +341,7 @@ func (c varbitChunk) Len() int {
 }
 
 func (c varbitChunk) Size() int {
-	if alwaysMarshalFullsizeChunks {
-		return cap(c)
-	}
-	return c.marshalLen()
+	return cap(c)
 }
 
 func (c varbitChunk) firstTime() model.Time {
