@@ -15,7 +15,6 @@ In order to log events with Loki, you must download and install both Promtail an
 ```
 wget https://raw.githubusercontent.com/grafana/loki/master/cmd/loki/loki-local-config.yaml
 wget https://raw.githubusercontent.com/grafana/loki/master/cmd/promtail/promtail-local-config.yaml
-wget NEED DOWNLOAD COMMAND
 ```
 6. Enter the following command to start Loki:
 
