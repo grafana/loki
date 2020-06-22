@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/pkg/build"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -28,6 +29,7 @@ var (
 		Name:      "ws_reconnects",
 		Help:      "counts every time the websocket connection has to reconnect",
 	})
+	userAgent = fmt.Sprintf("loki-canary/%s", build.Version)
 )
 
 type LokiReader interface {
@@ -115,6 +117,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	}
 
 	req.SetBasicAuth(r.user, r.pass)
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
