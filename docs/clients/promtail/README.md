@@ -6,14 +6,14 @@ deployed to every machine that has applications needed to be monitored.
 
 It primarily:
 
-1. Discovers targets
-2. Attaches labels to log streams
-3. Pushes them to the Loki instance.
+- Discovers targets
+- Attaches labels to log streams
+- Pushes them to the Loki instance.
 
 Currently, Promtail can tail logs from two sources: local log files and the
 systemd journal (on AMD64 machines only).
 
-## Log File Discovery
+## Log file discovery
 
 Before Promtail can ship any data from log files to Loki, it needs to find out
 information about its environment. Specifically, this means discovering
@@ -32,12 +32,12 @@ Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 drop, and the final metadata to attach to the log line. Refer to the docs for
 [configuring Promtail](configuration.md) for more details.
 
-## Receiving Logs From Syslog
+## Receiving logs From Syslog
 
 When the [Syslog Target](./scraping.md#syslog-target) is being used, logs
 can be written with the syslog protocol to the configured port.
 
-## Labeling and Parsing
+## Labeling and parsing
 
 During service discovery, metadata is determined (pod name, filename, etc.) that
 may be attached to the log line as a label for easier identification when
