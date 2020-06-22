@@ -11,7 +11,7 @@ The following instructions should help you get started.
 1. If you haven't already, download a Promtail configuration file. Keep track of where it is, because you will need to cite it when you run the binary.
 
 ```
-wget NEED DOWNLOAD LINK FOR CONFIG FILE
+wget https://github.com/grafana/loki/blob/master/cmd/promtail/promtail-local-config.yaml
 ```
 
 2. Open the config file in the text editor of your choice. It should look similar to this:
