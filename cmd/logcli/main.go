@@ -104,8 +104,7 @@ func main() {
 		if err != nil {
 			log.Fatal("could not create memory profile: ", err)
 		}
-		defer memFile.Close() // error handling omitted for example
-		runtime.GC()
+		defer memFile.Close()
 		defer func() {
 			if err := pprof.WriteHeapProfile(memFile); err != nil {
 				log.Fatal("could not write memory profile: ", err)
