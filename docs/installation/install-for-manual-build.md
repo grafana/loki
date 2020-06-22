@@ -1,4 +1,4 @@
-# Install locally for manual build
+# Build from source
 
 In order to build Loki manually, you need to clone the GitHub repo and then `make Loki`.
 

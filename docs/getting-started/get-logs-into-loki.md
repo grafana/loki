@@ -8,10 +8,10 @@ Detailed information about configuring Promtail is available in [Promtail config
 
 The following instructions should help you get started.
 
-1. If you haven't already, download a Promtail configuration file and put it in the same directory as promtail binary.
+1. If you haven't already, download a Promtail configuration file. Keep track of where it is, because you will need to cite it when you run the binary.
 
 ```
-wget NEED DOWNLOAD LINK
+wget NEED DOWNLOAD LINK FOR CONFIG FILE
 ```
 
 2. Open the config file in the text editor of your choice. It should look similar to this:
@@ -57,7 +57,7 @@ scrape_configs:
       __path__: "C:/Program Files/GrafanaLabs/grafana/data/log/grafana.log"
 ```
 
-4. Enter the following command to run Promtail:
+4. Enter the following command to run Promtail. Examples below assume you have put the config file in the same directory as the binary.
 
 **Windows**
 
@@ -68,7 +68,7 @@ scrape_configs:
 **Linux**
 
 ```
-NEED COMMAND
+./promtail-linux-amd64 -config.file=promtail-local-config.yaml
 ```
 
 5. Restart Loki. You should now see your application logs.
