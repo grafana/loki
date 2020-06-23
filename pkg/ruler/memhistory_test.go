@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -190,5 +191,74 @@ func TestForStateAppenderCleanup(t *testing.T) {
 }
 
 func TestForStateAppenderQuerier(t *testing.T) {
+	app := NewForStateAppender(newRule("foo", "query", `{foo="bar"}`, time.Minute))
+	now := time.Now()
+
+	// create ls series
+	ls := mustParseLabels(`{foo="bar", bazz="buzz", __name__="ALERTS_FOR_STATE"}`)
+	_, err := app.Add(ls, util.TimeToMillis(now.Add(-3*time.Minute)), 1)
+	require.Nil(t, err)
+	_, err = app.Add(ls, util.TimeToMillis(now.Add(-1*time.Minute)), 2)
+	require.Nil(t, err)
+	_, err = app.Add(ls, util.TimeToMillis(now.Add(1*time.Minute)), 3)
+	require.Nil(t, err)
+
+	// never included due to bounds
+	_, err = app.Add(mustParseLabels(`{foo="bar", bazz="blip", __name__="ALERTS_FOR_STATE"}`), util.TimeToMillis(now.Add(-2*time.Hour)), 3)
+	require.Nil(t, err)
+
+	// should succeed with nil selecthints
+	q, err := app.Querier(context.Background(), util.TimeToMillis(now.Add(-2*time.Minute)), util.TimeToMillis(now))
+	require.Nil(t, err)
+
+	set, _, err := q.Select(
+		false,
+		nil,
+		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, rules.AlertForStateMetricName),
+	)
+	require.Nil(t, err)
+	require.Equal(
+		t,
+		series.NewConcreteSeriesSet(
+			[]storage.Series{
+				series.NewConcreteSeries(ls, []model.SamplePair{
+					{Timestamp: model.Time(util.TimeToMillis(now.Add(-1 * time.Minute))), Value: model.SampleValue(2)},
+				}),
+			},
+		),
+		set,
+	)
+
+	// // should be able to minimize selection window via hints
+	q, err = app.Querier(context.Background(), util.TimeToMillis(now.Add(-time.Hour)), util.TimeToMillis(now.Add(time.Hour)))
+	require.Nil(t, err)
+	set2, _, err := q.Select(
+		false,
+		&storage.SelectHints{
+			Start: util.TimeToMillis(now.Add(-2 * time.Minute)),
+			End:   util.TimeToMillis(now),
+		},
+		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, rules.AlertForStateMetricName),
+	)
+	require.Nil(t, err)
+	require.Equal(
+		t,
+		series.NewConcreteSeriesSet(
+			[]storage.Series{
+				series.NewConcreteSeries(ls, []model.SamplePair{
+					{Timestamp: model.Time(util.TimeToMillis(now.Add(-1 * time.Minute))), Value: model.SampleValue(2)},
+				}),
+			},
+		),
+		set2,
+	)
+
+	// requiring sorted results should err (unsupported)
+	_, _, err = q.Select(
+		true,
+		nil,
+		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, rules.AlertForStateMetricName),
+	)
+	require.NotNil(t, err)
 
 }
