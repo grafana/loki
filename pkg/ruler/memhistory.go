@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
@@ -14,17 +15,39 @@ import (
 )
 
 type MemHistory struct {
+	mtx       sync.RWMutex
 	userId    string
 	opts      *rules.ManagerOptions
 	appenders map[*rules.AlertingRule]*ForStateAppender
+
+	done            chan struct{}
+	cleanupInterval time.Duration
 }
 
 func NewMemHistory(userId string, opts *rules.ManagerOptions) *MemHistory {
-	return &MemHistory{
+	hist := &MemHistory{
 		userId:    userId,
 		opts:      opts,
 		appenders: make(map[*rules.AlertingRule]*ForStateAppender),
+
+		cleanupInterval: 5 * time.Minute, // TODO: make configurable
 	}
+	hist.run()
+	return hist
+}
+
+func (m *MemHistory) run() {
+	for range time.NewTicker(m.cleanupInterval).C {
+		m.mtx.Lock()
+		defer m.mtx.Unlock()
+		for rule, app := range m.appenders {
+			if rem := app.CleanupOldSamples(); rem == 0 {
+				delete(m.appenders, rule)
+			}
+
+		}
+	}
+
 }
 
 // Implement rules.Appendable
@@ -37,6 +60,9 @@ func (m *MemHistory) Appender(rule rules.Rule) (storage.Appender, error) {
 	if !ok {
 		return nil, errors.New("unimplemented: MemHistory only accepts AlertingRules")
 	}
+
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 
 	if app, ok := m.appenders[alertRule]; ok {
 		return app, nil
@@ -82,6 +108,7 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 }
 
 type ForStateAppender struct {
+	mtx  sync.Mutex
 	rule *rules.AlertingRule
 	data map[uint64]*series.ConcreteSeries
 }
@@ -101,6 +128,9 @@ func (m *ForStateAppender) Add(ls labels.Labels, t int64, v float64) (uint64, er
 		}
 	}
 
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	fp := ls.Hash()
 
 	if s, ok := m.data[fp]; ok {
@@ -109,12 +139,31 @@ func (m *ForStateAppender) Add(ls labels.Labels, t int64, v float64) (uint64, er
 			Value:     model.SampleValue(v),
 		})
 
-		// release all older references that are no longer needed
-		s.TrimStart(time.Now().Add(-m.rule.Duration()))
 		return 0, nil
 	}
 	m.data[fp] = series.NewConcreteSeries(ls, []model.SamplePair{{Timestamp: model.Time(t), Value: model.SampleValue(v)}})
 	return 0, nil
+
+}
+
+// CleanupOldSamples removes samples that are outside of the rule's `For` duration.
+func (m *ForStateAppender) CleanupOldSamples() (seriesRemaining int) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	// TODO: make this factor configurable?
+	// Basically, buffer samples in memory up to ruleDuration * oldEvaluationFactor.
+	oldEvaluationFactor := time.Duration(2)
+
+	for fp, s := range m.data {
+		// release all older references that are no longer needed.
+		s.TrimStart(time.Now().Add(-m.rule.Duration() * oldEvaluationFactor))
+		if s.Len() == 0 {
+			delete(m.data, fp)
+		}
+	}
+
+	return len(m.data)
 
 }
 
