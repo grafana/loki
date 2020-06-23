@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -15,8 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
 )
-
-var nanosecondsInMillisecond = int64(time.Millisecond / time.Nanosecond)
 
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func NewQueryShardMiddleware(
@@ -147,60 +146,12 @@ type shardSplitter struct {
 
 func (splitter *shardSplitter) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 	cutoff := splitter.now().Add(-splitter.MinShardingLookback)
-	sharded, nonsharded := partitionRequest(r, cutoff)
 
-	return splitter.parallel(ctx, sharded, nonsharded)
-
-}
-
-func (splitter *shardSplitter) parallel(ctx context.Context, sharded, nonsharded queryrange.Request) (queryrange.Response, error) {
-	if sharded == nil {
-		return splitter.next.Do(ctx, nonsharded)
+	// Only attempt to shard queries which are older than the sharding lookback (the period for which ingesters are also queried).
+	if !cutoff.After(util.TimeFromMillis(r.GetEnd())) {
+		return splitter.next.Do(ctx, r)
 	}
-
-	if nonsharded == nil {
-		return splitter.shardingware.Do(ctx, sharded)
-	}
-
-	nonshardCh := make(chan queryrange.Response, 1)
-	shardCh := make(chan queryrange.Response, 1)
-	errCh := make(chan error, 2)
-
-	go func() {
-		res, err := splitter.next.Do(ctx, nonsharded)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		nonshardCh <- res
-
-	}()
-
-	go func() {
-		res, err := splitter.shardingware.Do(ctx, sharded)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		shardCh <- res
-	}()
-
-	resps := make([]queryrange.Response, 0, 2)
-	for i := 0; i < 2; i++ {
-		select {
-		case r := <-nonshardCh:
-			resps = append(resps, r)
-		case r := <-shardCh:
-			resps = append(resps, r)
-		case err := <-errCh:
-			return nil, err
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-
-	}
-
-	return lokiCodec.MergeResponse(resps...)
+	return splitter.shardingware.Do(ctx, r)
 }
 
 // TODO(owen-d): export in cortex so we don't duplicate code
@@ -211,29 +162,4 @@ func hasShards(confs queryrange.ShardingConfigs) bool {
 		}
 	}
 	return false
-}
-
-// partitionRequet splits a request into potentially multiple requests, one including the request's time range
-// [0,t). The other will include [t,inf)
-// TODO(owen-d): export in cortex so we don't duplicate code
-func partitionRequest(r queryrange.Request, t time.Time) (before queryrange.Request, after queryrange.Request) {
-	boundary := TimeToMillis(t)
-	if r.GetStart() >= boundary {
-		return nil, r
-	}
-
-	if r.GetEnd() < boundary {
-		return r, nil
-	}
-
-	return r.WithStartEnd(r.GetStart(), boundary), r.WithStartEnd(boundary, r.GetEnd())
-}
-
-// TimeFromMillis is a helper to turn milliseconds -> time.Time
-func TimeFromMillis(ms int64) time.Time {
-	return time.Unix(0, ms*nanosecondsInMillisecond)
-}
-
-func TimeToMillis(t time.Time) int64 {
-	return t.UnixNano() / nanosecondsInMillisecond
 }
