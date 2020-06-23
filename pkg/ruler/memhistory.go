@@ -32,7 +32,7 @@ func NewMemHistory(userId string, opts *rules.ManagerOptions) *MemHistory {
 
 		cleanupInterval: 5 * time.Minute, // TODO: make configurable
 	}
-	hist.run()
+	go hist.run()
 	return hist
 }
 
@@ -183,11 +183,6 @@ func (m *ForStateAppender) Querier(ctx context.Context, mint, _ int64) (storage.
 		ForStateAppender: m,
 	}, nil
 
-}
-
-// TimeFromMillis is a helper to turn milliseconds -> time.Time
-func TimeFromMillis(ms int64) time.Time {
-	return time.Unix(0, ms*int64(time.Millisecond/time.Nanosecond))
 }
 
 // ForStateAppenderQuerier wraps a **ForStateAppender and implements storage.Querier
