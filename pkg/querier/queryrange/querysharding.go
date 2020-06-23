@@ -17,8 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/marshal"
 )
 
-var nanosecondsInMillisecond = int64(time.Millisecond / time.Nanosecond)
-
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func NewQueryShardMiddleware(
 	logger log.Logger,
