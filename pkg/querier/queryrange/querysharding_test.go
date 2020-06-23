@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
@@ -70,8 +71,8 @@ var (
 
 func Test_shardSplitter(t *testing.T) {
 	req := defaultReq().WithStartEnd(
-		TimeToMillis(start),
-		TimeToMillis(end),
+		util.TimeToMillis(start),
+		util.TimeToMillis(end),
 	)
 
 	for _, tc := range []struct {
