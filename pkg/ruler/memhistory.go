@@ -176,10 +176,10 @@ func (m *ForStateAppender) Commit() error { return nil }
 func (m *ForStateAppender) Rollback() error { return nil }
 
 // implement storage.Queryable
-func (m *ForStateAppender) Querier(ctx context.Context, mint, _ int64) (storage.Querier, error) {
-	// These are never realisticallly bounded by maxt, so we omit it.
+func (m *ForStateAppender) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	return ForStateAppenderQuerier{
 		mint:             mint,
+		maxt:             maxt,
 		ForStateAppender: m,
 	}, nil
 
@@ -187,7 +187,7 @@ func (m *ForStateAppender) Querier(ctx context.Context, mint, _ int64) (storage.
 
 // ForStateAppenderQuerier wraps a **ForStateAppender and implements storage.Querier
 type ForStateAppenderQuerier struct {
-	mint int64
+	mint, maxt int64
 	*ForStateAppender
 }
 
@@ -196,6 +196,18 @@ func (q ForStateAppenderQuerier) Select(sortSeries bool, params *storage.SelectH
 	if sortSeries {
 		return nil, nil, errors.New("ForStateAppenderQuerier does not support sorted selects")
 
+	}
+	q.mtx.Lock()
+	defer q.mtx.Unlock()
+
+	seekTo := q.mint
+	if params != nil && seekTo < params.Start {
+		seekTo = params.Start
+	}
+
+	maxt := q.maxt
+	if params != nil && params.End < maxt {
+		maxt = params.End
 	}
 
 	var filtered []storage.Series
@@ -207,20 +219,10 @@ outer:
 			}
 
 			iter := s.Iterator()
-
-			seekTo := q.mint
-			if seekTo < params.Start {
-				seekTo = params.Start
-			}
-			if !iter.Seek(seekTo) {
-				continue
-			}
-
 			var samples []model.SamplePair
-
-			for iter.Next() {
+			for ok := iter.Seek(seekTo); ok; ok = iter.Next() {
 				t, v := iter.At()
-				if t > params.End {
+				if t > maxt {
 					break
 				}
 
