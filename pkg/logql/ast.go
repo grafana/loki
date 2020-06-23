@@ -32,18 +32,11 @@ func (s SelectParams) LogSelector() (LogSelectorExpr, error) {
 	return ParseLogSelector(s.Selector)
 }
 
-// QuerierFunc implements Querier.
-type QuerierFunc func(context.Context, SelectParams) (iter.EntryIterator, error)
-
-// Select implements Querier.
-func (q QuerierFunc) Select(ctx context.Context, p SelectParams) (iter.EntryIterator, error) {
-	return q(ctx, p)
-}
-
 // Querier allows a LogQL expression to fetch an EntryIterator for a
 // set of matchers and filters
 type Querier interface {
-	Select(context.Context, SelectParams) (iter.EntryIterator, error)
+	SelectLogs(context.Context, SelectParams) (iter.EntryIterator, error)
+	SelectSamples(context.Context, SelectParams) (iter.SampleIterator, error)
 }
 
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
@@ -248,6 +241,7 @@ func IsLogicalBinOp(op string) bool {
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
+	Extractor() SampleExtractor
 	// Operations returns the list of operations used in this SampleExpr
 	Operations() []string
 	Expr

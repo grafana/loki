@@ -3,6 +3,7 @@ package logql
 import (
 	"sync"
 
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -23,7 +24,7 @@ type RangeVectorIterator interface {
 }
 
 type rangeVectorIterator struct {
-	iter                         SeriesIterator
+	iter                         iter.PeekingSampleIterator
 	selRange, step, end, current int64
 	window                       map[string]*promql.Series
 	metrics                      map[string]labels.Labels
@@ -31,7 +32,7 @@ type rangeVectorIterator struct {
 }
 
 func newRangeVectorIterator(
-	it SeriesIterator,
+	it iter.PeekingSampleIterator,
 	selRange, step, start, end int64) *rangeVectorIterator {
 	// forces at least one step.
 	if step == 0 {
@@ -98,12 +99,12 @@ func (r *rangeVectorIterator) popBack(newStart int64) {
 // load the next sample range window.
 func (r *rangeVectorIterator) load(start, end int64) {
 	for sample, hasNext := r.iter.Peek(); hasNext; sample, hasNext = r.iter.Peek() {
-		if sample.TimestampNano > end {
+		if sample.Timestamp > end {
 			// not consuming the iterator as this belong to another range.
 			return
 		}
 		// the lower bound of the range is not inclusive
-		if sample.TimestampNano <= start {
+		if sample.Timestamp <= start {
 			_ = r.iter.Next()
 			continue
 		}
@@ -127,7 +128,7 @@ func (r *rangeVectorIterator) load(start, end int64) {
 			r.window[sample.Labels] = series
 		}
 		p := promql.Point{
-			T: sample.TimestampNano,
+			T: sample.Timestamp,
 			V: sample.Value,
 		}
 		series.Points = append(series.Points, p)
