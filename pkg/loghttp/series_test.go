@@ -103,6 +103,7 @@ func withForm(form url.Values) *http.Request {
 	return &http.Request{Form: form}
 }
 
+// nolint
 func mkSeriesRequest(t *testing.T, from, to string, matches []string) *logproto.SeriesRequest {
 	start, end, err := bounds(withForm(url.Values{
 		"start": []string{from},
