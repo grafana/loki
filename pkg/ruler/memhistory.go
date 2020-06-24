@@ -222,9 +222,10 @@ type ForStateAppenderQuerier struct {
 }
 
 // Select returns a set of series that matches the given label matchers.
-func (q ForStateAppenderQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q ForStateAppenderQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	// TODO: implement sorted selects (currently unused).
 	if sortSeries {
-		return nil, nil, errors.New("ForStateAppenderQuerier does not support sorted selects")
+		return storage.NoopSeriesSet()
 
 	}
 	q.mtx.Lock()
@@ -269,7 +270,7 @@ outer:
 		}
 	}
 
-	return series.NewConcreteSeriesSet(filtered), nil, nil
+	return series.NewConcreteSeriesSet(filtered)
 }
 
 // LabelValues returns all potential values for a label name.
