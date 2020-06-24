@@ -25,7 +25,7 @@ func TestNewMemHistory(t *testing.T) {
 
 		cleanupInterval: 5 * time.Minute,
 	}
-	require.Equal(t, expected, NewMemHistory(userID, nil))
+	require.Equal(t, expected, NewMemHistory(userID, time.Minute, nil))
 
 }
 
@@ -57,7 +57,7 @@ func TestMemHistoryAppender(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			hist := NewMemHistory("abc", nil)
+			hist := NewMemHistory("abc", time.Minute, nil)
 
 			app, err := hist.Appender(tc.rule)
 			if tc.err {
@@ -68,7 +68,23 @@ func TestMemHistoryAppender(t *testing.T) {
 	}
 }
 
-func TestMemHistoryRestoreForState(t *testing.T) {}
+// func TestMemHistoryRestoreForState(t *testing.T) {}
+// func TestMemHistoryRestoreForState(t *testing.T) {}
+
+func TestMemHistoryStop(t *testing.T) {
+	hist := NewMemHistory("abc", time.Millisecond, nil)
+	<-time.After(2 * time.Millisecond) // allow it to start ticking (not strictly required for this test)
+	hist.Stop()
+	// ensure idempotency
+	hist.Stop()
+
+	// ensure ticker is cleaned up
+	select {
+	case <-time.After(10 * time.Millisecond):
+		t.Fatalf("done channel not closed")
+	case <-hist.done:
+	}
+}
 
 type stringer string
 
