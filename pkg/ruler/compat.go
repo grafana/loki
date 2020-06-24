@@ -7,6 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -50,10 +51,12 @@ func LokiDelayedQueryFunc(engine *logql.Engine) ruler.DelayedQueryFunc {
 	}
 }
 
-func InMemoryAppendableHistory(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.TenantAlertHistory) {
-	// TODO: expose cleanup interval
-	hist := NewMemHistory(userID, 5*time.Minute, opts)
-	return hist, hist
+func InMemoryAppendableHistory(r prometheus.Registerer) func(string, *rules.ManagerOptions) (rules.Appendable, rules.TenantAlertHistory) {
+	metrics := NewMetrics(r)
+	return func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.TenantAlertHistory) {
+		hist := NewMemHistory(userID, 5*time.Minute, opts, metrics)
+		return hist, hist
+	}
 }
 
 type NoopAppender struct{}

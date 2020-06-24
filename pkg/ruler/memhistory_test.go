@@ -42,18 +42,21 @@ func TestMemHistoryAppender(t *testing.T) {
 		{
 			desc:     "alerting rule returns ForStateAppender",
 			err:      false,
-			expected: NewForStateAppender(rules.NewAlertingRule("foo", nil, 0, nil, nil, nil, true, nil)),
+			expected: NewForStateAppender(rules.NewAlertingRule("foo", nil, 0, nil, nil, nil, true, nil), NewMetrics(nil)),
 			rule:     rules.NewAlertingRule("foo", nil, 0, nil, nil, nil, true, nil),
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			hist := NewMemHistory("abc", time.Minute, nil)
+			hist := NewMemHistory("abc", time.Minute, nil, NewMetrics(nil))
 
 			app, err := hist.Appender(tc.rule)
 			if tc.err {
 				require.NotNil(t, err)
 			}
-			require.Equal(t, tc.expected, app)
+
+			if tc.expected != nil {
+				require.IsTypef(t, tc.expected, app, "expected ForStateAppender")
+			}
 		})
 	}
 }
@@ -80,7 +83,7 @@ func TestMemHistoryRestoreForState(t *testing.T) {
 	ts := time.Now().Round(time.Millisecond)
 	rule := newRule("rule1", "query", `{foo="bar"}`, time.Minute)
 
-	hist := NewMemHistory("abc", time.Minute, opts)
+	hist := NewMemHistory("abc", time.Minute, opts, NewMetrics(nil))
 	hist.RestoreForState(ts, rule)
 
 	app, err := hist.Appender(rule)
@@ -110,7 +113,7 @@ func TestMemHistoryRestoreForState(t *testing.T) {
 }
 
 func TestMemHistoryStop(t *testing.T) {
-	hist := NewMemHistory("abc", time.Millisecond, nil)
+	hist := NewMemHistory("abc", time.Millisecond, nil, NewMetrics(nil))
 	<-time.After(2 * time.Millisecond) // allow it to start ticking (not strictly required for this test)
 	hist.Stop()
 	// ensure idempotency
@@ -142,7 +145,7 @@ func newRule(name, qry, ls string, forDur time.Duration) *rules.AlertingRule {
 }
 
 func TestForStateAppenderAdd(t *testing.T) {
-	app := NewForStateAppender(newRule("foo", "query", `{foo="bar"}`, time.Minute))
+	app := NewForStateAppender(newRule("foo", "query", `{foo="bar"}`, time.Minute), NewMetrics(nil))
 	require.Equal(t, map[uint64]*series.ConcreteSeries{}, app.data)
 
 	// create first series
@@ -221,7 +224,7 @@ func TestForStateAppenderAdd(t *testing.T) {
 }
 
 func TestForStateAppenderCleanup(t *testing.T) {
-	app := NewForStateAppender(newRule("foo", "query", `{foo="bar"}`, time.Minute))
+	app := NewForStateAppender(newRule("foo", "query", `{foo="bar"}`, time.Minute), NewMetrics(nil))
 	now := time.Now()
 
 	// create ls series
@@ -245,7 +248,7 @@ func TestForStateAppenderCleanup(t *testing.T) {
 }
 
 func TestForStateAppenderQuerier(t *testing.T) {
-	app := NewForStateAppender(newRule("foo", "query", `{foo="bar"}`, time.Minute))
+	app := NewForStateAppender(newRule("foo", "query", `{foo="bar"}`, time.Minute), NewMetrics(nil))
 	now := time.Now()
 
 	// create ls series
