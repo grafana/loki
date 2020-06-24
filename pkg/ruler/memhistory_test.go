@@ -89,13 +89,12 @@ func TestMemHistoryRestoreForState(t *testing.T) {
 
 	q, err := casted.Querier(context.Background(), 0, util.TimeToMillis(ts))
 	require.Nil(t, err)
-	set, _, err := q.Select(
+	set := q.Select(
 		false,
 		nil,
 		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, rules.AlertForStateMetricName),
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 	)
-	require.Nil(t, err)
 	require.Equal(t, true, set.Next())
 	s := set.At()
 	require.Equal(t, `{__name__="ALERTS_FOR_STATE", alertname="rule1", foo="bar"}`, s.Labels().String())
@@ -266,12 +265,11 @@ func TestForStateAppenderQuerier(t *testing.T) {
 	q, err := app.Querier(context.Background(), util.TimeToMillis(now.Add(-2*time.Minute)), util.TimeToMillis(now))
 	require.Nil(t, err)
 
-	set, _, err := q.Select(
+	set := q.Select(
 		false,
 		nil,
 		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, rules.AlertForStateMetricName),
 	)
-	require.Nil(t, err)
 	require.Equal(
 		t,
 		series.NewConcreteSeriesSet(
@@ -287,7 +285,7 @@ func TestForStateAppenderQuerier(t *testing.T) {
 	// // should be able to minimize selection window via hints
 	q, err = app.Querier(context.Background(), util.TimeToMillis(now.Add(-time.Hour)), util.TimeToMillis(now.Add(time.Hour)))
 	require.Nil(t, err)
-	set2, _, err := q.Select(
+	set2 := q.Select(
 		false,
 		&storage.SelectHints{
 			Start: util.TimeToMillis(now.Add(-2 * time.Minute)),
@@ -295,7 +293,6 @@ func TestForStateAppenderQuerier(t *testing.T) {
 		},
 		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, rules.AlertForStateMetricName),
 	)
-	require.Nil(t, err)
 	require.Equal(
 		t,
 		series.NewConcreteSeriesSet(
@@ -308,12 +305,12 @@ func TestForStateAppenderQuerier(t *testing.T) {
 		set2,
 	)
 
-	// requiring sorted results should err (unsupported)
-	_, _, err = q.Select(
+	// requiring sorted results return nothing (unsupported)
+	empty := q.Select(
 		true,
 		nil,
 		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, rules.AlertForStateMetricName),
 	)
-	require.NotNil(t, err)
+	require.Equal(t, false, empty.Next())
 
 }
