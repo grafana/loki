@@ -12,22 +12,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 )
-
-func TestNewMemHistory(t *testing.T) {
-	userID := "abc"
-	expected := &MemHistory{
-		userId:    userID,
-		appenders: make(map[*rules.AlertingRule]*ForStateAppender),
-
-		cleanupInterval: 5 * time.Minute,
-	}
-	require.Equal(t, expected, NewMemHistory(userID, time.Minute, nil))
-
-}
 
 func TestMemHistoryAppender(t *testing.T) {
 
@@ -69,7 +59,56 @@ func TestMemHistoryAppender(t *testing.T) {
 }
 
 // func TestMemHistoryRestoreForState(t *testing.T) {}
-// func TestMemHistoryRestoreForState(t *testing.T) {}
+
+func TestMemHistoryRestoreForState(t *testing.T) {
+	opts := &rules.ManagerOptions{
+		QueryFunc: rules.QueryFunc(func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+			// always return the requested time
+			return promql.Vector{promql.Sample{
+				Point: promql.Point{
+					T: util.TimeToMillis(t),
+					V: float64(util.TimeToMillis(t)),
+				},
+				Metric: mustParseLabels(`{foo="bar", __name__="something"}`),
+			}}, nil
+		}),
+		Context: user.InjectOrgID(context.Background(), "abc"),
+		Logger:  log.NewNopLogger(),
+		Metrics: rules.NewGroupMetrics(nil),
+	}
+
+	ts := time.Now().Round(time.Millisecond)
+	rule := newRule("rule1", "query", `{foo="bar"}`, time.Minute)
+
+	hist := NewMemHistory("abc", time.Minute, opts)
+	hist.RestoreForState(ts, rule)
+
+	app, err := hist.Appender(rule)
+	require.Nil(t, err)
+	casted := app.(*ForStateAppender)
+
+	q, err := casted.Querier(context.Background(), 0, util.TimeToMillis(ts))
+	require.Nil(t, err)
+	set, _, err := q.Select(
+		false,
+		nil,
+		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, rules.AlertForStateMetricName),
+		labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+	)
+	require.Nil(t, err)
+	require.Equal(t, true, set.Next())
+	s := set.At()
+	require.Equal(t, `{__name__="ALERTS_FOR_STATE", alertname="rule1", foo="bar"}`, s.Labels().String())
+	iter := s.Iterator()
+	require.Equal(t, true, iter.Next())
+	x, y := iter.At()
+	adjusted := ts.Add(-rule.Duration()) // Adjusted for the forDuration lookback.
+	require.Equal(t, util.TimeToMillis(adjusted), x)
+	require.Equal(t, float64(util.TimeToMillis(adjusted)), y)
+	require.Equal(t, false, iter.Next())
+
+	// TODO: ensure extra labels are propagated?
+}
 
 func TestMemHistoryStop(t *testing.T) {
 	hist := NewMemHistory("abc", time.Millisecond, nil)
