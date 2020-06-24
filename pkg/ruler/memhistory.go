@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -114,7 +115,17 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 	}
 
 	for _, smpl := range vec {
-		if _, err := app.Add(smpl.Metric, smpl.T, smpl.V); err != nil {
+		forStateSample := alertRule.ForStateSample(
+			&rules.Alert{
+				Labels:   smpl.Metric,
+				ActiveAt: ts,
+				Value:    smpl.V,
+			},
+			util.TimeFromMillis(smpl.T),
+			smpl.V,
+		)
+
+		if _, err := app.Add(forStateSample.Metric, forStateSample.T, forStateSample.V); err != nil {
 			level.Error(m.opts.Logger).Log("msg", "error appending to MemHistory", "err", err)
 			return
 		}
