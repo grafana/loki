@@ -24,30 +24,49 @@ type MemHistory struct {
 	cleanupInterval time.Duration
 }
 
-func NewMemHistory(userId string, opts *rules.ManagerOptions) *MemHistory {
+func NewMemHistory(userId string, cleanupInterval time.Duration, opts *rules.ManagerOptions) *MemHistory {
 	hist := &MemHistory{
 		userId:    userId,
 		opts:      opts,
 		appenders: make(map[*rules.AlertingRule]*ForStateAppender),
 
-		cleanupInterval: 5 * time.Minute, // TODO: make configurable
+		cleanupInterval: cleanupInterval,
+		done:            make(chan struct{}),
 	}
 	go hist.run()
 	return hist
 }
 
-func (m *MemHistory) run() {
-	for range time.NewTicker(m.cleanupInterval).C {
-		m.mtx.Lock()
-		defer m.mtx.Unlock()
-		for rule, app := range m.appenders {
-			if rem := app.CleanupOldSamples(); rem == 0 {
-				delete(m.appenders, rule)
-			}
+func (m *MemHistory) Stop() {
+	select {
+	// ensures Stop() is idempotent
+	case <-m.done:
+		return
+	default:
+		close(m.done)
+		return
+	}
+}
 
+// run periodically cleans up old series/samples to ensure memory consumption doesn't grow unbounded.
+func (m *MemHistory) run() {
+	t := time.NewTicker(m.cleanupInterval)
+	for {
+		select {
+		case <-m.done:
+			t.Stop()
+			return
+		case <-t.C:
+			m.mtx.Lock()
+			for rule, app := range m.appenders {
+				if rem := app.CleanupOldSamples(); rem == 0 {
+					delete(m.appenders, rule)
+				}
+
+			}
+			m.mtx.Unlock()
 		}
 	}
-
 }
 
 // Implement rules.Appendable

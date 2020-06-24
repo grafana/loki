@@ -50,8 +50,9 @@ func LokiDelayedQueryFunc(engine *logql.Engine) ruler.DelayedQueryFunc {
 	}
 }
 
-func InMemoryAppendableHistory(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.AlertHistory) {
-	hist := NewMemHistory(userID, opts)
+func InMemoryAppendableHistory(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.TenantAlertHistory) {
+	// TODO: expose cleanup interval
+	hist := NewMemHistory(userID, 5*time.Minute, opts)
 	return hist, hist
 }
 
