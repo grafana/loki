@@ -32,6 +32,8 @@ func main() {
 
 	lName := flag.String("labelname", "name", "The label name for this instance of loki-canary to use in the log selector")
 	lVal := flag.String("labelvalue", "loki-canary", "The unique label value for this instance of loki-canary to use in the log selector")
+	sName := flag.String("streamname", "stream", "The stream name for this instance of loki-canary to use in the log selector")
+	sValue := flag.String("streamvalue", "stdout", "The unique stream value for this instance of loki-canary to use in the log selector")
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
 	tls := flag.Bool("tls", false, "Does the loki connection use TLS?")
@@ -69,7 +71,7 @@ func main() {
 		defer c.lock.Unlock()
 
 		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *size)
-		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *lName, *lVal)
+		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *lName, *lVal, *sName, *sValue)
 		c.comparator = comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *buckets, sentChan, receivedChan, c.reader, true)
 	}
 
