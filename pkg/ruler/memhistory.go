@@ -18,9 +18,8 @@ import (
 )
 
 type Metrics struct {
-	Series          prometheus.Gauge     // in memory series
-	Samples         prometheus.Gauge     // in memory samples
-	RuleGranularity prometheus.Histogram // Resolution of evaluations used in RestoreForState when recomputing past entries
+	Series  prometheus.Gauge // in memory series
+	Samples prometheus.Gauge // in memory samples
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -32,11 +31,6 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		Samples: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Name:      "ruler_memory_samples_total",
-		}),
-		RuleGranularity: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:      "loki",
-			Namespace: "ruler_memory_for_state_resolution",
-			Buckets:   []float64{1, 2, 4, 8, 16},
 		}),
 	}
 }
