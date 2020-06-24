@@ -10,26 +10,54 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 )
+
+type Metrics struct {
+	Series          prometheus.Gauge     // in memory series
+	Samples         prometheus.Gauge     // in memory samples
+	RuleGranularity prometheus.Histogram // Resolution of evaluations used in RestoreForState when recomputing past entries
+}
+
+func NewMetrics(r prometheus.Registerer) *Metrics {
+	return &Metrics{
+		Series: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki",
+			Name:      "ruler_memory_series_total",
+		}),
+		Samples: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki",
+			Name:      "ruler_memory_samples_total",
+		}),
+		RuleGranularity: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "loki",
+			Namespace: "ruler_memory_for_state_resolution",
+			Buckets:   []float64{1, 2, 4, 8, 16},
+		}),
+	}
+}
 
 type MemHistory struct {
 	mtx       sync.RWMutex
 	userId    string
 	opts      *rules.ManagerOptions
 	appenders map[*rules.AlertingRule]*ForStateAppender
+	metrics   *Metrics
 
 	done            chan struct{}
 	cleanupInterval time.Duration
 }
 
-func NewMemHistory(userId string, cleanupInterval time.Duration, opts *rules.ManagerOptions) *MemHistory {
+func NewMemHistory(userId string, cleanupInterval time.Duration, opts *rules.ManagerOptions, metrics *Metrics) *MemHistory {
 	hist := &MemHistory{
 		userId:    userId,
 		opts:      opts,
 		appenders: make(map[*rules.AlertingRule]*ForStateAppender),
+		metrics:   metrics,
 
 		cleanupInterval: cleanupInterval,
 		done:            make(chan struct{}),
@@ -88,7 +116,7 @@ func (m *MemHistory) Appender(rule rules.Rule) (storage.Appender, error) {
 		return app, nil
 	}
 
-	app := NewForStateAppender(alertRule)
+	app := NewForStateAppender(alertRule, m.metrics)
 	m.appenders[alertRule] = app
 	return app, nil
 }
@@ -107,7 +135,9 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 	// of whether the alert condition was positive during this period. This means after restarts, we may lose up
 	// to the ForDuration in alert granularity.
 	// TODO: Do we want this to instead evaluate forDuration/interval times?
+	start := time.Now()
 	vec, err := m.opts.QueryFunc(m.opts.Context, alertRule.Query().String(), ts.Add(-alertRule.Duration()))
+	m.opts.Metrics.IncrementEvaluations()
 	if err != nil {
 		alertRule.SetHealth(rules.HealthBad)
 		alertRule.SetLastError(err)
@@ -130,6 +160,7 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 			return
 		}
 	}
+	m.opts.Metrics.EvalDuration(time.Since(start))
 
 	// Now that we've evaluated the rule and written the results to our in memory appender,
 	// delegate to the default implementation.
@@ -138,15 +169,17 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 }
 
 type ForStateAppender struct {
-	mtx  sync.Mutex
-	rule *rules.AlertingRule
-	data map[uint64]*series.ConcreteSeries
+	mtx     sync.Mutex
+	metrics *Metrics
+	rule    *rules.AlertingRule
+	data    map[uint64]*series.ConcreteSeries
 }
 
-func NewForStateAppender(rule *rules.AlertingRule) *ForStateAppender {
+func NewForStateAppender(rule *rules.AlertingRule, metrics *Metrics) *ForStateAppender {
 	return &ForStateAppender{
-		rule: rule,
-		data: make(map[uint64]*series.ConcreteSeries),
+		rule:    rule,
+		data:    make(map[uint64]*series.ConcreteSeries),
+		metrics: metrics,
 	}
 }
 
@@ -164,14 +197,18 @@ func (m *ForStateAppender) Add(ls labels.Labels, t int64, v float64) (uint64, er
 	fp := ls.Hash()
 
 	if s, ok := m.data[fp]; ok {
+		priorLn := s.Len()
 		s.Add(model.SamplePair{
 			Timestamp: model.Time(t),
 			Value:     model.SampleValue(v),
 		})
+		m.metrics.Samples.Add(float64(s.Len() - priorLn))
 
 		return 0, nil
 	}
 	m.data[fp] = series.NewConcreteSeries(ls, []model.SamplePair{{Timestamp: model.Time(t), Value: model.SampleValue(v)}})
+	m.metrics.Series.Inc()
+	m.metrics.Samples.Inc()
 	return 0, nil
 
 }
@@ -187,8 +224,11 @@ func (m *ForStateAppender) CleanupOldSamples() (seriesRemaining int) {
 
 	for fp, s := range m.data {
 		// release all older references that are no longer needed.
+		priorLn := s.Len()
 		s.TrimStart(time.Now().Add(-m.rule.Duration() * oldEvaluationFactor))
+		m.metrics.Samples.Add(float64(s.Len() - priorLn))
 		if s.Len() == 0 {
+			m.metrics.Series.Dec()
 			delete(m.data, fp)
 		}
 	}
