@@ -106,6 +106,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
 	}
+	if err := c.Ruler.Validate(); err != nil {
+		return errors.Wrap(err, "invalid ruler config")
+	}
 	return nil
 }
 
@@ -312,7 +315,7 @@ func (t *Loki) setupModuleManager() error {
 		Ingester:      {Store, Server, MemberlistKV},
 		Querier:       {Store, Ring, Server},
 		QueryFrontend: {Server, Overrides},
-		Ruler:         {Server, Ring, Store, Overrides},
+		Ruler:         {Distributor, Store},
 		TableManager:  {Server},
 		All:           {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
