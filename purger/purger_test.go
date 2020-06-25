@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"testing"
 	"time"
 
@@ -392,27 +391,7 @@ func TestPurger_Metrics(t *testing.T) {
 		chunkStore.Stop()
 	}()
 
-	// start loop to load requests
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger))
-
-	// no delete requests for processing so age and pending request is 0 while we have successfully attempted loading request once.
-	require.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(
-		`
-			# HELP cortex_purger_load_pending_requests_attempts_total Number of attempts that were made to load pending requests with status
-			# TYPE cortex_purger_load_pending_requests_attempts_total counter
-			cortex_purger_load_pending_requests_attempts_total{status="success"} 1
-			# HELP cortex_purger_oldest_pending_delete_request_age_seconds Age of oldest pending delete request in seconds
-			# TYPE cortex_purger_oldest_pending_delete_request_age_seconds gauge
-			cortex_purger_oldest_pending_delete_request_age_seconds 0
-			# HELP cortex_purger_pending_delete_requests_count Count of requests which are in process or are ready to be processed
-			# TYPE cortex_purger_pending_delete_requests_count gauge
-			cortex_purger_pending_delete_requests_count 0
-		`),
-		"cortex_purger_load_pending_requests_attempts_total",
-		"cortex_purger_oldest_pending_delete_request_age_seconds",
-		"cortex_purger_pending_delete_requests_count",
-	))
-
+	// add delete requests without starting purger loops to load and process delete requests.
 	// add delete request whose createdAt is now
 	err := deleteStore.AddDeleteRequest(context.Background(), userID, model.Time(0).Add(24*time.Hour),
 		model.Time(0).Add(2*24*time.Hour), []string{"foo"})
@@ -434,6 +413,9 @@ func TestPurger_Metrics(t *testing.T) {
 	// there must be 2 pending delete requests, oldest being 3 days old
 	require.InDelta(t, float64(3*86400), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
 	require.Equal(t, float64(2), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
+
+	// start loop to process requests
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger))
 
 	// wait until purger_delete_requests_processed_total starts to show up.
 	test.Poll(t, 2*time.Second, 1, func() interface{} {
