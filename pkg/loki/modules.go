@@ -415,8 +415,6 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 // Note: Another PeriodicConfig might be applicable for future logs which can change index type.
 func activePeriodConfig(cfg chunk.SchemaConfig) int {
 	now := model.Now()
-	fmt.Println("cfg", cfg)
-	fmt.Println("now", now)
 	i := sort.Search(len(cfg.Configs), func(i int) bool {
 		return cfg.Configs[i].From.Time > now
 	})
