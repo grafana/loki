@@ -127,7 +127,7 @@ type Loki struct {
 	ruler         *ruler.Ruler
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
-	memberlistKV  *memberlist.KVInit
+	memberlistKV  *memberlist.KVInitService
 
 	httpAuthMiddleware middleware.Interface
 }

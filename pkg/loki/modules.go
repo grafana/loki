@@ -375,11 +375,8 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
-	t.memberlistKV = memberlist.NewKVInit(&t.cfg.MemberlistKV)
-	return services.NewIdleService(nil, func(_ error) error {
-		t.memberlistKV.Stop()
-		return nil
-	}), nil
+	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV)
+	return t.memberlistKV, nil
 }
 
 // activePeriodConfig type returns index type which would be applicable to logs that would be pushed starting now
