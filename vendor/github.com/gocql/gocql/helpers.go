@@ -146,7 +146,6 @@ func getCassandraType(name string) TypeInfo {
 	} else if strings.HasPrefix(name, "map<") {
 		names := splitCompositeTypes(strings.TrimPrefix(name[:len(name)-1], "map<"))
 		if len(names) != 2 {
-			Logger.Printf("Error parsing map type, it has %d subelements, expecting 2\n", len(names))
 			return NativeType{
 				typ: TypeCustom,
 			}

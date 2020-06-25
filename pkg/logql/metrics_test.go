@@ -65,14 +65,14 @@ func TestLogSlowQuery(t *testing.T) {
 		step:      time.Minute,
 	}, "200", stats.Result{
 		Summary: stats.Summary{
-			BytesProcessedPerSeconds: 100000,
-			ExecTime:                 25.25,
-			TotalBytesProcessed:      100000,
+			BytesProcessedPerSecond: 100000,
+			ExecTime:                25.25,
+			TotalBytesProcessed:     100000,
 		},
 	})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query=\"{foo=\\\"bar\\\"} |= \\\"buzz\\\"\" query_type=filter range_type=range length=1h0m0s step=1m0s duration=25.25s status=200 throughput_mb=0.01 total_bytes_mb=0.01\n",
+			"level=info org_id=foo traceID=%s latency=slow query=\"{foo=\\\"bar\\\"} |= \\\"buzz\\\"\" query_type=filter range_type=range length=1h0m0s step=1m0s duration=25.25s status=200 throughput_mb=0.1 total_bytes_mb=0.1\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())

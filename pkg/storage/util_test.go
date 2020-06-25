@@ -9,6 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -25,7 +26,7 @@ var fooLabels = "{foo=\"bar\"}"
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
 
-func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
+func assertStream(t *testing.T, expected, actual []logproto.Stream) {
 	if len(expected) != len(actual) {
 		t.Fatalf("error stream length are different expected %d actual %d\n%s", len(expected), len(actual), spew.Sdump(expected, actual))
 		return
@@ -46,16 +47,16 @@ func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
 	}
 }
 
-func newLazyChunk(stream logproto.Stream) *chunkenc.LazyChunk {
-	return &chunkenc.LazyChunk{
+func newLazyChunk(stream logproto.Stream) *LazyChunk {
+	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: true,
 		Chunk:   newChunk(stream),
 	}
 }
 
-func newLazyInvalidChunk(stream logproto.Stream) *chunkenc.LazyChunk {
-	return &chunkenc.LazyChunk{
+func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
+	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: false,
 		Chunk:   newChunk(stream),
@@ -101,14 +102,18 @@ func newMatchers(matchers string) []*labels.Matcher {
 	return res
 }
 
-func newQuery(query string, start, end time.Time, direction logproto.Direction) *logproto.QueryRequest {
-	return &logproto.QueryRequest{
+func newQuery(query string, start, end time.Time, direction logproto.Direction, shards []astmapper.ShardAnnotation) *logproto.QueryRequest {
+	req := &logproto.QueryRequest{
 		Selector:  query,
 		Start:     start,
 		Limit:     1000,
 		End:       end,
 		Direction: direction,
 	}
+	for _, shard := range shards {
+		req.Shards = append(req.Shards, shard.String())
+	}
+	return req
 }
 
 type mockChunkStore struct {

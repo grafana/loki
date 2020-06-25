@@ -3,6 +3,7 @@
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
+.PHONY: fluentd-image, fluentd-push, fluentd-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
@@ -416,6 +417,25 @@ fluent-bit-test:
 	docker run -v /var/log:/var/log -e LOG_PATH="/var/log/*.log" -e LOKI_URL="$(LOKI_URL)" \
 	 $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
+
+##################
+# fluentd plugin #
+##################
+fluentd-plugin:
+	gem install bundler --version 1.16.2
+	bundle config silence_root_warning true
+	bundle install --gemfile=cmd/fluentd/Gemfile --path=cmd/fluentd/vendor/bundle
+
+fluentd-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f cmd/fluentd/Dockerfile .
+
+fluentd-push:
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+
+fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
+fluentd-test:
+	LOKI_URL="$(LOKI_URL)" docker-compose -f cmd/fluentd/docker/docker-compose.yml up --build #$(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+
 ########################
 # Bigtable Backup Tool #
 ########################
@@ -434,7 +454,7 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image
+images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
 
 print-images:
 	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))

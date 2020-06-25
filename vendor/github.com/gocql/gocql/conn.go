@@ -19,6 +19,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/gocql/gocql/internal/lru"
 	"github.com/gocql/gocql/internal/streams"
 )
@@ -132,6 +135,8 @@ var TimeoutLimit int64 = 0
 // queries, but users are usually advised to use a more reliable, higher
 // level API.
 type Conn struct {
+	logger log.Logger
+
 	conn net.Conn
 	r    *bufio.Reader
 	w    io.Writer
@@ -165,19 +170,19 @@ type Conn struct {
 }
 
 // connect establishes a connection to a Cassandra node using session's connection config.
-func (s *Session) connect(ctx context.Context, host *HostInfo, errorHandler ConnErrorHandler) (*Conn, error) {
-	return s.dial(ctx, host, s.connCfg, errorHandler)
+func (s *Session) connect(ctx context.Context, logger log.Logger, host *HostInfo, errorHandler ConnErrorHandler) (*Conn, error) {
+	return s.dial(ctx, logger, host, s.connCfg, errorHandler)
 }
 
 // dial establishes a connection to a Cassandra node and notifies the session's connectObserver.
-func (s *Session) dial(ctx context.Context, host *HostInfo, connConfig *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
+func (s *Session) dial(ctx context.Context, logger log.Logger, host *HostInfo, connConfig *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
 	var obs ObservedConnect
 	if s.connectObserver != nil {
 		obs.Host = host
 		obs.Start = time.Now()
 	}
 
-	conn, err := s.dialWithoutObserver(ctx, host, connConfig, errorHandler)
+	conn, err := s.dialWithoutObserver(ctx, logger, host, connConfig, errorHandler)
 
 	if s.connectObserver != nil {
 		obs.End = time.Now()
@@ -191,7 +196,7 @@ func (s *Session) dial(ctx context.Context, host *HostInfo, connConfig *ConnConf
 // dialWithoutObserver establishes connection to a Cassandra node.
 //
 // dialWithoutObserver does not notify the connection observer, so you most probably want to call dial() instead.
-func (s *Session) dialWithoutObserver(ctx context.Context, host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
+func (s *Session) dialWithoutObserver(ctx context.Context, logger log.Logger, host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
 	ip := host.ConnectAddress()
 	port := host.port
 
@@ -213,7 +218,6 @@ func (s *Session) dialWithoutObserver(ctx context.Context, host *HostInfo, cfg *
 		dialer = d
 	}
 
-
 	conn, err := dialer.DialContext(ctx, "tcp", host.HostnameAndPort())
 	if err != nil {
 		return nil, err
@@ -231,6 +235,7 @@ func (s *Session) dialWithoutObserver(ctx context.Context, host *HostInfo, cfg *
 
 	ctx, cancel := context.WithCancel(ctx)
 	c := &Conn{
+		logger:        logger,
 		conn:          conn,
 		r:             bufio.NewReader(conn),
 		cfg:           cfg,
@@ -553,14 +558,16 @@ func (c *Conn) heartBeat(ctx context.Context) {
 	timer := time.NewTimer(sleepTime)
 	defer timer.Stop()
 
+	var err error
 	var failures int
 
 	for {
 		if failures > 5 {
-			c.closeWithError(fmt.Errorf("gocql: heartbeat failed"))
+			c.closeWithError(fmt.Errorf("gocql: heartbeat failed, err: %v", err))
 			return
 		}
 
+		err = nil
 		timer.Reset(sleepTime)
 
 		select {
@@ -569,15 +576,18 @@ func (c *Conn) heartBeat(ctx context.Context) {
 		case <-timer.C:
 		}
 
-		framer, err := c.exec(context.Background(), &writeOptionsFrame{}, nil)
+		var framer *framer
+		framer, err = c.exec(context.Background(), &writeOptionsFrame{}, nil)
 		if err != nil {
+			level.Debug(c.logger).Log("msg", "error execing heartbeat", "error", err)
 			failures++
 			continue
 		}
 
-		resp, err := framer.parseFrame()
+		var resp frame
+		resp, err = framer.parseFrame()
 		if err != nil {
-			// invalid frame
+			level.Debug(c.logger).Log("msg", "error parsing heartbeat response", "error", err)
 			failures++
 			continue
 		}
@@ -658,7 +668,7 @@ func (c *Conn) recv(ctx context.Context) error {
 	delete(c.calls, head.stream)
 	c.mu.Unlock()
 	if call == nil || call.framer == nil || !ok {
-		Logger.Printf("gocql: received response for stream which has no handler: header=%v\n", head)
+		level.Error(c.logger).Log("msg", "received response for stream which has no handler", "header", head)
 		return c.discardFrame(head)
 	} else if head.stream != call.streamID {
 		panic(fmt.Sprintf("call has incorrect streamID: got %d expected %d", call.streamID, head.stream))
@@ -1191,8 +1201,7 @@ func (c *Conn) executeQuery(ctx context.Context, qry *Query) *Iter {
 	case *schemaChangeKeyspace, *schemaChangeTable, *schemaChangeFunction, *schemaChangeAggregate, *schemaChangeType:
 		iter := &Iter{framer: framer}
 		if err := c.awaitSchemaAgreement(ctx); err != nil {
-			// TODO: should have this behind a flag
-			Logger.Println(err)
+			level.Warn(c.logger).Log("msg", "failed to reach scheme agreement", "error", err)
 		}
 		// dont return an error from this, might be a good idea to give a warning
 		// though. The impact of this returning an error would be that the cluster
@@ -1393,7 +1402,7 @@ func (c *Conn) awaitSchemaAgreement(ctx context.Context) (err error) {
 				goto cont
 			}
 			if !isValidPeer(host) || host.schemaVersion == "" {
-				Logger.Printf("invalid peer or peer with empty schema_version: peer=%q", host)
+				level.Error(c.logger).Log("msg", "invalid peer or peer with empty schema_version", "peer", host)
 				continue
 			}
 

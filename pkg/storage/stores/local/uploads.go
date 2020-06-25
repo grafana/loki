@@ -16,14 +16,22 @@ import (
 
 // uploadFiles uploads all new and updated files to storage.
 // It uploads the files from configured boltdb dir where ingester writes the index.
-func (s *Shipper) uploadFiles(ctx context.Context) error {
+func (s *Shipper) uploadFiles(ctx context.Context) (err error) {
 	if s.cfg.Mode == ShipperModeReadOnly {
-		return nil
+		return
 	}
+
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+		s.metrics.filesUploadOperationTotal.WithLabelValues(status).Inc()
+	}()
 
 	filesInfo, err := ioutil.ReadDir(s.cfg.ActiveIndexDirectory)
 	if err != nil {
-		return err
+		return
 	}
 
 	for _, fileInfo := range filesInfo {
@@ -40,9 +48,9 @@ func (s *Shipper) uploadFiles(ctx context.Context) error {
 			continue
 		}
 
-		err := s.uploadFile(ctx, fileInfo.Name())
+		err = s.uploadFile(ctx, fileInfo.Name())
 		if err != nil {
-			return err
+			return
 		}
 
 		s.uploadedFilesMtimeMtx.Lock()
@@ -50,7 +58,7 @@ func (s *Shipper) uploadFiles(ctx context.Context) error {
 		s.uploadedFilesMtimeMtx.Unlock()
 	}
 
-	return nil
+	return
 }
 
 // uploadFile uploads one of the files locally written by ingesters to storage.

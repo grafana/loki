@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/hailocab/go-hostpool"
 )
 
@@ -236,6 +238,7 @@ func (e *ExponentialBackoffRetryPolicy) GetRetryType(err error) RetryType {
 // operation is retried with the next provided consistency level.
 
 type DowngradingConsistencyRetryPolicy struct {
+	logger                 log.Logger
 	ConsistencyLevelsToTry []Consistency
 }
 
@@ -246,10 +249,8 @@ func (d *DowngradingConsistencyRetryPolicy) Attempt(q RetryableQuery) bool {
 		return false
 	} else if currentAttempt > 0 {
 		q.SetConsistency(d.ConsistencyLevelsToTry[currentAttempt-1])
-		if gocqlDebug {
-			Logger.Printf("%T: set consistency to %q\n",
-				d,
-				d.ConsistencyLevelsToTry[currentAttempt-1])
+		if d.logger != nil {
+			level.Info(d.logger).Log("msg", "DowngradingConsistencyRetryPolicy set consistency", "consistency", d.ConsistencyLevelsToTry[currentAttempt-1])
 		}
 	}
 	return true
@@ -550,21 +551,21 @@ func (t *tokenAwareHostPolicy) getMetadataForUpdate() *clusterMeta {
 
 // resetTokenRing creates a new tokenRing.
 // It must be called with t.mu locked.
-func (m *clusterMeta) resetTokenRing(partitioner string, hosts []*HostInfo) {
+func (m *clusterMeta) resetTokenRing(partitioner string, hosts []*HostInfo) error {
 	if partitioner == "" {
 		// partitioner not yet set
-		return
+		return nil
 	}
 
 	// create a new token ring
 	tokenRing, err := newTokenRing(partitioner, hosts)
 	if err != nil {
-		Logger.Printf("Unable to update the token ring due to error: %s", err)
-		return
+		return err
 	}
 
 	// replace the token ring
 	m.tokenRing = tokenRing
+	return nil
 }
 
 func (t *tokenAwareHostPolicy) Pick(qry ExecutableQuery) NextHost {

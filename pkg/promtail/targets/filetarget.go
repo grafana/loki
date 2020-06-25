@@ -203,6 +203,10 @@ func (t *FileTarget) sync() error {
 		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 	}
 
+	if len(matches) == 0 {
+		level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path)
+	}
+
 	// Gets absolute path for each pattern.
 	for i := 0; i < len(matches); i++ {
 		if !filepath.IsAbs(matches[i]) {

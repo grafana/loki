@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/stats"
@@ -197,7 +196,7 @@ func mkStreamIterator(f generator, labels string) EntryIterator {
 	for i := int64(0); i < testSize; i++ {
 		entries = append(entries, f(i))
 	}
-	return NewStreamIterator(&logproto.Stream{
+	return NewStreamIterator(logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	})
@@ -278,7 +277,7 @@ func TestInsert(t *testing.T) {
 	}))
 }
 
-func TestReverseEntryIterator(t *testing.T) {
+func TestReverseIterator(t *testing.T) {
 	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
@@ -293,6 +292,23 @@ func TestReverseEntryIterator(t *testing.T) {
 		assert.Equal(t, true, reversedIter.Next())
 		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
 		assert.Equal(t, reversedIter.Labels(), itr2.Labels())
+	}
+
+	assert.Equal(t, false, reversedIter.Next())
+	assert.Equal(t, nil, reversedIter.Error())
+	assert.NoError(t, reversedIter.Close())
+}
+
+func TestReverseEntryIterator(t *testing.T) {
+	itr1 := mkStreamIterator(identity, defaultLabels)
+
+	reversedIter, err := NewEntryReversedIter(itr1)
+	require.NoError(t, err)
+
+	for i := int64(testSize - 1); i >= 0; i-- {
+		assert.Equal(t, true, reversedIter.Next())
+		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, reversedIter.Labels(), "")
 	}
 
 	assert.Equal(t, false, reversedIter.Next())
@@ -318,7 +334,7 @@ func TestReverseEntryIteratorUnlimited(t *testing.T) {
 }
 
 func Test_PeekingIterator(t *testing.T) {
-	iter := NewPeekingIterator(NewStreamIterator(&logproto.Stream{
+	iter := NewPeekingIterator(NewStreamIterator(logproto.Stream{
 		Entries: []logproto.Entry{
 			{
 				Timestamp: time.Unix(0, 1),
@@ -381,7 +397,7 @@ func Test_PeekingIterator(t *testing.T) {
 }
 
 func Test_DuplicateCount(t *testing.T) {
-	stream := &logproto.Stream{
+	stream := logproto.Stream{
 		Entries: []logproto.Entry{
 			{
 				Timestamp: time.Unix(0, 1),
@@ -440,7 +456,7 @@ func Test_DuplicateCount(t *testing.T) {
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
-				NewStreamIterator(&logproto.Stream{
+				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(0, 4),
@@ -457,7 +473,7 @@ func Test_DuplicateCount(t *testing.T) {
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
-				NewStreamIterator(&logproto.Stream{
+				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(0, 4),
@@ -471,7 +487,7 @@ func Test_DuplicateCount(t *testing.T) {
 		{
 			"single f",
 			[]EntryIterator{
-				NewStreamIterator(&logproto.Stream{
+				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(0, 4),
@@ -485,7 +501,7 @@ func Test_DuplicateCount(t *testing.T) {
 		{
 			"single b",
 			[]EntryIterator{
-				NewStreamIterator(&logproto.Stream{
+				NewStreamIterator(logproto.Stream{
 					Entries: []logproto.Entry{
 						{
 							Timestamp: time.Unix(0, 4),
@@ -505,6 +521,43 @@ func Test_DuplicateCount(t *testing.T) {
 			for it.Next() {
 			}
 			require.Equal(t, test.expectedDuplicates, stats.GetChunkData(ctx).TotalDuplicates)
+		})
+	}
+}
+
+func Test_timeRangedIterator_Next(t *testing.T) {
+
+	tests := []struct {
+		mint   time.Time
+		maxt   time.Time
+		expect []bool // array of expected values for next call in sequence
+	}{
+		{time.Unix(0, 0), time.Unix(0, 0), []bool{false}},
+		{time.Unix(0, 0), time.Unix(0, 1), []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 1), []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 2), []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 3), []bool{true, true, false}},
+		{time.Unix(0, 3), time.Unix(0, 3), []bool{true, false}},
+		{time.Unix(0, 4), time.Unix(0, 10), []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 10), []bool{true, true, true, false}},
+		{time.Unix(0, 0), time.Unix(0, 10), []bool{true, true, true, false}},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("mint:%d maxt:%d", tt.mint.UnixNano(), tt.maxt.UnixNano()), func(t *testing.T) {
+			i := NewTimeRangedIterator(
+				NewStreamIterator(
+					logproto.Stream{Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1)},
+						{Timestamp: time.Unix(0, 2)},
+						{Timestamp: time.Unix(0, 3)},
+					}}),
+				tt.mint,
+				tt.maxt,
+			)
+			for _, b := range tt.expect {
+				require.Equal(t, b, i.Next())
+			}
+			require.NoError(t, i.Close())
 		})
 	}
 }

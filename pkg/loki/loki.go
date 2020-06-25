@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/util/modules"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/signals"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -28,14 +32,16 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/tracing"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      moduleName `yaml:"target,omitempty"`
-	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string     `yaml:"http_prefix"`
+	Target      string `yaml:"target,omitempty"`
+	AuthEnabled bool   `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix  string `yaml:"http_prefix"`
 
 	Server           server.Config               `yaml:"server,omitempty"`
 	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
@@ -52,14 +58,15 @@ type Config struct {
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
+	Tracing          tracing.Config              `yaml:"tracing"`
 }
 
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "loki"
-	c.Target = All
 	c.Server.ExcludeRequestInLog = true
-	f.Var(&c.Target, "target", "target module (default All)")
+
+	f.StringVar(&c.Target, "target", All, "target module (default All)")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.Server.RegisterFlags(f)
@@ -76,6 +83,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
+	c.MemberlistKV.RegisterFlags(f, "")
+	c.Tracing.RegisterFlags(f)
 }
 
 // Validate the config and returns an error if the validation
@@ -101,7 +110,8 @@ type Loki struct {
 	cfg Config
 
 	// set during initialization
-	serviceMap map[moduleName]services.Service
+	moduleManager *modules.Manager
+	serviceMap    map[string]services.Service
 
 	server        *server.Server
 	ring          *ring.Ring
@@ -114,7 +124,7 @@ type Loki struct {
 	frontend      *frontend.Frontend
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
-	memberlistKV  *memberlist.KVInit
+	memberlistKV  *memberlist.KVInitService
 
 	httpAuthMiddleware middleware.Interface
 }
@@ -126,94 +136,55 @@ func New(cfg Config) (*Loki, error) {
 	}
 
 	loki.setupAuthMiddleware()
-	storage.RegisterCustomIndexClients(cfg.StorageConfig)
-
-	serviceMap, err := loki.initModuleServices(cfg.Target)
-	if err != nil {
+	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-
-	loki.serviceMap = serviceMap
-	loki.server.HTTP.Handle("/services", http.HandlerFunc(loki.servicesHandler))
+	storage.RegisterCustomIndexClients(cfg.StorageConfig, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }
 
 func (t *Loki) setupAuthMiddleware() {
+	t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
+	t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
 	if t.cfg.AuthEnabled {
-		t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
-			middleware.ServerUserHeaderInterceptor,
-		}
-		t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				switch info.FullMethod {
-				// Don't check auth header on TransferChunks, as we weren't originally
-				// sending it and this could cause transfers to fail on update.
-				//
-				// Also don't check auth /frontend.Frontend/Process, as this handles
-				// queries for multiple users.
-				case "/logproto.Ingester/TransferChunks", "/frontend.Frontend/Process":
-					return handler(srv, ss)
-				default:
-					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-				}
-			},
-		}
+		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
+		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
 		t.httpAuthMiddleware = middleware.AuthenticateUser
 	} else {
-		t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
-			fakeGRPCAuthUniaryMiddleware,
-		}
-		t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			fakeGRPCAuthStreamMiddleware,
-		}
+		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
+		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
 		t.httpAuthMiddleware = fakeHTTPAuthMiddleware
 	}
 }
 
-func (t *Loki) initModuleServices(target moduleName) (map[moduleName]services.Service, error) {
-	servicesMap := map[moduleName]services.Service{}
-
-	// initialize all of our dependencies first
-	deps := orderedDeps(target)
-	deps = append(deps, target) // lastly, initialize the requested module
-
-	for ix, n := range deps {
-		mod := modules[n]
-
-		var serv services.Service
-
-		if mod.service != nil {
-			s, err := mod.service(t)
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
-			}
-			serv = s
-		} else if mod.wrappedService != nil {
-			s, err := mod.wrappedService(t)
-			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
-			}
-			if s != nil {
-				// We pass servicesMap, which isn't yet finished. By the time service starts,
-				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, findInverseDependencies(n, deps[ix+1:]))
-			}
-		}
-
-		if serv != nil {
-			servicesMap[n] = serv
-		}
+var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	switch info.FullMethod {
+	// Don't check auth header on TransferChunks, as we weren't originally
+	// sending it and this could cause transfers to fail on update.
+	//
+	// Also don't check auth /frontend.Frontend/Process, as this handles
+	// queries for multiple users.
+	case "/logproto.Ingester/TransferChunks", "/frontend.Frontend/Process":
+		return handler(srv, ss)
+	default:
+		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 	}
-
-	return servicesMap, nil
 }
 
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run() error {
+	serviceMap, err := t.moduleManager.InitModuleServices(t.cfg.Target)
+	if err != nil {
+		return err
+	}
+
+	t.serviceMap = serviceMap
+	t.server.HTTP.Handle("/services", http.HandlerFunc(t.servicesHandler))
+
 	// get all services, create service manager and tell it to start
 	var servs []services.Service
-	for _, s := range t.serviceMap {
+	for _, s := range serviceMap {
 		servs = append(servs, s)
 	}
 
@@ -233,7 +204,7 @@ func (t *Loki) Run() error {
 		sm.StopAsync()
 
 		// let's find out which module failed
-		for m, s := range t.serviceMap {
+		for m, s := range serviceMap {
 			if s == service {
 				if service.FailureCase() == util.ErrStopProcess {
 					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
@@ -249,30 +220,25 @@ func (t *Loki) Run() error {
 
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
 
-	// Currently it's the Server that reacts on signal handler,
-	// so get Server service, and wait until it gets to Stopping state.
-	// It will also be stopped via service manager if any service fails (see attached service listener)
-	// Attach listener before starting services, or we may miss the notification.
-	serverStopping := make(chan struct{})
-	t.serviceMap[Server].AddListener(services.NewListener(nil, nil, func(from services.State) {
-		close(serverStopping)
-	}, nil, nil))
+	// Setup signal handler. If signal arrives, we stop the manager, which stops all the services.
+	handler := signals.NewHandler(t.server.Log)
+	go func() {
+		handler.Loop()
+		sm.StopAsync()
+	}()
 
 	// Start all services. This can really only fail if some service is already
 	// in other state than New, which should not be the case.
 	err = sm.StartAsync(context.Background())
 	if err == nil {
-		// no error starting the services, now let's just wait until Server module
-		// transitions to Stopping (after SIGTERM or when some service fails),
-		// and then initiate shutdown
-		<-serverStopping
+		// Wait until service manager stops. It can stop in two ways:
+		// 1) Signal is received and manager is stopped.
+		// 2) Any service fails.
+		err = sm.AwaitStopped(context.Background())
 	}
 
-	// Stop all the services, and wait until they are all done.
-	// We don't care about this error, as it cannot really fail.
-	_ = services.StopManagerAndAwaitStopped(context.Background(), sm)
-
-	// if any service failed, report that as an error to caller
+	// If there is no error yet (= service manager started and then stopped without problems),
+	// but any service failed, report that failure as an error to caller.
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
 			for _, f := range failed {
@@ -313,4 +279,44 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 
 		http.Error(w, "ready", http.StatusOK)
 	}
+}
+
+func (t *Loki) setupModuleManager() error {
+	mm := modules.NewManager()
+
+	mm.RegisterModule(Server, t.initServer)
+	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)
+	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
+	mm.RegisterModule(Ring, t.initRing)
+	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(Distributor, t.initDistributor)
+	mm.RegisterModule(Store, t.initStore)
+	mm.RegisterModule(Ingester, t.initIngester)
+	mm.RegisterModule(Querier, t.initQuerier)
+	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
+	mm.RegisterModule(TableManager, t.initTableManager)
+	mm.RegisterModule(All, nil)
+
+	// Add dependencies
+	deps := map[string][]string{
+		Ring:          {RuntimeConfig, Server, MemberlistKV},
+		Overrides:     {RuntimeConfig},
+		Distributor:   {Ring, Server, Overrides},
+		Store:         {Overrides},
+		Ingester:      {Store, Server, MemberlistKV},
+		Querier:       {Store, Ring, Server},
+		QueryFrontend: {Server, Overrides},
+		TableManager:  {Server},
+		All:           {Querier, Ingester, Distributor, TableManager},
+	}
+
+	for mod, targets := range deps {
+		if err := mm.AddDependency(mod, targets...); err != nil {
+			return err
+		}
+	}
+
+	t.moduleManager = mm
+
+	return nil
 }

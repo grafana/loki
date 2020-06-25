@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/dustin/go-humanize"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
@@ -572,6 +571,25 @@ func BenchmarkRead(b *testing.B) {
 	}
 }
 
+func BenchmarkBackwardIterator(b *testing.B) {
+	b.ReportAllocs()
+	c := NewMemChunk(EncSnappy, testBlockSize, testTargetSize)
+	_ = fillChunk(c)
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
+		if err != nil {
+			panic(err)
+		}
+		for iterator.Next() {
+			_ = iterator.Entry()
+		}
+		if err := iterator.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestGenerateDataSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
@@ -624,4 +642,74 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestMemChunk_IteratorBounds(t *testing.T) {
+
+	var createChunk = func() *MemChunk {
+		t.Helper()
+		c := NewMemChunk(EncNone, 1e6, 1e6)
+
+		if err := c.Append(&logproto.Entry{
+			Timestamp: time.Unix(0, 1),
+			Line:      "1",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Append(&logproto.Entry{
+			Timestamp: time.Unix(0, 2),
+			Line:      "2",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+
+	for _, tt := range []struct {
+		mint, maxt time.Time
+		direction  logproto.Direction
+		expect     []bool // array of expected values for next call in sequence
+	}{
+		{time.Unix(0, 0), time.Unix(0, 1), logproto.FORWARD, []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 1), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 2), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 3), logproto.FORWARD, []bool{true, true, false}},
+		{time.Unix(0, 2), time.Unix(0, 3), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 3), time.Unix(0, 3), logproto.FORWARD, []bool{false}},
+
+		{time.Unix(0, 0), time.Unix(0, 1), logproto.BACKWARD, []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 1), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 2), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 3), logproto.BACKWARD, []bool{true, true, false}},
+		{time.Unix(0, 2), time.Unix(0, 3), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 3), time.Unix(0, 3), logproto.BACKWARD, []bool{false}},
+	} {
+		t.Run(
+			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
+			func(t *testing.T) {
+				tt := tt
+				c := createChunk()
+
+				// testing headchunk
+				it, err := c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, nil)
+				require.NoError(t, err)
+				for i := range tt.expect {
+					require.Equal(t, tt.expect[i], it.Next())
+				}
+				require.NoError(t, it.Close())
+
+				// testing chunk blocks
+				require.NoError(t, c.cut())
+				it, err = c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, nil)
+				require.NoError(t, err)
+				for i := range tt.expect {
+					require.Equal(t, tt.expect[i], it.Next())
+				}
+				require.NoError(t, it.Close())
+			})
+
+	}
+
 }

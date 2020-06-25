@@ -1,0 +1,6 @@
+# frozen_string_literal: true
+
+source 'https://rubygems.org'
+
+gem 'fluent-plugin-multi-format-parser', '~>1.0.0'
+gem 'fluentd', '1.9.0'

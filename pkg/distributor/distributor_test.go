@@ -226,7 +226,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distri
 		return ingesters[addr], nil
 	}
 
-	d, err := New(distributorConfig, clientConfig, ingestersRing, overrides)
+	d, err := New(distributorConfig, clientConfig, ingestersRing, overrides, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
@@ -235,7 +235,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distri
 
 func makeWriteRequest(lines int, size int) *logproto.PushRequest {
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar"}`,
 			},
@@ -289,7 +289,7 @@ func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (r
 	return result, nil
 }
 
-func (r mockRing) GetAll() (ring.ReplicationSet, error) {
+func (r mockRing) GetAll(op ring.Operation) (ring.ReplicationSet, error) {
 	return ring.ReplicationSet{
 		Ingesters: r.ingesters,
 		MaxErrors: 1,

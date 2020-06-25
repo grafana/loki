@@ -39,6 +39,10 @@ func (b *boltDBShipperTableClient) CreateTable(ctx context.Context, desc chunk.T
 	return nil
 }
 
+func (b *boltDBShipperTableClient) Stop() {
+	b.objectClient.Stop()
+}
+
 func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, name string) error {
 	objects, dirs, err := b.objectClient.List(ctx, name)
 	if err != nil {

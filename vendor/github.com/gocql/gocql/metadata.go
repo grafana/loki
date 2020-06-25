@@ -11,6 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 // schema metadata for a keyspace
@@ -1157,8 +1160,9 @@ func getAggregatesMetadata(session *Session, keyspaceName string) ([]AggregateMe
 
 // type definition parser state
 type typeParser struct {
-	input string
-	index int
+	logger log.Logger
+	input  string
+	index  int
 }
 
 // the type definition parser result
@@ -1231,11 +1235,9 @@ func (t *typeParser) parse() typeParserResult {
 				var name string
 				decoded, err := hex.DecodeString(*param.name)
 				if err != nil {
-					Logger.Printf(
-						"Error parsing type '%s', contains collection name '%s' with an invalid format: %v",
-						t.input,
-						*param.name,
-						err,
+					level.Error(t.logger).Log(
+						"msg", "Error parsing type, contains collection name with an invalid format",
+						"type", t.input, "name", *param.name, "error", err,
 					)
 					// just use the provided name
 					name = *param.name

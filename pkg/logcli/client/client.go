@@ -15,6 +15,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
 
+	"github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
@@ -27,6 +28,10 @@ const (
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	seriesPath      = "/loki/api/v1/series"
 	tailPath        = "/loki/api/v1/tail"
+)
+
+var (
+	userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
 )
 
 // Client contains fields necessary to query a Loki instance
@@ -76,19 +81,26 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
-func (c *Client) ListLabelNames(quiet bool) (*loghttp.LabelResponse, error) {
+func (c *Client) ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
 	var labelResponse loghttp.LabelResponse
-	if err := c.doRequest(labelsPath, "", quiet, &labelResponse); err != nil {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", from.UnixNano())
+	params.SetInt("end", through.UnixNano())
+
+	if err := c.doRequest(labelsPath, params.Encode(), quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
 }
 
 // ListLabelValues uses the /api/v1/label endpoint to list label values
-func (c *Client) ListLabelValues(name string, quiet bool) (*loghttp.LabelResponse, error) {
+func (c *Client) ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
 	var labelResponse loghttp.LabelResponse
-	if err := c.doRequest(path, "", quiet, &labelResponse); err != nil {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", from.UnixNano())
+	params.SetInt("end", through.UnixNano())
+	if err := c.doRequest(path, params.Encode(), quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
@@ -134,6 +146,7 @@ func (c *Client) doRequest(path, query string, quiet bool, out interface{}) erro
 	}
 
 	req.SetBasicAuth(c.Username, c.Password)
+	req.Header.Set("User-Agent", userAgent)
 
 	if c.OrgID != "" {
 		req.Header.Set("X-Scope-OrgID", c.OrgID)

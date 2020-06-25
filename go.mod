@@ -22,16 +22,19 @@ require (
 	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/go-kit/kit v0.10.0
 	github.com/go-logfmt/logfmt v0.5.0
+	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/protobuf v1.3.1 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.0
+	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20191002090509-6af20e3a5340 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hpcloud/tail v1.0.0
-	github.com/influxdata/go-syslog/v2 v2.0.1
+	github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da
 	github.com/jmespath/go-jmespath v0.3.0
+	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.9
 	github.com/klauspost/compress v1.9.5
 	github.com/mitchellh/mapstructure v1.2.2
@@ -62,9 +65,14 @@ require (
 
 replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20191024143944-0b54ddf21fe7
 
-// Override reference that causes an error from Go proxy - see https://github.com/golang/go/issues/33558
-replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
-
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 
 replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+incompatible
+
+replace k8s.io/client-go => k8s.io/client-go v0.18.3
+
+// >v1.2.0 has some conflict with prometheus/alertmanager. Hence prevent the upgrade till it's fixed.
+replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
+
+// Use fork of gocql that has gokit logs and Prometheus metrics.
+replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85

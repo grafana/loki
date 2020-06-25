@@ -38,7 +38,8 @@ func createTestBoltDBWithShipper(t *testing.T, parentTempDir, ingesterName, loca
 	})
 	require.NoError(t, err)
 
-	boltdbIndexClientWithShipper, err := NewBoltDBIndexClientWithShipper(local.BoltDBConfig{Directory: shipperConfig.ActiveIndexDirectory}, archiveStoreClient, shipperConfig)
+	boltdbIndexClientWithShipper, err := NewBoltDBIndexClientWithShipper(
+		local.BoltDBConfig{Directory: shipperConfig.ActiveIndexDirectory}, archiveStoreClient, shipperConfig, nil)
 	require.NoError(t, err)
 
 	return boltdbIndexClientWithShipper.(*BoltdbIndexClientWithShipper)

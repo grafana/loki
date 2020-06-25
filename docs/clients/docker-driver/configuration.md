@@ -109,6 +109,37 @@ Custom labels can be added using the `loki-external-labels`,
 `loki-pipeline-stage-file`, `labels`, `env`, and `env-regex` options. See the
 next section for all supported options.
 
+## Configure custom pipeline stage file
+
+You can also use custom pipeline stage files, with `loki-pipeline-stage-file` option,
+provided from outside of the Loki logging driver container by running Loki with a
+mounted volume. To do so, you'll need to disable the plugin, set a volume mount
+options and enable the plugin again:
+
+```bash
+docker plugin disable loki:latest
+docker plugin set loki:latest data.source=/etc/pipelines
+docker plugin enable loki:latest
+```
+
+In the example above the directory `/etc/pipelines` will be mounted as `/data`
+inside the Loki driver container and `loki-pipeline-stage-file` option can be
+passed with a custom pipeline configuration, provided there's a file
+`/etc/pipelines/mypipeline.yaml` on the host machine:
+
+```bash
+docker run --log-driver=loki \
+    --log-opt loki-url="https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push" \
+    --log-opt loki-pipeline-stage-file=/data/mypipeline.yaml \
+    grafana/grafana
+```
+
+Available options are:
+
+- `data.source`: the source directory the volume
+- `data.destination`: the path where the directory is mounted in the container,
+and is `/data` by default
+
 ## Supported log-opt options
 
 The following are all supported options that the Loki logging driver supports:

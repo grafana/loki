@@ -8,12 +8,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -50,7 +50,7 @@ type store struct {
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, registerer)
+	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, registerer, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,18 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	}, nil
 }
 
-// decodeReq sanitizes an incoming request, rounds bounds, and appends the __name__ matcher
+// NewTableClient creates a TableClient for managing tables for index/chunk store.
+// ToDo: Add support in Cortex for registering custom table client like index client.
+func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
+	if name == local.BoltDBShipperType {
+		name = "boltdb"
+		cfg.FSConfig = cortex_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
+	}
+	return storage.NewTableClient(name, cfg.Config)
+}
+
+// decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
+// and adds the "__cortex_shard__" label if this is a sharded query.
 func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
@@ -79,12 +90,35 @@ func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, mod
 	}
 	matchers = append(matchers, nameLabelMatcher)
 
+	if shards := req.GetShards(); shards != nil {
+		parsed, err := logql.ParseShards(shards)
+		if err != nil {
+			return nil, nil, 0, 0, err
+		}
+		for _, s := range parsed {
+			shardMatcher, err := labels.NewMatcher(
+				labels.MatchEqual,
+				astmapper.ShardLabel,
+				s.String(),
+			)
+			if err != nil {
+				return nil, nil, 0, 0, err
+			}
+			matchers = append(matchers, shardMatcher)
+
+			// TODO(owen-d): passing more than one shard will require
+			// a refactor to cortex to support it. We're leaving this codepath in
+			// preparation of that but will not pass more than one until it's supported.
+			break // nolint:staticcheck
+		}
+	}
+
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	return matchers, filter, from, through, nil
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
-func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*chunkenc.LazyChunk, error) {
+func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -104,10 +138,10 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 		totalChunks += len(chks[i])
 	}
 	// creates lazychunks with chunks ref.
-	lazyChunks := make([]*chunkenc.LazyChunk, 0, totalChunks)
+	lazyChunks := make([]*LazyChunk, 0, totalChunks)
 	for i := range chks {
 		for _, c := range chks[i] {
-			lazyChunks = append(lazyChunks, &chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
+			lazyChunks = append(lazyChunks, &LazyChunk{Chunk: c, Fetcher: fetchers[i]})
 		}
 	}
 	return lazyChunks, nil
@@ -127,7 +161,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 	// group chunks by series
 	chunksBySeries := partitionBySeriesChunks(lazyChunks)
 
-	firstChunksPerSeries := make([]*chunkenc.LazyChunk, 0, len(chunksBySeries))
+	firstChunksPerSeries := make([]*LazyChunk, 0, len(chunksBySeries))
 
 	// discard all but one chunk per series
 	for _, chks := range chunksBySeries {
@@ -137,7 +171,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 	results := make(logproto.SeriesIdentifiers, 0, len(firstChunksPerSeries))
 
 	// bound concurrency
-	groups := make([][]*chunkenc.LazyChunk, 0, len(firstChunksPerSeries)/s.cfg.MaxChunkBatchSize+1)
+	groups := make([][]*LazyChunk, 0, len(firstChunksPerSeries)/s.cfg.MaxChunkBatchSize+1)
 
 	split := s.cfg.MaxChunkBatchSize
 	if len(firstChunksPerSeries) < split {
@@ -191,6 +225,10 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 		return nil, err
 	}
 
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
+	}
+
 	return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.QueryRequest), nil
 
 }
@@ -206,7 +244,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func RegisterCustomIndexClients(cfg Config) {
+func RegisterCustomIndexClients(cfg Config, registerer prometheus.Registerer) {
 	// BoltDB Shipper is supposed to be run as a singleton.
 	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 	// in tests for creating multiple instances of it at a time.
@@ -222,7 +260,10 @@ func RegisterCustomIndexClients(cfg Config) {
 			return nil, err
 		}
 
-		boltDBIndexClientWithShipper, err = local.NewBoltDBIndexClientWithShipper(cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}, objectClient, cfg.BoltDBShipperConfig)
+		boltDBIndexClientWithShipper, err = local.NewBoltDBIndexClientWithShipper(
+			cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory},
+			objectClient, cfg.BoltDBShipperConfig, registerer)
+
 		return boltDBIndexClientWithShipper, err
 	}, func() (client chunk.TableClient, e error) {
 		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)

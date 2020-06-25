@@ -80,6 +80,8 @@ type block struct {
 
 	offset           int // The offset of the block in the chunk.
 	uncompressedSize int // Total uncompressed size in bytes when the chunk is cut.
+
+	readers ReaderPool
 }
 
 // This block holds the un-compressed entries. Once it has enough data, this is
@@ -212,7 +214,9 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 	bc.blocks = make([]block, 0, num)
 
 	for i := 0; i < num; i++ {
-		blk := block{}
+		blk := block{
+			readers: bc.readers,
+		}
 		// Read #entries.
 		blk.numEntries = db.uvarint()
 
@@ -339,8 +343,8 @@ func (c *MemChunk) Size() int {
 	return ne
 }
 
-// Blocks implements Chunk.
-func (c *MemChunk) Blocks() int {
+// BlockCount implements Chunk.
+func (c *MemChunk) BlockCount() int {
 	return len(c.blocks)
 }
 
@@ -431,6 +435,7 @@ func (c *MemChunk) cut() error {
 	}
 
 	c.blocks = append(c.blocks, block{
+		readers:          c.readers,
 		b:                b,
 		numEntries:       len(c.head.entries),
 		mint:             c.head.mint,
@@ -474,9 +479,10 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
 	for _, b := range c.blocks {
-		if maxt > b.mint && b.maxt > mint {
-			its = append(its, b.iterator(ctx, c.readers, filter))
+		if maxt < b.mint || b.maxt < mint {
+			continue
 		}
+		its = append(its, b.Iterator(ctx, filter))
 	}
 
 	if !c.head.isEmpty() {
@@ -493,14 +499,41 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		return iterForward, nil
 	}
 
-	return iter.NewReversedIter(iterForward, 0, false)
+	return iter.NewEntryReversedIter(iterForward)
 }
 
-func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.LineFilter) iter.EntryIterator {
+// Blocks implements Chunk
+func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
+	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
+	blocks := make([]Block, 0, len(c.blocks))
+
+	for _, b := range c.blocks {
+		if maxt > b.mint && b.maxt > mint {
+			blocks = append(blocks, b)
+		}
+	}
+	return blocks
+}
+
+func (b block) Iterator(ctx context.Context, filter logql.LineFilter) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return emptyIterator
 	}
-	return newBufferedIterator(ctx, pool, b.b, filter)
+	return newBufferedIterator(ctx, b.readers, b.b, filter)
+}
+
+func (b block) Offset() int {
+	return b.offset
+}
+
+func (b block) Entries() int {
+	return b.numEntries
+}
+func (b block) MinTime() int64 {
+	return b.mint
+}
+func (b block) MaxTime() int64 {
+	return b.maxt
 }
 
 func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logql.LineFilter) iter.EntryIterator {

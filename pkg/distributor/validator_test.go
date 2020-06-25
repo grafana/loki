@@ -149,7 +149,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(tt.userID, &logproto.Stream{Labels: tt.labels})
+			err = v.ValidateLabels(tt.userID, logproto.Stream{Labels: tt.labels})
 			assert.Equal(t, tt.expected, err)
 		})
 	}

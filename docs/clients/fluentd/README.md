@@ -119,9 +119,11 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 
 ## Docker Image
 
-There is a Docker image `grafana/fluent-plugin-grafana-loki:master` which contains [default configuration files](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-grafana-loki/docker/conf). By default, fluentd containers use the configurations but you can also specify your `fluentd.conf` with `FLUENTD_CONF` environment variable.
+There is a Docker image `grafana/fluent-plugin-loki:master` which contains [default configuration files](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-loki/docker/conf). By default, fluentd containers use the configurations but you can also specify your `fluentd.conf` with `FLUENTD_CONF` environment variable.
 
 This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki's endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
+
+This image will start an instance of Fluentd to forward incoming logs to the specified Loki url. As an alternate, containerized applications can also use [docker driver plugin](../docker-driver/README.md) to ship logs without needing Fluentd.
 
 ### Example
 
@@ -130,7 +132,7 @@ A Docker Compose configuration that will work looks like:
 ```
 services:
   fluentd:
-    image: grafana/fluent-plugin-grafana-loki:master
+    image: grafana/fluent-plugin-loki:master
     command:
       - "fluentd"
       - "-v"
@@ -173,7 +175,23 @@ Specify a username and password if the Loki server requires authentication.
 If using the GrafanaLab's hosted Loki, the username needs to be set to your instanceId and the password should be a Grafana.com api key.
 
 ### tenant
-Loki is a multi-tenant log storage platform and all requests sent must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.  The tenant can be any string value.
+Loki is a multi-tenant log storage platform and all requests sent must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.
+The tenant can be any string value. 
+
+The tenant field also supports placeholders, so it can dynamically change based on tag and record fields. Each placeholder must be added as a buffer chunk key. The following is an example of setting the tenant based on a k8s pod label:
+
+```
+<match **>
+  @type loki
+  url "https://logs-us-west1.grafana.net"
+  tenant ${$.kubernetes.labels.tenant}
+  # ...
+  <buffer $.kubernetes.labels.tenant>
+    @type memory
+    flush_interval 5s
+  </buffer>
+</match>
+```
 
 ### client certificate verification
 Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
@@ -187,6 +205,21 @@ Specify a pair of client certificate and private key with `cert` and `key` if a 
   cert /path/to/certificate.pem
   key /path/to/key.key
   ca_cert /path/to/ca.pem
+
+  ...
+</match>
+```
+
+### Server certificate verification
+A flag to disable a server certificate verification. By default the `insecure_tls` is set to false.
+
+```
+<match **>
+  @type loki
+
+  url "https://loki"
+
+  insecure_tls true
 
   ...
 </match>

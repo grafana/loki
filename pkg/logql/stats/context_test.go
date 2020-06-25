@@ -54,14 +54,61 @@ func TestSnapshot(t *testing.T) {
 			TotalDuplicates:       10,
 		},
 		Summary: Summary{
-			ExecTime:                 2 * time.Second.Seconds(),
-			BytesProcessedPerSeconds: int64(42),
-			LinesProcessedPerSeconds: int64(50),
-			TotalBytesProcessed:      int64(84),
-			TotalLinesProcessed:      int64(100),
+			ExecTime:                2 * time.Second.Seconds(),
+			BytesProcessedPerSecond: int64(42),
+			LinesProcessedPerSecond: int64(50),
+			TotalBytesProcessed:     int64(84),
+			TotalLinesProcessed:     int64(100),
 		},
 	}
 	require.Equal(t, expected, res)
+}
+
+func TestSnapshot_MergesResults(t *testing.T) {
+	ctx := NewContext(context.Background())
+	expected := Result{
+		Ingester: Ingester{
+			TotalChunksMatched: 200,
+			TotalBatches:       50,
+			TotalLinesSent:     60,
+			HeadChunkBytes:     10,
+			HeadChunkLines:     20,
+			DecompressedBytes:  24,
+			DecompressedLines:  40,
+			CompressedBytes:    60,
+			TotalDuplicates:    2,
+			TotalReached:       2,
+		},
+		Store: Store{
+			TotalChunksRef:        50,
+			TotalChunksDownloaded: 60,
+			ChunksDownloadTime:    time.Second.Seconds(),
+			HeadChunkBytes:        10,
+			HeadChunkLines:        20,
+			DecompressedBytes:     40,
+			DecompressedLines:     20,
+			CompressedBytes:       30,
+			TotalDuplicates:       10,
+		},
+		Summary: Summary{
+			ExecTime:                2 * time.Second.Seconds(),
+			BytesProcessedPerSecond: int64(42),
+			LinesProcessedPerSecond: int64(50),
+			TotalBytesProcessed:     int64(84),
+			TotalLinesProcessed:     int64(100),
+		},
+	}
+
+	err := JoinResults(ctx, expected)
+	require.Nil(t, err)
+	res := Snapshot(ctx, 2*time.Second)
+	require.Equal(t, expected, res)
+}
+
+func TestGetResult_ErrsNonexistant(t *testing.T) {
+	out, err := GetResult(context.Background())
+	require.NotNil(t, err)
+	require.Nil(t, out)
 }
 
 func fakeIngesterQuery(ctx context.Context) {
@@ -116,11 +163,11 @@ func TestResult_Merge(t *testing.T) {
 			TotalDuplicates:       10,
 		},
 		Summary: Summary{
-			ExecTime:                 2 * time.Second.Seconds(),
-			BytesProcessedPerSeconds: int64(42),
-			LinesProcessedPerSeconds: int64(50),
-			TotalBytesProcessed:      int64(84),
-			TotalLinesProcessed:      int64(100),
+			ExecTime:                2 * time.Second.Seconds(),
+			BytesProcessedPerSecond: int64(42),
+			LinesProcessedPerSecond: int64(50),
+			TotalBytesProcessed:     int64(84),
+			TotalLinesProcessed:     int64(100),
 		},
 	}
 
@@ -154,11 +201,11 @@ func TestResult_Merge(t *testing.T) {
 			TotalDuplicates:       2 * 10,
 		},
 		Summary: Summary{
-			ExecTime:                 2 * 2 * time.Second.Seconds(),
-			BytesProcessedPerSeconds: int64(42), // 2 requests at the same pace should give the same bytes/lines per sec
-			LinesProcessedPerSeconds: int64(50),
-			TotalBytesProcessed:      2 * int64(84),
-			TotalLinesProcessed:      2 * int64(100),
+			ExecTime:                2 * 2 * time.Second.Seconds(),
+			BytesProcessedPerSecond: int64(42), // 2 requests at the same pace should give the same bytes/lines per sec
+			LinesProcessedPerSecond: int64(50),
+			TotalBytesProcessed:     2 * int64(84),
+			TotalLinesProcessed:     2 * int64(100),
 		},
 	}, res)
 

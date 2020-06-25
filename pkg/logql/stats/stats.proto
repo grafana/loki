@@ -18,10 +18,10 @@ message Result {
 
 // Summary is the summary of a query statistics.
 message Summary {
-   // Total bytes processed per seconds.
-  int64 bytesProcessedPerSeconds = 1 [(gogoproto.jsontag) = "bytesProcessedPerSeconds"];
-  // Total lines processed per seconds.
-  int64 linesProcessedPerSeconds = 2 [(gogoproto.jsontag) = "linesProcessedPerSeconds"];
+   // Total bytes processed per second.
+  int64 bytesProcessedPerSecond = 1 [(gogoproto.jsontag) = "bytesProcessedPerSecond"];
+  // Total lines processed per second.
+  int64 linesProcessedPerSecond = 2 [(gogoproto.jsontag) = "linesProcessedPerSecond"];
   // Total bytes processed.
   int64 totalBytesProcessed = 3 [(gogoproto.jsontag) = "totalBytesProcessed"];
   // Total lines processed.

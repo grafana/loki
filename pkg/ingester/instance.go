@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -150,7 +149,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) getOrCreateStream(pushReqStream *logproto.Stream) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, error) {
 	labels, err := util.ToClientLabels(pushReqStream.Labels)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -171,7 +170,6 @@ func (i *instance) getOrCreateStream(pushReqStream *logproto.Stream) (*stream, e
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		level.Warn(cutil.Logger).Log("message", "could not create new stream for tenant", "error", err)
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
 	}
 

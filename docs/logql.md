@@ -1,23 +1,28 @@
 # LogQL: Log Query Language
 
 Loki comes with its own PromQL-inspired language for queries called *LogQL*.
-LogQL can be considered a distributed `grep` that aggregates log sources and
-using labels and operators for filtering.
+LogQL can be considered a distributed `grep` that aggregates log sources,
+LogQL uses labels and operators for filtering.
 
-There are two types of LogQL queries: *log queries* which return the contents of
-log lines, and *metric queries* which extend log queries and calculates values
-based on the counts of logs from a log query.
+There are two types of LogQL queries: 
 
-A basic log query consists of two parts: the **log stream selector** and a
-**filter expression**. Due to Loki's design, all LogQL queries are required to
-contain a log stream selector.
+-*Log queries* return the contents of log lines.
+-*Metric queries* extend log queries and calculate values based on the counts of logs from a log query.
+
+A basic log query consists of two parts: 
+-**log stream selector**
+-**filter expression**
+Due to Loki's design, all LogQL queries must contain a log stream selector.
 
 The log stream selector determines how many log streams (unique sources of log
-content, such as files) will be searched. A more granular log stream selector
+content, such as files) will be searched. A more granular log stream selector then
 reduces the number of searched streams to a manageable volume. This means that
 the labels passed to the log stream selector will affect the relative
 performance of the query's execution. The filter expression is then used to do a
 distributed `grep` over the aggregated logs from the matching log streams.
+
+> To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
+For example `` `\w+` `` is the same as `"\\w+"`. This is specially useful when writing a regular expression which contains multiple backslashes that require escaping.
 
 ### Log Stream Selector
 
@@ -32,7 +37,7 @@ curly braces:
 {app="mysql",name="mysql-backup"}
 ```
 
-In this example, log streams that have a label of `app` whose value is `mysql`
+In this example, all log streams that have a label of `app` whose value is `mysql`
 _and_ a label of `name` whose value is `mysql-backup` will be included in the
 query results. Note that this will match any log stream whose labels _at least_
 contain `mysql-backup` for their name label; if there are multiple streams that
@@ -51,6 +56,7 @@ Examples:
 
 - `{name=~"mysql.+"}`
 - `{name!~"mysql.+"}`
+- `` {name!~`mysql-\d+`} ``
 
 The same rules that apply for [Prometheus Label
 Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors)
@@ -58,13 +64,12 @@ apply for Loki log stream selectors.
 
 ### Filter Expression
 
-After writing the log stream selector, the resulting set of logs can be filtered
-further with a search expression. The search expression can be just text or
-regex:
+After writing the log stream selector, the resulting set of logs can be further filtered with a search expression. The search expression can be just text or regex:
 
 - `{job="mysql"} |= "error"`
 - `{name="kafka"} |~ "tsdb-ops.*io:2003"`
-- `{instance=~"kafka-[23]",name="kafka"} != kafka.server:type=ReplicaManager`
+- `` {name="cassandra"} |~  `error=\w+` ``
+- `{instance=~"kafka-[23]",name="kafka"} != "kafka.server:type=ReplicaManager"`
 
 In the previous examples, `|=`, `|~`, and `!=` act as **filter operators** and
 the following filter operators are supported:
@@ -102,9 +107,11 @@ transform it into an instance vector.
 
 The currently supported functions for operating over are:
 
-- `rate`: calculate the number of entries per second
+- `rate`: calculates the number of entries per second
 - `count_over_time`: counts the entries for each log stream within the given
   range.
+- `bytes_rate`: calculates the number of bytes per second for each stream.
+- `bytes_over_time`: counts the amount of bytes used by each log stream for a given range.
 
 > `count_over_time({job="mysql"}[5m])`
 
@@ -118,7 +125,7 @@ aggregation syntax, including filter expressions. This example gets the
 per-second rate of all non-timeout errors within the last ten seconds for the
 MySQL job.
 
-It should be noted that the range notation `[5m]` can be placed at end of the log stream filter or right after the log stream matcher. For example those two syntaxes below are equivalent.
+It should be noted that the range notation `[5m]` can be placed at end of the log stream filter or right after the log stream matcher. For example, the two syntaxes below are equivalent:
 
 ```logql
 rate({job="mysql"} |= "error" != "timeout" [5m])
@@ -154,7 +161,7 @@ values or a set of distinct label values by including a `without` or a
 samples, including the original labels, are returned in the result vector. `by`
 and `without` are only used to group the input vector.
 
-The `without` cause removes the listed labels from the resulting vector, keeping
+The `without` clause removes the listed labels from the resulting vector, keeping
 all others. The `by` clause does the opposite, dropping labels that are not
 listed in the clause, even if their label values are identical between all
 elements of the vector.
@@ -165,7 +172,7 @@ Get the top 10 applications by the highest log throughput:
 
 > `topk(10,sum(rate({region="us-east1"}[5m])) by (name))`
 
-Get the count of logs during the last five minutes, grouping
+Get the count of logs for the last five minutes, grouping
 by level:
 
 > `sum(count_over_time({job="mysql"}[5m])) by (level)`
@@ -232,3 +239,30 @@ These logical/set binary operators are only defined between two vectors:
 This contrived query will return the intersection of these queries, effectively `rate({app="bar"})`
 
 > `rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])`
+
+#### Comparison operators
+
+-  `==` (equality)
+-  `!=` (inequality)
+-  `>` (greater than)
+-  `>=` (greater than or equal to)
+-  `<` (less than)
+-  `<=` (less than or equal to)
+
+Comparison operators are defined between scalar/scalar, vector/scalar, and vector/vector value pairs. By default they filter. Their behavior can be modified by providing bool after the operator, which will return 0 or 1 for the value rather than filtering.
+
+Between two scalars, the bool modifier must be provided and these operators result in another scalar that is either 0 (false) or 1 (true), depending on the comparison result.
+
+> `1 >= 1` is equivalent to `1`
+
+Between a vector and a scalar, these operators are applied to the value of every data sample in the vector, and vector elements between which the comparison result is false get dropped from the result vector. If the bool modifier is provided, vector elements that would be dropped instead have the value 0 and vector elements that would be kept have the value 1.
+
+>  `count_over_time({foo="bar"}[1m]) > 10` Filters the streams which log at elast 10 lines in the last minute.
+
+>  `count_over_time({foo="bar"}[1m]) > bool 10` The same as above, but instead of filtering, attached the value 0 to streams that log less than 10 lines.
+
+Between two vectors, these operators behave as a filter by default, applied to matching entries. Vector elements for which the expression is not true or which do not find a match on the other side of the expression get dropped from the result, while the others are propagated into a result vector. If the bool modifier is provided, vector elements that would have been dropped instead have the value 0 and vector elements that would be kept have the value 1, with the grouping labels again becoming the output label set.
+
+> `sum without(app) (count_over_time({app="foo"}[1m])) > sum without(app) (count_over_time({app="bar"}[1m]))` Returns the streams matching `app=foo` without app labels that have higher counts within the last minute than their counterparts matching `app=bar`without app labels.
+
+> `sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))` The same as above, but vectors have their values set to 1 if they pass the comparison or 0 if they fail/would otherwise have been filtered out.

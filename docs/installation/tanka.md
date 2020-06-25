@@ -1,4 +1,4 @@
-# Installing Loki with Tanka
+# Install Loki with Tanka
 
 [Tanka](https://tanka.dev) is a reimplementation of
 [Ksonnet](https://ksonnet.io) that Grafana Labs created after Ksonnet was
@@ -6,7 +6,7 @@ deprecated. Tanka is used by Grafana Labs to run Loki in production.
 
 ## Prerequisites
 
-Grab the latest version of Tanka (at least version v0.5.0) for the `tk env`
+Install the latest version of Tanka (at least version v0.5.0) for the `tk env`
 commands. Prebuilt binaries for Tanka can be found at the [Tanka releases
 URL](https://github.com/grafana/tanka/releases).
 
@@ -23,7 +23,7 @@ tk env add environments/loki --namespace=loki --server=<Kubernetes API server>
 
 ## Deploying
 
-Grab the Loki & Promtail module using `jb`:
+Download and install the Loki and Promtail module using `jb`:
 
 ```bash
 go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
@@ -75,8 +75,7 @@ loki + promtail + gateway {
 }
 ```
 
-Notice that `container_root_path` is your own data root for the Docker Daemon,
-run `docker info | grep "Root Dir"` to get it.
+Notice that `container_root_path` is your own data root for the Docker Daemon.
+Run `docker info | grep "Root Dir"` to get the root path.
 
-Run `tk show environments/loki` to see the manifests that will be deployed to the cluster and
-finally run `tk apply environments/loki` to deploy it.
+Run `tk show environments/loki` to see the manifests that will be deployed to the cluster. Run `tk apply environments/loki` to deploy the manifests.

@@ -25,7 +25,7 @@ data:
     - name: Prometheus
       type: prometheus
       access: proxy
-      url: http://{{ include "prometheus.fullname" .}}:{{ .Values.prometheus.server.service.servicePort }}
+      url: http://{{ include "prometheus.fullname" .}}:{{ .Values.prometheus.server.service.servicePort }}{{ .Values.prometheus.server.prefixURL }}
       version: 1
 {{- end }}
 {{- end }}
