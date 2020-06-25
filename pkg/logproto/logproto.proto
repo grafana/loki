@@ -70,8 +70,8 @@ message EntryAdapter {
   string line = 2 [(gogoproto.jsontag) = "line"];
 }
 
-message SampleAdapter {
-  repeated LabelPair labels = 1 [(gogoproto.nullable) = false];
+message Sample {
+  string labels = 1 [(gogoproto.jsontag) = "labels"];
   int64 timestamp = 2 [(gogoproto.jsontag) = "ts"];
   double value = 3 [(gogoproto.jsontag) = "value"];
 }

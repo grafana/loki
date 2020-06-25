@@ -39,6 +39,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
 	chunk.Store
+	LazySampleQuery(ctx context.Context, req logql.SelectParams) (iter.SampleIterator, error)
 	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
 	GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error)
 }

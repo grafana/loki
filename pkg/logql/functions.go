@@ -9,7 +9,7 @@ import (
 
 const unsupportedErr = "unsupported range vector aggregation operation: %s"
 
-func (r rangeAggregationExpr) extractor() (SampleExtractor, error) {
+func (r rangeAggregationExpr) Extractor() (SampleExtractor, error) {
 	switch r.operation {
 	case OpRangeTypeRate, OpRangeTypeCount:
 		return extractCount, nil

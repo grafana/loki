@@ -158,20 +158,20 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	case *vectorAggregationExpr:
 		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *rangeAggregationExpr:
-		entryIter, err := ev.querier.SelectSamples(ctx, SelectParams{
+		it, err := ev.querier.SelectSamples(ctx, SelectParams{
 			&logproto.QueryRequest{
 				Start:     q.Start().Add(-e.left.interval),
 				End:       q.End(),
 				Limit:     0,
 				Direction: logproto.FORWARD,
-				Selector:  expr.Selector().String(),
+				Selector:  expr.String(),
 				Shards:    q.Shards(),
 			},
 		})
 		if err != nil {
 			return nil, err
 		}
-		return rangeAggEvaluator(entryIter, e, q)
+		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q)
 	case *binOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	default:
@@ -385,10 +385,6 @@ func rangeAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	// extractor, err := expr.extractor()
-	// if err != nil {
-	// 	return nil, err
-	// }
 	return rangeVectorEvaluator{
 		iter: newRangeVectorIterator(
 			it,

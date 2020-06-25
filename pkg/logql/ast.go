@@ -241,7 +241,7 @@ func IsLogicalBinOp(op string) bool {
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
-	Extractor() SampleExtractor
+	Extractor() (SampleExtractor, error)
 	// Operations returns the list of operations used in this SampleExpr
 	Operations() []string
 	Expr
@@ -337,6 +337,10 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *groupin
 
 func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.Selector()
+}
+
+func (e *vectorAggregationExpr) Extractor() (SampleExtractor, error) {
+	return e.left.Extractor()
 }
 
 // impl Expr
@@ -476,10 +480,11 @@ func (e *literalExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *literalExpr) Selector() LogSelectorExpr   { return e }
-func (e *literalExpr) Operations() []string        { return nil }
-func (e *literalExpr) Filter() (LineFilter, error) { return nil, nil }
-func (e *literalExpr) Matchers() []*labels.Matcher { return nil }
+func (e *literalExpr) Selector() LogSelectorExpr           { return e }
+func (e *literalExpr) Operations() []string                { return nil }
+func (e *literalExpr) Filter() (LineFilter, error)         { return nil, nil }
+func (e *literalExpr) Matchers() []*labels.Matcher         { return nil }
+func (e *literalExpr) Extractor() (SampleExtractor, error) { return nil, nil }
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer

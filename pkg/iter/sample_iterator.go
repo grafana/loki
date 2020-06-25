@@ -83,6 +83,55 @@ func (it *peekingSampleIterator) Error() error {
 	return it.iter.Error()
 }
 
+type sampleIteratorHeap []SampleIterator
+
+func (h sampleIteratorHeap) Len() int             { return len(h) }
+func (h sampleIteratorHeap) Swap(i, j int)        { h[i], h[j] = h[j], h[i] }
+func (h sampleIteratorHeap) Peek() SampleIterator { return h[0] }
+func (h *sampleIteratorHeap) Push(x interface{}) {
+	*h = append(*h, x.(SampleIterator))
+}
+
+func (h *sampleIteratorHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}
+
+type sampleIteratorMinHeap struct {
+	sampleIteratorHeap
+}
+
+func (h sampleIteratorMinHeap) Less(i, j int) bool {
+	s1, s2 := h.sampleIteratorHeap[i].Sample(), h.sampleIteratorHeap[j].Sample()
+	switch {
+	case s1.Timestamp < s2.Timestamp:
+		return true
+	case s1.Timestamp > s2.Timestamp:
+		return false
+	default:
+		return s1.Labels < s2.Labels
+	}
+}
+
+type sampleIteratorMaxHeap struct {
+	sampleIteratorHeap
+}
+
+func (h sampleIteratorMaxHeap) Less(i, j int) bool {
+	s1, s2 := h.sampleIteratorHeap[i].Sample(), h.sampleIteratorHeap[j].Sample()
+	switch {
+	case s1.Timestamp < s2.Timestamp:
+		return false
+	case s1.Timestamp > s2.Timestamp:
+		return true
+	default:
+		return s1.Labels > s2.Labels
+	}
+}
+
 // type noOpIterator struct{}
 
 // var NoopIterator = noOpIterator{}

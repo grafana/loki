@@ -141,7 +141,7 @@ func (q *Querier) forGivenIngesters(ctx context.Context, replicationSet ring.Rep
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
-func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
+func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
 	err := q.validateQueryRequest(ctx, params.QueryRequest)
 	if err != nil {
 		return nil, err
@@ -182,7 +182,7 @@ func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.E
 
 	// skip ingester queries only when QueryIngestersWithin is enabled (not the zero value) and
 	// the end of the query is earlier than the lookback
-	if lookback := time.Now().Add(-q.cfg.QueryIngestersWithin); q.cfg.QueryIngestersWithin != 0 && params.GetEnd().Before(lookback) {
+	if !shouldQueryIngester(q.cfg, params) {
 		return chunkStoreIter, nil
 	}
 
@@ -192,6 +192,60 @@ func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.E
 	}
 
 	return iter.NewHeapIterator(ctx, append(iters, chunkStoreIter), params.Direction), nil
+}
+
+func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectParams) (iter.SampleIterator, error) {
+	err := q.validateQueryRequest(ctx, params.QueryRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunkStoreIter iter.SampleIterator
+
+	switch {
+	case q.cfg.IngesterQueryStoreMaxLookback == 0:
+		// IngesterQueryStoreMaxLookback is zero, the default state, query the store normally
+		chunkStoreIter, err = q.store.LazySampleQuery(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+	case q.cfg.IngesterQueryStoreMaxLookback > 0:
+		adjustedEnd := params.End.Add(-q.cfg.IngesterQueryStoreMaxLookback)
+		if params.Start.After(adjustedEnd) {
+			chunkStoreIter = iter.NoopIterator
+			break
+		}
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query ingesters
+		queryRequestCopy := *params.QueryRequest
+		newParams := logql.SelectParams{
+			QueryRequest: &queryRequestCopy,
+		}
+		newParams.End = adjustedEnd
+		chunkStoreIter, err = q.store.LazySampleQuery(ctx, newParams)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		chunkStoreIter = iter.NoopIterator
+
+	}
+	// skip ingester queries only when QueryIngestersWithin is enabled (not the zero value) and
+	// the end of the query is earlier than the lookback
+	if !shouldQueryIngester(q.cfg, params) {
+		return chunkStoreIter, nil
+	}
+
+	iters, err := q.queryIngestersForSample(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+}
+
+func shouldQueryIngester(cfg Config, params logql.SelectParams) bool {
+	lookback := time.Now().Add(-cfg.QueryIngestersWithin)
+	return !(cfg.QueryIngestersWithin != 0 && params.GetEnd().Before(lookback))
 }
 
 func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) ([]iter.EntryIterator, error) {
@@ -207,6 +261,10 @@ func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams)
 		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), params.Direction)
 	}
 	return iterators, nil
+}
+
+func (q *Querier) queryIngestersForSample(ctx context.Context, params logql.SelectParams) ([]iter.SampleIterator, error) {
+
 }
 
 // Label does the heavy lifting for a Label query.
