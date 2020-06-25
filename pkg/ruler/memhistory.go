@@ -26,11 +26,11 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		Series: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
-			Name:      "ruler_memory_series_total",
+			Name:      "ruler_memory_series",
 		}),
 		Samples: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
-			Name:      "ruler_memory_samples_total",
+			Name:      "ruler_memory_samples",
 		}),
 	}
 }
