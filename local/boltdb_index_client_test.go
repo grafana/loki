@@ -170,3 +170,105 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 	}, have)
 
 }
+
+func TestBoltDB_Writes(t *testing.T) {
+	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(dirname))
+	}()
+
+	for i, tc := range []struct {
+		name              string
+		initialPuts       []string
+		testPuts          []string
+		testDeletes       []string
+		err               error
+		valuesAfterWrites []string
+	}{
+		{
+			name:              "just puts",
+			testPuts:          []string{"1", "2"},
+			valuesAfterWrites: []string{"1", "2"},
+		},
+		{
+			name:              "just deletes",
+			initialPuts:       []string{"1", "2", "3", "4"},
+			testDeletes:       []string{"1", "2"},
+			valuesAfterWrites: []string{"3", "4"},
+		},
+		{
+			name:              "both puts and deletes",
+			initialPuts:       []string{"1", "2", "3", "4"},
+			testPuts:          []string{"5", "6"},
+			testDeletes:       []string{"1", "2"},
+			valuesAfterWrites: []string{"3", "4", "5", "6"},
+		},
+		{
+			name:        "deletes without initial writes",
+			testDeletes: []string{"1", "2"},
+			err:         fmt.Errorf("bucket %s not found in table 3", bucketName),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tableName := fmt.Sprint(i)
+
+			indexClient, err := NewBoltDBIndexClient(BoltDBConfig{
+				Directory: dirname,
+			})
+			require.NoError(t, err)
+
+			defer func() {
+				indexClient.Stop()
+			}()
+
+			// doing initial writes if there are any
+			if len(tc.initialPuts) != 0 {
+				batch := indexClient.NewWriteBatch()
+				for _, put := range tc.initialPuts {
+					batch.Add(tableName, "hash", []byte(put), []byte(put))
+				}
+
+				require.NoError(t, indexClient.BatchWrite(context.Background(), batch))
+			}
+
+			// doing writes with testPuts and testDeletes
+			batch := indexClient.NewWriteBatch()
+			for _, put := range tc.testPuts {
+				batch.Add(tableName, "hash", []byte(put), []byte(put))
+			}
+			for _, put := range tc.testDeletes {
+				batch.Delete(tableName, "hash", []byte(put))
+			}
+
+			require.Equal(t, tc.err, indexClient.BatchWrite(context.Background(), batch))
+
+			// verifying test writes by querying
+			var have []chunk.IndexEntry
+			err = indexClient.query(context.Background(), chunk.IndexQuery{
+				TableName: tableName,
+				HashValue: "hash",
+			}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
+				iter := read.Iterator()
+				for iter.Next() {
+					have = append(have, chunk.IndexEntry{
+						RangeValue: iter.RangeValue(),
+						Value:      iter.Value(),
+					})
+				}
+				return true
+			})
+
+			require.NoError(t, err)
+			require.Len(t, have, len(tc.valuesAfterWrites))
+
+			for i, value := range tc.valuesAfterWrites {
+				require.Equal(t, chunk.IndexEntry{
+					RangeValue: []byte(value),
+					Value:      []byte(value),
+				}, have[i])
+			}
+		})
+	}
+}
