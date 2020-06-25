@@ -27,7 +27,8 @@ func BestEffortCleanAbortedPartialUploads(
 	partial map[ulid.ULID]error,
 	bkt objstore.Bucket,
 	deleteAttempts prometheus.Counter,
-	blocksMarkedForDeletion prometheus.Counter,
+	blockCleanups prometheus.Counter,
+	blockCleanupFailures prometheus.Counter,
 ) {
 	level.Info(logger).Log("msg", "started cleaning of aborted partial uploads")
 
@@ -45,10 +46,15 @@ func BestEffortCleanAbortedPartialUploads(
 
 		deleteAttempts.Inc()
 		level.Info(logger).Log("msg", "found partially uploaded block; marking for deletion", "block", id)
-		if err := block.MarkForDeletion(ctx, logger, bkt, id, blocksMarkedForDeletion); err != nil {
-			level.Warn(logger).Log("msg", "failed to delete aborted partial upload; skipping", "block", id, "thresholdAge", PartialUploadThresholdAge, "err", err)
-			return
+		// We don't gather any information about deletion marks for partial blocks, so let's simply remove it. We waited
+		// long PartialUploadThresholdAge already.
+		// TODO(bwplotka): Fix some edge cases: https://github.com/thanos-io/thanos/issues/2470 .
+		if err := block.Delete(ctx, logger, bkt, id); err != nil {
+			blockCleanupFailures.Inc()
+			level.Warn(logger).Log("msg", "failed to delete aborted partial upload; will retry in next iteration", "block", id, "thresholdAge", PartialUploadThresholdAge, "err", err)
+			continue
 		}
+		blockCleanups.Inc()
 		level.Info(logger).Log("msg", "deleted aborted partial upload", "block", id, "thresholdAge", PartialUploadThresholdAge)
 	}
 	level.Info(logger).Log("msg", "cleaning of aborted partial uploads done")

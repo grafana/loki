@@ -3,7 +3,7 @@ package stylecheck
 import "honnef.co/go/tools/lint"
 
 var Docs = map[string]*lint.Documentation{
-	"ST1000": &lint.Documentation{
+	"ST1000": {
 		Title: `Incorrect or missing package comment`,
 		Text: `Packages must have a package comment that is formatted according to
 the guidelines laid out in
@@ -12,7 +12,7 @@ https://github.com/golang/go/wiki/CodeReviewComments#package-comments.`,
 		NonDefault: true,
 	},
 
-	"ST1001": &lint.Documentation{
+	"ST1001": {
 		Title: `Dot imports are discouraged`,
 		Text: `Dot imports that aren't in external test packages are discouraged.
 
@@ -42,7 +42,7 @@ Quoting Go Code Review Comments:
 		Options: []string{"dot_import_whitelist"},
 	},
 
-	"ST1003": &lint.Documentation{
+	"ST1003": {
 		Title: `Poorly chosen identifier`,
 		Text: `Identifiers, such as variable and package names, follow certain rules.
 
@@ -57,7 +57,7 @@ See the following links for details:
 		Options:    []string{"initialisms"},
 	},
 
-	"ST1005": &lint.Documentation{
+	"ST1005": {
 		Title: `Incorrectly formatted error string`,
 		Text: `Error strings follow a set of guidelines to ensure uniformity and good
 composability.
@@ -73,7 +73,7 @@ Quoting Go Code Review Comments:
 		Since: "2019.1",
 	},
 
-	"ST1006": &lint.Documentation{
+	"ST1006": {
 		Title: `Poorly chosen receiver name`,
 		Text: `Quoting Go Code Review Comments:
 
@@ -91,13 +91,13 @@ Quoting Go Code Review Comments:
 		Since: "2019.1",
 	},
 
-	"ST1008": &lint.Documentation{
+	"ST1008": {
 		Title: `A function's error value should be its last return value`,
 		Text:  `A function's error value should be its last return value.`,
 		Since: `2019.1`,
 	},
 
-	"ST1011": &lint.Documentation{
+	"ST1011": {
 		Title: `Poorly chosen name for variable of type time.Duration`,
 		Text: `time.Duration values represent an amount of time, which is represented
 as a count of nanoseconds. An expression like 5 * time.Microsecond
@@ -107,14 +107,14 @@ Milli.`,
 		Since: `2019.1`,
 	},
 
-	"ST1012": &lint.Documentation{
+	"ST1012": {
 		Title: `Poorly chosen name for error variable`,
 		Text: `Error variables that are part of an API should be called errFoo or
 ErrFoo.`,
 		Since: "2019.1",
 	},
 
-	"ST1013": &lint.Documentation{
+	"ST1013": {
 		Title: `Should use constants for HTTP error codes, not magic numbers`,
 		Text: `HTTP has a tremendous number of status codes. While some of those are
 well known (200, 400, 404, 500), most of them are not. The net/http
@@ -126,18 +126,18 @@ readability of your code.`,
 		Options: []string{"http_status_code_whitelist"},
 	},
 
-	"ST1015": &lint.Documentation{
+	"ST1015": {
 		Title: `A switch's default case should be the first or last case`,
 		Since: "2019.1",
 	},
 
-	"ST1016": &lint.Documentation{
+	"ST1016": {
 		Title:      `Use consistent method receiver names`,
 		Since:      "2019.1",
 		NonDefault: true,
 	},
 
-	"ST1017": &lint.Documentation{
+	"ST1017": {
 		Title: `Don't use Yoda conditions`,
 		Text: `Yoda conditions are conditions of the kind 'if 42 == x', where the
 literal is on the left side of the comparison. These are a common
@@ -147,8 +147,85 @@ bug, we prefer the more idiomatic 'if x == 42'.`,
 		Since: "2019.2",
 	},
 
-	"ST1018": &lint.Documentation{
+	"ST1018": {
 		Title: `Avoid zero-width and control characters in string literals`,
 		Since: "2019.2",
+	},
+
+	"ST1019": {
+		Title: `Importing the same package multiple times`,
+		Text: `Go allows importing the same package multiple times, as long as
+different import aliases are being used. That is, the following
+bit of code is valid:
+
+import (
+    "fmt"
+    fumpt "fmt"
+    format "fmt"
+    _ "fmt"
+)
+
+However, this is very rarely done on purpose. Usually, it is a
+sign of code that got refactored, accidentally adding duplicate
+import statements. It is also a rarely known feature, which may
+contribute to confusion.
+
+Do note that sometimes, this feature may be used
+intentionally (see for example
+https://github.com/golang/go/commit/3409ce39bfd7584523b7a8c150a310cea92d879d)
+– if you want to allow this pattern in your code base, you're
+advised to disable this check.`,
+		Since: "2020.1",
+	},
+
+	"ST1020": {
+		Title: "The documentation of an exported function should start with the function's name",
+		Text: `Doc comments work best as complete sentences, which
+allow a wide variety of automated presentations. The first sentence
+should be a one-sentence summary that starts with the name being
+declared.
+
+If every doc comment begins with the name of the item it describes,
+you can use the doc subcommand of the go tool and run the output
+through grep.
+
+See https://golang.org/doc/effective_go.html#commentary for more
+information on how to write good documentation.`,
+		Since:      "2020.1",
+		NonDefault: true,
+	},
+
+	"ST1021": {
+		Title: "The documentation of an exported type should start with type's name",
+		Text: `Doc comments work best as complete sentences, which
+allow a wide variety of automated presentations. The first sentence
+should be a one-sentence summary that starts with the name being
+declared.
+
+If every doc comment begins with the name of the item it describes,
+you can use the doc subcommand of the go tool and run the output
+through grep.
+
+See https://golang.org/doc/effective_go.html#commentary for more
+information on how to write good documentation.`,
+		Since:      "2020.1",
+		NonDefault: true,
+	},
+
+	"ST1022": {
+		Title: "The documentation of an exported variable or constant should start with variable's name",
+		Text: `Doc comments work best as complete sentences, which
+allow a wide variety of automated presentations. The first sentence
+should be a one-sentence summary that starts with the name being
+declared.
+
+If every doc comment begins with the name of the item it describes,
+you can use the doc subcommand of the go tool and run the output
+through grep.
+
+See https://golang.org/doc/effective_go.html#commentary for more
+information on how to write good documentation.`,
+		Since:      "2020.1",
+		NonDefault: true,
 	},
 }

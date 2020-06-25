@@ -8,14 +8,14 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -109,8 +109,6 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 	if !cfg.WALEnabled {
 		return &noopWAL{}, nil
 	}
-
-	util.WarnExperimentalUse("Chunks WAL")
 
 	var walRegistry prometheus.Registerer
 	if registerer != nil {
@@ -324,22 +322,40 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 		return nil
 	}
 
-	var ticker *time.Ticker
-	if !immediate {
-		perSeriesDuration := w.cfg.CheckpointDuration / time.Duration(numSeries)
-		ticker = time.NewTicker(perSeriesDuration)
-		defer ticker.Stop()
-	}
+	perSeriesDuration := (95 * w.cfg.CheckpointDuration) / (100 * time.Duration(numSeries))
 
 	var wireChunkBuf []client.Chunk
-	b := make([]byte, 0, 1024)
+	var b []byte
+	bytePool := sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 0, 1024)
+		},
+	}
+	records := [][]byte{}
+	totalSize := 0
+	ticker := time.NewTicker(perSeriesDuration)
+	defer ticker.Stop()
 	for userID, state := range us {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
-			wireChunkBuf, b, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf, b)
+			wireChunkBuf, b, err = w.checkpointSeries(userID, pair.fp, pair.series, wireChunkBuf, bytePool.Get().([]byte))
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return err
+			}
+
+			records = append(records, b)
+			totalSize += len(b)
+			if totalSize >= 1*1024*1024 { // 1 MiB.
+				if err := checkpoint.Log(records...); err != nil {
+					return err
+				}
+				w.checkpointLoggedBytesTotal.Add(float64(totalSize))
+				totalSize = 0
+				for i := range records {
+					bytePool.Put(records[i]) // nolint:staticcheck
+				}
+				records = records[:0]
 			}
 
 			if !immediate {
@@ -349,6 +365,10 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 				}
 			}
 		}
+	}
+
+	if err := checkpoint.Log(records...); err != nil {
+		return err
 	}
 
 	if err := checkpoint.Close(); err != nil {
@@ -393,15 +413,12 @@ func lastCheckpoint(dir string) (string, int, error) {
 	for i := 0; i < len(dirs); i++ {
 		di := dirs[i]
 
-		if !strings.HasPrefix(di.Name(), checkpointPrefix) {
+		idx, err := checkpointIndex(di.Name(), false)
+		if err != nil {
 			continue
 		}
 		if !di.IsDir() {
 			return "", -1, fmt.Errorf("checkpoint %s is not a directory", di.Name())
-		}
-		idx, err := strconv.Atoi(di.Name()[len(checkpointPrefix):])
-		if err != nil {
-			continue
 		}
 		if idx > maxIdx {
 			checkpointDir = di.Name()
@@ -430,10 +447,7 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 		return err
 	}
 	for _, fi := range files {
-		if !strings.HasPrefix(fi.Name(), checkpointPrefix) {
-			continue
-		}
-		index, err := strconv.Atoi(fi.Name()[len(checkpointPrefix):])
+		index, err := checkpointIndex(fi.Name(), true)
 		if err != nil || index >= maxIndex {
 			continue
 		}
@@ -444,10 +458,27 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 	return errs.Err()
 }
 
+var checkpointRe = regexp.MustCompile("^" + regexp.QuoteMeta(checkpointPrefix) + "(\\d+)(\\.tmp)?$")
+
+// checkpointIndex returns the index of a given checkpoint file. It handles
+// both regular and temporary checkpoints according to the includeTmp flag. If
+// the file is not a checkpoint it returns an error.
+func checkpointIndex(filename string, includeTmp bool) (int, error) {
+	result := checkpointRe.FindStringSubmatch(filename)
+	if len(result) < 2 {
+		return 0, errors.New("file is not a checkpoint")
+	}
+	// Filter out temporary checkpoints if desired.
+	if !includeTmp && len(result) == 3 && result[2] != "" {
+		return 0, errors.New("temporary checkpoint")
+	}
+	return strconv.Atoi(result[1])
+}
+
 // checkpointSeries write the chunks of the series to the checkpoint.
-func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk, b []byte) ([]client.Chunk, []byte, error) {
+func (w *walWrapper) checkpointSeries(userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk, b []byte) ([]client.Chunk, []byte, error) {
 	var err error
-	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks[:0])
+	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks)
 	if err != nil {
 		return wireChunks, b, err
 	}
@@ -458,14 +489,7 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 		Labels:      client.FromLabelsToLabelAdapters(series.metric),
 		Chunks:      wireChunks,
 	}, CheckpointRecord, b)
-	if err != nil {
-		return wireChunks, b, err
-	}
 
-	err = cp.Log(b)
-	if err == nil {
-		w.checkpointLoggedBytesTotal.Add(float64(len(b)))
-	}
 	return wireChunks, b, err
 }
 
@@ -583,12 +607,12 @@ func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int
 // segmentsExist is a stripped down version of
 // https://github.com/prometheus/prometheus/blob/4c648eddf47d7e07fbc74d0b18244402200dca9e/tsdb/wal/wal.go#L739-L760.
 func segmentsExist(dir string) (bool, error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return false, err
 	}
-	for _, fn := range files {
-		if _, err := strconv.Atoi(fn); err == nil {
+	for _, f := range files {
+		if _, err := strconv.Atoi(f.Name()); err == nil {
 			// First filename which is a number.
 			// This is how Prometheus stores and this
 			// is how it checks too.
@@ -1048,13 +1072,13 @@ func newWalReader(name string, startSegment int) (*wal.Reader, io.Closer, error)
 // If https://github.com/prometheus/prometheus/pull/6477 is merged, get rid of this
 // method and use from Prometheus directly.
 func SegmentRange(dir string) (int, int, error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return 0, 0, err
 	}
 	first, last := math.MaxInt32, math.MinInt32
-	for _, fn := range files {
-		k, err := strconv.Atoi(fn)
+	for _, f := range files {
+		k, err := strconv.Atoi(f.Name())
 		if err != nil {
 			continue
 		}

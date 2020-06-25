@@ -19,7 +19,7 @@ package prometheus_copy;
 
 option go_package = "prompb";
 
-import "types.proto";
+import "store/storepb/prompb/types.proto";
 import "gogoproto/gogo.proto";
 
 // Do not generate XXX fields to reduce memory footprint and opening a door

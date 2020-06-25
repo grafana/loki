@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -127,9 +128,8 @@ func (b *BoltIndexClient) Stop() {
 }
 
 func (b *BoltIndexClient) NewWriteBatch() chunk.WriteBatch {
-	return &boltWriteBatch{
-		puts:    map[string]map[string][]byte{},
-		deletes: map[string]map[string]struct{}{},
+	return &BoltWriteBatch{
+		Writes: map[string]TableWrites{},
 	}
 }
 
@@ -171,52 +171,49 @@ func (b *BoltIndexClient) GetDB(name string, operation int) (*bbolt.DB, error) {
 	return db, nil
 }
 
-func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-	// ToDo: too much code duplication, refactor this
-	for table, kvps := range batch.(*boltWriteBatch).puts {
-		db, err := b.GetDB(table, DBOperationWrite)
-		if err != nil {
-			return err
-		}
+func (b *BoltIndexClient) WriteToDB(ctx context.Context, db *bbolt.DB, writes TableWrites) error {
+	return db.Update(func(tx *bbolt.Tx) error {
+		var b *bbolt.Bucket
 
-		if err := db.Update(func(tx *bbolt.Tx) error {
-			b, err := tx.CreateBucketIfNotExists(bucketName)
+		// a bucket should already exist for deletes, for other writes we create one otherwise.
+		if len(writes.deletes) != 0 {
+			b = tx.Bucket(bucketName)
+			if b == nil {
+				return fmt.Errorf("bucket %s not found in table %s", bucketName, filepath.Base(db.Path()))
+			}
+		} else {
+			var err error
+			b, err = tx.CreateBucketIfNotExists(bucketName)
 			if err != nil {
 				return err
 			}
-
-			for key, value := range kvps {
-				if err := b.Put([]byte(key), value); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		}); err != nil {
-			return err
 		}
-	}
 
-	for table, kvps := range batch.(*boltWriteBatch).deletes {
+		for key, value := range writes.puts {
+			if err := b.Put([]byte(key), value); err != nil {
+				return err
+			}
+		}
+
+		for key := range writes.deletes {
+			if err := b.Delete([]byte(key)); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+	for table, writes := range batch.(*BoltWriteBatch).Writes {
 		db, err := b.GetDB(table, DBOperationWrite)
 		if err != nil {
 			return err
 		}
 
-		if err := db.Update(func(tx *bbolt.Tx) error {
-			b := tx.Bucket(bucketName)
-			if b == nil {
-				return fmt.Errorf("Bucket %s not found in table %s", bucketName, table)
-			}
-
-			for key := range kvps {
-				if err := b.Delete([]byte(key)); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		}); err != nil {
+		err = b.WriteToDB(ctx, db, writes)
+		if err != nil {
 			return err
 		}
 	}
@@ -285,31 +282,40 @@ func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk
 	})
 }
 
-type boltWriteBatch struct {
-	puts    map[string]map[string][]byte
-	deletes map[string]map[string]struct{}
+type TableWrites struct {
+	puts    map[string][]byte
+	deletes map[string]struct{}
 }
 
-func (b *boltWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	table, ok := b.deletes[tableName]
-	if !ok {
-		table = map[string]struct{}{}
-		b.deletes[tableName] = table
-	}
-
-	key := hashValue + separator + string(rangeValue)
-	table[key] = struct{}{}
+type BoltWriteBatch struct {
+	Writes map[string]TableWrites
 }
 
-func (b *boltWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	table, ok := b.puts[tableName]
+func (b *BoltWriteBatch) getOrCreateTableWrites(tableName string) TableWrites {
+	writes, ok := b.Writes[tableName]
 	if !ok {
-		table = map[string][]byte{}
-		b.puts[tableName] = table
+		writes = TableWrites{
+			puts:    map[string][]byte{},
+			deletes: map[string]struct{}{},
+		}
+		b.Writes[tableName] = writes
 	}
 
+	return writes
+}
+
+func (b *BoltWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	writes := b.getOrCreateTableWrites(tableName)
+
 	key := hashValue + separator + string(rangeValue)
-	table[key] = value
+	writes.deletes[key] = struct{}{}
+}
+
+func (b *BoltWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+	writes := b.getOrCreateTableWrites(tableName)
+
+	key := hashValue + separator + string(rangeValue)
+	writes.puts[key] = value
 }
 
 type boltReadBatch struct {

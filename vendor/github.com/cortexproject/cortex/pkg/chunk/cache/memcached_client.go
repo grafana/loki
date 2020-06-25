@@ -12,6 +12,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
@@ -128,6 +129,22 @@ func (c *memcachedClient) Stop() {
 	c.wait.Wait()
 }
 
+func (c *memcachedClient) Set(item *memcache.Item) error {
+	err := c.Client.Set(item)
+	if err == nil {
+		return nil
+	}
+
+	// Inject the server address in order to have more information about which memcached
+	// backend server failed. This is a best effort.
+	addr, addrErr := c.serverList.PickServer(item.Key)
+	if addrErr != nil {
+		return err
+	}
+
+	return errors.Wrapf(err, "server=%s", addr)
+}
+
 func (c *memcachedClient) updateLoop(updateInterval time.Duration) {
 	defer c.wait.Done()
 	ticker := time.NewTicker(updateInterval)
@@ -154,7 +171,9 @@ func (c *memcachedClient) updateMemcacheServers() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		c.provider.Resolve(ctx, c.addresses)
+		if err := c.provider.Resolve(ctx, c.addresses); err != nil {
+			return err
+		}
 		servers = c.provider.Addresses()
 	} else {
 		_, addrs, err := net.LookupSRV(c.service, "tcp", c.hostname)

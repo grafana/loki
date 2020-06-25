@@ -367,34 +367,13 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		firstTable = lastTable - tablesToKeep
 	}
 	for i := firstTable; i <= lastTable; i++ {
-		table := TableDesc{
-			Name:              cfg.tableForPeriod(i),
-			ProvisionedRead:   pCfg.InactiveReadThroughput,
-			ProvisionedWrite:  pCfg.InactiveWriteThroughput,
-			UseOnDemandIOMode: pCfg.InactiveThroughputOnDemandMode,
-			Tags:              cfg.Tags,
-		}
-		level.Debug(util.Logger).Log("msg", "Expected Table", "tableName", table.Name,
-			"provisionedRead", table.ProvisionedRead,
-			"provisionedWrite", table.ProvisionedWrite,
-			"useOnDemandMode", table.UseOnDemandIOMode,
-		)
+		tableName := cfg.tableForPeriod(i)
+		table := TableDesc{}
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
-			table.ProvisionedRead = pCfg.ProvisionedReadThroughput
-			table.ProvisionedWrite = pCfg.ProvisionedWriteThroughput
-			table.UseOnDemandIOMode = pCfg.ProvisionedThroughputOnDemandMode
+			table = pCfg.ActiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags)
 
-			if pCfg.WriteScale.Enabled {
-				table.WriteScale = pCfg.WriteScale
-				table.UseOnDemandIOMode = false
-			}
-
-			if pCfg.ReadScale.Enabled {
-				table.ReadScale = pCfg.ReadScale
-				table.UseOnDemandIOMode = false
-			}
 			level.Debug(util.Logger).Log("msg", "Table is Active",
 				"tableName", table.Name,
 				"provisionedRead", table.ProvisionedRead,
@@ -403,18 +382,12 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 				"useWriteAutoScale", table.WriteScale.Enabled,
 				"useReadAutoScale", table.ReadScale.Enabled)
 
-		} else if pCfg.InactiveWriteScale.Enabled || pCfg.InactiveReadScale.Enabled {
+		} else {
 			// Autoscale last N tables
 			// this is measured against "now", since the lastWeek is the final week in the schema config range
 			// the N last tables in that range will always be set to the inactive scaling settings.
-			if pCfg.InactiveWriteScale.Enabled && i >= (nowWeek-pCfg.InactiveWriteScaleLastN) {
-				table.WriteScale = pCfg.InactiveWriteScale
-				table.UseOnDemandIOMode = false
-			}
-			if pCfg.InactiveReadScale.Enabled && i >= (nowWeek-pCfg.InactiveReadScaleLastN) {
-				table.ReadScale = pCfg.InactiveReadScale
-				table.UseOnDemandIOMode = false
-			}
+			disableAutoscale := i < (nowWeek - pCfg.InactiveWriteScaleLastN)
+			table = pCfg.InactiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags, disableAutoscale)
 
 			level.Debug(util.Logger).Log("msg", "Table is Inactive",
 				"tableName", table.Name,

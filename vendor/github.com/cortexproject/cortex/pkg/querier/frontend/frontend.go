@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"path"
@@ -52,7 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
-	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. 0 to disable.")
+	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -64,7 +63,7 @@ type Frontend struct {
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
-	queues map[string]chan *request
+	queues *queueIterator
 
 	// Metrics.
 	queueDuration prometheus.Histogram
@@ -86,7 +85,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
-		queues: map[string]chan *request{},
+		queues: newQueueIterator(cfg.MaxOutstandingPerTenant),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_duration_seconds",
@@ -111,6 +110,11 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 		}
 
 		f.roundTripper = RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(r.Context())
+			if tracer != nil && span != nil {
+				carrier := opentracing.HTTPHeadersCarrier(r.Header)
+				tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
+			}
 			r.URL.Scheme = u.Scheme
 			r.URL.Host = u.Host
 			r.URL.Path = path.Join(u.Path, r.URL.Path)
@@ -141,7 +145,7 @@ func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 func (f *Frontend) Close() {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
-	for len(f.queues) > 0 {
+	for f.queues.len() > 0 {
 		f.cond.Wait()
 	}
 }
@@ -160,37 +164,40 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
-	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
+	if err != nil {
+		writeError(w, err)
+	} else {
+		hs := w.Header()
+		for h, vs := range resp.Header {
+			hs[h] = vs
+		}
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}
+
+	// If LogQueriesLongerThan is set to <0 we log every query, if it is set to 0 query logging
+	// is disabled
+	if f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
 		logMessage := []interface{}{
-			"msg", "slow query",
+			"msg", "slow query detected",
+			"method", r.Method,
 			"host", r.Host,
 			"path", r.URL.Path,
 			"time_taken", queryResponseTime.String(),
 		}
-		for k, v := range r.URL.Query() {
-			logMessage = append(logMessage, fmt.Sprintf("qs_%s", k), strings.Join(v, ","))
+
+		// Ensure the form has been parsed so all the parameters are present
+		err = r.ParseForm()
+		if err != nil {
+			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
 		}
-		pf := r.PostForm.Encode()
-		if pf != "" {
-			logMessage = append(logMessage, "body", pf)
+
+		// Attempt to iterate through the Form to log any filled in values
+		for k, v := range r.Form {
+			logMessage = append(logMessage, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
 		}
+
 		level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
-	}
-
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-
-	hs := w.Header()
-	for h, vs := range resp.Header {
-		hs[h] = vs
-	}
-	w.WriteHeader(resp.StatusCode)
-
-	if _, err = io.Copy(w, resp.Body); err != nil {
-		server.WriteError(w, err)
-		return
 	}
 }
 
@@ -343,11 +350,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	queue, ok := f.queues[userID]
-	if !ok {
-		queue = make(chan *request, f.cfg.MaxOutstandingPerTenant)
-		f.queues[userID] = queue
-	}
+	queue := f.queues.getOrAddQueue(userID)
 
 	select {
 	case queue <- req:
@@ -366,7 +369,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	defer f.mtx.Unlock()
 
 FindQueue:
-	for len(f.queues) == 0 && ctx.Err() == nil {
+	for f.queues.len() == 0 && ctx.Err() == nil {
 		f.cond.Wait()
 	}
 
@@ -374,16 +377,10 @@ FindQueue:
 		return nil, err
 	}
 
-	keys := make([]string, 0, len(f.queues))
-	for k := range f.queues {
-		keys = append(keys, k)
-	}
-	rand.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] })
-
-	for _, userID := range keys {
-		queue, ok := f.queues[userID]
-		if !ok {
-			continue
+	for {
+		queue, userID := f.queues.getNextQueue()
+		if queue == nil {
+			break
 		}
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
@@ -402,7 +399,7 @@ FindQueue:
 			lastRequest := false
 			request := <-queue
 			if len(queue) == 0 {
-				delete(f.queues, userID)
+				f.queues.deleteQueue(userID)
 				lastRequest = true
 			}
 

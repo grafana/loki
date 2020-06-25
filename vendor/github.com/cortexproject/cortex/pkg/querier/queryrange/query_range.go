@@ -76,22 +76,13 @@ type Request interface {
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
 	proto.Message
+	// LogToSpan writes information about this request to an OpenTracing span
+	LogToSpan(opentracing.Span)
 }
 
 // Response represents a query range response.
 type Response interface {
 	proto.Message
-}
-
-// LogToSpan writes information about this request to the OpenTracing span
-// in the context, if there is one.
-func LogToSpan(ctx context.Context, r Request) {
-	if span := opentracing.SpanFromContext(ctx); span != nil {
-		span.LogFields(otlog.String("query", r.GetQuery()),
-			otlog.String("start", timestamp.Time(r.GetStart()).String()),
-			otlog.String("end", timestamp.Time(r.GetEnd()).String()),
-			otlog.Int64("step (ms)", r.GetStep()))
-	}
 }
 
 type prometheusCodec struct{}
@@ -109,6 +100,16 @@ func (q *PrometheusRequest) WithQuery(query string) Request {
 	new := *q
 	new.Query = query
 	return &new
+}
+
+// WithQuery clones the current `PrometheusRequest` with a new query.
+func (q *PrometheusRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("query", q.GetQuery()),
+		otlog.String("start", timestamp.Time(q.GetStart()).String()),
+		otlog.String("end", timestamp.Time(q.GetEnd()).String()),
+		otlog.Int64("step (ms)", q.GetStep()),
+	)
 }
 
 type byFirstTime []*PrometheusResponse
@@ -129,26 +130,40 @@ func (resp *PrometheusResponse) minTime() int64 {
 }
 
 func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
-	promResponses := make([]*PrometheusResponse, 0, len(responses))
-	for _, res := range responses {
-		promResponses = append(promResponses, res.(*PrometheusResponse))
-	}
-	// Merge the responses.
-	sort.Sort(byFirstTime(promResponses))
-
-	if len(promResponses) == 0 {
+	if len(responses) == 0 {
 		return &PrometheusResponse{
 			Status: StatusSuccess,
 		}, nil
 	}
 
-	return &PrometheusResponse{
+	promResponses := make([]*PrometheusResponse, 0, len(responses))
+	// we need to pass on all the headers for results cache gen numbers.
+	var resultsCacheGenNumberHeaderValues []string
+
+	for _, res := range responses {
+		promResponses = append(promResponses, res.(*PrometheusResponse))
+		resultsCacheGenNumberHeaderValues = append(resultsCacheGenNumberHeaderValues, getHeaderValuesWithName(res, ResultsCacheGenNumberHeaderName)...)
+	}
+
+	// Merge the responses.
+	sort.Sort(byFirstTime(promResponses))
+
+	response := PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
 		},
-	}, nil
+	}
+
+	if len(resultsCacheGenNumberHeaderValues) != 0 {
+		response.Headers = []*PrometheusResponseHeader{{
+			Name:   ResultsCacheGenNumberHeaderName,
+			Values: resultsCacheGenNumberHeaderValues,
+		}}
+	}
+
+	return &response, nil
 }
 
 func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {
@@ -250,6 +265,8 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
+
+	sp.LogFields(otlog.Int("series", len(a.Data.Result)))
 
 	b, err := json.Marshal(a)
 	if err != nil {

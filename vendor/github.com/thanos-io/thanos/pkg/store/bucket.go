@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,8 +30,11 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
-	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/index"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/indexheader"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -41,14 +45,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/pool"
+	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -241,7 +244,7 @@ type BucketStore struct {
 	blockSyncConcurrency int
 
 	// Query gate which limits the maximum amount of concurrent queries.
-	queryGate gate.Gater
+	queryGate gate.Gate
 
 	// samplesLimiter limits the number of samples per each Series() call.
 	samplesLimiter SampleLimiter
@@ -250,13 +253,15 @@ type BucketStore struct {
 	filterConfig             *FilterConfig
 	advLabelSets             []storepb.LabelSet
 	enableCompatibilityLabel bool
-	enableIndexHeader        bool
 
 	// Reencode postings using diff+varint+snappy when storing to cache.
 	// This makes them smaller, but takes extra CPU and memory.
 	// When used with in-memory cache, memory usage should decrease overall, thanks to postings being smaller.
 	enablePostingsCompression   bool
 	postingOffsetsInMemSampling int
+
+	// Enables hints in the Series() response.
+	enableSeriesResponseHints bool
 }
 
 // NewBucketStore creates a new bucket backed store that implements the store API against
@@ -275,9 +280,9 @@ func NewBucketStore(
 	blockSyncConcurrency int,
 	filterConfig *FilterConfig,
 	enableCompatibilityLabel bool,
-	enableIndexHeader bool,
 	enablePostingsCompression bool,
 	postingOffsetsInMemSampling int,
+	enableSeriesResponseHints bool, // TODO(pracucci) Thanos 0.12 and below doesn't gracefully handle new fields in SeriesResponse. Drop this flag and always enable hints once we can drop backward compatibility.
 ) (*BucketStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -294,27 +299,24 @@ func NewBucketStore(
 
 	metrics := newBucketStoreMetrics(reg)
 	s := &BucketStore{
-		logger:               logger,
-		bkt:                  bkt,
-		fetcher:              fetcher,
-		dir:                  dir,
-		indexCache:           indexCache,
-		chunkPool:            chunkPool,
-		blocks:               map[ulid.ULID]*bucketBlock{},
-		blockSets:            map[uint64]*bucketBlockSet{},
-		debugLogging:         debugLogging,
-		blockSyncConcurrency: blockSyncConcurrency,
-		filterConfig:         filterConfig,
-		queryGate: gate.NewGate(
-			maxConcurrent,
-			extprom.WrapRegistererWithPrefix("thanos_bucket_store_series_", reg),
-		),
+		logger:                      logger,
+		bkt:                         bkt,
+		fetcher:                     fetcher,
+		dir:                         dir,
+		indexCache:                  indexCache,
+		chunkPool:                   chunkPool,
+		blocks:                      map[ulid.ULID]*bucketBlock{},
+		blockSets:                   map[uint64]*bucketBlockSet{},
+		debugLogging:                debugLogging,
+		blockSyncConcurrency:        blockSyncConcurrency,
+		filterConfig:                filterConfig,
+		queryGate:                   gate.NewKeeper(extprom.WrapRegistererWithPrefix("thanos_bucket_store_series_", reg)).NewGate(maxConcurrent),
 		samplesLimiter:              NewLimiter(maxSampleCount, metrics.queriesDropped),
 		partitioner:                 gapBasedPartitioner{maxGapSize: partitionerMaxGapSize},
 		enableCompatibilityLabel:    enableCompatibilityLabel,
-		enableIndexHeader:           enableIndexHeader,
 		enablePostingsCompression:   enablePostingsCompression,
 		postingOffsetsInMemSampling: postingOffsetsInMemSampling,
+		enableSeriesResponseHints:   enableSeriesResponseHints,
 	}
 	s.metrics = metrics
 
@@ -418,9 +420,13 @@ func (s *BucketStore) InitialSync(ctx context.Context) error {
 		return errors.Wrap(err, "sync block")
 	}
 
-	names, err := fileutil.ReadDir(s.dir)
+	fis, err := ioutil.ReadDir(s.dir)
 	if err != nil {
 		return errors.Wrap(err, "read dir")
+	}
+	names := make([]string, 0, len(fis))
+	for _, fi := range fis {
+		names = append(names, fi.Name())
 	}
 	for _, n := range names {
 		id, ok := block.IsBlockDir(n)
@@ -467,17 +473,9 @@ func (s *BucketStore) addBlock(ctx context.Context, meta *metadata.Meta) (err er
 	lset := labels.FromMap(meta.Thanos.Labels)
 	h := lset.Hash()
 
-	var indexHeaderReader indexheader.Reader
-	if s.enableIndexHeader {
-		indexHeaderReader, err = indexheader.NewBinaryReader(ctx, s.logger, s.bkt, s.dir, meta.ULID, s.postingOffsetsInMemSampling)
-		if err != nil {
-			return errors.Wrap(err, "create index header reader")
-		}
-	} else {
-		indexHeaderReader, err = indexheader.NewJSONReader(ctx, s.logger, s.bkt, s.dir, meta.ULID)
-		if err != nil {
-			return errors.Wrap(err, "create index cache reader")
-		}
+	indexHeaderReader, err := indexheader.NewBinaryReader(ctx, s.logger, s.bkt, s.dir, meta.ULID, s.postingOffsetsInMemSampling)
+	if err != nil {
+		return errors.Wrap(err, "create index header reader")
 	}
 	defer func() {
 		if err != nil {
@@ -847,7 +845,7 @@ func debugFoundBlockSetOverview(logger log.Logger, mint, maxt, maxResolutionMill
 // Series implements the storepb.StoreServer interface.
 func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) (err error) {
 	tracing.DoInSpan(srv.Context(), "store_query_gate_ismyturn", func(ctx context.Context) {
-		err = s.queryGate.IsMyTurn(srv.Context())
+		err = s.queryGate.Start(srv.Context())
 	})
 	if err != nil {
 		return errors.Wrapf(err, "failed to wait for turn")
@@ -855,7 +853,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 	defer s.queryGate.Done()
 
-	matchers, err := translateMatchers(req.Matchers)
+	matchers, err := promclient.TranslateMatchers(req.Matchers)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -863,12 +861,26 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 	req.MaxTime = s.limitMaxTime(req.MaxTime)
 
 	var (
-		ctx     = srv.Context()
-		stats   = &queryStats{}
-		res     []storepb.SeriesSet
-		mtx     sync.Mutex
-		g, gctx = errgroup.WithContext(ctx)
+		ctx              = srv.Context()
+		stats            = &queryStats{}
+		res              []storepb.SeriesSet
+		mtx              sync.Mutex
+		g, gctx          = errgroup.WithContext(ctx)
+		resHints         = &hintspb.SeriesResponseHints{}
+		reqBlockMatchers []*labels.Matcher
 	)
+
+	if req.Hints != nil {
+		reqHints := &hintspb.SeriesRequestHints{}
+		if err := types.UnmarshalAny(req.Hints, reqHints); err != nil {
+			return status.Error(codes.InvalidArgument, errors.Wrap(err, "unmarshal series request hints").Error())
+		}
+
+		reqBlockMatchers, err = promclient.TranslateMatchers(reqHints.BlockMatchers)
+		if err != nil {
+			return status.Error(codes.InvalidArgument, errors.Wrap(err, "translate request hints labels matchers").Error())
+		}
+	}
 
 	s.mtx.RLock()
 
@@ -878,11 +890,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 			continue
 		}
 
-		blocks := bs.getFor(req.MinTime, req.MaxTime, req.MaxResolutionWindow)
-
-		mtx.Lock()
-		stats.blocksQueried += len(blocks)
-		mtx.Unlock()
+		blocks := bs.getFor(req.MinTime, req.MaxTime, req.MaxResolutionWindow, reqBlockMatchers)
 
 		if s.debugLogging {
 			debugFoundBlockSetOverview(s.logger, req.MinTime, req.MaxTime, req.MaxResolutionWindow, bs.labels, blocks)
@@ -890,6 +898,11 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 		for _, b := range blocks {
 			b := b
+
+			if s.enableSeriesResponseHints {
+				// Keep track of queried blocks.
+				resHints.AddQueriedBlock(b.meta.ULID)
+			}
 
 			// We must keep the readers open until all their data has been sent.
 			indexr := b.indexReader(gctx)
@@ -960,6 +973,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		if err != nil {
 			return status.Error(codes.Aborted, err.Error())
 		}
+		stats.blocksQueried = len(res)
 		stats.getAllDuration = time.Since(begin)
 		s.metrics.seriesGetAllDuration.Observe(stats.getAllDuration.Seconds())
 		s.metrics.seriesBlocksQueried.Observe(float64(stats.blocksQueried))
@@ -968,9 +982,8 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 	tracing.DoInSpan(ctx, "bucket_store_merge_all", func(ctx context.Context) {
 		begin := time.Now()
 
-		// Merge series set into an union of all block sets. This exposes all blocks are single seriesSet.
-		// Chunks of returned series might be out of order w.r.t to their time range.
-		// This must be accounted for later by clients.
+		// NOTE: We "carefully" assume series and chunks are sorted within each SeriesSet. This should be guaranteed by
+		// blockSeries method. In worst case deduplication logic won't deduplicate correctly, which will be accounted later.
 		set := storepb.MergeSeriesSets(res...)
 		for set.Next() {
 			var series storepb.Series
@@ -1000,6 +1013,21 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 		err = nil
 	})
+
+	if s.enableSeriesResponseHints {
+		var anyHints *types.Any
+
+		if anyHints, err = types.MarshalAny(resHints); err != nil {
+			err = status.Error(codes.Unknown, errors.Wrap(err, "marshal series response hints").Error())
+			return
+		}
+
+		if err = srv.Send(storepb.NewHintsSeriesResponse(anyHints)); err != nil {
+			err = status.Error(codes.Unknown, errors.Wrap(err, "send series response hints").Error())
+			return
+		}
+	}
+
 	return err
 }
 
@@ -1156,7 +1184,7 @@ func int64index(s []int64, x int64) int {
 // It supports overlapping blocks.
 //
 // NOTE: s.blocks are expected to be sorted in minTime order.
-func (s *bucketBlockSet) getFor(mint, maxt, maxResolutionMillis int64) (bs []*bucketBlock) {
+func (s *bucketBlockSet) getFor(mint, maxt, maxResolutionMillis int64, blockMatchers []*labels.Matcher) (bs []*bucketBlock) {
 	if mint > maxt {
 		return nil
 	}
@@ -1183,15 +1211,20 @@ func (s *bucketBlockSet) getFor(mint, maxt, maxResolutionMillis int64) (bs []*bu
 		}
 
 		if i+1 < len(s.resolutions) {
-			bs = append(bs, s.getFor(start, b.meta.MinTime-1, s.resolutions[i+1])...)
+			bs = append(bs, s.getFor(start, b.meta.MinTime-1, s.resolutions[i+1], blockMatchers)...)
 		}
-		bs = append(bs, b)
+
+		// Include the block in the list of matching ones only if there are no block-level matchers
+		// or they actually match.
+		if len(blockMatchers) == 0 || b.matchRelabelLabels(blockMatchers) {
+			bs = append(bs, b)
+		}
 
 		start = b.meta.MaxTime
 	}
 
 	if i+1 < len(s.resolutions) {
-		bs = append(bs, s.getFor(start, maxt, s.resolutions[i+1])...)
+		bs = append(bs, s.getFor(start, maxt, s.resolutions[i+1], blockMatchers)...)
 	}
 	return bs
 }
@@ -1235,6 +1268,10 @@ type bucketBlock struct {
 	seriesRefetches prometheus.Counter
 
 	enablePostingsCompression bool
+
+	// Block's labels used by block-level matchers to filter blocks to query. These are used to select blocks using
+	// request hints' BlockMatchers.
+	relabelLabels labels.Labels
 }
 
 func newBucketBlock(
@@ -1262,6 +1299,14 @@ func newBucketBlock(
 		seriesRefetches:           seriesRefetches,
 		enablePostingsCompression: enablePostingsCompression,
 	}
+
+	// Translate the block's labels and inject the block ID as a label
+	// to allow to match blocks also by ID.
+	b.relabelLabels = append(labels.FromMap(meta.Thanos.Labels), labels.Label{
+		Name:  block.BlockIDLabel,
+		Value: meta.ULID.String(),
+	})
+	sort.Sort(b.relabelLabels)
 
 	// Get object handles for all chunk files.
 	if err = bkt.Iter(ctx, path.Join(meta.ULID.String(), block.ChunksDirname), func(n string) error {
@@ -1321,6 +1366,16 @@ func (b *bucketBlock) indexReader(ctx context.Context) *bucketIndexReader {
 func (b *bucketBlock) chunkReader(ctx context.Context) *bucketChunkReader {
 	b.pendingReaders.Add(1)
 	return newBucketChunkReader(ctx, b)
+}
+
+// matchRelabelLabels verifies whether the block matches the given matchers.
+func (b *bucketBlock) matchRelabelLabels(matchers []*labels.Matcher) bool {
+	for _, m := range matchers {
+		if !m.Matches(b.relabelLabels.Get(m.Name)) {
+			return false
+		}
+	}
+	return true
 }
 
 // Close waits for all pending readers to finish and then closes all underlying resources.
@@ -1485,21 +1540,15 @@ func checkNilPosting(l labels.Label, p index.Postings) index.Postings {
 	return p
 }
 
-var (
-	allPostingsGroup   = newPostingGroup(true, nil, nil)
-	emptyPostingsGroup = newPostingGroup(false, nil, nil)
-)
-
 // NOTE: Derived from tsdb.postingsForMatcher. index.Merge is equivalent to map duplication.
 func toPostingGroup(lvalsFn func(name string) ([]string, error), m *labels.Matcher) (*postingGroup, error) {
-	// This matches any label value, and also series that don't have this label at all.
-	if m.Type == labels.MatchRegexp && (m.Value == ".*" || m.Value == "^.*$") {
-		return allPostingsGroup, nil
-	}
-
-	// NOT matching any value = match nothing. We can shortcut this easily.
-	if m.Type == labels.MatchNotRegexp && (m.Value == ".*" || m.Value == "^.*$") {
-		return emptyPostingsGroup, nil
+	if m.Type == labels.MatchRegexp && len(findSetMatches(m.Value)) > 0 {
+		vals := findSetMatches(m.Value)
+		toAdd := make([]labels.Label, 0, len(vals))
+		for _, val := range vals {
+			toAdd = append(toAdd, labels.Label{Name: m.Name, Value: val})
+		}
+		return newPostingGroup(false, toAdd, nil), nil
 	}
 
 	// If the matcher selects an empty value, it selects all the series which don't
@@ -2027,6 +2076,7 @@ func (b rawChunk) Encoding() chunkenc.Encoding {
 func (b rawChunk) Bytes() []byte {
 	return b[1:]
 }
+func (b rawChunk) Compact() {}
 
 func (b rawChunk) Iterator(_ chunkenc.Iterator) chunkenc.Iterator {
 	panic("invalid call")

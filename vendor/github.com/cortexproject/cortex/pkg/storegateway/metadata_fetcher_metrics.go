@@ -32,23 +32,23 @@ func NewMetadataFetcherMetrics() *MetadataFetcherMetrics {
 		regs: map[string]*prometheus.Registry{},
 
 		syncs: prometheus.NewDesc(
-			"blocks_meta_syncs_total",
+			"cortex_blocks_meta_syncs_total",
 			"Total blocks metadata synchronization attempts",
 			nil, nil),
 		syncFailures: prometheus.NewDesc(
-			"blocks_meta_sync_failures_total",
+			"cortex_blocks_meta_sync_failures_total",
 			"Total blocks metadata synchronization failures",
 			nil, nil),
 		syncDuration: prometheus.NewDesc(
-			"blocks_meta_sync_duration_seconds",
+			"cortex_blocks_meta_sync_duration_seconds",
 			"Duration of the blocks metadata synchronization in seconds",
 			nil, nil),
 		syncConsistencyDelay: prometheus.NewDesc(
-			"blocks_meta_sync_consistency_delay_seconds",
+			"cortex_blocks_meta_sync_consistency_delay_seconds",
 			"Configured consistency delay in seconds.",
 			nil, nil),
 		synced: prometheus.NewDesc(
-			"blocks_meta_synced",
+			"cortex_blocks_meta_synced",
 			"Reflects current state of synced blocks (over all tenants).",
 			[]string{"state"}, nil),
 	}

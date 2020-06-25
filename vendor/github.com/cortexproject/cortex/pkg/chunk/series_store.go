@@ -3,7 +3,6 @@ package chunk
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -13,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
@@ -116,7 +114,7 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 	// Protect ourselves against OOMing.
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
 	if maxChunksPerQuery > 0 && len(chunks) > maxChunksPerQuery {
-		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunks), maxChunksPerQuery)
+		err := QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunks), maxChunksPerQuery))
 		level.Error(log).Log("err", err)
 		return nil, err
 	}
@@ -183,6 +181,11 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 	chunks = filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("chunks-post-filtering", len(chunks))
 	chunksPerQuery.Observe(float64(len(chunks)))
+
+	// We should return an empty chunks slice if there are no chunks.
+	if len(chunks) == 0 {
+		return [][]Chunk{}, []*Fetcher{}, nil
+	}
 
 	return [][]Chunk{chunks}, []*Fetcher{c.baseStore.Fetcher}, nil
 }
@@ -416,10 +419,19 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
+	writeChunk := true
+
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
 	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
 	if len(found) > 0 {
+		writeChunk = false
 		dedupedChunksTotal.Inc()
+	}
+
+	// If we dont have to write the chunk and DisableIndexDeduplication is false, we do not have to do anything.
+	// If we dont have to write the chunk and DisableIndexDeduplication is true, we have to write index and not chunk.
+	// Otherwise write both index and chunk.
+	if !writeChunk && !c.cfg.DisableIndexDeduplication {
 		return nil
 	}
 
@@ -431,20 +443,31 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	}
 
 	if oic, ok := c.storage.(ObjectAndIndexClient); ok {
-		if err = oic.PutChunkAndIndex(ctx, chunk, writeReqs); err != nil {
+		chunks := chunks
+		if !writeChunk {
+			chunks = []Chunk{}
+		}
+		if err = oic.PutChunksAndIndex(ctx, chunks, writeReqs); err != nil {
 			return err
 		}
 	} else {
-		err := c.storage.PutChunks(ctx, chunks)
-		if err != nil {
-			return err
+		// chunk not found, write it.
+		if writeChunk {
+			err := c.storage.PutChunks(ctx, chunks)
+			if err != nil {
+				return err
+			}
 		}
 		if err := c.index.BatchWrite(ctx, writeReqs); err != nil {
 			return err
 		}
 	}
-	if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
-		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+
+	// we already have the chunk in the cache so don't write it back to the cache.
+	if writeChunk {
+		if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
+			level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+		}
 	}
 
 	bufs := make([][]byte, len(keysToCache))

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -15,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awsutil"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/private/checksum"
 	"github.com/aws/aws-sdk-go/private/protocol"
 	"github.com/aws/aws-sdk-go/private/protocol/eventstream"
 	"github.com/aws/aws-sdk-go/private/protocol/eventstream/eventstreamapi"
@@ -218,7 +218,7 @@ func (c *S3) CompleteMultipartUploadRequest(input *CompleteMultipartUploadInput)
 //    does not exist. The upload ID might be invalid, or the multipart upload
 //    might have been aborted or completed. 404 Not Found
 //
-// The following operations are related to DeleteBucketMetricsConfiguration:
+// The following operations are related to CompleteMultipartUpload:
 //
 //    * CreateMultipartUpload
 //
@@ -306,48 +306,15 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 //
 // You can store individual objects of up to 5 TB in Amazon S3. You create a
 // copy of your object up to 5 GB in size in a single atomic operation using
-// this API. However, for copying an object greater than 5 GB, you must use
-// the multipart upload Upload Part - Copy API. For more information, see Copy
-// Object Using the REST Multipart Upload API (https://docs.aws.amazon.com/AmazonS3/latest/dev/CopyingObjctsUsingRESTMPUapi.html).
-//
-// When copying an object, you can preserve all metadata (default) or specify
-// new metadata. However, the ACL is not preserved and is set to private for
-// the user making the request. To override the default ACL setting, specify
-// a new ACL when generating a copy request. For more information, see Using
-// ACLs (https://docs.aws.amazon.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html).
-//
-// Amazon S3 transfer acceleration does not support cross-region copies. If
-// you request a cross-region copy using a transfer acceleration endpoint, you
-// get a 400 Bad Request error. For more information about transfer acceleration,
-// see Transfer Acceleration (https://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html).
+// this API. However, to copy an object greater than 5 GB, you must use the
+// multipart upload Upload Part - Copy API. For more information, see Copy Object
+// Using the REST Multipart Upload API (https://docs.aws.amazon.com/AmazonS3/latest/dev/CopyingObjctsUsingRESTMPUapi.html).
 //
 // All copy requests must be authenticated. Additionally, you must have read
 // access to the source object and write access to the destination bucket. For
 // more information, see REST Authentication (https://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html).
 // Both the Region that you want to copy the object from and the Region that
 // you want to copy the object to must be enabled for your account.
-//
-// To only copy an object under certain conditions, such as whether the Etag
-// matches or whether the object was modified before or after a specified date,
-// use the request parameters x-amz-copy-source-if-match, x-amz-copy-source-if-none-match,
-// x-amz-copy-source-if-unmodified-since, or x-amz-copy-source-if-modified-since.
-//
-// All headers with the x-amz- prefix, including x-amz-copy-source, must be
-// signed.
-//
-// You can use this operation to change the storage class of an object that
-// is already stored in Amazon S3 using the StorageClass parameter. For more
-// information, see Storage Classes (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html).
-//
-// The source object that you are copying can be encrypted or unencrypted. If
-// the source object is encrypted, it can be encrypted by server-side encryption
-// using AWS managed encryption keys or by using a customer-provided encryption
-// key. When copying an object, you can request that Amazon S3 encrypt the target
-// object by using either the AWS managed encryption keys or by using your own
-// encryption key. You can do this regardless of the form of server-side encryption
-// that was used to encrypt the source, or even if the source object was not
-// encrypted. For more information about server-side encryption, see Using Server-Side
-// Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html).
 //
 // A copy request might return an error when Amazon S3 receives the copy request
 // or while Amazon S3 is copying the files. If the error occurs before the copy
@@ -364,31 +331,104 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // it were not, it would not contain the content-length, and you would need
 // to read the entire body.
 //
-// Consider the following when using request headers:
+// The copy request charge is based on the storage class and Region that you
+// specify for the destination object. For pricing information, see Amazon S3
+// pricing (https://aws.amazon.com/s3/pricing/).
 //
-//    * Consideration 1 – If both the x-amz-copy-source-if-match and x-amz-copy-source-if-unmodified-since
-//    headers are present in the request and evaluate as follows, Amazon S3
-//    returns 200 OK and copies the data: x-amz-copy-source-if-match condition
-//    evaluates to true x-amz-copy-source-if-unmodified-since condition evaluates
-//    to false
+// Amazon S3 transfer acceleration does not support cross-Region copies. If
+// you request a cross-Region copy using a transfer acceleration endpoint, you
+// get a 400 Bad Request error. For more information, see Transfer Acceleration
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html).
 //
-//    * Consideration 2 – If both of the x-amz-copy-source-if-none-match and
-//    x-amz-copy-source-if-modified-since headers are present in the request
-//    and evaluate as follows, Amazon S3 returns the 412 Precondition Failed
-//    response code: x-amz-copy-source-if-none-match condition evaluates to
-//    false x-amz-copy-source-if-modified-since condition evaluates to true
+// Metadata
 //
-// The copy request charge is based on the storage class and Region you specify
-// for the destination object. For pricing information, see Amazon S3 Pricing
-// (https://aws.amazon.com/s3/pricing/).
+// When copying an object, you can preserve all metadata (default) or specify
+// new metadata. However, the ACL is not preserved and is set to private for
+// the user making the request. To override the default ACL setting, specify
+// a new ACL when generating a copy request. For more information, see Using
+// ACLs (https://docs.aws.amazon.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html).
 //
-// Following are other considerations when using CopyObject:
+// To specify whether you want the object metadata copied from the source object
+// or replaced with metadata provided in the request, you can optionally add
+// the x-amz-metadata-directive header. When you grant permissions, you can
+// use the s3:x-amz-metadata-directive condition key to enforce certain metadata
+// behavior when objects are uploaded. For more information, see Specifying
+// Conditions in a Policy (https://docs.aws.amazon.com/AmazonS3/latest/dev/amazon-s3-policy-keys.html)
+// in the Amazon S3 Developer Guide. For a complete list of Amazon S3-specific
+// condition keys, see Actions, Resources, and Condition Keys for Amazon S3
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/list_amazons3.html).
+//
+//  x-amz-copy-source-if Headers
+//
+// To only copy an object under certain conditions, such as whether the Etag
+// matches or whether the object was modified before or after a specified date,
+// use the following request parameters:
+//
+//    * x-amz-copy-source-if-match
+//
+//    * x-amz-copy-source-if-none-match
+//
+//    * x-amz-copy-source-if-unmodified-since
+//
+//    * x-amz-copy-source-if-modified-since
+//
+// If both the x-amz-copy-source-if-match and x-amz-copy-source-if-unmodified-since
+// headers are present in the request and evaluate as follows, Amazon S3 returns
+// 200 OK and copies the data:
+//
+//    * x-amz-copy-source-if-match condition evaluates to true
+//
+//    * x-amz-copy-source-if-unmodified-since condition evaluates to false
+//
+// If both the x-amz-copy-source-if-none-match and x-amz-copy-source-if-modified-since
+// headers are present in the request and evaluate as follows, Amazon S3 returns
+// the 412 Precondition Failed response code:
+//
+//    * x-amz-copy-source-if-none-match condition evaluates to false
+//
+//    * x-amz-copy-source-if-modified-since condition evaluates to true
+//
+// All headers with the x-amz- prefix, including x-amz-copy-source, must be
+// signed.
+//
+// Encryption
+//
+// The source object that you are copying can be encrypted or unencrypted. The
+// source object can be encrypted with server-side encryption using AWS managed
+// encryption keys (SSE-S3 or SSE-KMS) or by using a customer-provided encryption
+// key. With server-side encryption, Amazon S3 encrypts your data as it writes
+// it to disks in its data centers and decrypts the data when you access it.
+//
+// You can optionally use the appropriate encryption-related headers to request
+// server-side encryption for the target object. You have the option to provide
+// your own encryption key or use SSE-S3 or SSE-KMS, regardless of the form
+// of server-side encryption that was used to encrypt the source object. You
+// can even request encryption if the source object was not encrypted. For more
+// information about server-side encryption, see Using Server-Side Encryption
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html).
+//
+// Access Control List (ACL)-Specific Request Headers
+//
+// When copying an object, you can optionally use headers to grant ACL-based
+// permissions. By default, all objects are private. Only the owner has full
+// access control. When adding a new object, you can grant permissions to individual
+// AWS accounts or to predefined groups defined by Amazon S3. These permissions
+// are then added to the ACL on the object. For more information, see Access
+// Control List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html)
+// and Managing ACLs Using the REST API (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-using-rest-api.html).
+//
+// Storage Class Options
+//
+// You can use the CopyObject operation to change the storage class of an object
+// that is already stored in Amazon S3 using the StorageClass parameter. For
+// more information, see Storage Classes (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html)
+// in the Amazon S3 Service Developer Guide.
 //
 // Versioning
 //
 // By default, x-amz-copy-source identifies the current version of an object
-// to copy. (If the current version is a delete marker, Amazon S3 behaves as
-// if the object was deleted.) To copy a different version, use the versionId
+// to copy. If the current version is a delete marker, Amazon S3 behaves as
+// if the object was deleted. To copy a different version, use the versionId
 // subresource.
 //
 // If you enable versioning on the target bucket, Amazon S3 generates a unique
@@ -402,82 +442,6 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // If the source object's storage class is GLACIER, you must restore a copy
 // of this object before you can use it as a source object for the copy operation.
 // For more information, see .
-//
-// Access Permissions
-//
-// When copying an object, you can optionally specify the accounts or groups
-// that should be granted specific permissions on the new object. There are
-// two ways to grant the permissions using the request headers:
-//
-//    * Specify a canned ACL with the x-amz-acl request header. For more information,
-//    see Canned ACL (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#CannedACL).
-//
-//    * Specify access permissions explicitly with the x-amz-grant-read, x-amz-grant-read-acp,
-//    x-amz-grant-write-acp, and x-amz-grant-full-control headers. These parameters
-//    map to the set of permissions that Amazon S3 supports in an ACL. For more
-//    information, see Access Control List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html).
-//
-// You can use either a canned ACL or specify access permissions explicitly.
-// You cannot do both.
-//
-// Server-Side- Encryption-Specific Request Headers
-//
-// To encrypt the target object, you must provide the appropriate encryption-related
-// request headers. The one you use depends on whether you want to use AWS managed
-// encryption keys or provide your own encryption key.
-//
-//    * To encrypt the target object using server-side encryption with an AWS
-//    managed encryption key, provide the following request headers, as appropriate.
-//    x-amz-server-side​-encryption x-amz-server-side-encryption-aws-kms-key-id
-//    x-amz-server-side-encryption-context If you specify x-amz-server-side-encryption:aws:kms
-//    but don't provide x-amz-server-side- encryption-aws-kms-key-id, Amazon
-//    S3 uses the AWS managed customer master key (CMK) in AWS KMS to protect
-//    the data. All GET and PUT requests for an object protected by AWS KMS
-//    fail if you don't make them with SSL or by using SigV4. For more information
-//    about server-side encryption with CMKs stored in AWS KMS (SSE-KMS), see
-//    Protecting Data Using Server-Side Encryption with CMKs stored in KMS (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html).
-//
-//    * To encrypt the target object using server-side encryption with an encryption
-//    key that you provide, use the following headers. x-amz-server-side​-encryption​-customer-algorithm
-//    x-amz-server-side​-encryption​-customer-key x-amz-server-side​-encryption​-customer-key-MD5
-//
-//    * If the source object is encrypted using server-side encryption with
-//    customer-provided encryption keys, you must use the following headers.
-//    x-amz-copy-source​-server-side​-encryption​-customer-algorithm x-amz-copy-source​-server-side​-encryption​-customer-key
-//    x-amz-copy-source-​server-side​-encryption​-customer-key-MD5 For
-//    more information about server-side encryption with CMKs stored in AWS
-//    KMS (SSE-KMS), see Protecting Data Using Server-Side Encryption with CMKs
-//    stored in Amazon KMS (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html).
-//
-// Access-Control-List (ACL)-Specific Request Headers
-//
-// You also can use the following access control–related headers with this
-// operation. By default, all objects are private. Only the owner has full access
-// control. When adding a new object, you can grant permissions to individual
-// AWS accounts or to predefined groups defined by Amazon S3. These permissions
-// are then added to the access control list (ACL) on the object. For more information,
-// see Using ACLs (https://docs.aws.amazon.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html).
-// With this operation, you can grant access permissions using one of the following
-// two methods:
-//
-//    * Specify a canned ACL (x-amz-acl) — Amazon S3 supports a set of predefined
-//    ACLs, known as canned ACLs. Each canned ACL has a predefined set of grantees
-//    and permissions. For more information, see Canned ACL (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#CannedACL).
-//
-//    * Specify access permissions explicitly — To explicitly grant access
-//    permissions to specific AWS accounts or groups, use the following headers.
-//    Each header maps to specific permissions that Amazon S3 supports in an
-//    ACL. For more information, see Access Control List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html).
-//    In the header, you specify a list of grantees who get the specific permission.
-//    To grant permissions explicitly, use: x-amz-grant-read x-amz-grant-write
-//    x-amz-grant-read-acp x-amz-grant-write-acp x-amz-grant-full-control You
-//    specify each grantee as a type=value pair, where the type is one of the
-//    following: emailAddress – if the value specified is the email address
-//    of an AWS account id – if the value specified is the canonical user
-//    ID of an AWS account uri – if you are granting permissions to a predefined
-//    group For example, the following x-amz-grant-read header grants the AWS
-//    accounts identified by email addresses permissions to read object data
-//    and its metadata: x-amz-grant-read: emailAddress="xyz@amazon.com", emailAddress="abc@amazon.com"
 //
 // The following operations are related to CopyObject:
 //
@@ -577,8 +541,8 @@ func (c *S3) CreateBucketRequest(input *CreateBucketInput) (req *request.Request
 // can optionally specify a Region in the request body. You might choose a Region
 // to optimize latency, minimize costs, or address regulatory requirements.
 // For example, if you reside in Europe, you will probably find it advantageous
-// to create buckets in the EU (Ireland) Region. For more information, see How
-// to Select a Region for Your Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html#access-bucket-intro).
+// to create buckets in the Europe (Ireland) Region. For more information, see
+// How to Select a Region for Your Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html#access-bucket-intro).
 //
 // If you send your create bucket request to the s3.amazonaws.com endpoint,
 // the request goes to the us-east-1 Region. Accordingly, the signature calculations
@@ -604,12 +568,19 @@ func (c *S3) CreateBucketRequest(input *CreateBucketInput) (req *request.Request
 //    in an ACL. For more information, see Access Control List (ACL) Overview
 //    (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html). You
 //    specify each grantee as a type=value pair, where the type is one of the
-//    following: emailAddress – if the value specified is the email address
-//    of an AWS account id – if the value specified is the canonical user
-//    ID of an AWS account uri – if you are granting permissions to a predefined
-//    group For example, the following x-amz-grant-read header grants the AWS
-//    accounts identified by email addresses permissions to read object data
-//    and its metadata: x-amz-grant-read: emailAddress="xyz@amazon.com", emailAddress="abc@amazon.com"
+//    following: id – if the value specified is the canonical user ID of an
+//    AWS account uri – if you are granting permissions to a predefined group
+//    emailAddress – if the value specified is the email address of an AWS
+//    account Using email addresses to specify a grantee is only supported in
+//    the following AWS Regions: US East (N. Virginia) US West (N. California)
+//    US West (Oregon) Asia Pacific (Singapore) Asia Pacific (Sydney) Asia Pacific
+//    (Tokyo) Europe (Ireland) South America (São Paulo) For a list of all
+//    the Amazon S3 supported Regions and endpoints, see Regions and Endpoints
+//    (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region) in
+//    the AWS General Reference. For example, the following x-amz-grant-read
+//    header grants the AWS accounts identified by account IDs permissions to
+//    read object data and its metadata: x-amz-grant-read: id="11112222333",
+//    id="444455556666"
 //
 // You can use either a canned ACL or specify access permissions explicitly.
 // You cannot do both.
@@ -790,7 +761,7 @@ func (c *S3) CreateMultipartUploadRequest(input *CreateMultipartUploadInput) (re
 //    manage the keys used to encrypt data, specify the following headers in
 //    the request. x-amz-server-side​-encryption x-amz-server-side-encryption-aws-kms-key-id
 //    x-amz-server-side-encryption-context If you specify x-amz-server-side-encryption:aws:kms,
-//    but don't provide x-amz-server-side- encryption-aws-kms-key-id, Amazon
+//    but don't provide x-amz-server-side-encryption-aws-kms-key-id, Amazon
 //    S3 uses the AWS managed CMK in AWS KMS to protect the data. All GET and
 //    PUT requests for an object protected by AWS KMS fail if you don't make
 //    them with SSL or by using SigV4. For more information about server-side
@@ -828,12 +799,19 @@ func (c *S3) CreateMultipartUploadRequest(input *CreateMultipartUploadInput) (re
 //    To grant permissions explicitly, use: x-amz-grant-read x-amz-grant-write
 //    x-amz-grant-read-acp x-amz-grant-write-acp x-amz-grant-full-control You
 //    specify each grantee as a type=value pair, where the type is one of the
-//    following: emailAddress – if the value specified is the email address
-//    of an AWS account id – if the value specified is the canonical user
-//    ID of an AWS account uri – if you are granting permissions to a predefined
-//    group For example, the following x-amz-grant-read header grants the AWS
-//    accounts identified by email addresses permissions to read object data
-//    and its metadata: x-amz-grant-read: emailAddress="xyz@amazon.com", emailAddress="abc@amazon.com"
+//    following: id – if the value specified is the canonical user ID of an
+//    AWS account uri – if you are granting permissions to a predefined group
+//    emailAddress – if the value specified is the email address of an AWS
+//    account Using email addresses to specify a grantee is only supported in
+//    the following AWS Regions: US East (N. Virginia) US West (N. California)
+//    US West (Oregon) Asia Pacific (Singapore) Asia Pacific (Sydney) Asia Pacific
+//    (Tokyo) Europe (Ireland) South America (São Paulo) For a list of all
+//    the Amazon S3 supported Regions and endpoints, see Regions and Endpoints
+//    (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region) in
+//    the AWS General Reference. For example, the following x-amz-grant-read
+//    header grants the AWS accounts identified by account IDs permissions to
+//    read object data and its metadata: x-amz-grant-read: id="11112222333",
+//    id="444455556666"
 //
 // The following operations are related to CreateMultipartUpload:
 //
@@ -1008,7 +986,7 @@ func (c *S3) DeleteBucketAnalyticsConfigurationRequest(input *DeleteBucketAnalyt
 // To use this operation, you must have permissions to perform the s3:PutAnalyticsConfiguration
 // action. The bucket owner has this permission by default. The bucket owner
 // can grant this permission to others. For more information about permissions,
-// see Permissions Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev//using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
+// see Permissions Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
 // and Managing Access Permissions to Your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-access-control.html).
 //
 // For information about the Amazon S3 analytics feature, see Amazon S3 Analytics
@@ -1185,14 +1163,14 @@ func (c *S3) DeleteBucketEncryptionRequest(input *DeleteBucketEncryptionInput) (
 //
 // This implementation of the DELETE operation removes default encryption from
 // the bucket. For information about the Amazon S3 default encryption feature,
-// see Amazon S3 Default Bucket Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev//bucket-encryption.html)
+// see Amazon S3 Default Bucket Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // To use this operation, you must have permissions to perform the s3:PutEncryptionConfiguration
 // action. The bucket owner has this permission by default. The bucket owner
 // can grant this permission to others. For more information about permissions,
-// see Permissions Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev//using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
-// and Managing Access Permissions to your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev//s3-access-control.html)
+// see Permissions Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
+// and Managing Access Permissions to your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-access-control.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // Related Resources
@@ -2026,7 +2004,7 @@ func (c *S3) DeleteObjectTaggingRequest(input *DeleteObjectTaggingInput) (req *r
 // DeleteObjectTagging API operation for Amazon Simple Storage Service.
 //
 // Removes the entire tag set from the specified object. For more information
-// about managing object tags, see Object Tagging (https://docs.aws.amazon.com/AmazonS3/latest/dev/Versioning.html#MultiFactorAuthenticationDelete).
+// about managing object tags, see Object Tagging (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-tagging.html).
 //
 // To use this operation, you must have permission to perform the s3:DeleteObjectTagging
 // action.
@@ -2108,6 +2086,10 @@ func (c *S3) DeleteObjectsRequest(input *DeleteObjectsInput) (req *request.Reque
 
 	output = &DeleteObjectsOutput{}
 	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -2235,7 +2217,7 @@ func (c *S3) DeletePublicAccessBlockRequest(input *DeletePublicAccessBlockInput)
 // Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
 // and Managing Access Permissions to Your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-access-control.html).
 //
-// The following operations are related to DeleteBucketMetricsConfiguration:
+// The following operations are related to DeletePublicAccessBlock:
 //
 //    * Using Amazon S3 Block Public Access (https://docs.aws.amazon.com/AmazonS3/latest/dev/access-control-block-public-access.html)
 //
@@ -2325,8 +2307,8 @@ func (c *S3) GetBucketAccelerateConfigurationRequest(input *GetBucketAccelerateC
 // To use this operation, you must have permission to perform the s3:GetAccelerateConfiguration
 // action. The bucket owner has this permission by default. The bucket owner
 // can grant this permission to others. For more information about permissions,
-// see Permissions Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev//using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
-// and Managing Access Permissions to your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev//s3-access-control.html)
+// see Permissions Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
+// and Managing Access Permissions to your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-access-control.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // You set the Transfer Acceleration state of an existing bucket to Enabled
@@ -2337,7 +2319,7 @@ func (c *S3) GetBucketAccelerateConfigurationRequest(input *GetBucketAccelerateC
 // state if a state has never been set on the bucket.
 //
 // For more information about transfer acceleration, see Transfer Acceleration
-// (https://docs.aws.amazon.com/AmazonS3/latest/dev//transfer-acceleration.html)
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // Related Resources
@@ -2993,7 +2975,7 @@ func (c *S3) GetBucketLifecycleConfigurationRequest(input *GetBucketLifecycleCon
 //    configuration does not exist. HTTP Status Code: 404 Not Found SOAP Fault
 //    Code Prefix: Client
 //
-// The following operations are related to DeleteBucketMetricsConfiguration:
+// The following operations are related to GetBucketLifecycleConfiguration:
 //
 //    * GetBucketLifecycle
 //
@@ -6426,6 +6408,10 @@ func (c *S3) PutBucketAclRequest(input *PutBucketAclInput) (req *request.Request
 	output = &PutBucketAclOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -6469,14 +6455,20 @@ func (c *S3) PutBucketAclRequest(input *PutBucketAclInput) (req *request.Request
 //    Amazon S3 supports in an ACL. For more information, see Access Control
 //    List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html).
 //    You specify each grantee as a type=value pair, where the type is one of
-//    the following: emailAddress – if the value specified is the email address
-//    of an AWS account id – if the value specified is the canonical user
-//    ID of an AWS account uri – if you are granting permissions to a predefined
-//    group For example, the following x-amz-grant-write header grants create,
-//    overwrite, and delete objects permission to LogDelivery group predefined
-//    by Amazon S3 and two AWS accounts identified by their email addresses.
-//    x-amz-grant-write: uri="http://acs.amazonaws.com/groups/s3/LogDelivery",
-//    emailAddress="xyz@amazon.com", emailAddress="abc@amazon.com"
+//    the following: id – if the value specified is the canonical user ID
+//    of an AWS account uri – if you are granting permissions to a predefined
+//    group emailAddress – if the value specified is the email address of
+//    an AWS account Using email addresses to specify a grantee is only supported
+//    in the following AWS Regions: US East (N. Virginia) US West (N. California)
+//    US West (Oregon) Asia Pacific (Singapore) Asia Pacific (Sydney) Asia Pacific
+//    (Tokyo) Europe (Ireland) South America (São Paulo) For a list of all
+//    the Amazon S3 supported Regions and endpoints, see Regions and Endpoints
+//    (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region) in
+//    the AWS General Reference. For example, the following x-amz-grant-write
+//    header grants create, overwrite, and delete objects permission to LogDelivery
+//    group predefined by Amazon S3 and two AWS accounts identified by their
+//    email addresses. x-amz-grant-write: uri="http://acs.amazonaws.com/groups/s3/LogDelivery",
+//    id="111122223333", id="555566667777"
 //
 // You can use either a canned ACL or specify access permissions explicitly.
 // You cannot do both.
@@ -6486,17 +6478,23 @@ func (c *S3) PutBucketAclRequest(input *PutBucketAclInput) (req *request.Request
 // You can specify the person (grantee) to whom you're assigning access rights
 // (using request elements) in the following ways:
 //
-//    * By Email address: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-//    xsi:type="AmazonCustomerByEmail"><EmailAddress><>Grantees@email.com<></EmailAddress>lt;/Grantee>
-//    The grantee is resolved to the CanonicalUser and, in a response to a GET
-//    Object acl request, appears as the CanonicalUser.
-//
 //    * By the person's ID: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 //    xsi:type="CanonicalUser"><ID><>ID<></ID><DisplayName><>GranteesEmail<></DisplayName>
 //    </Grantee> DisplayName is optional and ignored in the request
 //
 //    * By URI: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 //    xsi:type="Group"><URI><>http://acs.amazonaws.com/groups/global/AuthenticatedUsers<></URI></Grantee>
+//
+//    * By Email address: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+//    xsi:type="AmazonCustomerByEmail"><EmailAddress><>Grantees@email.com<></EmailAddress>lt;/Grantee>
+//    The grantee is resolved to the CanonicalUser and, in a response to a GET
+//    Object acl request, appears as the CanonicalUser. Using email addresses
+//    to specify a grantee is only supported in the following AWS Regions: US
+//    East (N. Virginia) US West (N. California) US West (Oregon) Asia Pacific
+//    (Singapore) Asia Pacific (Sydney) Asia Pacific (Tokyo) Europe (Ireland)
+//    South America (São Paulo) For a list of all the Amazon S3 supported Regions
+//    and endpoints, see Regions and Endpoints (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region)
+//    in the AWS General Reference.
 //
 // Related Resources
 //
@@ -6693,6 +6691,10 @@ func (c *S3) PutBucketCorsRequest(input *PutBucketCorsInput) (req *request.Reque
 	output = &PutBucketCorsOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -6810,6 +6812,10 @@ func (c *S3) PutBucketEncryptionRequest(input *PutBucketEncryptionInput) (req *r
 	output = &PutBucketEncryptionOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -6818,9 +6824,10 @@ func (c *S3) PutBucketEncryptionRequest(input *PutBucketEncryptionInput) (req *r
 // This implementation of the PUT operation uses the encryption subresource
 // to set the default encryption state of an existing bucket.
 //
-// This implementation of the PUT operation sets default encryption for a buckets
+// This implementation of the PUT operation sets default encryption for a bucket
 // using server-side encryption with Amazon S3-managed keys SSE-S3 or AWS KMS
-// customer master keys (CMKs) (SSE-KMS) bucket.
+// customer master keys (CMKs) (SSE-KMS). For information about the Amazon S3
+// default encryption feature, see Amazon S3 Default Bucket Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html).
 //
 // This operation requires AWS Signature Version 4. For more information, see
 // Authenticating Requests (AWS Signature Version 4) (sig-v4-authenticating-requests.html).
@@ -6925,19 +6932,19 @@ func (c *S3) PutBucketInventoryConfigurationRequest(input *PutBucketInventoryCon
 // bucket where you want the inventory to be stored, and whether to generate
 // the inventory daily or weekly. You can also configure what object metadata
 // to include and whether to inventory all object versions or only current versions.
-// For more information, see Amazon S3 Inventory (https://docs.aws.amazon.com/AmazonS3/latest/dev//storage-inventory.html)
+// For more information, see Amazon S3 Inventory (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-inventory.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // You must create a bucket policy on the destination bucket to grant permissions
 // to Amazon S3 to write objects to the bucket in the defined location. For
 // an example policy, see Granting Permissions for Amazon S3 Inventory and Storage
-// Class Analysis. (https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html#example-bucket-policies-use-case-9)
+// Class Analysis (https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html#example-bucket-policies-use-case-9).
 //
 // To use this operation, you must have permissions to perform the s3:PutInventoryConfiguration
 // action. The bucket owner has this permission by default and can grant this
 // permission to others. For more information about permissions, see Permissions
-// Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev//using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
-// and Managing Access Permissions to Your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev//s3-access-control.html)
+// Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
+// and Managing Access Permissions to Your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-access-control.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // Special Errors
@@ -6950,7 +6957,7 @@ func (c *S3) PutBucketInventoryConfigurationRequest(input *PutBucketInventoryCon
 //
 //    * HTTP 403 Forbidden Error Code: AccessDenied Cause: You are not the owner
 //    of the specified bucket, or you do not have the s3:PutInventoryConfiguration
-//    bucket permission to set the configuration on the bucket
+//    bucket permission to set the configuration on the bucket.
 //
 // Related Resources
 //
@@ -7033,6 +7040,10 @@ func (c *S3) PutBucketLifecycleRequest(input *PutBucketLifecycleInput) (req *req
 	output = &PutBucketLifecycleOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -7045,7 +7056,7 @@ func (c *S3) PutBucketLifecycleRequest(input *PutBucketLifecycleInput) (req *req
 //
 // Creates a new lifecycle configuration for the bucket or replaces an existing
 // lifecycle configuration. For information about lifecycle configuration, see
-// Object Lifecycle Management (https://docs.aws.amazon.com/AmazonS3/latest/dev//object-lifecycle-mgmt.html)
+// Object Lifecycle Management (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // By default, all Amazon S3 resources, including buckets, objects, and related
@@ -7067,11 +7078,11 @@ func (c *S3) PutBucketLifecycleRequest(input *PutBucketLifecycleInput) (req *req
 //    * s3:PutLifecycleConfiguration
 //
 // For more information about permissions, see Managing Access Permissions to
-// your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev//s3-access-control.html)
+// your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-access-control.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // For more examples of transitioning objects to storage classes such as STANDARD_IA
-// or ONEZONE_IA, see Examples of Lifecycle Configuration (https://docs.aws.amazon.com/AmazonS3/latest/dev//intro-lifecycle-rules.html#lifecycle-configuration-examples).
+// or ONEZONE_IA, see Examples of Lifecycle Configuration (https://docs.aws.amazon.com/AmazonS3/latest/dev/intro-lifecycle-rules.html#lifecycle-configuration-examples).
 //
 // Related Resources
 //
@@ -7085,8 +7096,8 @@ func (c *S3) PutBucketLifecycleRequest(input *PutBucketLifecycleInput) (req *req
 //    the AWS account that created the bucket—can perform any of the operations.
 //    A resource owner can also grant others permission to perform the operation.
 //    For more information, see the following topics in the Amazon Simple Storage
-//    Service Developer Guide: Specifying Permissions in a Policy (https://docs.aws.amazon.com/AmazonS3/latest/dev//using-with-s3-actions.html)
-//    Managing Access Permissions to your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev//s3-access-control.html)
+//    Service Developer Guide: Specifying Permissions in a Policy (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html)
+//    Managing Access Permissions to your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-access-control.html)
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7160,6 +7171,10 @@ func (c *S3) PutBucketLifecycleConfigurationRequest(input *PutBucketLifecycleCon
 	output = &PutBucketLifecycleConfigurationOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -7297,6 +7312,10 @@ func (c *S3) PutBucketLoggingRequest(input *PutBucketLoggingInput) (req *request
 	output = &PutBucketLoggingOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -7524,6 +7543,10 @@ func (c *S3) PutBucketNotificationRequest(input *PutBucketNotificationInput) (re
 	output = &PutBucketNotificationOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -7726,6 +7749,10 @@ func (c *S3) PutBucketPolicyRequest(input *PutBucketPolicyInput) (req *request.R
 	output = &PutBucketPolicyOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -7822,6 +7849,10 @@ func (c *S3) PutBucketReplicationRequest(input *PutBucketReplicationInput) (req 
 	output = &PutBucketReplicationOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -7946,6 +7977,10 @@ func (c *S3) PutBucketRequestPaymentRequest(input *PutBucketRequestPaymentInput)
 	output = &PutBucketRequestPaymentOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -8031,6 +8066,10 @@ func (c *S3) PutBucketTaggingRequest(input *PutBucketTaggingInput) (req *request
 	output = &PutBucketTaggingOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -8061,8 +8100,8 @@ func (c *S3) PutBucketTaggingRequest(input *PutBucketTaggingInput) (req *request
 //    * Error code: InvalidTagError Description: The tag provided was not a
 //    valid tag. This error can occur if the tag did not pass input validation.
 //    For information about tag restrictions, see User-Defined Tag Restrictions
-//    (https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2//allocation-tag-restrictions.html)
-//    and AWS-Generated Cost Allocation Tag Restrictions (https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2//aws-tag-restrictions.html).
+//    (https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/allocation-tag-restrictions.html)
+//    and AWS-Generated Cost Allocation Tag Restrictions (https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/aws-tag-restrictions.html).
 //
 //    * Error code: MalformedXMLError Description: The XML provided does not
 //    match the schema.
@@ -8147,6 +8186,10 @@ func (c *S3) PutBucketVersioningRequest(input *PutBucketVersioningInput) (req *r
 	output = &PutBucketVersioningOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -8255,6 +8298,10 @@ func (c *S3) PutBucketWebsiteRequest(input *PutBucketWebsiteInput) (req *request
 	output = &PutBucketWebsiteOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -8321,6 +8368,11 @@ func (c *S3) PutBucketWebsiteRequest(input *PutBucketWebsiteInput) (req *request
 //    * ReplaceKeyWith
 //
 //    * HttpRedirectCode
+//
+// Amazon S3 has a limitation of 50 routing rules per website configuration.
+// If you require more than 50 routing rules, you can use object redirect. For
+// more information, see Configuring an Object Redirect (https://docs.aws.amazon.com/AmazonS3/latest/dev/how-to-page-redirect.html)
+// in the Amazon Simple Storage Service Developer Guide.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -8411,12 +8463,12 @@ func (c *S3) PutObjectRequest(input *PutObjectInput) (req *request.Request, outp
 // you can calculate the MD5 while putting an object to Amazon S3 and compare
 // the returned ETag to the calculated MD5 value.
 //
-// To configure your application to send the request headers before sending
-// the request body, use the 100-continue HTTP status code. For PUT operations,
-// this helps you avoid sending the message body if the message is rejected
-// based on the headers (for example, because authentication fails or a redirect
-// occurs). For more information on the 100-continue HTTP status code, see Section
-// 8.2.3 of http://www.ietf.org/rfc/rfc2616.txt (http://www.ietf.org/rfc/rfc2616.txt).
+// The Content-MD5 header is required for any request to upload an object with
+// a retention period configured using Amazon S3 Object Lock. For more information
+// about Amazon S3 Object Lock, see Amazon S3 Object Lock Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock-overview.html)
+// in the Amazon Simple Storage Service Developer Guide.
+//
+// Server-side Encryption
 //
 // You can optionally request server-side encryption. With server-side encryption,
 // Amazon S3 encrypts your data as it writes it to disks in its data centers
@@ -8424,133 +8476,34 @@ func (c *S3) PutObjectRequest(input *PutObjectInput) (req *request.Request, outp
 // your own encryption key or use AWS managed encryption keys. For more information,
 // see Using Server-Side Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html).
 //
-// Access Permissions
+// Access Control List (ACL)-Specific Request Headers
 //
-// You can optionally specify the accounts or groups that should be granted
-// specific permissions on the new object. There are two ways to grant the permissions
-// using the request headers:
-//
-//    * Specify a canned ACL with the x-amz-acl request header. For more information,
-//    see Canned ACL (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#CannedACL).
-//
-//    * Specify access permissions explicitly with the x-amz-grant-read, x-amz-grant-read-acp,
-//    x-amz-grant-write-acp, and x-amz-grant-full-control headers. These parameters
-//    map to the set of permissions that Amazon S3 supports in an ACL. For more
-//    information, see Access Control List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html).
-//
-// You can use either a canned ACL or specify access permissions explicitly.
-// You cannot do both.
-//
-// Server-Side- Encryption-Specific Request Headers
-//
-// You can optionally tell Amazon S3 to encrypt data at rest using server-side
-// encryption. Server-side encryption is for data encryption at rest. Amazon
-// S3 encrypts your data as it writes it to disks in its data centers and decrypts
-// it when you access it. The option you use depends on whether you want to
-// use AWS managed encryption keys or provide your own encryption key.
-//
-//    * Use encryption keys managed by Amazon S3 or customer master keys (CMKs)
-//    stored in AWS Key Management Service (AWS KMS) – If you want AWS to
-//    manage the keys used to encrypt data, specify the following headers in
-//    the request. x-amz-server-side​-encryption x-amz-server-side-encryption-aws-kms-key-id
-//    x-amz-server-side-encryption-context If you specify x-amz-server-side-encryption:aws:kms,
-//    but don't provide x-amz-server-side- encryption-aws-kms-key-id, Amazon
-//    S3 uses the AWS managed CMK in AWS KMS to protect the data. All GET and
-//    PUT requests for an object protected by AWS KMS fail if you don't make
-//    them with SSL or by using SigV4. For more information about server-side
-//    encryption with CMKs stored in AWS KMS (SSE-KMS), see Protecting Data
-//    Using Server-Side Encryption with CMKs stored in AWS (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html).
-//
-//    * Use customer-provided encryption keys – If you want to manage your
-//    own encryption keys, provide all the following headers in the request.
-//    x-amz-server-side​-encryption​-customer-algorithm x-amz-server-side​-encryption​-customer-key
-//    x-amz-server-side​-encryption​-customer-key-MD5 For more information
-//    about server-side encryption with CMKs stored in KMS (SSE-KMS), see Protecting
-//    Data Using Server-Side Encryption with CMKs stored in AWS KMS (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html).
-//
-// Access-Control-List (ACL)-Specific Request Headers
-//
-// You also can use the following access control–related headers with this
-// operation. By default, all objects are private. Only the owner has full access
-// control. When adding a new object, you can grant permissions to individual
-// AWS accounts or to predefined groups defined by Amazon S3. These permissions
-// are then added to the Access Control List (ACL) on the object. For more information,
-// see Using ACLs (https://docs.aws.amazon.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html).
-// With this operation, you can grant access permissions using one of the following
-// two methods:
-//
-//    * Specify a canned ACL (x-amz-acl) — Amazon S3 supports a set of predefined
-//    ACLs, known as canned ACLs. Each canned ACL has a predefined set of grantees
-//    and permissions. For more information, see Canned ACL (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#CannedACL).
-//
-//    * Specify access permissions explicitly — To explicitly grant access
-//    permissions to specific AWS accounts or groups, use the following headers.
-//    Each header maps to specific permissions that Amazon S3 supports in an
-//    ACL. For more information, see Access Control List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html).
-//    In the header, you specify a list of grantees who get the specific permission.
-//    To grant permissions explicitly use: x-amz-grant-read x-amz-grant-write
-//    x-amz-grant-read-acp x-amz-grant-write-acp x-amz-grant-full-control You
-//    specify each grantee as a type=value pair, where the type is one of the
-//    following: emailAddress – if the value specified is the email address
-//    of an AWS account Using email addresses to specify a grantee is only supported
-//    in the following AWS Regions: US East (N. Virginia) US West (N. California)
-//    US West (Oregon) Asia Pacific (Singapore) Asia Pacific (Sydney) Asia Pacific
-//    (Tokyo) EU (Ireland) South America (São Paulo) For a list of all the
-//    Amazon S3 supported Regions and endpoints, see Regions and Endpoints (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region)
-//    in the AWS General Reference id – if the value specified is the canonical
-//    user ID of an AWS account uri – if you are granting permissions to a
-//    predefined group For example, the following x-amz-grant-read header grants
-//    the AWS accounts identified by email addresses permissions to read object
-//    data and its metadata: x-amz-grant-read: emailAddress="xyz@amazon.com",
-//    emailAddress="abc@amazon.com"
-//
-// Server-Side- Encryption-Specific Request Headers
-//
-// You can optionally tell Amazon S3 to encrypt data at rest using server-side
-// encryption. Server-side encryption is for data encryption at rest. Amazon
-// S3 encrypts your data as it writes it to disks in its data centers and decrypts
-// it when you access it. The option you use depends on whether you want to
-// use AWS-managed encryption keys or provide your own encryption key.
-//
-//    * Use encryption keys managed by Amazon S3 or customer master keys (CMKs)
-//    stored in AWS Key Management Service (AWS KMS) – If you want AWS to
-//    manage the keys used to encrypt data, specify the following headers in
-//    the request. x-amz-server-side​-encryption x-amz-server-side-encryption-aws-kms-key-id
-//    x-amz-server-side-encryption-context If you specify x-amz-server-side-encryption:aws:kms,
-//    but don't provide x-amz-server-side- encryption-aws-kms-key-id, Amazon
-//    S3 uses the default AWS KMS CMK to protect the data. All GET and PUT requests
-//    for an object protected by AWS KMS fail if you don't make them with SSL
-//    or by using SigV4. For more information about server-side encryption with
-//    CMKs stored in AWS KMS (SSE-KMS), see Protecting Data Using Server-Side
-//    Encryption with CMKs stored in AWS KMS (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html).
-//
-//    * Use customer-provided encryption keys – If you want to manage your
-//    own encryption keys, provide all the following headers in the request.
-//    If you use this feature, the ETag value that Amazon S3 returns in the
-//    response is not the MD5 of the object. x-amz-server-side​-encryption​-customer-algorithm
-//    x-amz-server-side​-encryption​-customer-key x-amz-server-side​-encryption​-customer-key-MD5
-//    For more information about server-side encryption with CMKs stored in
-//    AWS KMS (SSE-KMS), see Protecting Data Using Server-Side Encryption with
-//    CMKs stored in AWS KMS (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html).
+// You can use headers to grant ACL- based permissions. By default, all objects
+// are private. Only the owner has full access control. When adding a new object,
+// you can grant permissions to individual AWS accounts or to predefined groups
+// defined by Amazon S3. These permissions are then added to the ACL on the
+// object. For more information, see Access Control List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html)
+// and Managing ACLs Using the REST API (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-using-rest-api.html).
 //
 // Storage Class Options
 //
-// By default, Amazon S3 uses the Standard storage class to store newly created
-// objects. The Standard storage class provides high durability and high availability.
-// You can specify other storage classes depending on the performance needs.
+// By default, Amazon S3 uses the STANDARD storage class to store newly created
+// objects. The STANDARD storage class provides high durability and high availability.
+// Depending on performance needs, you can specify a different storage class.
 // For more information, see Storage Classes (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html)
-// in the Amazon Simple Storage Service Developer Guide.
+// in the Amazon S3 Service Developer Guide.
 //
 // Versioning
 //
 // If you enable versioning for a bucket, Amazon S3 automatically generates
 // a unique version ID for the object being stored. Amazon S3 returns this ID
-// in the response using the x-amz-version-id response header. If versioning
-// is suspended, Amazon S3 always uses null as the version ID for the object
-// stored. For more information about returning the versioning state of a bucket,
-// see GetBucketVersioning. If you enable versioning for a bucket, when Amazon
-// S3 receives multiple write requests for the same object simultaneously, it
-// stores all of the objects.
+// in the response. When you enable versioning for a bucket, if Amazon S3 receives
+// multiple write requests for the same object simultaneously, it stores all
+// of the objects.
+//
+// For more information about versioning, see Adding Objects to Versioning Enabled
+// Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/AddingObjectstoVersioningEnabledBuckets.html).
+// For information about returning the versioning state of a bucket, see GetBucketVersioning.
 //
 // Related Resources
 //
@@ -8625,6 +8578,10 @@ func (c *S3) PutObjectAclRequest(input *PutObjectAclInput) (req *request.Request
 
 	output = &PutObjectAclOutput{}
 	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -8637,7 +8594,9 @@ func (c *S3) PutObjectAclRequest(input *PutObjectAclInput) (req *request.Request
 // Depending on your application needs, you can choose to set the ACL on an
 // object using either the request body or the headers. For example, if you
 // have an existing application that updates a bucket ACL using the request
-// body, you can continue to use that approach.
+// body, you can continue to use that approach. For more information, see Access
+// Control List (ACL) Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html)
+// in the Amazon S3 Developer Guide.
 //
 // Access Permissions
 //
@@ -8659,12 +8618,19 @@ func (c *S3) PutObjectAclRequest(input *PutObjectAclInput) (req *request.Request
 //    S3 supports in an ACL. For more information, see Access Control List (ACL)
 //    Overview (https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html).
 //    You specify each grantee as a type=value pair, where the type is one of
-//    the following: emailAddress – if the value specified is the email address
-//    of an AWS account id – if the value specified is the canonical user
-//    ID of an AWS account uri – if you are granting permissions to a predefined
-//    group For example, the following x-amz-grant-read header grants list objects
-//    permission to the two AWS accounts identified by their email addresses.
-//    x-amz-grant-read: emailAddress="xyz@amazon.com", emailAddress="abc@amazon.com"
+//    the following: id – if the value specified is the canonical user ID
+//    of an AWS account uri – if you are granting permissions to a predefined
+//    group emailAddress – if the value specified is the email address of
+//    an AWS account Using email addresses to specify a grantee is only supported
+//    in the following AWS Regions: US East (N. Virginia) US West (N. California)
+//    US West (Oregon) Asia Pacific (Singapore) Asia Pacific (Sydney) Asia Pacific
+//    (Tokyo) Europe (Ireland) South America (São Paulo) For a list of all
+//    the Amazon S3 supported Regions and endpoints, see Regions and Endpoints
+//    (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region) in
+//    the AWS General Reference. For example, the following x-amz-grant-read
+//    header grants list objects permission to the two AWS accounts identified
+//    by their email addresses. x-amz-grant-read: emailAddress="xyz@amazon.com",
+//    emailAddress="abc@amazon.com"
 //
 // You can use either a canned ACL or specify access permissions explicitly.
 // You cannot do both.
@@ -8674,17 +8640,23 @@ func (c *S3) PutObjectAclRequest(input *PutObjectAclInput) (req *request.Request
 // You can specify the person (grantee) to whom you're assigning access rights
 // (using request elements) in the following ways:
 //
-//    * By Email address: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-//    xsi:type="AmazonCustomerByEmail"><EmailAddress><>Grantees@email.com<></EmailAddress>lt;/Grantee>
-//    The grantee is resolved to the CanonicalUser and, in a response to a GET
-//    Object acl request, appears as the CanonicalUser.
-//
 //    * By the person's ID: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 //    xsi:type="CanonicalUser"><ID><>ID<></ID><DisplayName><>GranteesEmail<></DisplayName>
 //    </Grantee> DisplayName is optional and ignored in the request.
 //
 //    * By URI: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 //    xsi:type="Group"><URI><>http://acs.amazonaws.com/groups/global/AuthenticatedUsers<></URI></Grantee>
+//
+//    * By Email address: <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+//    xsi:type="AmazonCustomerByEmail"><EmailAddress><>Grantees@email.com<></EmailAddress>lt;/Grantee>
+//    The grantee is resolved to the CanonicalUser and, in a response to a GET
+//    Object acl request, appears as the CanonicalUser. Using email addresses
+//    to specify a grantee is only supported in the following AWS Regions: US
+//    East (N. Virginia) US West (N. California) US West (Oregon) Asia Pacific
+//    (Singapore) Asia Pacific (Sydney) Asia Pacific (Tokyo) Europe (Ireland)
+//    South America (São Paulo) For a list of all the Amazon S3 supported Regions
+//    and endpoints, see Regions and Endpoints (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region)
+//    in the AWS General Reference.
 //
 // Versioning
 //
@@ -8770,6 +8742,10 @@ func (c *S3) PutObjectLegalHoldRequest(input *PutObjectLegalHoldInput) (req *req
 
 	output = &PutObjectLegalHoldOutput{}
 	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -8848,6 +8824,10 @@ func (c *S3) PutObjectLockConfigurationRequest(input *PutObjectLockConfiguration
 
 	output = &PutObjectLockConfigurationOutput{}
 	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -8931,6 +8911,10 @@ func (c *S3) PutObjectRetentionRequest(input *PutObjectRetentionInput) (req *req
 
 	output = &PutObjectRetentionOutput{}
 	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -9009,12 +8993,16 @@ func (c *S3) PutObjectTaggingRequest(input *PutObjectTaggingInput) (req *request
 
 	output = &PutObjectTaggingOutput{}
 	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
 // PutObjectTagging API operation for Amazon Simple Storage Service.
 //
-// Sets the supplied tag-set to an object that already exists in a bucket
+// Sets the supplied tag-set to an object that already exists in a bucket.
 //
 // A tag is a key-value pair. You can associate tags with an object by sending
 // a PUT request against the tagging subresource that is associated with the
@@ -9121,6 +9109,10 @@ func (c *S3) PutPublicAccessBlockRequest(input *PutPublicAccessBlockInput) (req 
 	output = &PutPublicAccessBlockOutput{}
 	req = c.newRequest(op, input, output)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
 	return
 }
 
@@ -9232,9 +9224,9 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //    * restore an archive - Restore an archived object
 //
 // To use this operation, you must have permissions to perform the s3:RestoreObject
-// and s3:GetObject actions. The bucket owner has this permission by default
-// and can grant this permission to others. For more information about permissions,
-// see Permissions Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
+// action. The bucket owner has this permission by default and can grant this
+// permission to others. For more information about permissions, see Permissions
+// Related to Bucket Subresource Operations (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources)
 // and Managing Access Permissions to Your Amazon S3 Resources (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-access-control.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
@@ -9276,8 +9268,8 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //    the query.) You cannot mix ordinal positions with header column names.
 //    SELECT s.Id, s.FirstName, s.SSN FROM S3Object s
 //
-// For more information about using SQL with Glacier Select restore, see SQL
-// Reference for Amazon S3 Select and Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
+// For more information about using SQL with S3 Glacier Select restore, see
+// SQL Reference for Amazon S3 Select and S3 Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // When making a select request, you can also do the following:
@@ -9330,12 +9322,12 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //    retrievals and provisioned capacity are not available for the DEEP_ARCHIVE
 //    storage class.
 //
-//    * Standard - Standard retrievals allow you to access any of your archived
+//    * Standard - S3 Standard retrievals allow you to access any of your archived
 //    objects within several hours. This is the default option for the GLACIER
 //    and DEEP_ARCHIVE retrieval requests that do not specify the retrieval
-//    option. Standard retrievals typically complete within 3-5 hours from the
-//    GLACIER storage class and typically complete within 12 hours from the
-//    DEEP_ARCHIVE storage class.
+//    option. S3 Standard retrievals typically complete within 3-5 hours from
+//    the GLACIER storage class and typically complete within 12 hours from
+//    the DEEP_ARCHIVE storage class.
 //
 //    * Bulk - Bulk retrievals are Amazon S3 Glacier’s lowest-cost retrieval
 //    option, enabling you to retrieve large amounts, even petabytes, of data
@@ -9394,10 +9386,10 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //    (This error does not apply to SELECT type requests.) HTTP Status Code:
 //    409 Conflict SOAP Fault Code Prefix: Client
 //
-//    * Code: GlacierExpeditedRetrievalNotAvailable Cause: Glacier expedited
+//    * Code: GlacierExpeditedRetrievalNotAvailable Cause: S3 Glacier expedited
 //    retrievals are currently not available. Try again later. (Returned if
 //    there is insufficient capacity to process the Expedited request. This
-//    error applies only to Expedited retrievals and not to Standard or Bulk
+//    error applies only to Expedited retrievals and not to S3 Standard or Bulk
 //    retrievals.) HTTP Status Code: 503 SOAP Fault Code Prefix: N/A
 //
 // Related Resources
@@ -9406,7 +9398,7 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //
 //    * GetBucketNotificationConfiguration
 //
-//    * SQL Reference for Amazon S3 Select and Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
+//    * SQL Reference for Amazon S3 Select and S3 Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
 //    in the Amazon Simple Storage Service Developer Guide
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
@@ -9481,9 +9473,15 @@ func (c *S3) SelectObjectContentRequest(input *SelectObjectContentInput) (req *r
 
 	output = &SelectObjectContentOutput{}
 	req = c.newRequest(op, input, output)
+
+	es := newSelectObjectContentEventStream()
+	req.Handlers.Unmarshal.PushBack(es.setStreamCloser)
+	output.EventStream = es
+
 	req.Handlers.Send.Swap(client.LogHTTPResponseHandler.Name, client.LogHTTPResponseHeaderHandler)
 	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, rest.UnmarshalHandler)
-	req.Handlers.Unmarshal.PushBack(output.runEventStreamLoop)
+	req.Handlers.Unmarshal.PushBack(es.runOutputStream)
+	req.Handlers.Unmarshal.PushBack(es.runOnStreamPartClose)
 	return
 }
 
@@ -9502,7 +9500,7 @@ func (c *S3) SelectObjectContentRequest(input *SelectObjectContentInput) (req *r
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // For more information about using SQL with Amazon S3 Select, see SQL Reference
-// for Amazon S3 Select and Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
+// for Amazon S3 Select and S3 Glacier Select (https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // Permissions
@@ -9552,8 +9550,8 @@ func (c *S3) SelectObjectContentRequest(input *SelectObjectContentInput) (req *r
 // The SelectObjectContent operation does not support the following GetObject
 // functionality. For more information, see GetObject.
 //
-//    * Range: While you can specify a scan range for a Amazon S3 Select request,
-//    see SelectObjectContentRequest$ScanRange in the request parameters below,
+//    * Range: Although you can specify a scan range for an Amazon S3 Select
+//    request (see SelectObjectContentRequest$ScanRange in the request parameters),
 //    you cannot specify the range of bytes of an object to return.
 //
 //    * GLACIER, DEEP_ARCHIVE and REDUCED_REDUNDANCY storage classes: You cannot
@@ -9563,8 +9561,7 @@ func (c *S3) SelectObjectContentRequest(input *SelectObjectContentInput) (req *r
 //
 // Special Errors
 //
-// For a list of special errors for this operation and for general information
-// about Amazon S3 errors and a list of error codes, see ErrorResponses
+// For a list of special errors for this operation, see SelectObjectContentErrorCodeList
 //
 // Related Resources
 //
@@ -9600,6 +9597,147 @@ func (c *S3) SelectObjectContentWithContext(ctx aws.Context, input *SelectObject
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
+}
+
+// SelectObjectContentEventStream provides the event stream handling for the SelectObjectContent.
+type SelectObjectContentEventStream struct {
+
+	// Reader is the EventStream reader for the SelectObjectContentEventStream
+	// events. This value is automatically set by the SDK when the API call is made
+	// Use this member when unit testing your code with the SDK to mock out the
+	// EventStream Reader.
+	//
+	// Must not be nil.
+	Reader SelectObjectContentEventStreamReader
+
+	outputReader io.ReadCloser
+
+	// StreamCloser is the io.Closer for the EventStream connection. For HTTP
+	// EventStream this is the response Body. The stream will be closed when
+	// the Close method of the EventStream is called.
+	StreamCloser io.Closer
+
+	done      chan struct{}
+	closeOnce sync.Once
+	err       *eventstreamapi.OnceError
+}
+
+func newSelectObjectContentEventStream() *SelectObjectContentEventStream {
+	return &SelectObjectContentEventStream{
+		done: make(chan struct{}),
+		err:  eventstreamapi.NewOnceError(),
+	}
+}
+
+func (es *SelectObjectContentEventStream) setStreamCloser(r *request.Request) {
+	es.StreamCloser = r.HTTPResponse.Body
+}
+
+func (es *SelectObjectContentEventStream) runOnStreamPartClose(r *request.Request) {
+	if es.done == nil {
+		return
+	}
+	go es.waitStreamPartClose()
+
+}
+
+func (es *SelectObjectContentEventStream) waitStreamPartClose() {
+	var outputErrCh <-chan struct{}
+	if v, ok := es.Reader.(interface{ ErrorSet() <-chan struct{} }); ok {
+		outputErrCh = v.ErrorSet()
+	}
+	var outputClosedCh <-chan struct{}
+	if v, ok := es.Reader.(interface{ Closed() <-chan struct{} }); ok {
+		outputClosedCh = v.Closed()
+	}
+
+	select {
+	case <-es.done:
+	case <-outputErrCh:
+		es.err.SetError(es.Reader.Err())
+		es.Close()
+	case <-outputClosedCh:
+		if err := es.Reader.Err(); err != nil {
+			es.err.SetError(es.Reader.Err())
+		}
+		es.Close()
+	}
+}
+
+// Events returns a channel to read events from.
+//
+// These events are:
+//
+//     * ContinuationEvent
+//     * EndEvent
+//     * ProgressEvent
+//     * RecordsEvent
+//     * StatsEvent
+func (es *SelectObjectContentEventStream) Events() <-chan SelectObjectContentEventStreamEvent {
+	return es.Reader.Events()
+}
+
+func (es *SelectObjectContentEventStream) runOutputStream(r *request.Request) {
+	var opts []func(*eventstream.Decoder)
+	if r.Config.Logger != nil && r.Config.LogLevel.Matches(aws.LogDebugWithEventStreamBody) {
+		opts = append(opts, eventstream.DecodeWithLogger(r.Config.Logger))
+	}
+
+	unmarshalerForEvent := unmarshalerForSelectObjectContentEventStreamEvent{
+		metadata: protocol.ResponseMetadata{
+			StatusCode: r.HTTPResponse.StatusCode,
+			RequestID:  r.RequestID,
+		},
+	}.UnmarshalerForEventName
+
+	decoder := eventstream.NewDecoder(r.HTTPResponse.Body, opts...)
+	eventReader := eventstreamapi.NewEventReader(decoder,
+		protocol.HandlerPayloadUnmarshal{
+			Unmarshalers: r.Handlers.UnmarshalStream,
+		},
+		unmarshalerForEvent,
+	)
+
+	es.outputReader = r.HTTPResponse.Body
+	es.Reader = newReadSelectObjectContentEventStream(eventReader)
+}
+
+// Close closes the stream. This will also cause the stream to be closed.
+// Close must be called when done using the stream API. Not calling Close
+// may result in resource leaks.
+//
+// You can use the closing of the Reader's Events channel to terminate your
+// application's read from the API's stream.
+//
+func (es *SelectObjectContentEventStream) Close() (err error) {
+	es.closeOnce.Do(es.safeClose)
+	return es.Err()
+}
+
+func (es *SelectObjectContentEventStream) safeClose() {
+	if es.done != nil {
+		close(es.done)
+	}
+
+	es.Reader.Close()
+	if es.outputReader != nil {
+		es.outputReader.Close()
+	}
+
+	es.StreamCloser.Close()
+}
+
+// Err returns any error that occurred while reading or writing EventStream
+// Events from the service API's response. Returns nil if there were no errors.
+func (es *SelectObjectContentEventStream) Err() error {
+	if err := es.err.Err(); err != nil {
+		return err
+	}
+	if err := es.Reader.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 const opUploadPart = "UploadPart"
@@ -9967,10 +10105,10 @@ type AbortMultipartUploadInput struct {
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -10454,8 +10592,11 @@ type AnalyticsS3BucketDestination struct {
 	// Bucket is a required field
 	Bucket *string `type:"string" required:"true"`
 
-	// The account ID that owns the destination bucket. If no account ID is provided,
-	// the owner will not be validated prior to exporting data.
+	// The account ID that owns the destination S3 bucket. If no account ID is provided,
+	// the owner is not validated before exporting data.
+	//
+	// Although this value is optional, we strongly recommend that you set it to
+	// help prevent problems if the destination bucket ownership changes.
 	BucketAccountId *string `type:"string"`
 
 	// Specifies the file format used when exporting data to Amazon S3.
@@ -11073,10 +11214,10 @@ type CompleteMultipartUploadInput struct {
 	// The container for the multipart upload request information.
 	MultipartUpload *CompletedMultipartUpload `locationName:"CompleteMultipartUpload" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -11201,7 +11342,8 @@ type CompleteMultipartUploadOutput struct {
 	RequestCharged *string `location:"header" locationName:"x-amz-request-charged" type:"string" enum:"RequestCharged"`
 
 	// If present, specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) that was used for the object.
+	// symmetric customer managed customer master key (CMK) that was used for the
+	// object.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// If you specified server-side encryption either with an Amazon S3-managed
@@ -11416,6 +11558,11 @@ func (s *ContinuationEvent) UnmarshalEvent(
 	return nil
 }
 
+func (s *ContinuationEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
+	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
+	return msg, err
+}
+
 type CopyObjectInput struct {
 	_ struct{} `locationName:"CopyObjectRequest" type:"structure"`
 
@@ -11513,10 +11660,10 @@ type CopyObjectInput struct {
 	// The date and time when you want the copied object's Object Lock to expire.
 	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -11545,7 +11692,7 @@ type CopyObjectInput struct {
 	// requests for an object protected by AWS KMS will fail if not made via SSL
 	// or using SigV4. For information about configuring using any of the officially
 	// supported AWS SDKs and AWS CLI, see Specifying the Signature Version in Request
-	// Authentication (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/UsingAWSSDK.html#specify-signature-version)
+	// Authentication (https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingAWSSDK.html#specify-signature-version)
 	// in the Amazon S3 Developer Guide.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
@@ -11895,7 +12042,8 @@ type CopyObjectOutput struct {
 	SSEKMSEncryptionContext *string `location:"header" locationName:"x-amz-server-side-encryption-context" type:"string" sensitive:"true"`
 
 	// If present, specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) that was used for the object.
+	// symmetric customer managed customer master key (CMK) that was used for the
+	// object.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// The server-side encryption algorithm used when storing this object in Amazon
@@ -12275,10 +12423,10 @@ type CreateMultipartUploadInput struct {
 	// Specifies the date and time when you want the Object Lock to expire.
 	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -12303,11 +12451,11 @@ type CreateMultipartUploadInput struct {
 	// encryption context key-value pairs.
 	SSEKMSEncryptionContext *string `location:"header" locationName:"x-amz-server-side-encryption-context" type:"string" sensitive:"true"`
 
-	// Specifies the AWS KMS key ID to use for object encryption. All GET and PUT
-	// requests for an object protected by AWS KMS will fail if not made via SSL
-	// or using SigV4. For information about configuring using any of the officially
-	// supported AWS SDKs and AWS CLI, see Specifying the Signature Version in Request
-	// Authentication (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/UsingAWSSDK.html#specify-signature-version)
+	// Specifies the ID of the symmetric customer managed AWS KMS CMK to use for
+	// object encryption. All GET and PUT requests for an object protected by AWS
+	// KMS will fail if not made via SSL or using SigV4. For information about configuring
+	// using any of the officially supported AWS SDKs and AWS CLI, see Specifying
+	// the Signature Version in Request Authentication (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/UsingAWSSDK.html#specify-signature-version)
 	// in the Amazon S3 Developer Guide.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
@@ -12601,7 +12749,8 @@ type CreateMultipartUploadOutput struct {
 	SSEKMSEncryptionContext *string `location:"header" locationName:"x-amz-server-side-encryption-context" type:"string" sensitive:"true"`
 
 	// If present, specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) that was used for the object.
+	// symmetric customer managed customer master key (CMK) that was used for the
+	// object.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// The server-side encryption algorithm used when storing this object in Amazon
@@ -13805,10 +13954,10 @@ type DeleteObjectInput struct {
 	// delete enabled.
 	MFA *string `location:"header" locationName:"x-amz-mfa" type:"string"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -14098,10 +14247,10 @@ type DeleteObjectsInput struct {
 	// delete enabled.
 	MFA *string `location:"header" locationName:"x-amz-mfa" type:"string"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 }
@@ -14406,9 +14555,9 @@ type Destination struct {
 	// must be replicated. Must be specified together with a Metrics block.
 	ReplicationTime *ReplicationTime `type:"structure"`
 
-	// The storage class to use when replicating objects, such as standard or reduced
-	// redundancy. By default, Amazon S3 uses the storage class of the source object
-	// to create the object replica.
+	// The storage class to use when replicating objects, such as S3 Standard or
+	// reduced redundancy. By default, Amazon S3 uses the storage class of the source
+	// object to create the object replica.
 	//
 	// For valid values, see the StorageClass element of the PUT Bucket replication
 	// (https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTreplication.html)
@@ -14517,8 +14666,11 @@ type Encryption struct {
 	// the encryption context for the restore results.
 	KMSContext *string `type:"string"`
 
-	// If the encryption type is aws:kms, this optional value specifies the AWS
-	// KMS key ID to use for encryption of job results.
+	// If the encryption type is aws:kms, this optional value specifies the ID of
+	// the symmetric customer managed AWS KMS CMK to use for encryption of job results.
+	// Amazon S3 only supports symmetric CMKs. For more information, see Using Symmetric
+	// and Asymmetric Keys (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
+	// in the AWS Key Management Service Developer Guide.
 	KMSKeyId *string `type:"string" sensitive:"true"`
 }
 
@@ -14568,8 +14720,12 @@ func (s *Encryption) SetKMSKeyId(v string) *Encryption {
 type EncryptionConfiguration struct {
 	_ struct{} `type:"structure"`
 
-	// Specifies the AWS KMS Key ID (Key ARN or Alias ARN) for the destination bucket.
-	// Amazon S3 uses this key to encrypt replica objects.
+	// Specifies the ID (Key ARN or Alias ARN) of the customer managed customer
+	// master key (CMK) stored in AWS Key Management Service (KMS) for the destination
+	// bucket. Amazon S3 uses this key to encrypt replica objects. Amazon S3 only
+	// supports symmetric customer managed CMKs. For more information, see Using
+	// Symmetric and Asymmetric Keys (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
+	// in the AWS Key Management Service Developer Guide.
 	ReplicaKmsKeyID *string `type:"string"`
 }
 
@@ -14616,6 +14772,11 @@ func (s *EndEvent) UnmarshalEvent(
 	msg eventstream.Message,
 ) error {
 	return nil
+}
+
+func (s *EndEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
+	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
+	return msg, err
 }
 
 // Container for all error elements.
@@ -15929,6 +16090,7 @@ type GetBucketLocationOutput struct {
 
 	// Specifies the Region where the bucket resides. For a list of all the Amazon
 	// S3 supported location constraints by Region, see Regions and Endpoints (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region).
+	// Buckets in Region us-east-1 have a LocationConstraint of null.
 	LocationConstraint *string `type:"string" enum:"BucketLocationConstraint"`
 }
 
@@ -16138,7 +16300,7 @@ func (s *GetBucketMetricsConfigurationOutput) SetMetricsConfiguration(v *Metrics
 type GetBucketNotificationConfigurationRequest struct {
 	_ struct{} `locationName:"GetBucketNotificationConfigurationRequest" type:"structure"`
 
-	// Name of the bucket for which to get the notification configuration
+	// Name of the bucket for which to get the notification configuration.
 	//
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
@@ -16786,10 +16948,10 @@ func (s *GetBucketWebsiteInput) hasEndpointARN() bool {
 type GetBucketWebsiteOutput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the error document for the website.
+	// The object key name of the website error document to use for 4XX class errors.
 	ErrorDocument *ErrorDocument `type:"structure"`
 
-	// The name of the index document for the website.
+	// The name of the index document for the website (for example index.html).
 	IndexDocument *IndexDocument `type:"structure"`
 
 	// Specifies the redirect behavior of all requests to a website endpoint of
@@ -16854,10 +17016,10 @@ type GetObjectAclInput struct {
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -17026,13 +17188,16 @@ type GetObjectInput struct {
 	PartNumber *int64 `location:"querystring" locationName:"partNumber" type:"integer"`
 
 	// Downloads the specified range bytes of an object. For more information about
-	// the HTTP Range header, see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35.
+	// the HTTP Range header, see https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
+	// (https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35).
+	//
+	// Amazon S3 doesn't support retrieving multiple ranges of data per GET request.
 	Range *string `location:"header" locationName:"Range" type:"string"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -17269,10 +17434,10 @@ type GetObjectLegalHoldInput struct {
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -17518,6 +17683,10 @@ type GetObjectOutput struct {
 	LastModified *time.Time `location:"header" locationName:"Last-Modified" type:"timestamp"`
 
 	// A map of metadata to store with the object in S3.
+	//
+	// By default unmarshaled keys are written as a map keys in following canonicalized format:
+	// the first letter and any letter following a hyphen will be capitalized, and the rest as lowercase.
+	// Set `aws.Config.LowerCaseHeaderMaps` to `true` to write unmarshaled keys to the map as lowercase.
 	Metadata map[string]*string `location:"headers" locationName:"x-amz-meta-" type:"map"`
 
 	// This is set to the number of metadata entries not returned in x-amz-meta
@@ -17562,7 +17731,8 @@ type GetObjectOutput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) that was used for the object.
+	// symmetric customer managed customer master key (CMK) that was used for the
+	// object.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// The server-side encryption algorithm used when storing this object in Amazon
@@ -17570,7 +17740,7 @@ type GetObjectOutput struct {
 	ServerSideEncryption *string `location:"header" locationName:"x-amz-server-side-encryption" type:"string" enum:"ServerSideEncryption"`
 
 	// Provides storage class information of the object. Amazon S3 returns this
-	// header for all objects except for Standard storage class objects.
+	// header for all objects except for S3 Standard storage class objects.
 	StorageClass *string `location:"header" locationName:"x-amz-storage-class" type:"string" enum:"StorageClass"`
 
 	// The number of tags, if any, on the object.
@@ -17802,10 +17972,10 @@ type GetObjectRetentionInput struct {
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -18056,10 +18226,10 @@ type GetObjectTorrentInput struct {
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 }
@@ -18255,11 +18425,11 @@ func (s *GetPublicAccessBlockOutput) SetPublicAccessBlockConfiguration(v *Public
 	return s
 }
 
-// Container for Glacier job parameters.
+// Container for S3 Glacier job parameters.
 type GlacierJobParameters struct {
 	_ struct{} `type:"structure"`
 
-	// Glacier retrieval tier at which the restore will be processed.
+	// S3 Glacier retrieval tier at which the restore will be processed.
 	//
 	// Tier is a required field
 	Tier *string `type:"string" required:"true" enum:"Tier"`
@@ -18350,6 +18520,29 @@ type Grantee struct {
 	DisplayName *string `type:"string"`
 
 	// Email address of the grantee.
+	//
+	// Using email addresses to specify a grantee is only supported in the following
+	// AWS Regions:
+	//
+	//    * US East (N. Virginia)
+	//
+	//    * US West (N. California)
+	//
+	//    * US West (Oregon)
+	//
+	//    * Asia Pacific (Singapore)
+	//
+	//    * Asia Pacific (Sydney)
+	//
+	//    * Asia Pacific (Tokyo)
+	//
+	//    * Europe (Ireland)
+	//
+	//    * South America (São Paulo)
+	//
+	// For a list of all the Amazon S3 supported Regions and endpoints, see Regions
+	// and Endpoints (https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region)
+	// in the AWS General Reference.
 	EmailAddress *string `type:"string"`
 
 	// The canonical user ID of the grantee.
@@ -18530,12 +18723,14 @@ type HeadObjectInput struct {
 
 	// Downloads the specified range bytes of an object. For more information about
 	// the HTTP Range header, see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35.
+	//
+	// Amazon S3 doesn't support retrieving multiple ranges of data per GET request.
 	Range *string `location:"header" locationName:"Range" type:"string"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -18744,6 +18939,10 @@ type HeadObjectOutput struct {
 	LastModified *time.Time `location:"header" locationName:"Last-Modified" type:"timestamp"`
 
 	// A map of metadata to store with the object in S3.
+	//
+	// By default unmarshaled keys are written as a map keys in following canonicalized format:
+	// the first letter and any letter following a hyphen will be capitalized, and the rest as lowercase.
+	// Set `aws.Config.LowerCaseHeaderMaps` to `true` to write unmarshaled keys to the map as lowercase.
 	Metadata map[string]*string `location:"headers" locationName:"x-amz-meta-" type:"map"`
 
 	// This is set to the number of metadata entries not returned in x-amz-meta
@@ -18828,7 +19027,8 @@ type HeadObjectOutput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) that was used for the object.
+	// symmetric customer managed customer master key (CMK) that was used for the
+	// object.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// If the object is stored using server-side encryption either with an AWS KMS
@@ -18838,7 +19038,7 @@ type HeadObjectOutput struct {
 	ServerSideEncryption *string `location:"header" locationName:"x-amz-server-side-encryption" type:"string" enum:"ServerSideEncryption"`
 
 	// Provides storage class information of the object. Amazon S3 returns this
-	// header for all objects except for Standard storage class objects.
+	// header for all objects except for S3 Standard storage class objects.
 	//
 	// For more information, see Storage Classes (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html).
 	StorageClass *string `location:"header" locationName:"x-amz-storage-class" type:"string" enum:"StorageClass"`
@@ -19433,7 +19633,11 @@ func (s *InventoryFilter) SetPrefix(v string) *InventoryFilter {
 type InventoryS3BucketDestination struct {
 	_ struct{} `type:"structure"`
 
-	// The ID of the account that owns the destination bucket.
+	// The account ID that owns the destination S3 bucket. If no account ID is provided,
+	// the owner is not validated before exporting data.
+	//
+	// Although this value is optional, we strongly recommend that you set it to
+	// help prevent problems if the destination bucket ownership changes.
 	AccountId *string `type:"string"`
 
 	// The Amazon Resource Name (ARN) of the bucket where inventory results will
@@ -19590,7 +19794,8 @@ func (s *JSONInput) SetType(v string) *JSONInput {
 type JSONOutput struct {
 	_ struct{} `type:"structure"`
 
-	// The value used to separate individual records in the output.
+	// The value used to separate individual records in the output. If no value
+	// is specified, Amazon S3 uses a newline character ('\n').
 	RecordDelimiter *string `type:"string"`
 }
 
@@ -20826,11 +21031,12 @@ type ListObjectVersionsInput struct {
 	// Specifies the key to start with when listing objects in a bucket.
 	KeyMarker *string `location:"querystring" locationName:"key-marker" type:"string"`
 
-	// Sets the maximum number of keys returned in the response. The response might
-	// contain fewer keys but will never contain more. If additional keys satisfy
-	// the search criteria, but were not returned because max-keys was exceeded,
-	// the response contains <isTruncated>true</isTruncated>. To return the additional
-	// keys, see key-marker and version-id-marker.
+	// Sets the maximum number of keys returned in the response. By default the
+	// API returns up to 1,000 key names. The response might contain fewer keys
+	// but will never contain more. If additional keys satisfy the search criteria,
+	// but were not returned because max-keys was exceeded, the response contains
+	// <isTruncated>true</isTruncated>. To return the additional keys, see key-marker
+	// and version-id-marker.
 	MaxKeys *int64 `location:"querystring" locationName:"max-keys" type:"integer"`
 
 	// Use this parameter to select only those keys that begin with the specified
@@ -21107,8 +21313,9 @@ type ListObjectsInput struct {
 	// Specifies the key to start with when listing objects in a bucket.
 	Marker *string `location:"querystring" locationName:"marker" type:"string"`
 
-	// Sets the maximum number of keys returned in the response. The response might
-	// contain fewer keys but will never contain more.
+	// Sets the maximum number of keys returned in the response. By default the
+	// API returns up to 1,000 key names. The response might contain fewer keys
+	// but will never contain more.
 	MaxKeys *int64 `location:"querystring" locationName:"max-keys" type:"integer"`
 
 	// Limits the response to keys that begin with the specified prefix.
@@ -21370,8 +21577,9 @@ type ListObjectsV2Input struct {
 	// true.
 	FetchOwner *bool `location:"querystring" locationName:"fetch-owner" type:"boolean"`
 
-	// Sets the maximum number of keys returned in the response. The response might
-	// contain fewer keys but will never contain more.
+	// Sets the maximum number of keys returned in the response. By default the
+	// API returns up to 1,000 key names. The response might contain fewer keys
+	// but will never contain more.
 	MaxKeys *int64 `location:"querystring" locationName:"max-keys" type:"integer"`
 
 	// Limits the response to keys that begin with the specified prefix.
@@ -21540,8 +21748,9 @@ type ListObjectsV2Output struct {
 	// result will include less than equals 50 keys
 	KeyCount *int64 `type:"integer"`
 
-	// Sets the maximum number of keys returned in the response. The response might
-	// contain fewer keys but will never contain more.
+	// Sets the maximum number of keys returned in the response. By default the
+	// API returns up to 1,000 key names. The response might contain fewer keys
+	// but will never contain more.
 	MaxKeys *int64 `type:"integer"`
 
 	// Bucket name.
@@ -21676,10 +21885,10 @@ type ListPartsInput struct {
 	// part numbers will be listed.
 	PartNumberMarker *int64 `location:"querystring" locationName:"part-number-marker" type:"integer"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -23339,6 +23548,16 @@ func (s *ProgressEvent) UnmarshalEvent(
 	return nil
 }
 
+func (s *ProgressEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
+	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
+	var buf bytes.Buffer
+	if err = pm.MarshalPayload(&buf, s); err != nil {
+		return eventstream.Message{}, err
+	}
+	msg.Payload = buf.Bytes()
+	return msg, err
+}
+
 // The PublicAccessBlock configuration that you want to apply to this Amazon
 // S3 bucket. You can enable the configuration options in any combination. For
 // more information about when Amazon S3 considers a bucket or object public,
@@ -23775,7 +23994,7 @@ type PutBucketCorsInput struct {
 
 	// Describes the cross-origin access configuration for objects in an Amazon
 	// S3 bucket. For more information, see Enabling Cross-Origin Resource Sharing
-	// (https://docs.aws.amazon.com/AmazonS3/latest/dev//cors.html) in the Amazon
+	// (https://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html) in the Amazon
 	// Simple Storage Service Developer Guide.
 	//
 	// CORSConfiguration is a required field
@@ -25272,10 +25491,10 @@ type PutObjectAclInput struct {
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -25522,10 +25741,10 @@ type PutObjectInput struct {
 	// The date and time when you want this object's Object Lock to expire.
 	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -25552,20 +25771,22 @@ type PutObjectInput struct {
 
 	// If x-amz-server-side-encryption is present and has the value of aws:kms,
 	// this header specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) that was used for the object.
+	// symmetrical customer managed customer master key (CMK) that was used for
+	// the object.
 	//
 	// If the value of x-amz-server-side-encryption is aws:kms, this header specifies
-	// the ID of the AWS KMS CMK that will be used for the object. If you specify
-	// x-amz-server-side-encryption:aws:kms, but do not providex-amz-server-side-encryption-aws-kms-key-id,
-	// Amazon S3 uses the AWS managed CMK in AWS to protect the data.
+	// the ID of the symmetric customer managed AWS KMS CMK that will be used for
+	// the object. If you specify x-amz-server-side-encryption:aws:kms, but do not
+	// providex-amz-server-side-encryption-aws-kms-key-id, Amazon S3 uses the AWS
+	// managed CMK in AWS to protect the data.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// The server-side encryption algorithm used when storing this object in Amazon
 	// S3 (for example, AES256, aws:kms).
 	ServerSideEncryption *string `location:"header" locationName:"x-amz-server-side-encryption" type:"string" enum:"ServerSideEncryption"`
 
-	// If you don't specify, Standard is the default storage class. Amazon S3 supports
-	// other storage classes.
+	// If you don't specify, S3 Standard is the default storage class. Amazon S3
+	// supports other storage classes.
 	StorageClass *string `location:"header" locationName:"x-amz-storage-class" type:"string" enum:"StorageClass"`
 
 	// The tag-set for the object. The tag-set must be encoded as URL Query parameters.
@@ -25858,10 +26079,10 @@ type PutObjectLegalHoldInput struct {
 	// specified object.
 	LegalHold *ObjectLockLegalHold `locationName:"LegalHold" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -25987,10 +26208,10 @@ type PutObjectLockConfigurationInput struct {
 	// The Object Lock configuration that you want to apply to the specified bucket.
 	ObjectLockConfiguration *ObjectLockConfiguration `locationName:"ObjectLockConfiguration" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -26126,7 +26347,8 @@ type PutObjectOutput struct {
 
 	// If x-amz-server-side-encryption is present and has the value of aws:kms,
 	// this header specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) that was used for the object.
+	// symmetric customer managed customer master key (CMK) that was used for the
+	// object.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// If you specified server-side encryption either with an AWS KMS customer master
@@ -26228,10 +26450,10 @@ type PutObjectRetentionInput struct {
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -26760,6 +26982,13 @@ func (s *RecordsEvent) UnmarshalEvent(
 	s.Payload = make([]byte, len(msg.Payload))
 	copy(s.Payload, msg.Payload)
 	return nil
+}
+
+func (s *RecordsEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
+	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
+	msg.Headers.Set(":content-type", eventstream.StringValue("application/octet-stream"))
+	msg.Payload = s.Payload
+	return msg, err
 }
 
 // Specifies how requests are redirected. In the event of an error, you can
@@ -27426,10 +27655,10 @@ type RestoreObjectInput struct {
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -27573,7 +27802,7 @@ type RestoreRequest struct {
 	// The optional description for the job.
 	Description *string `type:"string"`
 
-	// Glacier related parameters pertaining to this job. Do not use with restores
+	// S3 Glacier related parameters pertaining to this job. Do not use with restores
 	// that specify OutputLocation.
 	GlacierJobParameters *GlacierJobParameters `type:"structure"`
 
@@ -27583,7 +27812,7 @@ type RestoreRequest struct {
 	// Describes the parameters for Select job types.
 	SelectParameters *SelectParameters `type:"structure"`
 
-	// Glacier retrieval tier at which the restore will be processed.
+	// S3 Glacier retrieval tier at which the restore will be processed.
 	Tier *string `type:"string" enum:"Tier"`
 
 	// Type of restore request.
@@ -27721,8 +27950,9 @@ func (s *RoutingRule) SetRedirect(v *Redirect) *RoutingRule {
 }
 
 // Specifies lifecycle rules for an Amazon S3 bucket. For more information,
-// see PUT Bucket lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTlifecycle.html)
-// in the Amazon Simple Storage Service API Reference.
+// see Put Bucket Lifecycle Configuration (https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTlifecycle.html)
+// in the Amazon Simple Storage Service API Reference. For examples, see Put
+// Bucket Lifecycle Configuration Examples (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html#API_PutBucketLifecycleConfiguration_Examples)
 type Rule struct {
 	_ struct{} `type:"structure"`
 
@@ -27767,7 +27997,10 @@ type Rule struct {
 	// Status is a required field
 	Status *string `type:"string" required:"true" enum:"ExpirationStatus"`
 
-	// Specifies when an object transitions to a specified storage class.
+	// Specifies when an object transitions to a specified storage class. For more
+	// information about Amazon S3 lifecycle configuration rules, see Transitioning
+	// Objects Using Amazon S3 Lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/dev/lifecycle-transition-general-considerations.html)
+	// in the Amazon Simple Storage Service Developer Guide.
 	Transition *Transition `type:"structure"`
 }
 
@@ -27849,8 +28082,8 @@ func (s *Rule) SetTransition(v *Transition) *Rule {
 type SSEKMS struct {
 	_ struct{} `locationName:"SSE-KMS" type:"structure"`
 
-	// Specifies the ID of the AWS Key Management Service (AWS KMS) customer master
-	// key (CMK) to use for encrypting inventory reports.
+	// Specifies the ID of the AWS Key Management Service (AWS KMS) symmetric customer
+	// managed customer master key (CMK) to use for encrypting inventory reports.
 	//
 	// KeyId is a required field
 	KeyId *string `type:"string" required:"true" sensitive:"true"`
@@ -27943,75 +28176,8 @@ func (s *ScanRange) SetStart(v int64) *ScanRange {
 	return s
 }
 
-// SelectObjectContentEventStream provides handling of EventStreams for
-// the SelectObjectContent API.
-//
-// Use this type to receive SelectObjectContentEventStream events. The events
-// can be read from the Events channel member.
-//
-// The events that can be received are:
-//
-//     * ContinuationEvent
-//     * EndEvent
-//     * ProgressEvent
-//     * RecordsEvent
-//     * StatsEvent
-type SelectObjectContentEventStream struct {
-	// Reader is the EventStream reader for the SelectObjectContentEventStream
-	// events. This value is automatically set by the SDK when the API call is made
-	// Use this member when unit testing your code with the SDK to mock out the
-	// EventStream Reader.
-	//
-	// Must not be nil.
-	Reader SelectObjectContentEventStreamReader
-
-	// StreamCloser is the io.Closer for the EventStream connection. For HTTP
-	// EventStream this is the response Body. The stream will be closed when
-	// the Close method of the EventStream is called.
-	StreamCloser io.Closer
-}
-
-// Close closes the EventStream. This will also cause the Events channel to be
-// closed. You can use the closing of the Events channel to terminate your
-// application's read from the API's EventStream.
-//
-// Will close the underlying EventStream reader. For EventStream over HTTP
-// connection this will also close the HTTP connection.
-//
-// Close must be called when done using the EventStream API. Not calling Close
-// may result in resource leaks.
-func (es *SelectObjectContentEventStream) Close() (err error) {
-	es.Reader.Close()
-	es.StreamCloser.Close()
-
-	return es.Err()
-}
-
-// Err returns any error that occurred while reading EventStream Events from
-// the service API's response. Returns nil if there were no errors.
-func (es *SelectObjectContentEventStream) Err() error {
-	if err := es.Reader.Err(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// Events returns a channel to read EventStream Events from the
-// SelectObjectContent API.
-//
-// These events are:
-//
-//     * ContinuationEvent
-//     * EndEvent
-//     * ProgressEvent
-//     * RecordsEvent
-//     * StatsEvent
-func (es *SelectObjectContentEventStream) Events() <-chan SelectObjectContentEventStreamEvent {
-	return es.Reader.Events()
-}
-
 // SelectObjectContentEventStreamEvent groups together all EventStream
-// events read from the SelectObjectContent API.
+// events writes for SelectObjectContentEventStream.
 //
 // These events are:
 //
@@ -28022,11 +28188,12 @@ func (es *SelectObjectContentEventStream) Events() <-chan SelectObjectContentEve
 //     * StatsEvent
 type SelectObjectContentEventStreamEvent interface {
 	eventSelectObjectContentEventStream()
+	eventstreamapi.Marshaler
+	eventstreamapi.Unmarshaler
 }
 
-// SelectObjectContentEventStreamReader provides the interface for reading EventStream
-// Events from the SelectObjectContent API. The
-// default implementation for this interface will be SelectObjectContentEventStream.
+// SelectObjectContentEventStreamReader provides the interface for reading to the stream. The
+// default implementation for this interface will be SelectObjectContentEventStreamData.
 //
 // The reader's Close method must allow multiple concurrent calls.
 //
@@ -28041,8 +28208,7 @@ type SelectObjectContentEventStreamReader interface {
 	// Returns a channel of events as they are read from the event stream.
 	Events() <-chan SelectObjectContentEventStreamEvent
 
-	// Close will close the underlying event stream reader. For event stream over
-	// HTTP this will also close the HTTP connection.
+	// Close will stop the reader reading events from the stream.
 	Close() error
 
 	// Returns any error that has occurred while reading from the event stream.
@@ -28052,57 +28218,44 @@ type SelectObjectContentEventStreamReader interface {
 type readSelectObjectContentEventStream struct {
 	eventReader *eventstreamapi.EventReader
 	stream      chan SelectObjectContentEventStreamEvent
-	errVal      atomic.Value
+	err         *eventstreamapi.OnceError
 
 	done      chan struct{}
 	closeOnce sync.Once
 }
 
-func newReadSelectObjectContentEventStream(
-	reader io.ReadCloser,
-	unmarshalers request.HandlerList,
-	logger aws.Logger,
-	logLevel aws.LogLevelType,
-) *readSelectObjectContentEventStream {
+func newReadSelectObjectContentEventStream(eventReader *eventstreamapi.EventReader) *readSelectObjectContentEventStream {
 	r := &readSelectObjectContentEventStream{
-		stream: make(chan SelectObjectContentEventStreamEvent),
-		done:   make(chan struct{}),
+		eventReader: eventReader,
+		stream:      make(chan SelectObjectContentEventStreamEvent),
+		done:        make(chan struct{}),
+		err:         eventstreamapi.NewOnceError(),
 	}
-
-	r.eventReader = eventstreamapi.NewEventReader(
-		reader,
-		protocol.HandlerPayloadUnmarshal{
-			Unmarshalers: unmarshalers,
-		},
-		r.unmarshalerForEventType,
-	)
-	r.eventReader.UseLogger(logger, logLevel)
+	go r.readEventStream()
 
 	return r
 }
 
-// Close will close the underlying event stream reader. For EventStream over
-// HTTP this will also close the HTTP connection.
+// Close will close the underlying event stream reader.
 func (r *readSelectObjectContentEventStream) Close() error {
 	r.closeOnce.Do(r.safeClose)
-
 	return r.Err()
+}
+
+func (r *readSelectObjectContentEventStream) ErrorSet() <-chan struct{} {
+	return r.err.ErrorSet()
+}
+
+func (r *readSelectObjectContentEventStream) Closed() <-chan struct{} {
+	return r.done
 }
 
 func (r *readSelectObjectContentEventStream) safeClose() {
 	close(r.done)
-	err := r.eventReader.Close()
-	if err != nil {
-		r.errVal.Store(err)
-	}
 }
 
 func (r *readSelectObjectContentEventStream) Err() error {
-	if v := r.errVal.Load(); v != nil {
-		return v.(error)
-	}
-
-	return nil
+	return r.err.Err()
 }
 
 func (r *readSelectObjectContentEventStream) Events() <-chan SelectObjectContentEventStreamEvent {
@@ -28110,6 +28263,7 @@ func (r *readSelectObjectContentEventStream) Events() <-chan SelectObjectContent
 }
 
 func (r *readSelectObjectContentEventStream) readEventStream() {
+	defer r.Close()
 	defer close(r.stream)
 
 	for {
@@ -28124,7 +28278,7 @@ func (r *readSelectObjectContentEventStream) readEventStream() {
 				return
 			default:
 			}
-			r.errVal.Store(err)
+			r.err.SetError(err)
 			return
 		}
 
@@ -28136,22 +28290,20 @@ func (r *readSelectObjectContentEventStream) readEventStream() {
 	}
 }
 
-func (r *readSelectObjectContentEventStream) unmarshalerForEventType(
-	eventType string,
-) (eventstreamapi.Unmarshaler, error) {
+type unmarshalerForSelectObjectContentEventStreamEvent struct {
+	metadata protocol.ResponseMetadata
+}
+
+func (u unmarshalerForSelectObjectContentEventStreamEvent) UnmarshalerForEventName(eventType string) (eventstreamapi.Unmarshaler, error) {
 	switch eventType {
 	case "Cont":
 		return &ContinuationEvent{}, nil
-
 	case "End":
 		return &EndEvent{}, nil
-
 	case "Progress":
 		return &ProgressEvent{}, nil
-
 	case "Records":
 		return &RecordsEvent{}, nil
-
 	case "Stats":
 		return &StatsEvent{}, nil
 	default:
@@ -28378,8 +28530,7 @@ func (s *SelectObjectContentInput) hasEndpointARN() bool {
 type SelectObjectContentOutput struct {
 	_ struct{} `type:"structure" payload:"Payload"`
 
-	// Use EventStream to use the API's stream.
-	EventStream *SelectObjectContentEventStream `type:"structure"`
+	EventStream *SelectObjectContentEventStream
 }
 
 // String returns the string representation
@@ -28392,29 +28543,17 @@ func (s SelectObjectContentOutput) GoString() string {
 	return s.String()
 }
 
-// SetEventStream sets the EventStream field's value.
 func (s *SelectObjectContentOutput) SetEventStream(v *SelectObjectContentEventStream) *SelectObjectContentOutput {
 	s.EventStream = v
 	return s
 }
+func (s *SelectObjectContentOutput) GetEventStream() *SelectObjectContentEventStream {
+	return s.EventStream
+}
 
-func (s *SelectObjectContentOutput) runEventStreamLoop(r *request.Request) {
-	if r.Error != nil {
-		return
-	}
-	reader := newReadSelectObjectContentEventStream(
-		r.HTTPResponse.Body,
-		r.Handlers.UnmarshalStream,
-		r.Config.Logger,
-		r.Config.LogLevel.Value(),
-	)
-	go reader.readEventStream()
-
-	eventStream := &SelectObjectContentEventStream{
-		StreamCloser: r.HTTPResponse.Body,
-		Reader:       reader,
-	}
-	s.EventStream = eventStream
+// GetStream returns the type to interact with the event stream.
+func (s *SelectObjectContentOutput) GetStream() *SelectObjectContentEventStream {
+	return s.EventStream
 }
 
 // Describes the parameters for Select job types.
@@ -28506,8 +28645,24 @@ func (s *SelectParameters) SetOutputSerialization(v *OutputSerialization) *Selec
 type ServerSideEncryptionByDefault struct {
 	_ struct{} `type:"structure"`
 
-	// KMS master key ID to use for the default encryption. This parameter is allowed
-	// if and only if SSEAlgorithm is set to aws:kms.
+	// AWS Key Management Service (KMS) customer master key ID to use for the default
+	// encryption. This parameter is allowed if and only if SSEAlgorithm is set
+	// to aws:kms.
+	//
+	// You can specify the key ID or the Amazon Resource Name (ARN) of the CMK.
+	// However, if you are using encryption with cross-account operations, you must
+	// use a fully qualified CMK ARN. For more information, see Using encryption
+	// for cross-account operations (https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html#bucket-encryption-update-bucket-policy).
+	//
+	// For example:
+	//
+	//    * Key ID: 1234abcd-12ab-34cd-56ef-1234567890ab
+	//
+	//    * Key ARN: arn:aws:kms:us-east-2:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab
+	//
+	// Amazon S3 only supports symmetric CMKs and not asymmetric CMKs. For more
+	// information, see Using Symmetric and Asymmetric Keys (https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
+	// in the AWS Key Management Service Developer Guide.
 	KMSMasterKeyID *string `type:"string" sensitive:"true"`
 
 	// Server-side encryption algorithm to use for the default encryption.
@@ -28809,6 +28964,16 @@ func (s *StatsEvent) UnmarshalEvent(
 		return err
 	}
 	return nil
+}
+
+func (s *StatsEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
+	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
+	var buf bytes.Buffer
+	if err = pm.MarshalPayload(&buf, s); err != nil {
+		return eventstream.Message{}, err
+	}
+	msg.Payload = buf.Bytes()
+	return msg, err
 }
 
 // Specifies data related to access patterns to be collected and made available
@@ -29202,7 +29367,10 @@ func (s *TopicConfigurationDeprecated) SetTopic(v string) *TopicConfigurationDep
 	return s
 }
 
-// Specifies when an object transitions to a specified storage class.
+// Specifies when an object transitions to a specified storage class. For more
+// information about Amazon S3 lifecycle configuration rules, see Transitioning
+// Objects Using Amazon S3 Lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/dev/lifecycle-transition-general-considerations.html)
+// in the Amazon Simple Storage Service Developer Guide.
 type Transition struct {
 	_ struct{} `type:"structure"`
 
@@ -29305,10 +29473,10 @@ type UploadPartCopyInput struct {
 	// PartNumber is a required field
 	PartNumber *int64 `location:"querystring" locationName:"partNumber" type:"integer" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -29538,7 +29706,8 @@ type UploadPartCopyOutput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) that was used for the object.
+	// symmetric customer managed customer master key (CMK) that was used for the
+	// object.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// The server-side encryption algorithm used when storing this object in Amazon
@@ -29629,10 +29798,10 @@ type UploadPartInput struct {
 	// PartNumber is a required field
 	PartNumber *int64 `location:"querystring" locationName:"partNumber" type:"integer" required:"true"`
 
-	// Confirms that the requester knows that she or he will be charged for the
-	// request. Bucket owners need not specify this parameter in their requests.
-	// For information about downloading objects from Requester Pays buckets, see
-	// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// Confirms that the requester knows that they will be charged for the request.
+	// Bucket owners need not specify this parameter in their requests. For information
+	// about downloading objects from requester pays buckets, see Downloading Objects
+	// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 Developer Guide.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
 
@@ -29812,7 +29981,7 @@ type UploadPartOutput struct {
 	SSECustomerKeyMD5 *string `location:"header" locationName:"x-amz-server-side-encryption-customer-key-MD5" type:"string"`
 
 	// If present, specifies the ID of the AWS Key Management Service (AWS KMS)
-	// customer master key (CMK) was used for the object.
+	// symmetric customer managed customer master key (CMK) was used for the object.
 	SSEKMSKeyId *string `location:"header" locationName:"x-amz-server-side-encryption-aws-kms-key-id" type:"string" sensitive:"true"`
 
 	// The server-side encryption algorithm used when storing this object in Amazon
@@ -30461,10 +30630,10 @@ const (
 	RequestChargedRequester = "requester"
 )
 
-// Confirms that the requester knows that she or he will be charged for the
-// request. Bucket owners need not specify this parameter in their requests.
-// For information about downloading objects from Requester Pays buckets, see
-// Downloading Objects in Requestor Pays Buckets (https://docs.aws.amazon.com/http:/docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+// Confirms that the requester knows that they will be charged for the request.
+// Bucket owners need not specify this parameter in their requests. For information
+// about downloading objects from requester pays buckets, see Downloading Objects
+// in Requestor Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 // in the Amazon S3 Developer Guide.
 const (
 	// RequestPayerRequester is a RequestPayer enum value

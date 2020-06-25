@@ -4,14 +4,16 @@
 package stylecheck
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"strings"
 	"unicode"
 
 	"golang.org/x/tools/go/analysis"
+	"honnef.co/go/tools/code"
 	"honnef.co/go/tools/config"
-	. "honnef.co/go/tools/lint/lintdsl"
+	"honnef.co/go/tools/report"
 )
 
 // knownNameExceptions is a set of names that are known to be exempt from naming checks.
@@ -46,7 +48,7 @@ func CheckNames(pass *analysis.Pass) (interface{}, error) {
 
 		// Handle two common styles from other languages that don't belong in Go.
 		if len(id.Name) >= 5 && allCaps(id.Name) && strings.Contains(id.Name, "_") {
-			ReportfFG(pass, id.Pos(), "should not use ALL_CAPS in Go names; use CamelCase instead")
+			report.Report(pass, id, "should not use ALL_CAPS in Go names; use CamelCase instead", report.FilterGenerated())
 			return
 		}
 
@@ -56,10 +58,10 @@ func CheckNames(pass *analysis.Pass) (interface{}, error) {
 		}
 
 		if len(id.Name) > 2 && strings.Contains(id.Name[1:len(id.Name)-1], "_") {
-			ReportfFG(pass, id.Pos(), "should not use underscores in Go names; %s %s should be %s", thing, id.Name, should)
+			report.Report(pass, id, fmt.Sprintf("should not use underscores in Go names; %s %s should be %s", thing, id.Name, should), report.FilterGenerated())
 			return
 		}
-		ReportfFG(pass, id.Pos(), "%s %s should be %s", thing, id.Name, should)
+		report.Report(pass, id, fmt.Sprintf("%s %s should be %s", thing, id.Name, should), report.FilterGenerated())
 	}
 	checkList := func(fl *ast.FieldList, thing string, initialisms map[string]bool) {
 		if fl == nil {
@@ -80,101 +82,111 @@ func CheckNames(pass *analysis.Pass) (interface{}, error) {
 	for _, f := range pass.Files {
 		// Package names need slightly different handling than other names.
 		if !strings.HasSuffix(f.Name.Name, "_test") && strings.Contains(f.Name.Name, "_") {
-			ReportfFG(pass, f.Pos(), "should not use underscores in package names")
+			report.Report(pass, f, "should not use underscores in package names", report.FilterGenerated())
 		}
 		if strings.IndexFunc(f.Name.Name, unicode.IsUpper) != -1 {
-			ReportfFG(pass, f.Pos(), "should not use MixedCaps in package name; %s should be %s", f.Name.Name, strings.ToLower(f.Name.Name))
+			report.Report(pass, f, fmt.Sprintf("should not use MixedCaps in package name; %s should be %s", f.Name.Name, strings.ToLower(f.Name.Name)), report.FilterGenerated())
 		}
+	}
 
-		ast.Inspect(f, func(node ast.Node) bool {
-			switch v := node.(type) {
-			case *ast.AssignStmt:
-				if v.Tok != token.DEFINE {
-					return true
+	fn := func(node ast.Node) {
+		switch v := node.(type) {
+		case *ast.AssignStmt:
+			if v.Tok != token.DEFINE {
+				return
+			}
+			for _, exp := range v.Lhs {
+				if id, ok := exp.(*ast.Ident); ok {
+					check(id, "var", initialisms)
 				}
-				for _, exp := range v.Lhs {
-					if id, ok := exp.(*ast.Ident); ok {
-						check(id, "var", initialisms)
-					}
-				}
-			case *ast.FuncDecl:
-				// Functions with no body are defined elsewhere (in
-				// assembly, or via go:linkname). These are likely to
-				// be something very low level (such as the runtime),
-				// where our rules don't apply.
-				if v.Body == nil {
-					return true
-				}
+			}
+		case *ast.FuncDecl:
+			// Functions with no body are defined elsewhere (in
+			// assembly, or via go:linkname). These are likely to
+			// be something very low level (such as the runtime),
+			// where our rules don't apply.
+			if v.Body == nil {
+				return
+			}
 
-				if IsInTest(pass, v) && (strings.HasPrefix(v.Name.Name, "Example") || strings.HasPrefix(v.Name.Name, "Test") || strings.HasPrefix(v.Name.Name, "Benchmark")) {
-					return true
-				}
+			if code.IsInTest(pass, v) && (strings.HasPrefix(v.Name.Name, "Example") || strings.HasPrefix(v.Name.Name, "Test") || strings.HasPrefix(v.Name.Name, "Benchmark")) {
+				return
+			}
 
-				thing := "func"
-				if v.Recv != nil {
-					thing = "method"
-				}
+			thing := "func"
+			if v.Recv != nil {
+				thing = "method"
+			}
 
-				if !isTechnicallyExported(v) {
-					check(v.Name, thing, initialisms)
-				}
+			if !isTechnicallyExported(v) {
+				check(v.Name, thing, initialisms)
+			}
 
-				checkList(v.Type.Params, thing+" parameter", initialisms)
-				checkList(v.Type.Results, thing+" result", initialisms)
-			case *ast.GenDecl:
-				if v.Tok == token.IMPORT {
-					return true
-				}
-				var thing string
-				switch v.Tok {
-				case token.CONST:
-					thing = "const"
-				case token.TYPE:
-					thing = "type"
-				case token.VAR:
-					thing = "var"
-				}
-				for _, spec := range v.Specs {
-					switch s := spec.(type) {
-					case *ast.TypeSpec:
-						check(s.Name, thing, initialisms)
-					case *ast.ValueSpec:
-						for _, id := range s.Names {
-							check(id, thing, initialisms)
-						}
-					}
-				}
-			case *ast.InterfaceType:
-				// Do not check interface method names.
-				// They are often constrainted by the method names of concrete types.
-				for _, x := range v.Methods.List {
-					ft, ok := x.Type.(*ast.FuncType)
-					if !ok { // might be an embedded interface name
-						continue
-					}
-					checkList(ft.Params, "interface method parameter", initialisms)
-					checkList(ft.Results, "interface method result", initialisms)
-				}
-			case *ast.RangeStmt:
-				if v.Tok == token.ASSIGN {
-					return true
-				}
-				if id, ok := v.Key.(*ast.Ident); ok {
-					check(id, "range var", initialisms)
-				}
-				if id, ok := v.Value.(*ast.Ident); ok {
-					check(id, "range var", initialisms)
-				}
-			case *ast.StructType:
-				for _, f := range v.Fields.List {
-					for _, id := range f.Names {
-						check(id, "struct field", initialisms)
+			checkList(v.Type.Params, thing+" parameter", initialisms)
+			checkList(v.Type.Results, thing+" result", initialisms)
+		case *ast.GenDecl:
+			if v.Tok == token.IMPORT {
+				return
+			}
+			var thing string
+			switch v.Tok {
+			case token.CONST:
+				thing = "const"
+			case token.TYPE:
+				thing = "type"
+			case token.VAR:
+				thing = "var"
+			}
+			for _, spec := range v.Specs {
+				switch s := spec.(type) {
+				case *ast.TypeSpec:
+					check(s.Name, thing, initialisms)
+				case *ast.ValueSpec:
+					for _, id := range s.Names {
+						check(id, thing, initialisms)
 					}
 				}
 			}
-			return true
-		})
+		case *ast.InterfaceType:
+			// Do not check interface method names.
+			// They are often constrained by the method names of concrete types.
+			for _, x := range v.Methods.List {
+				ft, ok := x.Type.(*ast.FuncType)
+				if !ok { // might be an embedded interface name
+					continue
+				}
+				checkList(ft.Params, "interface method parameter", initialisms)
+				checkList(ft.Results, "interface method result", initialisms)
+			}
+		case *ast.RangeStmt:
+			if v.Tok == token.ASSIGN {
+				return
+			}
+			if id, ok := v.Key.(*ast.Ident); ok {
+				check(id, "range var", initialisms)
+			}
+			if id, ok := v.Value.(*ast.Ident); ok {
+				check(id, "range var", initialisms)
+			}
+		case *ast.StructType:
+			for _, f := range v.Fields.List {
+				for _, id := range f.Names {
+					check(id, "struct field", initialisms)
+				}
+			}
+		}
 	}
+
+	needle := []ast.Node{
+		(*ast.AssignStmt)(nil),
+		(*ast.FuncDecl)(nil),
+		(*ast.GenDecl)(nil),
+		(*ast.InterfaceType)(nil),
+		(*ast.RangeStmt)(nil),
+		(*ast.StructType)(nil),
+	}
+
+	code.Preorder(pass, fn, needle...)
 	return nil, nil
 }
 

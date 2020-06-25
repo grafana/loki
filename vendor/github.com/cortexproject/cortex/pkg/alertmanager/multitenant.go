@@ -481,7 +481,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Unlock()
 
 	if !ok || !userAM.IsActive() {
-		http.Error(w, fmt.Sprintf("no Alertmanager for this user ID"), http.StatusNotFound)
+		http.Error(w, "no Alertmanager for this user ID", http.StatusNotFound)
 		return
 	}
 	userAM.mux.ServeHTTP(w, req)

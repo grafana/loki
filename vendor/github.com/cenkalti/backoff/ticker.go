@@ -1,7 +1,6 @@
 package backoff
 
 import (
-	"runtime"
 	"sync"
 	"time"
 )
@@ -13,24 +12,27 @@ import (
 type Ticker struct {
 	C        <-chan time.Time
 	c        chan time.Time
-	b        BackOff
+	b        BackOffContext
 	stop     chan struct{}
 	stopOnce sync.Once
 }
 
-// NewTicker returns a new Ticker containing a channel that will send the time at times
-// specified by the BackOff argument. Ticker is guaranteed to tick at least once.
-// The channel is closed when Stop method is called or BackOff stops.
+// NewTicker returns a new Ticker containing a channel that will send
+// the time at times specified by the BackOff argument. Ticker is
+// guaranteed to tick at least once.  The channel is closed when Stop
+// method is called or BackOff stops. It is not safe to manipulate the
+// provided backoff policy (notably calling NextBackOff or Reset)
+// while the ticker is running.
 func NewTicker(b BackOff) *Ticker {
 	c := make(chan time.Time)
 	t := &Ticker{
 		C:    c,
 		c:    c,
-		b:    b,
+		b:    ensureContext(b),
 		stop: make(chan struct{}),
 	}
+	t.b.Reset()
 	go t.run()
-	runtime.SetFinalizer(t, (*Ticker).Stop)
 	return t
 }
 
@@ -42,7 +44,6 @@ func (t *Ticker) Stop() {
 func (t *Ticker) run() {
 	c := t.c
 	defer close(c)
-	t.b.Reset()
 
 	// Ticker is guaranteed to tick at least once.
 	afterC := t.send(time.Now())
@@ -57,6 +58,8 @@ func (t *Ticker) run() {
 			afterC = t.send(tick)
 		case <-t.stop:
 			t.c = nil // Prevent future ticks from being sent to the channel.
+			return
+		case <-t.b.Context().Done():
 			return
 		}
 	}

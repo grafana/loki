@@ -86,6 +86,10 @@ func (m *Manager) StartAsync(ctx context.Context) error {
 
 // Initiates service shutdown if necessary on all the services being managed.
 func (m *Manager) StopAsync() {
+	if m == nil {
+		return
+	}
+
 	for _, s := range m.services {
 		s.StopAsync()
 	}

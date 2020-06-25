@@ -481,7 +481,7 @@ func (ng *Engine) populateSeries(ctx context.Context, q storage.Queryable, s *Ev
 
 	Inspect(s.Expr, func(node Node, path []Node) error {
 		var set storage.SeriesSet
-		params := &storage.SelectParams{
+		params := &storage.SelectHints{
 			Start: timestamp.FromTime(s.Start),
 			End:   timestamp.FromTime(s.End),
 			Step:  int64(s.Interval / time.Millisecond),
@@ -497,11 +497,7 @@ func (ng *Engine) populateSeries(ctx context.Context, q storage.Queryable, s *Ev
 				params.End = params.End - offsetMilliseconds
 			}
 
-			set, _, err = querier.Select(params, n.LabelMatchers...)
-			if err != nil {
-				level.Error(ng.logger).Log("msg", "error selecting series set", "err", err)
-				return err
-			}
+			set = querier.Select(false, params, n.LabelMatchers...)
 			n.series, err = expandSeriesSet(ctx, set)
 			if err != nil {
 				// TODO(fabxc): use multi-error.
@@ -520,11 +516,7 @@ func (ng *Engine) populateSeries(ctx context.Context, q storage.Queryable, s *Ev
 				params.End = params.End - offsetMilliseconds
 			}
 
-			set, _, err = querier.Select(params, n.LabelMatchers...)
-			if err != nil {
-				level.Error(ng.logger).Log("msg", "error selecting series set", "err", err)
-				return err
-			}
+			set = querier.Select(false, params, n.LabelMatchers...)
 			n.series, err = expandSeriesSet(ctx, set)
 			if err != nil {
 				level.Error(ng.logger).Log("msg", "error expanding series set", "err", err)

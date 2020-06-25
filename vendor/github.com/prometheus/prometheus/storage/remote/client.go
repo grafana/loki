@@ -21,22 +21,36 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/prometheus/prometheus/prompb"
 )
 
 const maxErrMsgLen = 256
 
 var userAgent = fmt.Sprintf("Prometheus/%s", version.Version)
+
+var remoteReadQueriesTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: subsystem,
+		Name:      "read_queries_total",
+		Help:      "The total number of remote read queries.",
+	},
+	[]string{remoteName, endpoint, "code"},
+)
 
 // Client allows reading and writing from/to a remote HTTP endpoint.
 type Client struct {
@@ -53,11 +67,20 @@ type ClientConfig struct {
 	HTTPClientConfig config_util.HTTPClientConfig
 }
 
+func init() {
+	prometheus.MustRegister(remoteReadQueriesTotal)
+}
+
 // NewClient creates a new Client.
 func NewClient(remoteName string, conf *ClientConfig) (*Client, error) {
 	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage", false)
 	if err != nil {
 		return nil, err
+	}
+
+	t := httpClient.Transport
+	httpClient.Transport = &nethttp.Transport{
+		RoundTripper: t,
 	}
 
 	return &Client{
@@ -85,11 +108,23 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
 	httpReq.Header.Set("User-Agent", userAgent)
 	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	httpResp, err := c.client.Do(httpReq.WithContext(ctx))
+	httpReq = httpReq.WithContext(ctx)
+
+	if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
+		var ht *nethttp.Tracer
+		httpReq, ht = nethttp.TraceRequest(
+			parentSpan.Tracer(),
+			httpReq,
+			nethttp.OperationName("Remote Store"),
+			nethttp.ClientTrace(false),
+		)
+		defer ht.Finish()
+	}
+
+	httpResp, err := c.client.Do(httpReq)
 	if err != nil {
 		// Errors from client.Do are from (for example) network errors, so are
 		// recoverable.
@@ -152,7 +187,20 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query) (*prompb.QueryRe
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	httpResp, err := c.client.Do(httpReq.WithContext(ctx))
+	httpReq = httpReq.WithContext(ctx)
+
+	if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
+		var ht *nethttp.Tracer
+		httpReq, ht = nethttp.TraceRequest(
+			parentSpan.Tracer(),
+			httpReq,
+			nethttp.OperationName("Remote Read"),
+			nethttp.ClientTrace(false),
+		)
+		defer ht.Finish()
+	}
+
+	httpResp, err := c.client.Do(httpReq)
 	if err != nil {
 		return nil, errors.Wrap(err, "error sending request")
 	}
@@ -160,6 +208,9 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query) (*prompb.QueryRe
 		io.Copy(ioutil.Discard, httpResp.Body)
 		httpResp.Body.Close()
 	}()
+
+	remoteReadTotalCounter := remoteReadQueriesTotal.WithLabelValues(c.remoteName, c.url.String(), strconv.Itoa(httpResp.StatusCode))
+	remoteReadTotalCounter.Inc()
 
 	compressed, err = ioutil.ReadAll(httpResp.Body)
 	if err != nil {

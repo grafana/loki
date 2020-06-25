@@ -1,6 +1,7 @@
 package storage
 
 import (
+	io "io"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -18,19 +19,18 @@ type fixture struct {
 }
 
 func (f fixture) Name() string { return "caching-store" }
-func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error) {
+func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, io.Closer, error) {
 	limits, err := defaultLimits()
 	if err != nil {
-		return nil, nil, nil, chunk.SchemaConfig{}, err
+		return nil, nil, nil, chunk.SchemaConfig{}, nil, err
 	}
-	indexClient, chunkClient, tableClient, schemaConfig, err := f.fixture.Clients()
+	indexClient, chunkClient, tableClient, schemaConfig, closer, err := f.fixture.Clients()
 	indexClient = newCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
 		MaxSizeItems: 500,
 		Validity:     5 * time.Minute,
 	}), 5*time.Minute, limits)
-	return indexClient, chunkClient, tableClient, schemaConfig, err
+	return indexClient, chunkClient, tableClient, schemaConfig, closer, err
 }
-func (f fixture) Teardown() error { return f.fixture.Teardown() }
 
 // Fixtures for unit testing the caching storage.
 var Fixtures = []testutils.Fixture{

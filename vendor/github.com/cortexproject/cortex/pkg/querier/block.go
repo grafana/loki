@@ -5,13 +5,13 @@ import (
 	"math"
 	"sort"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/user"
@@ -33,13 +33,9 @@ type BlockQueryable struct {
 // NewBlockQueryable returns a client to query a block store
 func NewBlockQueryable(cfg tsdb.Config, logLevel logging.Level, registerer prometheus.Registerer) (*BlockQueryable, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-bucket-stores", util.Logger)
+	bucketClient, err := tsdb.NewBucketClient(context.Background(), cfg, "querier", util.Logger, registerer)
 	if err != nil {
 		return nil, err
-	}
-
-	if registerer != nil {
-		bucketClient = objstore.BucketWithMetrics( /* bucket label value */ "", bucketClient, prometheus.WrapRegistererWithPrefix("cortex_querier_", registerer))
 	}
 
 	us, err := NewBucketStoresService(cfg, bucketClient, logLevel, util.Logger, registerer)
@@ -88,11 +84,9 @@ type blocksQuerier struct {
 	userStores *BucketStoresService
 }
 
-func (b *blocksQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return b.SelectSorted(sp, matchers...)
-}
-
-func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
+func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.Select")
 	defer log.Span.Finish()
 
@@ -112,12 +106,15 @@ func (b *blocksQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labe
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 	})
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
+	level.Debug(log).Log("series", len(series), "warnings", len(warnings))
+
 	return &blockQuerierSeriesSet{
-		series: series,
-	}, warnings, nil
+		series:   series,
+		warnings: warnings,
+	}
 }
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {
@@ -161,65 +158,58 @@ func (b *blocksQuerier) Close() error {
 
 // Implementation of storage.SeriesSet, based on individual responses from store client.
 type blockQuerierSeriesSet struct {
-	series []*storepb.Series
+	series   []*storepb.Series
+	warnings storage.Warnings
 
 	// next response to process
 	next int
 
-	currLabels []storepb.Label
-	currChunks []storepb.AggrChunk
+	currSeries storage.Series
 }
 
 func (bqss *blockQuerierSeriesSet) Next() bool {
-	bqss.currChunks = nil
-	bqss.currLabels = nil
+	bqss.currSeries = nil
 
 	if bqss.next >= len(bqss.series) {
 		return false
 	}
 
-	bqss.currLabels = bqss.series[bqss.next].Labels
-	bqss.currChunks = bqss.series[bqss.next].Chunks
+	currLabels := bqss.series[bqss.next].Labels
+	currChunks := bqss.series[bqss.next].Chunks
 
 	bqss.next++
 
 	// Merge chunks for current series. Chunks may come in multiple responses, but as soon
 	// as the response has chunks for a new series, we can stop searching. Series are sorted.
 	// See documentation for StoreClient.Series call for details.
-	for bqss.next < len(bqss.series) && storepb.CompareLabels(bqss.currLabels, bqss.series[bqss.next].Labels) == 0 {
-		bqss.currChunks = append(bqss.currChunks, bqss.series[bqss.next].Chunks...)
+	for bqss.next < len(bqss.series) && storepb.CompareLabels(currLabels, bqss.series[bqss.next].Labels) == 0 {
+		currChunks = append(currChunks, bqss.series[bqss.next].Chunks...)
 		bqss.next++
 	}
 
+	bqss.currSeries = newBlockQuerierSeries(currLabels, currChunks)
 	return true
 }
 
 func (bqss *blockQuerierSeriesSet) At() storage.Series {
-	if bqss.currLabels == nil {
-		return nil
-	}
-
-	return newBlockQuerierSeries(bqss.currLabels, bqss.currChunks)
+	return bqss.currSeries
 }
 
 func (bqss *blockQuerierSeriesSet) Err() error {
 	return nil
 }
 
+func (bqss *blockQuerierSeriesSet) Warnings() storage.Warnings {
+	return bqss.warnings
+}
+
+// newBlockQuerierSeries makes a new blockQuerierSeries. Input labels must be already sorted by name.
 func newBlockQuerierSeries(lbls []storepb.Label, chunks []storepb.AggrChunk) *blockQuerierSeries {
 	sort.Slice(chunks, func(i, j int) bool {
 		return chunks[i].MinTime < chunks[j].MinTime
 	})
 
-	b := labels.NewBuilder(nil)
-	for _, l := range lbls {
-		// Ignore external label set by the shipper
-		if l.Name != tsdb.TenantIDExternalLabel {
-			b.Set(l.Name, l.Value)
-		}
-	}
-
-	return &blockQuerierSeries{labels: b.Labels(), chunks: chunks}
+	return &blockQuerierSeries{labels: storepb.LabelsToPromLabelsUnsafe(lbls), chunks: chunks}
 }
 
 type blockQuerierSeries struct {
@@ -231,7 +221,7 @@ func (bqs *blockQuerierSeries) Labels() labels.Labels {
 	return bqs.labels
 }
 
-func (bqs *blockQuerierSeries) Iterator() storage.SeriesIterator {
+func (bqs *blockQuerierSeries) Iterator() chunkenc.Iterator {
 	if len(bqs.chunks) == 0 {
 		// should not happen in practice, but we have a unit test for it
 		return series.NewErrIterator(errors.New("no chunks"))

@@ -11,15 +11,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
-	nanosecondsInMillisecond = int64(time.Millisecond / time.Nanosecond)
-
 	errInvalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
 )
 
@@ -72,8 +72,8 @@ func (confs ShardingConfigs) hasShards() bool {
 	return false
 }
 
-func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
-	expr, err := promql.ParseExpr(query)
+func mapQuery(mapper astmapper.ASTMapper, query string) (parser.Node, error) {
+	expr, err := parser.ParseExpr(query)
 	if err != nil {
 		return nil, err
 	}
@@ -209,13 +209,15 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 		return qs.next.Do(ctx, r)
 	}
 
-	queryable := lazyquery.NewLazyQueryable(&ShardedQueryable{r, qs.next})
+	shardedQueryable := &ShardedQueryable{Req: r, Handler: qs.next}
+
+	queryable := lazyquery.NewLazyQueryable(shardedQueryable)
 
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
 		r.GetQuery(),
-		TimeFromMillis(r.GetStart()),
-		TimeFromMillis(r.GetEnd()),
+		util.TimeFromMillis(r.GetStart()),
+		util.TimeFromMillis(r.GetEnd()),
 		time.Duration(r.GetStep())*time.Millisecond,
 	)
 
@@ -234,6 +236,7 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 			ResultType: string(res.Value.Type()),
 			Result:     extracted,
 		},
+		Headers: shardedQueryable.getResponseHeaders(),
 	}, nil
 }
 
@@ -308,7 +311,7 @@ func (splitter *shardSplitter) parallel(ctx context.Context, sharded, nonsharded
 // partitionQuery splits a request into potentially multiple requests, one including the request's time range
 // [0,t). The other will include [t,inf)
 func partitionRequest(r Request, t time.Time) (before Request, after Request) {
-	boundary := TimeToMillis(t)
+	boundary := util.TimeToMillis(t)
 	if r.GetStart() >= boundary {
 		return nil, r
 	}
@@ -318,13 +321,4 @@ func partitionRequest(r Request, t time.Time) (before Request, after Request) {
 	}
 
 	return r.WithStartEnd(r.GetStart(), boundary), r.WithStartEnd(boundary, r.GetEnd())
-}
-
-// TimeFromMillis is a helper to turn milliseconds -> time.Time
-func TimeFromMillis(ms int64) time.Time {
-	return time.Unix(0, ms*nanosecondsInMillisecond)
-}
-
-func TimeToMillis(t time.Time) int64 {
-	return t.UnixNano() / nanosecondsInMillisecond
 }

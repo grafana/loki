@@ -4,9 +4,10 @@
 syntax = "proto3";
 package thanos;
 
-import "types.proto";
+import "store/storepb/types.proto";
 import "gogoproto/gogo.proto";
-import "prompb/types.proto";
+import "store/storepb/prompb/types.proto";
+import "google/protobuf/any.proto";
 
 option go_package = "storepb";
 
@@ -21,7 +22,7 @@ option (gogoproto.goproto_unkeyed_all) = false;
 option (gogoproto.goproto_unrecognized_all) = false;
 option (gogoproto.goproto_sizecache_all) = false;
 
-/// Store reprents API against instance that stores XOR encoded values with label set metadata (e.g Prometheus metrics).
+/// Store represents API against instance that stores XOR encoded values with label set metadata (e.g Prometheus metrics).
 service Store {
   /// Info returns meta information about a store e.g labels that makes that store unique as well as time range that is
   /// available.
@@ -33,6 +34,9 @@ service Store {
   /// partition of the single series, but once a new series is started to be streamed it means that no more data will
   /// be sent for previous one.
   /// Series has to be sorted.
+  ///
+  /// There is no requirements on chunk sorting, however it is recommended to have chunk sorted by chunk min time.
+  /// This heavily optimizes the resource usage on Querier / Federated Queries.
   rpc Series(SeriesRequest) returns (stream SeriesResponse);
 
   /// LabelNames returns all label names that is available.
@@ -43,7 +47,7 @@ service Store {
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse);
 }
 
-/// WriteableStore reprents API against instance that stores XOR encoded values with label set metadata (e.g Prometheus metrics).
+/// WriteableStore represents API against instance that stores XOR encoded values with label set metadata (e.g Prometheus metrics).
 service WriteableStore {
   // WriteRequest allows you to write metrics to this store via remote write
   rpc RemoteWrite(WriteRequest) returns (WriteResponse) {}
@@ -58,8 +62,7 @@ message WriteRequest {
   int64 replica = 3;
 }
 
-message InfoRequest {
-}
+message InfoRequest {}
 
 enum StoreType {
   UNKNOWN = 0;
@@ -68,6 +71,8 @@ enum StoreType {
   SIDECAR = 3;
   STORE = 4;
   RECEIVE = 5;
+  // DEBUG represents some debug StoreAPI components e.g. thanos tools store-api-serve.
+  DEBUG = 6;
 }
 
 message InfoResponse {
@@ -82,20 +87,6 @@ message InfoResponse {
 
 message LabelSet {
   repeated Label labels = 1 [(gogoproto.nullable) = false];
-}
-
-/// PartialResponseStrategy controls partial response handling.
-enum PartialResponseStrategy {
-  /// WARN strategy tells server to treat any error that will related to single StoreAPI (e.g missing chunk series because of underlying
-  /// storeAPI is temporarily not available) as warning which will not fail the whole query (still OK response).
-  /// Server should produce those as a warnings field in response.
-  WARN = 0;
-  /// ABORT strategy tells server to treat any error that will related to single StoreAPI (e.g missing chunk series because of underlying
-  /// storeAPI is temporarily not available) as the gRPC error that aborts the query.
-  ///
-  /// This is especially useful for any rule/alert evaluations on top of StoreAPI which usually does not tolerate partial
-  /// errors.
-  ABORT = 1;
 }
 
 message SeriesRequest {
@@ -114,6 +105,11 @@ message SeriesRequest {
 
   // skip_chunks controls whether sending chunks or not in series responses.
   bool skip_chunks = 8;
+
+  // hints is an opaque data structure that can be used to carry additional information.
+  // The content of this field and whether it's supported depends on the
+  // implementation of a specific store.
+  google.protobuf.Any hints = 9;
 }
 
 enum Aggr {
@@ -127,11 +123,19 @@ enum Aggr {
 
 message SeriesResponse {
   oneof result {
+    /// series contains 1 response series. The series labels are sorted by name.
     Series series = 1;
 
     /// warning is considered an information piece in place of series for warning purposes.
-    /// It is used to warn query customer about suspicious cases or partial response (if enabled).
+    /// It is used to warn store API user about suspicious cases or partial response (if enabled).
     string warning = 2;
+
+    /// hints is an opaque data structure that can be used to carry additional information from
+    /// the store. The content of this field and whether it's supported depends on the
+    /// implementation of a specific store. It's also implementation specific if it's allowed that
+    /// multiple SeriesResponse frames contain hints for a single Series() request and how should they
+    /// be handled in such case (ie. merged vs keep the first/last one).
+    google.protobuf.Any hints = 3;
   }
 }
 
@@ -143,7 +147,7 @@ message LabelNamesRequest {
 }
 
 message LabelNamesResponse {
-  repeated string names = 1;
+  repeated string names    = 1;
   repeated string warnings = 2;
 }
 
@@ -157,6 +161,6 @@ message LabelValuesRequest {
 }
 
 message LabelValuesResponse {
-  repeated string values = 1;
+  repeated string values   = 1;
   repeated string warnings = 2;
 }

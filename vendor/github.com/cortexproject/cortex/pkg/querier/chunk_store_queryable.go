@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -15,7 +16,7 @@ import (
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 )
 
-type chunkIteratorFunc func(chunks []chunk.Chunk, from, through model.Time) storage.SeriesIterator
+type chunkIteratorFunc func(chunks []chunk.Chunk, from, through model.Time) chunkenc.Iterator
 
 func newChunkStoreQueryable(store chunkstore.ChunkStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
@@ -36,21 +37,31 @@ type chunkStoreQuerier struct {
 	mint, maxt        int64
 }
 
-func (q *chunkStoreQuerier) SelectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
+func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
-		return nil, nil, err
+		return storage.ErrSeriesSet(err)
 	}
 	chunks, err := q.store.Get(q.ctx, userID, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		switch err.(type) {
+		case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
+			// Recognized by Prometheus API, vendor/github.com/prometheus/prometheus/promql/engine.go:91.
+			// Don't translate those, just in case we use them internally.
+			return storage.ErrSeriesSet(err)
+		case chunk.QueryError:
+			// This will be returned with status code 422 by Prometheus API.
+			// vendor/github.com/prometheus/prometheus/web/api/v1/api.go:1393
+			return storage.ErrSeriesSet(err)
+		default:
+			// All other errors will be returned as 500.
+			return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		}
 	}
 
-	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc), nil, nil
-}
-
-func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.SelectSorted(sp, matchers...)
+	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc)
 }
 
 // Series in the returned set are sorted alphabetically by labels.
@@ -100,7 +111,7 @@ func (s *chunkSeries) Labels() labels.Labels {
 }
 
 // Iterator returns a new iterator of the data of the series.
-func (s *chunkSeries) Iterator() storage.SeriesIterator {
+func (s *chunkSeries) Iterator() chunkenc.Iterator {
 	return s.chunkIteratorFunc(s.chunks, model.Time(s.mint), model.Time(s.maxt))
 }
 

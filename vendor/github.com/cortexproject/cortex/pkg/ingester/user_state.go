@@ -42,7 +42,7 @@ type userState struct {
 	ingestedAPISamples  *ewmaRate
 	ingestedRuleSamples *ewmaRate
 
-	seriesInMetric []metricCounterShard
+	seriesInMetric *metricCounter
 
 	// Series metrics.
 	memSeries             prometheus.Gauge
@@ -52,18 +52,11 @@ type userState struct {
 	createdChunks         prometheus.Counter
 }
 
-const metricCounterShards = 128
-
 // DiscardedSamples metric labels
 const (
 	perUserSeriesLimit   = "per_user_series_limit"
 	perMetricSeriesLimit = "per_metric_series_limit"
 )
-
-type metricCounterShard struct {
-	mtx sync.Mutex
-	m   map[string]int
-}
 
 func newUserStates(limiter *Limiter, cfg Config, metrics *ingesterMetrics) *userStates {
 	return &userStates{
@@ -114,13 +107,6 @@ func (us *userStates) getOrCreate(userID string) *userState {
 	state, ok := us.get(userID)
 	if !ok {
 
-		seriesInMetric := make([]metricCounterShard, 0, metricCounterShards)
-		for i := 0; i < metricCounterShards; i++ {
-			seriesInMetric = append(seriesInMetric, metricCounterShard{
-				m: map[string]int{},
-			})
-		}
-
 		// Speculatively create a userState object and try to store it
 		// in the map.  Another goroutine may have got there before
 		// us, in which case this userState will be discarded
@@ -132,7 +118,7 @@ func (us *userStates) getOrCreate(userID string) *userState {
 			index:               index.New(),
 			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			seriesInMetric:      seriesInMetric,
+			seriesInMetric:      newMetricCounter(us.limiter),
 
 			memSeries:             us.metrics.memSeries,
 			memSeriesCreatedTotal: us.metrics.memSeriesCreatedTotal.WithLabelValues(userID),
@@ -224,7 +210,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 
 	if !recovery {
 		// Check if the per-metric limit has been exceeded
-		if err = u.canAddSeriesFor(string(metricName)); err != nil {
+		if err = u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
 			// WARNING: returns a reference to `metric`
 			return nil, makeMetricLimitError(perMetricSeriesLimit, client.FromLabelAdaptersToLabels(metric), err)
 		}
@@ -232,6 +218,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 
 	u.memSeriesCreatedTotal.Inc()
 	u.memSeries.Inc()
+	u.seriesInMetric.increaseSeriesForMetric(metricName)
 
 	if record != nil {
 		lbls := make(labels.Labels, 0, len(metric))
@@ -251,23 +238,9 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	return series, nil
 }
 
-func (u *userState) canAddSeriesFor(metric string) error {
-	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
-	shard.mtx.Lock()
-	defer shard.mtx.Unlock()
-
-	err := u.limiter.AssertMaxSeriesPerMetric(u.userID, shard.m[metric])
-	if err != nil {
-		return err
-	}
-
-	shard.m[metric]++
-	return nil
-}
-
 func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 	u.fpToSeries.del(fp)
-	u.index.Delete(labels.Labels(metric), fp)
+	u.index.Delete(metric, fp)
 
 	metricName := metric.Get(model.MetricNameLabel)
 	if metricName == "" {
@@ -276,14 +249,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 		panic("No metric name label")
 	}
 
-	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
-	shard.mtx.Lock()
-	defer shard.mtx.Unlock()
-
-	shard.m[metricName]--
-	if shard.m[metricName] == 0 {
-		delete(shard.m, metricName)
-	}
+	u.seriesInMetric.decreaseSeriesForMetric(metricName)
 
 	u.memSeriesRemovedTotal.Inc()
 	u.memSeries.Dec()
@@ -352,4 +318,60 @@ outer:
 		return send(ctx)
 	}
 	return nil
+}
+
+const numMetricCounterShards = 128
+
+type metricCounterShard struct {
+	mtx sync.Mutex
+	m   map[string]int
+}
+
+type metricCounter struct {
+	limiter *Limiter
+	shards  []metricCounterShard
+}
+
+func newMetricCounter(limiter *Limiter) *metricCounter {
+	shards := make([]metricCounterShard, 0, numMetricCounterShards)
+	for i := 0; i < numMetricCounterShards; i++ {
+		shards = append(shards, metricCounterShard{
+			m: map[string]int{},
+		})
+	}
+	return &metricCounter{
+		limiter: limiter,
+		shards:  shards,
+	}
+}
+
+func (m *metricCounter) decreaseSeriesForMetric(metricName string) {
+	shard := m.getShard(metricName)
+	shard.mtx.Lock()
+	defer shard.mtx.Unlock()
+
+	shard.m[metricName]--
+	if shard.m[metricName] == 0 {
+		delete(shard.m, metricName)
+	}
+}
+
+func (m *metricCounter) getShard(metricName string) *metricCounterShard {
+	shard := &m.shards[util.HashFP(model.Fingerprint(fnv1a.HashString64(metricName)))%numMetricCounterShards]
+	return shard
+}
+
+func (m *metricCounter) canAddSeriesFor(userID, metric string) error {
+	shard := m.getShard(metric)
+	shard.mtx.Lock()
+	defer shard.mtx.Unlock()
+
+	return m.limiter.AssertMaxSeriesPerMetric(userID, shard.m[metric])
+}
+
+func (m *metricCounter) increaseSeriesForMetric(metric string) {
+	shard := m.getShard(metric)
+	shard.mtx.Lock()
+	shard.m[metric]++
+	shard.mtx.Unlock()
 }
