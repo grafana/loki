@@ -25,8 +25,8 @@ import (
 // Config is the loki storage configuration
 type Config struct {
 	storage.Config      `yaml:",inline"`
-	MaxChunkBatchSize   int                   `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig shipper.ShipperConfig `yaml:"boltdb_shipper"`
+	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -303,9 +303,7 @@ func RegisterCustomIndexClients(cfg Config, registerer prometheus.Registerer) {
 			return nil, err
 		}
 
-		boltDBIndexClientWithShipper, err = shipper.NewBoltDBIndexClientWithShipper(
-			cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory},
-			objectClient, cfg.BoltDBShipperConfig, registerer)
+		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, registerer)
 
 		return boltDBIndexClientWithShipper, err
 	}, func() (client chunk.TableClient, e error) {
