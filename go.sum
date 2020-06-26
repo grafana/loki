@@ -232,8 +232,8 @@ github.com/coreos/pkg v0.0.0-20160727233714-3ac0863d7acf/go.mod h1:E3G3o1h8I7cfc
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f h1:lBNOc5arjvs8E5mO2tbpBpLoyyu8B6e44T7hJy6potg=
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
 github.com/cortexproject/cortex v0.6.1-0.20200228110116-92ab6cbe0995/go.mod h1:3Xa3DjJxtpXqxcMGdk850lcIRb81M0fyY1MQ6udY134=
-github.com/cortexproject/cortex v1.1.1-0.20200625134921-0ea2318b0174 h1:b9GU5db5TuOz9pry6Ed4Nyu/sWuxGjDe1dQrzJtUzlU=
-github.com/cortexproject/cortex v1.1.1-0.20200625134921-0ea2318b0174/go.mod h1:oE48OnEVmpMi0prqknK/DnNCqIBAXZ6NIebKB5KHtYE=
+github.com/cortexproject/cortex v1.1.1-0.20200626122052-962b37ad100a h1:E1IniiPCOF9AAxXj1n5+9oWygYtQId8UF93ghK1yJrM=
+github.com/cortexproject/cortex v1.1.1-0.20200626122052-962b37ad100a/go.mod h1:++KnbcT+1Gz9Nmgfbe6vzRRRsJtm8skMF5aP5+RIhDM=
 github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d/go.mod h1:maD7wRr/U5Z6m/iR4s+kqSMx2CaBsrgA7czyZG/E6dU=
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=
 github.com/cznic/b v0.0.0-20180115125044-35e9bbe41f07/go.mod h1:URriBxXwVq5ijiJ12C7iIZqlA69nTlI+LgI6/pwftG8=
@@ -1036,7 +1036,7 @@ github.com/prometheus/prometheus v0.0.0-20190818123050-43acd0e2e93f/go.mod h1:rM
 github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef/go.mod h1:7U90zPoLkWjEIQcy/rweQla82OCTUzxVHE51G3OhJbI=
 github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33 h1:HBYrMJj5iosUjUkAK9L5GO+5eEQXbcrzdjkqY9HV5W4=
 github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33/go.mod h1:fkIPPkuZnkXyopYHmXPxf9rgiPkVgZCN8w9o8+UgBlY=
-github.com/prometheus/prometheus v1.8.2-0.20200609165731-66dfb951c4ca/go.mod h1:CwaXafRa0mm72de2GQWtfQxjGytbSKIGivWxQvjpRZs=
+github.com/prometheus/prometheus v1.8.2-0.20200619100132-74207c04655e/go.mod h1:QV6T0PPQi5UFmqcLBJw3JiyIR8r1O7KEv9qlVw4VV40=
 github.com/prometheus/prometheus v1.8.2-0.20200622142935-153f859b7499 h1:q+yGm39CmSV1S7oxCz36nlvx9ugRoEodwuHusgJw+iU=
 github.com/prometheus/prometheus v1.8.2-0.20200622142935-153f859b7499/go.mod h1:QV6T0PPQi5UFmqcLBJw3JiyIR8r1O7KEv9qlVw4VV40=
 github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1 h1:+kGqA4dNN5hn7WwvKdzHl0rdN5AEkbNZd0VjRltAiZg=
@@ -1128,8 +1128,8 @@ github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81P
 github.com/stretchr/testify v1.5.1 h1:nOGnQDM7FYENwehXlg/kFVnos3rEvtKTjRvOWSzb6H4=
 github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
 github.com/thanos-io/thanos v0.8.1-0.20200109203923-552ffa4c1a0d/go.mod h1:usT/TxtJQ7DzinTt+G9kinDQmRS5sxwu0unVKZ9vdcw=
-github.com/thanos-io/thanos v0.12.3-0.20200618165043-6c513e5f5c5f h1:UnMVEOejh6tWKUag5tuC0WjKfKmGwJ2+ky0MV4KM52I=
-github.com/thanos-io/thanos v0.12.3-0.20200618165043-6c513e5f5c5f/go.mod h1:CPqrM/ibNtlraee0to4dSRiTs+KLI1c3agMS2lmJpz0=
+github.com/thanos-io/thanos v0.13.1-0.20200625180332-f078faed1b96 h1:McsluZ8fXVwGbdXsZ20uZNGukmPycDU9m6df64S2bqQ=
+github.com/thanos-io/thanos v0.13.1-0.20200625180332-f078faed1b96/go.mod h1:VuNcGvUE0u57S1XXqYhf0dQzUO3wUnw2B5IKsju+1z4=
 github.com/tidwall/pretty v0.0.0-20180105212114-65a9db5fad51/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
 github.com/tidwall/pretty v1.0.0 h1:HsD+QiTn7sK6flMKIvNmpqz1qrpP3Ps6jOKIKMooyg4=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=

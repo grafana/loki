@@ -40,7 +40,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
 	"github.com/thanos-io/thanos/pkg/component"
-	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -101,7 +100,6 @@ type bucketStoreMetrics struct {
 	resultSeriesCount     prometheus.Summary
 	chunkSizeBytes        prometheus.Histogram
 	queriesDropped        prometheus.Counter
-	queriesLimit          prometheus.Gauge
 	seriesRefetches       prometheus.Counter
 
 	cachedPostingsCompressions           *prometheus.CounterVec
@@ -183,10 +181,6 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 	m.queriesDropped = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_queries_dropped_total",
 		Help: "Number of queries that were dropped due to the sample limit.",
-	})
-	m.queriesLimit = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "thanos_bucket_store_queries_concurrent_max",
-		Help: "Number of maximum concurrent queries.",
 	})
 	m.seriesRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_series_refetches_total",
@@ -273,9 +267,9 @@ func NewBucketStore(
 	fetcher block.MetadataFetcher,
 	dir string,
 	indexCache storecache.IndexCache,
+	queryGate gate.Gate,
 	maxChunkPoolBytes uint64,
 	maxSampleCount uint64,
-	maxConcurrent int,
 	debugLogging bool,
 	blockSyncConcurrency int,
 	filterConfig *FilterConfig,
@@ -286,10 +280,6 @@ func NewBucketStore(
 ) (*BucketStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
-	}
-
-	if maxConcurrent < 0 {
-		return nil, errors.Errorf("max concurrency value cannot be lower than 0 (got %v)", maxConcurrent)
 	}
 
 	chunkPool, err := pool.NewBucketedBytesPool(maxChunkSize, 50e6, 2, maxChunkPoolBytes)
@@ -310,7 +300,7 @@ func NewBucketStore(
 		debugLogging:                debugLogging,
 		blockSyncConcurrency:        blockSyncConcurrency,
 		filterConfig:                filterConfig,
-		queryGate:                   gate.NewKeeper(extprom.WrapRegistererWithPrefix("thanos_bucket_store_series_", reg)).NewGate(maxConcurrent),
+		queryGate:                   queryGate,
 		samplesLimiter:              NewLimiter(maxSampleCount, metrics.queriesDropped),
 		partitioner:                 gapBasedPartitioner{maxGapSize: partitionerMaxGapSize},
 		enableCompatibilityLabel:    enableCompatibilityLabel,
@@ -323,8 +313,6 @@ func NewBucketStore(
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return nil, errors.Wrap(err, "create dir")
 	}
-
-	s.metrics.queriesLimit.Set(float64(maxConcurrent))
 
 	return s, nil
 }
@@ -844,14 +832,16 @@ func debugFoundBlockSetOverview(logger log.Logger, mint, maxt, maxResolutionMill
 
 // Series implements the storepb.StoreServer interface.
 func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) (err error) {
-	tracing.DoInSpan(srv.Context(), "store_query_gate_ismyturn", func(ctx context.Context) {
-		err = s.queryGate.Start(srv.Context())
-	})
-	if err != nil {
-		return errors.Wrapf(err, "failed to wait for turn")
-	}
+	if s.queryGate != nil {
+		tracing.DoInSpan(srv.Context(), "store_query_gate_ismyturn", func(ctx context.Context) {
+			err = s.queryGate.Start(srv.Context())
+		})
+		if err != nil {
+			return errors.Wrapf(err, "failed to wait for turn")
+		}
 
-	defer s.queryGate.Done()
+		defer s.queryGate.Done()
+	}
 
 	matchers, err := promclient.TranslateMatchers(req.Matchers)
 	if err != nil {
@@ -1329,11 +1319,15 @@ func (b *bucketBlock) readIndexRange(ctx context.Context, off, length int64) ([]
 	}
 	defer runutil.CloseWithLogOnErr(b.logger, r, "readIndexRange close range reader")
 
-	c, err := ioutil.ReadAll(r)
-	if err != nil {
+	// Preallocate the buffer with the exact size so we don't waste allocations
+	// while progressively growing an initial small buffer. The buffer capacity
+	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
+	// internally works.
+	buf := bytes.NewBuffer(make([]byte, 0, length+bytes.MinRead))
+	if _, err := buf.ReadFrom(r); err != nil {
 		return nil, errors.Wrap(err, "read range")
 	}
-	return c, nil
+	return buf.Bytes(), nil
 }
 
 func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length int64) (*[]byte, error) {
