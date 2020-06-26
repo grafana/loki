@@ -424,11 +424,13 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	// Receive chunkSets from all matchers
 	var chunkIDs []string
 	var lastErr error
+	var initialized bool
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingChunkIDs:
-			if chunkIDs == nil {
+			if !initialized {
 				chunkIDs = incoming
+				initialized = true
 			} else {
 				chunkIDs = intersectStrings(chunkIDs, incoming)
 			}

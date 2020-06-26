@@ -305,12 +305,14 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	var lastErr error
 	var cardinalityExceededErrors int
 	var cardinalityExceededError CardinalityExceededError
+	var initialized bool
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingIDs:
 			preIntersectionCount += len(incoming)
-			if ids == nil {
+			if !initialized {
 				ids = incoming
+				initialized = true
 			} else {
 				ids = intersectStrings(ids, incoming)
 			}

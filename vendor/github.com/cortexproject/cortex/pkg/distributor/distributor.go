@@ -154,6 +154,10 @@ type Config struct {
 
 	// for testing
 	ingesterClientFactory ring_client.PoolFactory `yaml:"-"`
+
+	// when true the distributor does not validate labels at ingest time, Cortex doesn't directly use
+	// this (and should never use it) but this feature is used by other projects built on top of it
+	SkipLabelValidation bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -332,8 +336,10 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Returns the validated series with it's labels/samples, and any error.
 func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (client.PreallocTimeseries, error) {
 	labelsHistogram.Observe(float64(len(ts.Labels)))
-	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
-		return emptyPreallocSeries, err
+	if !d.cfg.SkipLabelValidation {
+		if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
+			return emptyPreallocSeries, err
+		}
 	}
 
 	metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
