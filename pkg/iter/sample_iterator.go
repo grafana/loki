@@ -100,12 +100,8 @@ func (h *sampleIteratorHeap) Pop() interface{} {
 	return x
 }
 
-type sampleIteratorMinHeap struct {
-	sampleIteratorHeap
-}
-
-func (h sampleIteratorMinHeap) Less(i, j int) bool {
-	s1, s2 := h.sampleIteratorHeap[i].Sample(), h.sampleIteratorHeap[j].Sample()
+func (h sampleIteratorHeap) Less(i, j int) bool {
+	s1, s2 := h[i].Sample(), h[j].Sample()
 	switch {
 	case s1.Timestamp < s2.Timestamp:
 		return true
@@ -116,20 +112,224 @@ func (h sampleIteratorMinHeap) Less(i, j int) bool {
 	}
 }
 
-type sampleIteratorMaxHeap struct {
-	sampleIteratorHeap
+// heapIterator iterates over a heap of iterators.
+type sampleHeapIterator struct {
+	heap interface {
+		heap.Interface
+		Peek() EntryIterator
+	}
+	is         []EntryIterator
+	prefetched bool
+	stats      *stats.ChunkData
+
+	tuples     []tuple
+	currEntry  logproto.Entry
+	currLabels string
+	errs       []error
 }
 
-func (h sampleIteratorMaxHeap) Less(i, j int) bool {
-	s1, s2 := h.sampleIteratorHeap[i].Sample(), h.sampleIteratorHeap[j].Sample()
-	switch {
-	case s1.Timestamp < s2.Timestamp:
-		return false
-	case s1.Timestamp > s2.Timestamp:
-		return true
+// NewHeapIterator returns a new iterator which uses a heap to merge together
+// entries for multiple interators.
+func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) SampleIterator {
+	result := &heapIterator{is: is, stats: stats.GetChunkData(ctx)}
+	switch direction {
+	case logproto.BACKWARD:
+		result.heap = &iteratorMaxHeap{}
+	case logproto.FORWARD:
+		result.heap = &iteratorMinHeap{}
 	default:
-		return s1.Labels > s2.Labels
+		panic("bad direction")
 	}
+
+	result.tuples = make([]tuple, 0, len(is))
+	return result
+}
+
+// prefetch iterates over all inner iterators to merge together, calls Next() on
+// each of them to prefetch the first entry and pushes of them - who are not
+// empty - to the heap
+func (i *heapIterator) prefetch() {
+	if i.prefetched {
+		return
+	}
+
+	i.prefetched = true
+	for _, it := range i.is {
+		i.requeue(it, false)
+	}
+
+	// We can now clear the list of input iterators to merge, given they have all
+	// been processed and the non empty ones have been pushed to the heap
+	i.is = nil
+}
+
+// requeue pushes the input ei EntryIterator to the heap, advancing it via an ei.Next()
+// call unless the advanced input parameter is true. In this latter case it expects that
+// the iterator has already been advanced before calling requeue().
+//
+// If the iterator has no more entries or an error occur while advancing it, the iterator
+// is not pushed to the heap and any possible error captured, so that can be get via Error().
+func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
+	if advanced || ei.Next() {
+		heap.Push(i.heap, ei)
+		return
+	}
+
+	if err := ei.Error(); err != nil {
+		i.errs = append(i.errs, err)
+	}
+	helpers.LogError("closing iterator", ei.Close)
+}
+
+func (i *heapIterator) Push(ei EntryIterator) {
+	i.requeue(ei, false)
+}
+
+type tuple struct {
+	logproto.Entry
+	EntryIterator
+}
+
+func (i *heapIterator) Next() bool {
+	i.prefetch()
+
+	if i.heap.Len() == 0 {
+		return false
+	}
+
+	// We support multiple entries with the same timestamp, and we want to
+	// preserve their original order. We look at all the top entries in the
+	// heap with the same timestamp, and pop the ones whose common value
+	// occurs most often.
+	for i.heap.Len() > 0 {
+		next := i.heap.Peek()
+		entry := next.Entry()
+		if len(i.tuples) > 0 && (i.tuples[0].Labels() != next.Labels() || !i.tuples[0].Timestamp.Equal(entry.Timestamp)) {
+			break
+		}
+
+		heap.Pop(i.heap)
+		// insert keeps i.tuples sorted
+		i.tuples = insert(i.tuples, tuple{
+			Entry:         entry,
+			EntryIterator: next,
+		})
+	}
+
+	// shortcut if we have a single tuple.
+	if len(i.tuples) == 1 {
+		i.currEntry = i.tuples[0].Entry
+		i.currLabels = i.tuples[0].Labels()
+		i.requeue(i.tuples[0].EntryIterator, false)
+		i.tuples = i.tuples[:0]
+		return true
+	}
+
+	// Find in tuples which entry occurs most often which, due to quorum based
+	// replication, is guaranteed to be the correct next entry.
+	t := mostCommon(i.tuples)
+	i.currEntry = t.Entry
+	i.currLabels = t.Labels()
+
+	// Requeue the iterators, advancing them if they were consumed.
+	for j := range i.tuples {
+		if i.tuples[j].Line != i.currEntry.Line {
+			i.requeue(i.tuples[j].EntryIterator, true)
+			continue
+		}
+		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
+		if i.tuples[j] != t {
+			i.stats.TotalDuplicates++
+		}
+		i.requeue(i.tuples[j].EntryIterator, false)
+	}
+	i.tuples = i.tuples[:0]
+	return true
+}
+
+// Insert new tuple to correct position into ordered set of tuples.
+// Insert sort is fast for small number of elements, and here we only expect max [number of replicas] elements.
+func insert(ts []tuple, n tuple) []tuple {
+	ix := 0
+	for ix < len(ts) && ts[ix].Line <= n.Line {
+		ix++
+	}
+	if ix < len(ts) {
+		ts = append(ts, tuple{}) // zero element
+		copy(ts[ix+1:], ts[ix:])
+		ts[ix] = n
+	} else {
+		ts = append(ts, n)
+	}
+	return ts
+}
+
+// Expects that tuples are sorted already. We achieve that by using insert.
+func mostCommon(tuples []tuple) tuple {
+	// trivial case, no need to do extra work.
+	if len(tuples) == 1 {
+		return tuples[0]
+	}
+
+	result := tuples[0]
+	count, max := 0, 0
+	for i := 0; i < len(tuples)-1; i++ {
+		if tuples[i].Line == tuples[i+1].Line {
+			count++
+			continue
+		}
+		if count > max {
+			result = tuples[i]
+			max = count
+		}
+		count = 0
+	}
+	if count > max {
+		result = tuples[len(tuples)-1]
+	}
+	return result
+}
+
+func (i *heapIterator) Entry() logproto.Entry {
+	return i.currEntry
+}
+
+func (i *heapIterator) Labels() string {
+	return i.currLabels
+}
+
+func (i *heapIterator) Error() error {
+	switch len(i.errs) {
+	case 0:
+		return nil
+	case 1:
+		return i.errs[0]
+	default:
+		return fmt.Errorf("Multiple errors: %+v", i.errs)
+	}
+}
+
+func (i *heapIterator) Close() error {
+	for i.heap.Len() > 0 {
+		if err := i.heap.Pop().(EntryIterator).Close(); err != nil {
+			return err
+		}
+	}
+	i.tuples = nil
+	return nil
+}
+
+func (i *heapIterator) Peek() time.Time {
+	i.prefetch()
+
+	return i.heap.Peek().Entry().Timestamp
+}
+
+// Len returns the number of inner iterators on the heap, still having entries
+func (i *heapIterator) Len() int {
+	i.prefetch()
+
+	return i.heap.Len()
 }
 
 // type noOpIterator struct{}
