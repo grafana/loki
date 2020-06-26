@@ -138,6 +138,7 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 		"rule", alertRule.Name(),
 		"query", alertRule.Query().String(),
 		"rule_duration", alertRule.Duration(),
+		"tenant", m.userId,
 	)
 	vec, err := m.opts.QueryFunc(m.opts.Context, alertRule.Query().String(), adjusted)
 	m.opts.Metrics.IncrementEvaluations()
@@ -167,6 +168,7 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 		"msg", "resolved synthetic for_state",
 		"rule", alertRule.Name(),
 		"n_samples", len(vec),
+		"tenant", m.userId,
 	)
 	m.opts.Metrics.EvalDuration(time.Since(start))
 
