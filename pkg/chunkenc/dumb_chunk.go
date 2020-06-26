@@ -93,6 +93,10 @@ func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, directi
 	}, nil
 }
 
+func (c *dumbChunk) SampleIterator(_ context.Context, from, through time.Time, _ logql.LineFilter, _ logql.SampleExtractor) iter.SampleIterator {
+	return nil
+}
+
 func (c *dumbChunk) Bytes() ([]byte, error) {
 	return nil, nil
 }

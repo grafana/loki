@@ -123,6 +123,7 @@ type Ingester struct {
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
+	LazySampleQuery(ctx context.Context, req logql.SelectParams) (iter.SampleIterator, error)
 }
 
 // New makes a new Ingester.
@@ -304,6 +305,44 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
+}
+
+// QuerySample the ingesters for series from logs matching a set of matchers.
+func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
+	// initialize stats collection for ingester queries and set grpc trailer with stats.
+	ctx := stats.NewContext(queryServer.Context())
+	defer stats.SendAsTrailer(ctx, queryServer)
+
+	instanceID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	itrs, err := instance.QuerySample(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if storeReq := buildStoreRequest(i.cfg, &logproto.QueryRequest{
+		Selector: req.Selector,
+		End:      req.End,
+		Shards:   req.Shards,
+		Start:    req.Start,
+	}); storeReq != nil {
+		storeItr, err := i.store.LazySampleQuery(ctx, logql.SelectParams{QueryRequest: storeReq})
+		if err != nil {
+			return err
+		}
+
+		itrs = append(itrs, storeItr)
+	}
+
+	heapItr := iter.NewSampleHeapIterator(ctx, itrs)
+
+	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+
+	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
 }
 
 // Label returns the set of labels for the stream this ingester knows about.

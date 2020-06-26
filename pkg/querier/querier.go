@@ -276,9 +276,9 @@ func (q *Querier) queryIngestersForSample(ctx context.Context, params logql.Sele
 		return nil, err
 	}
 
-	iterators := make([]iter.EntryIterator, len(clients))
+	iterators := make([]iter.SampleIterator, len(clients))
 	for i := range clients {
-		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), params.Direction)
+		iterators[i] = iter.NewSampleQueryClientIterator(clients[i].response.(logproto.Querier_QuerySampleClient))
 	}
 	return iterators, nil
 }
@@ -371,7 +371,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
 	}
 
-	histIterators, err := q.Select(queryCtx, histReq)
+	histIterators, err := q.SelectLogs(queryCtx, histReq)
 	if err != nil {
 		return nil, err
 	}
