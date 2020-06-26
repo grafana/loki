@@ -178,6 +178,10 @@ func TestChunkStore_Get(t *testing.T) {
 			expect: []Chunk{fooChunk1},
 		},
 		{
+			query:  `foo{a="b", bar="baz"}`,
+			expect: nil,
+		},
+		{
 			query: `{__name__=~"foo"}`,
 			err:   "query must contain metric name",
 		},
