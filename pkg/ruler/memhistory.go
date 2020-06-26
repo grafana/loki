@@ -130,7 +130,16 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 	// to the ForDuration in alert granularity.
 	// TODO: Do we want this to instead evaluate forDuration/interval times?
 	start := time.Now()
-	vec, err := m.opts.QueryFunc(m.opts.Context, alertRule.Query().String(), ts.Add(-alertRule.Duration()))
+	adjusted := ts.Add(-alertRule.Duration())
+
+	level.Info(m.opts.Logger).Log(
+		"msg", "restoring synthetic for state",
+		"adjusted_ts", adjusted,
+		"rule", alertRule.Name(),
+		"query", alertRule.Query().String(),
+		"rule_duration", alertRule.Duration(),
+	)
+	vec, err := m.opts.QueryFunc(m.opts.Context, alertRule.Query().String(), adjusted)
 	m.opts.Metrics.IncrementEvaluations()
 	if err != nil {
 		alertRule.SetHealth(rules.HealthBad)
@@ -154,6 +163,11 @@ func (m *MemHistory) RestoreForState(ts time.Time, alertRule *rules.AlertingRule
 			return
 		}
 	}
+	level.Info(m.opts.Logger).Log(
+		"msg", "resolved synthetic for_state",
+		"rule", alertRule.Name(),
+		"n_samples", len(vec),
+	)
 	m.opts.Metrics.EvalDuration(time.Since(start))
 
 	// Now that we've evaluated the rule and written the results to our in memory appender,
