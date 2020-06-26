@@ -240,7 +240,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectParams) 
 	if err != nil {
 		return nil, err
 	}
-
+	return iter.NewSampleHeapIterator(ctx, append(iters, chunkStoreIter)), nil
 }
 
 func shouldQueryIngester(cfg Config, params logql.SelectParams) bool {
@@ -264,7 +264,23 @@ func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams)
 }
 
 func (q *Querier) queryIngestersForSample(ctx context.Context, params logql.SelectParams) ([]iter.SampleIterator, error) {
+	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
+		return client.QuerySample(ctx, &logproto.SampleQueryRequest{
+			Selector: params.Selector,
+			Start:    params.Start,
+			End:      params.End,
+			Shards:   params.Shards,
+		}, stats.CollectTrailer(ctx))
+	})
+	if err != nil {
+		return nil, err
+	}
 
+	iterators := make([]iter.EntryIterator, len(clients))
+	for i := range clients {
+		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), params.Direction)
+	}
+	return iterators, nil
 }
 
 // Label does the heavy lifting for a Label query.

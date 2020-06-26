@@ -98,7 +98,7 @@ func (r *rangeVectorIterator) popBack(newStart int64) {
 
 // load the next sample range window.
 func (r *rangeVectorIterator) load(start, end int64) {
-	for sample, hasNext := r.iter.Peek(); hasNext; sample, hasNext = r.iter.Peek() {
+	for lbs, sample, hasNext := r.iter.Peek(); hasNext; lbs, sample, hasNext = r.iter.Peek() {
 		if sample.Timestamp > end {
 			// not consuming the iterator as this belong to another range.
 			return
@@ -111,21 +111,21 @@ func (r *rangeVectorIterator) load(start, end int64) {
 		// adds the sample.
 		var series *promql.Series
 		var ok bool
-		series, ok = r.window[sample.Labels]
+		series, ok = r.window[lbs]
 		if !ok {
 			var metric labels.Labels
-			if metric, ok = r.metrics[sample.Labels]; !ok {
+			if metric, ok = r.metrics[lbs]; !ok {
 				var err error
-				metric, err = parser.ParseMetric(sample.Labels)
+				metric, err = parser.ParseMetric(lbs)
 				if err != nil {
 					continue
 				}
-				r.metrics[sample.Labels] = metric
+				r.metrics[lbs] = metric
 			}
 
 			series = getSeries()
 			series.Metric = metric
-			r.window[sample.Labels] = series
+			r.window[lbs] = series
 		}
 		p := promql.Point{
 			T: sample.Timestamp,

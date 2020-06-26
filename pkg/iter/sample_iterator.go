@@ -1,13 +1,20 @@
 package iter
 
 import (
+	"container/heap"
+	"context"
+	"fmt"
+
+	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 // SampleIterator iterates over sample in time-order.
 type SampleIterator interface {
 	Next() bool
 	Sample() logproto.Sample
+	Labels() string
 	Error() error
 	Close() error
 }
@@ -15,24 +22,32 @@ type SampleIterator interface {
 // PeekingSampleIterator is an sample iterator that can peek sample without moving the current sample.
 type PeekingSampleIterator interface {
 	SampleIterator
-	Peek() (logproto.Sample, bool)
+	Peek() (string, logproto.Sample, bool)
 }
 
 type peekingSampleIterator struct {
 	iter SampleIterator
 
-	cache *logproto.Sample
-	next  *logproto.Sample
+	cache *sampleWithLabels
+	next  *sampleWithLabels
+}
+
+type sampleWithLabels struct {
+	logproto.Sample
+	labels string
 }
 
 func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
 	// initialize the next entry so we can peek right from the start.
-	var cache *logproto.Sample
-	next := &logproto.Sample{}
+	var cache *sampleWithLabels
+	next := &sampleWithLabels{}
 	if iter.Next() {
-		s := iter.Sample()
-		cache = &s
-		next = &s
+		cache = &sampleWithLabels{
+			Sample: iter.Sample(),
+			labels: iter.Labels(),
+		}
+		next.Sample = cache.Sample
+		next.labels = cache.labels
 	}
 	return &peekingSampleIterator{
 		iter:  iter,
@@ -45,9 +60,17 @@ func (it *peekingSampleIterator) Close() error {
 	return it.iter.Close()
 }
 
+func (it *peekingSampleIterator) Labels() string {
+	if it.next != nil {
+		return it.next.labels
+	}
+	return ""
+}
+
 func (it *peekingSampleIterator) Next() bool {
 	if it.cache != nil {
-		it.next = it.cache
+		it.next.Sample = it.cache.Sample
+		it.next.labels = it.cache.labels
 		it.cacheNext()
 		return true
 	}
@@ -57,8 +80,8 @@ func (it *peekingSampleIterator) Next() bool {
 // cacheNext caches the next element if it exists.
 func (it *peekingSampleIterator) cacheNext() {
 	if it.iter.Next() {
-		s := it.iter.Sample()
-		it.cache = &s
+		it.cache.Sample = it.iter.Sample()
+		it.cache.labels = it.iter.Labels()
 		return
 	}
 	// nothing left removes the cached entry
@@ -67,16 +90,16 @@ func (it *peekingSampleIterator) cacheNext() {
 
 func (it *peekingSampleIterator) Sample() logproto.Sample {
 	if it.next != nil {
-		return *it.next
+		return it.next.Sample
 	}
 	return logproto.Sample{}
 }
 
-func (it *peekingSampleIterator) Peek() (logproto.Sample, bool) {
+func (it *peekingSampleIterator) Peek() (string, logproto.Sample, bool) {
 	if it.cache != nil {
-		return *it.cache, true
+		return it.cache.labels, it.cache.Sample, true
 	}
-	return logproto.Sample{}, false
+	return "", logproto.Sample{}, false
 }
 
 func (it *peekingSampleIterator) Error() error {
@@ -108,47 +131,39 @@ func (h sampleIteratorHeap) Less(i, j int) bool {
 	case s1.Timestamp > s2.Timestamp:
 		return false
 	default:
-		return s1.Labels < s2.Labels
+		return h[i].Labels() < h[j].Labels()
 	}
 }
 
-// heapIterator iterates over a heap of iterators.
+// sampleHeapIterator iterates over a heap of iterators.
 type sampleHeapIterator struct {
-	heap interface {
-		heap.Interface
-		Peek() EntryIterator
-	}
-	is         []EntryIterator
+	heap       *sampleIteratorHeap
+	is         []SampleIterator
 	prefetched bool
 	stats      *stats.ChunkData
 
-	tuples     []tuple
-	currEntry  logproto.Entry
+	tuples     []sampletuple
+	curr       logproto.Sample
 	currLabels string
 	errs       []error
 }
 
-// NewHeapIterator returns a new iterator which uses a heap to merge together
-// entries for multiple interators.
-func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) SampleIterator {
-	result := &heapIterator{is: is, stats: stats.GetChunkData(ctx)}
-	switch direction {
-	case logproto.BACKWARD:
-		result.heap = &iteratorMaxHeap{}
-	case logproto.FORWARD:
-		result.heap = &iteratorMinHeap{}
-	default:
-		panic("bad direction")
-	}
+// NewSampleHeapIterator returns a new iterator which uses a heap to merge together
+// entries for multiple iterators.
+func NewSampleHeapIterator(ctx context.Context, is []SampleIterator) SampleIterator {
 
-	result.tuples = make([]tuple, 0, len(is))
-	return result
+	return &sampleHeapIterator{
+		stats:  stats.GetChunkData(ctx),
+		is:     is,
+		heap:   &sampleIteratorHeap{},
+		tuples: make([]sampletuple, 0, len(is)),
+	}
 }
 
 // prefetch iterates over all inner iterators to merge together, calls Next() on
 // each of them to prefetch the first entry and pushes of them - who are not
 // empty - to the heap
-func (i *heapIterator) prefetch() {
+func (i *sampleHeapIterator) prefetch() {
 	if i.prefetched {
 		return
 	}
@@ -169,7 +184,7 @@ func (i *heapIterator) prefetch() {
 //
 // If the iterator has no more entries or an error occur while advancing it, the iterator
 // is not pushed to the heap and any possible error captured, so that can be get via Error().
-func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
+func (i *sampleHeapIterator) requeue(ei SampleIterator, advanced bool) {
 	if advanced || ei.Next() {
 		heap.Push(i.heap, ei)
 		return
@@ -181,16 +196,12 @@ func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
 	helpers.LogError("closing iterator", ei.Close)
 }
 
-func (i *heapIterator) Push(ei EntryIterator) {
-	i.requeue(ei, false)
+type sampletuple struct {
+	logproto.Sample
+	SampleIterator
 }
 
-type tuple struct {
-	logproto.Entry
-	EntryIterator
-}
-
-func (i *heapIterator) Next() bool {
+func (i *sampleHeapIterator) Next() bool {
 	i.prefetch()
 
 	if i.heap.Len() == 0 {
@@ -203,102 +214,51 @@ func (i *heapIterator) Next() bool {
 	// occurs most often.
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
-		entry := next.Entry()
-		if len(i.tuples) > 0 && (i.tuples[0].Labels() != next.Labels() || !i.tuples[0].Timestamp.Equal(entry.Timestamp)) {
+		sample := next.Sample()
+		if len(i.tuples) > 0 && (i.tuples[0].Labels() != next.Labels() || i.tuples[0].Timestamp != sample.Timestamp) {
 			break
 		}
 
 		heap.Pop(i.heap)
-		// insert keeps i.tuples sorted
-		i.tuples = insert(i.tuples, tuple{
-			Entry:         entry,
-			EntryIterator: next,
+		i.tuples = append(i.tuples, sampletuple{
+			Sample:         sample,
+			SampleIterator: next,
 		})
 	}
 
-	// shortcut if we have a single tuple.
+	i.curr = i.tuples[0].Sample
+	i.currLabels = i.tuples[0].Labels()
+	t := i.tuples[0]
 	if len(i.tuples) == 1 {
-		i.currEntry = i.tuples[0].Entry
-		i.currLabels = i.tuples[0].Labels()
-		i.requeue(i.tuples[0].EntryIterator, false)
+		i.requeue(i.tuples[0].SampleIterator, false)
 		i.tuples = i.tuples[:0]
 		return true
 	}
-
-	// Find in tuples which entry occurs most often which, due to quorum based
-	// replication, is guaranteed to be the correct next entry.
-	t := mostCommon(i.tuples)
-	i.currEntry = t.Entry
-	i.currLabels = t.Labels()
-
 	// Requeue the iterators, advancing them if they were consumed.
 	for j := range i.tuples {
-		if i.tuples[j].Line != i.currEntry.Line {
-			i.requeue(i.tuples[j].EntryIterator, true)
+		if i.tuples[j].Hash != i.curr.Hash {
+			i.requeue(i.tuples[j].SampleIterator, true)
 			continue
 		}
 		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
 		if i.tuples[j] != t {
 			i.stats.TotalDuplicates++
 		}
-		i.requeue(i.tuples[j].EntryIterator, false)
+		i.requeue(i.tuples[j].SampleIterator, false)
 	}
 	i.tuples = i.tuples[:0]
 	return true
 }
 
-// Insert new tuple to correct position into ordered set of tuples.
-// Insert sort is fast for small number of elements, and here we only expect max [number of replicas] elements.
-func insert(ts []tuple, n tuple) []tuple {
-	ix := 0
-	for ix < len(ts) && ts[ix].Line <= n.Line {
-		ix++
-	}
-	if ix < len(ts) {
-		ts = append(ts, tuple{}) // zero element
-		copy(ts[ix+1:], ts[ix:])
-		ts[ix] = n
-	} else {
-		ts = append(ts, n)
-	}
-	return ts
+func (i *sampleHeapIterator) Sample() logproto.Sample {
+	return i.curr
 }
 
-// Expects that tuples are sorted already. We achieve that by using insert.
-func mostCommon(tuples []tuple) tuple {
-	// trivial case, no need to do extra work.
-	if len(tuples) == 1 {
-		return tuples[0]
-	}
-
-	result := tuples[0]
-	count, max := 0, 0
-	for i := 0; i < len(tuples)-1; i++ {
-		if tuples[i].Line == tuples[i+1].Line {
-			count++
-			continue
-		}
-		if count > max {
-			result = tuples[i]
-			max = count
-		}
-		count = 0
-	}
-	if count > max {
-		result = tuples[len(tuples)-1]
-	}
-	return result
-}
-
-func (i *heapIterator) Entry() logproto.Entry {
-	return i.currEntry
-}
-
-func (i *heapIterator) Labels() string {
+func (i *sampleHeapIterator) Labels() string {
 	return i.currLabels
 }
 
-func (i *heapIterator) Error() error {
+func (i *sampleHeapIterator) Error() error {
 	switch len(i.errs) {
 	case 0:
 		return nil
@@ -309,27 +269,14 @@ func (i *heapIterator) Error() error {
 	}
 }
 
-func (i *heapIterator) Close() error {
+func (i *sampleHeapIterator) Close() error {
 	for i.heap.Len() > 0 {
-		if err := i.heap.Pop().(EntryIterator).Close(); err != nil {
+		if err := i.heap.Pop().(SampleIterator).Close(); err != nil {
 			return err
 		}
 	}
 	i.tuples = nil
 	return nil
-}
-
-func (i *heapIterator) Peek() time.Time {
-	i.prefetch()
-
-	return i.heap.Peek().Entry().Timestamp
-}
-
-// Len returns the number of inner iterators on the heap, still having entries
-func (i *heapIterator) Len() int {
-	i.prefetch()
-
-	return i.heap.Len()
 }
 
 // type noOpIterator struct{}
