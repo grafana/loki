@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
@@ -70,7 +71,7 @@ type Shipper struct {
 
 	// downloadedPeriods holds mapping for period -> FilesCollection.
 	// Here period is name of the file created by ingesters for a specific period.
-	downloadedPeriods    map[string]*FilesCollection
+	downloadedPeriods    map[string]*downloads.FilesCollection
 	downloadedPeriodsMtx sync.RWMutex
 	storageClient        chunk.ObjectClient
 
@@ -93,7 +94,7 @@ func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGette
 	shipper := Shipper{
 		cfg:                cfg,
 		boltDBGetter:       boltDBGetter,
-		downloadedPeriods:  map[string]*FilesCollection{},
+		downloadedPeriods:  map[string]*downloads.FilesCollection{},
 		storageClient:      util.NewPrefixedObjectClient(storageClient, storageKeyPrefix),
 		done:               make(chan struct{}),
 		uploadedFilesMtime: map[string]time.Time{},
@@ -193,7 +194,7 @@ func (s *Shipper) Stop() {
 	defer s.downloadedPeriodsMtx.Unlock()
 
 	for period, fc := range s.downloadedPeriods {
-		err := fc.ForEach(func(uploader string, df *downloadedFile) error {
+		err := fc.ForEach(func(uploader string, df *downloads.downloadedFile) error {
 			return df.boltdb.Close()
 		})
 		if err != nil {
@@ -263,7 +264,7 @@ func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *
 			// filesCollection not found, creating one.
 			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("downloading all files for period %s", period))
 
-			fc = NewFilesCollection(period, s.cfg.CacheLocation, s.metrics.downloaderMetrics, s.storageClient)
+			fc = downloads.NewFilesCollection(period, s.cfg.CacheLocation, s.metrics.downloaderMetrics, s.storageClient)
 			s.downloadedPeriods[period] = fc
 		}
 		s.downloadedPeriodsMtx.Unlock()
@@ -277,7 +278,7 @@ func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *
 	}
 
 	fc.UpdateLastUsedAt()
-	err := fc.ForEach(func(uploader string, df *downloadedFile) error {
+	err := fc.ForEach(func(uploader string, df *downloads.downloadedFile) error {
 		return callback(df.boltdb)
 	})
 

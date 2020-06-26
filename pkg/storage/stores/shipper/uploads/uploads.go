@@ -1,4 +1,4 @@
-package shipper
+package uploads
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+
+	local2 "github.com/grafana/loki/pkg/storage/stores/local"
 
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -16,15 +18,15 @@ import (
 
 // uploadFiles uploads all new and updated files to storage.
 // It uploads the files from configured boltdb dir where ingester writes the index.
-func (s *Shipper) uploadFiles(ctx context.Context) (err error) {
-	if s.cfg.Mode == ShipperModeReadOnly {
+func (s *local2.Shipper) uploadFiles(ctx context.Context) (err error) {
+	if s.cfg.Mode == local2.ShipperModeReadOnly {
 		return
 	}
 
 	defer func() {
-		status := statusSuccess
+		status := local2.statusSuccess
 		if err != nil {
-			status = statusFailure
+			status = local2.statusFailure
 		}
 		s.metrics.filesUploadOperationTotal.WithLabelValues(status).Inc()
 	}()
@@ -62,8 +64,8 @@ func (s *Shipper) uploadFiles(ctx context.Context) (err error) {
 }
 
 // uploadFile uploads one of the files locally written by ingesters to storage.
-func (s *Shipper) uploadFile(ctx context.Context, period string) error {
-	if s.cfg.Mode == ShipperModeReadOnly {
+func (s *local2.Shipper) uploadFile(ctx context.Context, period string) error {
+	if s.cfg.Mode == local2.ShipperModeReadOnly {
 		return nil
 	}
 
