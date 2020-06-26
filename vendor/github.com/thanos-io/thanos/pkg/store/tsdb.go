@@ -14,12 +14,13 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // TSDBStore implements the store API against a local TSDB instance.
@@ -107,13 +108,10 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 	}
 	defer runutil.CloseWithLogOnErr(s.logger, q, "close tsdb querier series")
 
-	set, _, err := q.Select(false, nil, matchers...)
-	if err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-
-	var respSeries storepb.Series
-
+	var (
+		set        = q.Select(false, nil, matchers...)
+		respSeries storepb.Series
+	)
 	for set.Next() {
 		series := set.At()
 
@@ -138,6 +136,9 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 		if err := srv.Send(storepb.NewSeriesResponse(&respSeries)); err != nil {
 			return status.Error(codes.Aborted, err.Error())
 		}
+	}
+	if err := set.Err(); err != nil {
+		return status.Error(codes.Internal, err.Error())
 	}
 	return nil
 }
@@ -214,7 +215,7 @@ func (s *TSDBStore) translateAndExtendLabels(m, extend labels.Labels) []storepb.
 func (s *TSDBStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest) (
 	*storepb.LabelNamesResponse, error,
 ) {
-	q, err := s.db.Querier(context.Background(), math.MinInt64, math.MaxInt64)
+	q, err := s.db.Querier(ctx, math.MinInt64, math.MaxInt64)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -231,7 +232,7 @@ func (s *TSDBStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest
 func (s *TSDBStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequest) (
 	*storepb.LabelValuesResponse, error,
 ) {
-	q, err := s.db.Querier(context.Background(), math.MinInt64, math.MaxInt64)
+	q, err := s.db.Querier(ctx, math.MinInt64, math.MaxInt64)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

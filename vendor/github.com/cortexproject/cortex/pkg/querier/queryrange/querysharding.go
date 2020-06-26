@@ -236,7 +236,7 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 			ResultType: string(res.Value.Type()),
 			Result:     extracted,
 		},
-		Headers: headersMapToPrometheusResponseHeaders(shardedQueryable.getResponseHeaders()),
+		Headers: shardedQueryable.getResponseHeaders(),
 	}, nil
 }
 
@@ -321,12 +321,4 @@ func partitionRequest(r Request, t time.Time) (before Request, after Request) {
 	}
 
 	return r.WithStartEnd(r.GetStart(), boundary), r.WithStartEnd(boundary, r.GetEnd())
-}
-
-func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusResponseHeader) {
-	for h, v := range headersMap {
-		prs = append(prs, &PrometheusResponseHeader{Name: h, Values: v})
-	}
-
-	return
 }

@@ -58,21 +58,44 @@ func (s *blocksStoreBalancedSet) resolve(ctx context.Context) error {
 	return nil
 }
 
-func (s *blocksStoreBalancedSet) GetClientsFor(blockIDs []ulid.ULID) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (s *blocksStoreBalancedSet) GetClientsFor(blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
 	addresses := s.dnsProvider.Addresses()
 	if len(addresses) == 0 {
 		return nil, fmt.Errorf("no address resolved for the store-gateway service addresses %s", strings.Join(s.serviceAddresses, ","))
 	}
 
-	// Pick a random address and return its client from the pool.
-	addr := addresses[rand.Intn(len(addresses))]
-	c, err := s.clientsPool.GetClientFor(addr)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get store-gateway client for %s", addr)
+	// Randomize the list of addresses to not always query the same address.
+	rand.Shuffle(len(addresses), func(i, j int) {
+		addresses[i], addresses[j] = addresses[j], addresses[i]
+	})
+
+	// Pick a non excluded client for each block.
+	clients := map[BlocksStoreClient][]ulid.ULID{}
+
+	for _, blockID := range blockIDs {
+		// Pick the first non excluded store-gateway instance.
+		addr := getFirstNonExcludedAddr(addresses, exclude[blockID])
+		if addr == "" {
+			return nil, fmt.Errorf("no store-gateway instance left after filtering out excluded instances for block %s", blockID.String())
+		}
+
+		c, err := s.clientsPool.GetClientFor(addr)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get store-gateway client for %s", addr)
+		}
+
+		clients[c.(BlocksStoreClient)] = append(clients[c.(BlocksStoreClient)], blockID)
 	}
 
-	clients := map[BlocksStoreClient][]ulid.ULID{}
-	clients[c.(BlocksStoreClient)] = blockIDs
-
 	return clients, nil
+}
+
+func getFirstNonExcludedAddr(addresses, exclude []string) string {
+	for _, addr := range addresses {
+		if !util.StringsContain(exclude, addr) {
+			return addr
+		}
+	}
+
+	return ""
 }

@@ -40,7 +40,7 @@ type Client interface {
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
 type ObjectAndIndexClient interface {
-	PutChunkAndIndex(ctx context.Context, c Chunk, index WriteBatch) error
+	PutChunksAndIndex(ctx context.Context, chunks []Chunk, index WriteBatch) error
 }
 
 // WriteBatch represents a batch of writes.

@@ -4,7 +4,7 @@ In order to build Loki manually, you need to clone the GitHub repo and then `mak
 
 ## Prerequisites
 
-- Go 1.13 or later
+- Go 1.14 or later
 - Make
 - Docker (for updating protobuf files and yacc files)
 

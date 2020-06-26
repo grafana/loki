@@ -576,8 +576,8 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 
 // PutChunkAndIndex implements chunk.ObjectAndIndexClient
 // Combine both sets of writes before sending to DynamoDB, for performance
-func (a dynamoDBStorageClient) PutChunkAndIndex(ctx context.Context, c chunk.Chunk, index chunk.WriteBatch) error {
-	dynamoDBWrites, err := a.writesForChunks([]chunk.Chunk{c})
+func (a dynamoDBStorageClient) PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index chunk.WriteBatch) error {
+	dynamoDBWrites, err := a.writesForChunks(chunks)
 	if err != nil {
 		return err
 	}

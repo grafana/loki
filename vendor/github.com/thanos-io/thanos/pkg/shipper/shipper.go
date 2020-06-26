@@ -419,7 +419,6 @@ func (s *Shipper) iterBlockMetas(f func(m *metadata.Meta) error) error {
 		return metas[i].BlockMeta.MinTime < metas[j].BlockMeta.MinTime
 	})
 	for _, m := range metas {
-
 		if err := f(m); err != nil {
 			return err
 		}

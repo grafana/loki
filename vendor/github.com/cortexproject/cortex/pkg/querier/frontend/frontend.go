@@ -189,7 +189,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		// Ensure the form has been parsed so all the parameters are present
 		err = r.ParseForm()
 		if err != nil {
-			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "error", err)
+			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
 		}
 
 		// Attempt to iterate through the Form to log any filled in values
