@@ -105,12 +105,26 @@ func TestIngester(t *testing.T) {
 
 	// Series
 
-	// empty matchers
-	_, err = i.Series(ctx, &logproto.SeriesRequest{
+	// empty matcher return all series
+	resp, err := i.Series(ctx, &logproto.SeriesRequest{
 		Start: time.Unix(0, 0),
 		End:   time.Unix(1, 0),
 	})
-	require.Error(t, err)
+	require.Nil(t, err)
+	require.ElementsMatch(t, []logproto.SeriesIdentifier{
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz1",
+			},
+		},
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz2",
+			},
+		},
+	}, resp.GetSeries())
 
 	// wrong matchers fmt
 	_, err = i.Series(ctx, &logproto.SeriesRequest{
@@ -129,7 +143,7 @@ func TestIngester(t *testing.T) {
 	require.Error(t, err)
 
 	// foo=bar
-	resp, err := i.Series(ctx, &logproto.SeriesRequest{
+	resp, err = i.Series(ctx, &logproto.SeriesRequest{
 		Start:  time.Unix(0, 0),
 		End:    time.Unix(1, 0),
 		Groups: []string{`{foo="bar"}`},
