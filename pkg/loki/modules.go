@@ -37,7 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -182,7 +182,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 
 	// We want ingester to also query the store when using boltdb-shipper
 	pc := t.cfg.SchemaConfig.Configs[activePeriodConfig(t.cfg.SchemaConfig)]
-	if pc.IndexType == local.BoltDBShipperType {
+	if pc.IndexType == shipper.BoltDBShipperType {
 		t.cfg.Ingester.QueryStore = true
 		mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
 		if err != nil {
@@ -243,17 +243,17 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
-	if t.cfg.SchemaConfig.Configs[activePeriodConfig(t.cfg.SchemaConfig)].IndexType == local.BoltDBShipperType {
+	if t.cfg.SchemaConfig.Configs[activePeriodConfig(t.cfg.SchemaConfig)].IndexType == shipper.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
 			// We do not want ingester to unnecessarily keep downloading files
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeWriteOnly
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ShipperModeWriteOnly
 		case Querier:
 			// We do not want query to do any updates to index
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadOnly
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ShipperModeReadOnly
 		default:
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadWrite
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ShipperModeReadWrite
 		}
 	}
 
