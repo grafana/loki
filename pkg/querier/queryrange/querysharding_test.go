@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -125,9 +126,12 @@ func Test_shardSplitter(t *testing.T) {
 }
 
 func Test_astMapper(t *testing.T) {
+	var lock sync.Mutex
 	called := 0
 
 	handler := queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+		lock.Lock()
+		defer lock.Unlock()
 		resp := lokiResps[called]
 		called++
 		return resp, nil
