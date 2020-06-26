@@ -4,13 +4,22 @@ import "strings"
 
 // LogString returns a test log line. Returns the same line for the same index.
 func LogString(index int64) string {
-	if index > int64(len(logs)-1) {
-		index = index % int64(len(logs))
+	if index > int64(len(Logs)-1) {
+		index = index % int64(len(Logs))
 	}
-	return logs[index]
+	return Logs[index]
 }
 
-var logs = strings.Split(`level=info ts=2019-12-12T15:00:08.325Z caller=compact.go:441 component=tsdb msg="compact blocks" count=3 mint=1576130400000 maxt=1576152000000 ulid=01DVX9ZHNM71GRCJS7M34Q0EV7 sources="[01DVWNC6NWY1A60AZV3Z6DGS65 01DVWW7XXX75GHA6ZDTD170CSZ 01DVX33N5W86CWJJVRPAVXJRWJ]" duration=2.897213221s
+var LogsBytes [][]byte
+
+func init() {
+	LogsBytes = make([][]byte, len(Logs))
+	for i, l := range Logs {
+		LogsBytes[i] = []byte(l)
+	}
+}
+
+var Logs = strings.Split(`level=info ts=2019-12-12T15:00:08.325Z caller=compact.go:441 component=tsdb msg="compact blocks" count=3 mint=1576130400000 maxt=1576152000000 ulid=01DVX9ZHNM71GRCJS7M34Q0EV7 sources="[01DVWNC6NWY1A60AZV3Z6DGS65 01DVWW7XXX75GHA6ZDTD170CSZ 01DVX33N5W86CWJJVRPAVXJRWJ]" duration=2.897213221s
 level=info ts=2019-12-12T15:00:08.296Z caller=compact.go:441 component=tsdb msg="compact blocks" count=3 mint=1576130400000 maxt=1576152000000 ulid=01DVX9ZHQRVN42AF196NYJ9C4C sources="[01DVWNC6NSPJRCSBZ4QD3SXS66 01DVWW7XY69Y4YT09HR0RSR8KY 01DVX33N5SMVPB1TMD9J1M8GGK]" duration=2.800759388s
 level=info ts=2019-12-12T15:00:05.285Z caller=head.go:666 component=tsdb msg="WAL checkpoint complete" first=1037 last=1039 duration=3.030078405s
 level=info ts=2019-12-12T15:00:05.225Z caller=head.go:666 component=tsdb msg="WAL checkpoint complete" first=1037 last=1039 duration=3.019791992s
