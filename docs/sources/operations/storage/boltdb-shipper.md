@@ -93,7 +93,7 @@ The problem with write deduplication when using `boltdb-shipper` though is inges
 The problem due to that is if an ingester which first wrote the chunks and index goes down and all the other ingesters which were part of replication scheme skipped writing those chunks and index due to deduplication, we would end up missing those logs from query responses since only the ingester which had the index went down.
 This problem would be faced even during rollouts which is quite common.
 
-To avoid this, Loki disables WriteDedupe and uses Chunks cache only for improving read performance when the replication factor is greater than 1 and `boltdb-shipper` is an active or upcoming index type.
-While Chunks cache would still be useful to have when using `boltdb-shipper` for read performance, please avoid configuring WriteDedupe cache since it would not be used anyways.
+To avoid this, Loki disables deduplication of index when the replication factor is greater than 1 and `boltdb-shipper` is an active or upcoming index type.
+While using `boltdb-shipper` please avoid configuring WriteDedupe cache since it is used purely for the index deduplication, so it would not be used anyways.
 
 

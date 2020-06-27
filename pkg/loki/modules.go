@@ -258,7 +258,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable both chunks dedupe and write dedupe cache.
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
 	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && usingBoltdbShipper(t.cfg.SchemaConfig) {
-		t.cfg.ChunkStoreConfig.DisableChunksDeduplication = true
+		t.cfg.ChunkStoreConfig.DisableIndexDeduplication = true
 		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
 	}
 
