@@ -25,59 +25,33 @@ func getConf() ProxyConf {
 }
 
 func writeConf() {
-	proxy := ""
-	proxyByPass := ""
-	autoConfigUrl := ""
-	autoDetect := false
+	var (
+		cfg *tWINHTTP_CURRENT_USER_IE_PROXY_CONFIG
+		err error
+	)
 
-	// Try from IE first.
-	if ieCfg, err := getUserConfigFromWindowsSyscall(); err == nil {
-		defer globalFreeWrapper(ieCfg.lpszProxy)
-		defer globalFreeWrapper(ieCfg.lpszProxyBypass)
-		defer globalFreeWrapper(ieCfg.lpszAutoConfigUrl)
-
-		proxy = StringFromUTF16Ptr(ieCfg.lpszProxy)
-		proxyByPass = StringFromUTF16Ptr(ieCfg.lpszProxyBypass)
-		autoConfigUrl = StringFromUTF16Ptr(ieCfg.lpszAutoConfigUrl)
-		autoDetect = ieCfg.fAutoDetect
-	}
-
-	// Try WinHTTP default proxy.
-	if defaultCfg, err := getDefaultProxyConfiguration(); err == nil {
-		defer globalFreeWrapper(defaultCfg.lpszProxy)
-		defer globalFreeWrapper(defaultCfg.lpszProxyBypass)
-
-		newProxy := StringFromUTF16Ptr(defaultCfg.lpszProxy)
-		if proxy == "" {
-			proxy = newProxy
-		}
-
-		newProxyByPass := StringFromUTF16Ptr(defaultCfg.lpszProxyBypass)
-		if proxyByPass == "" {
-			proxyByPass = newProxyByPass
-		}
-	}
-
-	if proxy == "" && !autoDetect {
-		// Fall back to IE registry or manual detection if nothing is found there..
+	if cfg, err = getUserConfigFromWindowsSyscall(); err != nil {
 		regedit, _ := readRegedit() // If the syscall fails, backup to manual detection.
 		windowsProxyConf = parseRegedit(regedit)
 		return
 	}
 
-	// Setting the proxy settings.
+	defer globalFreeWrapper(cfg.lpszProxy)
+	defer globalFreeWrapper(cfg.lpszProxyBypass)
+	defer globalFreeWrapper(cfg.lpszAutoConfigUrl)
+
 	windowsProxyConf = ProxyConf{
 		Static: StaticProxyConf{
-			Active: len(proxy) > 0,
+			Active: cfg.lpszProxy != nil,
 		},
 		Automatic: ProxyScriptConf{
-			Active: len(autoConfigUrl) > 0 || autoDetect,
+			Active: cfg.lpszAutoConfigUrl != nil || cfg.fAutoDetect,
 		},
 	}
 
 	if windowsProxyConf.Static.Active {
 		protocol := make(map[string]string)
-		for _, s := range strings.Split(proxy, ";") {
+		for _, s := range strings.Split(StringFromUTF16Ptr(cfg.lpszProxy), ";") {
 			s = strings.TrimSpace(s)
 			if s == "" {
 				continue
@@ -91,38 +65,31 @@ func writeConf() {
 		}
 
 		windowsProxyConf.Static.Protocols = protocol
-		if len(proxyByPass) > 0 {
-			windowsProxyConf.Static.NoProxy = strings.Replace(proxyByPass, ";", ",", -1)
+		if cfg.lpszProxyBypass != nil {
+			windowsProxyConf.Static.NoProxy = strings.Replace(StringFromUTF16Ptr(cfg.lpszProxyBypass), ";", ",", -1)
 		}
 	}
 
 	if windowsProxyConf.Automatic.Active {
-		windowsProxyConf.Automatic.PreConfiguredURL = autoConfigUrl
+		windowsProxyConf.Automatic.PreConfiguredURL = StringFromUTF16Ptr(cfg.lpszAutoConfigUrl)
 	}
 }
 
 func getUserConfigFromWindowsSyscall() (*tWINHTTP_CURRENT_USER_IE_PROXY_CONFIG, error) {
-	if err := winHttpGetIEProxyConfigForCurrentUser.Find(); err != nil {
-		return nil, err
+	handle, _, err := winHttpOpen.Call(0, 0, 0, 0, 0)
+	if handle == 0 {
+		return &tWINHTTP_CURRENT_USER_IE_PROXY_CONFIG{}, err
 	}
-	p := new(tWINHTTP_CURRENT_USER_IE_PROXY_CONFIG)
-	r, _, err := winHttpGetIEProxyConfigForCurrentUser.Call(uintptr(unsafe.Pointer(p)))
-	if rTrue(r) {
-		return p, nil
-	}
-	return nil, err
-}
+	defer winHttpCloseHandle.Call(handle)
 
-func getDefaultProxyConfiguration() (*tWINHTTP_PROXY_INFO, error) {
-	pInfo := new(tWINHTTP_PROXY_INFO)
-	if err := winHttpGetDefaultProxyConfiguration.Find(); err != nil {
-		return nil, err
+	config := new(tWINHTTP_CURRENT_USER_IE_PROXY_CONFIG)
+
+	ret, _, err := winHttpGetIEProxyConfigForCurrentUser.Call(uintptr(unsafe.Pointer(config)))
+	if ret > 0 {
+		err = nil
 	}
-	r, _, err := winHttpGetDefaultProxyConfiguration.Call(uintptr(unsafe.Pointer(pInfo)))
-	if rTrue(r) {
-		return pInfo, nil
-	}
-	return nil, err
+
+	return config, err
 }
 
 // OverrideEnvWithStaticProxy writes new values to the

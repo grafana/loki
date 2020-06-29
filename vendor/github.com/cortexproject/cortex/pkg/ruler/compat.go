@@ -6,23 +6,40 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
+
+// AppendableHistoryFunc allows creation of an Appendable and AlertHistory to be joined. The default implementation
+// does not take advantage of this option.
+type AppendableHistoryFunc = func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.TenantAlertHistory)
+
+// This is the default implementation which returns an unlinked Appendable/AlertHistory.
+func DefaultAppendableHistoryFunc(p Pusher, q storage.Queryable) AppendableHistoryFunc {
+	return func(userID string, opts *rules.ManagerOptions) (rules.Appendable, rules.TenantAlertHistory) {
+		return &appender{
+			pusher: p,
+			userID: userID,
+		}, rules.NewMetricsHistory(q, opts)
+	}
+}
 
 // Pusher is an ingester server that accepts pushes.
 type Pusher interface {
 	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
+
 type appender struct {
 	pusher  Pusher
 	labels  []labels.Labels
 	samples []client.Sample
 	userID  string
 }
+
+func (a *appender) Appender(_ rules.Rule) (storage.Appender, error) { return a, nil }
 
 func (a *appender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
@@ -52,42 +69,16 @@ func (a *appender) Rollback() error {
 	return nil
 }
 
-// TSDB fulfills the storage.Storage interface for prometheus manager
-// it allows for alerts to be restored by the manager
-type tsdb struct {
-	pusher    Pusher
-	userID    string
-	queryable storage.Queryable
-}
-
-// Appender returns a storage.Appender
-func (t *tsdb) Appender() storage.Appender {
-	return &appender{
-		pusher: t.pusher,
-		userID: t.userID,
+// PromDelayedQueryFunc returns a DelayedQueryFunc bound to a promql engine.
+func PromDelayedQueryFunc(engine *promql.Engine, q storage.Queryable) DelayedQueryFunc {
+	return func(delay time.Duration) rules.QueryFunc {
+		orig := rules.EngineQueryFunc(engine, q)
+		return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+			return orig(ctx, qs, t.Add(-delay))
+		}
 	}
 }
 
-// Querier returns a new Querier on the storage.
-func (t *tsdb) Querier(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
-	return t.queryable.Querier(ctx, mint, maxt)
-}
-
-// StartTime returns the oldest timestamp stored in the storage.
-func (t *tsdb) StartTime() (int64, error) {
-	return 0, nil
-}
-
-// Close closes the storage and all its underlying resources.
-func (t *tsdb) Close() error {
-	return nil
-}
-
-// engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
-// and passing an altered timestamp.
-func engineQueryFunc(engine *promql.Engine, q storage.Queryable, delay time.Duration) rules.QueryFunc {
-	orig := rules.EngineQueryFunc(engine, q)
-	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		return orig(ctx, qs, t.Add(-delay))
-	}
-}
+// DelayedQueryFunc consumes a queryable and a delay, returning a Queryfunc which
+// takes this delay into account when executing against the queryable.
+type DelayedQueryFunc = func(time.Duration) rules.QueryFunc

@@ -14,6 +14,7 @@ import (
 	perrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -121,7 +122,7 @@ type Lifecycler struct {
 	Zone     string
 
 	// Whether to flush if transfer fails on shutdown.
-	flushOnShutdown bool
+	flushOnShutdown *atomic.Bool
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
@@ -177,7 +178,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		ID:              cfg.ID,
 		RingName:        ringName,
 		RingKey:         ringKey,
-		flushOnShutdown: flushOnShutdown,
+		flushOnShutdown: atomic.NewBool(flushOnShutdown),
 		Zone:            zone,
 
 		actorChan: make(chan func()),
@@ -727,17 +728,17 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 
 // FlushOnShutdown returns if flushing is enabled if transfer fails on a shutdown.
 func (i *Lifecycler) FlushOnShutdown() bool {
-	return i.flushOnShutdown
+	return i.flushOnShutdown.Load()
 }
 
 // SetFlushOnShutdown enables/disables flush on shutdown if transfer fails.
 // Passing 'true' enables it, and 'false' disabled it.
 func (i *Lifecycler) SetFlushOnShutdown(flushOnShutdown bool) {
-	i.flushOnShutdown = flushOnShutdown
+	i.flushOnShutdown.Store(flushOnShutdown)
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {
-	flushRequired := i.flushOnShutdown
+	flushRequired := i.flushOnShutdown.Load()
 	transferStart := time.Now()
 	if err := i.flushTransferer.TransferOut(ctx); err != nil {
 		if err == ErrTransferDisabled {

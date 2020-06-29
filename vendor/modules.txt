@@ -32,9 +32,9 @@ github.com/Azure/go-autorest/autorest/azure
 github.com/Azure/go-autorest/autorest/adal
 # github.com/Azure/go-autorest/autorest/date v0.2.0
 github.com/Azure/go-autorest/autorest/date
-# github.com/Azure/go-autorest/autorest/to v0.3.1-0.20191028180845-3492b2aff503
+# github.com/Azure/go-autorest/autorest/to v0.3.0
 github.com/Azure/go-autorest/autorest/to
-# github.com/Azure/go-autorest/autorest/validation v0.2.1-0.20191028180845-3492b2aff503
+# github.com/Azure/go-autorest/autorest/validation v0.2.0
 github.com/Azure/go-autorest/autorest/validation
 # github.com/Azure/go-autorest/logger v0.1.0
 github.com/Azure/go-autorest/logger
@@ -133,16 +133,16 @@ github.com/cespare/xxhash/v2
 github.com/containerd/containerd/errdefs
 # github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448
 github.com/containerd/fifo
-# github.com/coreos/go-semver v0.3.0
+# github.com/coreos/go-semver v0.2.0
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 github.com/coreos/go-systemd/activation
 github.com/coreos/go-systemd/internal/dlopen
 github.com/coreos/go-systemd/journal
 github.com/coreos/go-systemd/sdjournal
-# github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
+# github.com/coreos/pkg v0.0.0-20160727233714-3ac0863d7acf
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.1.1-0.20200609120740-6bd667db776a
+# github.com/cortexproject/cortex v1.1.1-0.20200609120740-6bd667db776a => github.com/owen-d/cortex v0.2.1-0.20200629194827-408421912026
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alerts
 github.com/cortexproject/cortex/pkg/alertmanager/alerts/configdb
@@ -227,6 +227,8 @@ github.com/cortexproject/cortex/pkg/util/validation
 github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
 github.com/dgrijalva/jwt-go
+# github.com/digitalocean/godo v1.37.0
+github.com/digitalocean/godo
 # github.com/docker/distribution v2.7.1+incompatible
 github.com/docker/distribution/registry/api/errcode
 # github.com/docker/docker v0.7.3-0.20190817195342-4760db040282
@@ -381,6 +383,8 @@ github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
+# github.com/google/go-querystring v1.0.0
+github.com/google/go-querystring/query
 # github.com/google/gofuzz v1.1.0
 github.com/google/gofuzz
 # github.com/google/uuid v1.1.1
@@ -438,7 +442,7 @@ github.com/hashicorp/go-cleanhttp
 github.com/hashicorp/go-hclog
 # github.com/hashicorp/go-immutable-radix v1.2.0
 github.com/hashicorp/go-immutable-radix
-# github.com/hashicorp/go-msgpack v0.5.5
+# github.com/hashicorp/go-msgpack v0.5.3
 github.com/hashicorp/go-msgpack/codec
 # github.com/hashicorp/go-multierror v1.0.0
 github.com/hashicorp/go-multierror
@@ -488,7 +492,7 @@ github.com/klauspost/compress/flate
 github.com/klauspost/compress/gzip
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
-# github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939
+# github.com/lann/builder v0.0.0-20180802200727-47ae307949d0
 github.com/lann/builder
 # github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0
 github.com/lann/ps
@@ -505,7 +509,7 @@ github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
 # github.com/mattn/go-colorable v0.1.6
 github.com/mattn/go-colorable
-# github.com/mattn/go-ieproxy v0.0.0-20191113090002-7c0f6868bffe
+# github.com/mattn/go-ieproxy v0.0.0-20190702010315-6dee0af9227d
 github.com/mattn/go-ieproxy
 # github.com/mattn/go-isatty v0.0.12
 github.com/mattn/go-isatty
@@ -626,12 +630,13 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20200609052543-1627d234da06
+# github.com/prometheus/prometheus v1.8.2-0.20200626094909-cef4dd6fff06
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
 github.com/prometheus/prometheus/discovery/azure
 github.com/prometheus/prometheus/discovery/config
 github.com/prometheus/prometheus/discovery/consul
+github.com/prometheus/prometheus/discovery/digitalocean
 github.com/prometheus/prometheus/discovery/dns
 github.com/prometheus/prometheus/discovery/ec2
 github.com/prometheus/prometheus/discovery/file
@@ -715,7 +720,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.12.3-0.20200603113103-6d3e730e154d
+# github.com/thanos-io/thanos v0.13.1-0.20200625180332-f078faed1b96
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
@@ -750,7 +755,7 @@ github.com/thanos-io/thanos/pkg/store/storepb/prompb
 github.com/thanos-io/thanos/pkg/strutil
 github.com/thanos-io/thanos/pkg/testutil
 github.com/thanos-io/thanos/pkg/tracing
-# github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5
+# github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8
 github.com/tmc/grpc-websocket-proxy/wsproxy
 # github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 github.com/tonistiigi/fifo
@@ -796,7 +801,7 @@ github.com/weaveworks/common/user
 github.com/weaveworks/promrus
 # github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2
 github.com/xiang90/probing
-# go.etcd.io/bbolt v1.3.4
+# go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 go.etcd.io/bbolt
 # go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 go.etcd.io/etcd/auth
@@ -955,7 +960,7 @@ golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20200602225109-6fdc65e7d980
+# golang.org/x/sys v0.0.0-20200615200032-f1bc736245b1
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
@@ -1144,7 +1149,7 @@ gopkg.in/fsnotify.v1
 gopkg.in/fsnotify/fsnotify.v1
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
-# gopkg.in/ini.v1 v1.51.0
+# gopkg.in/ini.v1 v1.42.0
 gopkg.in/ini.v1
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 gopkg.in/tomb.v1
@@ -1263,7 +1268,7 @@ k8s.io/apimachinery/pkg/util/yaml
 k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/client-go v12.0.0+incompatible => k8s.io/client-go v0.18.3
+# k8s.io/client-go v0.18.3 => k8s.io/client-go v0.18.3
 k8s.io/client-go/discovery
 k8s.io/client-go/kubernetes
 k8s.io/client-go/kubernetes/scheme

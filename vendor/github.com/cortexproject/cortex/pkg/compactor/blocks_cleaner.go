@@ -7,11 +7,13 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
@@ -158,7 +160,8 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 
 	// Runs a bucket scan to get a fresh list of all blocks and populate
 	// the list of deleted blocks in filter.
-	if _, _, err = fetcher.Fetch(ctx); err != nil {
+	_, partials, err := fetcher.Fetch(ctx)
+	if err != nil {
 		return errors.Wrap(err, "error fetching metadata")
 	}
 
@@ -174,5 +177,43 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 		return errors.Wrap(err, "error cleaning blocks")
 	}
 
+	// Partial blocks with a deletion mark can be cleaned up. This is a best effort, so we don't return
+	// error if the cleanup of partial blocks fail.
+	if len(partials) > 0 {
+		level.Info(userLogger).Log("msg", "started cleaning of partial blocks marked for deletion")
+		c.cleanUserPartialBlocks(ctx, partials, userBucket, userLogger)
+		level.Info(userLogger).Log("msg", "cleaning of partial blocks marked for deletion done")
+	}
+
 	return nil
+}
+
+func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, userBucket *cortex_tsdb.UserBucketClient, userLogger log.Logger) {
+	for blockID, blockErr := range partials {
+		// We can safely delete only blocks which are partial because the meta.json is missing.
+		if blockErr != block.ErrorSyncMetaNotFound {
+			continue
+		}
+
+		// We can safely delete only partial blocks with a deletion mark.
+		_, err := metadata.ReadDeletionMark(ctx, userBucket, userLogger, blockID.String())
+		if err == metadata.ErrorDeletionMarkNotFound {
+			continue
+		}
+		if err != nil {
+			level.Warn(userLogger).Log("msg", "error reading partial block deletion mark", "block", blockID, "err", err)
+			continue
+		}
+
+		// Hard-delete partial blocks having a deletion mark, even if the deletion threshold has not
+		// been reached yet.
+		if err := block.Delete(ctx, userLogger, userBucket, blockID); err != nil {
+			c.blocksFailedTotal.Inc()
+			level.Warn(userLogger).Log("msg", "error deleting partial block marked for deletion", "block", blockID, "err", err)
+			continue
+		}
+
+		c.blocksCleanedTotal.Inc()
+		level.Info(userLogger).Log("msg", "deleted partial block marked for deletion", "block", blockID)
+	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
+	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
@@ -43,6 +44,9 @@ type BucketStores struct {
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
 
+	// Gate used to limit query concurrency across all tenants.
+	queryGate gate.Gate
+
 	// Keeps a bucket store for each tenant.
 	storesMu sync.RWMutex
 	stores   map[string]*store.BucketStore
@@ -59,6 +63,14 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		return nil, errors.Wrapf(err, "create caching bucket")
 	}
 
+	// The number of concurrent queries against the tenants BucketStores are limited.
+	queryGateReg := extprom.WrapRegistererWithPrefix("cortex_bucket_stores_", reg)
+	queryGate := gate.NewKeeper(queryGateReg).NewGate(cfg.BucketStore.MaxConcurrent)
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_bucket_stores_gate_queries_concurrent_max",
+		Help: "Number of maximum concurrent queries allowed.",
+	}).Set(float64(cfg.BucketStore.MaxConcurrent))
+
 	u := &BucketStores{
 		logger:             logger,
 		cfg:                cfg,
@@ -68,6 +80,7 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
+		queryGate:          queryGate,
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -268,9 +281,9 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		fetcher,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
 		u.indexCache,
-		uint64(u.cfg.BucketStore.MaxChunkPoolBytes),
+		u.queryGate,
+		u.cfg.BucketStore.MaxChunkPoolBytes,
 		u.cfg.BucketStore.MaxSampleCount,
-		u.cfg.BucketStore.MaxConcurrent,
 		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.

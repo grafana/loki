@@ -31,12 +31,15 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/tsdb/index"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/indexheader"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
 	"github.com/thanos-io/thanos/pkg/component"
-	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -48,9 +51,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -100,7 +100,6 @@ type bucketStoreMetrics struct {
 	resultSeriesCount     prometheus.Summary
 	chunkSizeBytes        prometheus.Histogram
 	queriesDropped        prometheus.Counter
-	queriesLimit          prometheus.Gauge
 	seriesRefetches       prometheus.Counter
 
 	cachedPostingsCompressions           *prometheus.CounterVec
@@ -183,10 +182,6 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 		Name: "thanos_bucket_store_queries_dropped_total",
 		Help: "Number of queries that were dropped due to the sample limit.",
 	})
-	m.queriesLimit = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "thanos_bucket_store_queries_concurrent_max",
-		Help: "Number of maximum concurrent queries.",
-	})
 	m.seriesRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_series_refetches_total",
 		Help: fmt.Sprintf("Total number of cases where %v bytes was not enough was to fetch series from index, resulting in refetch.", maxSeriesSize),
@@ -243,7 +238,7 @@ type BucketStore struct {
 	blockSyncConcurrency int
 
 	// Query gate which limits the maximum amount of concurrent queries.
-	queryGate gate.Gater
+	queryGate gate.Gate
 
 	// samplesLimiter limits the number of samples per each Series() call.
 	samplesLimiter SampleLimiter
@@ -272,9 +267,9 @@ func NewBucketStore(
 	fetcher block.MetadataFetcher,
 	dir string,
 	indexCache storecache.IndexCache,
+	queryGate gate.Gate,
 	maxChunkPoolBytes uint64,
 	maxSampleCount uint64,
-	maxConcurrent int,
 	debugLogging bool,
 	blockSyncConcurrency int,
 	filterConfig *FilterConfig,
@@ -287,10 +282,6 @@ func NewBucketStore(
 		logger = log.NewNopLogger()
 	}
 
-	if maxConcurrent < 0 {
-		return nil, errors.Errorf("max concurrency value cannot be lower than 0 (got %v)", maxConcurrent)
-	}
-
 	chunkPool, err := pool.NewBucketedBytesPool(maxChunkSize, 50e6, 2, maxChunkPoolBytes)
 	if err != nil {
 		return nil, errors.Wrap(err, "create chunk pool")
@@ -298,21 +289,18 @@ func NewBucketStore(
 
 	metrics := newBucketStoreMetrics(reg)
 	s := &BucketStore{
-		logger:               logger,
-		bkt:                  bkt,
-		fetcher:              fetcher,
-		dir:                  dir,
-		indexCache:           indexCache,
-		chunkPool:            chunkPool,
-		blocks:               map[ulid.ULID]*bucketBlock{},
-		blockSets:            map[uint64]*bucketBlockSet{},
-		debugLogging:         debugLogging,
-		blockSyncConcurrency: blockSyncConcurrency,
-		filterConfig:         filterConfig,
-		queryGate: gate.NewGate(
-			maxConcurrent,
-			extprom.WrapRegistererWithPrefix("thanos_bucket_store_series_", reg),
-		),
+		logger:                      logger,
+		bkt:                         bkt,
+		fetcher:                     fetcher,
+		dir:                         dir,
+		indexCache:                  indexCache,
+		chunkPool:                   chunkPool,
+		blocks:                      map[ulid.ULID]*bucketBlock{},
+		blockSets:                   map[uint64]*bucketBlockSet{},
+		debugLogging:                debugLogging,
+		blockSyncConcurrency:        blockSyncConcurrency,
+		filterConfig:                filterConfig,
+		queryGate:                   queryGate,
 		samplesLimiter:              NewLimiter(maxSampleCount, metrics.queriesDropped),
 		partitioner:                 gapBasedPartitioner{maxGapSize: partitionerMaxGapSize},
 		enableCompatibilityLabel:    enableCompatibilityLabel,
@@ -325,8 +313,6 @@ func NewBucketStore(
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return nil, errors.Wrap(err, "create dir")
 	}
-
-	s.metrics.queriesLimit.Set(float64(maxConcurrent))
 
 	return s, nil
 }
@@ -846,14 +832,16 @@ func debugFoundBlockSetOverview(logger log.Logger, mint, maxt, maxResolutionMill
 
 // Series implements the storepb.StoreServer interface.
 func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) (err error) {
-	tracing.DoInSpan(srv.Context(), "store_query_gate_ismyturn", func(ctx context.Context) {
-		err = s.queryGate.IsMyTurn(srv.Context())
-	})
-	if err != nil {
-		return errors.Wrapf(err, "failed to wait for turn")
-	}
+	if s.queryGate != nil {
+		tracing.DoInSpan(srv.Context(), "store_query_gate_ismyturn", func(ctx context.Context) {
+			err = s.queryGate.Start(srv.Context())
+		})
+		if err != nil {
+			return errors.Wrapf(err, "failed to wait for turn")
+		}
 
-	defer s.queryGate.Done()
+		defer s.queryGate.Done()
+	}
 
 	matchers, err := promclient.TranslateMatchers(req.Matchers)
 	if err != nil {
@@ -984,9 +972,8 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 	tracing.DoInSpan(ctx, "bucket_store_merge_all", func(ctx context.Context) {
 		begin := time.Now()
 
-		// Merge series set into an union of all block sets. This exposes all blocks are single seriesSet.
-		// Chunks of returned series might be out of order w.r.t to their time range.
-		// This must be accounted for later by clients.
+		// NOTE: We "carefully" assume series and chunks are sorted within each SeriesSet. This should be guaranteed by
+		// blockSeries method. In worst case deduplication logic won't deduplicate correctly, which will be accounted later.
 		set := storepb.MergeSeriesSets(res...)
 		for set.Next() {
 			var series storepb.Series
@@ -1332,11 +1319,15 @@ func (b *bucketBlock) readIndexRange(ctx context.Context, off, length int64) ([]
 	}
 	defer runutil.CloseWithLogOnErr(b.logger, r, "readIndexRange close range reader")
 
-	c, err := ioutil.ReadAll(r)
-	if err != nil {
+	// Preallocate the buffer with the exact size so we don't waste allocations
+	// while progressively growing an initial small buffer. The buffer capacity
+	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
+	// internally works.
+	buf := bytes.NewBuffer(make([]byte, 0, length+bytes.MinRead))
+	if _, err := buf.ReadFrom(r); err != nil {
 		return nil, errors.Wrap(err, "read range")
 	}
-	return c, nil
+	return buf.Bytes(), nil
 }
 
 func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length int64) (*[]byte, error) {

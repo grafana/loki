@@ -2,8 +2,11 @@ module github.com/grafana/loki
 
 go 1.13
 
+replace github.com/cortexproject/cortex => github.com/owen-d/cortex v0.2.1-0.20200629194827-408421912026
+
 require (
 	github.com/Microsoft/go-winio v0.4.12 // indirect
+	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
@@ -37,6 +40,8 @@ require (
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.9
 	github.com/klauspost/compress v1.9.5
+	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
+	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/mitchellh/mapstructure v1.2.2
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
@@ -46,7 +51,7 @@ require (
 	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200609052543-1627d234da06
+	github.com/prometheus/prometheus v1.8.2-0.20200626094909-cef4dd6fff06
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/stretchr/testify v1.5.1
@@ -54,7 +59,7 @@ require (
 	github.com/uber/jaeger-client-go v2.23.1+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/weaveworks/common v0.0.0-20200512154658-384f10054ec5
-	go.etcd.io/bbolt v1.3.4
+	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
 	google.golang.org/grpc v1.29.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6

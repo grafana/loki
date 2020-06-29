@@ -135,7 +135,6 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 
 	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
 	if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
-		i.metrics.flushReasons.WithLabelValues(flush.String()).Inc()
 		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "nlabels", len(series.metric), "queue", flushQueueIndex)
 	}
 }
@@ -278,6 +277,8 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	if len(chunks) == 0 {
 		return nil
 	}
+
+	i.metrics.flushedSeries.WithLabelValues(reason.String()).Inc()
 
 	// flush the chunks without locking the series, as we don't want to hold the series lock for the duration of the dynamo/s3 rpcs.
 	ctx, cancel := context.WithTimeout(context.Background(), i.cfg.FlushOpTimeout)

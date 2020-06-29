@@ -106,6 +106,7 @@ func (s *Section) NewBooleanKey(name string) (*Key, error) {
 
 // GetKey returns key in section by given name.
 func (s *Section) GetKey(name string) (*Key, error) {
+	// FIXME: change to section level lock?
 	if s.f.BlockMode {
 		s.f.lock.RLock()
 	}
@@ -128,8 +129,9 @@ func (s *Section) GetKey(name string) (*Key, error) {
 					continue
 				}
 				return sec.GetKey(name)
+			} else {
+				break
 			}
-			break
 		}
 		return nil, fmt.Errorf("error when getting key of section '%s': key '%s' not exists", s.name, name)
 	}
@@ -142,7 +144,8 @@ func (s *Section) HasKey(name string) bool {
 	return key != nil
 }
 
-// Deprecated: Use "HasKey" instead.
+// Haskey is a backwards-compatible name for HasKey.
+// TODO: delete me in v2
 func (s *Section) Haskey(name string) bool {
 	return s.HasKey(name)
 }

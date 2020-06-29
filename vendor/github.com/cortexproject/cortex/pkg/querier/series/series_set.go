@@ -18,6 +18,7 @@ package series
 
 import (
 	"sort"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -44,19 +45,24 @@ func NewConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
 	}
 }
 
-// Next iterates through a series set and impls storage.SeriesSet
+// Next iterates through a series set and implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) Next() bool {
 	c.cur++
 	return c.cur < len(c.series)
 }
 
-// At returns the current series and impls storage.SeriesSet
+// At returns the current series and implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) At() storage.Series {
 	return c.series[c.cur]
 }
 
-// Err impls storage.SeriesSet
+// Err implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) Err() error {
+	return nil
+}
+
+// Warnings implements storage.SeriesSet.
+func (c *ConcreteSeriesSet) Warnings() storage.Warnings {
 	return nil
 }
 
@@ -74,17 +80,64 @@ func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSe
 	}
 }
 
+// Add inserts a sample at the correct spot to maintain ordering. It discards the sample if a sample already
+// exists with the same timestamp. NB: is not efficient due to copies.
+func (c *ConcreteSeries) Add(sample model.SamplePair) {
+	if len(c.samples) == 0 {
+		c.samples = []model.SamplePair{sample}
+		return
+	}
+
+	i := sort.Search(len(c.samples), func(i int) bool {
+		return sample.Timestamp <= c.samples[i].Timestamp
+	})
+
+	if i == len(c.samples) {
+		c.samples = append(c.samples, sample)
+		return
+	}
+
+	if c.samples[i].Timestamp != sample.Timestamp {
+		vec := append([]model.SamplePair{}, c.samples[:i]...)
+		vec = append(vec, sample)
+		vec = append(vec, c.samples[i:]...)
+		c.samples = vec
+	}
+
+}
+
 // Labels impls storage.Series
 func (c *ConcreteSeries) Labels() labels.Labels {
 	return c.labels
 }
 
-// Iterator impls storage.Series
+// Iterator implements storage.Series
 func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
 
-// concreteSeriesIterator implements chunkenc.Iterator.
+// TrimStart drops references to samples before start
+func (c *ConcreteSeries) TrimStart(start time.Time) {
+	ts := model.TimeFromUnixNano(start.UnixNano())
+	i := sort.Search(c.Len(), func(i int) bool {
+		return c.samples[i].Timestamp >= ts
+	})
+
+	if i == 0 {
+		return
+	}
+
+	// release the underlying allocations that are no longer needed
+	tmp := make([]model.SamplePair, len(c.samples[i:]))
+	copy(tmp, c.samples[i:])
+	c.samples = tmp
+}
+
+func (c *ConcreteSeries) Len() int {
+	return len(c.samples)
+}
+
+// concreteSeriesIterator implements storage.SeriesIterator.
 type concreteSeriesIterator struct {
 	cur    int
 	series *ConcreteSeries
@@ -224,6 +277,10 @@ func (d DeletedSeriesSet) Err() error {
 	return d.seriesSet.Err()
 }
 
+func (d DeletedSeriesSet) Warnings() storage.Warnings {
+	return nil
+}
+
 type DeletedSeries struct {
 	series           storage.Series
 	deletedIntervals []model.Interval
@@ -347,13 +404,30 @@ func (emptySeriesIterator) Err() error {
 	return nil
 }
 
-type emptySeriesSet struct{}
+type seriesSetWithWarnings struct {
+	wrapped  storage.SeriesSet
+	warnings storage.Warnings
+}
 
-func (emptySeriesSet) Next() bool         { return false }
-func (emptySeriesSet) At() storage.Series { return nil }
-func (emptySeriesSet) Err() error         { return nil }
+func NewSeriesSetWithWarnings(wrapped storage.SeriesSet, warnings storage.Warnings) storage.SeriesSet {
+	return seriesSetWithWarnings{
+		wrapped:  wrapped,
+		warnings: warnings,
+	}
+}
 
-// NewEmptySeriesSet returns a new series set that contains no series.
-func NewEmptySeriesSet() storage.SeriesSet {
-	return emptySeriesSet{}
+func (s seriesSetWithWarnings) Next() bool {
+	return s.wrapped.Next()
+}
+
+func (s seriesSetWithWarnings) At() storage.Series {
+	return s.wrapped.At()
+}
+
+func (s seriesSetWithWarnings) Err() error {
+	return s.wrapped.Err()
+}
+
+func (s seriesSetWithWarnings) Warnings() storage.Warnings {
+	return append(s.wrapped.Warnings(), s.warnings...)
 }
