@@ -122,4 +122,6 @@ type Block interface {
 	Entries() int
 	// Iterator returns an entry iterator for the block.
 	Iterator(context.Context, logql.LineFilter) iter.EntryIterator
+	// SampleIterator returns a sample iterator for the block.
+	SampleIterator(context.Context, logql.LineFilter, logql.SampleExtractor) iter.SampleIterator
 }

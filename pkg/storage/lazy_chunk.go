@@ -21,7 +21,8 @@ type LazyChunk struct {
 
 	// cache of overlapping block.
 	// We use the offset of the block as key since it's unique per chunk.
-	overlappingBlocks map[int]*cachedIterator
+	overlappingBlocks       map[int]*cachedIterator
+	overlappingSampleBlocks map[int]*sampleCachedIterator
 }
 
 // Iterator returns an entry iterator.
@@ -84,6 +85,62 @@ func (c *LazyChunk) Iterator(
 	}
 
 	return iter.NewEntryReversedIter(iterForward)
+}
+
+// SampleIterator returns an sample iterator.
+// The iterator returned will cache overlapping block's entries with the next chunk if passed.
+// This way when we re-use them for ordering across batches we don't re-decompress the data again.
+func (c *LazyChunk) SampleIterator(
+	ctx context.Context,
+	from, through time.Time,
+	filter logql.LineFilter,
+	extractor logql.SampleExtractor,
+	nextChunk *LazyChunk,
+) (iter.SampleIterator, error) {
+
+	// If the chunk is not already loaded, then error out.
+	if c.Chunk.Data == nil {
+		return nil, errors.New("chunk is not loaded")
+	}
+
+	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
+	blocks := lokiChunk.Blocks(from, through)
+	if len(blocks) == 0 {
+		return iter.NoopIterator, nil
+	}
+	its := make([]iter.SampleIterator, 0, len(blocks))
+
+	for _, b := range blocks {
+		// if we have already processed and cache block let's use it.
+		if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
+			clone := *cache
+			clone.reset()
+			its = append(its, &clone)
+			continue
+		}
+		// if the block is overlapping cache it with the next chunk boundaries.
+		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
+			it := newSampleCachedIterator(b.SampleIterator(ctx, filter, extractor), b.Entries())
+			its = append(its, it)
+			if c.overlappingSampleBlocks == nil {
+				c.overlappingSampleBlocks = make(map[int]*sampleCachedIterator)
+			}
+			c.overlappingSampleBlocks[b.Offset()] = it
+			continue
+		}
+		if nextChunk != nil {
+			delete(c.overlappingBlocks, b.Offset())
+		}
+		// non-overlapping block with the next chunk are not cached.
+		its = append(its, b.SampleIterator(ctx, filter, extractor))
+	}
+
+	// build the final iterator bound to the requested time range.
+	return iter.NewSampleTimeRangedIterator(
+		iter.NewSampleNonOverlappingIterator(its, ""),
+		from.UnixNano(),
+		through.UnixNano(),
+	), nil
 }
 
 func IsBlockOverlapping(b chunkenc.Block, with *LazyChunk, direction logproto.Direction) bool {

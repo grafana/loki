@@ -39,8 +39,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
 	chunk.Store
-	LazySampleQuery(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	LazyQuery(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 }
 
@@ -228,9 +228,9 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 
 }
 
-// LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
+// SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
-func (s *store) LazyQuery(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	matchers, filter, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
@@ -245,12 +245,35 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectLogParams) (iter.
 		return iter.NoopIterator, nil
 	}
 
-	return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.QueryRequest), nil
+	return newLogBatchIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.Direction, req.Start, req.End)
 
 }
 
-func (s *store) LazySampleQuery(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, nil
+func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	matchers, filter, from, through, err := decodeReq(req)
+	if err != nil {
+		return nil, err
+	}
+
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
+	}
+	return newSampleBatchIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {

@@ -122,8 +122,8 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
-	LazyQuery(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	LazySampleQuery(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 }
 
 // New makes a new Ingester.
@@ -300,7 +300,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			Limit:     req.Limit,
 			Shards:    req.Shards,
 		}}
-		storeItr, err := i.store.LazyQuery(ctx, storeReq)
+		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
 			return err
 		}
@@ -339,7 +339,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			Selector: req.Selector,
 			Shards:   req.Shards,
 		}}
-		storeItr, err := i.store.LazySampleQuery(ctx, storeReq)
+		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
 			return err
 		}

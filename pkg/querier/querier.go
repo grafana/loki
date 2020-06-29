@@ -151,7 +151,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 
 	if q.cfg.IngesterQueryStoreMaxLookback == 0 {
 		// IngesterQueryStoreMaxLookback is zero, the default state, query the store normally
-		chunkStoreIter, err = q.store.LazyQuery(ctx, params)
+		chunkStoreIter, err = q.store.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -169,7 +169,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 				QueryRequest: &queryRequestCopy,
 			}
 			newParams.End = adjustedEnd
-			chunkStoreIter, err = q.store.LazyQuery(ctx, newParams)
+			chunkStoreIter, err = q.store.SelectLogs(ctx, newParams)
 			if err != nil {
 				return nil, err
 			}
@@ -205,7 +205,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 	switch {
 	case q.cfg.IngesterQueryStoreMaxLookback == 0:
 		// IngesterQueryStoreMaxLookback is zero, the default state, query the store normally
-		chunkStoreIter, err = q.store.LazySampleQuery(ctx, params)
+		chunkStoreIter, err = q.store.SelectSamples(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -222,7 +222,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 			SampleQueryRequest: &queryRequestCopy,
 		}
 		newParams.End = adjustedEnd
-		chunkStoreIter, err = q.store.LazySampleQuery(ctx, newParams)
+		chunkStoreIter, err = q.store.SelectSamples(ctx, newParams)
 		if err != nil {
 			return nil, err
 		}
