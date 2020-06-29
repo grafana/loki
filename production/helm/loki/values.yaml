@@ -195,6 +195,7 @@ serviceMonitor:
   enabled: false
   interval: ""
   additionalLabels: {}
+  annotations: {}
   # scrapeTimeout: 10s
 
 initContainers: []
