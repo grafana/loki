@@ -195,8 +195,8 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) Query(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
-	expr, err := (logql.SelectParams{QueryRequest: req}).LogSelector()
+func (i *instance) Query(ctx context.Context, req logql.SelectParams) ([]iter.EntryIterator, error) {
+	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
 	}
@@ -226,8 +226,8 @@ func (i *instance) Query(ctx context.Context, req *logproto.QueryRequest) ([]ite
 	return iters, nil
 }
 
-func (i *instance) QuerySample(ctx context.Context, req *logproto.SampleQueryRequest) ([]iter.SampleIterator, error) {
-	expr, err := logql.ParseSampleExpr(req.Selector)
+func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) ([]iter.SampleIterator, error) {
+	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
 	}

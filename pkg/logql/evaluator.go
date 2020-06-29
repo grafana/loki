@@ -158,14 +158,12 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	case *vectorAggregationExpr:
 		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *rangeAggregationExpr:
-		it, err := ev.querier.SelectSamples(ctx, SelectParams{
-			&logproto.QueryRequest{
-				Start:     q.Start().Add(-e.left.interval),
-				End:       q.End(),
-				Limit:     0,
-				Direction: logproto.FORWARD,
-				Selector:  expr.String(),
-				Shards:    q.Shards(),
+		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+			&logproto.SampleQueryRequest{
+				Start:    q.Start().Add(-e.left.interval),
+				End:      q.End(),
+				Selector: expr.String(),
+				Shards:   q.Shards(),
 			},
 		})
 		if err != nil {

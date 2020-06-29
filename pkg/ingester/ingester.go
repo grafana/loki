@@ -123,7 +123,7 @@ type Ingester struct {
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
-	LazySampleQuery(ctx context.Context, req logql.SelectParams) (iter.SampleIterator, error)
+	LazySampleQuery(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 }
 
 // New makes a new Ingester.
@@ -286,13 +286,21 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	itrs, err := instance.Query(ctx, req)
+	itrs, err := instance.Query(ctx, logql.SelectParams{QueryRequest: req})
 	if err != nil {
 		return err
 	}
 
-	if storeReq := buildStoreRequest(i.cfg, req); storeReq != nil {
-		storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: storeReq})
+	if start, end, ok := buildStoreRequest(i.cfg, req.End, req.End); ok {
+		storeReq := logql.SelectParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  req.Selector,
+			Direction: req.Direction,
+			Start:     start,
+			End:       end,
+			Limit:     req.Limit,
+			Shards:    req.Shards,
+		}}
+		storeItr, err := i.store.LazyQuery(ctx, storeReq)
 		if err != nil {
 			return err
 		}
@@ -319,18 +327,19 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	itrs, err := instance.QuerySample(ctx, req)
+	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
 	}
 
-	if storeReq := buildStoreRequest(i.cfg, &logproto.QueryRequest{
-		Selector: req.Selector,
-		End:      req.End,
-		Shards:   req.Shards,
-		Start:    req.Start,
-	}); storeReq != nil {
-		storeItr, err := i.store.LazySampleQuery(ctx, logql.SelectParams{QueryRequest: storeReq})
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End); ok {
+		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start:    start,
+			End:      end,
+			Selector: req.Selector,
+			Shards:   req.Shards,
+		}}
+		storeItr, err := i.store.LazySampleQuery(ctx, storeReq)
 		if err != nil {
 			return err
 		}
@@ -493,23 +502,16 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 // buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
 // we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
-func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRequest {
+func buildStoreRequest(cfg Config, start, end time.Time) (time.Time, time.Time, bool) {
 	if !cfg.QueryStore {
-		return nil
+		return time.Time{}, time.Time{}, false
 	}
-	start := req.Start
-	end := req.End
 	start = adjustQueryStartTime(cfg, start)
 
 	if start.After(end) {
-		return nil
+		return time.Time{}, time.Time{}, false
 	}
-
-	newRequest := *req
-	newRequest.Start = start
-	newRequest.End = end
-
-	return &newRequest
+	return start, end, true
 }
 
 func adjustQueryStartTime(cfg Config, start time.Time) time.Time {
