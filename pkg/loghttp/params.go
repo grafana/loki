@@ -79,10 +79,6 @@ func interval(r *http.Request) (time.Duration, error) {
 
 // Match extracts and parses multiple matcher groups from a slice of strings
 func Match(xs []string) ([][]*labels.Matcher, error) {
-	if len(xs) == 0 {
-		return nil, errors.New("0 matcher groups supplied")
-	}
-
 	groups := make([][]*labels.Matcher, 0, len(xs))
 	for _, x := range xs {
 		ms, err := logql.ParseMatchers(x)

@@ -1,6 +1,6 @@
 module github.com/grafana/loki
 
-go 1.13
+go 1.14
 
 require (
 	github.com/Microsoft/go-winio v0.4.12 // indirect
@@ -11,7 +11,7 @@ require (
 	github.com/containerd/containerd v1.3.2 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.1.1-0.20200616130854-34b45d1180c3
+	github.com/cortexproject/cortex v1.1.1-0.20200626122052-962b37ad100a
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v0.7.3-0.20190817195342-4760db040282
@@ -47,8 +47,8 @@ require (
 	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200609052543-1627d234da06
-	github.com/segmentio/fasthash v1.0.2
+	github.com/prometheus/prometheus v1.8.2-0.20200622142935-153f859b7499
+	github.com/segmentio/fasthash v1.0.2 // indirect
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/stretchr/testify v1.5.1
@@ -56,7 +56,7 @@ require (
 	github.com/uber/jaeger-client-go v2.23.1+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/weaveworks/common v0.0.0-20200512154658-384f10054ec5
-	go.etcd.io/bbolt v1.3.4
+	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
 	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
 	google.golang.org/grpc v1.29.1

@@ -30,8 +30,11 @@ func (q *ShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (stora
 	return q.sharededQuerier, nil
 }
 
-func (q *ShardedQueryable) getResponseHeaders() map[string][]string {
-	return q.sharededQuerier.ResponseHeaders
+func (q *ShardedQueryable) getResponseHeaders() []*PrometheusResponseHeader {
+	q.sharededQuerier.ResponseHeadersMtx.Lock()
+	defer q.sharededQuerier.ResponseHeadersMtx.Unlock()
+
+	return headersMapToPrometheusResponseHeaders(q.sharededQuerier.ResponseHeaders)
 }
 
 // ShardedQuerier is a an implementor of the Querier interface.
@@ -45,7 +48,7 @@ type ShardedQuerier struct {
 
 // Select returns a set of series that matches the given label matchers.
 // The bool passed is ignored because the series is always sorted.
-func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	var embeddedQuery string
 	var isEmbedded bool
 	for _, matcher := range matchers {
@@ -62,18 +65,18 @@ func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*lab
 		if embeddedQuery != "" {
 			return q.handleEmbeddedQuery(embeddedQuery)
 		}
-		return nil, nil, errors.Errorf(missingEmbeddedQueryMsg)
+		return storage.ErrSeriesSet(errors.Errorf(missingEmbeddedQueryMsg))
 
 	}
 
-	return nil, nil, errors.Errorf(nonEmbeddedErrMsg)
+	return storage.ErrSeriesSet(errors.Errorf(nonEmbeddedErrMsg))
 }
 
 // handleEmbeddedQuery defers execution of an encoded query to a downstream Handler
-func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet, storage.Warnings, error) {
+func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) storage.SeriesSet {
 	queries, err := astmapper.JSONCodec.Decode(encoded)
 	if err != nil {
-		return nil, nil, err
+		return storage.ErrSeriesSet(err)
 	}
 
 	ctx, cancel := context.WithCancel(q.Ctx)
@@ -95,8 +98,8 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet,
 				errCh <- err
 				return
 			}
-			samplesCh <- streams
 			q.setResponseHeaders(resp.(*PrometheusResponse).Headers)
+			samplesCh <- streams
 		}(query)
 	}
 
@@ -105,13 +108,13 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet,
 	for i := 0; i < len(queries); i++ {
 		select {
 		case err := <-errCh:
-			return nil, nil, err
+			return storage.ErrSeriesSet(err)
 		case streams := <-samplesCh:
 			samples = append(samples, streams...)
 		}
 	}
 
-	return NewSeriesSet(samples), nil, err
+	return NewSeriesSet(samples)
 }
 
 func (q *ShardedQuerier) setResponseHeaders(headers []*PrometheusResponseHeader) {
@@ -140,4 +143,12 @@ func (q *ShardedQuerier) LabelNames() ([]string, storage.Warnings, error) {
 // Close releases the resources of the Querier.
 func (q *ShardedQuerier) Close() error {
 	return nil
+}
+
+func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusResponseHeader) {
+	for h, v := range headersMap {
+		prs = append(prs, &PrometheusResponseHeader{Name: h, Values: v})
+	}
+
+	return
 }

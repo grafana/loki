@@ -3,7 +3,6 @@ package querytee
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/instrument"
 )
 
 const (
@@ -23,7 +22,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Namespace: "cortex_querytee",
 			Name:      "request_duration_seconds",
 			Help:      "Time (in seconds) spent serving HTTP requests.",
-			Buckets:   instrument.DefBuckets,
+			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
 		}, []string{"backend", "method", "route", "status_code"}),
 		responsesTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex_querytee",

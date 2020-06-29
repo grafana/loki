@@ -19,9 +19,32 @@ func TestParseSeriesQuery(t *testing.T) {
 	}{
 		{
 			"no match",
-			withForm(url.Values{}),
-			true,
-			nil,
+			withForm(url.Values{
+				"start": []string{"1000"},
+				"end":   []string{"2000"},
+			}),
+			false,
+			mkSeriesRequest(t, "1000", "2000", []string{}),
+		},
+		{
+			"empty matcher",
+			withForm(url.Values{
+				"start": []string{"1000"},
+				"end":   []string{"2000"},
+				"match": []string{"{}"},
+			}),
+			false,
+			mkSeriesRequest(t, "1000", "2000", []string{}),
+		},
+		{
+			"empty matcher with whitespace",
+			withForm(url.Values{
+				"start": []string{"1000"},
+				"end":   []string{"2000"},
+				"match": []string{" { }"},
+			}),
+			false,
+			mkSeriesRequest(t, "1000", "2000", []string{}),
 		},
 		{
 			"malformed",
@@ -80,6 +103,7 @@ func withForm(form url.Values) *http.Request {
 	return &http.Request{Form: form}
 }
 
+// nolint
 func mkSeriesRequest(t *testing.T, from, to string, matches []string) *logproto.SeriesRequest {
 	start, end, err := bounds(withForm(url.Values{
 		"start": []string{from},

@@ -234,7 +234,8 @@ func Test_match(t *testing.T) {
 		wantErr bool
 	}{
 		{"malformed", []string{`{a="1`}, nil, true},
-		{"errors on nil input", nil, nil, true},
+		{"empty on nil input", nil, [][]*labels.Matcher{}, false},
+		{"empty on empty input", []string{}, [][]*labels.Matcher{}, false},
 		{
 			"single",
 			[]string{`{a="1"}`},

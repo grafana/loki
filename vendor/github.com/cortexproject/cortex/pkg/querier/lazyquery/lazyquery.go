@@ -43,27 +43,18 @@ func NewLazyQuerier(next storage.Querier) storage.Querier {
 	return LazyQuerier{next}
 }
 
-func (l LazyQuerier) createSeriesSet(selectSorted bool, params *storage.SelectHints, matchers []*labels.Matcher) chan storage.SeriesSet {
+// Select implements Storage.Querier
+func (l LazyQuerier) Select(selectSorted bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	// make sure there is space in the buffer, to unblock the goroutine and let it die even if nobody is
 	// waiting for the result yet (or anymore).
 	future := make(chan storage.SeriesSet, 1)
 	go func() {
-		set, _, err := l.next.Select(selectSorted, params, matchers...)
-		if err != nil {
-			future <- errSeriesSet{err}
-		} else {
-			future <- set
-		}
+		future <- l.next.Select(selectSorted, params, matchers...)
 	}()
-	return future
-}
 
-// Select implements Storage.Querier
-func (l LazyQuerier) Select(selectSorted bool, params *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	future := l.createSeriesSet(selectSorted, params, matchers)
 	return &lazySeriesSet{
 		future: future,
-	}, nil, nil
+	}
 }
 
 // LabelValues implements Storage.Querier
@@ -91,27 +82,6 @@ func (l LazyQuerier) Get(ctx context.Context, userID string, from, through model
 	return store.Get(ctx, userID, from, through, matchers...)
 }
 
-func NewErrSeriesSet(err error) storage.SeriesSet {
-	return errSeriesSet{err}
-}
-
-// errSeriesSet implements storage.SeriesSet, just returning an error.
-type errSeriesSet struct {
-	err error
-}
-
-func (errSeriesSet) Next() bool {
-	return false
-}
-
-func (errSeriesSet) At() storage.Series {
-	return nil
-}
-
-func (e errSeriesSet) Err() error {
-	return e.err
-}
-
 type lazySeriesSet struct {
 	next   storage.SeriesSet
 	future chan storage.SeriesSet
@@ -125,6 +95,7 @@ func (s *lazySeriesSet) Next() bool {
 	return s.next.Next()
 }
 
+// At implements storage.SeriesSet.
 func (s lazySeriesSet) At() storage.Series {
 	if s.next == nil {
 		s.next = <-s.future
@@ -132,9 +103,15 @@ func (s lazySeriesSet) At() storage.Series {
 	return s.next.At()
 }
 
+// Err implements storage.SeriesSet.
 func (s lazySeriesSet) Err() error {
 	if s.next == nil {
 		s.next = <-s.future
 	}
 	return s.next.Err()
+}
+
+// Warnings implements storage.SeriesSet.
+func (s lazySeriesSet) Warnings() storage.Warnings {
+	return nil
 }

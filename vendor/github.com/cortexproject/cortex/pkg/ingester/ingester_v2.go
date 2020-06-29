@@ -53,9 +53,7 @@ type userTSDB struct {
 	limiter        *Limiter
 
 	// Thanos shipper used to ship blocks to the storage.
-	shipper       Shipper
-	shipperCtx    context.Context
-	shipperCancel context.CancelFunc
+	shipper Shipper
 
 	// for statistics
 	ingestedAPISamples  *ewmaRate
@@ -492,9 +490,9 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss, _, err := q.Select(false, nil, matchers...)
-	if err != nil {
-		return nil, err
+	ss := q.Select(false, nil, matchers...)
+	if ss.Err() != nil {
+		return nil, ss.Err()
 	}
 
 	numSamples := 0
@@ -615,9 +613,9 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 
 	for _, matchers := range matchersSet {
-		seriesSet, _, err := q.Select(false, nil, matchers...)
-		if err != nil {
-			return nil, err
+		seriesSet := q.Select(false, nil, matchers...)
+		if seriesSet.Err() != nil {
+			return nil, seriesSet.Err()
 		}
 
 		for seriesSet.Next() {
@@ -723,9 +721,9 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss, _, err := q.Select(false, nil, matchers...)
-	if err != nil {
-		return err
+	ss := q.Select(false, nil, matchers...)
+	if ss.Err() != nil {
+		return ss.Err()
 	}
 
 	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
@@ -900,9 +898,10 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			tsdbPromReg,
 			udir,
 			cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket),
-			func() labels.Labels { return l }, metadata.ReceiveSource)
-
-		userDB.shipperCtx, userDB.shipperCancel = context.WithCancel(context.Background())
+			func() labels.Labels { return l },
+			metadata.ReceiveSource,
+			true, // Allow out of order uploads. It's fine in Cortex's context.
+		)
 	}
 
 	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
@@ -1030,20 +1029,6 @@ func (i *Ingester) numSeriesInTSDB() float64 {
 }
 
 func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
-	// Start a goroutine that will cancel all shipper contexts on ingester
-	// shutdown, so that if there's any shipper sync in progress it will be
-	// quickly canceled.
-	// TODO: this could be a "stoppingFn" for shipper service, but let's keep that for later.
-	go func() {
-		<-ctx.Done()
-
-		for _, userID := range i.getTSDBUsers() {
-			if userDB := i.getTSDB(userID); userDB != nil && userDB.shipperCancel != nil {
-				userDB.shipperCancel()
-			}
-		}
-	}()
-
 	shipTicker := time.NewTicker(i.cfg.TSDBConfig.ShipInterval)
 	defer shipTicker.Stop()
 
@@ -1077,13 +1062,8 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 			return
 		}
 
-		// Skip if the shipper context has been canceled.
-		if userDB.shipperCtx.Err() != nil {
-			return
-		}
-
 		// Run the shipper's Sync() to upload unshipped blocks.
-		if uploaded, err := userDB.shipper.Sync(userDB.shipperCtx); err != nil {
+		if uploaded, err := userDB.shipper.Sync(ctx); err != nil {
 			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
 		} else {
 			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)

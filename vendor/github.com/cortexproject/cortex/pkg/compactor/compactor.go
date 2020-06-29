@@ -239,7 +239,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		DataDir:             c.compactorCfg.DataDir,
 		MetaSyncConcurrency: c.compactorCfg.MetaSyncConcurrency,
 		DeletionDelay:       c.compactorCfg.DeletionDelay,
-		CleanupInterval:     c.compactorCfg.CompactionInterval,
+		CleanupInterval:     util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05),
 	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
 
 	// Ensure an initial cleanup occurred before starting the compactor.
@@ -265,7 +265,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
 	c.compactUsersWithRetries(ctx)
 
-	ticker := time.NewTicker(c.compactorCfg.CompactionInterval)
+	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05))
 	defer ticker.Stop()
 
 	for {

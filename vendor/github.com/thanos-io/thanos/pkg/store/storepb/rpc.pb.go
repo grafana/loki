@@ -707,6 +707,9 @@ type StoreClient interface {
 	/// partition of the single series, but once a new series is started to be streamed it means that no more data will
 	/// be sent for previous one.
 	/// Series has to be sorted.
+	///
+	/// There is no requirements on chunk sorting, however it is recommended to have chunk sorted by chunk min time.
+	/// This heavily optimizes the resource usage on Querier / Federated Queries.
 	Series(ctx context.Context, in *SeriesRequest, opts ...grpc.CallOption) (Store_SeriesClient, error)
 	/// LabelNames returns all label names that is available.
 	/// Currently unimplemented in all Thanos implementations, because Query API does not implement this either.
@@ -793,6 +796,9 @@ type StoreServer interface {
 	/// partition of the single series, but once a new series is started to be streamed it means that no more data will
 	/// be sent for previous one.
 	/// Series has to be sorted.
+	///
+	/// There is no requirements on chunk sorting, however it is recommended to have chunk sorted by chunk min time.
+	/// This heavily optimizes the resource usage on Querier / Federated Queries.
 	Series(*SeriesRequest, Store_SeriesServer) error
 	/// LabelNames returns all label names that is available.
 	/// Currently unimplemented in all Thanos implementations, because Query API does not implement this either.

@@ -86,7 +86,7 @@ type blocksQuerier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(b.ctx, "blocksQuerier.Select")
 	defer log.Span.Finish()
 
@@ -106,12 +106,15 @@ func (b *blocksQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*lab
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 	})
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	level.Debug(log).Log("series", len(series), "warnings", len(warnings))
 
-	return &blockQuerierSeriesSet{series: series}, warnings, nil
+	return &blockQuerierSeriesSet{
+		series:   series,
+		warnings: warnings,
+	}
 }
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {
@@ -155,7 +158,8 @@ func (b *blocksQuerier) Close() error {
 
 // Implementation of storage.SeriesSet, based on individual responses from store client.
 type blockQuerierSeriesSet struct {
-	series []*storepb.Series
+	series   []*storepb.Series
+	warnings storage.Warnings
 
 	// next response to process
 	next int
@@ -193,6 +197,10 @@ func (bqss *blockQuerierSeriesSet) At() storage.Series {
 
 func (bqss *blockQuerierSeriesSet) Err() error {
 	return nil
+}
+
+func (bqss *blockQuerierSeriesSet) Warnings() storage.Warnings {
+	return bqss.warnings
 }
 
 // newBlockQuerierSeries makes a new blockQuerierSeries. Input labels must be already sorted by name.

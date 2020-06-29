@@ -535,24 +535,41 @@ func (q *Querier) seriesForMatchers(
 ) ([]logproto.SeriesIdentifier, error) {
 
 	var results []logproto.SeriesIdentifier
-	for _, group := range groups {
-		ids, err := q.store.GetSeries(ctx, logql.SelectParams{
-			QueryRequest: &logproto.QueryRequest{
-				Selector:  group,
-				Limit:     1,
-				Start:     from,
-				End:       through,
-				Direction: logproto.FORWARD,
-			},
-		})
+	// If no matchers were specified for the series query,
+	// we send a query with an empty matcher which will match every series.
+	if len(groups) == 0 {
+		var err error
+		results, err = q.seriesForMatcher(ctx, from, through, "")
 		if err != nil {
 			return nil, err
 		}
-
-		results = append(results, ids...)
-
+	} else {
+		for _, group := range groups {
+			ids, err := q.seriesForMatcher(ctx, from, through, group)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, ids...)
+		}
 	}
 	return results, nil
+}
+
+// seriesForMatcher fetches series from the store for a given matcher
+func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string) ([]logproto.SeriesIdentifier, error) {
+	ids, err := q.store.GetSeries(ctx, logql.SelectParams{
+		QueryRequest: &logproto.QueryRequest{
+			Selector:  matcher,
+			Limit:     1,
+			Start:     from,
+			End:       through,
+			Direction: logproto.FORWARD,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 func (q *Querier) validateQueryRequest(ctx context.Context, req *logproto.QueryRequest) error {

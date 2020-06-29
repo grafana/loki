@@ -96,12 +96,12 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 		}
 		select {
 		case c.bgWrites <- bgWrite:
-			c.queueLength.Add(float64(len(keys)))
+			c.queueLength.Add(float64(num))
 		default:
-			c.droppedWriteBack.Add(float64(len(keys)))
+			c.droppedWriteBack.Add(float64(num))
 			sp := opentracing.SpanFromContext(ctx)
 			if sp != nil {
-				sp.LogFields(otlog.Int("dropped", len(keys)))
+				sp.LogFields(otlog.Int("dropped", num))
 			}
 			return // queue is full; give up
 		}

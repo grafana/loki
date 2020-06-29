@@ -254,10 +254,16 @@ All options:
         Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki (default 1m0s)
   -size int
         Size in bytes of each log line (default 100)
+  -streamname string
+        The stream name for this instance of loki-canary to use in the log selector (default "stream")
+  -streamvalue string
+        The unique stream value for this instance of loki-canary to use in the log selector (default "stdout")
   -tls
         Does the loki connection use TLS?
   -user string
         Loki username
+  -version
+        Print this builds version information
   -wait duration
         Duration to wait for log entries before reporting them lost (default 1m0s)
 ```

@@ -447,12 +447,15 @@ func (cg *Group) Resolution() int64 {
 
 // Compact plans and runs a single compaction against the group. The compacted result
 // is uploaded into the bucket the blocks were retrieved from.
-func (cg *Group) Compact(ctx context.Context, dir string, comp tsdb.Compactor) (bool, ulid.ULID, error) {
+func (cg *Group) Compact(ctx context.Context, dir string, comp tsdb.Compactor) (shouldRerun bool, compID ulid.ULID, rerr error) {
 	cg.compactionRunsStarted.Inc()
 
 	subDir := filepath.Join(dir, cg.Key())
 
 	defer func() {
+		if IsHaltError(rerr) {
+			return
+		}
 		if err := os.RemoveAll(subDir); err != nil {
 			level.Error(cg.logger).Log("msg", "failed to remove compaction group work directory", "path", subDir, "err", err)
 		}
@@ -879,8 +882,11 @@ func NewBucketCompactor(
 }
 
 // Compact runs compaction over bucket.
-func (c *BucketCompactor) Compact(ctx context.Context) error {
+func (c *BucketCompactor) Compact(ctx context.Context) (rerr error) {
 	defer func() {
+		if IsHaltError(rerr) {
+			return
+		}
 		if err := os.RemoveAll(c.compactDir); err != nil {
 			level.Error(c.logger).Log("msg", "failed to remove compaction work directory", "path", c.compactDir, "err", err)
 		}

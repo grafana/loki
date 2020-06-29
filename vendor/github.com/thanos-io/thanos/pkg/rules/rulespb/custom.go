@@ -5,9 +5,11 @@ package rulespb
 
 import (
 	"encoding/json"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -41,10 +43,138 @@ func NewRecordingRule(r *RecordingRule) *Rule {
 	}
 }
 
+// Compare compares equal recording rules r1 and r2 and returns:
+//
+//   < 0 if r1 < r2  if rule r1 is lexically before rule r2
+//     0 if r1 == r2
+//   > 0 if r1 > r2  if rule r1 is lexically after rule r2
+//
+// More formally, the ordering is determined in the following order:
+//
+// 1. recording rule last evaluation (earlier evaluation comes first)
+//
+// Note: This method assumes r1 and r2 are logically equal as per Rule#Compare.
+func (r1 *RecordingRule) Compare(r2 *RecordingRule) int {
+	if r1.LastEvaluation.Before(r2.LastEvaluation) {
+		return 1
+	}
+
+	if r1.LastEvaluation.After(r2.LastEvaluation) {
+		return -1
+	}
+
+	return 0
+}
+
 func NewAlertingRule(a *Alert) *Rule {
 	return &Rule{
 		Result: &Rule_Alert{Alert: a},
 	}
+}
+
+func (r *Rule) GetLabels() []storepb.Label {
+	switch {
+	case r.GetRecording() != nil:
+		return r.GetRecording().Labels.Labels
+	case r.GetAlert() != nil:
+		return r.GetAlert().Labels.Labels
+	default:
+		return nil
+	}
+}
+
+func (r *Rule) SetLabels(ls []storepb.Label) {
+	var result PromLabels
+
+	if len(ls) > 0 {
+		result = PromLabels{Labels: ls}
+	}
+
+	switch {
+	case r.GetRecording() != nil:
+		r.GetRecording().Labels = result
+	case r.GetAlert() != nil:
+		r.GetAlert().Labels = result
+	}
+}
+
+func (r *Rule) GetName() string {
+	switch {
+	case r.GetRecording() != nil:
+		return r.GetRecording().Name
+	case r.GetAlert() != nil:
+		return r.GetAlert().Name
+	default:
+		return ""
+	}
+}
+
+func (r *Rule) GetQuery() string {
+	switch {
+	case r.GetRecording() != nil:
+		return r.GetRecording().Query
+	case r.GetAlert() != nil:
+		return r.GetAlert().Query
+	default:
+		return ""
+	}
+}
+
+func (r *Rule) GetLastEvaluation() time.Time {
+	switch {
+	case r.GetRecording() != nil:
+		return r.GetRecording().LastEvaluation
+	case r.GetAlert() != nil:
+		return r.GetAlert().LastEvaluation
+	default:
+		return time.Time{}
+	}
+}
+
+// Compare compares recording and alerting rules r1 and r2 and returns:
+//
+//   < 0 if r1 < r2  if rule r1 is not equal and lexically before rule r2
+//     0 if r1 == r2 if rule r1 is logically equal to r2 (r1 and r2 are the "same" rules)
+//   > 0 if r1 > r2  if rule r1 is not equal and lexically after rule r2
+//
+// More formally, ordering and equality is determined in the following order:
+//
+// 1. rule type (alerting rules come before recording rules)
+// 2. rule name
+// 3. rule labels
+// 4. rule query
+// 5. for alerting rules: duration
+//
+// Note: this can still leave ordering undetermined for equal rules (x == y).
+// For determining ordering of equal rules, use Alert#Compare or RecordingRule#Compare.
+func (r1 *Rule) Compare(r2 *Rule) int {
+	if r1.GetAlert() != nil && r2.GetRecording() != nil {
+		return -1
+	}
+
+	if r1.GetRecording() != nil && r2.GetAlert() != nil {
+		return 1
+	}
+
+	if d := strings.Compare(r1.GetName(), r2.GetName()); d != 0 {
+		return d
+	}
+
+	if d := storepb.CompareLabels(r1.GetLabels(), r2.GetLabels()); d != 0 {
+		return d
+	}
+
+	if d := strings.Compare(r1.GetQuery(), r2.GetQuery()); d != 0 {
+		return d
+	}
+
+	if r1.GetAlert() != nil && r2.GetAlert() != nil {
+		if d := big.NewFloat(r1.GetAlert().DurationSeconds).Cmp(big.NewFloat(r2.GetAlert().DurationSeconds)); d != 0 {
+			return d
+		}
+	}
+
+	return 0
 }
 
 func (m *Rule) UnmarshalJSON(entry []byte) error {
@@ -118,6 +248,45 @@ func (x *AlertState) UnmarshalJSON(entry []byte) error {
 
 func (x *AlertState) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(x.String())), nil
+}
+
+// Compare compares alert state x and y and returns:
+//
+//   < 0 if x < y  (alert state x is more critical than alert state y)
+//     0 if x == y
+//   > 0 if x > y  (alert state x is less critical than alert state y)
+//
+// For sorting this makes sure that more "critical" alert states come first.
+func (x AlertState) Compare(y AlertState) int {
+	return int(y) - int(x)
+}
+
+// Compare compares two equal alerting rules a1 and a2 and returns:
+//
+//   < 0 if a1 < a2  if rule a1 is lexically before rule a2
+//     0 if a1 == a2
+//   > 0 if a1 > a2  if rule a1 is lexically after rule a2
+//
+// More formally, the ordering is determined in the following order:
+//
+// 1. alert state
+// 2. alert last evaluation (earlier evaluation comes first)
+//
+// Note: This method assumes a1 and a2 are logically equal as per Rule#Compare.
+func (a1 *Alert) Compare(a2 *Alert) int {
+	if d := a1.State.Compare(a2.State); d != 0 {
+		return d
+	}
+
+	if a1.LastEvaluation.Before(a2.LastEvaluation) {
+		return 1
+	}
+
+	if a1.LastEvaluation.After(a2.LastEvaluation) {
+		return -1
+	}
+
+	return 0
 }
 
 func (m *PromLabels) UnmarshalJSON(entry []byte) error {

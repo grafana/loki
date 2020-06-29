@@ -42,6 +42,8 @@ type Reader struct {
 	addr         string
 	user         string
 	pass         string
+	sName        string
+	sValue       string
 	lName        string
 	lVal         string
 	conn         *websocket.Conn
@@ -53,7 +55,7 @@ type Reader struct {
 }
 
 func NewReader(writer io.Writer, receivedChan chan time.Time, tls bool,
-	address string, user string, pass string, labelName string, labelVal string) *Reader {
+	address string, user string, pass string, labelName string, labelVal string, streamName string, streamValue string) *Reader {
 	h := http.Header{}
 	if user != "" {
 		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
@@ -65,6 +67,8 @@ func NewReader(writer io.Writer, receivedChan chan time.Time, tls bool,
 		addr:         address,
 		user:         user,
 		pass:         pass,
+		sName:        streamName,
+		sValue:       streamValue,
 		lName:        labelName,
 		lVal:         labelVal,
 		w:            writer,
@@ -106,7 +110,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		Host:   r.addr,
 		Path:   "/api/prom/query",
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
-			"&query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", r.lName, r.lVal)) +
+			"&query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"}", r.sName, r.sValue, r.lName, r.lVal)) +
 			"&limit=1000",
 	}
 	fmt.Fprintf(r.w, "Querying loki for missing values with query: %v\n", u.String())
@@ -206,7 +210,7 @@ func (r *Reader) closeAndReconnect() {
 			Scheme:   scheme,
 			Host:     r.addr,
 			Path:     "/api/prom/tail",
-			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", r.lName, r.lVal)),
+			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"}", r.sName, r.sValue, r.lName, r.lVal)),
 		}
 
 		fmt.Fprintf(r.w, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), r.lName, r.lVal)

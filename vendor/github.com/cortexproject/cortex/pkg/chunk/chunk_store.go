@@ -63,9 +63,8 @@ type StoreConfig struct {
 	// is set, use different caches for ingesters and queriers.
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
 
-	// When DisableChunksDeduplication is true, cache would not be checked for whether chunk is already written.
-	// It would still write the chunk back to cache for reads.
-	DisableChunksDeduplication bool `yaml:"-"`
+	// When DisableIndexDeduplication is true and chunk is already there in cache, only index would be written to the store and not chunk.
+	DisableIndexDeduplication bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -425,11 +424,13 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	// Receive chunkSets from all matchers
 	var chunkIDs []string
 	var lastErr error
+	var initialized bool
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingChunkIDs:
-			if chunkIDs == nil {
+			if !initialized {
 				chunkIDs = incoming
+				initialized = true
 			} else {
 				chunkIDs = intersectStrings(chunkIDs, incoming)
 			}
@@ -447,7 +448,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 }
 
 func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
+	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", formatMatcher(matcher))
 	defer log.Span.Finish()
 
 	var err error
@@ -475,11 +476,11 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", matcher, "queries", len(queries))
+	level.Debug(log).Log("matcher", formatMatcher(matcher), "queries", len(queries))
 
 	if filter != nil {
 		queries = filter(queries)
-		level.Debug(log).Log("matcher", matcher, "filteredQueries", len(queries))
+		level.Debug(log).Log("matcher", formatMatcher(matcher), "filteredQueries", len(queries))
 	}
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
@@ -490,15 +491,25 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", matcher, "entries", len(entries))
+	level.Debug(log).Log("matcher", formatMatcher(matcher), "entries", len(entries))
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", matcher, "ids", len(ids))
+	level.Debug(log).Log("matcher", formatMatcher(matcher), "ids", len(ids))
 
 	return ids, nil
+}
+
+// Using this function avoids logging of nil matcher, which works, but indirectly via panic and recover.
+// That confuses attached debugger, which wants to breakpoint on each panic.
+// Using simple check is also faster.
+func formatMatcher(matcher *labels.Matcher) string {
+	if matcher == nil {
+		return "nil"
+	}
+	return matcher.String()
 }
 
 func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {

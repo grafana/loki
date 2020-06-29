@@ -59,9 +59,11 @@ type Config struct {
 	legacyLookbackDelta time.Duration
 
 	// Blocks storage only.
-	StoreGatewayAddresses  string                       `yaml:"store_gateway_addresses"`
-	StoreGatewayClient     tls.ClientConfig             `yaml:"store_gateway_client"`
-	BlocksConsistencyCheck BlocksConsistencyCheckConfig `yaml:"blocks_consistency_check" doc:"description=Configures the consistency check done by the querier on queried blocks when running the experimental blocks storage."`
+	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
+	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
+
+	SecondStoreEngine        string       `yaml:"second_store_engine"`
+	UseSecondStoreBeforeTime flagext.Time `yaml:"use_second_store_before_time"`
 }
 
 var (
@@ -75,7 +77,6 @@ const (
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("experimental.querier.store-gateway-client", f)
-	cfg.BlocksConsistencyCheck.RegisterFlagsWithPrefix("experimental.querier.blocks-consistency-check", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
@@ -91,6 +92,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", defaultLookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	// TODO: Remove this flag in v1.4.0.
 	f.DurationVar(&cfg.legacyLookbackDelta, "promql.lookback-delta", defaultLookbackDelta, "[DEPRECATED] Time since the last sample after which a time series is considered stale and ignored by expression evaluations. Please use -querier.lookback-delta instead.")
+	f.StringVar(&cfg.SecondStoreEngine, "querier.second-store-engine", "", "Second store engine to use for querying. Empty = disabled.")
+	f.Var(&cfg.UseSecondStoreBeforeTime, "querier.use-second-store-before-time", "If specified, second store is only used for queries before this timestamp. Default value 0 means secondary store is always queried.")
 }
 
 // Validate the config
@@ -129,12 +132,20 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, distributor Distributor, storeQueryable storage.Queryable, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.Queryable, *promql.Engine) {
+func New(cfg Config, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.Queryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	var queryable storage.Queryable
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc)
-	queryable = NewQueryable(distributorQueryable, storeQueryable, iteratorFunc, cfg, tombstonesLoader)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
+
+	ns := make([]QueryableWithFilter, len(stores))
+	for ix, s := range stores {
+		ns[ix] = storeQueryable{
+			QueryableWithFilter: s,
+			QueryStoreAfter:     cfg.QueryStoreAfter,
+		}
+	}
+
+	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, tombstonesLoader)
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
 		querier, err := queryable.Querier(ctx, mint, maxt)
@@ -176,8 +187,17 @@ func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
 	return nil
 }
 
+// QueryableWithFilter extends Queryable interface with `UseQueryable` filtering function.
+type QueryableWithFilter interface {
+	storage.Queryable
+
+	// UseQueryable returns true if this queryable should be used to satisfy the query for given time range.
+	// Query min and max time are in milliseconds since epoch.
+	UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool
+}
+
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIteratorFunc, cfg Config, tombstonesLoader *purger.TombstonesLoader) storage.Queryable {
+func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, tombstonesLoader *purger.TombstonesLoader) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		now := time.Now()
 
@@ -207,14 +227,16 @@ func NewQueryable(distributor, store storage.Queryable, chunkIterFn chunkIterato
 
 		q.metadataQuerier = dqr
 
-		// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
-		if cfg.QueryIngestersWithin == 0 || maxt >= util.TimeToMillis(now.Add(-cfg.QueryIngestersWithin)) {
+		if distributor.UseQueryable(now, mint, maxt) {
 			q.queriers = append(q.queriers, dqr)
 		}
 
-		// Include store only if mint is within QueryStoreAfter w.r.t current time.
-		if cfg.QueryStoreAfter == 0 || mint <= util.TimeToMillis(now.Add(-cfg.QueryStoreAfter)) {
-			cqr, err := store.Querier(ctx, mint, maxt)
+		for _, s := range stores {
+			if !s.UseQueryable(now, mint, maxt) {
+				continue
+			}
+
+			cqr, err := s.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err
 			}
@@ -242,7 +264,7 @@ type querier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(q.ctx, "querier.Select")
 	defer log.Span.Finish()
 
@@ -260,49 +282,38 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, model.Time(sp.Start), model.Time(sp.End))
 	if err != nil {
-		return nil, nil, promql.ErrStorage{Err: err}
+		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
 	if len(q.queriers) == 1 {
-		seriesSet, warning, err := q.queriers[0].Select(true, sp, matchers...)
-		if err != nil {
-			return nil, warning, err
-		}
+		seriesSet := q.queriers[0].Select(true, sp, matchers...)
 
 		if tombstones.Len() != 0 {
 			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
 		}
 
-		return seriesSet, warning, nil
+		return seriesSet
 	}
 
 	sets := make(chan storage.SeriesSet, len(q.queriers))
-	errs := make(chan error, len(q.queriers))
 	for _, querier := range q.queriers {
 		go func(querier storage.Querier) {
-			set, _, err := querier.Select(true, sp, matchers...)
-			if err != nil {
-				errs <- err
-			} else {
-				sets <- set
-			}
+			sets <- querier.Select(true, sp, matchers...)
 		}(querier)
 	}
 
 	var result []storage.SeriesSet
 	for range q.queriers {
 		select {
-		case err := <-errs:
-			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return storage.ErrSeriesSet(ctx.Err())
 		}
 	}
 
@@ -314,7 +325,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	if tombstones.Len() != 0 {
 		seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
 	}
-	return seriesSet, nil, nil
+	return seriesSet
 }
 
 // LabelsValue implements storage.Querier.
@@ -340,10 +351,10 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	for _, set := range sets {
 		if !set.Next() {
 			// nothing in this set. If it has no error, we can ignore it completely.
-			// If there is error, we better report it.
+			// If there is error, we have to report it.
 			err := set.Err()
 			if err != nil {
-				otherSets = append(otherSets, lazyquery.NewErrSeriesSet(err))
+				otherSets = append(otherSets, storage.ErrSeriesSet(err))
 			}
 			continue
 		}
@@ -410,4 +421,62 @@ func (pss *seriesSetWithFirstSeries) Err() error {
 		return nil
 	}
 	return pss.set.Err()
+}
+
+func (pss *seriesSetWithFirstSeries) Warnings() storage.Warnings {
+	if pss.firstSeries != nil {
+		return nil
+	}
+	return pss.set.Warnings()
+}
+
+type storeQueryable struct {
+	QueryableWithFilter
+	QueryStoreAfter time.Duration
+}
+
+func (s storeQueryable) UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool {
+	// Include this store only if mint is within QueryStoreAfter w.r.t current time.
+	if s.QueryStoreAfter != 0 && queryMinT > util.TimeToMillis(now.Add(-s.QueryStoreAfter)) {
+		return false
+	}
+	return s.QueryableWithFilter.UseQueryable(now, queryMinT, queryMaxT)
+}
+
+type alwaysTrueFilterQueryable struct {
+	storage.Queryable
+}
+
+func (alwaysTrueFilterQueryable) UseQueryable(_ time.Time, _, _ int64) bool {
+	return true
+}
+
+// Wraps storage.Queryable into QueryableWithFilter, with no query filtering.
+func UseAlwaysQueryable(q storage.Queryable) QueryableWithFilter {
+	return alwaysTrueFilterQueryable{Queryable: q}
+}
+
+type useBeforeTimestampQueryable struct {
+	storage.Queryable
+	ts int64 // Timestamp in milliseconds
+}
+
+func (u useBeforeTimestampQueryable) UseQueryable(_ time.Time, queryMinT, _ int64) bool {
+	if u.ts == 0 {
+		return true
+	}
+	return queryMinT < u.ts
+}
+
+// Returns QueryableWithFilter, that is used only if query starts before given timestamp.
+// If timestamp is zero (time.IsZero), queryable is always used.
+func UseBeforeTimestampQueryable(queryable storage.Queryable, ts time.Time) QueryableWithFilter {
+	t := int64(0)
+	if !ts.IsZero() {
+		t = util.TimeToMillis(ts)
+	}
+	return useBeforeTimestampQueryable{
+		Queryable: queryable,
+		ts:        t,
+	}
 }

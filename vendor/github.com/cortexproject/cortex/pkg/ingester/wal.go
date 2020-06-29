@@ -8,9 +8,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -413,15 +413,12 @@ func lastCheckpoint(dir string) (string, int, error) {
 	for i := 0; i < len(dirs); i++ {
 		di := dirs[i]
 
-		if !strings.HasPrefix(di.Name(), checkpointPrefix) {
+		idx, err := checkpointIndex(di.Name(), false)
+		if err != nil {
 			continue
 		}
 		if !di.IsDir() {
 			return "", -1, fmt.Errorf("checkpoint %s is not a directory", di.Name())
-		}
-		idx, err := strconv.Atoi(di.Name()[len(checkpointPrefix):])
-		if err != nil {
-			continue
 		}
 		if idx > maxIdx {
 			checkpointDir = di.Name()
@@ -450,10 +447,7 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 		return err
 	}
 	for _, fi := range files {
-		if !strings.HasPrefix(fi.Name(), checkpointPrefix) {
-			continue
-		}
-		index, err := strconv.Atoi(fi.Name()[len(checkpointPrefix):])
+		index, err := checkpointIndex(fi.Name(), true)
 		if err != nil || index >= maxIndex {
 			continue
 		}
@@ -462,6 +456,23 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 		}
 	}
 	return errs.Err()
+}
+
+var checkpointRe = regexp.MustCompile("^" + regexp.QuoteMeta(checkpointPrefix) + "(\\d+)(\\.tmp)?$")
+
+// checkpointIndex returns the index of a given checkpoint file. It handles
+// both regular and temporary checkpoints according to the includeTmp flag. If
+// the file is not a checkpoint it returns an error.
+func checkpointIndex(filename string, includeTmp bool) (int, error) {
+	result := checkpointRe.FindStringSubmatch(filename)
+	if len(result) < 2 {
+		return 0, errors.New("file is not a checkpoint")
+	}
+	// Filter out temporary checkpoints if desired.
+	if !includeTmp && len(result) == 3 && result[2] != "" {
+		return 0, errors.New("temporary checkpoint")
+	}
+	return strconv.Atoi(result[1])
 }
 
 // checkpointSeries write the chunks of the series to the checkpoint.

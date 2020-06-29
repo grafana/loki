@@ -1,12 +1,12 @@
 # Install and run Loki locally
 
-In order to log events with Loki, you must download and install both Promtail and Loki. 
+In order to log events with Loki, you must download and install both Promtail and Loki.
 - Loki is the logging engine.
 - Promtail sends logs to Loki.
 
 ## Install and run
 
-1. Navigate to the [release page](https://github.com/grafana/loki/releases/). 
+1. Navigate to the [release page](https://github.com/grafana/loki/releases/).
 2. Scroll down to the Assets section under the version that you want to install.
 3. Download the Loki and Promtail .zip files that correspond to your system.
    **Note:** Do not download LogCLI or Loki Canary at this time. [LogCLI](./getting-started/logcli.md) allows you to run Loki queries in a command line interface. [Loki Canary](./operations/loki-canary.md) is a tool to audit Loki performance.
