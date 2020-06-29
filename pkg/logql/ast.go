@@ -21,14 +21,21 @@ type Expr interface {
 	fmt.Stringer
 }
 
+type QueryParams interface {
+	LogSelector() (LogSelectorExpr, error)
+	GetStart() time.Time
+	GetEnd() time.Time
+	GetShards() []string
+}
+
 // SelectParams specifies parameters passed to data selections.
-type SelectParams struct {
+type SelectLogParams struct {
 	*logproto.QueryRequest
 }
 
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
-func (s SelectParams) LogSelector() (LogSelectorExpr, error) {
+func (s SelectLogParams) LogSelector() (LogSelectorExpr, error) {
 	return ParseLogSelector(s.Selector)
 }
 
@@ -55,7 +62,7 @@ func (s SelectSampleParams) LogSelector() (LogSelectorExpr, error) {
 // Querier allows a LogQL expression to fetch an EntryIterator for a
 // set of matchers and filters
 type Querier interface {
-	SelectLogs(context.Context, SelectParams) (iter.EntryIterator, error)
+	SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
 }
 

@@ -141,7 +141,7 @@ func (q *Querier) forGivenIngesters(ctx context.Context, replicationSet ring.Rep
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
-func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
+func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	err := q.validateQueryRequest(ctx, params)
 	if err != nil {
 		return nil, err
@@ -165,7 +165,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectParams) (it
 			// Make a copy of the request before modifying
 			// because the initial request is used below to query ingesters
 			queryRequestCopy := *params.QueryRequest
-			newParams := logql.SelectParams{
+			newParams := logql.SelectLogParams{
 				QueryRequest: &queryRequestCopy,
 			}
 			newParams.End = adjustedEnd
@@ -243,12 +243,12 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 	return iter.NewSampleHeapIterator(ctx, append(iters, chunkStoreIter)), nil
 }
 
-func shouldQueryIngester(cfg Config, params QueryParams) bool {
+func shouldQueryIngester(cfg Config, params logql.QueryParams) bool {
 	lookback := time.Now().Add(-cfg.QueryIngestersWithin)
 	return !(cfg.QueryIngestersWithin != 0 && params.GetEnd().Before(lookback))
 }
 
-func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) ([]iter.EntryIterator, error) {
+func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
 	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Query(ctx, params.QueryRequest, stats.CollectTrailer(ctx))
 	})
@@ -333,7 +333,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		return nil, err
 	}
 
-	histReq := logql.SelectParams{
+	histReq := logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Query,
 			Start:     req.Start,
@@ -552,7 +552,7 @@ func (q *Querier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string) ([]logproto.SeriesIdentifier, error) {
-	ids, err := q.store.GetSeries(ctx, logql.SelectParams{
+	ids, err := q.store.GetSeries(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
 			Limit:     1,
@@ -567,13 +567,7 @@ func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time,
 	return ids, nil
 }
 
-type QueryParams interface {
-	LogSelector() (logql.LogSelectorExpr, error)
-	GetStart() time.Time
-	GetEnd() time.Time
-}
-
-func (q *Querier) validateQueryRequest(ctx context.Context, req QueryParams) error {
+func (q *Querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err

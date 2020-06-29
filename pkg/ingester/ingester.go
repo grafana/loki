@@ -122,7 +122,7 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
-	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
+	LazyQuery(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	LazySampleQuery(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 }
 
@@ -286,13 +286,13 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	itrs, err := instance.Query(ctx, logql.SelectParams{QueryRequest: req})
+	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
 	}
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.End, req.End); ok {
-		storeReq := logql.SelectParams{QueryRequest: &logproto.QueryRequest{
+		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Selector,
 			Direction: req.Direction,
 			Start:     start,

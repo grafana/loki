@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash"
 	"hash/crc32"
-	"hash/maphash"
 	"io"
 	"time"
 
@@ -507,7 +506,6 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 // Iterator implements Chunk.
 func (c *MemChunk) SampleIterator(ctx context.Context, mintT, maxtT time.Time, filter logql.LineFilter, extractor logql.SampleExtractor) iter.SampleIterator {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
-	var h maphash.Hash
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
 	for _, b := range c.blocks {
