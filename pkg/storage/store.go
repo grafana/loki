@@ -234,6 +234,10 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 
 }
 
+func (s *store) LazySampleQuery(ctx context.Context, req logql.SelectParams) (iter.SampleIterator, error) {
+	return nil, nil
+}
+
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {

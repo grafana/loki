@@ -12,6 +12,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/cespare/xxhash"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -513,11 +514,11 @@ func (c *MemChunk) SampleIterator(ctx context.Context, mintT, maxtT time.Time, f
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
-		its = append(its, b.SampleIterator(ctx, filter, extractor, h))
+		its = append(its, b.SampleIterator(ctx, filter, extractor))
 	}
 
 	if !c.head.isEmpty() {
-		its = append(its, c.head.sampleIterator(ctx, mint, maxt, filter, extractor, h))
+		its = append(its, c.head.sampleIterator(ctx, mint, maxt, filter, extractor))
 	}
 
 	return iter.NewSampleTimeRangedIterator(
@@ -547,11 +548,11 @@ func (b block) Iterator(ctx context.Context, filter logql.LineFilter) iter.Entry
 	return newEntryIterator(ctx, b.readers, b.b, filter)
 }
 
-func (b block) SampleIterator(ctx context.Context, filter logql.LineFilter, extractor logql.SampleExtractor, hash maphash.Hash) iter.SampleIterator {
+func (b block) SampleIterator(ctx context.Context, filter logql.LineFilter, extractor logql.SampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newSampleIterator(ctx, b.readers, b.b, filter, extractor, hash)
+	return newSampleIterator(ctx, b.readers, b.b, filter, extractor)
 }
 
 func (b block) Offset() int {
@@ -598,7 +599,7 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 	}
 }
 
-func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, filter logql.LineFilter, extractor logql.SampleExtractor, hash maphash.Hash) iter.SampleIterator {
+func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, filter logql.LineFilter, extractor logql.SampleExtractor) iter.SampleIterator {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
@@ -609,12 +610,10 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, filte
 		chunkStats.HeadChunkBytes += int64(len(e.s))
 		if filter == nil || filter.Filter([]byte(e.s)) {
 			if value, ok := extractor.Extract([]byte(e.s)); ok {
-				hash.SetSeed(maphash.MakeSeed())
-				hash.WriteString(e.s)
 				samples = append(samples, logproto.Sample{
 					Timestamp: e.t,
 					Value:     value,
-					Hash:      hash.Sum64(),
+					Hash:      xxhash.Sum64([]byte(e.s)),
 				})
 
 			}
@@ -823,7 +822,7 @@ func (e *entryBufferedIterator) Entry() logproto.Entry {
 	return e.cur
 }
 
-func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.LineFilter, extractor logql.SampleExtractor, hash maphash.Hash) iter.SampleIterator {
+func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.LineFilter, extractor logql.SampleExtractor) iter.SampleIterator {
 	it := &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, filter),
 		extractor:        extractor,
@@ -836,7 +835,6 @@ type sampleBufferedIterator struct {
 	extractor logql.SampleExtractor
 	cur       logproto.Sample
 	currValue float64
-	hash      maphash.Hash
 }
 
 func (e *sampleBufferedIterator) Next() bool {
@@ -852,11 +850,8 @@ func (e *sampleBufferedIterator) Next() bool {
 func (e *sampleBufferedIterator) Sample() logproto.Sample {
 	if !e.consumed {
 		e.cur.Timestamp = e.currTs
-		e.hash.SetSeed(maphash.MakeSeed())
-		_, _ = e.hash.Write(e.currLine)
-		e.cur.Hash = e.hash.Sum64()
+		e.cur.Hash = xxhash.Sum64(e.currLine)
 		e.cur.Value = e.currValue
-		e.hash.Reset()
 		e.consumed = true
 	}
 	return e.cur
