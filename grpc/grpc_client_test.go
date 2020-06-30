@@ -134,7 +134,7 @@ func TestGrpcStore(t *testing.T) {
 	_, err = storageClient.GetChunks(context.Background(), getChunksTestData)
 	require.NoError(t, err)
 
-	err = storageClient.DeleteChunk(context.Background(), "")
+	err = storageClient.DeleteChunk(context.Background(), "", "")
 	require.NoError(t, err)
 
 	//rpc calls specific to indexClient
