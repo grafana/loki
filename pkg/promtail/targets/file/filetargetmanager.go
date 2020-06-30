@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
@@ -59,7 +59,7 @@ func NewFileTargetManager(
 	logger log.Logger,
 	positions positions.Positions,
 	client api.EntryHandler,
-	scrapeConfigs []scrape.Config,
+	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *Config,
 ) (*FileTargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())

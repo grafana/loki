@@ -8,7 +8,7 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
@@ -21,7 +21,7 @@ func NewJournalTargetManager(
 	logger log.Logger,
 	positions positions.Positions,
 	client api.EntryHandler,
-	scrapeConfigs []scrape.Config,
+	scrapeConfigs []scrapeconfig.Config,
 ) (*JournalTargetManager, error) {
 	level.Warn(logger).Log("msg", "WARNING!!! Journal target was configured but support for reading the systemd journal is not compiled into this build of promtail!")
 	return &JournalTargetManager{}, nil

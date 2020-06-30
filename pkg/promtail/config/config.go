@@ -5,7 +5,7 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/server"
 	"github.com/grafana/loki/pkg/promtail/targets/file"
 )
@@ -14,11 +14,11 @@ import (
 type Config struct {
 	ServerConfig server.Config `yaml:"server,omitempty"`
 	// deprecated use ClientConfigs instead
-	ClientConfig    client.Config    `yaml:"client,omitempty"`
-	ClientConfigs   []client.Config  `yaml:"clients,omitempty"`
-	PositionsConfig positions.Config `yaml:"positions,omitempty"`
-	ScrapeConfig    []scrape.Config  `yaml:"scrape_configs,omitempty"`
-	TargetConfig    file.Config      `yaml:"target_config,omitempty"`
+	ClientConfig    client.Config         `yaml:"client,omitempty"`
+	ClientConfigs   []client.Config       `yaml:"clients,omitempty"`
+	PositionsConfig positions.Config      `yaml:"positions,omitempty"`
+	ScrapeConfig    []scrapeconfig.Config `yaml:"scrape_configs,omitempty"`
+	TargetConfig    file.Config           `yaml:"target_config,omitempty"`
 }
 
 // RegisterFlags registers flags.

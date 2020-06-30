@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 )
 
 type ClientMessage struct {
@@ -62,7 +62,7 @@ func testSyslogTarget(t *testing.T, octetCounting bool) {
 	logger := log.NewLogfmtLogger(w)
 	client := &TestLabeledClient{log: logger}
 
-	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrape.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress:       "127.0.0.1:0",
 		LabelStructuredData: true,
 		Labels: model.LabelSet{
@@ -161,7 +161,7 @@ func TestSyslogTarget_InvalidData(t *testing.T) {
 	logger := log.NewLogfmtLogger(w)
 	client := &TestLabeledClient{log: logger}
 
-	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrape.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 	})
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestSyslogTarget_NonUTF8Message(t *testing.T) {
 	logger := log.NewLogfmtLogger(w)
 	client := &TestLabeledClient{log: logger}
 
-	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrape.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 	})
 	require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestSyslogTarget_IdleTimeout(t *testing.T) {
 	logger := log.NewLogfmtLogger(w)
 	client := &TestLabeledClient{log: logger}
 
-	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrape.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 		IdleTimeout:   time.Millisecond,
 	})

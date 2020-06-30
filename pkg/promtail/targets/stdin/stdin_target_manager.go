@@ -19,7 +19,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
@@ -37,7 +37,7 @@ var (
 	stdIn       file = os.Stdin
 	hostName, _      = os.Hostname()
 	// defaultStdInCfg is the default config for stdin target if none provided.
-	defaultStdInCfg = scrape.Config{
+	defaultStdInCfg = scrapeconfig.Config{
 		JobName: "stdin",
 		ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
 			StaticConfigs: []*targetgroup.Group{
@@ -57,7 +57,7 @@ type stdinTargetManager struct {
 	app Shutdownable
 }
 
-func NewStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []scrape.Config) (*stdinTargetManager, error) {
+func NewStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*stdinTargetManager, error) {
 	reader, err := newReaderTarget(stdIn, client, getStdinConfig(configs))
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func NewStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []
 	return stdinManager, nil
 }
 
-func getStdinConfig(configs []scrape.Config) scrape.Config {
+func getStdinConfig(configs []scrapeconfig.Config) scrapeconfig.Config {
 	cfg := defaultStdInCfg
 	// if we receive configs we use the first one.
 	if len(configs) > 0 {
@@ -103,7 +103,7 @@ type readerTarget struct {
 	ctx    context.Context
 }
 
-func newReaderTarget(in io.Reader, client api.EntryHandler, cfg scrape.Config) (*readerTarget, error) {
+func newReaderTarget(in io.Reader, client api.EntryHandler, cfg scrapeconfig.Config) (*readerTarget, error) {
 	pipeline, err := stages.NewPipeline(log.With(util.Logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err

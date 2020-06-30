@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 
 	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/syslog/syslogparser"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
@@ -46,7 +46,7 @@ var (
 type SyslogTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
-	config        *scrape.SyslogTargetConfig
+	config        *scrapeconfig.SyslogTargetConfig
 	relabelConfig []*relabel.Config
 
 	listener net.Listener
@@ -67,7 +67,7 @@ func NewSyslogTarget(
 	logger log.Logger,
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
-	config *scrape.SyslogTargetConfig,
+	config *scrapeconfig.SyslogTargetConfig,
 ) (*SyslogTarget, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -8,7 +8,7 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/file"
 	"github.com/grafana/loki/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/pkg/promtail/targets/stdin"
@@ -35,13 +35,13 @@ func NewTargetManagers(
 	logger log.Logger,
 	positionsConfig positions.Config,
 	client api.EntryHandler,
-	scrapeConfigs []scrape.Config,
+	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
-	var fileScrapeConfigs []scrape.Config
-	var journalScrapeConfigs []scrape.Config
-	var syslogScrapeConfigs []scrape.Config
+	var fileScrapeConfigs []scrapeconfig.Config
+	var journalScrapeConfigs []scrapeconfig.Config
+	var syslogScrapeConfigs []scrapeconfig.Config
 
 	if targetConfig.Stdin {
 		level.Debug(util.Logger).Log("msg", "configured to read from stdin")

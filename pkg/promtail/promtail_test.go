@@ -35,7 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	file2 "github.com/grafana/loki/pkg/promtail/targets/file"
 )
 
@@ -601,7 +601,7 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		},
 	}
 
-	scrapeConfig := scrape.Config{
+	scrapeConfig := scrapeconfig.Config{
 		JobName:                "",
 		EntryParser:            api.Raw,
 		PipelineStages:         pipeline,

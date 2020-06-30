@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 )
 
 type line struct {
@@ -34,14 +34,14 @@ func Test_newReaderTarget(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      io.Reader
-		cfg     scrape.Config
+		cfg     scrapeconfig.Config
 		want    []line
 		wantErr bool
 	}{
 		{
 			"no newlines",
 			bytes.NewReader([]byte("bar")),
-			scrape.Config{},
+			scrapeconfig.Config{},
 			[]line{
 				{model.LabelSet{}, "bar"},
 			},
@@ -50,14 +50,14 @@ func Test_newReaderTarget(t *testing.T) {
 		{
 			"empty",
 			bytes.NewReader([]byte("")),
-			scrape.Config{},
+			scrapeconfig.Config{},
 			nil,
 			false,
 		},
 		{
 			"newlines",
 			bytes.NewReader([]byte("\nfoo\r\nbar")),
-			scrape.Config{},
+			scrapeconfig.Config{},
 			[]line{
 				{model.LabelSet{}, "foo"},
 				{model.LabelSet{}, "bar"},
@@ -67,7 +67,7 @@ func Test_newReaderTarget(t *testing.T) {
 		{
 			"pipeline",
 			bytes.NewReader([]byte("\nfoo\r\nbar")),
-			scrape.Config{
+			scrapeconfig.Config{
 				PipelineStages: loadConfig(stagesConfig),
 			},
 			[]line{
@@ -129,7 +129,7 @@ func Test_Shutdown(t *testing.T) {
 	stdIn = newFakeStin("line")
 	appMock := &mockShutdownable{called: make(chan bool, 1)}
 	recorder := &clientRecorder{}
-	manager, err := NewStdinTargetManager(appMock, recorder, []scrape.Config{{}})
+	manager, err := NewStdinTargetManager(appMock, recorder, []scrapeconfig.Config{{}})
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 	called := <-appMock.called
@@ -140,12 +140,12 @@ func Test_Shutdown(t *testing.T) {
 func Test_StdinConfigs(t *testing.T) {
 
 	// should take the first config
-	require.Equal(t, scrape.DefaultScrapeConfig, getStdinConfig([]scrape.Config{
-		scrape.DefaultScrapeConfig,
+	require.Equal(t, scrapeconfig.DefaultScrapeConfig, getStdinConfig([]scrapeconfig.Config{
+		scrapeconfig.DefaultScrapeConfig,
 		{},
 	}))
 	// or use the default if none if provided
-	require.Equal(t, defaultStdInCfg, getStdinConfig([]scrape.Config{}))
+	require.Equal(t, defaultStdInCfg, getStdinConfig([]scrapeconfig.Config{}))
 }
 
 var stagesConfig = `

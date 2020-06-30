@@ -7,7 +7,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
@@ -21,7 +21,7 @@ type SyslogTargetManager struct {
 func NewSyslogTargetManager(
 	logger log.Logger,
 	client api.EntryHandler,
-	scrapeConfigs []scrape.Config,
+	scrapeConfigs []scrapeconfig.Config,
 ) (*SyslogTargetManager, error) {
 
 	tm := &SyslogTargetManager{

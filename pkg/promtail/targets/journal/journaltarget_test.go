@@ -17,7 +17,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/testutils"
 
 	"github.com/go-kit/kit/log"
@@ -103,7 +103,7 @@ func TestJournalTarget(t *testing.T) {
 	require.NoError(t, err)
 
 	jt, err := journalTargetWithReader(logger, client, ps, "test", relabels,
-		&scrape.JournalTargetConfig{}, newMockJournalReader, newMockJournalEntry(nil))
+		&scrapeconfig.JournalTargetConfig{}, newMockJournalReader, newMockJournalEntry(nil))
 	require.NoError(t, err)
 
 	r := jt.r.(*mockJournalReader)
@@ -155,7 +155,7 @@ func TestJournalTarget_JSON(t *testing.T) {
 	err = yaml.Unmarshal([]byte(relabelCfg), &relabels)
 	require.NoError(t, err)
 
-	cfg := &scrape.JournalTargetConfig{JSON: true}
+	cfg := &scrapeconfig.JournalTargetConfig{JSON: true}
 
 	jt, err := journalTargetWithReader(logger, client, ps, "test", relabels,
 		cfg, newMockJournalReader, newMockJournalEntry(nil))
@@ -205,7 +205,7 @@ func TestJournalTarget_Since(t *testing.T) {
 		Messages: make([]string, 0),
 	}
 
-	cfg := scrape.JournalTargetConfig{
+	cfg := scrapeconfig.JournalTargetConfig{
 		MaxAge: "4h",
 	}
 
@@ -242,7 +242,7 @@ func TestJournalTarget_Cursor_TooOld(t *testing.T) {
 		Messages: make([]string, 0),
 	}
 
-	cfg := scrape.JournalTargetConfig{}
+	cfg := scrapeconfig.JournalTargetConfig{}
 
 	entryTs := time.Date(1980, time.July, 3, 12, 0, 0, 0, time.UTC)
 	journalEntry := newMockJournalEntry(&sdjournal.JournalEntry{
@@ -284,7 +284,7 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 		Messages: make([]string, 0),
 	}
 
-	cfg := scrape.JournalTargetConfig{}
+	cfg := scrapeconfig.JournalTargetConfig{}
 
 	entryTs := time.Now().Add(-time.Hour)
 	journalEntry := newMockJournalEntry(&sdjournal.JournalEntry{
