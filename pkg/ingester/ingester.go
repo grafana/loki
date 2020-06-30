@@ -291,7 +291,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.End, req.End); ok {
+	if start, end, ok := buildStoreRequest(i.cfg, req.End, req.End, time.Now()); ok {
 		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Selector,
 			Direction: req.Direction,
@@ -332,7 +332,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End); ok {
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 			Start:    start,
 			End:      end,
@@ -384,7 +384,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-	start := adjustQueryStartTime(i.cfg, *req.Start)
+	start := adjustQueryStartTime(i.cfg, *req.Start, time.Now())
 	if start.After(*req.End) {
 		// The request is older than we are allowed to query the store, just return what we have.
 		return resp, nil
@@ -502,11 +502,11 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 // buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
 // we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
-func buildStoreRequest(cfg Config, start, end time.Time) (time.Time, time.Time, bool) {
+func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.Time, bool) {
 	if !cfg.QueryStore {
 		return time.Time{}, time.Time{}, false
 	}
-	start = adjustQueryStartTime(cfg, start)
+	start = adjustQueryStartTime(cfg, start, now)
 
 	if start.After(end) {
 		return time.Time{}, time.Time{}, false
@@ -514,11 +514,11 @@ func buildStoreRequest(cfg Config, start, end time.Time) (time.Time, time.Time, 
 	return start, end, true
 }
 
-func adjustQueryStartTime(cfg Config, start time.Time) time.Time {
+func adjustQueryStartTime(cfg Config, start, now time.Time) time.Time {
 	if cfg.QueryStoreMaxLookBackPeriod > 0 {
-		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
+		oldestStartTime := now.Add(-cfg.QueryStoreMaxLookBackPeriod)
 		if oldestStartTime.After(start) {
-			start = oldestStartTime
+			return oldestStartTime
 		}
 	}
 	return start

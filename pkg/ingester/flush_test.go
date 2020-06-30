@@ -229,7 +229,11 @@ func (s *testStore) IsLocal() bool {
 	return false
 }
 
-func (s *testStore) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
+func (s *testStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	return nil, nil
+}
+
+func (s *testStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, nil
 }
 
