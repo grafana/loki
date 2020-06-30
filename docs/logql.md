@@ -177,7 +177,6 @@ avg(rate(({job="nginx"} |= "GET")[10s])) by (region)
 
 #### Arithmetic Binary Operators
 
-Arithmetic binary operators
 The following binary arithmetic operators exist in Loki:
 
 - `+` (addition)
@@ -196,6 +195,8 @@ Between a vector and a literal, the operator is applied to the value of every da
 
 Between two vectors, a binary arithmetic operator is applied to each entry in the left-hand side vector and its matching element in the right-hand vector.
 The result is propagated into the result vector with the grouping labels becoming the output label set. Entries for which no matching entry in the right-hand vector can be found are not part of the result.
+
+Pay special attention to [operator order](#operator-order) when chaining arithmetic operators.
 
 ##### Examples
 
@@ -216,16 +217,6 @@ Get proportion of warning logs to error logs for the `foo` app
 ```logql
 sum(rate({app="foo", level="warn"}[1m])) / sum(rate({app="foo", level="error"}[1m]))
 ```
-
-Operators on the same precedence level are left-associative (queries substituted with numbers here for simplicity).
-
-`2 * 3 % 2` is equivalent to `(2 * 3) % 2`.
-
-However, some operators have different priorities:
-
-`1 + 2 / 3` will still be `1 + ( 2 / 3 )`.
-
-Precedence order is identically to [mathematical convention](https://en.wikipedia.org/wiki/Order_of_operations).
 
 #### Logical/set binary operators
 
@@ -299,3 +290,14 @@ Same as above, but vectors have their values set to `1` if they pass the compari
 ```logql
 sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
 ```
+
+#### Operator order
+
+When chaining or combining operators, you have to consider operator precedence:
+Generally, you can assume regular [mathematical convention](https://en.wikipedia.org/wiki/Order_of_operations) with operators on the same precedence level being left-associative.
+
+More details can be found in the [Golang language documentation](https://golang.org/ref/spec#Operator_precedence).
+
+`1 + 2 / 3` is equal to `1 + ( 2 / 3 )`.
+
+`2 * 3 % 2` is evaluated as `(2 * 3) % 2`.
