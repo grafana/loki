@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/grafana/loki/pkg/promtail/server"
-	"github.com/grafana/loki/pkg/promtail/targets"
+	"github.com/grafana/loki/pkg/promtail/targets/file"
 )
 
 // Config for promtail, describing what files to watch.
@@ -18,7 +18,7 @@ type Config struct {
 	ClientConfigs   []client.Config  `yaml:"clients,omitempty"`
 	PositionsConfig positions.Config `yaml:"positions,omitempty"`
 	ScrapeConfig    []scrape.Config  `yaml:"scrape_configs,omitempty"`
-	TargetConfig    targets.Config   `yaml:"target_config,omitempty"`
+	TargetConfig    file.Config      `yaml:"target_config,omitempty"`
 }
 
 // RegisterFlags registers flags.

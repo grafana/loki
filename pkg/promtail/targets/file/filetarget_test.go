@@ -1,30 +1,27 @@
-package targets
+package file
 
 import (
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/targets/testutils"
 )
 
 func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 	logFile := dirName + "/test.log"
 
@@ -44,9 +41,9 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	f, err := os.Create(logFile)
@@ -70,7 +67,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 10 && countdown > 0 {
+	for len(client.Messages) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -97,13 +94,13 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	// Assert the number of messages the handler received is correct.
-	if len(client.messages) != 10 {
-		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.messages))
+	if len(client.Messages) != 10 {
+		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.Messages))
 	}
 
 	// Spot check one of the messages.
-	if client.messages[0] != "test" {
-		t.Error("Expected first log message to be 'test' but was", client.messages[0])
+	if client.Messages[0] != "test" {
+		t.Error("Expected first log message to be 'test' but was", client.Messages[0])
 	}
 
 }
@@ -112,8 +109,8 @@ func TestWatchEntireDirectory(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 	logFileDir := dirName + "/logdir/"
 
@@ -137,9 +134,9 @@ func TestWatchEntireDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	f, err := os.Create(logFileDir + "test.log")
@@ -163,7 +160,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 10 && countdown > 0 {
+	for len(client.Messages) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -190,13 +187,13 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	// Assert the number of messages the handler received is correct.
-	if len(client.messages) != 10 {
-		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.messages))
+	if len(client.Messages) != 10 {
+		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.Messages))
 	}
 
 	// Spot check one of the messages.
-	if client.messages[0] != "test" {
-		t.Error("Expected first log message to be 'test' but was", client.messages[0])
+	if client.Messages[0] != "test" {
+		t.Error("Expected first log message to be 'test' but was", client.Messages[0])
 	}
 
 }
@@ -205,8 +202,8 @@ func TestFileRolls(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFile := dirName + "/positions.yml"
 	logFile := dirName + "/test.log"
 
@@ -226,9 +223,9 @@ func TestFileRolls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	f, err := os.Create(logFile)
@@ -252,7 +249,7 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 10 && countdown > 0 {
+	for len(client.Messages) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -276,7 +273,7 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	countdown = 10000
-	for len(client.messages) != 20 && countdown > 0 {
+	for len(client.Messages) != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -284,18 +281,18 @@ func TestFileRolls(t *testing.T) {
 	target.Stop()
 	positions.Stop()
 
-	if len(client.messages) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
+	if len(client.Messages) != 20 {
+		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Messages))
 	}
 
 	// Spot check one of the messages.
-	if client.messages[0] != "test1" {
-		t.Error("Expected first log message to be 'test1' but was", client.messages[0])
+	if client.Messages[0] != "test1" {
+		t.Error("Expected first log message to be 'test1' but was", client.Messages[0])
 	}
 
 	// Spot check the first message from the second file.
-	if client.messages[10] != "test2" {
-		t.Error("Expected first log message to be 'test2' but was", client.messages[10])
+	if client.Messages[10] != "test2" {
+		t.Error("Expected first log message to be 'test2' but was", client.Messages[10])
 	}
 }
 
@@ -303,8 +300,8 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 	logFile := dirName + "/test.log"
 
@@ -324,9 +321,9 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	f, err := os.Create(logFile)
@@ -350,7 +347,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 10 && countdown > 0 {
+	for len(client.Messages) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -384,7 +381,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	countdown = 10000
-	for len(client.messages) != 20 && countdown > 0 {
+	for len(client.Messages) != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -392,18 +389,18 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	target2.Stop()
 	ps2.Stop()
 
-	if len(client.messages) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
+	if len(client.Messages) != 20 {
+		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Messages))
 	}
 
 	// Spot check one of the messages.
-	if client.messages[0] != "test1" {
-		t.Error("Expected first log message to be 'test1' but was", client.messages[0])
+	if client.Messages[0] != "test1" {
+		t.Error("Expected first log message to be 'test1' but was", client.Messages[0])
 	}
 
 	// Spot check the first message from the second file.
-	if client.messages[10] != "test2" {
-		t.Error("Expected first log message to be 'test2' but was", client.messages[10])
+	if client.Messages[10] != "test2" {
+		t.Error("Expected first log message to be 'test2' but was", client.Messages[10])
 	}
 }
 
@@ -411,8 +408,8 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 	logFile1 := dirName + "/test.log"
 	logFile2 := dirName + "/dirt.log"
@@ -433,9 +430,9 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	f1, err := os.Create(logFile1)
@@ -469,7 +466,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 20 && countdown > 0 {
+	for len(client.Messages) != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -503,8 +500,8 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 
 	// Assert the number of messages the handler received is correct.
-	if len(client.messages) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
+	if len(client.Messages) != 20 {
+		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Messages))
 	}
 
 }
@@ -513,8 +510,8 @@ func TestFileTargetSync(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 	logDir1 := dirName + "/log1"
 	logDir1File1 := logDir1 + "/test1.log"
@@ -536,9 +533,9 @@ func TestFileTargetSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	target, err := NewFileTarget(logger, client, ps, logDir1+"/*.log", nil, nil, &Config{
@@ -720,33 +717,4 @@ func TestMissing(t *testing.T) {
 		t.Error("Expected the set to contain str3 but it did not")
 	}
 
-}
-
-type TestClient struct {
-	log      log.Logger
-	messages []string
-	sync.Mutex
-}
-
-func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
-	level.Debug(c.log).Log("msg", "received log", "log", s)
-
-	c.Lock()
-	defer c.Unlock()
-	c.messages = append(c.messages, s)
-	return nil
-}
-
-func initRandom() {
-	rand.Seed(time.Now().UnixNano())
-}
-
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randName() string {
-	b := make([]rune, 10)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
 }

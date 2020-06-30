@@ -1,6 +1,6 @@
 // +build !linux !cgo
 
-package targets
+package journal
 
 import (
 	"github.com/go-kit/kit/log"
@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 // JournalTargetManager manages a series of JournalTargets.
@@ -36,11 +37,11 @@ func (tm *JournalTargetManager) Ready() bool {
 func (tm *JournalTargetManager) Stop() {}
 
 // ActiveTargets always returns nil on non-Linux platforms.
-func (tm *JournalTargetManager) ActiveTargets() map[string][]Target {
+func (tm *JournalTargetManager) ActiveTargets() map[string][]target.Target {
 	return nil
 }
 
 // AllTargets always returns nil on non-Linux platforms.
-func (tm *JournalTargetManager) AllTargets() map[string][]Target {
+func (tm *JournalTargetManager) AllTargets() map[string][]target.Target {
 	return nil
 }

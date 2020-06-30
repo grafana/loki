@@ -1,6 +1,6 @@
 // +build linux,cgo
 
-package targets
+package journal
 
 import (
 	"fmt"
@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets/testutils"
 
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
@@ -70,8 +71,8 @@ func TestJournalTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 
 	// Set the sync period to a really long value, to guarantee the sync timer
@@ -85,9 +86,9 @@ func TestJournalTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	relabelCfg := `
@@ -114,8 +115,8 @@ func TestJournalTarget(t *testing.T) {
 		})
 		assert.NoError(t, err)
 	}
-	fmt.Println(client.messages)
-	assert.Len(t, client.messages, 10)
+	fmt.Println(client.Messages)
+	assert.Len(t, client.Messages, 10)
 	require.NoError(t, jt.Stop())
 }
 
@@ -123,8 +124,8 @@ func TestJournalTarget_JSON(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 
 	// Set the sync period to a really long value, to guarantee the sync timer
@@ -138,9 +139,9 @@ func TestJournalTarget_JSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	relabelCfg := `
@@ -172,11 +173,11 @@ func TestJournalTarget_JSON(t *testing.T) {
 
 		expectMsg := `{"CODE_FILE":"journaltarget_test.go","MESSAGE":"ping","OTHER_FIELD":"foobar"}`
 
-		require.Greater(t, len(client.messages), 0)
-		require.Equal(t, expectMsg, client.messages[len(client.messages)-1])
+		require.Greater(t, len(client.Messages), 0)
+		require.Equal(t, expectMsg, client.Messages[len(client.Messages)-1])
 	}
 
-	assert.Len(t, client.messages, 10)
+	assert.Len(t, client.Messages, 10)
 	require.NoError(t, jt.Stop())
 }
 
@@ -184,8 +185,8 @@ func TestJournalTarget_Since(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 
 	// Set the sync period to a really long value, to guarantee the sync timer
@@ -199,9 +200,9 @@ func TestJournalTarget_Since(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	cfg := scrape.JournalTargetConfig{
@@ -220,8 +221,8 @@ func TestJournalTarget_Cursor_TooOld(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 
 	// Set the sync period to a really long value, to guarantee the sync timer
@@ -236,9 +237,9 @@ func TestJournalTarget_Cursor_TooOld(t *testing.T) {
 	}
 	ps.PutString("journal-test", "foobar")
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	cfg := scrape.JournalTargetConfig{}
@@ -262,8 +263,8 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	initRandom()
-	dirName := "/tmp/" + randName()
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
 	positionsFileName := dirName + "/positions.yml"
 
 	// Set the sync period to a really long value, to guarantee the sync timer
@@ -278,9 +279,9 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 	}
 	ps.PutString("journal-test", "foobar")
 
-	client := &TestClient{
-		log:      logger,
-		messages: make([]string, 0),
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]string, 0),
 	}
 
 	cfg := scrape.JournalTargetConfig{}

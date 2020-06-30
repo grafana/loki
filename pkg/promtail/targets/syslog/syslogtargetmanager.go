@@ -1,4 +1,4 @@
-package targets
+package syslog
 
 import (
 	"github.com/go-kit/kit/log"
@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 // SyslogTargetManager manages a series of SyslogTargets.
@@ -68,16 +69,16 @@ func (tm *SyslogTargetManager) Stop() {
 // ActiveTargets returns the list of SyslogTargets where syslog data
 // is being read. ActiveTargets is an alias to AllTargets as
 // SyslogTargets cannot be deactivated, only stopped.
-func (tm *SyslogTargetManager) ActiveTargets() map[string][]Target {
+func (tm *SyslogTargetManager) ActiveTargets() map[string][]target.Target {
 	return tm.AllTargets()
 }
 
 // AllTargets returns the list of all targets where syslog data
 // is currently being read.
-func (tm *SyslogTargetManager) AllTargets() map[string][]Target {
-	result := make(map[string][]Target, len(tm.targets))
+func (tm *SyslogTargetManager) AllTargets() map[string][]target.Target {
+	result := make(map[string][]target.Target, len(tm.targets))
 	for k, v := range tm.targets {
-		result[k] = []Target{v}
+		result[k] = []target.Target{v}
 	}
 	return result
 }

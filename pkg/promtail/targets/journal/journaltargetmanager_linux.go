@@ -1,6 +1,6 @@
 // +build cgo
 
-package targets
+package journal
 
 import (
 	"github.com/go-kit/kit/log"
@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 // JournalTargetManager manages a series of JournalTargets.
@@ -82,16 +83,16 @@ func (tm *JournalTargetManager) Stop() {
 // ActiveTargets returns the list of JournalTargets where journal data
 // is being read. ActiveTargets is an alias to AllTargets as
 // JournalTargets cannot be deactivated, only stopped.
-func (tm *JournalTargetManager) ActiveTargets() map[string][]Target {
+func (tm *JournalTargetManager) ActiveTargets() map[string][]target.Target {
 	return tm.AllTargets()
 }
 
 // AllTargets returns the list of all targets where journal data
 // is currently being read.
-func (tm *JournalTargetManager) AllTargets() map[string][]Target {
-	result := make(map[string][]Target, len(tm.targets))
+func (tm *JournalTargetManager) AllTargets() map[string][]target.Target {
+	result := make(map[string][]target.Target, len(tm.targets))
 	for k, v := range tm.targets {
-		result[k] = []Target{v}
+		result[k] = []target.Target{v}
 	}
 	return result
 }

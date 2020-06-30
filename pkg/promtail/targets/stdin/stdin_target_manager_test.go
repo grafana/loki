@@ -1,4 +1,4 @@
-package targets
+package stdin
 
 import (
 	"bytes"
@@ -129,7 +129,7 @@ func Test_Shutdown(t *testing.T) {
 	stdIn = newFakeStin("line")
 	appMock := &mockShutdownable{called: make(chan bool, 1)}
 	recorder := &clientRecorder{}
-	manager, err := newStdinTargetManager(appMock, recorder, []scrape.Config{{}})
+	manager, err := NewStdinTargetManager(appMock, recorder, []scrape.Config{{}})
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 	called := <-appMock.called

@@ -1,6 +1,6 @@
 // +build linux,cgo
 
-package targets
+package journal
 
 import (
 	"fmt"
@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 
 	"github.com/go-kit/kit/log"
 
@@ -292,8 +293,8 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 }
 
 // Type returns JournalTargetType.
-func (t *JournalTarget) Type() TargetType {
-	return JournalTargetType
+func (t *JournalTarget) Type() target.TargetType {
+	return target.JournalTargetType
 }
 
 // Ready indicates whether or not the journal is ready to be

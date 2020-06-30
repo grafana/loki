@@ -1,4 +1,4 @@
-package targets
+package stdin
 
 import (
 	"bufio"
@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 // bufferSize is the size of the buffered reader
@@ -56,7 +57,7 @@ type stdinTargetManager struct {
 	app Shutdownable
 }
 
-func newStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []scrape.Config) (*stdinTargetManager, error) {
+func NewStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []scrape.Config) (*stdinTargetManager, error) {
 	reader, err := newReaderTarget(stdIn, client, getStdinConfig(configs))
 	if err != nil {
 		return nil, err
@@ -88,9 +89,9 @@ func getStdinConfig(configs []scrape.Config) scrape.Config {
 func (t *stdinTargetManager) Ready() bool {
 	return t.ctx.Err() == nil
 }
-func (t *stdinTargetManager) Stop()                              { t.cancel() }
-func (t *stdinTargetManager) ActiveTargets() map[string][]Target { return nil }
-func (t *stdinTargetManager) AllTargets() map[string][]Target    { return nil }
+func (t *stdinTargetManager) Stop()                                     { t.cancel() }
+func (t *stdinTargetManager) ActiveTargets() map[string][]target.Target { return nil }
+func (t *stdinTargetManager) AllTargets() map[string][]target.Target    { return nil }
 
 type readerTarget struct {
 	in     *bufio.Reader

@@ -1,4 +1,4 @@
-package targets
+package target
 
 import (
 	"github.com/prometheus/common/model"
@@ -46,7 +46,7 @@ type droppedTarget struct {
 	reason           string
 }
 
-func newDroppedTarget(reason string, discoveredLabels model.LabelSet) Target {
+func NewDroppedTarget(reason string, discoveredLabels model.LabelSet) Target {
 	return &droppedTarget{
 		discoveredLabels: discoveredLabels,
 		reason:           reason,

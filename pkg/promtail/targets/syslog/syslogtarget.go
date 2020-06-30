@@ -1,4 +1,4 @@
-package targets
+package syslog
 
 import (
 	"context"
@@ -23,7 +23,8 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrape"
-	"github.com/grafana/loki/pkg/promtail/targets/syslogparser"
+	"github.com/grafana/loki/pkg/promtail/targets/syslog/syslogparser"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 var (
@@ -263,8 +264,8 @@ func lookupAddr(addr string) string {
 }
 
 // Type returns SyslogTargetType.
-func (t *SyslogTarget) Type() TargetType {
-	return SyslogTargetType
+func (t *SyslogTarget) Type() target.TargetType {
+	return target.SyslogTargetType
 }
 
 // Ready indicates whether or not the syslog target is ready to be read from.

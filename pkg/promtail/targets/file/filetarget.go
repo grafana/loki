@@ -1,4 +1,4 @@
-package targets
+package file
 
 import (
 	"flag"
@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 var (
@@ -128,8 +129,8 @@ func (t *FileTarget) Stop() {
 }
 
 // Type implements a Target
-func (t *FileTarget) Type() TargetType {
-	return FileTargetType
+func (t *FileTarget) Type() target.TargetType {
+	return target.FileTargetType
 }
 
 // DiscoveredLabels implements a Target
