@@ -32,7 +32,7 @@ The stream selector is comprised of one or more key-value pairs, where each key 
 
 The log stream selector is written by wrapping the key-value pairs in a pair of curly braces:
 
-```
+```logql
 {app="mysql",name="mysql-backup"}
 ```
 
@@ -76,7 +76,9 @@ The following filter operators are supported:
 
 Filter operators can be chained and will sequentially filter down the expression - resulting log lines must satisfy _every_ filter:
 
-`{job="mysql"} |= "error" != "timeout"`
+```logql
+{job="mysql"} |= "error" != "timeout"
+```
 
 When using `|~` and `!~`, Go (as in [Golang](https://golang.org/)) [RE2 syntax](https://github.com/google/re2/wiki/Syntax) regex may be used.
 The matching is case-sensitive by default and can be switched to case-insensitive prefixing the regex with `(?i)`.
@@ -99,11 +101,17 @@ The currently supported functions for operating over are:
 - `bytes_rate`: calculates the number of bytes per second for each stream.
 - `bytes_over_time`: counts the amount of bytes used by each log stream for a given range.
 
-> `count_over_time({job="mysql"}[5m])`
+#### Examples
+
+```logql
+count_over_time({job="mysql"}[5m])
+```
 
 This example counts all the log lines within the last five minutes for the MySQL job.
 
-> `rate({job="mysql"} |= "error" != "timeout" [10s] )`
+```logql
+rate({job="mysql"} |= "error" != "timeout" [10s] )
+```
 
 This example demonstrates that a fully LogQL query can be wrapped in the aggregation syntax, including filter expressions.
 This example gets the per-second rate of all non-timeout errors within the last ten seconds for the MySQL job.
@@ -133,7 +141,9 @@ Like [PromQL](https://prometheus.io/docs/prometheus/latest/querying/operators/#a
 
 The aggregation operators can either be used to aggregate over all label values or a set of distinct label values by including a `without` or a `by` clause:
 
-> `<aggr-op>([parameter,] <vector expression>) [without|by (<label list>)]`
+```logql
+<aggr-op>([parameter,] <vector expression>) [without|by (<label list>)]
+```
 
 `parameter` is only required when using `topk` and `bottomk`.
 `topk` and `bottomk` are different from other aggregators in that a subset of the input samples, including the original labels, are returned in the result vector.
@@ -146,16 +156,22 @@ The `by` clause does the opposite, dropping labels that are not listed in the cl
 
 Get the top 10 applications by the highest log throughput:
 
-> `topk(10,sum(rate({region="us-east1"}[5m])) by (name))`
+```logql
+topk(10,sum(rate({region="us-east1"}[5m])) by (name))
+```
 
 Get the count of logs for the last five minutes, grouping
 by level:
 
-> `sum(count_over_time({job="mysql"}[5m])) by (level)`
+```logql
+sum(count_over_time({job="mysql"}[5m])) by (level)
+```
 
 Get the rate of HTTP GET requests from NGINX logs:
 
-> `avg(rate(({job="nginx"} |= "GET")[10s])) by (region)`
+```logql
+avg(rate(({job="nginx"} |= "GET")[10s])) by (region)
+```
 
 ### Binary Operators
 
@@ -185,15 +201,22 @@ The result is propagated into the result vector with the grouping labels becomin
 
 Implement a health check with a simple query:
 
-> `1 + 1`
+```logql
+1 + 1
+```
 
 Double the rate of a a log stream's entries:
 
-> `sum(rate({app="foo"})) * 2`
+```logql
+sum(rate({app="foo"})) * 2
+```
 
 Get proportion of warning logs to error logs for the `foo` app
 
-> `sum(rate({app="foo", level="warn"}[1m])) / sum(rate({app="foo", level="error"}[1m]))`
+```logql
+sum(rate({app="foo", level="warn"}[1m])) / sum(rate({app="foo", level="error"}[1m]))
+```
+
 Operators on the same precedence level are left-associative (queries substituted with numbers here for simplicity).
 
 `2 * 3 % 2` is equivalent to `(2 * 3) % 2`.
@@ -224,7 +247,9 @@ All matching elements in both vectors are dropped.
 
 This contrived query will return the intersection of these queries, effectively `rate({app="bar"})`:
 
-> `rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])`
+```logql
+rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])
+```
 
 #### Comparison operators
 
@@ -247,12 +272,30 @@ The `bool` modifier must **not** be provided.
 Between a vector and a scalar, these operators are applied to the value of every data sample in the vector, and vector elements between which the comparison result is false get dropped from the result vector.
 If the `bool` modifier is provided, vector elements that would be dropped instead have the value 0 and vector elements that would be kept have the value 1.
 
->  `count_over_time({foo="bar"}[1m]) > 10` Filters the streams which log at elast 10 lines in the last minute.
+Filters the streams which logged at least 10 lines in the last minute:
 
->  `count_over_time({foo="bar"}[1m]) > bool 10` The same as above, but instead of filtering, attached the value 0 to streams that log less than 10 lines.
+```logql
+count_over_time({foo="bar"}[1m]) > 10
+```
 
-Between two vectors, these operators behave as a filter by default, applied to matching entries. Vector elements for which the expression is not true or which do not find a match on the other side of the expression get dropped from the result, while the others are propagated into a result vector. If the bool modifier is provided, vector elements that would have been dropped instead have the value 0 and vector elements that would be kept have the value 1, with the grouping labels again becoming the output label set.
+Attach the value(s) `0`/`1` to streams that logged less/more than 10 lines:
 
-> `sum without(app) (count_over_time({app="foo"}[1m])) > sum without(app) (count_over_time({app="bar"}[1m]))` Returns the streams matching `app=foo` without app labels that have higher counts within the last minute than their counterparts matching `app=bar`without app labels.
+```logql
+count_over_time({foo="bar"}[1m]) > bool 10
+```
 
-> `sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))` The same as above, but vectors have their values set to 1 if they pass the comparison or 0 if they fail/would otherwise have been filtered out.
+Between two vectors, these operators behave as a filter by default, applied to matching entries.
+Vector elements for which the expression is not true or which do not find a match on the other side of the expression get dropped from the result, while the others are propagated into a result vector.
+If the `bool` modifier is provided, vector elements that would have been dropped instead have the value 0 and vector elements that would be kept have the value 1, with the grouping labels again becoming the output label set.
+
+Return the streams matching `app=foo` without app labels that have higher counts within the last minute than their counterparts matching `app=bar` without app labels:
+
+```logql
+sum without(app) (count_over_time({app="foo"}[1m])) > sum without(app) (count_over_time({app="bar"}[1m]))
+```
+
+Same as above, but vectors have their values set to `1` if they pass the comparison or `0` if they fail/would otherwise have been filtered out:
+
+```logql
+sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
+```
