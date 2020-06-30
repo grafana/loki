@@ -340,7 +340,16 @@ type seriesIterator struct {
 	labels  string
 }
 
-// NewStreamIterator iterates over sample in a series.
+// NewMultiSeriesIterator returns an iterator over multiple logproto.Series
+func NewMultiSeriesIterator(ctx context.Context, series []logproto.Series) SampleIterator {
+	is := make([]SampleIterator, 0, len(series))
+	for i := range series {
+		is = append(is, NewSeriesIterator(series[i]))
+	}
+	return NewSampleHeapIterator(ctx, is)
+}
+
+// NewSeriesIterator iterates over sample in a series.
 func NewSeriesIterator(series logproto.Series) SampleIterator {
 	return &seriesIterator{
 		i:       -1,

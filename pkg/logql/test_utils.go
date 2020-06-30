@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/cespare/xxhash"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -27,7 +28,7 @@ type MockQuerier struct {
 	streams []logproto.Stream
 }
 
-func (q MockQuerier) Select(_ context.Context, req SelectParams) (iter.EntryIterator, error) {
+func (q MockQuerier) SelectLogs(ctx context.Context, req SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -91,9 +92,91 @@ outer:
 	}
 
 	return iter.NewTimeRangedIterator(
-		iter.NewStreamsIterator(context.Background(), filtered, req.Direction),
+		iter.NewStreamsIterator(ctx, filtered, req.Direction),
 		req.Start,
 		req.End,
+	), nil
+}
+
+func (q MockQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
+	selector, err := req.LogSelector()
+	if err != nil {
+		return nil, err
+	}
+	filter, err := selector.Filter()
+	if err != nil {
+		return nil, err
+	}
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	matchers := selector.Matchers()
+
+	var shard *astmapper.ShardAnnotation
+	if len(req.Shards) > 0 {
+		shards, err := ParseShards(req.Shards)
+		if err != nil {
+			return nil, err
+		}
+		shard = &shards[0]
+	}
+
+	var matched []logproto.Stream
+
+outer:
+	for _, stream := range q.streams {
+		ls := mustParseLabels(stream.Labels)
+
+		// filter by shard if requested
+		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+			continue
+		}
+
+		for _, matcher := range matchers {
+			if !matcher.Matches(ls.Get(matcher.Name)) {
+				continue outer
+			}
+		}
+		matched = append(matched, stream)
+	}
+
+	// apply the LineFilter
+	filtered := make([]logproto.Series, 0, len(matched))
+	for _, s := range matched {
+		var samples []logproto.Sample
+		for _, entry := range s.Entries {
+			if filter == nil || filter.Filter([]byte(entry.Line)) {
+				v, ok := extractor.Extract([]byte(entry.Line))
+				if !ok {
+					continue
+				}
+				samples = append(samples, logproto.Sample{
+					Timestamp: entry.Timestamp.UnixNano(),
+					Value:     v,
+					Hash:      xxhash.Sum64([]byte(entry.Line)),
+				})
+			}
+		}
+
+		if len(samples) > 0 {
+			filtered = append(filtered, logproto.Series{
+				Labels:  s.Labels,
+				Samples: samples,
+			})
+		}
+	}
+
+	return iter.NewSampleTimeRangedIterator(
+		iter.NewMultiSeriesIterator(ctx, filtered),
+		req.Start.UnixNano(),
+		req.End.UnixNano(),
 	), nil
 }
 

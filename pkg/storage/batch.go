@@ -22,14 +22,14 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-type GenericIterator interface {
+type genericIterator interface {
 	Next() bool
 	Labels() string
 	Error() error
 	Close() error
 }
 
-type ChunksIteratorFactory func(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (GenericIterator, error)
+type chunksIteratorFactory func(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error)
 
 // batchChunkIterator is an EntryIterator that iterates through chunks by batch of `batchSize`.
 // Since chunks can overlap across batches for each iteration the iterator will keep all overlapping
@@ -39,15 +39,15 @@ type batchChunkIterator struct {
 	chunks          lazyChunks
 	batchSize       int
 	err             error
-	curr            GenericIterator
+	curr            genericIterator
 	lastOverlapping []*LazyChunk
-	iterFactory     ChunksIteratorFactory
+	iterFactory     chunksIteratorFactory
 
 	cancel     context.CancelFunc
 	start, end time.Time
 	direction  logproto.Direction
 	next       chan *struct {
-		iter GenericIterator
+		iter genericIterator
 		err  error
 	}
 }
@@ -59,7 +59,7 @@ func newBatchChunkIterator(
 	batchSize int,
 	direction logproto.Direction,
 	start, end time.Time,
-	iterFactory ChunksIteratorFactory,
+	iterFactory chunksIteratorFactory,
 ) *batchChunkIterator {
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -73,7 +73,7 @@ func newBatchChunkIterator(
 		iterFactory: iterFactory,
 		chunks:      lazyChunks{direction: direction, chunks: chunks},
 		next: make(chan *struct {
-			iter GenericIterator
+			iter genericIterator
 			err  error
 		}),
 	}
@@ -103,7 +103,7 @@ func (it *batchChunkIterator) loop(ctx context.Context) {
 			}
 			return
 		case it.next <- &struct {
-			iter GenericIterator
+			iter genericIterator
 			err  error
 		}{next, err}:
 		}
@@ -133,7 +133,7 @@ func (it *batchChunkIterator) Next() bool {
 	}
 }
 
-func (it *batchChunkIterator) nextBatch() (GenericIterator, error) {
+func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
 	from, through := it.start, it.end
@@ -304,7 +304,7 @@ func (it *logBatchIterator) Entry() logproto.Entry {
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
-func (it *logBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (GenericIterator, error) {
+func (it *logBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
 	chksBySeries, err := fetchChunkBySeries(it.ctx, chunks, it.matchers)
 	if err != nil {
 		return nil, err
@@ -399,7 +399,7 @@ func (it *sampleBatchIterator) Sample() logproto.Sample {
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
-func (it *sampleBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (GenericIterator, error) {
+func (it *sampleBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
 	chksBySeries, err := fetchChunkBySeries(it.ctx, chunks, it.matchers)
 	if err != nil {
 		return nil, err
