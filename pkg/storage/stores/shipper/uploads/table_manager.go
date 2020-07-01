@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sync"
@@ -159,6 +160,12 @@ func (tm *TableManager) uploadTables(ctx context.Context) (err error) {
 		if err != nil {
 			return err
 		}
+
+		err = table.Cleanup()
+		if err != nil {
+			// we do not want to stop uploading of dbs due to failures in cleaning them up so logging just the error here.
+			level.Error(pkg_util.Logger).Log("msg", "failed to cleanup uploaded dbs past their retention period", "table", table.name, "err", err)
+		}
 	}
 
 	return
@@ -177,8 +184,30 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 	}
 
 	for _, fileInfo := range filesInfo {
-		if !fileInfo.IsDir() || !re.MatchString(fileInfo.Name()) {
+		if !re.MatchString(fileInfo.Name()) {
 			continue
+		}
+
+		// since we are moving to keeping files for same table in a folder, if current element is a file we need to move it inside a directory with the same name
+		// i.e file index_123 would be moved to path index_123/index_123.
+		if !fileInfo.IsDir() {
+			filePath := filepath.Join(tm.indexDir, fileInfo.Name())
+
+			// create a folder with .temp suffix since we can't create a directory with same name as file.
+			tempDirPath := filePath + ".temp"
+			if err := chunk_util.EnsureDirectory(tempDirPath); err != nil {
+				return nil, err
+			}
+
+			// move the file to temp dir.
+			if err := os.Rename(filePath, filepath.Join(tempDirPath, fileInfo.Name())); err != nil {
+				return nil, err
+			}
+
+			// rename the directory to name of the file
+			if err := os.Rename(tempDirPath, filePath); err != nil {
+				return nil, err
+			}
 		}
 
 		table, err := LoadTable(filepath.Join(tm.indexDir, fileInfo.Name()), tm.uploader, tm.storageClient, tm.boltIndexClient)

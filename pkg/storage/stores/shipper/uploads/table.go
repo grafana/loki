@@ -18,8 +18,14 @@ import (
 	"go.etcd.io/bbolt"
 )
 
-// create a new file sharded by time based on when write request is received
-const shardIndexFilesByDuration = 15 * time.Minute
+const (
+	// create a new file sharded by time based on when write request is received
+	shardIndexFilesByDuration = 15 * time.Minute
+
+	// retain files for specified duration after they are modified to avoid keeping them locally forever.
+	// this period should be big enough than shardIndexFilesByDuration to avoid any conflicts
+	filesRetainPeriod = time.Hour
+)
 
 type BoltDBIndexClient interface {
 	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
@@ -127,7 +133,7 @@ func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
 
 func (lt *Table) Stop() {
 	lt.dbsMtx.Lock()
-	defer lt.dbsMtx.RUnlock()
+	defer lt.dbsMtx.Unlock()
 
 	for name, db := range lt.dbs {
 		if err := db.Close(); err != nil {
@@ -140,7 +146,7 @@ func (lt *Table) Stop() {
 
 func (lt *Table) RemoveFile(name string) error {
 	lt.dbsMtx.Lock()
-	defer lt.dbsMtx.RUnlock()
+	defer lt.dbsMtx.Unlock()
 
 	db, ok := lt.dbs[name]
 	if !ok {
@@ -151,6 +157,8 @@ func (lt *Table) RemoveFile(name string) error {
 	if err != nil {
 		return err
 	}
+
+	delete(lt.dbs, name)
 
 	return os.Remove(filepath.Join(lt.path, name))
 }
@@ -223,7 +231,42 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 
 	// Files are stored with <table-name>/<uploader>-<db-name>
 	objectKey := fmt.Sprintf("%s/%s-%s", lt.name, lt.uploader, name)
+
+	// if the file is a migrated one then don't add its name to the object key otherwise we would re-upload them again here with a different name.
+	if lt.name == name {
+		objectKey = fmt.Sprintf("%s/%s", lt.name, lt.uploader)
+	}
+
 	return lt.storageClient.PutObject(ctx, objectKey, f)
+}
+
+func (lt *Table) Cleanup() error {
+	var filesToCleanup []string
+	cutoffTime := time.Now().Add(-filesRetainPeriod)
+
+	for name, db := range lt.dbs {
+		stat, err := os.Stat(db.Path())
+		if err != nil {
+			return err
+		}
+
+		lt.uploadedDBsMtimeMtx.RLock()
+		uploadedDBMtime, ok := lt.uploadedDBsMtime[name]
+		lt.uploadedDBsMtimeMtx.RUnlock()
+
+		// consider files which are already uploaded and have mod time before cutoff time to retain files.
+		if ok && !uploadedDBMtime.Before(stat.ModTime()) && stat.ModTime().Before(cutoffTime) {
+			filesToCleanup = append(filesToCleanup, name)
+		}
+	}
+
+	for i := range filesToCleanup {
+		if err := lt.RemoveFile(filesToCleanup[i]); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
