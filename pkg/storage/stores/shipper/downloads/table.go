@@ -41,7 +41,9 @@ type Table struct {
 	dbs        map[string]*downloadedFile
 	dbsMtx     sync.RWMutex
 	err        error
-	ready      chan struct{}
+
+	ready      chan struct{}      // helps with detecting initialization of table which downloads all the existing files.
+	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
 func NewTable(period, cacheLocation string, storageClient chunk.ObjectClient, metrics *metrics) *Table {
@@ -63,9 +65,11 @@ func NewTable(period, cacheLocation string, storageClient chunk.ObjectClient, me
 		ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
 		defer cancel()
 
+		table.cancelFunc = cancel
+
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
-		if err := table.downloadAllFilesForPeriod(ctx); err != nil {
+		if err := table.init(ctx); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to download files", "period", table.name)
 		}
 	}()
@@ -73,9 +77,79 @@ func NewTable(period, cacheLocation string, storageClient chunk.ObjectClient, me
 	return &table
 }
 
+func (t *Table) init(ctx context.Context) (err error) {
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+			t.err = err
+
+			// cleaning up files due to error to avoid returning invalid results.
+			for fileName := range t.dbs {
+				if err := t.cleanupFile(fileName); err != nil {
+					level.Error(util.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
+				}
+			}
+		}
+		t.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
+	}()
+
+	startTime := time.Now()
+	totalFilesSize := int64(0)
+
+	objects, _, err := t.storageClient.List(ctx, t.name+"/")
+	if err != nil {
+		return
+	}
+
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, objects))
+
+	folderPath, err := t.folderPathForTable(true)
+	if err != nil {
+		return
+	}
+
+	for _, object := range objects {
+		uploader := getUploaderFromObjectKey(object.Key)
+
+		filePath := path.Join(folderPath, uploader)
+		df := downloadedFile{}
+
+		err = t.getFileFromStorage(ctx, object.Key, filePath)
+		if err != nil {
+			return
+		}
+
+		df.mtime = object.ModifiedAt
+		df.boltdb, err = local.OpenBoltdbFile(filePath)
+		if err != nil {
+			return
+		}
+
+		var stat os.FileInfo
+		stat, err = os.Stat(filePath)
+		if err != nil {
+			return
+		}
+
+		totalFilesSize += stat.Size()
+
+		t.dbs[uploader] = &df
+	}
+
+	duration := time.Since(startTime).Seconds()
+	t.metrics.filesDownloadDurationSeconds.add(t.name, duration)
+	t.metrics.filesDownloadSizeBytes.add(t.name, totalFilesSize)
+
+	return
+}
+
 func (t *Table) Close() {
 	t.dbsMtx.Lock()
 	defer t.dbsMtx.RUnlock()
+
+	// stop the initialization if it is still ongoing.
+	t.cancelFunc()
 
 	for name, db := range t.dbs {
 		if err := db.boltdb.Close(); err != nil {
@@ -278,75 +352,6 @@ func (t *Table) getFileFromStorage(ctx context.Context, objectKey, destination s
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
 
 	return f.Sync()
-}
-
-// downloadAllFilesForPeriod should be called when files for a period does not exist i.e they were never downloaded or got cleaned up later on by TTL
-// While files are being downloaded it will block all reads/writes on Table by taking an exclusive lock
-func (t *Table) downloadAllFilesForPeriod(ctx context.Context) (err error) {
-	defer func() {
-		status := statusSuccess
-		if err != nil {
-			status = statusFailure
-			t.err = err
-
-			// cleaning up files due to error to avoid returning invalid results.
-			for fileName := range t.dbs {
-				if err := t.cleanupFile(fileName); err != nil {
-					level.Error(util.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
-				}
-			}
-		}
-		t.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
-	}()
-
-	startTime := time.Now()
-	totalFilesSize := int64(0)
-
-	objects, _, err := t.storageClient.List(ctx, t.name+"/")
-	if err != nil {
-		return
-	}
-
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, objects))
-
-	folderPath, err := t.folderPathForTable(true)
-	if err != nil {
-		return
-	}
-
-	for _, object := range objects {
-		uploader := getUploaderFromObjectKey(object.Key)
-
-		filePath := path.Join(folderPath, uploader)
-		df := downloadedFile{}
-
-		err = t.getFileFromStorage(ctx, object.Key, filePath)
-		if err != nil {
-			return
-		}
-
-		df.mtime = object.ModifiedAt
-		df.boltdb, err = local.OpenBoltdbFile(filePath)
-		if err != nil {
-			return
-		}
-
-		var stat os.FileInfo
-		stat, err = os.Stat(filePath)
-		if err != nil {
-			return
-		}
-
-		totalFilesSize += stat.Size()
-
-		t.dbs[uploader] = &df
-	}
-
-	duration := time.Since(startTime).Seconds()
-	t.metrics.filesDownloadDurationSeconds.add(t.name, duration)
-	t.metrics.filesDownloadSizeBytes.add(t.name, totalFilesSize)
-
-	return
 }
 
 func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
