@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -165,6 +166,7 @@ type Downstreamer interface {
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
 type DownstreamEvaluator struct {
 	Downstreamer
+	defaultEvaluator Evaluator
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
@@ -184,9 +186,19 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 }
 
+type errorQuerier struct{}
+
+func (errorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+	return nil, errors.New("Unimplemented")
+}
+func (errorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	return nil, errors.New("Unimplemented")
+}
+
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	return &DownstreamEvaluator{
-		Downstreamer: downstreamer,
+		Downstreamer:     downstreamer,
+		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0),
 	}
 }
 
@@ -252,7 +264,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		return ConcatEvaluator(xs)
 
 	default:
-		return nil, EvaluatorUnsupportedType(expr, ev)
+		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
 	}
 }
 
