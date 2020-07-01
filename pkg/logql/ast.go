@@ -182,9 +182,7 @@ type logRange struct {
 // impls Stringer
 func (r logRange) String() string {
 	var sb strings.Builder
-	sb.WriteString("(")
 	sb.WriteString(r.left.String())
-	sb.WriteString(")")
 	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
 	return sb.String()
 }

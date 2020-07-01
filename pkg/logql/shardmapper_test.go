@@ -132,19 +132,19 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in:  `sum(rate({foo="bar"}[1m]))`,
-			out: `sum(downstream<sum(rate(({foo="bar"})[1m])), shard=0_of_2> ++ downstream<sum(rate(({foo="bar"})[1m])), shard=1_of_2>)`,
+			out: `sum(downstream<sum(rate({foo="bar"}[1m])), shard=0_of_2> ++ downstream<sum(rate({foo="bar"}[1m])), shard=1_of_2>)`,
 		},
 		{
 			in:  `max(count(rate({foo="bar"}[5m]))) / 2`,
-			out: `max(sum(downstream<count(rate(({foo="bar"})[5m])), shard=0_of_2> ++ downstream<count(rate(({foo="bar"})[5m])), shard=1_of_2>)) / 2.000000`,
+			out: `max(sum(downstream<count(rate({foo="bar"}[5m])), shard=0_of_2> ++ downstream<count(rate({foo="bar"}[5m])), shard=1_of_2>)) / 2.000000`,
 		},
 		{
 			in:  `topk(3, rate({foo="bar"}[5m]))`,
-			out: `topk(3,downstream<rate(({foo="bar"})[5m]), shard=0_of_2> ++ downstream<rate(({foo="bar"})[5m]), shard=1_of_2>)`,
+			out: `topk(3,downstream<rate({foo="bar"}[5m]), shard=0_of_2> ++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>)`,
 		},
 		{
 			in:  `sum(max(rate({foo="bar"}[5m])))`,
-			out: `sum(max(downstream<rate(({foo="bar"})[5m]), shard=0_of_2> ++ downstream<rate(({foo="bar"})[5m]), shard=1_of_2>))`,
+			out: `sum(max(downstream<rate({foo="bar"}[5m]), shard=0_of_2> ++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>))`,
 		},
 		{
 			in:  `{foo="bar"} |= "id=123"`,
@@ -152,7 +152,7 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in:  `sum by (cluster) (rate({foo="bar"} |= "id=123" [5m]))`,
-			out: `sum by(cluster)(downstream<sum by(cluster)(rate(({foo="bar"}|="id=123")[5m])), shard=0_of_2> ++ downstream<sum by(cluster)(rate(({foo="bar"}|="id=123")[5m])), shard=1_of_2>)`,
+			out: `sum by(cluster)(downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=0_of_2> ++ downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=1_of_2>)`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
