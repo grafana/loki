@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-func Test_newBatchChunkIterator(t *testing.T) {
+func Test_newLogBatchChunkIterator(t *testing.T) {
 
 	tests := map[string]struct {
 		chunks     []*LazyChunk

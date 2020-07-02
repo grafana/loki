@@ -384,10 +384,11 @@ func newSampleBatchIterator(
 	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
 
 	samplebatch := &sampleBatchIterator{
-		labels:   map[model.Fingerprint]string{},
-		matchers: matchers,
-		filter:   filter,
-		ctx:      ctx,
+		labels:    map[model.Fingerprint]string{},
+		matchers:  matchers,
+		filter:    filter,
+		extractor: extractor,
+		ctx:       ctx,
 	}
 	batch := newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, samplebatch.newChunksIterator)
 	samplebatch.batchChunkIterator = batch
