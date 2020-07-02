@@ -552,7 +552,8 @@ func Test_newBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it := newBatchChunkIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, newQuery("", tt.start, tt.end, tt.direction, nil))
+			it, err := newLogBatchIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, tt.direction, tt.start, tt.end)
+			require.NoError(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
 			if err != nil {
@@ -754,9 +755,11 @@ func TestBuildHeapIterator(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			ctx = user.InjectOrgID(context.Background(), "test-user")
-			b := &batchChunkIterator{
+			b := &logBatchIterator{
+				batchChunkIterator: &batchChunkIterator{
+					direction: logproto.FORWARD,
+				},
 				ctx:    ctx,
-				req:    &logproto.QueryRequest{Direction: logproto.FORWARD},
 				labels: map[model.Fingerprint]string{},
 			}
 			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), nil)
@@ -864,7 +867,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 	ctx := user.InjectOrgID(stats.NewContext(context.Background()), "fake")
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
-		it, err := st.LazyQuery(ctx, logql.SelectParams{QueryRequest: &logproto.QueryRequest{
+		it, err := st.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  `{foo="bar"}`,
 			Direction: logproto.BACKWARD,
 			Limit:     0,

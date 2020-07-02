@@ -111,7 +111,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		}
 	}()
 	for i := 0; i < b.N; i++ {
-		iter, err := chunkStore.LazyQuery(ctx, logql.SelectParams{QueryRequest: query})
+		iter, err := chunkStore.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: query})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -180,7 +180,7 @@ func getLocalStore() Store {
 	return store
 }
 
-func Test_store_LazyQuery(t *testing.T) {
+func Test_store_SelectLogs(t *testing.T) {
 
 	tests := []struct {
 		name     string
@@ -351,7 +351,7 @@ func Test_store_LazyQuery(t *testing.T) {
 			}
 
 			ctx = user.InjectOrgID(context.Background(), "test-user")
-			it, err := s.LazyQuery(ctx, logql.SelectParams{QueryRequest: tt.req})
+			it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: tt.req})
 			if err != nil {
 				t.Errorf("store.LazyQuery() error = %v", err)
 				return
@@ -419,7 +419,7 @@ func Test_store_GetSeries(t *testing.T) {
 				},
 			}
 			ctx = user.InjectOrgID(context.Background(), "test-user")
-			out, err := s.GetSeries(ctx, logql.SelectParams{QueryRequest: tt.req})
+			out, err := s.GetSeries(ctx, logql.SelectLogParams{QueryRequest: tt.req})
 			if err != nil {
 				t.Errorf("store.GetSeries() error = %v", err)
 				return
@@ -464,7 +464,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ms, _, _, _, err := decodeReq(logql.SelectParams{QueryRequest: tt.req})
+			ms, _, _, _, err := decodeReq(logql.SelectLogParams{QueryRequest: tt.req})
 			if err != nil {
 				t.Errorf("store.GetSeries() error = %v", err)
 				return
