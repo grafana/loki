@@ -1456,7 +1456,7 @@ func (e errorIteratorQuerier) SelectLogs(ctx context.Context, p SelectLogParams)
 	return iter.NewHeapIterator(ctx, e.entries, p.Direction), nil
 }
 func (e errorIteratorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewSampleHeapIterator(ctx, e.samples), nil
+	return iter.NewHeapSampleIterator(ctx, e.samples), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
@@ -1693,7 +1693,7 @@ func (q *querierRecorder) SelectSamples(ctx context.Context, p SelectSampleParam
 	for _, s := range series {
 		iters = append(iters, iter.NewSeriesIterator(s))
 	}
-	return iter.NewSampleHeapIterator(ctx, iters), nil
+	return iter.NewHeapSampleIterator(ctx, iters), nil
 }
 
 func paramsID(p interface{}) string {

@@ -347,7 +347,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		itrs = append(itrs, storeItr)
 	}
 
-	heapItr := iter.NewSampleHeapIterator(ctx, itrs)
+	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
 
 	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 

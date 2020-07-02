@@ -12,9 +12,9 @@ const unsupportedErr = "unsupported range vector aggregation operation: %s"
 func (r rangeAggregationExpr) Extractor() (SampleExtractor, error) {
 	switch r.operation {
 	case OpRangeTypeRate, OpRangeTypeCount:
-		return extractCount, nil
+		return ExtractCount, nil
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
-		return extractBytes, nil
+		return ExtractBytes, nil
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}

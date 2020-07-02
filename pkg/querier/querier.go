@@ -240,7 +240,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 	if err != nil {
 		return nil, err
 	}
-	return iter.NewSampleHeapIterator(ctx, append(iters, chunkStoreIter)), nil
+	return iter.NewHeapSampleIterator(ctx, append(iters, chunkStoreIter)), nil
 }
 
 func shouldQueryIngester(cfg Config, params logql.QueryParams) bool {

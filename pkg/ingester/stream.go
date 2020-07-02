@@ -286,7 +286,7 @@ func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, fi
 		}
 	}
 
-	return iter.NewSampleNonOverlappingIterator(iterators, s.labelsString), nil
+	return iter.NewNonOverlappingSampleIterator(iterators, s.labelsString), nil
 }
 
 func (s *stream) addTailer(t *tailer) {

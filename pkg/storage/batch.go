@@ -410,7 +410,7 @@ func (it *sampleBatchIterator) newChunksIterator(chunks []*LazyChunk, from, thro
 		return nil, err
 	}
 
-	return iter.NewSampleHeapIterator(it.ctx, iters), nil
+	return iter.NewHeapSampleIterator(it.ctx, iters), nil
 }
 
 func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.SampleIterator, error) {
@@ -444,10 +444,10 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			iterators = append(iterators, iterator)
 		}
 
-		result = append(result, iter.NewSampleNonOverlappingIterator(iterators, labels))
+		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, labels))
 	}
 
-	return iter.NewSampleHeapIterator(it.ctx, result), nil
+	return iter.NewHeapSampleIterator(it.ctx, result), nil
 }
 
 func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels.Matcher {

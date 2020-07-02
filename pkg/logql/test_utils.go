@@ -173,7 +173,7 @@ outer:
 		}
 	}
 
-	return iter.NewSampleTimeRangedIterator(
+	return iter.NewTimeRangedSampleIterator(
 		iter.NewMultiSeriesIterator(ctx, filtered),
 		req.Start.UnixNano(),
 		req.End.UnixNano(),

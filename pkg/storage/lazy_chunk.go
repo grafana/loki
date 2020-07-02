@@ -136,8 +136,8 @@ func (c *LazyChunk) SampleIterator(
 	}
 
 	// build the final iterator bound to the requested time range.
-	return iter.NewSampleTimeRangedIterator(
-		iter.NewSampleNonOverlappingIterator(its, ""),
+	return iter.NewTimeRangedSampleIterator(
+		iter.NewNonOverlappingSampleIterator(its, ""),
 		from.UnixNano(),
 		through.UnixNano(),
 	), nil

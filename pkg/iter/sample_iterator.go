@@ -136,8 +136,8 @@ func (h sampleIteratorHeap) Less(i, j int) bool {
 	}
 }
 
-// sampleHeapIterator iterates over a heap of iterators.
-type sampleHeapIterator struct {
+// heapSampleIterator iterates over a heap of iterators.
+type heapSampleIterator struct {
 	heap       *sampleIteratorHeap
 	is         []SampleIterator
 	prefetched bool
@@ -149,11 +149,11 @@ type sampleHeapIterator struct {
 	errs       []error
 }
 
-// NewSampleHeapIterator returns a new iterator which uses a heap to merge together
+// NewHeapSampleIterator returns a new iterator which uses a heap to merge together
 // entries for multiple iterators.
-func NewSampleHeapIterator(ctx context.Context, is []SampleIterator) SampleIterator {
+func NewHeapSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
 
-	return &sampleHeapIterator{
+	return &heapSampleIterator{
 		stats:  stats.GetChunkData(ctx),
 		is:     is,
 		heap:   &sampleIteratorHeap{},
@@ -164,7 +164,7 @@ func NewSampleHeapIterator(ctx context.Context, is []SampleIterator) SampleItera
 // prefetch iterates over all inner iterators to merge together, calls Next() on
 // each of them to prefetch the first entry and pushes of them - who are not
 // empty - to the heap
-func (i *sampleHeapIterator) prefetch() {
+func (i *heapSampleIterator) prefetch() {
 	if i.prefetched {
 		return
 	}
@@ -185,7 +185,7 @@ func (i *sampleHeapIterator) prefetch() {
 //
 // If the iterator has no more entries or an error occur while advancing it, the iterator
 // is not pushed to the heap and any possible error captured, so that can be get via Error().
-func (i *sampleHeapIterator) requeue(ei SampleIterator, advanced bool) {
+func (i *heapSampleIterator) requeue(ei SampleIterator, advanced bool) {
 	if advanced || ei.Next() {
 		heap.Push(i.heap, ei)
 		return
@@ -202,7 +202,7 @@ type sampletuple struct {
 	SampleIterator
 }
 
-func (i *sampleHeapIterator) Next() bool {
+func (i *heapSampleIterator) Next() bool {
 	i.prefetch()
 
 	if i.heap.Len() == 0 {
@@ -251,15 +251,15 @@ func (i *sampleHeapIterator) Next() bool {
 	return true
 }
 
-func (i *sampleHeapIterator) Sample() logproto.Sample {
+func (i *heapSampleIterator) Sample() logproto.Sample {
 	return i.curr
 }
 
-func (i *sampleHeapIterator) Labels() string {
+func (i *heapSampleIterator) Labels() string {
 	return i.currLabels
 }
 
-func (i *sampleHeapIterator) Error() error {
+func (i *heapSampleIterator) Error() error {
 	switch len(i.errs) {
 	case 0:
 		return nil
@@ -270,7 +270,7 @@ func (i *sampleHeapIterator) Error() error {
 	}
 }
 
-func (i *sampleHeapIterator) Close() error {
+func (i *heapSampleIterator) Close() error {
 	for i.heap.Len() > 0 {
 		if err := i.heap.Pop().(SampleIterator).Close(); err != nil {
 			return err
@@ -331,7 +331,7 @@ func NewSampleQueryResponseIterator(ctx context.Context, resp *logproto.SampleQu
 	for i := range resp.Series {
 		is = append(is, NewSeriesIterator(resp.Series[i]))
 	}
-	return NewSampleHeapIterator(ctx, is)
+	return NewHeapSampleIterator(ctx, is)
 }
 
 type seriesIterator struct {
@@ -346,7 +346,7 @@ func NewMultiSeriesIterator(ctx context.Context, series []logproto.Series) Sampl
 	for i := range series {
 		is = append(is, NewSeriesIterator(series[i]))
 	}
-	return NewSampleHeapIterator(ctx, is)
+	return NewHeapSampleIterator(ctx, is)
 }
 
 // NewSeriesIterator iterates over sample in a series.
@@ -379,22 +379,22 @@ func (i *seriesIterator) Close() error {
 	return nil
 }
 
-type sampleNonOverlappingIterator struct {
+type nonOverlappingSampleIterator struct {
 	labels    string
 	i         int
 	iterators []SampleIterator
 	curr      SampleIterator
 }
 
-// NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewSampleNonOverlappingIterator(iterators []SampleIterator, labels string) SampleIterator {
-	return &sampleNonOverlappingIterator{
+// NewNonOverlappingSampleIterator gives a chained iterator over a list of iterators.
+func NewNonOverlappingSampleIterator(iterators []SampleIterator, labels string) SampleIterator {
+	return &nonOverlappingSampleIterator{
 		labels:    labels,
 		iterators: iterators,
 	}
 }
 
-func (i *sampleNonOverlappingIterator) Next() bool {
+func (i *nonOverlappingSampleIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
 		if len(i.iterators) == 0 {
 			if i.curr != nil {
@@ -412,11 +412,11 @@ func (i *sampleNonOverlappingIterator) Next() bool {
 	return true
 }
 
-func (i *sampleNonOverlappingIterator) Sample() logproto.Sample {
+func (i *nonOverlappingSampleIterator) Sample() logproto.Sample {
 	return i.curr.Sample()
 }
 
-func (i *sampleNonOverlappingIterator) Labels() string {
+func (i *nonOverlappingSampleIterator) Labels() string {
 	if i.labels != "" {
 		return i.labels
 	}
@@ -424,14 +424,14 @@ func (i *sampleNonOverlappingIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *sampleNonOverlappingIterator) Error() error {
+func (i *nonOverlappingSampleIterator) Error() error {
 	if i.curr != nil {
 		return i.curr.Error()
 	}
 	return nil
 }
 
-func (i *sampleNonOverlappingIterator) Close() error {
+func (i *nonOverlappingSampleIterator) Close() error {
 	for _, iter := range i.iterators {
 		iter.Close()
 	}
@@ -439,21 +439,21 @@ func (i *sampleNonOverlappingIterator) Close() error {
 	return nil
 }
 
-type sampleTimeRangedIterator struct {
+type timeRangedSampleIterator struct {
 	SampleIterator
 	mint, maxt int64
 }
 
-// NewTimeRangedIterator returns an iterator which filters entries by time range.
-func NewSampleTimeRangedIterator(it SampleIterator, mint, maxt int64) SampleIterator {
-	return &sampleTimeRangedIterator{
+// NewTimeRangedSampleIterator returns an iterator which filters entries by time range.
+func NewTimeRangedSampleIterator(it SampleIterator, mint, maxt int64) SampleIterator {
+	return &timeRangedSampleIterator{
 		SampleIterator: it,
 		mint:           mint,
 		maxt:           maxt,
 	}
 }
 
-func (i *sampleTimeRangedIterator) Next() bool {
+func (i *timeRangedSampleIterator) Next() bool {
 	ok := i.SampleIterator.Next()
 	if !ok {
 		i.SampleIterator.Close()

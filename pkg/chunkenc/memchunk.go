@@ -519,8 +519,8 @@ func (c *MemChunk) SampleIterator(ctx context.Context, mintT, maxtT time.Time, f
 		its = append(its, c.head.sampleIterator(ctx, mint, maxt, filter, extractor))
 	}
 
-	return iter.NewSampleTimeRangedIterator(
-		iter.NewSampleNonOverlappingIterator(its, ""),
+	return iter.NewTimeRangedSampleIterator(
+		iter.NewNonOverlappingSampleIterator(its, ""),
 		mint,
 		maxt,
 	)
@@ -837,7 +837,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	var ok bool
-	for e.Next() {
+	for e.bufferedIterator.Next() {
 		if e.currValue, ok = e.extractor.Extract(e.currLine); ok {
 			return true
 		}

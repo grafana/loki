@@ -32,7 +32,7 @@ var labelFoo, _ = parser.ParseMetric("{app=\"foo\"}")
 var labelBar, _ = parser.ParseMetric("{app=\"bar\"}")
 
 func newSampleIterator() iter.SampleIterator {
-	return iter.NewSampleHeapIterator(context.Background(), []iter.SampleIterator{
+	return iter.NewHeapSampleIterator(context.Background(), []iter.SampleIterator{
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:  labelFoo.String(),
 			Samples: samples,

@@ -1,8 +1,8 @@
 package logql
 
 var (
-	extractBytes = bytesSampleExtractor{}
-	extractCount = countSampleExtractor{}
+	ExtractBytes = bytesSampleExtractor{}
+	ExtractCount = countSampleExtractor{}
 )
 
 // SampleExtractor transforms a log entry into a sample.
