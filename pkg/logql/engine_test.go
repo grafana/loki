@@ -1447,48 +1447,76 @@ func TestEngine_Stats(t *testing.T) {
 	require.Equal(t, int64(1), r.Statistics.Store.DecompressedBytes)
 }
 
-// func TestStepEvaluator_Error(t *testing.T) {
-// 	tests := []struct {
-// 		name  string
-// 		qs    string
-// 		iters []iter.EntryIterator
-// 		err   error
-// 	}{
-// 		{
-// 			"rangeAggEvaluator",
-// 			`count_over_time({app="foo"}[1m])`,
-// 			[]iter.EntryIterator{
-// 				iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
-// 				NewMockStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
-// 			},
-// 			ErrMock,
-// 		},
-// 		{
-// 			"binOpStepEvaluator",
-// 			`count_over_time({app="foo"}[1m]) / count_over_time({app="foo"}[1m])`,
-// 			[]iter.EntryIterator{
-// 				iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
-// 				NewMockStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
-// 			},
-// 			ErrMockMultiple,
-// 		},
-// 	}
+type errorIteratorQuerier struct {
+	samples []iter.SampleIterator
+	entries []iter.EntryIterator
+}
 
-// 	for _, tc := range tests {
-// 		queryfunc := QuerierFunc(func(ctx context.Context, p SelectParams) (iter.EntryIterator, error) {
-// 			return iter.NewHeapIterator(ctx, tc.iters, p.Direction), nil
-// 		})
-// 		eng := NewEngine(EngineOpts{}, queryfunc)
-// 		q := eng.Query(LiteralParams{
-// 			qs:    tc.qs,
-// 			start: time.Unix(0, 0),
-// 			end:   time.Unix(180, 0),
-// 			step:  1 * time.Second,
-// 		})
-// 		_, err := q.Exec(context.Background())
-// 		require.Equal(t, tc.err, err)
-// 	}
-// }
+func (e errorIteratorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+	return iter.NewHeapIterator(ctx, e.entries, p.Direction), nil
+}
+func (e errorIteratorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	return iter.NewSampleHeapIterator(ctx, e.samples), nil
+}
+
+func TestStepEvaluator_Error(t *testing.T) {
+	tests := []struct {
+		name    string
+		qs      string
+		querier Querier
+		err     error
+	}{
+		{
+			"rangeAggEvaluator",
+			`count_over_time({app="foo"}[1m])`,
+			&errorIteratorQuerier{
+				samples: []iter.SampleIterator{
+					iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
+					NewErrorSampleIterator(),
+				},
+			},
+			ErrMock,
+		},
+		{
+			"stream",
+			`{app="foo"}`,
+			&errorIteratorQuerier{
+				entries: []iter.EntryIterator{
+					iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
+					NewErrorEntryIterator(),
+				},
+			},
+			ErrMock,
+		},
+		{
+			"binOpStepEvaluator",
+			`count_over_time({app="foo"}[1m]) / count_over_time({app="foo"}[1m])`,
+			&errorIteratorQuerier{
+				samples: []iter.SampleIterator{
+					iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
+					NewErrorSampleIterator(),
+				},
+			},
+			ErrMockMultiple,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc := tc
+			eng := NewEngine(EngineOpts{}, tc.querier)
+			q := eng.Query(LiteralParams{
+				qs:    tc.qs,
+				start: time.Unix(0, 0),
+				end:   time.Unix(180, 0),
+				step:  1 * time.Second,
+			})
+			_, err := q.Exec(context.Background())
+			require.Equal(t, tc.err, err)
+		})
+	}
+}
 
 // go test -mod=vendor ./pkg/logql/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 func BenchmarkRangeQuery100000(b *testing.B) {
@@ -1799,40 +1827,27 @@ func inverse(g generator) generator {
 	}
 }
 
-// mockstreamIterator mocks error in iterator
-type mockStreamIterator struct {
-	i       int
-	entries []logproto.Entry
-	labels  string
-	err     error
+// errorIterator
+type errorIterator struct{}
+
+// NewErrorSampleIterator return an sample iterator that errors out
+func NewErrorSampleIterator() iter.SampleIterator {
+	return &errorIterator{}
 }
 
-// NewMockStreamIterator mocks error in iterator
-func NewMockStreamIterator(stream logproto.Stream) iter.EntryIterator {
-	return &mockStreamIterator{
-		i:       -1,
-		entries: stream.Entries,
-		labels:  stream.Labels,
-	}
+// NewErrorEntryIterator return an entry iterator that errors out
+func NewErrorEntryIterator() iter.EntryIterator {
+	return &errorIterator{}
 }
 
-func (i *mockStreamIterator) Next() bool {
-	i.err = ErrMock
-	return false
-}
+func (errorIterator) Next() bool { return false }
 
-func (i *mockStreamIterator) Error() error {
-	return i.err
-}
+func (errorIterator) Error() error { return ErrMock }
 
-func (i *mockStreamIterator) Labels() string {
-	return i.labels
-}
+func (errorIterator) Labels() string { return "" }
 
-func (i *mockStreamIterator) Entry() logproto.Entry {
-	return i.entries[i.i]
-}
+func (errorIterator) Entry() logproto.Entry { return logproto.Entry{} }
 
-func (i *mockStreamIterator) Close() error {
-	return nil
-}
+func (errorIterator) Sample() logproto.Sample { return logproto.Sample{} }
+
+func (errorIterator) Close() error { return nil }
