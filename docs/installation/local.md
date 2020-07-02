@@ -26,7 +26,7 @@ wget https://raw.githubusercontent.com/grafana/loki/master/cmd/promtail/promtail
 
 **Linux**
 ```
-./promtail-linux-amd64 -config.file=promtail-local-config.yaml
+./loki-linux-amd64 -config.file=promtail-local-config.yaml
 ```
 
 Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
