@@ -111,6 +111,21 @@ func TestBlock(t *testing.T) {
 			}
 
 			require.NoError(t, it.Error())
+			require.NoError(t, it.Close())
+			require.Equal(t, len(cases), idx)
+
+			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			idx = 0
+			for sampleIt.Next() {
+				s := sampleIt.Sample()
+				require.Equal(t, cases[idx].ts, s.Timestamp)
+				require.Equal(t, 1., s.Value)
+				require.NotEmpty(t, s.Hash)
+				idx++
+			}
+
+			require.NoError(t, sampleIt.Error())
+			require.NoError(t, sampleIt.Close())
 			require.Equal(t, len(cases), idx)
 
 			t.Run("bounded-iteration", func(t *testing.T) {
