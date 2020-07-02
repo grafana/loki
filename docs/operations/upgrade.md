@@ -6,6 +6,11 @@ Unfortunately Loki is software and software is hard and sometimes things are not
 
 On this page we will document any upgrade issues/gotchas/considerations we are aware of.
 
+## 1.6.0
+
+A new ingester GRPC API has been added allowing to speed up metric queries, to ensure a rollout without query errors make sure you upgrade all ingesters first.
+Once this is done you can then proceed with the rest of the deployment, this is to ensure that queriers won't look for an API not yet available.
+
 ## 1.5.0
 
 Note: The required upgrade path outlined for version 1.4.0 below is still true for moving to 1.5.0 from any release older than 1.4.0 (e.g. 1.3.0->1.5.0 needs to also look at the 1.4.0 upgrade requirements).
@@ -102,8 +107,8 @@ docker run -d --name=loki --mount source=loki-data,target=/loki -p 3100:3100 gra
 
 Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](../../cmd/loki/loki-docker-config.yaml).
 
-The intermediate step of using an ubuntu image to change the ownership of the Loki files to the new user might not be necessary if you can easily access these files to run the `chown` command directly.  
-That is if you have access to `/var/lib/docker/volumes` or if you mounted to a different local filesystem directory, you can change the ownership directly without using a container. 
+The intermediate step of using an ubuntu image to change the ownership of the Loki files to the new user might not be necessary if you can easily access these files to run the `chown` command directly.
+That is if you have access to `/var/lib/docker/volumes` or if you mounted to a different local filesystem directory, you can change the ownership directly without using a container.
 
 
 ### Loki Duration Configs
@@ -146,7 +151,7 @@ The new values are:
 ```yaml
 min_period:
 max_period:
-max_retries: 
+max_retries:
 ```
 
 ## 1.4.0
@@ -157,9 +162,9 @@ One such config change which will affect Loki users:
 
 In the [cache_config](../configuration/README.md#cache_config):
 
-`defaul_validity` has changed to `default_validity` 
- 
-Also in the unlikely case you were configuring your schema via arguments and not a config file, this is no longer supported.  This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.  
+`defaul_validity` has changed to `default_validity`
+
+Also in the unlikely case you were configuring your schema via arguments and not a config file, this is no longer supported.  This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
 The other config changes should not be relevant to Loki.
 
@@ -184,7 +189,7 @@ There are two options for upgrade if you are not on version 1.3.0 and are using 
 
 * Upgrade first to v1.3.0 **BEFORE** upgrading to v1.4.0
 
-OR 
+OR
 
 **Note:** If you are running a single binary you only need to add this flag to your single binary command.
 
