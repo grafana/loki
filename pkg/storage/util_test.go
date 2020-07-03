@@ -205,7 +205,7 @@ func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chun
 	return res, nil
 }
 
-func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, chunkID string) error {
+func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	return nil
 }
 
