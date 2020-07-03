@@ -43,7 +43,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	f, err := os.Create(logFile)
@@ -99,7 +99,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	// Spot check one of the messages.
-	if client.Messages[0] != "test" {
+	if client.Messages[0].Log != "test" {
 		t.Error("Expected first log message to be 'test' but was", client.Messages[0])
 	}
 
@@ -136,7 +136,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	f, err := os.Create(logFileDir + "test.log")
@@ -192,7 +192,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	// Spot check one of the messages.
-	if client.Messages[0] != "test" {
+	if client.Messages[0].Log != "test" {
 		t.Error("Expected first log message to be 'test' but was", client.Messages[0])
 	}
 
@@ -225,7 +225,7 @@ func TestFileRolls(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	f, err := os.Create(logFile)
@@ -286,12 +286,12 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	// Spot check one of the messages.
-	if client.Messages[0] != "test1" {
+	if client.Messages[0].Log != "test1" {
 		t.Error("Expected first log message to be 'test1' but was", client.Messages[0])
 	}
 
 	// Spot check the first message from the second file.
-	if client.Messages[10] != "test2" {
+	if client.Messages[10].Log != "test2" {
 		t.Error("Expected first log message to be 'test2' but was", client.Messages[10])
 	}
 }
@@ -323,7 +323,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	f, err := os.Create(logFile)
@@ -394,12 +394,12 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	// Spot check one of the messages.
-	if client.Messages[0] != "test1" {
+	if client.Messages[0].Log != "test1" {
 		t.Error("Expected first log message to be 'test1' but was", client.Messages[0])
 	}
 
 	// Spot check the first message from the second file.
-	if client.Messages[10] != "test2" {
+	if client.Messages[10].Log != "test2" {
 		t.Error("Expected first log message to be 'test2' but was", client.Messages[10])
 	}
 }
@@ -432,7 +432,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	f1, err := os.Create(logFile1)
@@ -535,7 +535,7 @@ func TestFileTargetSync(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	target, err := NewFileTarget(logger, client, ps, logDir1+"/*.log", nil, nil, &Config{

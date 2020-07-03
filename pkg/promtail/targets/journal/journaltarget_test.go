@@ -88,7 +88,7 @@ func TestJournalTarget(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	relabelCfg := `
@@ -141,7 +141,7 @@ func TestJournalTarget_JSON(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	relabelCfg := `
@@ -202,7 +202,7 @@ func TestJournalTarget_Since(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	cfg := scrapeconfig.JournalTargetConfig{
@@ -239,7 +239,7 @@ func TestJournalTarget_Cursor_TooOld(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	cfg := scrapeconfig.JournalTargetConfig{}
@@ -281,7 +281,7 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 
 	client := &testutils.TestClient{
 		Log:      logger,
-		Messages: make([]string, 0),
+		Messages: make([]*testutils.Entry, 0),
 	}
 
 	cfg := scrapeconfig.JournalTargetConfig{}

@@ -10,9 +10,15 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+type Entry struct {
+	Labels model.LabelSet
+	Time   time.Time
+	Log    string
+}
+
 type TestClient struct {
 	Log      log.Logger
-	Messages []string
+	Messages []*Entry
 	sync.Mutex
 }
 
@@ -21,7 +27,7 @@ func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
 
 	c.Lock()
 	defer c.Unlock()
-	c.Messages = append(c.Messages, s)
+	c.Messages = append(c.Messages, &Entry{ls, t, s})
 	return nil
 }
 
@@ -38,4 +44,3 @@ func RandName() string {
 	}
 	return string(b)
 }
-

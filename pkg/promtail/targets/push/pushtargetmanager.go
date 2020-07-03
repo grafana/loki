@@ -33,23 +33,11 @@ func NewPushTargetManager(
 		targets: make(map[string]*PushTarget),
 	}
 
-	jobNames := map[string]bool{}
+	if err := validateJobName(scrapeConfigs); err != nil {
+		return nil, err
+	}
 
 	for _, cfg := range scrapeConfigs {
-		if cfg.JobName == "" {
-			return nil, errors.New("`job_name` must be defined for the `push` scrape_config with a " +
-				"unique name to properly register metrics, " +
-				"at least one `push` scrape_config has no `job_name` defined")
-		}
-		if _, ok := jobNames[cfg.JobName]; ok {
-			return nil, fmt.Errorf("`job_name` must be unique for each `push` scrape_config, "+
-				"a duplicate `job_name` of %s was found", cfg.JobName)
-		} else {
-			jobNames[cfg.JobName] = true
-		}
-
-		cfg.JobName = strings.Replace(cfg.JobName, " ", "_", -1)
-
 		registerer := prometheus.DefaultRegisterer
 		pipeline, err := stages.NewPipeline(log.With(logger, "component", "push_pipeline_"+cfg.JobName), cfg.PipelineStages, &cfg.JobName, registerer)
 		if err != nil {
@@ -65,6 +53,26 @@ func NewPushTargetManager(
 	}
 
 	return tm, nil
+}
+
+func validateJobName(scrapeConfigs []scrapeconfig.Config) error {
+	jobNames := map[string]bool{}
+	for i, cfg := range scrapeConfigs {
+		if cfg.JobName == "" {
+			return errors.New("`job_name` must be defined for the `push` scrape_config with a " +
+				"unique name to properly register metrics, " +
+				"at least one `push` scrape_config has no `job_name` defined")
+		}
+		if _, ok := jobNames[cfg.JobName]; ok {
+			return fmt.Errorf("`job_name` must be unique for each `push` scrape_config, "+
+				"a duplicate `job_name` of %s was found", cfg.JobName)
+		} else {
+			jobNames[cfg.JobName] = true
+		}
+
+		scrapeConfigs[i].JobName = strings.Replace(cfg.JobName, " ", "_", -1)
+	}
+	return nil
 }
 
 // Ready returns true if at least one PushTarget is also ready.

@@ -53,6 +53,14 @@ func NewPushTarget(logger log.Logger,
 	if err := mergo.Merge(&defaults, config.Server, mergo.WithOverride); err != nil {
 		level.Error(logger).Log("msg", "failed to parse configs and override defaults when configuring push server", "err", err)
 	}
+	// The merge won't overwrite with a zero value but in the case of ports 0 value
+	// indicates the desire for a random port so reset these to zero if the incoming config val is 0
+	if config.Server.HTTPListenPort == 0 {
+		defaults.HTTPListenPort = 0
+	}
+	if config.Server.GRPCListenPort == 0 {
+		defaults.GRPCListenPort = 0
+	}
 	// Set the config to the new combined config.
 	config.Server = defaults
 
@@ -121,6 +129,10 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 
 		// Apply relabeling
 		processed := relabel.Process(lb.Labels(), t.relabelConfig...)
+		if processed == nil || len(processed) == 0 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 
 		// Convert to model.LabelSet
 		filtered := model.LabelSet{}
