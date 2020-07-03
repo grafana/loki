@@ -520,12 +520,6 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
 func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
-	tsdb := &tsdb{
-		pusher:    r.pusher,
-		userID:    userID,
-		queryable: r.queryable,
-	}
-
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
@@ -536,8 +530,8 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
 	opts := &promRules.ManagerOptions{
-		Appendable:      tsdb,
-		TSDB:            tsdb,
+		Appendable:      &appender{pusher: r.pusher, userID: userID},
+		Queryable:       r.queryable,
 		QueryFunc:       engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
 		Context:         user.InjectOrgID(ctx, userID),
 		ExternalURL:     r.alertURL,

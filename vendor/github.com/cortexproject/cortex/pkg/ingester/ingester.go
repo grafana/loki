@@ -108,7 +108,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
 // MemorySeriesStorage.
 type Ingester struct {
-	services.Service
+	*services.BasicService
 
 	cfg          Config
 	clientConfig client.Config
@@ -139,8 +139,9 @@ type Ingester struct {
 	// To be passed to the WAL.
 	registerer prometheus.Registerer
 
-	// Hook for injecting behaviour from tests.
+	// Hooks for injecting behaviour from tests.
 	preFlushUserSeries func()
+	preFlushChunks     func()
 
 	// Prometheus block storage
 	TSDBState TSDBState
@@ -199,7 +200,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	// During WAL recovery, it will create new user states which requires the limiter.
 	// Hence initialise the limiter before creating the WAL.
 	// The '!cfg.WALConfig.WALEnabled' argument says don't flush on shutdown if the WAL is enabled.
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.WALEnabled, registerer)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.WALEnabled || cfg.WALConfig.FlushOnShutdown, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +208,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i.subservicesWatcher = services.NewFailureWatcher()
 	i.subservicesWatcher.WatchService(i.lifecycler)
 
-	i.Service = services.NewBasicService(i.starting, i.loop, i.stopping)
+	i.BasicService = services.NewBasicService(i.starting, i.loop, i.stopping)
 	return i, nil
 }
 
@@ -276,7 +277,7 @@ func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore
 		wal:          &noopWAL{},
 	}
 
-	i.Service = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
+	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
 	return i, nil
 }
 

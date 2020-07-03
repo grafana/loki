@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -26,8 +27,9 @@ import (
 )
 
 const (
-	pathLabel = "__path__"
-	hostLabel = "__host__"
+	pathLabel              = "__path__"
+	hostLabel              = "__host__"
+	kubernetesPodNodeField = "spec.nodeName"
 )
 
 var (
@@ -117,6 +119,18 @@ func NewFileTargetManager(
 			if len(tg.Targets) == 0 {
 				tg.Targets = []model.LabelSet{
 					{model.AddressLabel: "localhost"},
+				}
+			}
+		}
+
+		// Add an additional api-level node filtering, so we only fetch pod metadata for
+		// all the pods from the current node. Without this filtering we will have to
+		// download metadata for all pods running on a cluster, which may be a long operation.
+		for _, kube := range cfg.ServiceDiscoveryConfig.KubernetesSDConfigs {
+			if kube.Role == kubernetes.RolePod {
+				selector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, hostname)
+				kube.Selectors = []kubernetes.SelectorConfig{
+					{Role: kubernetes.RolePod, Field: selector},
 				}
 			}
 		}

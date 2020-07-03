@@ -19,6 +19,11 @@ import (
 	"github.com/grafana/loki/pkg/promtail/client"
 )
 
+var (
+	lineReplacer = strings.NewReplacer(`\n`, "\n", `\t`, "\t")
+	keyReplacer  = strings.NewReplacer("/", "_", ".", "_", "-", "_")
+)
+
 type loki struct {
 	cfg    *config
 	client client.Client
@@ -65,6 +70,7 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	if err != nil {
 		return fmt.Errorf("error creating line: %v", err)
 	}
+
 	return l.client.Handle(lbs, ts, line)
 }
 
@@ -115,12 +121,11 @@ func autoLabels(records map[string]interface{}, kuberneteslbs model.LabelSet) er
 		return errors.New("kubernetes labels not found, no labels will be added")
 	}
 
-	replacer := strings.NewReplacer("/", "_", ".", "_", "-", "_")
 	for k, v := range kube.(map[string]interface{}) {
 		switch k {
 		case "labels":
 			for m, n := range v.(map[string]interface{}) {
-				kuberneteslbs[model.LabelName(replacer.Replace(m))] = model.LabelValue(fmt.Sprintf("%v", n))
+				kuberneteslbs[model.LabelName(keyReplacer.Replace(m))] = model.LabelValue(fmt.Sprintf("%v", n))
 			}
 		case "docker_id", "pod_id", "annotations":
 			// do nothing
@@ -204,7 +209,7 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return string(js), nil
+		return lineReplacer.Replace(string(js)), nil
 	case kvPairFormat:
 		buf := &bytes.Buffer{}
 		enc := logfmt.NewEncoder(buf)
@@ -226,7 +231,7 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 				return "", nil
 			}
 		}
-		return buf.String(), nil
+		return lineReplacer.Replace(buf.String()), nil
 	default:
 		return "", fmt.Errorf("invalid line format: %v", f)
 	}

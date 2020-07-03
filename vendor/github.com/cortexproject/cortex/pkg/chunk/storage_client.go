@@ -35,7 +35,7 @@ type Client interface {
 
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
-	DeleteChunk(ctx context.Context, chunkID string) error
+	DeleteChunk(ctx context.Context, userID, chunkID string) error
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both

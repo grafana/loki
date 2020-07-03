@@ -75,6 +75,7 @@ type Config struct {
 	AuthEnabled bool   `yaml:"auth_enabled"`
 	PrintConfig bool   `yaml:"-"`
 	HTTPPrefix  string `yaml:"http_prefix"`
+	ListModules bool   `yaml:"-"` // No yaml for this, it only works with flags.
 
 	API            api.Config               `yaml:"api"`
 	Server         server.Config            `yaml:"server"`
@@ -109,7 +110,8 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
-	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Supported values are: all, distributor, ingester, querier, query-frontend, table-manager, ruler, alertmanager, configs.")
+	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Use \"-modules\" command line flag to get a list of available options.")
+	f.BoolVar(&c.ListModules, "modules", false, "List available values to be use as target. Cannot be used in YAML config.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
@@ -290,6 +292,10 @@ func (t *Cortex) setupThanosTracing() {
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
+	if !t.ModuleManager.IsUserVisibleModule(t.Cfg.Target) {
+		level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", t.Cfg.Target)
+	}
+
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
 	if err != nil {
 		return err
@@ -391,6 +397,15 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 		if t.Ingester != nil {
 			if err := t.Ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
+		// Query Frontend has a special check that makes sure that a querier is attached before it signals
+		// itself as ready
+		if t.Frontend != nil {
+			if err := t.Frontend.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Query Frontend not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			}
 		}

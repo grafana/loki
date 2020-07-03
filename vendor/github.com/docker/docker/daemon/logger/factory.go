@@ -7,7 +7,7 @@ import (
 
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/plugingetter"
-	"github.com/docker/go-units"
+	units "github.com/docker/go-units"
 	"github.com/pkg/errors"
 )
 
@@ -141,6 +141,10 @@ func ValidateLogOpts(name string, cfg map[string]string) error {
 		if _, err := units.RAMInBytes(s); err != nil {
 			return errors.Wrap(err, "error parsing option max-buffer-size")
 		}
+	}
+
+	if err := validateExternal(cfg); err != nil {
+		return err
 	}
 
 	if !factory.driverRegistered(name) {

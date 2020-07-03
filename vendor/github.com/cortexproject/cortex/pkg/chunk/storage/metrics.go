@@ -105,6 +105,6 @@ func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk)
 	return chks, nil
 }
 
-func (c metricsChunkClient) DeleteChunk(ctx context.Context, chunkID string) error {
-	return c.client.DeleteChunk(ctx, chunkID)
+func (c metricsChunkClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+	return c.client.DeleteChunk(ctx, userID, chunkID)
 }
