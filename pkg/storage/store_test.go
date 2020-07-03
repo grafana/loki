@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
+	"github.com/cespare/xxhash"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -104,7 +104,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 		b.Run(test, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
-					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil),
+					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano())),
 				})
 				if err != nil {
 					b.Fatal(err)
@@ -221,7 +221,7 @@ func Test_store_SelectLogs(t *testing.T) {
 	}{
 		{
 			"all",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -289,7 +289,7 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter regex",
-			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -313,7 +313,7 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -350,7 +350,7 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter time",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), nil),
 			[]logproto.Stream{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -408,7 +408,7 @@ func Test_store_SelectSample(t *testing.T) {
 	}{
 		{
 			"all",
-			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond)),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -488,7 +488,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter regex",
-			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond)),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -514,7 +514,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond)),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -557,7 +557,7 @@ func Test_store_SelectSample(t *testing.T) {
 		},
 		{
 			"filter time",
-			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond), nil),
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond)),
 			[]logproto.Series{
 				{
 					Labels: "{foo=\"bar\"}",
@@ -618,7 +618,7 @@ func Test_store_GetSeries(t *testing.T) {
 	}{
 		{
 			"all",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 				{Labels: mustParseLabels("{foo=\"bazz\"}")},
@@ -627,7 +627,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"all-single-batch",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 				{Labels: mustParseLabels("{foo=\"bazz\"}")},
@@ -636,7 +636,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"regexp filter (post chunk fetching)",
-			newQuery("{foo=~\"bar.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=~\"bar.*\"}", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 			},
@@ -644,7 +644,7 @@ func Test_store_GetSeries(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 			},
@@ -678,7 +678,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 	}{
 		{
 			"unsharded",
-			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil),
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil),
 			[]*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.*"),
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs"),
@@ -687,7 +687,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 		{
 			"unsharded",
 			newQuery(
-				"{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD,
+				"{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond),
 				[]astmapper.ShardAnnotation{
 					{Shard: 1, Of: 2},
 				},

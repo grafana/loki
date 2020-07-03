@@ -515,6 +515,4 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		ingStats.TotalBatches++
 	}
 	return nil
-
-	return nil
 }

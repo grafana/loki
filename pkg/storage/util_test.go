@@ -124,13 +124,13 @@ func newMatchers(matchers string) []*labels.Matcher {
 	return res
 }
 
-func newQuery(query string, start, end time.Time, direction logproto.Direction, shards []astmapper.ShardAnnotation) *logproto.QueryRequest {
+func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation) *logproto.QueryRequest {
 	req := &logproto.QueryRequest{
 		Selector:  query,
 		Start:     start,
 		Limit:     1000,
 		End:       end,
-		Direction: direction,
+		Direction: logproto.FORWARD,
 	}
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
@@ -138,14 +138,11 @@ func newQuery(query string, start, end time.Time, direction logproto.Direction, 
 	return req
 }
 
-func newSampleQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation) *logproto.SampleQueryRequest {
+func newSampleQuery(query string, start, end time.Time) *logproto.SampleQueryRequest {
 	req := &logproto.SampleQueryRequest{
 		Selector: query,
 		Start:    start,
 		End:      end,
-	}
-	for _, shard := range shards {
-		req.Shards = append(req.Shards, shard.String())
 	}
 	return req
 }
