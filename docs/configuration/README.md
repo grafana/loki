@@ -465,7 +465,10 @@ three components to ensure a  single shared ring.
 # CLI flag: -memberlist.dead-node-reclaim-time
 [dead_node_reclaim_time: <duration> | default = 0s]
 
-# Other cluster members to join. Can be specified multiple times.
+# Other cluster members to join. Can be specified multiple times. It can be an
+# IP, hostname or an entry specified in the DNS Service Discovery format (see
+# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+# for more details).
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = ]
 
