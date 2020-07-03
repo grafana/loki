@@ -174,7 +174,7 @@ func TestJournalTarget_JSON(t *testing.T) {
 		expectMsg := `{"CODE_FILE":"journaltarget_test.go","MESSAGE":"ping","OTHER_FIELD":"foobar"}`
 
 		require.Greater(t, len(client.Messages), 0)
-		require.Equal(t, expectMsg, client.Messages[len(client.Messages)-1])
+		require.Equal(t, expectMsg, client.Messages[len(client.Messages)-1].Log)
 	}
 
 	assert.Len(t, client.Messages, 10)
