@@ -132,7 +132,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.Queryable, *promql.Engine) {
+func New(cfg Config, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.SampleAndChunkQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
@@ -174,7 +174,15 @@ func New(cfg Config, distributor Distributor, stores []QueryableWithFilter, tomb
 		Timeout:            cfg.Timeout,
 		LookbackDelta:      lookbackDelta,
 	})
-	return lazyQueryable, engine
+	return &sampleAndChunkQueryable{lazyQueryable}, engine
+}
+
+type sampleAndChunkQueryable struct {
+	storage.Queryable
+}
+
+func (q *sampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+	return nil, errors.New("ChunkQuerier not implemented")
 }
 
 func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {

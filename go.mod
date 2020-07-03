@@ -3,17 +3,14 @@ module github.com/grafana/loki
 go 1.14
 
 require (
-	github.com/Microsoft/go-winio v0.4.12 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
-	github.com/containerd/containerd v1.3.2 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.1.1-0.20200626122052-962b37ad100a
+	github.com/cortexproject/cortex v1.2.1-0.20200702073552-0ea5a8b50b19
 	github.com/davecgh/go-spew v1.1.1
-	github.com/docker/distribution v2.7.1+incompatible // indirect
-	github.com/docker/docker v0.7.3-0.20190817195342-4760db040282
+	github.com/docker/docker v17.12.0-ce-rc1.0.20200621004740-33fba35d42e7+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
 	github.com/dustin/go-humanize v1.0.0
@@ -38,7 +35,6 @@ require (
 	github.com/json-iterator/go v1.1.9
 	github.com/klauspost/compress v1.9.5
 	github.com/mitchellh/mapstructure v1.2.2
-	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/pierrec/lz4 v2.5.3-0.20200429092203-e876bbd321b3+incompatible
@@ -46,7 +42,7 @@ require (
 	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200622142935-153f859b7499
+	github.com/prometheus/prometheus v1.8.2-0.20200626180636-d17d88935c8d
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/stretchr/testify v1.5.1

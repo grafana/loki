@@ -558,19 +558,19 @@ func (t *Cortex) setupModuleManager() error {
 
 	// Register all modules here.
 	// RegisterModule(name string, initFn func()(services.Service, error))
-	mm.RegisterModule(Server, t.initServer)
-	mm.RegisterModule(API, t.initAPI)
-	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)
-	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
-	mm.RegisterModule(Ring, t.initRing)
-	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(Server, t.initServer, modules.UserInvisibleModule)
+	mm.RegisterModule(API, t.initAPI, modules.UserInvisibleModule)
+	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
+	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
+	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
+	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
-	mm.RegisterModule(Store, t.initChunkStore)
-	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore)
+	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
+	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Flusher, t.initFlusher)
 	mm.RegisterModule(Querier, t.initQuerier)
-	mm.RegisterModule(StoreQueryable, t.initStoreQueryables)
+	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Ruler, t.initRuler)
@@ -580,7 +580,6 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 	mm.RegisterModule(Purger, t.initPurger)
 	mm.RegisterModule(All, nil)
-	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 
 	// Add dependencies
 	deps := map[string][]string{

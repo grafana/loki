@@ -2,6 +2,7 @@ package modules
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/pkg/errors"
 
@@ -15,12 +16,20 @@ type module struct {
 
 	// initFn for this module (can return nil)
 	initFn func() (services.Service, error)
+
+	// is this module user visible (i.e intended to be passed to `InitModuleServices`)
+	userVisible bool
 }
 
 // Manager is a component that initialises modules of the application
 // in the right order of dependencies.
 type Manager struct {
 	modules map[string]*module
+}
+
+// UserInvisibleModule is an option for `RegisterModule` that marks module not visible to user. Modules are user visible by default.
+func UserInvisibleModule(m *module) {
+	m.userVisible = false
 }
 
 // NewManager creates a new Manager
@@ -30,12 +39,17 @@ func NewManager() *Manager {
 	}
 }
 
-// RegisterModule registers a new module with name and init function
-// name must be unique to avoid overwriting modules
-// if initFn is nil, the module will not initialise
-func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error)) {
+// RegisterModule registers a new module with name, init function, and options. Name must
+// be unique to avoid overwriting modules. If initFn is nil, the module will not initialise.
+// Modules are user visible by default.
+func (m *Manager) RegisterModule(name string, initFn func() (services.Service, error), options ...func(option *module)) {
 	m.modules[name] = &module{
-		initFn: initFn,
+		initFn:      initFn,
+		userVisible: true,
+	}
+
+	for _, o := range options {
+		o(m.modules[name])
 	}
 }
 
@@ -57,6 +71,7 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 	if _, ok := m.modules[target]; !ok {
 		return nil, fmt.Errorf("unrecognised module name: %s", target)
 	}
+
 	servicesMap := map[string]services.Service{}
 
 	// initialize all of our dependencies first
@@ -87,6 +102,33 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 	}
 
 	return servicesMap, nil
+}
+
+// UserVisibleModuleNames gets list of module names that are
+// user visible. Returned list is sorted in increasing order.
+func (m *Manager) UserVisibleModuleNames() []string {
+	var result []string
+	for key, val := range m.modules {
+		if val.userVisible {
+			result = append(result, key)
+		}
+	}
+
+	sort.Strings(result)
+
+	return result
+}
+
+// IsUserVisibleModule check if given module is public or not. Returns true
+// if and only if the given module is registered and is public.
+func (m *Manager) IsUserVisibleModule(mod string) bool {
+	val, ok := m.modules[mod]
+
+	if ok {
+		return val.userVisible
+	}
+
+	return false
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName

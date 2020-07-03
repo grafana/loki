@@ -336,7 +336,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 }
 
 // DeleteChunk implements StorageClient.
-func (m *MockStorage) DeleteChunk(ctx context.Context, chunkID string) error {
+func (m *MockStorage) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	return m.DeleteObject(ctx, chunkID)
 }
 

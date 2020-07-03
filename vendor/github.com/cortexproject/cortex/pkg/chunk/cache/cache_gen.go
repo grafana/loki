@@ -58,32 +58,35 @@ func ExtractCacheGenNumber(ctx context.Context) string {
 	return cacheGenNumber
 }
 
-// addCacheGenNumToCacheKeys adds gen number to keys as suffix.
+// addCacheGenNumToCacheKeys adds gen number to keys as prefix.
 func addCacheGenNumToCacheKeys(ctx context.Context, keys []string) []string {
 	cacheGen := ExtractCacheGenNumber(ctx)
 	if cacheGen == "" {
 		return keys
 	}
 
+	prefixedKeys := make([]string, len(keys))
+
 	for i := range keys {
-		keys[i] = cacheGen + keys[i]
+		prefixedKeys[i] = cacheGen + keys[i]
 	}
 
-	return keys
+	return prefixedKeys
 }
 
-// removeCacheGenNumFromKeys removes suffixed gen number from keys.
+// removeCacheGenNumFromKeys removes prefixed gen number from keys.
 func removeCacheGenNumFromKeys(ctx context.Context, keys []string) []string {
 	cacheGen := ExtractCacheGenNumber(ctx)
 	if cacheGen == "" {
 		return keys
 	}
 
-	cacheGenSuffixLen := len(cacheGen) - 1
+	unprefixedKeys := make([]string, len(keys))
+	cacheGenPrefixLen := len(cacheGen)
 
 	for i := range keys {
-		keys[i] = keys[i][cacheGenSuffixLen:]
+		unprefixedKeys[i] = keys[i][cacheGenPrefixLen:]
 	}
 
-	return keys
+	return unprefixedKeys
 }

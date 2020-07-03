@@ -47,12 +47,13 @@ type ingesterMetrics struct {
 	sentBytes      prometheus.Counter
 
 	// Chunks flushing.
+	flushSeriesInProgress         prometheus.Gauge
 	chunkUtilization              prometheus.Histogram
 	chunkLength                   prometheus.Histogram
 	chunkSize                     prometheus.Histogram
 	chunkAge                      prometheus.Histogram
 	memoryChunks                  prometheus.Gauge
-	flushReasons                  *prometheus.CounterVec
+	flushedSeries                 *prometheus.CounterVec
 	droppedChunks                 prometheus.Counter
 	oldestUnflushedChunkTimestamp prometheus.Gauge
 }
@@ -161,6 +162,10 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 		}),
 
 		// Chunks flushing.
+		flushSeriesInProgress: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_flush_series_in_progress",
+			Help: "Number of flush series operations in progress.",
+		}),
 		chunkUtilization: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_utilization",
 			Help:    "Distribution of stored chunk utilization (when stored).",
@@ -187,9 +192,9 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_memory_chunks",
 			Help: "The total number of chunks in memory.",
 		}),
-		flushReasons: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_flush_reasons",
-			Help: "Total number of series scheduled for flushing, with reasons.",
+		flushedSeries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_series_flushed_total",
+			Help: "Total number of flushed series, with reasons.",
 		}, []string{"reason"}),
 		droppedChunks: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_dropped_chunks_total",
