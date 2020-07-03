@@ -5,7 +5,7 @@ import (
 	"hash/maphash"
 	"testing"
 
-	"github.com/cespare/xxhash"
+	"github.com/cespare/xxhash/v2"
 	"github.com/segmentio/fasthash/fnv1a"
 	"github.com/stretchr/testify/require"
 
