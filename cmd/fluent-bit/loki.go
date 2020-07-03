@@ -21,7 +21,7 @@ import (
 
 var (
 	lineReplacer = strings.NewReplacer(`\n`, "\n", `\t`, "\t")
-	keyReplacer = strings.NewReplacer("/", "_", ".", "_", "-", "_")
+	keyReplacer  = strings.NewReplacer("/", "_", ".", "_", "-", "_")
 )
 
 type loki struct {
