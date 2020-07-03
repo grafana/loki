@@ -486,9 +486,24 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 	return input, err
 }
 
-func (s *ObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
-	// ToDo: implement this to support deleting chunks from Cassandra
-	return chunk.ErrMethodNotImplemented
+func (s *ObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	if err != nil {
+		return err
+	}
+
+	tableName, err := s.schemaCfg.ChunkTableFor(chunkRef.From)
+	if err != nil {
+		return err
+	}
+
+	q := s.writeSession.Query(fmt.Sprintf("DELETE FROM %s WHERE hash = ?",
+		tableName), chunkID)
+	if err := q.WithContext(ctx).Exec(); err != nil {
+		return errors.WithStack(err)
+	}
+
+	return nil
 }
 
 // Stop implement chunk.ObjectClient.

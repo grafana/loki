@@ -3,6 +3,7 @@ package frontend
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -65,6 +67,8 @@ type Frontend struct {
 	cond   *sync.Cond
 	queues *queueIterator
 
+	connectedClients *atomic.Int32
+
 	// Metrics.
 	queueDuration prometheus.Histogram
 	queueLength   prometheus.Gauge
@@ -97,6 +101,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 			Name:      "query_frontend_queue_length",
 			Help:      "Number of queries in the queue.",
 		}),
+		connectedClients: atomic.NewInt32(0),
 	}
 	f.cond = sync.NewCond(&f.mtx)
 
@@ -284,6 +289,9 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
+	f.connectedClients.Inc()
+	defer f.connectedClients.Dec()
+
 	// If the downstream request(from querier -> frontend) is cancelled,
 	// we need to ping the condition variable to unblock getNextRequest.
 	// Ideally we'd have ctx aware condition variables...
@@ -425,4 +433,24 @@ FindQueue:
 	// There are no unexpired requests, so we can get back
 	// and wait for more requests.
 	goto FindQueue
+}
+
+// CheckReady determines if the query frontend is ready.  Function parameters/return
+// chosen to match the same method in the ingester
+func (f *Frontend) CheckReady(_ context.Context) error {
+	// if the downstream url is configured the query frontend is not aware of the state
+	//  of the queriers and is therefore always ready
+	if f.cfg.DownstreamURL != "" {
+		return nil
+	}
+
+	// if we have more than one querier connected we will consider ourselves ready
+	connectedClients := f.connectedClients.Load()
+	if connectedClients > 0 {
+		return nil
+	}
+
+	msg := fmt.Sprintf("not ready: number of queriers connected to query-frontend is %d", connectedClients)
+	level.Info(f.log).Log("msg", msg)
+	return errors.New(msg)
 }

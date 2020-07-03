@@ -253,7 +253,7 @@ func (a *API) RegisterCompactor(c *compactor.Compactor) {
 // Cortex querier service. Currently this can not be registered simultaneously
 // with the QueryFrontend.
 func (a *API) RegisterQuerier(
-	queryable storage.Queryable,
+	queryable storage.SampleAndChunkQueryable,
 	engine *promql.Engine,
 	distributor *distributor.Distributor,
 	registerRoutesExternally bool,

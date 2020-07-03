@@ -539,11 +539,6 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	return result, nil
 }
 
-func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
-	// ToDo: implement this to support deleting chunks from DynamoDB
-	return chunk.ErrMethodNotImplemented
-}
-
 func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]chunk.Chunk) ([]chunk.Chunk, error) {
 	result := []chunk.Chunk{}
 	decodeContext := chunk.NewDecodeContext()
@@ -591,6 +586,22 @@ func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	if err != nil {
 		return err
 	}
+	return a.BatchWrite(ctx, dynamoDBWrites)
+}
+
+func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	if err != nil {
+		return err
+	}
+
+	tableName, err := a.schemaCfg.ChunkTableFor(chunkRef.From)
+	if err != nil {
+		return err
+	}
+
+	dynamoDBWrites := dynamoDBWriteBatch{}
+	dynamoDBWrites.Delete(tableName, chunkID, placeholder)
 	return a.BatchWrite(ctx, dynamoDBWrites)
 }
 

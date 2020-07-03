@@ -627,7 +627,7 @@ func (c *baseStore) deleteChunk(ctx context.Context,
 		return errors.Wrapf(err, "when deleting index entries for chunkID=%s", chunkID)
 	}
 
-	err = c.chunks.DeleteChunk(ctx, chunkID)
+	err = c.chunks.DeleteChunk(ctx, userID, chunkID)
 	if err != nil {
 		if err == ErrStorageObjectNotFound {
 			return nil

@@ -7,7 +7,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/go-connections/nat"
-	"github.com/docker/go-units"
+	units "github.com/docker/go-units"
 )
 
 // CgroupnsMode represents the cgroup namespace mode of the container
@@ -145,7 +145,7 @@ func (n NetworkMode) ConnectedContainer() string {
 	return ""
 }
 
-//UserDefined indicates user-created network
+// UserDefined indicates user-created network
 func (n NetworkMode) UserDefined() string {
 	if n.IsUserDefined() {
 		return string(n)

@@ -66,12 +66,12 @@ func newPurgerMetrics(r prometheus.Registerer) *purgerMetrics {
 	m.oldestPendingDeleteRequestAgeSeconds = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "purger_oldest_pending_delete_request_age_seconds",
-		Help:      "Age of oldest pending delete request in seconds",
+		Help:      "Age of oldest pending delete request in seconds, since they are over their cancellation period",
 	})
 	m.pendingDeleteRequestsCount = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "purger_pending_delete_requests_count",
-		Help:      "Count of requests which are in process or are ready to be processed",
+		Help:      "Count of delete requests which are over their cancellation period and have not finished processing yet",
 	})
 
 	return &m
@@ -248,6 +248,10 @@ func (p *Purger) workerJobCleanup(job workerJob) {
 			default:
 				// already sent
 			}
+		} else if len(p.usersWithPendingRequests) == 0 {
+			// there are no pending requests from any of the users, set the oldest pending request and number of pending requests to 0
+			p.metrics.oldestPendingDeleteRequestAgeSeconds.Set(0)
+			p.metrics.pendingDeleteRequestsCount.Set(0)
 		}
 	} else {
 		p.pendingPlansCountMtx.Unlock()
@@ -409,7 +413,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 	p.inProcessRequestIDsMtx.RUnlock()
 
 	now := model.Now()
-	oldestPendingRequestCreatedAt := now
+	oldestPendingRequestCreatedAt := model.Time(0)
 
 	// requests which are still being processed are also considered pending
 	if pendingDeleteRequestsCount != 0 {
@@ -426,7 +430,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 		}
 
 		pendingDeleteRequestsCount++
-		if deleteRequest.CreatedAt.Before(oldestPendingRequestCreatedAt) {
+		if oldestPendingRequestCreatedAt == 0 || deleteRequest.CreatedAt.Before(oldestPendingRequestCreatedAt) {
 			oldestPendingRequestCreatedAt = deleteRequest.CreatedAt
 		}
 
@@ -473,7 +477,12 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 		p.executePlansChan <- req
 	}
 
-	p.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(now.Sub(oldestPendingRequestCreatedAt) / time.Second))
+	// track age of oldest delete request since they are over their cancellation period
+	oldestPendingRequestAge := time.Duration(0)
+	if oldestPendingRequestCreatedAt != 0 {
+		oldestPendingRequestAge = now.Sub(oldestPendingRequestCreatedAt.Add(p.cfg.DeleteRequestCancelPeriod))
+	}
+	p.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(oldestPendingRequestAge / time.Second))
 	p.metrics.pendingDeleteRequestsCount.Set(float64(pendingDeleteRequestsCount))
 
 	return nil
