@@ -94,7 +94,7 @@ func (it *cachedIterator) Close() error {
 }
 
 // cachedIterator is an iterator that caches iteration to be replayed later on.
-type sampleCachedIterator struct {
+type cachedSampleIterator struct {
 	cache []*logproto.Sample
 	base  iter.SampleIterator
 
@@ -108,8 +108,8 @@ type sampleCachedIterator struct {
 // newSampleCachedIterator creates an iterator that cache iteration result and can be iterated again
 // after closing it without re-using the underlaying iterator `it`.
 // The cache iterator should be used for entries that belongs to the same stream only.
-func newSampleCachedIterator(it iter.SampleIterator, cap int) *sampleCachedIterator {
-	c := &sampleCachedIterator{
+func newCachedSampleIterator(it iter.SampleIterator, cap int) *cachedSampleIterator {
+	c := &cachedSampleIterator{
 		base:  it,
 		cache: make([]*logproto.Sample, 0, cap),
 		curr:  -1,
@@ -118,11 +118,11 @@ func newSampleCachedIterator(it iter.SampleIterator, cap int) *sampleCachedItera
 	return c
 }
 
-func (it *sampleCachedIterator) reset() {
+func (it *cachedSampleIterator) reset() {
 	it.curr = -1
 }
 
-func (it *sampleCachedIterator) load() {
+func (it *cachedSampleIterator) load() {
 	if it.base != nil {
 		defer func() {
 			it.closeErr = it.base.Close()
@@ -148,7 +148,7 @@ func (it *sampleCachedIterator) load() {
 	}
 }
 
-func (it *sampleCachedIterator) Next() bool {
+func (it *cachedSampleIterator) Next() bool {
 	if len(it.cache) == 0 {
 		it.cache = nil
 		return false
@@ -160,7 +160,7 @@ func (it *sampleCachedIterator) Next() bool {
 	return it.curr < len(it.cache)
 }
 
-func (it *sampleCachedIterator) Sample() logproto.Sample {
+func (it *cachedSampleIterator) Sample() logproto.Sample {
 	if len(it.cache) == 0 {
 		return logproto.Sample{}
 	}
@@ -170,13 +170,13 @@ func (it *sampleCachedIterator) Sample() logproto.Sample {
 	return *it.cache[it.curr]
 }
 
-func (it *sampleCachedIterator) Labels() string {
+func (it *cachedSampleIterator) Labels() string {
 	return it.labels
 }
 
-func (it *sampleCachedIterator) Error() error { return it.iterErr }
+func (it *cachedSampleIterator) Error() error { return it.iterErr }
 
-func (it *sampleCachedIterator) Close() error {
+func (it *cachedSampleIterator) Close() error {
 	it.reset()
 	return it.closeErr
 }

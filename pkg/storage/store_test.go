@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -363,6 +364,215 @@ func Test_store_SelectLogs(t *testing.T) {
 				t.Fatalf("error reading batch %s", err)
 			}
 			assertStream(t, tt.expected, streams.Streams)
+		})
+	}
+}
+
+func Test_store_SelectSample(t *testing.T) {
+
+	tests := []struct {
+		name     string
+		req      *logproto.SampleQueryRequest
+		expected []logproto.Series
+	}{
+		{
+			"all",
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil),
+			[]logproto.Series{
+				{
+					Labels: "{foo=\"bar\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+
+						{
+							Timestamp: from.Add(time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("3"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("4"),
+							Value:     1.,
+						},
+
+						{
+							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("5"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("6"),
+							Value:     1.,
+						},
+					},
+				},
+				{
+					Labels: "{foo=\"bazz\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+
+						{
+							Timestamp: from.Add(time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("3"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("4"),
+							Value:     1.,
+						},
+
+						{
+							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("5"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("6"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+		},
+		{
+			"filter regex",
+			newSampleQuery("rate({foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"[1m])", from, from.Add(6*time.Millisecond), nil),
+			[]logproto.Series{
+				{
+					Labels: "{foo=\"bar\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+					},
+				},
+				{
+					Labels: "{foo=\"bazz\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+		},
+		{
+			"filter matcher",
+			newSampleQuery("count_over_time({foo=\"bar\"}[10m])", from, from.Add(6*time.Millisecond), nil),
+			[]logproto.Series{
+				{
+					Labels: "{foo=\"bar\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+
+						{
+							Timestamp: from.Add(time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("3"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("4"),
+							Value:     1.,
+						},
+
+						{
+							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("5"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("6"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+		},
+		{
+			"filter time",
+			newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(time.Millisecond), nil),
+			[]logproto.Series{
+				{
+					Labels: "{foo=\"bar\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+					},
+				},
+				{
+					Labels: "{foo=\"bazz\"}",
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &store{
+				Store: storeFixture,
+				cfg: Config{
+					MaxChunkBatchSize: 10,
+				},
+			}
+
+			ctx = user.InjectOrgID(context.Background(), "test-user")
+			it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: tt.req})
+			if err != nil {
+				t.Errorf("store.LazyQuery() error = %v", err)
+				return
+			}
+
+			series, _, err := iter.ReadSampleBatch(it, uint32(100000))
+			_ = it.Close()
+			if err != nil {
+				t.Fatalf("error reading batch %s", err)
+			}
+			assertSeries(t, tt.expected, series.Series)
 		})
 	}
 }

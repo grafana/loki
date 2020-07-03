@@ -22,7 +22,7 @@ type LazyChunk struct {
 	// cache of overlapping block.
 	// We use the offset of the block as key since it's unique per chunk.
 	overlappingBlocks       map[int]*cachedIterator
-	overlappingSampleBlocks map[int]*sampleCachedIterator
+	overlappingSampleBlocks map[int]*cachedSampleIterator
 }
 
 // Iterator returns an entry iterator.
@@ -120,10 +120,10 @@ func (c *LazyChunk) SampleIterator(
 		}
 		// if the block is overlapping cache it with the next chunk boundaries.
 		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
-			it := newSampleCachedIterator(b.SampleIterator(ctx, filter, extractor), b.Entries())
+			it := newCachedSampleIterator(b.SampleIterator(ctx, filter, extractor), b.Entries())
 			its = append(its, it)
 			if c.overlappingSampleBlocks == nil {
-				c.overlappingSampleBlocks = make(map[int]*sampleCachedIterator)
+				c.overlappingSampleBlocks = make(map[int]*cachedSampleIterator)
 			}
 			c.overlappingSampleBlocks[b.Offset()] = it
 			continue
