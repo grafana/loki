@@ -500,6 +500,9 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
+# github.com/imdario/mergo v0.3.9
+## explicit
+github.com/imdario/mergo
 # github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da
 ## explicit
 github.com/influxdata/go-syslog/v3

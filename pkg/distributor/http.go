@@ -20,6 +20,28 @@ const applicationJSON = "application/json"
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
+
+	req, err := ParseRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	_, err = d.Push(r.Context(), req)
+	if err == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	if ok {
+		http.Error(w, string(resp.Body), int(resp.Code))
+	} else {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 	var req logproto.PushRequest
 
 	switch r.Header.Get(contentType) {
@@ -33,27 +55,13 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return nil, err
 		}
 
 	default:
 		if _, err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return nil, err
 		}
 	}
-
-	_, err := d.Push(r.Context(), &req)
-	if err == nil {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	resp, ok := httpgrpc.HTTPResponseFromError(err)
-	if ok {
-		http.Error(w, string(resp.Body), int(resp.Code))
-	} else {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	return &req, nil
 }

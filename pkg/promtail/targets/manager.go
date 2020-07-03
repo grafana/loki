@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/file"
 	"github.com/grafana/loki/pkg/promtail/targets/journal"
+	"github.com/grafana/loki/pkg/promtail/targets/push"
 	"github.com/grafana/loki/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/pkg/promtail/targets/syslog"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
@@ -42,6 +43,7 @@ func NewTargetManagers(
 	var fileScrapeConfigs []scrapeconfig.Config
 	var journalScrapeConfigs []scrapeconfig.Config
 	var syslogScrapeConfigs []scrapeconfig.Config
+	var pushScrapeConfigs []scrapeconfig.Config
 
 	if targetConfig.Stdin {
 		level.Debug(util.Logger).Log("msg", "configured to read from stdin")
@@ -106,6 +108,19 @@ func NewTargetManagers(
 			return nil, errors.Wrap(err, "failed to make syslog target manager")
 		}
 		targetManagers = append(targetManagers, syslogTargetManager)
+	}
+
+	for _, cfg := range scrapeConfigs {
+		if cfg.PushConfig != nil {
+			pushScrapeConfigs = append(pushScrapeConfigs, cfg)
+		}
+	}
+	if len(pushScrapeConfigs) > 0 {
+		pushTargetManager, err := push.NewPushTargetManager(logger, client, pushScrapeConfigs)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to make syslog target manager")
+		}
+		targetManagers = append(targetManagers, pushTargetManager)
 	}
 
 	return &TargetManagers{

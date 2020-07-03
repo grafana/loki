@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/server"
 
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -21,6 +22,7 @@ type Config struct {
 	PipelineStages         stages.PipelineStages            `yaml:"pipeline_stages,omitempty"`
 	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
 	SyslogConfig           *SyslogTargetConfig              `yaml:"syslog,omitempty"`
+	PushConfig             *PushTargetConfig                `yaml:"push,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
 }
@@ -63,6 +65,15 @@ type SyslogTargetConfig struct {
 	LabelStructuredData bool `yaml:"label_structured_data"`
 
 	// Labels optionally holds labels to associate with each record read from syslog.
+	Labels model.LabelSet `yaml:"labels"`
+}
+
+// PushTargetConfig describes a scrape config that listens for Loki push messages.
+type PushTargetConfig struct {
+	// Server is the weaveworks server config for listening connections
+	Server server.Config `yaml:"server"`
+
+	// Labels optionally holds labels to associate with each record received on the push api.
 	Labels model.LabelSet `yaml:"labels"`
 }
 
