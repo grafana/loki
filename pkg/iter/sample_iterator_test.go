@@ -189,7 +189,7 @@ func TestReadSampleBatch(t *testing.T) {
 	require.NoError(t, err)
 
 	res, size, err = ReadSampleBatch(NewMultiSeriesIterator(context.Background(), []logproto.Series{carSeries, varSeries}), 100)
-	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{carSeries, varSeries}}, res)
+	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
 }
