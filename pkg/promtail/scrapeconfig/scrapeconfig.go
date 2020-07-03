@@ -75,6 +75,9 @@ type PushTargetConfig struct {
 
 	// Labels optionally holds labels to associate with each record received on the push api.
 	Labels model.LabelSet `yaml:"labels"`
+
+	// If promtail should maintain the incoming log timestamp or replace it with the current time.
+	KeepTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
 // DefaultScrapeConfig is the default Config.

@@ -53,6 +53,7 @@ func TestPushTarget(t *testing.T) {
 			"pushserver": "pushserver1",
 			"dropme":     "label",
 		},
+		KeepTimestamp: true,
 	}
 
 	rlbl := []*relabel.Config{
@@ -106,6 +107,9 @@ func TestPushTarget(t *testing.T) {
 	}
 	// Spot check the first value in the result to make sure relabel rules were applied properly
 	require.Equal(t, expectedLabels, eh.Messages[0].Labels)
+
+	// With keep timestamp enabled, verify timestamp
+	require.Equal(t, time.Unix(99, 0).Unix(), eh.Messages[99].Time.Unix())
 
 	_ = pt.Stop()
 

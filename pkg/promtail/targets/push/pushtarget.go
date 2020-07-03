@@ -144,7 +144,13 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, entry := range stream.Entries {
-			err := t.handler.Handle(filtered, time.Now(), entry.Line)
+			var err error
+			if t.config.KeepTimestamp {
+				err = t.handler.Handle(filtered, entry.Timestamp, entry.Line)
+			} else {
+				err = t.handler.Handle(filtered, time.Now(), entry.Line)
+			}
+
 			if err != nil {
 				lastErr = err
 				continue
