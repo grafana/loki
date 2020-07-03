@@ -2,7 +2,7 @@
   _config+: {
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
-    http_listen_port: 80,
+    http_listen_port: 3100,
 
     replication_factor: 3,
     memcached_replicas: 3,

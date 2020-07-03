@@ -13,8 +13,6 @@ RUN apk add --no-cache ca-certificates libcap
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
 COPY cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
 
-RUN setcap cap_net_bind_service=+ep /usr/bin/loki
-
 RUN addgroup -g 10001 -S loki && \
     adduser -u 10001 -S loki -G loki
 RUN mkdir -p /loki && \
