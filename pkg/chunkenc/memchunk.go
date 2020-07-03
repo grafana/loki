@@ -752,7 +752,6 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 			return 0, nil, false
 		}
 	}
-
 	// Then process reading the line.
 	n, err := si.bufReader.Read(si.buf[:lineSize])
 	if err != nil && err != io.EOF {

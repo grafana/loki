@@ -95,7 +95,7 @@ func (it *cachedIterator) Close() error {
 
 // cachedIterator is an iterator that caches iteration to be replayed later on.
 type cachedSampleIterator struct {
-	cache []*logproto.Sample
+	cache []logproto.Sample
 	base  iter.SampleIterator
 
 	labels string
@@ -111,7 +111,7 @@ type cachedSampleIterator struct {
 func newCachedSampleIterator(it iter.SampleIterator, cap int) *cachedSampleIterator {
 	c := &cachedSampleIterator{
 		base:  it,
-		cache: make([]*logproto.Sample, 0, cap),
+		cache: make([]logproto.Sample, 0, cap),
 		curr:  -1,
 	}
 	c.load()
@@ -138,8 +138,7 @@ func (it *cachedSampleIterator) load() {
 
 		// add all entries until the base iterator is exhausted
 		for {
-			e := it.base.Sample()
-			it.cache = append(it.cache, &e)
+			it.cache = append(it.cache, it.base.Sample())
 			if !it.base.Next() {
 				break
 			}
@@ -165,9 +164,9 @@ func (it *cachedSampleIterator) Sample() logproto.Sample {
 		return logproto.Sample{}
 	}
 	if it.curr < 0 {
-		return *it.cache[0]
+		return it.cache[0]
 	}
-	return *it.cache[it.curr]
+	return it.cache[it.curr]
 }
 
 func (it *cachedSampleIterator) Labels() string {

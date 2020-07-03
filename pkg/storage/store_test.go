@@ -40,9 +40,9 @@ var (
 )
 
 //go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
-func Benchmark_store_LazyQueryRegexBackward(b *testing.B) {
+func Benchmark_store_SelectLogsRegexBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Selector:  `{foo="bar"} |= "fuzz"`,
+		Selector:  `{foo="bar"} |~ "fuzz"`,
 		Limit:     1000,
 		Start:     time.Unix(0, start.UnixNano()),
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
@@ -50,7 +50,7 @@ func Benchmark_store_LazyQueryRegexBackward(b *testing.B) {
 	})
 }
 
-func Benchmark_store_LazyQueryLogQLBackward(b *testing.B) {
+func Benchmark_store_SelectLogsLogQLBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
 		Selector:  `{foo="bar"} |= "test" != "toto" |= "fuzz"`,
 		Limit:     1000,
@@ -60,9 +60,9 @@ func Benchmark_store_LazyQueryLogQLBackward(b *testing.B) {
 	})
 }
 
-func Benchmark_store_LazyQueryRegexForward(b *testing.B) {
+func Benchmark_store_SelectLogsRegexForward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Selector:  `{foo="bar"} |= "fuzz"`,
+		Selector:  `{foo="bar"} |~ "fuzz"`,
 		Limit:     1000,
 		Start:     time.Unix(0, start.UnixNano()),
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
@@ -70,7 +70,7 @@ func Benchmark_store_LazyQueryRegexForward(b *testing.B) {
 	})
 }
 
-func Benchmark_store_LazyQueryForward(b *testing.B) {
+func Benchmark_store_SelectLogsForward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
 		Selector:  `{foo="bar"}`,
 		Limit:     1000,
@@ -80,7 +80,7 @@ func Benchmark_store_LazyQueryForward(b *testing.B) {
 	})
 }
 
-func Benchmark_store_LazyQueryBackward(b *testing.B) {
+func Benchmark_store_SelectLogsBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
 		Selector:  `{foo="bar"}`,
 		Limit:     1000,
@@ -88,6 +88,37 @@ func Benchmark_store_LazyQueryBackward(b *testing.B) {
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
 		Direction: logproto.BACKWARD,
 	})
+}
+
+// rm -Rf /tmp/benchmark/chunks/ /tmp/benchmark/index
+// go run  -mod=vendor ./pkg/storage/hack/main.go
+// go test -benchmem -run=^$ -mod=vendor  ./pkg/storage -bench=Benchmark_store_SelectSample   -memprofile memprofile.out -cpuprofile cpuprofile.out
+func Benchmark_store_SelectSample(b *testing.B) {
+	var sampleRes []logproto.Sample
+	for _, test := range []string{
+		`count_over_time({foo="bar"}[5m])`,
+		`rate({foo="bar"}[5m])`,
+		`bytes_rate({foo="bar"}[5m])`,
+		`bytes_over_time({foo="bar"}[5m])`,
+	} {
+		b.Run(test, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
+					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil),
+				})
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				for iter.Next() {
+					sampleRes = append(sampleRes, iter.Sample())
+				}
+				iter.Close()
+			}
+		})
+	}
+	log.Print("sample processed ", len(sampleRes))
+
 }
 
 func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
