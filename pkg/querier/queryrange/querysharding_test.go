@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
@@ -68,52 +70,68 @@ var (
 	}
 )
 
-func Test_PartitionRequest(t *testing.T) {
-	midpt := time.Unix(0, 0).Add(500 * time.Millisecond)
-	cutoff := TimeToMillis(midpt)
-
-	// test split
-	req := defaultReq().WithStartEnd(0, cutoff*2)
-	before, after := partitionRequest(req, midpt)
-	require.Equal(t, req.WithStartEnd(0, cutoff), before)
-	require.Equal(t, req.WithStartEnd(cutoff, 2*cutoff), after)
-
-	// test all before cutoff
-	before, after = partitionRequest(req, midpt.Add(1000*time.Millisecond))
-	require.Equal(t, req, before)
-	require.Nil(t, after)
-
-	// test after cutoff
-	before, after = partitionRequest(req, time.Unix(0, 0))
-	require.Nil(t, before)
-	require.Equal(t, req, after)
-
-}
-
 func Test_shardSplitter(t *testing.T) {
-	splitter := &shardSplitter{
-		shardingware:        mockHandler(lokiResps[0], nil),
-		next:                mockHandler(lokiResps[1], nil),
-		now:                 time.Now,
-		MinShardingLookback: 0,
-	}
-
 	req := defaultReq().WithStartEnd(
-		TimeToMillis(time.Now().Add(-time.Hour)),
-		TimeToMillis(time.Now().Add(time.Hour)),
+		util.TimeToMillis(start),
+		util.TimeToMillis(end),
 	)
 
-	resp, err := splitter.Do(context.Background(), req)
-	require.Nil(t, err)
-	expected, err := lokiCodec.MergeResponse(lokiResps...)
-	require.Nil(t, err)
-	require.Equal(t, expected, resp)
+	for _, tc := range []struct {
+		desc        string
+		lookback    time.Duration
+		shouldShard bool
+	}{
+		{
+			desc:        "older than lookback",
+			lookback:    -time.Minute, // a negative lookback will ensure the entire query doesn't cross the sharding boundary & can safely be sharded.
+			shouldShard: true,
+		},
+		{
+			desc:        "overlaps lookback",
+			lookback:    end.Sub(start) / 2, // intersect the request causing it to avoid sharding
+			shouldShard: false,
+		},
+		{
+			desc:        "newer than lookback",
+			lookback:    end.Sub(start) + 1, // the entire query is in the ingester range and should avoid sharding.
+			shouldShard: false,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			var didShard bool
+
+			splitter := &shardSplitter{
+				shardingware: queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+					didShard = true
+					return mockHandler(lokiResps[0], nil).Do(ctx, req)
+				}),
+				next:                mockHandler(lokiResps[1], nil),
+				now:                 func() time.Time { return end },
+				MinShardingLookback: tc.lookback,
+			}
+
+			resp, err := splitter.Do(context.Background(), req)
+			require.Nil(t, err)
+
+			require.Equal(t, tc.shouldShard, didShard)
+			require.Nil(t, err)
+
+			if tc.shouldShard {
+				require.Equal(t, lokiResps[0], resp)
+			} else {
+				require.Equal(t, lokiResps[1], resp)
+			}
+		})
+	}
 }
 
 func Test_astMapper(t *testing.T) {
+	var lock sync.Mutex
 	called := 0
 
 	handler := queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+		lock.Lock()
+		defer lock.Unlock()
 		resp := lokiResps[called]
 		called++
 		return resp, nil

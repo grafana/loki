@@ -34,6 +34,9 @@ service Store {
   /// partition of the single series, but once a new series is started to be streamed it means that no more data will
   /// be sent for previous one.
   /// Series has to be sorted.
+  ///
+  /// There is no requirements on chunk sorting, however it is recommended to have chunk sorted by chunk min time.
+  /// This heavily optimizes the resource usage on Querier / Federated Queries.
   rpc Series(SeriesRequest) returns (stream SeriesResponse);
 
   /// LabelNames returns all label names that is available.

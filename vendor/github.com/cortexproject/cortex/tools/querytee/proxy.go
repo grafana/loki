@@ -107,6 +107,21 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, routes []Route, registerer pro
 		return nil, errMinBackends
 	}
 
+	// If the preferred backend is configured, then it must exists among the actual backends.
+	if cfg.PreferredBackend != "" {
+		exists := false
+		for _, b := range p.backends {
+			if b.preferred {
+				exists = true
+				break
+			}
+		}
+
+		if !exists {
+			return nil, fmt.Errorf("the preferred backend (hostname) has not been found among the list of configured backends")
+		}
+	}
+
 	if cfg.CompareResponses && len(p.backends) != 2 {
 		return nil, fmt.Errorf("when enabling comparison of results number of backends should be 2 exactly")
 	}
@@ -159,6 +174,7 @@ func (p *Proxy) Start() error {
 		}
 	}()
 
+	level.Info(p.logger).Log("msg", "The proxy is up and running.")
 	return nil
 }
 

@@ -236,7 +236,7 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 			ResultType: string(res.Value.Type()),
 			Result:     extracted,
 		},
-		Headers: headersMapToPrometheusResponseHeaders(shardedQueryable.getResponseHeaders()),
+		Headers: shardedQueryable.getResponseHeaders(),
 	}, nil
 }
 
@@ -252,81 +252,10 @@ type shardSplitter struct {
 
 func (splitter *shardSplitter) Do(ctx context.Context, r Request) (Response, error) {
 	cutoff := splitter.now().Add(-splitter.MinShardingLookback)
-	sharded, nonsharded := partitionRequest(r, cutoff)
 
-	return splitter.parallel(ctx, sharded, nonsharded)
-
-}
-
-func (splitter *shardSplitter) parallel(ctx context.Context, sharded, nonsharded Request) (Response, error) {
-	if sharded == nil {
-		return splitter.next.Do(ctx, nonsharded)
+	// Only attempt to shard queries which are older than the sharding lookback (the period for which ingesters are also queried).
+	if !cutoff.After(util.TimeFromMillis(r.GetEnd())) {
+		return splitter.next.Do(ctx, r)
 	}
-
-	if nonsharded == nil {
-		return splitter.shardingware.Do(ctx, sharded)
-	}
-
-	nonshardCh := make(chan Response, 1)
-	shardCh := make(chan Response, 1)
-	errCh := make(chan error, 2)
-
-	go func() {
-		res, err := splitter.next.Do(ctx, nonsharded)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		nonshardCh <- res
-
-	}()
-
-	go func() {
-		res, err := splitter.shardingware.Do(ctx, sharded)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		shardCh <- res
-	}()
-
-	resps := make([]Response, 0, 2)
-	for i := 0; i < 2; i++ {
-		select {
-		case r := <-nonshardCh:
-			resps = append(resps, r)
-		case r := <-shardCh:
-			resps = append(resps, r)
-		case err := <-errCh:
-			return nil, err
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-
-	}
-
-	return splitter.codec.MergeResponse(resps...)
-}
-
-// partitionQuery splits a request into potentially multiple requests, one including the request's time range
-// [0,t). The other will include [t,inf)
-func partitionRequest(r Request, t time.Time) (before Request, after Request) {
-	boundary := util.TimeToMillis(t)
-	if r.GetStart() >= boundary {
-		return nil, r
-	}
-
-	if r.GetEnd() < boundary {
-		return r, nil
-	}
-
-	return r.WithStartEnd(r.GetStart(), boundary), r.WithStartEnd(boundary, r.GetEnd())
-}
-
-func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusResponseHeader) {
-	for h, v := range headersMap {
-		prs = append(prs, &PrometheusResponseHeader{Name: h, Values: v})
-	}
-
-	return
+	return splitter.shardingware.Do(ctx, r)
 }

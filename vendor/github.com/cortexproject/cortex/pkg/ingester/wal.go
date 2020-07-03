@@ -8,9 +8,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +37,7 @@ type WALConfig struct {
 	Recover            bool          `yaml:"recover_from_wal"`
 	Dir                string        `yaml:"wal_dir"`
 	CheckpointDuration time.Duration `yaml:"checkpoint_duration"`
+	FlushOnShutdown    bool          `yaml:"flush_on_shutdown_with_wal_enabled"`
 	// We always checkpoint during shutdown. This option exists for the tests.
 	checkpointDuringShutdown bool
 }
@@ -48,6 +49,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.WALEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.CheckpointEnabled, "ingester.checkpoint-enabled", true, "Enable checkpointing of in-memory chunks. It should always be true when using normally. Set it to false iff you are doing some small tests as there is no mechanism to delete the old WAL yet if checkpoint is disabled.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
+	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown-with-wal-enabled", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown. Useful eg. for migration to blocks engine.")
 	cfg.checkpointDuringShutdown = true
 }
 
@@ -413,15 +415,12 @@ func lastCheckpoint(dir string) (string, int, error) {
 	for i := 0; i < len(dirs); i++ {
 		di := dirs[i]
 
-		if !strings.HasPrefix(di.Name(), checkpointPrefix) {
+		idx, err := checkpointIndex(di.Name(), false)
+		if err != nil {
 			continue
 		}
 		if !di.IsDir() {
 			return "", -1, fmt.Errorf("checkpoint %s is not a directory", di.Name())
-		}
-		idx, err := strconv.Atoi(di.Name()[len(checkpointPrefix):])
-		if err != nil {
-			continue
 		}
 		if idx > maxIdx {
 			checkpointDir = di.Name()
@@ -450,10 +449,7 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 		return err
 	}
 	for _, fi := range files {
-		if !strings.HasPrefix(fi.Name(), checkpointPrefix) {
-			continue
-		}
-		index, err := strconv.Atoi(fi.Name()[len(checkpointPrefix):])
+		index, err := checkpointIndex(fi.Name(), true)
 		if err != nil || index >= maxIndex {
 			continue
 		}
@@ -462,6 +458,23 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 		}
 	}
 	return errs.Err()
+}
+
+var checkpointRe = regexp.MustCompile("^" + regexp.QuoteMeta(checkpointPrefix) + "(\\d+)(\\.tmp)?$")
+
+// checkpointIndex returns the index of a given checkpoint file. It handles
+// both regular and temporary checkpoints according to the includeTmp flag. If
+// the file is not a checkpoint it returns an error.
+func checkpointIndex(filename string, includeTmp bool) (int, error) {
+	result := checkpointRe.FindStringSubmatch(filename)
+	if len(result) < 2 {
+		return 0, errors.New("file is not a checkpoint")
+	}
+	// Filter out temporary checkpoints if desired.
+	if !includeTmp && len(result) == 3 && result[2] != "" {
+		return 0, errors.New("temporary checkpoint")
+	}
+	return strconv.Atoi(result[1])
 }
 
 // checkpointSeries write the chunks of the series to the checkpoint.

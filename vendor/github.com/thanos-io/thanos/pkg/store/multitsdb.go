@@ -13,12 +13,14 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/thanos/pkg/component"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/thanos-io/thanos/pkg/component"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/thanos-io/thanos/pkg/tracing"
 )
 
 // MultiTSDBStore implements the Store interface backed by multiple TSDBStore instances.
@@ -113,7 +115,11 @@ func (s *tenantSeriesSetServer) Context() context.Context {
 }
 
 func (s *tenantSeriesSetServer) Series(store *TSDBStore, r *storepb.SeriesRequest) {
-	err := store.Series(r, s)
+	var err error
+	tracing.DoInSpan(s.ctx, "multitsdb_tenant_series", func(_ context.Context) {
+		err = store.Series(r, s)
+	})
+
 	if err != nil {
 		if r.PartialResponseDisabled {
 			s.err = errors.Wrapf(err, "get series for tenant %s", s.tenant)
@@ -164,12 +170,13 @@ func (s *MultiTSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_Seri
 	}
 
 	var (
-		g, gctx = errgroup.WithContext(srv.Context())
-
+		g, gctx   = errgroup.WithContext(srv.Context())
+		span, ctx = tracing.StartSpan(gctx, "multitsdb_series")
 		// Allow to buffer max 10 series response.
 		// Each might be quite large (multi chunk long series given by sidecar).
 		respSender, respRecv, closeFn = newRespCh(gctx, 10)
 	)
+	defer span.Finish()
 
 	g.Go(func() error {
 		var (
@@ -184,7 +191,7 @@ func (s *MultiTSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_Seri
 
 		for tenant, store := range stores {
 			store := store
-			seriesCtx, cancelSeries := context.WithCancel(gctx)
+			seriesCtx, cancelSeries := context.WithCancel(ctx)
 			seriesCtx = grpc_opentracing.ClientAddContextTags(seriesCtx, opentracing.Tags{
 				"tenant": tenant,
 			})
@@ -219,6 +226,9 @@ func (s *MultiTSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_Seri
 
 // LabelNames returns all known label names.
 func (s *MultiTSDBStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	span, ctx := tracing.StartSpan(ctx, "multitsdb_label_names")
+	defer span.Finish()
+
 	names := map[string]struct{}{}
 	warnings := map[string]struct{}{}
 
@@ -259,6 +269,9 @@ func keys(m map[string]struct{}) []string {
 
 // LabelValues returns all known label values for a given label name.
 func (s *MultiTSDBStore) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	span, ctx := tracing.StartSpan(ctx, "multitsdb_label_values")
+	defer span.Finish()
+
 	values := map[string]struct{}{}
 	warnings := map[string]struct{}{}
 

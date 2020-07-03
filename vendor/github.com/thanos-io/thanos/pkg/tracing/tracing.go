@@ -29,12 +29,22 @@ func ContextWithTracer(ctx context.Context, tracer opentracing.Tracer) context.C
 	return context.WithValue(ctx, tracerKey, tracer)
 }
 
+// tracerFromContext extracts opentracing.Tracer from the given context.
 func tracerFromContext(ctx context.Context) opentracing.Tracer {
 	val := ctx.Value(tracerKey)
 	if sp, ok := val.(opentracing.Tracer); ok {
 		return sp
 	}
 	return nil
+}
+
+// CopyTraceContext copies the necessary trace context from given source context to target context.
+func CopyTraceContext(trgt, src context.Context) context.Context {
+	ctx := ContextWithTracer(trgt, tracerFromContext(src))
+	if parentSpan := opentracing.SpanFromContext(src); parentSpan != nil {
+		ctx = opentracing.ContextWithSpan(ctx, parentSpan)
+	}
+	return ctx
 }
 
 // StartSpan starts and returns span with `operationName` and hooking as child to a span found within given context if any.

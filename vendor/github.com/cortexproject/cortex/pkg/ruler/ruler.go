@@ -88,6 +88,13 @@ type Config struct {
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration `yaml:"notification_timeout"`
 
+	// Max time to tolerate outage for restoring "for" state of alert.
+	OutageTolerance time.Duration `yaml:"for_outage_tolerance"`
+	// Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.
+	ForGracePeriod time.Duration `yaml:"for_grace_period"`
+	// Minimum amount of time to wait before resending an alert to Alertmanager.
+	ResendDelay time.Duration `yaml:"resend_delay"`
+
 	// Enable sharding rule groups.
 	EnableSharding   bool          `yaml:"enable_sharding"`
 	SearchPendingFor time.Duration `yaml:"search_pending_for"`
@@ -132,6 +139,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
 	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
+	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
+	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.`)
+	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
 }
 
 // Ruler evaluates rules.
@@ -320,8 +330,11 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 		return n.notifier, nil
 	}
 
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
+	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,
+		Registerer:    reg,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 			// Note: The passed-in context comes from the Prometheus notifier
 			// and does *not* contain the userID. So it needs to be added to the context
@@ -507,12 +520,6 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
 func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
-	tsdb := &tsdb{
-		pusher:    r.pusher,
-		userID:    userID,
-		queryable: r.queryable,
-	}
-
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
@@ -523,14 +530,17 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	logger := log.With(r.logger, "user", userID)
 	opts := &promRules.ManagerOptions{
-		Appendable:  tsdb,
-		TSDB:        tsdb,
-		QueryFunc:   engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
-		Context:     user.InjectOrgID(ctx, userID),
-		ExternalURL: r.alertURL,
-		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
-		Logger:      logger,
-		Registerer:  reg,
+		Appendable:      &appender{pusher: r.pusher, userID: userID},
+		Queryable:       r.queryable,
+		QueryFunc:       engineQueryFunc(r.engine, r.queryable, r.cfg.EvaluationDelay),
+		Context:         user.InjectOrgID(ctx, userID),
+		ExternalURL:     r.alertURL,
+		NotifyFunc:      sendAlerts(notifier, r.alertURL.String()),
+		Logger:          logger,
+		Registerer:      reg,
+		OutageTolerance: r.cfg.OutageTolerance,
+		ForGracePeriod:  r.cfg.ForGracePeriod,
+		ResendDelay:     r.cfg.ResendDelay,
 	}
 	return promRules.NewManager(opts), nil
 }

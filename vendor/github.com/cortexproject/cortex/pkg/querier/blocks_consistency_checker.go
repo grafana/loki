@@ -1,8 +1,6 @@
 package querier
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -11,7 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"github.com/thanos-io/thanos/pkg/store/hintspb"
 )
 
 type BlocksConsistencyChecker struct {
@@ -39,24 +36,17 @@ func NewBlocksConsistencyChecker(uploadGracePeriod, deletionGracePeriod time.Dur
 	}
 }
 
-func (c *BlocksConsistencyChecker) Check(expectedBlocks []*BlockMeta, knownDeletionMarks map[ulid.ULID]*metadata.DeletionMark, queriedBlocks map[string][]hintspb.Block) error {
+func (c *BlocksConsistencyChecker) Check(knownBlocks []*BlockMeta, knownDeletionMarks map[ulid.ULID]*metadata.DeletionMark, queriedBlocks []ulid.ULID) (missingBlocks []ulid.ULID) {
 	c.checksTotal.Inc()
 
-	// Reverse the map of queried blocks, so that we can easily look for missing ones
-	// while keeping the information about which store-gateways have already been queried
-	// for that block.
-	actualBlocks := map[string][]string{}
-	for gatewayAddr, blocks := range queriedBlocks {
-		for _, b := range blocks {
-			actualBlocks[b.Id] = append(actualBlocks[b.Id], gatewayAddr)
-		}
+	// Reverse the map of queried blocks, so that we can easily look for missing ones.
+	actualBlocks := map[ulid.ULID]struct{}{}
+	for _, blockID := range queriedBlocks {
+		actualBlocks[blockID] = struct{}{}
 	}
 
 	// Look for any missing block.
-	missingBlocks := map[string][]string{}
-	var missingBlockIDs []string
-
-	for _, meta := range expectedBlocks {
+	for _, meta := range knownBlocks {
 		// Some recently uploaded blocks, already discovered by the querier, may not have been discovered
 		// and loaded by the store-gateway yet. In order to avoid false positives, we grant some time
 		// to the store-gateway to discover them. It's safe to exclude recently uploaded blocks because:
@@ -82,17 +72,14 @@ func (c *BlocksConsistencyChecker) Check(expectedBlocks []*BlockMeta, knownDelet
 			}
 		}
 
-		id := meta.ULID.String()
-		if gatewayAddrs, ok := actualBlocks[id]; !ok {
-			missingBlocks[id] = gatewayAddrs
-			missingBlockIDs = append(missingBlockIDs, id)
+		if _, ok := actualBlocks[meta.ULID]; !ok {
+			missingBlocks = append(missingBlocks, meta.ULID)
 		}
 	}
 
-	if len(missingBlocks) == 0 {
-		return nil
+	if len(missingBlocks) > 0 {
+		c.checksFailed.Inc()
 	}
 
-	c.checksFailed.Inc()
-	return fmt.Errorf("consistency check failed because some blocks were not queried: %s", strings.Join(missingBlockIDs, " "))
+	return missingBlocks
 }

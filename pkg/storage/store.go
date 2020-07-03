@@ -148,9 +148,24 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 }
 
 func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error) {
-	matchers, _, from, through, err := decodeReq(req)
-	if err != nil {
-		return nil, err
+	var from, through model.Time
+	var matchers []*labels.Matcher
+
+	// The Loki parser doesn't allow for an empty label matcher but for the Series API
+	// we allow this to select all series in the time range.
+	if req.Selector == "" {
+		from, through = util.RoundToMilliseconds(req.Start, req.End)
+		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
+		if err != nil {
+			return nil, err
+		}
+		matchers = []*labels.Matcher{nameLabelMatcher}
+	} else {
+		var err error
+		matchers, _, from, through, err = decodeReq(req)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)

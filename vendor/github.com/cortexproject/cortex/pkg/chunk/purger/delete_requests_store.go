@@ -97,6 +97,12 @@ func NewDeleteStore(cfg DeleteStoreConfig, indexClient chunk.IndexClient) (*Dele
 
 // Add creates entries for a new delete request.
 func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
+	return ds.addDeleteRequest(ctx, userID, model.Now(), startTime, endTime, selectors)
+
+}
+
+// addDeleteRequest is also used for tests to create delete requests with different createdAt time.
+func (ds *DeleteStore) addDeleteRequest(ctx context.Context, userID string, createdAt, startTime, endTime model.Time, selectors []string) error {
 	requestID := generateUniqueID(userID, selectors)
 
 	for {
@@ -122,7 +128,7 @@ func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, star
 	writeBatch.Add(ds.cfg.RequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusReceived))
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
-	rangeValue := fmt.Sprintf("%x:%x:%x", int64(model.Now()), int64(startTime), int64(endTime))
+	rangeValue := fmt.Sprintf("%x:%x:%x", int64(createdAt), int64(startTime), int64(endTime))
 	writeBatch.Add(ds.cfg.RequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
 		[]byte(rangeValue), []byte(strings.Join(selectors, separator)))
 

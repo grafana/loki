@@ -35,12 +35,12 @@ type Client interface {
 
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
-	DeleteChunk(ctx context.Context, chunkID string) error
+	DeleteChunk(ctx context.Context, userID, chunkID string) error
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
 type ObjectAndIndexClient interface {
-	PutChunkAndIndex(ctx context.Context, c Chunk, index WriteBatch) error
+	PutChunksAndIndex(ctx context.Context, chunks []Chunk, index WriteBatch) error
 }
 
 // WriteBatch represents a batch of writes.

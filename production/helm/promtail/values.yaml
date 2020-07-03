@@ -163,6 +163,7 @@ serviceMonitor:
   enabled: false
   interval: ""
   additionalLabels: {}
+  annotations: {}
   # scrapeTimeout: 10s
 
 # Extra env variables to pass to the promtail container
