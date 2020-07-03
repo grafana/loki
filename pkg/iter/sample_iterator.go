@@ -283,13 +283,20 @@ func (i *heapSampleIterator) Close() error {
 }
 
 type sampleQueryClientIterator struct {
-	client logproto.Querier_QuerySampleClient
+	client QuerySampleClient
 	err    error
 	curr   SampleIterator
 }
 
+// QuerySampleClient is GRPC stream client with only method used by the iterator
+type QuerySampleClient interface {
+	Recv() (*logproto.SampleQueryResponse, error)
+	Context() context.Context
+	CloseSend() error
+}
+
 // NewQueryClientIterator returns an iterator over a QueryClient.
-func NewSampleQueryClientIterator(client logproto.Querier_QuerySampleClient) SampleIterator {
+func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 	return &sampleQueryClientIterator{
 		client: client,
 	}

@@ -2,6 +2,8 @@ package iter
 
 import (
 	"context"
+	"io"
+	"reflect"
 	"testing"
 	"time"
 
@@ -131,5 +133,30 @@ func TestNewHeapSampleIterator(t *testing.T) {
 		require.Equal(t, `{foo="var"}`, it.Labels(), i)
 		require.Equal(t, sample(i), it.Sample(), i)
 	}
+	require.False(t, it.Next())
+	require.NoError(t, it.Error())
+	require.NoError(t, it.Close())
+}
 
+type fakeSampleClient struct {
+	series [][]logproto.Series
+	curr   int
+}
+
+func (f *fakeSampleClient) Recv() (*logproto.SampleQueryResponse, error) {
+	if f.curr >= len(f.series) {
+		return nil, io.EOF
+	}
+	res := &logproto.SampleQueryResponse{
+		Series: f.series[f.curr],
+	}
+	f.curr++
+	return res, nil
+}
+
+func (fakeSampleClient) Context() context.Context { return context.Background() }
+func (fakeSampleClient) CloseSend() error         { return nil }
+func TestNewSampleQueryClientIterator(t *testing.T) {
+
+	it := NewSampleQueryClientIterator(&fakeSampleClient{})
 }
