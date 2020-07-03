@@ -128,7 +128,7 @@ func NewFileTargetManager(
 		// download metadata for all pods running on a cluster, which may be a long operation.
 		for _, kube := range cfg.ServiceDiscoveryConfig.KubernetesSDConfigs {
 			if kube.Role == kubernetes.RolePod {
-				selector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, "ip-172-16-85-98.ec2.internal")
+				selector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, hostname)
 				kube.Selectors = []kubernetes.SelectorConfig{
 					{Role: kubernetes.RolePod, Field: selector},
 				}
