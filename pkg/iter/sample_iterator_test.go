@@ -3,12 +3,12 @@ package iter
 import (
 	"context"
 	"io"
-	"reflect"
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestNewPeekingSampleIterator(t *testing.T) {
@@ -84,45 +84,29 @@ func sample(i int) logproto.Sample {
 	}
 }
 
+var varSeries = logproto.Series{
+	Labels: `{foo="var"}`,
+	Samples: []logproto.Sample{
+		sample(1), sample(2), sample(3),
+	},
+}
+var carSeries = logproto.Series{
+	Labels: `{foo="car"}`,
+	Samples: []logproto.Sample{
+		sample(1), sample(2), sample(3),
+	},
+}
+
 func TestNewHeapSampleIterator(t *testing.T) {
 	it := NewHeapSampleIterator(context.Background(),
 		[]SampleIterator{
-			NewSeriesIterator(logproto.Series{
-				Labels: `{foo="var"}`,
-				Samples: []logproto.Sample{
-					sample(1), sample(2), sample(3),
-				},
-			}), NewSeriesIterator(logproto.Series{
-				Labels: `{foo="car"}`,
-				Samples: []logproto.Sample{
-					sample(1), sample(2), sample(3),
-				},
-			}), NewSeriesIterator(logproto.Series{
-				Labels: `{foo="car"}`,
-				Samples: []logproto.Sample{
-					sample(1), sample(2), sample(3),
-				},
-			}), NewSeriesIterator(logproto.Series{
-				Labels: `{foo="var"}`,
-				Samples: []logproto.Sample{
-					sample(1), sample(2), sample(3),
-				},
-			}), NewSeriesIterator(logproto.Series{
-				Labels: `{foo="car"}`,
-				Samples: []logproto.Sample{
-					sample(1), sample(2), sample(3),
-				},
-			}), NewSeriesIterator(logproto.Series{
-				Labels: `{foo="var"}`,
-				Samples: []logproto.Sample{
-					sample(1), sample(2), sample(3),
-				},
-			}), NewSeriesIterator(logproto.Series{
-				Labels: `{foo="car"}`,
-				Samples: []logproto.Sample{
-					sample(1), sample(2), sample(3),
-				},
-			}),
+			NewSeriesIterator(varSeries),
+			NewSeriesIterator(carSeries),
+			NewSeriesIterator(carSeries),
+			NewSeriesIterator(varSeries),
+			NewSeriesIterator(carSeries),
+			NewSeriesIterator(varSeries),
+			NewSeriesIterator(carSeries),
 		})
 
 	for i := 1; i < 4; i++ {
@@ -158,5 +142,54 @@ func (fakeSampleClient) Context() context.Context { return context.Background() 
 func (fakeSampleClient) CloseSend() error         { return nil }
 func TestNewSampleQueryClientIterator(t *testing.T) {
 
-	it := NewSampleQueryClientIterator(&fakeSampleClient{})
+	it := NewSampleQueryClientIterator(&fakeSampleClient{
+		series: [][]logproto.Series{
+			{varSeries},
+			{carSeries},
+		},
+	})
+	for i := 1; i < 4; i++ {
+		require.True(t, it.Next(), i)
+		require.Equal(t, `{foo="var"}`, it.Labels(), i)
+		require.Equal(t, sample(i), it.Sample(), i)
+	}
+	for i := 1; i < 4; i++ {
+		require.True(t, it.Next(), i)
+		require.Equal(t, `{foo="car"}`, it.Labels(), i)
+		require.Equal(t, sample(i), it.Sample(), i)
+	}
+	require.False(t, it.Next())
+	require.NoError(t, it.Error())
+	require.NoError(t, it.Close())
+}
+
+func TestNewNonOverlappingSampleIterator(t *testing.T) {
+	it := NewNonOverlappingSampleIterator([]SampleIterator{
+		NewSeriesIterator(varSeries),
+		NewSeriesIterator(logproto.Series{
+			Labels:  varSeries.Labels,
+			Samples: []logproto.Sample{sample(4), sample(5)},
+		}),
+	}, varSeries.Labels)
+
+	for i := 1; i < 6; i++ {
+		require.True(t, it.Next(), i)
+		require.Equal(t, `{foo="var"}`, it.Labels(), i)
+		require.Equal(t, sample(i), it.Sample(), i)
+	}
+	require.False(t, it.Next())
+	require.NoError(t, it.Error())
+	require.NoError(t, it.Close())
+}
+
+func TestReadSampleBatch(t *testing.T) {
+	res, size, err := ReadSampleBatch(NewSeriesIterator(carSeries), 1)
+	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{{Labels: carSeries.Labels, Samples: []logproto.Sample{sample(1)}}}}, res)
+	require.Equal(t, uint32(1), size)
+	require.NoError(t, err)
+
+	res, size, err = ReadSampleBatch(NewMultiSeriesIterator(context.Background(), []logproto.Series{carSeries, varSeries}), 100)
+	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{carSeries, varSeries}}, res)
+	require.Equal(t, uint32(6), size)
+	require.NoError(t, err)
 }

@@ -544,7 +544,7 @@ func Test_timeRangedIterator_Next(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("mint:%d maxt:%d", tt.mint.UnixNano(), tt.maxt.UnixNano()), func(t *testing.T) {
-			i := NewTimeRangedIterator(
+			it := NewTimeRangedIterator(
 				NewStreamIterator(
 					logproto.Stream{Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1)},
@@ -555,9 +555,25 @@ func Test_timeRangedIterator_Next(t *testing.T) {
 				tt.maxt,
 			)
 			for _, b := range tt.expect {
-				require.Equal(t, b, i.Next())
+				require.Equal(t, b, it.Next())
 			}
-			require.NoError(t, i.Close())
+			require.NoError(t, it.Close())
+		})
+		t.Run(fmt.Sprintf("mint:%d maxt:%d_sample", tt.mint.UnixNano(), tt.maxt.UnixNano()), func(t *testing.T) {
+			it := NewTimeRangedSampleIterator(
+				NewSeriesIterator(
+					logproto.Series{Samples: []logproto.Sample{
+						sample(1),
+						sample(2),
+						sample(3),
+					}}),
+				tt.mint.UnixNano(),
+				tt.maxt.UnixNano(),
+			)
+			for _, b := range tt.expect {
+				require.Equal(t, b, it.Next())
+			}
+			require.NoError(t, it.Close())
 		})
 	}
 }

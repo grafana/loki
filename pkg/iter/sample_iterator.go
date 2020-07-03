@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-// SampleIterator iterates over sample in time-order.
+// SampleIterator iterates over samples in time-order.
 type SampleIterator interface {
 	Next() bool
 	// todo(ctovena) we should add `Seek(t int64) bool`
@@ -22,7 +22,7 @@ type SampleIterator interface {
 	Close() error
 }
 
-// PeekingSampleIterator is an sample iterator that can peek sample without moving the current sample.
+// PeekingSampleIterator is a sample iterator that can peek sample without moving the current sample.
 type PeekingSampleIterator interface {
 	SampleIterator
 	Peek() (string, logproto.Sample, bool)
@@ -288,7 +288,7 @@ type sampleQueryClientIterator struct {
 	curr   SampleIterator
 }
 
-// QuerySampleClient is GRPC stream client with only method used by the iterator
+// QuerySampleClient is GRPC stream client with only method used by the SampleQueryClientIterator
 type QuerySampleClient interface {
 	Recv() (*logproto.SampleQueryResponse, error)
 	Context() context.Context
@@ -336,11 +336,7 @@ func (i *sampleQueryClientIterator) Close() error {
 
 // NewSampleQueryResponseIterator returns an iterator over a SampleQueryResponse.
 func NewSampleQueryResponseIterator(ctx context.Context, resp *logproto.SampleQueryResponse) SampleIterator {
-	is := make([]SampleIterator, 0, len(resp.Series))
-	for i := range resp.Series {
-		is = append(is, NewSeriesIterator(resp.Series[i]))
-	}
-	return NewHeapSampleIterator(ctx, is)
+	return NewMultiSeriesIterator(ctx, resp.Series)
 }
 
 type seriesIterator struct {
