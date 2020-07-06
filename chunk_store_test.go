@@ -918,7 +918,7 @@ func TestChunkStoreError(t *testing.T) {
 			query:   "foo",
 			from:    model.Time(0),
 			through: model.Time(0).Add(31 * 24 * time.Hour),
-			err:     "invalid query, length > limit (744h0m0s > 720h0m0s)",
+			err:     "the query time range exceeds the limit (query length: 744h0m0s, limit: 720h0m0s)",
 		},
 		{
 			query:   "{foo=\"bar\"}",
