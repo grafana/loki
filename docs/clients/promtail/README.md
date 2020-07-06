@@ -34,7 +34,7 @@ drop, and the final metadata to attach to the log line. Refer to the docs for
 
 ## Loki Push API
 
-With the [Push Target](./configuration.md#push_config) Promtail can also expose the [Loki Push API](../../api.md#post-lokiapiv1push) to allow sending logs to a Promtail instance as if it were a Loki server. Those logs will then be sent to another Promtail or Loki server.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](../../api.md#post-lokiapiv1push) with the [loki_push_api](./configuration.md#loki_push_api_config) scrape config.
 
 There are a few instances where this might be helpful:
 

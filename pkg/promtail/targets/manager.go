@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/file"
 	"github.com/grafana/loki/pkg/promtail/targets/journal"
-	"github.com/grafana/loki/pkg/promtail/targets/push"
+	"github.com/grafana/loki/pkg/promtail/targets/lokipush"
 	"github.com/grafana/loki/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/pkg/promtail/targets/syslog"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
@@ -116,7 +116,7 @@ func NewTargetManagers(
 		}
 	}
 	if len(pushScrapeConfigs) > 0 {
-		pushTargetManager, err := push.NewPushTargetManager(logger, client, pushScrapeConfigs)
+		pushTargetManager, err := lokipush.NewPushTargetManager(logger, client, pushScrapeConfigs)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to make syslog target manager")
 		}

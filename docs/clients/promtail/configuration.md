@@ -26,7 +26,7 @@ and how to scrape logs from files.
         * [tenant](#tenant)
     * [journal_config](#journal_config)
     * [syslog_config](#syslog_config)
-    * [push_config](#push_config)
+    * [loki_push_api_config](#loki_push_api_config)
     * [relabel_config](#relabel_config)
     * [static_config](#static_config)
     * [file_sd_config](#file_sd_config)
@@ -272,7 +272,7 @@ job_name: <string>
 [syslog: <syslog_config>]
 
 # Describes how to receive logs via the Loki push API, (e.g. from other Promtails or the Docker Logging Driver)
-[push: <push_config>]
+[loki_push_api: <loki_push_api_config>]
 
 # Describes how to relabel targets to determine if they should
 # be processed.
@@ -720,11 +720,11 @@ labels:
 * `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
 * `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
 
-### push_config
+### loki_push_api_config
 
-The `push_config` block configures Promtail to expose a [Loki push API](../../api.md#post-lokiapiv1push) server.
+The `loki_push_api_config` block configures Promtail to expose a [Loki push API](../../api.md#post-lokiapiv1push) server.
 
-Each job configured with a `push_config` will expose this API and will require a separate port.
+Each job configured with a `loki_push_api_config` will expose this API and will require a separate port.
 
 Note the `server` configuration is the same as [server_config](#server_config)
 

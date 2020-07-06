@@ -22,7 +22,7 @@ type Config struct {
 	PipelineStages         stages.PipelineStages            `yaml:"pipeline_stages,omitempty"`
 	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
 	SyslogConfig           *SyslogTargetConfig              `yaml:"syslog,omitempty"`
-	PushConfig             *PushTargetConfig                `yaml:"push,omitempty"`
+	PushConfig             *PushTargetConfig                `yaml:"loki_push_api,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
 }
