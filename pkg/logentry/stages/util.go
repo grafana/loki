@@ -2,6 +2,7 @@ package stages
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +65,22 @@ func convertDateLayout(predef string, location *time.Location) parser {
 		}
 	case "Unix":
 		return func(t string) (time.Time, error) {
+			if strings.Count(t, ".") == 1 {
+				split := strings.Split(t, ".")
+				if len(split) != 2 {
+					return time.Time{}, fmt.Errorf("can't split %v into two parts", t)
+				}
+				sec, err := strconv.ParseInt(split[0], 10, 64)
+				if err != nil {
+					return time.Time{}, err
+				}
+				frac, err := strconv.ParseInt(split[1], 10, 64)
+				if err != nil {
+					return time.Time{}, err
+				}
+				nsec := int64(float64(frac) * math.Pow(10, float64(9-len(split[1]))))
+				return time.Unix(sec, nsec), nil
+			}
 			i, err := strconv.ParseInt(t, 10, 64)
 			if err != nil {
 				return time.Time{}, err
