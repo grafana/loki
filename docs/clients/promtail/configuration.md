@@ -1206,7 +1206,7 @@ clients:
 
 scrape_configs:
 - job_name: push1
-  push:
+  loki_push_api:
     server:
       http_listen_port: 3500
       grpc_listen_port: 3600
