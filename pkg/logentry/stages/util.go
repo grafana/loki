@@ -67,6 +67,9 @@ func convertDateLayout(predef string, location *time.Location) parser {
 		return func(t string) (time.Time, error) {
 			if strings.Count(t, ".") == 1 {
 				split := strings.Split(t, ".")
+				if len(split) != 2 {
+					return time.Time{}, fmt.Errorf("Can't split %v into two parts", t)
+				}
 				sec, err := strconv.ParseInt(split[0], 10, 64)
 				if err != nil {
 					return time.Time{}, err
