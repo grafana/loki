@@ -193,7 +193,7 @@ memberlist:
 schema_config:
   configs:
   - from: 2020-05-15
-    store: boltdb_shipper
+    store: boltdb-shipper
     object_store: s3
     schema: v11
     index:
@@ -202,8 +202,8 @@ schema_config:
 
 storage_config:
  boltdb_shipper:
-   active_index_directory: /data/loki/index
-   cache_location: /data/loki/index_cache
+   active_index_directory: /loki/index
+   cache_location: /loki/index_cache
    resync_interval: 5s
    shared_store: s3
 
