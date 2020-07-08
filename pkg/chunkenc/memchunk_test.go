@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -712,4 +713,21 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 
 	}
 
+}
+
+func TestMemchunkLongLine(t *testing.T) {
+	for _, enc := range testEncoding {
+		t.Run(enc.String(), func(t *testing.T) {
+			c := NewMemChunk(enc, testBlockSize, testTargetSize)
+			for i := 1; i <= 10; i++ {
+				require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: strings.Repeat("e", 200000)}))
+			}
+			it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil)
+			require.NoError(t, err)
+			for i := 1; i <= 10; i++ {
+				require.True(t, it.Next())
+			}
+			require.False(t, it.Next())
+		})
+	}
 }
