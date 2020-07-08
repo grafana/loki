@@ -56,7 +56,7 @@ func NewPushTargetManager(
 }
 
 func validateJobName(scrapeConfigs []scrapeconfig.Config) error {
-	jobNames := map[string]bool{}
+	jobNames := map[string]struct{}{}
 	for i, cfg := range scrapeConfigs {
 		if cfg.JobName == "" {
 			return errors.New("`job_name` must be defined for the `push` scrape_config with a " +
@@ -67,7 +67,7 @@ func validateJobName(scrapeConfigs []scrapeconfig.Config) error {
 			return fmt.Errorf("`job_name` must be unique for each `push` scrape_config, "+
 				"a duplicate `job_name` of %s was found", cfg.JobName)
 		} else {
-			jobNames[cfg.JobName] = true
+			jobNames[cfg.JobName] = struct{}{}
 		}
 
 		scrapeConfigs[i].JobName = strings.Replace(cfg.JobName, " ", "_", -1)

@@ -118,7 +118,7 @@ func NewTargetManagers(
 	if len(pushScrapeConfigs) > 0 {
 		pushTargetManager, err := lokipush.NewPushTargetManager(logger, client, pushScrapeConfigs)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to make syslog target manager")
+			return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
 		}
 		targetManagers = append(targetManagers, pushTargetManager)
 	}

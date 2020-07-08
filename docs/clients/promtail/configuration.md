@@ -1214,7 +1214,7 @@ scrape_configs:
       pushserver: push1
 ```
 
-Please note the `job_name` must be provided and must be unique between multiple `push` scrape_configs, it will be used to register metrics.
+Please note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
 
 A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the promtail `server` config section (unless it's disabled)
 

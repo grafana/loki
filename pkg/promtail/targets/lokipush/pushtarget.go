@@ -117,14 +117,14 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 
 		lb := labels.NewBuilder(make(labels.Labels, 0, len(matchers)+len(t.config.Labels)))
 
-		// Add configured labels
-		for k, v := range t.config.Labels {
-			lb.Set(string(k), string(v))
-		}
-
 		// Add stream labels
 		for i := range matchers {
 			lb.Set(matchers[i].Name, matchers[i].Value)
+		}
+
+		// Add configured labels
+		for k, v := range t.config.Labels {
+			lb.Set(string(k), string(v))
 		}
 
 		// Apply relabeling
