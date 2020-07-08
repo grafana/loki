@@ -15,12 +15,16 @@ import (
 
 const cacheCleanupInterval = 24 * time.Hour
 
+type Config struct {
+	CacheDir     string
+	SyncInterval time.Duration
+	CacheTTL     time.Duration
+}
+
 type TableManager struct {
+	cfg             Config
 	boltIndexClient BoltDBIndexClient
-	indexDir        string
 	storageClient   chunk.ObjectClient
-	syncInterval    time.Duration
-	cacheTTL        time.Duration
 
 	tables    map[string]*Table
 	tablesMtx sync.RWMutex
@@ -30,14 +34,11 @@ type TableManager struct {
 	wg   sync.WaitGroup
 }
 
-func NewTableManager(boltIndexClient BoltDBIndexClient, indexDir string, storageClient chunk.ObjectClient,
-	syncInterval, cacheTTL time.Duration, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (*TableManager, error) {
 	return &TableManager{
+		cfg:             cfg,
 		boltIndexClient: boltIndexClient,
-		indexDir:        indexDir,
 		storageClient:   storageClient,
-		syncInterval:    syncInterval,
-		cacheTTL:        cacheTTL,
 		tables:          make(map[string]*Table),
 		metrics:         newMetrics(registerer),
 		done:            make(chan struct{}),
@@ -47,7 +48,7 @@ func NewTableManager(boltIndexClient BoltDBIndexClient, indexDir string, storage
 func (tm *TableManager) loop() {
 	defer tm.wg.Done()
 
-	syncTicker := time.NewTicker(tm.syncInterval)
+	syncTicker := time.NewTicker(tm.cfg.SyncInterval)
 	defer syncTicker.Stop()
 
 	cacheCleanupTicker := time.NewTicker(cacheCleanupInterval)
@@ -83,7 +84,7 @@ func (tm *TableManager) Stop() {
 	}
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	return chunk_util.DoParallelQueries(ctx, tm.query, queries, callback)
 }
 
@@ -122,7 +123,7 @@ func (tm *TableManager) getOrCreateTable(tableName string) *Table {
 			// table not found, creating one.
 			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
 
-			table = NewTable(tableName, tm.indexDir, tm.storageClient, tm.metrics)
+			table = NewTable(tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
 			tm.tables[tableName] = table
 		}
 		tm.tablesMtx.Unlock()
@@ -151,8 +152,8 @@ func (tm *TableManager) cleanupCache() error {
 
 	for name, table := range tm.tables {
 		lastUsedAt := table.LastUsedAt()
-		if lastUsedAt.Add(tm.cacheTTL).Before(time.Now()) {
-			err := table.CleanupAllFiles()
+		if lastUsedAt.Add(tm.cfg.CacheTTL).Before(time.Now()) {
+			err := table.CleanupAllDBs()
 			if err != nil {
 				return err
 			}

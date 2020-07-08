@@ -41,6 +41,9 @@ const (
 	FilesystemObjectStoreType = "filesystem"
 
 	storageKeyPrefix = "index/"
+
+	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
+	UploadInterval = 15 * time.Minute
 )
 
 type boltDBIndexClient interface {
@@ -111,8 +114,15 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 		return err
 	}
 
+	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, storageKeyPrefix)
+
 	if s.cfg.Mode != ModeReadOnly {
-		uploadsManager, err := uploads.NewTableManager(s.boltDBIndexClient, storageClient, uploader, s.cfg.ActiveIndexDirectory, registerer)
+		cfg := uploads.Config{
+			Uploader:       uploader,
+			IndexDir:       s.cfg.ActiveIndexDirectory,
+			UploadInterval: UploadInterval,
+		}
+		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
 		if err != nil {
 			return err
 		}
@@ -121,8 +131,12 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 	}
 
 	if s.cfg.Mode != ModeWriteOnly {
-		downloadsManager, err := downloads.NewTableManager(s.boltDBIndexClient, s.cfg.CacheLocation, util.NewPrefixedObjectClient(storageClient, storageKeyPrefix), s.cfg.ResyncInterval,
-			s.cfg.CacheTTL, registerer)
+		cfg := downloads.Config{
+			CacheDir:     s.cfg.CacheLocation,
+			SyncInterval: s.cfg.ResyncInterval,
+			CacheTTL:     s.cfg.CacheTTL,
+		}
+		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
 		if err != nil {
 			return err
 		}

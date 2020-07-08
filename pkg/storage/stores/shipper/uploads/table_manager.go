@@ -18,30 +18,29 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const (
-	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
-	UploadInterval = 15 * time.Minute
-)
+type Config struct {
+	Uploader       string
+	IndexDir       string
+	UploadInterval time.Duration
+}
 
 type TableManager struct {
-	uploader        string
-	indexDir        string
+	cfg             Config
 	boltIndexClient BoltDBIndexClient
 	storageClient   chunk.ObjectClient
 
-	metrics        *metrics
-	tables         map[string]*Table
-	localTablesMtx sync.RWMutex
+	metrics   *metrics
+	tables    map[string]*Table
+	tablesMtx sync.RWMutex
 
 	done chan struct{}
 	wg   sync.WaitGroup
 }
 
-func NewTableManager(boltIndexClient BoltDBIndexClient, storageClient chunk.ObjectClient, uploader, indexDir string, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (*TableManager, error) {
 	tm := TableManager{
+		cfg:             cfg,
 		boltIndexClient: boltIndexClient,
-		uploader:        uploader,
-		indexDir:        indexDir,
 		storageClient:   storageClient,
 		metrics:         newMetrics(registerer),
 		done:            make(chan struct{}),
@@ -59,7 +58,7 @@ func NewTableManager(boltIndexClient BoltDBIndexClient, storageClient chunk.Obje
 func (tm *TableManager) loop() {
 	defer tm.wg.Done()
 
-	syncTicker := time.NewTicker(UploadInterval)
+	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
 	defer syncTicker.Stop()
 
 	for {
@@ -85,11 +84,14 @@ func (tm *TableManager) Stop() {
 	}
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	return chunk_util.DoParallelQueries(ctx, tm.query, queries, callback)
 }
 
 func (tm *TableManager) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+	tm.tablesMtx.RLock()
+	defer tm.tablesMtx.RUnlock()
+
 	table, ok := tm.tables[query.TableName]
 	if !ok {
 		return nil
@@ -105,7 +107,7 @@ func (tm *TableManager) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	}
 
 	for tableName, tableWrites := range boltWriteBatch.Writes {
-		table, err := tm.getOrCreateLocalTable(tableName)
+		table, err := tm.getOrCreateTable(tableName)
 		if err != nil {
 			return err
 		}
@@ -119,19 +121,19 @@ func (tm *TableManager) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	return nil
 }
 
-func (tm *TableManager) getOrCreateLocalTable(tableName string) (*Table, error) {
-	tm.localTablesMtx.RLock()
+func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
+	tm.tablesMtx.RLock()
 	table, ok := tm.tables[tableName]
-	tm.localTablesMtx.RUnlock()
+	tm.tablesMtx.RUnlock()
 
 	if !ok {
-		tm.localTablesMtx.Lock()
-		defer tm.localTablesMtx.Unlock()
+		tm.tablesMtx.Lock()
+		defer tm.tablesMtx.Unlock()
 
 		table, ok = tm.tables[tableName]
 		if !ok {
 			var err error
-			table, err = NewTable(filepath.Join(tm.indexDir, tableName), tm.uploader, tm.storageClient, tm.boltIndexClient)
+			table, err = NewTable(filepath.Join(tm.cfg.IndexDir, tableName), tm.cfg.Uploader, tm.storageClient, tm.boltIndexClient)
 			if err != nil {
 				return nil, err
 			}
@@ -144,8 +146,8 @@ func (tm *TableManager) getOrCreateLocalTable(tableName string) (*Table, error) 
 }
 
 func (tm *TableManager) uploadTables(ctx context.Context) (err error) {
-	tm.localTablesMtx.RLock()
-	defer tm.localTablesMtx.RUnlock()
+	tm.tablesMtx.RLock()
+	defer tm.tablesMtx.RUnlock()
 
 	defer func() {
 		status := statusSuccess
@@ -161,6 +163,7 @@ func (tm *TableManager) uploadTables(ctx context.Context) (err error) {
 			return err
 		}
 
+		// cleanup unwanted dbs from the table
 		err = table.Cleanup()
 		if err != nil {
 			// we do not want to stop uploading of dbs due to failures in cleaning them up so logging just the error here.
@@ -173,11 +176,12 @@ func (tm *TableManager) uploadTables(ctx context.Context) (err error) {
 
 func (tm *TableManager) loadTables() (map[string]*Table, error) {
 	localTables := make(map[string]*Table)
-	filesInfo, err := ioutil.ReadDir(tm.indexDir)
+	filesInfo, err := ioutil.ReadDir(tm.cfg.IndexDir)
 	if err != nil {
 		return nil, err
 	}
 
+	// regex matching table name patters, i.e prefix+period_number
 	re, err := regexp.Compile(`.+[0-9]+$`)
 	if err != nil {
 		return nil, err
@@ -191,7 +195,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		// since we are moving to keeping files for same table in a folder, if current element is a file we need to move it inside a directory with the same name
 		// i.e file index_123 would be moved to path index_123/index_123.
 		if !fileInfo.IsDir() {
-			filePath := filepath.Join(tm.indexDir, fileInfo.Name())
+			filePath := filepath.Join(tm.cfg.IndexDir, fileInfo.Name())
 
 			// create a folder with .temp suffix since we can't create a directory with same name as file.
 			tempDirPath := filePath + ".temp"
@@ -210,7 +214,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			}
 		}
 
-		table, err := LoadTable(filepath.Join(tm.indexDir, fileInfo.Name()), tm.uploader, tm.storageClient, tm.boltIndexClient)
+		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.storageClient, tm.boltIndexClient)
 		if err != nil {
 			return nil, err
 		}

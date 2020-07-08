@@ -30,6 +30,8 @@ type downloadedFile struct {
 	boltdb *bbolt.DB
 }
 
+// Table is a collection of multiple files created for a same table by various ingesters.
+// All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type Table struct {
 	name              string
 	cacheLocation     string
@@ -46,14 +48,15 @@ type Table struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewTable(period, cacheLocation string, storageClient chunk.ObjectClient, metrics *metrics) *Table {
+func NewTable(name, cacheLocation string, storageClient chunk.ObjectClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
 	table := Table{
-		name:          period,
-		cacheLocation: cacheLocation,
-		metrics:       metrics,
-		storageClient: storageClient,
-		dbs:           map[string]*downloadedFile{},
-		ready:         make(chan struct{}),
+		name:              name,
+		cacheLocation:     cacheLocation,
+		metrics:           metrics,
+		storageClient:     storageClient,
+		boltDBIndexClient: boltDBIndexClient,
+		dbs:               map[string]*downloadedFile{},
+		ready:             make(chan struct{}),
 	}
 
 	// keep the files collection locked until all the files are downloaded.
@@ -70,13 +73,15 @@ func NewTable(period, cacheLocation string, storageClient chunk.ObjectClient, me
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
 		if err := table.init(ctx); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to download files", "period", table.name)
+			level.Error(util.Logger).Log("msg", "failed to download files", "name", table.name)
 		}
 	}()
 
 	return &table
 }
 
+// init downloads all the db files for the table from object storage.
+// it assumes the locking of mutex is taken care of by the caller.
 func (t *Table) init(ctx context.Context) (err error) {
 	defer func() {
 		status := statusSuccess
@@ -86,7 +91,7 @@ func (t *Table) init(ctx context.Context) (err error) {
 
 			// cleaning up files due to error to avoid returning invalid results.
 			for fileName := range t.dbs {
-				if err := t.cleanupFile(fileName); err != nil {
+				if err := t.cleanupDB(fileName); err != nil {
 					level.Error(util.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
 				}
 			}
@@ -144,9 +149,10 @@ func (t *Table) init(ctx context.Context) (err error) {
 	return
 }
 
+// Closes references to all the dbs.
 func (t *Table) Close() {
 	t.dbsMtx.Lock()
-	defer t.dbsMtx.RUnlock()
+	defer t.dbsMtx.Unlock()
 
 	// stop the initialization if it is still ongoing.
 	t.cancelFunc()
@@ -160,7 +166,8 @@ func (t *Table) Close() {
 	t.dbs = map[string]*downloadedFile{}
 }
 
-func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+// Queries all the dbs for index.
+func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	if t.err != nil {
 		return t.err
 	}
@@ -179,31 +186,35 @@ func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback func
 	return nil
 }
 
-func (t *Table) CleanupAllFiles() error {
+// Closes reference to all the open dbs and removes the local file.
+func (t *Table) CleanupAllDBs() error {
 	t.dbsMtx.Lock()
 	defer t.dbsMtx.Unlock()
 
 	for fileName := range t.dbs {
-		if err := t.cleanupFile(fileName); err != nil {
+		if err := t.cleanupDB(fileName); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// IsReady returns a channel which gets closed when the Table is ready for queries.
 func (t *Table) IsReady() chan struct{} {
 	return t.ready
 }
 
+// Err returns the err which is usually set when there was any issue in init.
 func (t *Table) Err() error {
 	return t.err
 }
 
+// LastUsedAt returns the time at which table was last used for querying.
 func (t *Table) LastUsedAt() time.Time {
 	return t.lastUsedAt
 }
 
-func (t *Table) cleanupFile(fileName string) error {
+func (t *Table) cleanupDB(fileName string) error {
 	df, ok := t.dbs[fileName]
 	if !ok {
 		return fmt.Errorf("file %s not found in files collection for cleaning up", fileName)
@@ -220,7 +231,7 @@ func (t *Table) cleanupFile(fileName string) error {
 	return os.Remove(filePath)
 }
 
-// Sync downloads updated and new files from for given period from all the uploaders and removes deleted ones
+// Sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *Table) Sync(ctx context.Context) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("syncing files for period %s", t.name))
 
@@ -240,7 +251,7 @@ func (t *Table) Sync(ctx context.Context) error {
 	defer t.dbsMtx.Unlock()
 
 	for _, uploader := range toDelete {
-		err := t.cleanupFile(uploader)
+		err := t.cleanupDB(uploader)
 		if err != nil {
 			return err
 		}
@@ -283,7 +294,7 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 	return
 }
 
-// It first downloads file to a temp location so that we close the existing file(if already exists), replace it with new one and then reopen it.
+// downloadFile first downloads file to a temp location so that we can close the existing db(if already exists), replace it with new one and then reopen it.
 func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObject) error {
 	uploader := strings.Split(storageObject.Key, "/")[1]
 	folderPath, _ := t.folderPathForTable(false)
