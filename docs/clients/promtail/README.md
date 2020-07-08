@@ -47,6 +47,10 @@ There are a few instances where this might be helpful:
 When the [Syslog Target](./configuration.md#syslog_config) is being used, logs
 can be written with the syslog protocol to the configured port.
 
+## AWS
+
+If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial](./aws/ec2.md).
+
 ## Labeling and parsing
 
 During service discovery, metadata is determined (pod name, filename, etc.) that
