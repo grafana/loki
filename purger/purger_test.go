@@ -52,8 +52,6 @@ func setupTestDeleteStore(t *testing.T) *DeleteStore {
 }
 
 func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.ObjectClient, *Purger, *prometheus.Registry) {
-	registry := prometheus.NewRegistry()
-
 	deleteStore := setupTestDeleteStore(t)
 
 	chunkStore, err := testutils.SetupTestChunkStore()
@@ -62,13 +60,21 @@ func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.Object
 	storageClient, err := testutils.SetupTestObjectStore()
 	require.NoError(t, err)
 
+	purger, registry := setupPurger(t, deleteStore, chunkStore, storageClient)
+
+	return deleteStore, chunkStore, storageClient, purger, registry
+}
+
+func setupPurger(t *testing.T, deleteStore *DeleteStore, chunkStore chunk.Store, storageClient chunk.ObjectClient) (*Purger, *prometheus.Registry) {
+	registry := prometheus.NewRegistry()
+
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 
 	purger, err := NewPurger(cfg, deleteStore, chunkStore, storageClient, registry)
 	require.NoError(t, err)
 
-	return deleteStore, chunkStore, storageClient, purger, registry
+	return purger, registry
 }
 
 func buildChunks(from, through model.Time, batchSize int) ([]chunk.Chunk, error) {
@@ -347,10 +353,7 @@ func TestPurger_Restarts(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), purger))
 
 	// create a new purger to check whether it picks up in process delete requests
-	var cfg Config
-	flagext.DefaultValues(&cfg)
-	newPurger, err := NewPurger(cfg, deleteStore, chunkStore, storageClient, prometheus.NewPedanticRegistry())
-	require.NoError(t, err)
+	newPurger, _ := setupPurger(t, deleteStore, chunkStore, storageClient)
 
 	// load in process delete requests by calling Run
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), newPurger))
@@ -385,7 +388,7 @@ func TestPurger_Restarts(t *testing.T) {
 }
 
 func TestPurger_Metrics(t *testing.T) {
-	deleteStore, chunkStore, _, purger, registry := setupStoresAndPurger(t)
+	deleteStore, chunkStore, storageClient, purger, registry := setupStoresAndPurger(t)
 	defer func() {
 		purger.StopAsync()
 		chunkStore.Stop()
@@ -414,8 +417,16 @@ func TestPurger_Metrics(t *testing.T) {
 	require.InDelta(t, float64(2*86400), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
 	require.Equal(t, float64(2), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
 
-	// start loop to process requests
+	// stop the existing purger
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), purger))
+
+	// create a new purger
+	purger, registry = setupPurger(t, deleteStore, chunkStore, storageClient)
+
+	// load in process delete requests by starting the service
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger))
+
+	defer purger.StopAsync()
 
 	// wait until purger_delete_requests_processed_total starts to show up.
 	test.Poll(t, 2*time.Second, 1, func() interface{} {
