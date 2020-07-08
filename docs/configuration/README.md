@@ -877,7 +877,7 @@ for from specific time periods.
 # cassandra, or boltdb.
 store: <string>
 
-# Which store to use for the chunks. Either aws, aws-dynamo, azure, gcp,
+# Which store to use for the chunks. Either aws, azure, gcp,
 # bigtable, gcs, cassandra, swift or filesystem. If omitted, defaults to the same
 # value as store.
 [object_store: <string>]
