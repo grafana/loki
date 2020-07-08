@@ -247,17 +247,21 @@ func TestHeapIteratorDeduplication(t *testing.T) {
 			{Timestamp: time.Unix(0, 3), Line: "3"},
 		},
 	}
-	assertIt := func(it EntryIterator) {
-		for i := 0; i < 3; i++ {
+	assertIt := func(it EntryIterator, reversed bool, length int) {
+		for i := 0; i < length; i++ {
+			j := i
+			if reversed {
+				j = length - 1 - i
+			}
 			require.True(t, it.Next())
 			require.NoError(t, it.Error())
 			require.Equal(t, bar.Labels, it.Labels())
-			require.Equal(t, bar.Entries[i], it.Entry())
+			require.Equal(t, bar.Entries[j], it.Entry())
 
 			require.True(t, it.Next())
 			require.NoError(t, it.Error())
 			require.Equal(t, foo.Labels, it.Labels())
-			require.Equal(t, foo.Entries[i], it.Entry())
+			require.Equal(t, foo.Entries[j], it.Entry())
 
 		}
 		require.False(t, it.Next())
@@ -273,24 +277,27 @@ func TestHeapIteratorDeduplication(t *testing.T) {
 		NewStreamIterator(bar),
 		NewStreamIterator(foo),
 	}, logproto.FORWARD)
-	assertIt(it)
+	assertIt(it, false, len(foo.Entries))
 
 	// backward iteration
 	it = NewHeapIterator(context.Background(), []EntryIterator{
-		NewStreamIterator(foo),
-		NewStreamIterator(bar),
-		NewStreamIterator(foo),
-		NewStreamIterator(bar),
-		NewStreamIterator(foo),
-		NewStreamIterator(bar),
-		NewStreamIterator(foo),
+		mustReverseStreamIterator(NewStreamIterator(foo)),
+		mustReverseStreamIterator(NewStreamIterator(bar)),
+		mustReverseStreamIterator(NewStreamIterator(foo)),
+		mustReverseStreamIterator(NewStreamIterator(bar)),
+		mustReverseStreamIterator(NewStreamIterator(foo)),
+		mustReverseStreamIterator(NewStreamIterator(bar)),
+		mustReverseStreamIterator(NewStreamIterator(foo)),
 	}, logproto.BACKWARD)
-	// first reverse streams, they should already be correctly ordered for the heap iterator to work.
-	for i, j := 0, len(foo.Entries)-1; i < j; i, j = i+1, j-1 {
-		foo.Entries[i], foo.Entries[j] = foo.Entries[j], foo.Entries[i]
-		bar.Entries[i], bar.Entries[j] = bar.Entries[j], bar.Entries[i]
+	assertIt(it, true, len(foo.Entries))
+}
+
+func mustReverseStreamIterator(it EntryIterator) EntryIterator {
+	reversed, err := NewReversedIter(it, 0, true)
+	if err != nil {
+		panic(err)
 	}
-	assertIt(it)
+	return reversed
 }
 
 func TestReverseIterator(t *testing.T) {
