@@ -4,9 +4,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 )
 
