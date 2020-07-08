@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/server/ui"
 	"github.com/grafana/loki/pkg/promtail/targets"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 var (
@@ -102,24 +103,24 @@ func (s *server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 	sort.Strings(index)
 	scrapeConfigData := struct {
 		Index   []string
-		Targets map[string][]targets.Target
+		Targets map[string][]target.Target
 		Active  []int
 		Dropped []int
 		Total   []int
 	}{
 		Index:   index,
-		Targets: make(map[string][]targets.Target),
+		Targets: make(map[string][]target.Target),
 		Active:  make([]int, len(index)),
 		Dropped: make([]int, len(index)),
 		Total:   make([]int, len(index)),
 	}
 	for i, job := range scrapeConfigData.Index {
-		scrapeConfigData.Targets[job] = make([]targets.Target, 0, len(allTarget[job]))
+		scrapeConfigData.Targets[job] = make([]target.Target, 0, len(allTarget[job]))
 		scrapeConfigData.Total[i] = len(allTarget[job])
-		for _, target := range allTarget[job] {
+		for _, t := range allTarget[job] {
 			// Do not display more than 100 dropped targets per job to avoid
 			// returning too much data to the clients.
-			if targets.IsDropped(target) {
+			if target.IsDropped(t) {
 				scrapeConfigData.Dropped[i]++
 				if scrapeConfigData.Dropped[i] > 100 {
 					continue
@@ -127,7 +128,7 @@ func (s *server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 			} else {
 				scrapeConfigData.Active[i]++
 			}
-			scrapeConfigData.Targets[job] = append(scrapeConfigData.Targets[job], target)
+			scrapeConfigData.Targets[job] = append(scrapeConfigData.Targets[job], t)
 		}
 	}
 
@@ -148,7 +149,7 @@ func (s *server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 				}
 				return ""
 			},
-			"numReady": func(ts []targets.Target) (readies int) {
+			"numReady": func(ts []target.Target) (readies int) {
 				for _, t := range ts {
 					if t.Ready() {
 						readies++
@@ -164,7 +165,7 @@ func (s *server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 func (s *server) targets(rw http.ResponseWriter, req *http.Request) {
 	executeTemplate(req.Context(), rw, templateOptions{
 		Data: struct {
-			TargetPools map[string][]targets.Target
+			TargetPools map[string][]target.Target
 		}{
 			TargetPools: s.tms.ActiveTargets(),
 		},
@@ -181,7 +182,7 @@ func (s *server) targets(rw http.ResponseWriter, req *http.Request) {
 				// you can't cast with a text template in go so this is a helper
 				return details.(map[string]string)
 			},
-			"numReady": func(ts []targets.Target) (readies int) {
+			"numReady": func(ts []target.Target) (readies int) {
 				for _, t := range ts {
 					if t.Ready() {
 						readies++

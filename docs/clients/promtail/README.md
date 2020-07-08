@@ -32,9 +32,19 @@ Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 drop, and the final metadata to attach to the log line. Refer to the docs for
 [configuring Promtail](configuration.md) for more details.
 
+## Loki Push API
+
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](../../api.md#post-lokiapiv1push) with the [loki_push_api](./configuration.md#loki_push_api_config) scrape config.
+
+There are a few instances where this might be helpful:
+
+* complex network infrastructures where many machines having egress is not desirable.
+* using the Docker Logging Driver and wanting to provide a complex pipeline or to extract metrics from logs.
+* serverless setups where many ephemeral log sources want to send to Loki, sending to a Promtail instance with `use_incoming_timestamp` == false can avoid out of order errors and avoid having to use high cardinality labels.
+
 ## Receiving logs From Syslog
 
-When the [Syslog Target](./scraping.md#syslog-target) is being used, logs
+When the [Syslog Target](./configuration.md#syslog_config) is being used, logs
 can be written with the syslog protocol to the configured port.
 
 ## Labeling and parsing

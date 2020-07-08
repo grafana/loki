@@ -26,6 +26,7 @@ and how to scrape logs from files.
         * [tenant](#tenant)
     * [journal_config](#journal_config)
     * [syslog_config](#syslog_config)
+    * [loki_push_api_config](#loki_push_api_config)
     * [relabel_config](#relabel_config)
     * [static_config](#static_config)
     * [file_sd_config](#file_sd_config)
@@ -269,6 +270,9 @@ job_name: <string>
 
 # Describes how to receive logs from syslog.
 [syslog: <syslog_config>]
+
+# Describes how to receive logs via the Loki push API, (e.g. from other Promtails or the Docker Logging Driver)
+[loki_push_api: <loki_push_api_config>]
 
 # Describes how to relabel targets to determine if they should
 # be processed.
@@ -716,6 +720,31 @@ labels:
 * `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
 * `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
 
+### loki_push_api_config
+
+The `loki_push_api_config` block configures Promtail to expose a [Loki push API](../../api.md#post-lokiapiv1push) server.
+
+Each job configured with a `loki_push_api_config` will expose this API and will require a separate port.
+
+Note the `server` configuration is the same as [server_config](#server_config)
+
+
+
+```yaml
+# The push server configuration options
+[server: <server_config>]
+
+# Label map to add to every log line sent to the push API
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# If promtail should pass on the timestamp from the incoming log or not.
+# When false promtail will assign the current timestamp to the log when it was processed
+[use_incoming_timestamp: <bool> | default = false]
+```
+
+See [Example Push Config](#example-push-config)
+
 ### relabel_config
 
 Relabeling is a powerful tool to dynamically rewrite the label set of a target
@@ -1159,3 +1188,34 @@ scrape_configs:
       - source_labels: ['__syslog_message_hostname']
         target_label: 'host'
 ```
+
+## Example Push Config
+
+The example starts Promtail as a Push receiver and will accept logs from other Promtail instances or the Docker Logging Dirver:
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: push1
+  loki_push_api:
+    server:
+      http_listen_port: 3500
+      grpc_listen_port: 3600
+    labels:
+      pushserver: push1
+```
+
+Please note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
+
+A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the promtail `server` config section (unless it's disabled)
+
+You can set `grpc_listen_port` to `0` to have a random port assigned if not using httpgrpc.
