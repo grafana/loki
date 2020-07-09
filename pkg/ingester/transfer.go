@@ -63,7 +63,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 			// a failed transfer to try again.  If we fail to set the state back to PENDING then
 			// exit Loki as we will effectively be hung anyway stuck in a JOINING state and will
 			// never join.
-			ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 			if err := i.lifecycler.ChangeState(ctx, ring.PENDING); err != nil {
 				level.Error(logger).Log("msg", "failed to update the ring state back to PENDING after "+
 					"a chunk transfer failure, there is nothing more Loki can do from this state "+
