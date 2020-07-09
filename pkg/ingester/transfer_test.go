@@ -88,6 +88,7 @@ func TestTransferOut(t *testing.T) {
 		lines := []string{}
 
 		// Get all the lines back and make sure the blocks transferred successfully
+		ing2.instances["test"].streamsMtx.RLock()
 		for _, stream := range ing2.instances["test"].streams {
 			it, err := stream.Iterator(
 				context.TODO(),
@@ -105,7 +106,7 @@ func TestTransferOut(t *testing.T) {
 				lines = append(lines, entry.Line)
 			}
 		}
-
+		ing2.instances["test"].streamsMtx.RUnlock()
 		sort.Strings(lines)
 
 		assert.Equal(
