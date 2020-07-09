@@ -93,13 +93,47 @@ chmod a+x "promtail-linux-amd64"
 ```
 
 Now we're going to download the [promtail configuration][promtail configuration] file below and edit, don't worry we will explain what those means.
+The file is also available on [github][config gist].
 
 ```bash
 curl https://gist.githubusercontent.com/cyriltovena/d0881cc717757db951b642be48c01445/raw/9492bfaaa776d77ce70d6aa69df89ff71524ade5/promtail-ec2.yaml > ec2-promtail.yaml
 vi ec2-promtail.yaml
 ```
 
-<script src="https://gist.github.com/cyriltovena/d0881cc717757db951b642be48c01445.js"></script>
+```yaml
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 0
+
+clients:
+  - url: https://<user id>:<api secret>@logs-prod-us-central1.grafana.net/loki/api/v1/push
+
+positions:
+  filename: /tmp/positions.yaml
+
+scrape_configs:
+  - job_name: ec2-logs
+    ec2_sd_configs:
+      - region: us-east-2
+        access_key: REDACTED
+        secret_key: REDACTED
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Name]
+        target_label: name
+        action: replace
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance
+        action: replace
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: zone
+        action: replace
+      - action: replace
+        replacement: /var/log/**.log
+        target_label: __path__
+      - source_labels: [__meta_ec2_private_dns_name]
+        regex: "(.*)"
+        target_label: __host__
+```
 
 The **server** section indicates promtail to bind his http server to 3100. Promtail serves HTTP pages for troubleshooting service discovery and targets.
 
@@ -218,3 +252,4 @@ That's it you reboot the machine and verify that you get new startup logs in Gra
 [systemd]: https://www.freedesktop.org/software/systemd/man/systemd.service.html
 [logql]: ../../../logql.md
 [ec2 logs]: ./promtail-ec2-logs.png "Grafana Loki logs"
+[config gist]: https://gist.github.com/cyriltovena/d0881cc717757db951b642be48c01445
