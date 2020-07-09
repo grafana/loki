@@ -20,9 +20,9 @@ Before we start you'll need:
 - A VPC that is routable from the internet. (Follow those [instructions][create an vpc] if you need to create one)
 - A SSH public key. (Follow those [instructions][create an ssh key] if you need a new one)
 - The [AWS CLI][aws cli] configured (run `aws configure`).
-- A Grafana instance with a Loki data source already configured.
+- A Grafana instance with a Loki data source already configured, you can use [GrafanaCloud][GrafanaCloud] free trial.
 
-For the sake of simplicity we'll use a GrafanaCloud Loki and Grafana instance, but all the step are the same if you're running your own Loki and Grafana instance.
+For the sake of simplicity we'll use a GrafanaCloud Loki and Grafana instances, you can get an free account for this tutorial on our [website][GrafanaCloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
 
 To make it easy to learn all the following instructions are manual, however in a real setup we recommend you to use provisioning tools such as [Terraform][terraform], [CloudFormation][cloud formation], [Ansible][ansible] or [Chef][chef].
 
@@ -34,7 +34,7 @@ As a first step we're going to import our SSH key to AWS so that we can SSH to o
 aws ec2 import-key-pair --key-name "promtail-ec2" --public-key-material fileb://~/.ssh/id_rsa.pub
 ```
 
-Next we're going to create a [security group][security group], make sure to note the group id for the following command:
+Next we're going to create a [security group][security group], make sure to note the group id, we'll need it for the following command:
 
 ```bash
 aws ec2 create-security-group --group-name promtail-ec2  --description "promtail on ec2" --vpc-id vpc-668d120f
@@ -50,7 +50,7 @@ aws ec2 authorize-security-group-ingress --group-id sg-02c489bbdeffdca1d --proto
 aws ec2 authorize-security-group-ingress --group-id sg-02c489bbdeffdca1d --protocol tcp --port 3100 --cidr 0.0.0.0/0
 ```
 
-> You don't need to open those ports to all IP as shown below you can use your own IP range.
+> You don't need to open those ports to all IPs as shown above you can use your own IP range.
 
 We're going to create an [Amazon Linux 2][Amazon Linux 2] instance as this is one of the most popular but feel free to use the AMI of your choice.
 
@@ -66,7 +66,7 @@ To make it more interesting later let's tag (`Name=promtail-demo`) our instance:
 aws ec2 create-tags --resources i-041b0be05c2d5cfad --tags Key=Name,Value=promtail-demo
 ```
 
-> Tags enable you to categorize your AWS resources in different ways, for example, by purpose, owner, or environment. This is useful when you have many resources of the same type—you can quickly identify a specific resource based on the tags that you've assigned to it.
+> Tags enable you to categorize your AWS resources in different ways, for example, by purpose, owner, or environment. This is useful when you have many resources of the same type—you can quickly identify a specific resource based on the tags that you've assigned to it. You'll see later, Promtail can transform those tags into [Loki labels][labels].
 
 Finally let's grab the public DNS of our instance:
 
@@ -92,7 +92,7 @@ unzip "promtail-linux-amd64.zip"
 chmod a+x "promtail-linux-amd64"
 ```
 
-Now we're going to download the [promtail configuration][promtail configuration] file below and edit, don't worry we will explain what those means.
+Now we're going to download the [promtail configuration][promtail configuration] file below and edit it, don't worry we will explain what those means.
 The file is also available on [github][config gist].
 
 ```bash
@@ -135,7 +135,7 @@ scrape_configs:
         target_label: __host__
 ```
 
-The **server** section indicates promtail to bind his http server to 3100. Promtail serves HTTP pages for troubleshooting service discovery and targets.
+The **server** section indicates promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting][troubleshooting loki] service discovery and targets.
 
 The **clients** section allow you to target your loki instance, if you're using GrafanaCloud simply replace `<user id>` and `<api secret>` with your credentials. Otherwise just replace the whole URL with your custom Loki instance.(e.g `http://my-loki-instance.my-org.com/loki/api/v1/push`)
 
@@ -143,37 +143,41 @@ The **clients** section allow you to target your loki instance, if you're using 
 
 Since we're running on AWS EC2 we want to uses EC2 service discovery, this will allows us to scrape metadata about the current instance (and even your custom tags) and attach those to our logs. This way managing and querying on logs will be much easier.
 
-Make sure to replace accordingly you current `region`, `access_key` and `secret_key`, alternatively you can use an [AWS Role][role] ARN, for more information about this see the `ec2_sd_config` [documentation][ec2_sd_config].
+Make sure to replace accordingly you current `region`, `access_key` and `secret_key`, alternatively you can use an [AWS Role][role] ARN, for more information about this, see the `ec2_sd_config` [documentation][ec2_sd_config].
 
 Finally the [`relabeling_configs`][relabel] section has three purposes:
 
-1. Selecting the labels discovered you want to attach to your targets. In our case here we're keeping `instance_id` as instance, the tag `Name` as name and the `zone` of the instance. Make sure to check out the Prometheus [documentation][ec2_sd_config] for the full list of available labels.
+1. Selecting the labels discovered you want to attach to your targets. In our case here, we're keeping `instance_id` as instance, the tag `Name` as name and the `zone` of the instance. Make sure to check out the Prometheus [documentation][ec2_sd_config] for the full list of available labels.
 
-2. Choosing the where promtail should find the log, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob your simply need to add another job.
+2. Choosing where promtail should find log files to tail, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob, you can simply add another job in your `scrape_configs`.
 
-3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieve by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current HOSTNAME environnement variable, the target will be dropped.
+3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieve by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current `HOSTNAME` environnement variable, the target will be dropped.
 
-Alright we should be ready to fire up promtail, we're going to run it using the flag `--dry-run`. This is perfect to ensure everything is correctly, specially when you're still playing around with the configuration. Don't worry when using this mode, Promtail won't send any logs and will remember any file positions.
+Alright we should be ready to fire up promtail, we're going to run it using the flag `--dry-run`. This is perfect to ensure everything is correctly, specially when you're still playing around with the configuration. Don't worry when using this mode, Promtail won't send any logs and won't remember any file positions.
 
 ```bash
  ./promtail-linux-amd64 -config.file=./ec2-promtail.yaml --dry-run
 ```
 
-If everything is going well you should see log indicating line that would have been sent to the Loki instance with their labels discovered as shown below:
+If everything is going well Promtail should print out log lines with their labels discovered instead of sending them to Loki, like shown below:
 
 ```bash
 2020-07-08T14:51:38	{filename="/var/log/cloud-init.log", instance="i-041b0be05c2d5cfad", name="promtail-demo", zone="us-east-2c"}	Jul 07 21:37:24 cloud-init[3035]: util.py[DEBUG]: loaded blob returned None, returning default.
 ```
 
-If you want to see the existing targets and available labels you can reach promtail server using the public dns assigned to your instance:
+Don't hesitate to edit the your config file and start Promtail again to try your config out.
 
-```
+If you want to see existing targets and available labels you can reach promtail server using the public dns assigned to your instance:
+
+```bash
 open http://ec2-13-59-62-37.us-east-2.compute.amazonaws.com:3100/
 ```
 
 For example the page below is the service discovery page. It shows you all discovered targets, with their respective available labels and the reason it was dropped if it was the case.
 
 ![discovery page page][discovery page]
+
+This page is really useful to understand what labels are available to forward with the `relabeling` configuration but also why Promtail is not scraping your target.
 
 ## Configuring Promtail as a service
 
@@ -226,24 +230,24 @@ Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[
 Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[2732]: level=info ts=2020-07-08T15:48:57.56029474Z caller=main.go:67 msg="Starting Promtail" version="(version=1.5.0, branch=HEAD, revision=12c7eab8)"
 ```
 
-You can now verify in Grafana that Loki has correctly received your instance logs using for instance the [LogQL][logql] query `{zone="us-east-2"}`.
+You can now verify in Grafana that Loki has correctly received your instance logs using by using the [LogQL][logql] query `{zone="us-east-2"}`.
 
 ![Grafana Loki logs][ec2 logs]
 
-That's it you reboot the machine and verify that you get new startup logs in Grafana. You can even use live tailing to see the instance appearing.
+That's it you can `reboot` the machine and verify that you get startup logs in Grafana. You can even use [live tailing][live tailing] to see the instance appearing.
 
-
-[promtail]: ../README.md
+[promtail]: ../../promtail/README.md
 [aws cli]: https://aws.amazon.com/cli/
 [create an vpc]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-subnets-commands-example.html
 [create an ssh key]: https://confluence.atlassian.com/bitbucketserver/creating-ssh-keys-776639788.html
+[GrafanaCloud]: https://grafana.com/signup/
 [terraform]: https://www.terraform.io/
 [cloud formation]: https://aws.amazon.com/fr/cloudformation/
 [ansible]: https://www.ansible.com/
 [chef]: https://www.chef.io/
 [security group]: https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html
 [Amazon Linux 2]: https://aws.amazon.com/amazon-linux-2/
-[promtail configuration]: ../configuration.md
+[promtail configuration]: ../../promtail/configuration.md
 [prometheus scrape config]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config
 [ec2_sd_config]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#ec2_sd_config
 [role]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html
@@ -253,3 +257,6 @@ That's it you reboot the machine and verify that you get new startup logs in Gra
 [logql]: ../../../logql.md
 [ec2 logs]: ./promtail-ec2-logs.png "Grafana Loki logs"
 [config gist]: https://gist.github.com/cyriltovena/d0881cc717757db951b642be48c01445
+[labels]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
+[troubleshooting loki]: ../../../getting-started/troubleshooting.md#troubleshooting-targets
+[live tailing]: https://grafana.com/docs/grafana/latest/features/datasources/loki/#live-tailing

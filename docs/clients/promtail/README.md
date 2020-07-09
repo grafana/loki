@@ -49,7 +49,7 @@ can be written with the syslog protocol to the configured port.
 
 ## AWS
 
-If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial](./aws/ec2.md).
+If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial](../aws/ec2/ec2.md).
 
 ## Labeling and parsing
 
