@@ -67,7 +67,7 @@ Also, if your deployment requires a VPC configuration, make sure to edit the `Vp
 Then run the following in your shell:
 
 ```bash
-sam deploy --guided --capabilities CAPABILITY_IAM,CAPABILITY_NAMED_IAM
+sam deploy --guided --capabilities CAPABILITY_IAM,CAPABILITY_NAMED_IAM --parameter-overrides PromtailAddress=<>,LogGroup=<>
 ```
 
 The command will package and deploy your application to AWS, with a series of prompts:

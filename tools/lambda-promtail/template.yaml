@@ -16,7 +16,7 @@ Parameters:
   ReservedConcurrency:
     Description: The maximum of concurrent executions you want to reserve for the function.
     Type: Number
-    Default: 0
+    Default: 2
 
 Resources:
   LambdaPromtailFunction:
