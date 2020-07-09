@@ -7,25 +7,46 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 )
 
+const (
+	AlertForStateMetricName = "ALERTS_FOR_STATE"
+	statusSuccess           = "success"
+	statusFailure           = "failure"
+)
+
+type NoopAppender struct{}
+
+func (a NoopAppender) Appender() (storage.Appender, error)                     { return a, nil }
+func (a NoopAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) { return 0, nil }
+func (a NoopAppender) AddFast(ref uint64, t int64, v float64) error {
+	return errors.New("unimplemented")
+}
+func (a NoopAppender) Commit() error   { return nil }
+func (a NoopAppender) Rollback() error { return nil }
+
 type Metrics struct {
-	Series  prometheus.Gauge // in memory series
-	Samples prometheus.Gauge // in memory samples
+	evaluations *prometheus.CounterVec
+	Series      prometheus.Gauge // in memory series
+	Samples     prometheus.Gauge // in memory samples
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
-		Series: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		evaluations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
-			Name:      "ruler_memory_series",
-		}),
+			Name:      "ruler_memory_for_state_evaluations",
+		}, []string{"status", "tenant"}),
 		Samples: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Name:      "ruler_memory_samples",
@@ -35,26 +56,32 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 
 type MemStore struct {
 	mtx       sync.Mutex
+	userID    string
 	queryFunc rules.QueryFunc
-	appenders map[string]*ForStateAppender
 	metrics   *Metrics
 	mgr       *rules.Manager
+	logger    log.Logger
+	rules     map[string]*RuleCache
 
-	cleanupInterval time.Duration
 	done            chan struct{}
+	cleanupInterval time.Duration
 }
 
-func NewMemStore(mgr *rules.Manager, cleanupInterval time.Duration, metrics *Metrics) *MemStore {
+func NewMemStore(userID string, mgr *rules.Manager, queryFunc rules.QueryFunc, metrics *Metrics, cleanupInterval time.Duration, logger log.Logger) *MemStore {
 	s := &MemStore{
-		mgr:       mgr,
-		appenders: make(map[string]*ForStateAppender),
-		metrics:   metrics,
-
+		userID:          userID,
+		metrics:         metrics,
+		queryFunc:       queryFunc,
+		logger:          logger,
+		mgr:             mgr,
 		cleanupInterval: cleanupInterval,
-		done:            make(chan struct{}),
+		rules:           make(map[string]*RuleCache),
+
+		done: make(chan struct{}),
 	}
 	go s.run()
 	return s
+
 }
 
 func (m *MemStore) Stop() {
@@ -67,10 +94,10 @@ func (m *MemStore) Stop() {
 	case <-m.done:
 		return
 	default:
-		for ruleKey, app := range m.appenders {
+		for ruleKey, cache := range m.rules {
 			// Force cleanup of all samples older than time.Now (all of them).
-			_ = app.CleanupOldSamples(0)
-			delete(m.appenders, ruleKey)
+			_ = cache.CleanupOldSamples(time.Now())
+			delete(m.rules, ruleKey)
 		}
 		close(m.done)
 	}
@@ -91,19 +118,19 @@ func (m *MemStore) run() {
 				holdDurs[rule.Name()] = rule.HoldDuration()
 			}
 
-			for ruleKey, app := range m.appenders {
+			for ruleKey, cache := range m.rules {
 				dur, ok := holdDurs[ruleKey]
 
 				// rule is no longer being tracked, remove it
 				if !ok {
-					_ = app.CleanupOldSamples(0)
-					delete(m.appenders, ruleKey)
+					_ = cache.CleanupOldSamples(time.Now())
+					delete(m.rules, ruleKey)
 					continue
 				}
 
 				// trim older samples out of tracking bounds, doubled to buffer.
-				if rem := app.CleanupOldSamples(2 * dur); rem == 0 {
-					delete(m.appenders, ruleKey)
+				if empty := cache.CleanupOldSamples(time.Now().Add(-2 * dur)); empty {
+					delete(m.rules, ruleKey)
 				}
 
 			}
@@ -113,136 +140,204 @@ func (m *MemStore) run() {
 	}
 }
 
-type ForStateAppender struct {
-	mtx     sync.Mutex
-	metrics *Metrics
-	data    map[uint64]*series.ConcreteSeries
+func (m *MemStore) Appender() storage.Appender { return NoopAppender{} }
+
+// implement storage.Queryable. It is only called with the desired ts as maxtime. Mint is
+// parameterized via the outage tolerance, but since we're synthetically generating these,
+// we only care about the desired time.
+func (m *MemStore) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return &MemStoreQuerier{
+		ts:       util.TimeFromMillis(maxt),
+		MemStore: m,
+		ctx:      ctx,
+	}, nil
+
 }
 
-func NewForStateAppender(metrics *Metrics) *ForStateAppender {
-	return &ForStateAppender{
-		data:    make(map[uint64]*series.ConcreteSeries),
+type MemStoreQuerier struct {
+	ts  time.Time
+	ctx context.Context
+	*MemStore
+}
+
+func (m *MemStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	b := labels.NewBuilder(nil)
+	var ruleKey string
+	for _, matcher := range matchers {
+		b.Set(matcher.Name, matcher.Value)
+		if matcher.Name == labels.AlertName && matcher.Type == labels.MatchEqual {
+			ruleKey = matcher.Value
+		}
+	}
+	ls := b.Labels()
+	if ruleKey == "" {
+		level.Error(m.logger).Log("msg", "MemStoreQuerier.Select called in an unexpected fashion without alertname or ALERTS_FOR_STATE labels")
+		return storage.NoopSeriesSet()
+	}
+
+	var rule *rules.AlertingRule
+
+	// go fetch the rule via the alertname
+	for _, x := range m.mgr.AlertingRules() {
+		if x.Name() == ruleKey {
+			rule = x
+			break
+		}
+	}
+
+	// should not happen
+	if rule == nil {
+		level.Error(m.logger).Log("msg", "failure trying to restore for state for untracked alerting rule", "name", ruleKey)
+		return storage.NoopSeriesSet()
+	}
+
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	cache, ok := m.rules[ruleKey]
+
+	// no timestamp results are cached for this rule at all; Create it.
+	if !ok {
+		cache = NewRuleCache(m.metrics)
+		m.rules[ruleKey] = cache
+	} else {
+		smpl, cached := cache.Get(m.ts, ls)
+		if cached {
+			// Assuming the result is cached but the desired series is not in the result, it wouldn't be considered active.
+			if smpl == nil {
+				return storage.NoopSeriesSet()
+			}
+
+			// If the labelset is cached we can consider it active. Return the for state sample active immediately.
+			return series.NewConcreteSeriesSet(
+				[]storage.Series{
+					series.NewConcreteSeries(smpl.Metric, []model.SamplePair{
+						{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.V)},
+					}),
+				},
+			)
+		}
+	}
+
+	// see if alert condition had any inhabitants at ts-forDuration. We can assume it's still firing because
+	// that's the only condition under which this is queried (via RestoreForState).
+	vec, err := m.queryFunc(m.ctx, rule.Query().String(), m.ts.Add(-rule.HoldDuration()))
+	if err != nil {
+		m.metrics.evaluations.WithLabelValues(statusFailure, m.userID).Inc()
+		return storage.NoopSeriesSet()
+	}
+	m.metrics.evaluations.WithLabelValues(statusSuccess, m.userID).Inc()
+
+	// translate the result into the ALERTS_FOR_STATE series for caching,
+	// considered active & written at the timetamp requested
+	forStateVec := make(promql.Vector, 0, len(vec))
+	for _, smpl := range vec {
+		b := labels.NewBuilder(smpl.Metric)
+		b.Set(labels.MetricName, AlertForStateMetricName)
+		b.Set(labels.AlertName, rule.Name())
+
+		ts := util.TimeToMillis(m.ts)
+
+		forStateVec = append(forStateVec, promql.Sample{
+			Metric: b.Labels(),
+			Point: promql.Point{
+				T: ts,
+				V: float64(ts),
+			},
+		})
+
+	}
+
+	// cache the result of the evalauation at this timestamp
+	cache.Set(m.ts, forStateVec)
+
+	// Finally return the series if it exists
+	smpl, ok := cache.Get(m.ts, ls)
+	if !ok || smpl == nil {
+		return storage.NoopSeriesSet()
+	}
+	// If the labelset is cached we can consider it active. Return the for state sample active immediately.
+	return series.NewConcreteSeriesSet(
+		[]storage.Series{
+			series.NewConcreteSeries(smpl.Metric, []model.SamplePair{
+				{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.V)},
+			}),
+		},
+	)
+}
+
+// LabelValues returns all potential values for a label name.
+func (*MemStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	return nil, nil, errors.New("unimplemented")
+}
+
+// LabelNames returns all the unique label names present in the block in sorted order.
+func (*MemStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
+	return nil, nil, errors.New("unimplemented")
+}
+
+// Close releases the resources of the Querier.
+func (*MemStoreQuerier) Close() error { return nil }
+
+type RuleCache struct {
+	mtx     sync.Mutex
+	metrics *Metrics
+	data    map[int64]map[uint64]promql.Sample
+}
+
+func NewRuleCache(metrics *Metrics) *RuleCache {
+	return &RuleCache{
+		data:    make(map[int64]map[uint64]promql.Sample),
 		metrics: metrics,
 	}
 }
 
-func (m *ForStateAppender) Add(ls labels.Labels, t int64, v float64) (uint64, error) {
-	for _, l := range ls {
-		if l.Name == labels.MetricName && l.Value != AlertForStateMetricName {
-			// This is not an ALERTS_FOR_STATE metric, skip
-			return 0, nil
-		}
+func (c *RuleCache) Set(ts time.Time, vec promql.Vector) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	tsMap, ok := c.data[ts.UnixNano()]
+	if !ok {
+		tsMap = make(map[uint64]promql.Sample)
+		c.data[ts.UnixNano()] = tsMap
 	}
 
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	fp := ls.Hash()
-
-	if s, ok := m.data[fp]; ok {
-		priorLn := s.Len()
-		s.Add(model.SamplePair{
-			Timestamp: model.Time(t),
-			Value:     model.SampleValue(v),
-		})
-		m.metrics.Samples.Add(float64(s.Len() - priorLn))
-
-		return 0, nil
+	for _, sample := range vec {
+		tsMap[sample.Metric.Hash()] = sample
 	}
-	m.data[fp] = series.NewConcreteSeries(ls, []model.SamplePair{{Timestamp: model.Time(t), Value: model.SampleValue(v)}})
-	m.metrics.Series.Inc()
-	m.metrics.Samples.Inc()
-	return 0, nil
+	c.metrics.Samples.Add(float64(len(vec)))
+}
+
+// Get returns ok if that timestamp's result is cached.
+func (c *RuleCache) Get(ts time.Time, ls labels.Labels) (pt *promql.Sample, ok bool) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	match, ok := c.data[ts.UnixNano()]
+	if !ok {
+		return pt, false
+	}
+
+	smp, ok := match[ls.Hash()]
+	if !ok {
+		return nil, true
+	}
+	return &smp, true
 
 }
 
 // CleanupOldSamples removes samples that are outside of the rule's `For` duration.
-func (m *ForStateAppender) CleanupOldSamples(lookback time.Duration) (seriesRemaining int) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+func (c *RuleCache) CleanupOldSamples(olderThan time.Time) (empty bool) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 
-	for fp, s := range m.data {
-		// release all older references that are no longer needed.
-		priorLn := s.Len()
-		s.TrimStart(time.Now().Add(-lookback))
-		m.metrics.Samples.Add(float64(s.Len() - priorLn))
-		if s.Len() == 0 {
-			m.metrics.Series.Dec()
-			delete(m.data, fp)
+	ns := olderThan.UnixNano()
+
+	// This could be more efficient (logarithmic instead of linear)
+	for ts, tsMap := range c.data {
+		if ts < ns {
+			delete(c.data, ts)
+			c.metrics.Samples.Add(-float64(len(tsMap)))
 		}
+
 	}
-
-	return len(m.data)
-
-}
-
-func (m *ForStateAppender) AddFast(ref uint64, t int64, v float64) error {
-	return errors.New("unimplemented")
-}
-
-func (m *ForStateAppender) Commit() error { return nil }
-
-func (m *ForStateAppender) Rollback() error { return nil }
-
-// implement storage.Queryable
-func (m *ForStateAppender) Querier(ctx context.Context, mint, maxt int64) ForStateAppenderQuerier {
-	return ForStateAppenderQuerier{
-		mint:             mint,
-		maxt:             maxt,
-		ForStateAppender: m,
-	}
-}
-
-// ForStateAppenderQuerier wraps a *ForStateAppender and implements storage.Querier
-type ForStateAppenderQuerier struct {
-	mint, maxt int64
-	*ForStateAppender
-}
-
-// Select returns a set of series that matches the given label matchers.
-func (q ForStateAppenderQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	// TODO: implement sorted selects (currently unused/ignored).
-	q.mtx.Lock()
-	defer q.mtx.Unlock()
-
-	seekTo := q.mint
-	if params != nil && seekTo < params.Start {
-		seekTo = params.Start
-	}
-
-	maxt := q.maxt
-	if params != nil && params.End < maxt {
-		maxt = params.End
-	}
-
-	var filtered []storage.Series
-outer:
-	for _, s := range q.data {
-		for _, matcher := range matchers {
-			if !matcher.Matches(s.Labels().Get(matcher.Name)) {
-				continue outer
-			}
-
-			iter := s.Iterator()
-			var samples []model.SamplePair
-			for ok := iter.Seek(seekTo); ok; ok = iter.Next() {
-				t, v := iter.At()
-				if t > maxt {
-					break
-				}
-
-				samples = append(samples, model.SamplePair{
-					Timestamp: model.Time(t),
-					Value:     model.SampleValue(v),
-				})
-
-			}
-
-			if len(samples) != 0 {
-				filtered = append(filtered, series.NewConcreteSeries(s.Labels(), samples))
-			}
-		}
-	}
-
-	return series.NewConcreteSeriesSet(filtered)
+	return len(c.data) == 0
 }
