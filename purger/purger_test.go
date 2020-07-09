@@ -364,10 +364,7 @@ func TestPurger_Restarts(t *testing.T) {
 	defer newPurger.StopAsync()
 
 	test.Poll(t, time.Minute, 0, func() interface{} {
-		newPurger.inProcessRequestIDsMtx.RLock()
-		defer newPurger.inProcessRequestIDsMtx.RUnlock()
-
-		return len(newPurger.inProcessRequests)
+		return newPurger.inProcessRequests.len()
 	})
 
 	// check whether data got deleted from the store since delete request has been processed
