@@ -40,6 +40,16 @@ func buildTestTable(t *testing.T, path string) (*Table, *local.BoltIndexClient, 
 
 	table := NewTable("test", cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
 
+	// wait for either table to get ready or a timeout hits
+	select {
+	case <-table.IsReady():
+	case <-time.Tick(2 * time.Second):
+		t.Fatal("failed to initialize table in time")
+	}
+
+	// there should be no error in initialization of the table
+	require.NoError(t, table.Err())
+
 	return table, boltDBIndexClient, func() {
 		table.Close()
 		boltDBIndexClient.Stop()
@@ -119,16 +129,6 @@ func TestTable_Sync(t *testing.T) {
 	defer func() {
 		stopFunc()
 	}()
-
-	// wait for either table to get ready or a timeout hits
-	select {
-	case <-table.IsReady():
-	case <-time.Tick(2 * time.Second):
-		t.Fatal("failed to initialize table in time")
-	}
-
-	// there should be no error in initialization of the table
-	require.NoError(t, table.Err())
 
 	// query table to see it has expected records setup
 	testutil.TestSingleQuery(t, chunk.IndexQuery{}, table, 0, 30)

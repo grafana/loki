@@ -81,6 +81,10 @@ func TestLoadTable(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
+	defer func() {
+		table.Stop()
+	}()
+
 	// query the loaded table to see if it has right data.
 	testutil.TestSingleQuery(t, chunk.IndexQuery{}, table, 0, 20)
 }
@@ -216,6 +220,10 @@ func TestTable_Cleanup(t *testing.T) {
 	table, err := LoadTable(indexPath, "test", storageClient, boltDBIndexClient)
 	require.NoError(t, err)
 	require.Len(t, table.dbs, 3)
+
+	defer func() {
+		table.Stop()
+	}()
 
 	// upload all the existing dbs
 	require.NoError(t, table.Upload(context.Background()))
