@@ -26,19 +26,21 @@ const (
 	maxErrMsgLen = 1024
 )
 
-func promtailAddress() (*url.URL, error) {
+var promtailAddress *url.URL
+
+func init() {
 	addr := os.Getenv("PROMTAIL_ADDRESS")
 	if addr == "" {
-		return nil, errors.New("required environmental variable PROMTAIL_ADDRESS not present")
+		panic(errors.New("required environmental variable PROMTAIL_ADDRESS not present"))
 	}
-	return url.Parse(addr)
+	var err error
+	promtailAddress, err = url.Parse(addr)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
-	host, err := promtailAddress()
-	if err != nil {
-		return nil
-	}
 
 	data, err := ev.AWSLogs.Parse()
 	if err != nil {
@@ -70,7 +72,7 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 
 	// Push to promtail
 	buf = snappy.Encode(nil, buf)
-	req, err := http.NewRequest("POST", host.String(), bytes.NewReader(buf))
+	req, err := http.NewRequest("POST", promtailAddress.String(), bytes.NewReader(buf))
 	if err != nil {
 		return err
 	}

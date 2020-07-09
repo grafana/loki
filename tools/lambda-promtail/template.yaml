@@ -10,9 +10,9 @@ Parameters:
     Description: 'Required. The Log Group to forward to Promtail.'
     Type: String
   PromtailAddress:
-    Description: 'address for promtail in the form of: http://location<:port>'
+    Description: 'address for promtail in the form of: http<s>://<location><:port>/loki/api/v1/push'
     Type: String
-    Default: 'http://localhost:8080'
+    Default: 'http://localhost:8080/loki/api/v1/push'
   ReservedConcurrency:
     Description: The maximum of concurrent executions you want to reserve for the function.
     Type: Number
