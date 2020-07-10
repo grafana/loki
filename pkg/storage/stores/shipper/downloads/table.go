@@ -115,26 +115,29 @@ func (t *Table) init(ctx context.Context) (err error) {
 	}
 
 	for _, object := range objects {
-		uploader := getUploaderFromObjectKey(object.Key)
+		uploader, err := getUploaderFromObjectKey(object.Key)
+		if err != nil {
+			return err
+		}
 
 		filePath := path.Join(folderPath, uploader)
 		df := downloadedFile{}
 
 		err = t.getFileFromStorage(ctx, object.Key, filePath)
 		if err != nil {
-			return
+			return err
 		}
 
 		df.mtime = object.ModifiedAt
 		df.boltdb, err = local.OpenBoltdbFile(filePath)
 		if err != nil {
-			return
+			return err
 		}
 
 		var stat os.FileInfo
 		stat, err = os.Stat(filePath)
 		if err != nil {
-			return
+			return err
 		}
 
 		totalFilesSize += stat.Size()
@@ -275,7 +278,10 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 	defer t.dbsMtx.RUnlock()
 
 	for _, object := range objects {
-		uploader := strings.Split(object.Key, "/")[1]
+		uploader, err := getUploaderFromObjectKey(object.Key)
+		if err != nil {
+			return nil, nil, err
+		}
 		listedUploaders[uploader] = struct{}{}
 
 		// Checking whether file was updated in the store after we downloaded it, if not, no need to include it in updates
@@ -296,14 +302,17 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 
 // downloadFile first downloads file to a temp location so that we can close the existing db(if already exists), replace it with new one and then reopen it.
 func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObject) error {
-	uploader := strings.Split(storageObject.Key, "/")[1]
+	uploader, err := getUploaderFromObjectKey(storageObject.Key)
+	if err != nil {
+		return err
+	}
 	folderPath, _ := t.folderPathForTable(false)
 	filePath := path.Join(folderPath, uploader)
 
 	// download the file temporarily with some other name to allow boltdb client to close the existing file first if it exists
 	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", uploader, "temp"))
 
-	err := t.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
+	err = t.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
 	if err != nil {
 		return err
 	}
@@ -378,6 +387,14 @@ func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
 	return folderPath, nil
 }
 
-func getUploaderFromObjectKey(objectKey string) string {
-	return strings.Split(objectKey, "/")[1]
+func getUploaderFromObjectKey(objectKey string) (string, error) {
+	ss := strings.Split(objectKey, "/")
+
+	if len(ss) != 2 {
+		return "", fmt.Errorf("invalid object key: %v", objectKey)
+	}
+	if ss[1] == "" {
+		return "", fmt.Errorf("empty uploader, object key: %v", objectKey)
+	}
+	return ss[1], nil
 }
