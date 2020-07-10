@@ -109,7 +109,7 @@ clients:
   - url: https://<user id>:<api secret>@logs-prod-us-central1.grafana.net/loki/api/v1/push
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /opt/promtail/positions.yaml
 
 scrape_configs:
   - job_name: ec2-logs
