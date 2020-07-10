@@ -33,6 +33,13 @@ type: Counter
 # defaulting to the metric's name if not present.
 [source: <string>]
 
+# Label values on metrics are dynamic which can cause exported metrics
+# to go stale (for example when a stream stops receiving logs).
+# To prevent unbounded growth of the /metrics endpoint any metrics which
+# have not been updated within this time will be removed.
+# Must be greater than or equal to '1s', if undefined default is '5m'
+[max_idle_duration: <string>]
+
 config:
   # If present and true all log lines will be counted without
   # attempting to match the source to the extract map.
@@ -113,6 +120,13 @@ type: Histogram
 # defaulting to the metric's name if not present.
 [source: <string>]
 
+# Label values on metrics are dynamic which can cause exported metrics
+# to go stale (for example when a stream stops receiving logs).
+# To prevent unbounded growth of the /metrics endpoint any metrics which
+# have not been updated within this time will be removed.
+# Must be greater than or equal to '1s', if undefined default is '5m'
+[max_idle_duration: <string>]
+
 config:
   # Filters down source data and only changes the metric
   # if the targeted value exactly matches the provided string.
@@ -141,6 +155,7 @@ config:
       type: Counter
       description: "total number of log lines"
       prefix: my_promtail_custom_
+      max_idle_duration: 1d
       config:
         match_all: true
         action: inc
@@ -148,6 +163,7 @@ config:
       type: Counter
       description: "total bytes of log lines"
       prefix: my_promtail_custom_
+      max_idle_duration: 1d
       config:
         match_all: true
         count_entry_bytes: true
@@ -159,6 +175,8 @@ by using the `match_all: true` parameter.
 
 It also creates a `log_bytes_total` counter which adds the byte size of every log line received 
 to the counter by using the `count_entry_bytes: true` parameter.
+
+Those two metrics will disappear after 1d if they don't receive new entries, this is useful to reduce the building up of stage metrics.
 
 The combination of these two metric stages will give you two counters to track the volume of 
 every log stream in both number of lines and bytes, which can be useful in identifying sources
