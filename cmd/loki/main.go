@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
+	"gopkg.in/yaml.v2"
 
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
@@ -27,6 +28,7 @@ func init() {
 
 func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
+	printConfig := flag.Bool("print-config-stderr", false, "Dump the entire YAML config Loki will run with to stderr")
 
 	var config loki.Config
 	if err := cfg.Parse(&config); err != nil {
@@ -56,6 +58,15 @@ func main() {
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "validating config", "err", err.Error())
 		os.Exit(1)
+	}
+
+	if *printConfig {
+		lc, err := yaml.Marshal(&config)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to marshal config for pretty printing", "err", err.Error())
+		} else {
+			fmt.Fprintf(os.Stderr, "---\n# Loki Config\n# %s\n%s\n\n", version.Info(), string(lc))
+		}
 	}
 
 	if config.Tracing.Enabled {
