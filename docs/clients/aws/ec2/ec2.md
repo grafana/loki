@@ -96,7 +96,7 @@ Now we're going to download the [promtail configuration][promtail configuration]
 The file is also available on [github][config gist].
 
 ```bash
-curl https://gist.githubusercontent.com/cyriltovena/d0881cc717757db951b642be48c01445/raw/9492bfaaa776d77ce70d6aa69df89ff71524ade5/promtail-ec2.yaml > ec2-promtail.yaml
+curl https://raw.githubusercontent.com/grafana/loki/master/docs/clients/aws/ec2/promtail-ec2.yaml > ec2-promtail.yaml
 vi ec2-promtail.yaml
 ```
 
