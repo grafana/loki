@@ -192,7 +192,7 @@ Description=Promtail
 [Service]
 User=root
 WorkingDirectory=/opt/promtail/
-ExecStartPost=/bin/sleep 30
+ExecStartPre=/bin/sleep 30
 ExecStart=/opt/promtail/promtail-linux-amd64 --config.file=./ec2-promtail.yaml
 SuccessExitStatus=143
 TimeoutStopSec=10
