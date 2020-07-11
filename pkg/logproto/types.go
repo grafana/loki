@@ -1,9 +1,9 @@
 package logproto
 
 import (
-	fmt "fmt"
-	io "io"
-	time "time"
+	"fmt"
+	"io"
+	"time"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.

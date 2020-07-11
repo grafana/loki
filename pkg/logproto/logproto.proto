@@ -13,6 +13,7 @@ service Pusher {
 
 service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {};
+  rpc QuerySample(SampleQueryRequest) returns (stream SampleQueryResponse) {};
   rpc Label(LabelRequest) returns (LabelResponse) {};
   rpc Tail(TailRequest) returns (stream TailResponse) {};
   rpc Series(SeriesRequest) returns (SeriesResponse) {};
@@ -38,7 +39,17 @@ message QueryRequest {
   Direction direction = 5;
   reserved 6;
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
+}
 
+message SampleQueryRequest {
+  string selector = 1;
+  google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
+}
+
+message SampleQueryResponse {
+  repeated Series series = 1 [(gogoproto.customtype) = "Series", (gogoproto.nullable) = true];
 }
 
 enum Direction {
@@ -69,6 +80,17 @@ message StreamAdapter {
 message EntryAdapter {
   google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (gogoproto.jsontag) = "ts"];
   string line = 2 [(gogoproto.jsontag) = "line"];
+}
+
+message Sample {
+  int64 timestamp = 1 [(gogoproto.jsontag) = "ts"];
+  double value = 2 [(gogoproto.jsontag) = "value"];
+  uint64 hash = 3 [(gogoproto.jsontag) = "hash"];
+}
+
+message Series {
+  string labels = 1 [(gogoproto.jsontag) = "labels"];
+  repeated Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "samples"];
 }
 
 message TailRequest {

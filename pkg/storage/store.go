@@ -39,8 +39,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
 	chunk.Store
-	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
-	GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error)
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 }
 
 type store struct {
@@ -72,7 +73,7 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 
 // decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
 // and adds the "__cortex_shard__" label if this is a sharded query.
-func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
+func decodeReq(req logql.QueryParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, nil, 0, 0, err
@@ -113,7 +114,7 @@ func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, mod
 		}
 	}
 
-	from, through := util.RoundToMilliseconds(req.Start, req.End)
+	from, through := util.RoundToMilliseconds(req.GetStart(), req.GetEnd())
 	return matchers, filter, from, through, nil
 }
 
@@ -147,7 +148,7 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 	return lazyChunks, nil
 }
 
-func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error) {
+func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	var from, through model.Time
 	var matchers []*labels.Matcher
 
@@ -227,9 +228,9 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 
 }
 
-// LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
+// SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
-func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
+func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	matchers, filter, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
@@ -244,8 +245,35 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 		return iter.NoopIterator, nil
 	}
 
-	return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.QueryRequest), nil
+	return newLogBatchIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.Direction, req.Start, req.End)
 
+}
+
+func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	matchers, filter, from, through, err := decodeReq(req)
+	if err != nil {
+		return nil, err
+	}
+
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(lazyChunks) == 0 {
+		return iter.NoopIterator, nil
+	}
+	return newSampleBatchIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {

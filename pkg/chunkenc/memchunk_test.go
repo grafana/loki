@@ -112,6 +112,21 @@ func TestBlock(t *testing.T) {
 			}
 
 			require.NoError(t, it.Error())
+			require.NoError(t, it.Close())
+			require.Equal(t, len(cases), idx)
+
+			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			idx = 0
+			for sampleIt.Next() {
+				s := sampleIt.Sample()
+				require.Equal(t, cases[idx].ts, s.Timestamp)
+				require.Equal(t, 1., s.Value)
+				require.NotEmpty(t, s.Hash)
+				idx++
+			}
+
+			require.NoError(t, sampleIt.Error())
+			require.NoError(t, sampleIt.Close())
 			require.Equal(t, len(cases), idx)
 
 			t.Run("bounded-iteration", func(t *testing.T) {
@@ -225,7 +240,7 @@ func TestSerialization(t *testing.T) {
 		t.Run(enc.String(), func(t *testing.T) {
 			chk := NewMemChunk(enc, testBlockSize, testTargetSize)
 
-			numSamples := 500000
+			numSamples := 50000
 
 			for i := 0; i < numSamples; i++ {
 				require.NoError(t, chk.Append(logprotoEntry(int64(i), string(i))))
@@ -246,8 +261,17 @@ func TestSerialization(t *testing.T) {
 				require.Equal(t, int64(i), e.Timestamp.UnixNano())
 				require.Equal(t, string(i), e.Line)
 			}
-
 			require.NoError(t, it.Error())
+
+			sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			for i := 0; i < numSamples; i++ {
+				require.True(t, sampleIt.Next(), i)
+
+				s := sampleIt.Sample()
+				require.Equal(t, int64(i), s.Timestamp)
+				require.Equal(t, 1., s.Value)
+			}
+			require.NoError(t, sampleIt.Error())
 
 			byt2, err := chk.Bytes()
 			require.NoError(t, err)

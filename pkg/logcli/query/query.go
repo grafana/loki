@@ -18,7 +18,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/cfg"
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -117,7 +116,12 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	querier, err := localStore(conf)
+	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
+	if err != nil {
+		return err
+	}
+
+	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}
@@ -167,20 +171,6 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	q.printResult(value, out)
 	return nil
-}
-
-func localStore(conf loki.Config) (logql.Querier, error) {
-	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
-	if err != nil {
-		return nil, err
-	}
-	s, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, err
-	}
-	return logql.QuerierFunc(func(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
-		return s.LazyQuery(ctx, params)
-	}), nil
 }
 
 // SetInstant makes the Query an instant type

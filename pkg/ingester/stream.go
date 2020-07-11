@@ -277,6 +277,18 @@ func (s *stream) Iterator(ctx context.Context, from, through time.Time, directio
 	return iter.NewNonOverlappingIterator(iterators, s.labelsString), nil
 }
 
+// Returns an SampleIterator.
+func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, filter logql.LineFilter, extractor logql.SampleExtractor) (iter.SampleIterator, error) {
+	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
+	for _, c := range s.chunks {
+		if itr := c.chunk.SampleIterator(ctx, from, through, filter, extractor); itr != nil {
+			iterators = append(iterators, itr)
+		}
+	}
+
+	return iter.NewNonOverlappingSampleIterator(iterators, s.labelsString), nil
+}
+
 func (s *stream) addTailer(t *tailer) {
 	s.tailerMtx.Lock()
 	defer s.tailerMtx.Unlock()

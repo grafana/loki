@@ -204,16 +204,16 @@ func TestStringer(t *testing.T) {
 		},
 		{
 			in:  `1 > bool 1 > count_over_time({foo="bar"}[1m])`,
-			out: `0.000000 > count_over_time(({foo="bar"})[1m])`,
+			out: `0.000000 > count_over_time({foo="bar"}[1m])`,
 		},
 		{
 			in:  `1 > bool 1 > bool count_over_time({foo="bar"}[1m])`,
-			out: `0.000000 > bool count_over_time(({foo="bar"})[1m])`,
+			out: `0.000000 > bool count_over_time({foo="bar"}[1m])`,
 		},
 		{
 
-			in:  `0.000000 > count_over_time(({foo="bar"})[1m])`,
-			out: `0.000000 > count_over_time(({foo="bar"})[1m])`,
+			in:  `0.000000 > count_over_time({foo="bar"}[1m])`,
+			out: `0.000000 > count_over_time({foo="bar"}[1m])`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

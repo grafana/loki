@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -21,7 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-func Test_newBatchChunkIterator(t *testing.T) {
+func Test_newLogBatchChunkIterator(t *testing.T) {
 
 	tests := map[string]struct {
 		chunks     []*LazyChunk
@@ -552,7 +553,8 @@ func Test_newBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it := newBatchChunkIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, newQuery("", tt.start, tt.end, tt.direction, nil))
+			it, err := newLogBatchIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, tt.direction, tt.start, tt.end)
+			require.NoError(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
 			if err != nil {
@@ -560,6 +562,291 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			}
 
 			assertStream(t, tt.expected, streams.Streams)
+
+		})
+	}
+}
+
+func Test_newSampleBatchChunkIterator(t *testing.T) {
+
+	tests := map[string]struct {
+		chunks     []*LazyChunk
+		expected   []logproto.Series
+		matchers   string
+		start, end time.Time
+		batchSize  int
+	}{
+		"forward with overlap": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				}),
+			},
+			[]logproto.Series{
+				{
+					Labels: fooLabels,
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("3"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("4"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			from, from.Add(4 * time.Millisecond),
+			2,
+		},
+		"forward with overlapping non-continuous entries": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+			},
+			[]logproto.Series{
+				{
+					Labels: fooLabels,
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("3"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			from, from.Add(3 * time.Millisecond),
+			2,
+		},
+		"forward without overlap": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+			},
+			[]logproto.Series{
+				{
+					Labels: fooLabels,
+					Samples: []logproto.Sample{
+						{
+							Timestamp: from.UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
+							Hash:      xxhash.Sum64String("3"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			from, from.Add(3 * time.Millisecond),
+			2,
+		},
+	}
+
+	for name, tt := range tests {
+		tt := tt
+		t.Run(name, func(t *testing.T) {
+			it, err := newSampleBatchIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, logql.ExtractCount, tt.start, tt.end)
+			require.NoError(t, err)
+			series, _, err := iter.ReadSampleBatch(it, 1000)
+			_ = it.Close()
+			if err != nil {
+				t.Fatalf("error reading batch %s", err)
+			}
+
+			assertSeries(t, tt.expected, series.Series)
 
 		})
 	}
@@ -754,9 +1041,11 @@ func TestBuildHeapIterator(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			ctx = user.InjectOrgID(context.Background(), "test-user")
-			b := &batchChunkIterator{
+			b := &logBatchIterator{
+				batchChunkIterator: &batchChunkIterator{
+					direction: logproto.FORWARD,
+				},
 				ctx:    ctx,
-				req:    &logproto.QueryRequest{Direction: logproto.FORWARD},
 				labels: map[model.Fingerprint]string{},
 			}
 			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), nil)
@@ -764,7 +1053,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				t.Errorf("buildHeapIterator error = %v", err)
 				return
 			}
-			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD, nil)
+			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil)
 			streams, _, err := iter.ReadBatch(it, req.Limit)
 			_ = it.Close()
 			if err != nil {
@@ -864,7 +1153,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 	ctx := user.InjectOrgID(stats.NewContext(context.Background()), "fake")
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
-		it, err := st.LazyQuery(ctx, logql.SelectParams{QueryRequest: &logproto.QueryRequest{
+		it, err := st.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  `{foo="bar"}`,
 			Direction: logproto.BACKWARD,
 			Limit:     0,

@@ -6,6 +6,7 @@ require (
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
+	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/cortexproject/cortex v1.2.1-0.20200702073552-0ea5a8b50b19
@@ -44,6 +45,7 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
 	github.com/prometheus/prometheus v1.8.2-0.20200626180636-d17d88935c8d
+	github.com/segmentio/fasthash v1.0.2
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/stretchr/testify v1.5.1
@@ -53,6 +55,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20200512154658-384f10054ec5
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
+	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
 	google.golang.org/grpc v1.29.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7

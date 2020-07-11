@@ -122,7 +122,8 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
-	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 }
 
 // New makes a new Ingester.
@@ -285,13 +286,21 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	itrs, err := instance.Query(ctx, req)
+	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
 	}
 
-	if storeReq := buildStoreRequest(i.cfg, req); storeReq != nil {
-		storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: storeReq})
+	if start, end, ok := buildStoreRequest(i.cfg, req.End, req.End, time.Now()); ok {
+		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  req.Selector,
+			Direction: req.Direction,
+			Start:     start,
+			End:       end,
+			Limit:     req.Limit,
+			Shards:    req.Shards,
+		}}
+		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
 			return err
 		}
@@ -304,6 +313,45 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
+}
+
+// QuerySample the ingesters for series from logs matching a set of matchers.
+func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
+	// initialize stats collection for ingester queries and set grpc trailer with stats.
+	ctx := stats.NewContext(queryServer.Context())
+	defer stats.SendAsTrailer(ctx, queryServer)
+
+	instanceID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	if err != nil {
+		return err
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start:    start,
+			End:      end,
+			Selector: req.Selector,
+			Shards:   req.Shards,
+		}}
+		storeItr, err := i.store.SelectSamples(ctx, storeReq)
+		if err != nil {
+			return err
+		}
+
+		itrs = append(itrs, storeItr)
+	}
+
+	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
+
+	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+
+	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
 }
 
 // Label returns the set of labels for the stream this ingester knows about.
@@ -336,7 +384,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-	start := adjustQueryStartTime(i.cfg, *req.Start)
+	start := adjustQueryStartTime(i.cfg, *req.Start, time.Now())
 	if start.After(*req.End) {
 		// The request is older than we are allowed to query the store, just return what we have.
 		return resp, nil
@@ -454,30 +502,23 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 // buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
 // we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
-func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRequest {
+func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.Time, bool) {
 	if !cfg.QueryStore {
-		return nil
+		return time.Time{}, time.Time{}, false
 	}
-	start := req.Start
-	end := req.End
-	start = adjustQueryStartTime(cfg, start)
+	start = adjustQueryStartTime(cfg, start, now)
 
 	if start.After(end) {
-		return nil
+		return time.Time{}, time.Time{}, false
 	}
-
-	newRequest := *req
-	newRequest.Start = start
-	newRequest.End = end
-
-	return &newRequest
+	return start, end, true
 }
 
-func adjustQueryStartTime(cfg Config, start time.Time) time.Time {
+func adjustQueryStartTime(cfg Config, start, now time.Time) time.Time {
 	if cfg.QueryStoreMaxLookBackPeriod > 0 {
-		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
+		oldestStartTime := now.Add(-cfg.QueryStoreMaxLookBackPeriod)
 		if oldestStartTime.After(start) {
-			start = oldestStartTime
+			return oldestStartTime
 		}
 	}
 	return start

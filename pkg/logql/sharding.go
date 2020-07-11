@@ -166,7 +166,7 @@ type Downstreamer interface {
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
 type DownstreamEvaluator struct {
 	Downstreamer
-	defaultEvaluator *DefaultEvaluator
+	defaultEvaluator Evaluator
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
@@ -186,16 +186,19 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 }
 
+type errorQuerier struct{}
+
+func (errorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+	return nil, errors.New("Unimplemented")
+}
+func (errorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	return nil, errors.New("Unimplemented")
+}
+
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	return &DownstreamEvaluator{
-		Downstreamer: downstreamer,
-		defaultEvaluator: NewDefaultEvaluator(
-			QuerierFunc(func(_ context.Context, p SelectParams) (iter.EntryIterator, error) {
-				// TODO(owen-d): add metric here, this should never happen.
-				return nil, errors.New("Unimplemented")
-			}),
-			0,
-		),
+		Downstreamer:     downstreamer,
+		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0),
 	}
 }
 

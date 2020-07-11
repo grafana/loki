@@ -132,6 +132,7 @@ github.com/cenkalti/backoff
 # github.com/cespare/xxhash v1.1.0
 github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.1.1
+## explicit
 github.com/cespare/xxhash/v2
 # github.com/containerd/containerd v1.3.4
 github.com/containerd/containerd/errdefs
@@ -753,7 +754,8 @@ github.com/samuel/go-zookeeper/zk
 github.com/satori/go.uuid
 # github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529
 github.com/sean-/seed
-# github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
+# github.com/segmentio/fasthash v1.0.2
+## explicit
 github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver v2.4.0+incompatible
 github.com/sercand/kuberesolver
@@ -1028,7 +1030,8 @@ golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20200615200032-f1bc736245b1
+# golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae
+## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix

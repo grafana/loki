@@ -129,7 +129,7 @@ func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *Defa
 }
 
 func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
-	params := SelectParams{
+	params := SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     q.Start(),
 			End:       q.End(),
@@ -144,7 +144,7 @@ func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 		params.Start = params.Start.Add(-ev.maxLookBackPeriod)
 	}
 
-	return ev.querier.Select(ctx, params)
+	return ev.querier.SelectLogs(ctx, params)
 
 }
 
@@ -158,20 +158,18 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	case *vectorAggregationExpr:
 		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *rangeAggregationExpr:
-		entryIter, err := ev.querier.Select(ctx, SelectParams{
-			&logproto.QueryRequest{
-				Start:     q.Start().Add(-e.left.interval),
-				End:       q.End(),
-				Limit:     0,
-				Direction: logproto.FORWARD,
-				Selector:  expr.Selector().String(),
-				Shards:    q.Shards(),
+		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+			&logproto.SampleQueryRequest{
+				Start:    q.Start().Add(-e.left.interval),
+				End:      q.End(),
+				Selector: expr.String(),
+				Shards:   q.Shards(),
 			},
 		})
 		if err != nil {
 			return nil, err
 		}
-		return rangeAggEvaluator(entryIter, e, q)
+		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q)
 	case *binOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	default:
@@ -377,7 +375,7 @@ func vectorAggEvaluator(
 }
 
 func rangeAggEvaluator(
-	entryIter iter.EntryIterator,
+	it iter.PeekingSampleIterator,
 	expr *rangeAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
@@ -385,13 +383,9 @@ func rangeAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	extractor, err := expr.extractor()
-	if err != nil {
-		return nil, err
-	}
 	return rangeVectorEvaluator{
 		iter: newRangeVectorIterator(
-			newSeriesIterator(entryIter, extractor),
+			it,
 			expr.left.interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(),

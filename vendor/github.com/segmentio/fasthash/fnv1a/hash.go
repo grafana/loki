@@ -14,6 +14,11 @@ func HashString64(s string) uint64 {
 	return AddString64(Init64, s)
 }
 
+// HashBytes64 returns the hash of u.
+func HashBytes64(b []byte) uint64 {
+	return AddBytes64(Init64, b)
+}
+
 // HashUint64 returns the hash of u.
 func HashUint64(u uint64) uint64 {
 	return AddUint64(Init64, u)
@@ -34,24 +39,69 @@ func AddString64(h uint64, s string) uint64 {
 		- BenchmarkHash64/hash_function-4   50000000   38.6 ns/op   932.35 MB/s   0 B/op   0 allocs/op
 
 	*/
-
-	i := 0
-	n := (len(s) / 8) * 8
-
-	for i != n {
-		h = (h ^ uint64(s[i])) * prime64
-		h = (h ^ uint64(s[i+1])) * prime64
-		h = (h ^ uint64(s[i+2])) * prime64
-		h = (h ^ uint64(s[i+3])) * prime64
-		h = (h ^ uint64(s[i+4])) * prime64
-		h = (h ^ uint64(s[i+5])) * prime64
-		h = (h ^ uint64(s[i+6])) * prime64
-		h = (h ^ uint64(s[i+7])) * prime64
-		i += 8
+	for len(s) >= 8 {
+		h = (h ^ uint64(s[0])) * prime64
+		h = (h ^ uint64(s[1])) * prime64
+		h = (h ^ uint64(s[2])) * prime64
+		h = (h ^ uint64(s[3])) * prime64
+		h = (h ^ uint64(s[4])) * prime64
+		h = (h ^ uint64(s[5])) * prime64
+		h = (h ^ uint64(s[6])) * prime64
+		h = (h ^ uint64(s[7])) * prime64
+		s = s[8:]
 	}
 
-	for _, c := range s[i:] {
-		h = (h ^ uint64(c)) * prime64
+	if len(s) >= 4 {
+		h = (h ^ uint64(s[0])) * prime64
+		h = (h ^ uint64(s[1])) * prime64
+		h = (h ^ uint64(s[2])) * prime64
+		h = (h ^ uint64(s[3])) * prime64
+		s = s[4:]
+	}
+
+	if len(s) >= 2 {
+		h = (h ^ uint64(s[0])) * prime64
+		h = (h ^ uint64(s[1])) * prime64
+		s = s[2:]
+	}
+
+	if len(s) > 0 {
+		h = (h ^ uint64(s[0])) * prime64
+	}
+
+	return h
+}
+
+// AddBytes64 adds the hash of b to the precomputed hash value h.
+func AddBytes64(h uint64, b []byte) uint64 {
+	for len(b) >= 8 {
+		h = (h ^ uint64(b[0])) * prime64
+		h = (h ^ uint64(b[1])) * prime64
+		h = (h ^ uint64(b[2])) * prime64
+		h = (h ^ uint64(b[3])) * prime64
+		h = (h ^ uint64(b[4])) * prime64
+		h = (h ^ uint64(b[5])) * prime64
+		h = (h ^ uint64(b[6])) * prime64
+		h = (h ^ uint64(b[7])) * prime64
+		b = b[8:]
+	}
+
+	if len(b) >= 4 {
+		h = (h ^ uint64(b[0])) * prime64
+		h = (h ^ uint64(b[1])) * prime64
+		h = (h ^ uint64(b[2])) * prime64
+		h = (h ^ uint64(b[3])) * prime64
+		b = b[4:]
+	}
+
+	if len(b) >= 2 {
+		h = (h ^ uint64(b[0])) * prime64
+		h = (h ^ uint64(b[1])) * prime64
+		b = b[2:]
+	}
+
+	if len(b) > 0 {
+		h = (h ^ uint64(b[0])) * prime64
 	}
 
 	return h

@@ -28,7 +28,10 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-const queryBatchSize = 128
+const (
+	queryBatchSize       = 128
+	queryBatchSampleSize = 512
+)
 
 // Errors returned on Query.
 var (
@@ -192,8 +195,8 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) Query(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
-	expr, err := (logql.SelectParams{QueryRequest: req}).LogSelector()
+func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter.EntryIterator, error) {
+	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
 	}
@@ -209,6 +212,40 @@ func (i *instance) Query(ctx context.Context, req *logproto.QueryRequest) ([]ite
 		func(stream *stream) error {
 			ingStats.TotalChunksMatched += int64(len(stream.chunks))
 			iter, err := stream.Iterator(ctx, req.Start, req.End, req.Direction, filter)
+			if err != nil {
+				return err
+			}
+			iters = append(iters, iter)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return iters, nil
+}
+
+func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) ([]iter.SampleIterator, error) {
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+	filter, err := expr.Selector().Filter()
+	if err != nil {
+		return nil, err
+	}
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+	ingStats := stats.GetIngesterData(ctx)
+	var iters []iter.SampleIterator
+	err = i.forMatchingStreams(
+		expr.Selector().Matchers(),
+		func(stream *stream) error {
+			ingStats.TotalChunksMatched += int64(len(stream.chunks))
+			iter, err := stream.SampleIterator(ctx, req.Start, req.End, filter, extractor)
 			if err != nil {
 				return err
 			}
@@ -461,6 +498,26 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer logproto
 			return err
 		}
 		ingStats.TotalLinesSent += int64(batchSize)
+		ingStats.TotalBatches++
+	}
+	return nil
+}
+
+func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+	ingStats := stats.GetIngesterData(ctx)
+	for !isDone(ctx) {
+		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
+		if err != nil {
+			return err
+		}
+		if len(batch.Series) == 0 {
+			return nil
+		}
+
+		if err := queryServer.Send(batch); err != nil {
+			return err
+		}
+		ingStats.TotalLinesSent += int64(size)
 		ingStats.TotalBatches++
 	}
 	return nil

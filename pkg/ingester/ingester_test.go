@@ -263,7 +263,11 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (s *mockStore) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
+func (s *mockStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	return nil, nil
+}
+
+func (s *mockStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, nil
 }
 
@@ -291,75 +295,64 @@ func defaultLimitsTestConfig() validation.Limits {
 }
 
 func TestIngester_buildStoreRequest(t *testing.T) {
-	ingesterQueryRequest := logproto.QueryRequest{
-		Selector: `{foo="bar"}`,
-		Limit:    100,
-	}
-
 	now := time.Now()
-
 	for _, tc := range []struct {
-		name                      string
-		queryStore                bool
-		maxLookBackPeriod         time.Duration
-		ingesterQueryRequest      *logproto.QueryRequest
-		expectedStoreQueryRequest *logproto.QueryRequest
+		name                       string
+		queryStore                 bool
+		maxLookBackPeriod          time.Duration
+		start, end                 time.Time
+		expectedStart, expectedEnd time.Time
+		shouldQuery                bool
 	}{
 		{
-			name:                      "do not query store",
-			queryStore:                false,
-			ingesterQueryRequest:      recreateRequestWithTime(ingesterQueryRequest, now.Add(-time.Minute), now),
-			expectedStoreQueryRequest: nil,
+			name:        "do not query store",
+			queryStore:  false,
+			start:       now.Add(-time.Minute),
+			end:         now,
+			shouldQuery: false,
 		},
 		{
-			name:                      "query store with max look back covering whole request duration",
-			queryStore:                true,
-			maxLookBackPeriod:         time.Hour,
-			ingesterQueryRequest:      recreateRequestWithTime(ingesterQueryRequest, now.Add(-10*time.Minute), now),
-			expectedStoreQueryRequest: recreateRequestWithTime(ingesterQueryRequest, now.Add(-10*time.Minute), now),
+			name:              "query store with max look back covering whole request duration",
+			queryStore:        true,
+			maxLookBackPeriod: time.Hour,
+			start:             now.Add(-10 * time.Minute),
+			end:               now,
+			expectedStart:     now.Add(-10 * time.Minute),
+			expectedEnd:       now,
+			shouldQuery:       true,
 		},
 		{
-			name:                      "query store with max look back covering partial request duration",
-			queryStore:                true,
-			maxLookBackPeriod:         time.Hour,
-			ingesterQueryRequest:      recreateRequestWithTime(ingesterQueryRequest, now.Add(-2*time.Hour), now),
-			expectedStoreQueryRequest: recreateRequestWithTime(ingesterQueryRequest, now.Add(-time.Hour), now),
+			name:              "query store with max look back covering partial request duration",
+			queryStore:        true,
+			maxLookBackPeriod: time.Hour,
+			start:             now.Add(-2 * time.Hour),
+			end:               now,
+			expectedStart:     now.Add(-time.Hour),
+			expectedEnd:       now,
+			shouldQuery:       true,
 		},
 		{
-			name:                      "query store with max look back not covering request duration at all",
-			queryStore:                true,
-			maxLookBackPeriod:         time.Hour,
-			ingesterQueryRequest:      recreateRequestWithTime(ingesterQueryRequest, now.Add(-4*time.Hour), now.Add(-2*time.Hour)),
-			expectedStoreQueryRequest: nil,
+			name:              "query store with max look back not covering request duration at all",
+			queryStore:        true,
+			maxLookBackPeriod: time.Hour,
+			start:             now.Add(-4 * time.Hour),
+			end:               now.Add(-2 * time.Hour),
+			shouldQuery:       false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ingesterConfig := defaultIngesterTestConfig(t)
 			ingesterConfig.QueryStore = tc.queryStore
 			ingesterConfig.QueryStoreMaxLookBackPeriod = tc.maxLookBackPeriod
-			storeRequest := buildStoreRequest(ingesterConfig, tc.ingesterQueryRequest)
-			if tc.expectedStoreQueryRequest == nil {
-				require.Nil(t, storeRequest)
+
+			start, end, ok := buildStoreRequest(ingesterConfig, tc.start, tc.end, now)
+
+			if !tc.shouldQuery {
+				require.False(t, ok)
 				return
 			}
-
-			// because start time of store could be changed and built based on time when function is called we can't predict expected start time.
-			// So allowing upto 1s difference between expected and actual start time of store query request.
-			require.Equal(t, tc.expectedStoreQueryRequest.Selector, storeRequest.Selector)
-			require.Equal(t, tc.expectedStoreQueryRequest.Limit, storeRequest.Limit)
-			require.Equal(t, tc.expectedStoreQueryRequest.End, storeRequest.End)
-
-			if storeRequest.Start.Sub(tc.expectedStoreQueryRequest.Start) > time.Second {
-				t.Fatalf("expected upto 1s difference in expected and actual store request end time but got %d", storeRequest.End.Sub(tc.expectedStoreQueryRequest.End))
-			}
+			require.Equal(t, tc.expectedEnd, end, "end")
+			require.Equal(t, tc.expectedStart, start, "start")
 		})
 	}
-}
-
-func recreateRequestWithTime(req logproto.QueryRequest, start, end time.Time) *logproto.QueryRequest {
-	newReq := req
-	newReq.Start = start
-	newReq.End = end
-
-	return &newReq
 }

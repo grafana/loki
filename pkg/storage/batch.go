@@ -22,6 +22,15 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
+type genericIterator interface {
+	Next() bool
+	Labels() string
+	Error() error
+	Close() error
+}
+
+type chunksIteratorFactory func(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error)
+
 // batchChunkIterator is an EntryIterator that iterates through chunks by batch of `batchSize`.
 // Since chunks can overlap across batches for each iteration the iterator will keep all overlapping
 // chunks with the next chunk from the next batch and added it to the next iteration. In this case the boundaries of the batch
@@ -30,79 +39,75 @@ type batchChunkIterator struct {
 	chunks          lazyChunks
 	batchSize       int
 	err             error
-	curr            iter.EntryIterator
+	curr            genericIterator
 	lastOverlapping []*LazyChunk
-	labels          map[model.Fingerprint]string
+	iterFactory     chunksIteratorFactory
 
-	ctx      context.Context
-	cancel   context.CancelFunc
-	matchers []*labels.Matcher
-	filter   logql.LineFilter
-	req      *logproto.QueryRequest
-	next     chan *struct {
-		iter iter.EntryIterator
+	cancel     context.CancelFunc
+	start, end time.Time
+	direction  logproto.Direction
+	next       chan *struct {
+		iter genericIterator
 		err  error
 	}
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
-func newBatchChunkIterator(ctx context.Context, chunks []*LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.LineFilter, req *logproto.QueryRequest) *batchChunkIterator {
-	// __name__ is not something we filter by because it's a constant in loki
-	// and only used for upstream compatibility; therefore remove it.
-	// The same applies to the sharding label which is injected by the cortex storage code.
-	for _, omit := range []string{labels.MetricName, astmapper.ShardLabel} {
-		for i := range matchers {
-			if matchers[i].Name == omit {
-				matchers = append(matchers[:i], matchers[i+1:]...)
-				break
-			}
-		}
-	}
+func newBatchChunkIterator(
+	ctx context.Context,
+	chunks []*LazyChunk,
+	batchSize int,
+	direction logproto.Direction,
+	start, end time.Time,
+	iterFactory chunksIteratorFactory,
+) *batchChunkIterator {
 
 	ctx, cancel := context.WithCancel(ctx)
 	res := &batchChunkIterator{
 		batchSize: batchSize,
-		matchers:  matchers,
-		filter:    filter,
-		req:       req,
-		ctx:       ctx,
-		cancel:    cancel,
-		chunks:    lazyChunks{direction: req.Direction, chunks: chunks},
-		labels:    map[model.Fingerprint]string{},
+
+		start:       start,
+		end:         end,
+		direction:   direction,
+		cancel:      cancel,
+		iterFactory: iterFactory,
+		chunks:      lazyChunks{direction: direction, chunks: chunks},
 		next: make(chan *struct {
-			iter iter.EntryIterator
+			iter genericIterator
 			err  error
 		}),
 	}
 	sort.Sort(res.chunks)
-	go func() {
-		for {
-			if res.chunks.Len() == 0 {
-				close(res.next)
-				return
-			}
-			next, err := res.nextBatch()
-			select {
-			case <-ctx.Done():
-				close(res.next)
-				// next can be nil if we are waiting to return that the nextBatch was empty and the context is closed
-				// or if another error occurred reading nextBatch
-				if next == nil {
-					return
-				}
-				err = next.Close()
-				if err != nil {
-					level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "Failed to close the pre-fetched iterator when pre-fetching was canceled", "err", err)
-				}
-				return
-			case res.next <- &struct {
-				iter iter.EntryIterator
-				err  error
-			}{next, err}:
-			}
-		}
-	}()
+	go res.loop(ctx)
 	return res
+}
+
+func (it *batchChunkIterator) loop(ctx context.Context) {
+	for {
+		if it.chunks.Len() == 0 {
+			close(it.next)
+			return
+		}
+		next, err := it.nextBatch()
+		select {
+		case <-ctx.Done():
+			close(it.next)
+			// next can be nil if we are waiting to return that the nextBatch was empty and the context is closed
+			// or if another error occurred reading nextBatch
+			if next == nil {
+				return
+			}
+			err = next.Close()
+			if err != nil {
+				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "Failed to close the pre-fetched iterator when pre-fetching was canceled", "err", err)
+			}
+			return
+		case it.next <- &struct {
+			iter genericIterator
+			err  error
+		}{next, err}:
+		}
+	}
 }
 
 func (it *batchChunkIterator) Next() bool {
@@ -128,10 +133,10 @@ func (it *batchChunkIterator) Next() bool {
 	}
 }
 
-func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
+func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
-	from, through := it.req.Start, it.req.End
+	from, through := it.start, it.end
 	batch := make([]*LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
 	var nextChunk *LazyChunk
 
@@ -139,11 +144,11 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 
 		// pop the next batch of chunks and append/prepend previous overlapping chunks
 		// so we can merge/de-dupe overlapping entries.
-		if it.req.Direction == logproto.FORWARD {
+		if it.direction == logproto.FORWARD {
 			batch = append(batch, it.lastOverlapping...)
 		}
 		batch = append(batch, it.chunks.pop(it.batchSize)...)
-		if it.req.Direction == logproto.BACKWARD {
+		if it.direction == logproto.BACKWARD {
 			batch = append(batch, it.lastOverlapping...)
 		}
 
@@ -151,14 +156,14 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 			nextChunk = it.chunks.Peek()
 			// we max out our iterator boundaries to the next chunks in the queue
 			// so that overlapping chunks are together
-			if it.req.Direction == logproto.BACKWARD {
+			if it.direction == logproto.BACKWARD {
 				from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
 
 				// we have to reverse the inclusivity of the chunk iterator from
 				// [from, through) to (from, through] for backward queries, except when
 				// the batch's `from` is equal to the query's Start. This can be achieved
 				// by shifting `from` by one nanosecond.
-				if !from.Equal(it.req.Start) {
+				if !from.Equal(it.start) {
 					from = from.Add(time.Nanosecond)
 				}
 			} else {
@@ -184,18 +189,18 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 
 		}
 
-		if it.req.Direction == logproto.BACKWARD {
+		if it.direction == logproto.BACKWARD {
 			through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
 
-			if through.After(it.req.End) {
-				through = it.req.End
+			if through.After(it.end) {
+				through = it.end
 			}
 
 			// we have to reverse the inclusivity of the chunk iterator from
 			// [from, through) to (from, through] for backward queries, except when
 			// the batch's `through` is equal to the query's End. This can be achieved
 			// by shifting `through` by one nanosecond.
-			if !through.Equal(it.req.End) {
+			if !through.Equal(it.end) {
 				through = through.Add(time.Nanosecond)
 			}
 		} else {
@@ -203,8 +208,8 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 
 			// when clipping the from it should never be before the start or equal to the end.
 			// Doing so would include entries not requested.
-			if from.Before(it.req.Start) || from.Equal(it.req.End) {
-				from = it.req.Start
+			if from.Before(it.start) || from.Equal(it.end) {
+				from = it.start
 			}
 		}
 
@@ -218,17 +223,13 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	if it.chunks.Len() > 0 {
 		it.lastOverlapping = it.lastOverlapping[:0]
 		for _, c := range batch {
-			if c.IsOverlapping(nextChunk, it.req.Direction) {
+			if c.IsOverlapping(nextChunk, it.direction) {
 				it.lastOverlapping = append(it.lastOverlapping, c)
 			}
 		}
 	}
 	// create the new chunks iterator from the current batch.
-	return it.newChunksIterator(batch, from, through, nextChunk)
-}
-
-func (it *batchChunkIterator) Entry() logproto.Entry {
-	return it.curr.Entry()
+	return it.iterFactory(batch, from, through, nextChunk)
 }
 
 func (it *batchChunkIterator) Labels() string {
@@ -253,29 +254,59 @@ func (it *batchChunkIterator) Close() error {
 	return nil
 }
 
+type labelCache map[model.Fingerprint]string
+
+// computeLabels compute the labels string representation, uses a map to cache result per fingerprint.
+func (l labelCache) computeLabels(c *LazyChunk) string {
+	if lbs, ok := l[c.Chunk.Fingerprint]; ok {
+		return lbs
+	}
+	lbs := dropLabels(c.Chunk.Metric, labels.MetricName).String()
+	l[c.Chunk.Fingerprint] = lbs
+	return lbs
+}
+
+type logBatchIterator struct {
+	*batchChunkIterator
+
+	ctx      context.Context
+	matchers []*labels.Matcher
+	filter   logql.LineFilter
+	labels   labelCache
+}
+
+func newLogBatchIterator(
+	ctx context.Context,
+	chunks []*LazyChunk,
+	batchSize int,
+	matchers []*labels.Matcher,
+	filter logql.LineFilter,
+	direction logproto.Direction,
+	start, end time.Time,
+) (iter.EntryIterator, error) {
+	// __name__ is not something we filter by because it's a constant in loki
+	// and only used for upstream compatibility; therefore remove it.
+	// The same applies to the sharding label which is injected by the cortex storage code.
+	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
+	logbatch := &logBatchIterator{
+		labels:   map[model.Fingerprint]string{},
+		matchers: matchers,
+		filter:   filter,
+		ctx:      ctx,
+	}
+	batch := newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, logbatch.newChunksIterator)
+	logbatch.batchChunkIterator = batch
+	return logbatch, nil
+}
+
+func (it *logBatchIterator) Entry() logproto.Entry {
+	return it.curr.(iter.EntryIterator).Entry()
+}
+
 // newChunksIterator creates an iterator over a set of lazychunks.
-func (it *batchChunkIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.EntryIterator, error) {
-	chksBySeries := partitionBySeriesChunks(chunks)
-
-	// Make sure the initial chunks are loaded. This is not one chunk
-	// per series, but rather a chunk per non-overlapping iterator.
-	if err := loadFirstChunks(it.ctx, chksBySeries); err != nil {
-		return nil, err
-	}
-
-	// Now that we have the first chunk for each series loaded,
-	// we can proceed to filter the series that don't match.
-	chksBySeries = filterSeriesByMatchers(chksBySeries, it.matchers)
-
-	var allChunks []*LazyChunk
-	for _, series := range chksBySeries {
-		for _, chunks := range series {
-			allChunks = append(allChunks, chunks...)
-		}
-	}
-
-	// Finally we load all chunks not already loaded
-	if err := fetchLazyChunks(it.ctx, allChunks); err != nil {
+func (it *logBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
+	chksBySeries, err := fetchChunkBySeries(it.ctx, chunks, it.matchers)
+	if err != nil {
 		return nil, err
 	}
 
@@ -284,10 +315,10 @@ func (it *batchChunkIterator) newChunksIterator(chunks []*LazyChunk, from, throu
 		return nil, err
 	}
 
-	return iter.NewHeapIterator(it.ctx, iters, it.req.Direction), nil
+	return iter.NewHeapIterator(it.ctx, iters, it.direction), nil
 }
 
-func (it *batchChunkIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
+func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
 		iterator, err := it.buildHeapIterator(chunks, from, through, nextChunk)
@@ -300,34 +331,24 @@ func (it *batchChunkIterator) buildIterators(chks map[model.Fingerprint][][]*Laz
 	return result, nil
 }
 
-// computeLabels compute the labels string representation, uses a map to cache result per fingerprint.
-func (it *batchChunkIterator) computeLabels(c *LazyChunk) string {
-	if lbs, ok := it.labels[c.Chunk.Fingerprint]; ok {
-		return lbs
-	}
-	lbs := dropLabels(c.Chunk.Metric, labels.MetricName).String()
-	it.labels[c.Chunk.Fingerprint] = lbs
-	return lbs
-}
-
-func (it *batchChunkIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.EntryIterator, error) {
+func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 
 	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
-	labels := it.computeLabels(chks[0][0])
+	labels := it.labels.computeLabels(chks[0][0])
 	for i := range chks {
 		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
 		for j := range chks[i] {
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.req.Direction, it.filter, nextChunk)
+			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, it.filter, nextChunk)
 			if err != nil {
 				return nil, err
 			}
 			iterators = append(iterators, iterator)
 		}
-		if it.req.Direction == logproto.BACKWARD {
+		if it.direction == logproto.BACKWARD {
 			for i, j := 0, len(iterators)-1; i < j; i, j = i+1, j-1 {
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
@@ -335,7 +356,137 @@ func (it *batchChunkIterator) buildHeapIterator(chks [][]*LazyChunk, from, throu
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
 	}
 
-	return iter.NewHeapIterator(it.ctx, result, it.req.Direction), nil
+	return iter.NewHeapIterator(it.ctx, result, it.direction), nil
+}
+
+type sampleBatchIterator struct {
+	*batchChunkIterator
+
+	ctx       context.Context
+	matchers  []*labels.Matcher
+	filter    logql.LineFilter
+	extractor logql.SampleExtractor
+	labels    labelCache
+}
+
+func newSampleBatchIterator(
+	ctx context.Context,
+	chunks []*LazyChunk,
+	batchSize int,
+	matchers []*labels.Matcher,
+	filter logql.LineFilter,
+	extractor logql.SampleExtractor,
+	start, end time.Time,
+) (iter.SampleIterator, error) {
+	// __name__ is not something we filter by because it's a constant in loki
+	// and only used for upstream compatibility; therefore remove it.
+	// The same applies to the sharding label which is injected by the cortex storage code.
+	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
+
+	samplebatch := &sampleBatchIterator{
+		labels:    map[model.Fingerprint]string{},
+		matchers:  matchers,
+		filter:    filter,
+		extractor: extractor,
+		ctx:       ctx,
+	}
+	batch := newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, samplebatch.newChunksIterator)
+	samplebatch.batchChunkIterator = batch
+	return samplebatch, nil
+}
+
+func (it *sampleBatchIterator) Sample() logproto.Sample {
+	return it.curr.(iter.SampleIterator).Sample()
+}
+
+// newChunksIterator creates an iterator over a set of lazychunks.
+func (it *sampleBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
+	chksBySeries, err := fetchChunkBySeries(it.ctx, chunks, it.matchers)
+	if err != nil {
+		return nil, err
+	}
+	iters, err := it.buildIterators(chksBySeries, from, through, nextChunk)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewHeapSampleIterator(it.ctx, iters), nil
+}
+
+func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.SampleIterator, error) {
+	result := make([]iter.SampleIterator, 0, len(chks))
+	for _, chunks := range chks {
+		iterator, err := it.buildHeapIterator(chunks, from, through, nextChunk)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, iterator)
+	}
+
+	return result, nil
+}
+
+func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.SampleIterator, error) {
+	result := make([]iter.SampleIterator, 0, len(chks))
+
+	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
+	labels := it.labels.computeLabels(chks[0][0])
+	for i := range chks {
+		iterators := make([]iter.SampleIterator, 0, len(chks[i]))
+		for j := range chks[i] {
+			if !chks[i][j].IsValid {
+				continue
+			}
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, it.filter, it.extractor, nextChunk)
+			if err != nil {
+				return nil, err
+			}
+			iterators = append(iterators, iterator)
+		}
+
+		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, labels))
+	}
+
+	return iter.NewHeapSampleIterator(it.ctx, result), nil
+}
+
+func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels.Matcher {
+	for _, omit := range names {
+		for i := range matchers {
+			if matchers[i].Name == omit {
+				matchers = append(matchers[:i], matchers[i+1:]...)
+				break
+			}
+		}
+	}
+	return matchers
+}
+
+func fetchChunkBySeries(ctx context.Context, chunks []*LazyChunk, matchers []*labels.Matcher) (map[model.Fingerprint][][]*LazyChunk, error) {
+	chksBySeries := partitionBySeriesChunks(chunks)
+
+	// Make sure the initial chunks are loaded. This is not one chunk
+	// per series, but rather a chunk per non-overlapping iterator.
+	if err := loadFirstChunks(ctx, chksBySeries); err != nil {
+		return nil, err
+	}
+
+	// Now that we have the first chunk for each series loaded,
+	// we can proceed to filter the series that don't match.
+	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
+
+	var allChunks []*LazyChunk
+	for _, series := range chksBySeries {
+		for _, chunks := range series {
+			allChunks = append(allChunks, chunks...)
+		}
+	}
+
+	// Finally we load all chunks not already loaded
+	if err := fetchLazyChunks(ctx, allChunks); err != nil {
+		return nil, err
+	}
+	return chksBySeries, nil
 }
 
 func filterSeriesByMatchers(chks map[model.Fingerprint][][]*LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]*LazyChunk {
