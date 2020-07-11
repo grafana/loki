@@ -1,10 +1,8 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -14,11 +12,11 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
-	"gopkg.in/yaml.v2"
 
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
+	logutil "github.com/grafana/loki/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -34,8 +32,8 @@ var lineReplacer = strings.NewReplacer("\n", "\\n  ")
 func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 	printConfig := flag.Bool("print-config-stderr", false, "Dump the entire Loki config object to stderr")
-	printConfigInline := flag.Bool("print-config-stderr-inline", false, "Dump the entire Loki config object to stderr broken up by sections with escaped newline characters, "+
-		"this will display much better when captured by Loki and shown in Grafana")
+	logConfig := flag.Bool("log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
+		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 
 	var config loki.Config
 	if err := cfg.Parse(&config); err != nil {
@@ -68,16 +66,16 @@ func main() {
 	}
 
 	if *printConfig {
-		err := dumpConfig(os.Stderr, &config, false)
+		err := logutil.PrintConfig(os.Stderr, &config)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
 		}
 	}
 
-	if *printConfigInline {
-		err := dumpConfig(os.Stderr, &config, true)
+	if *logConfig {
+		err := logutil.LogConfig(&config)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
+			level.Error(util.Logger).Log("msg", "failed to log config object", "err", err.Error())
 		}
 	}
 
@@ -105,77 +103,4 @@ func main() {
 
 	err = t.Run()
 	util.CheckFatal("running loki", err)
-}
-
-func dumpConfig(w io.Writer, config *loki.Config, escapeNewlines bool) error {
-	if !escapeNewlines {
-		lc, err := yaml.Marshal(&config)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(w, "---\n# Loki Config\n# %s\n%s\n\n", version.Info(), string(lc))
-		return nil
-	}
-
-	s := reflect.ValueOf(config).Elem()
-	typeOfT := s.Type()
-
-	for i := 0; i < s.NumField(); i++ {
-		f := s.Field(i)
-		if !f.CanInterface() {
-			continue
-		}
-		// Lookup the yaml tag to print the field name by the yaml tag, skip if it's not present or empty
-		if alias, ok := typeOfT.Field(i).Tag.Lookup("yaml"); ok {
-			if alias == "" {
-				continue
-			} else {
-				// yaml tags can contain other data like `omitempty` so split by comma and only return first result
-				fmt.Fprint(w, strings.Split(alias, ",")[0]+": ")
-			}
-		} else {
-			continue
-		}
-
-		if f.Kind() == reflect.Slice {
-			return errors.New("the config dumping function was not programmed to handle a configuration array as a top level item in the Loki config")
-		}
-
-		kind := f.Kind()
-		val := f.Interface()
-
-		// Dereference any pointers so we can properly determine the kind of the underlying object
-		if f.Kind() == reflect.Ptr {
-			if !f.IsNil() {
-				kind = f.Elem().Kind()
-				val = f.Elem().Interface()
-			}
-		}
-
-		// If the field is a struct, unmarshal it with a yaml unmarshaller and print it
-		if kind == reflect.Struct {
-			err := unmarshall(w, val)
-			if err != nil {
-				return err
-			}
-		} else {
-			// If it's not a struct, just print the value
-			fmt.Fprint(w, val)
-		}
-		fmt.Fprint(w, "\n")
-	}
-
-	os.Exit(0)
-
-	return nil
-}
-
-func unmarshall(w io.Writer, v interface{}) error {
-	fmt.Fprint(w, "\\n")
-	sc, err := yaml.Marshal(v)
-	if err != nil {
-		return err
-	}
-	fmt.Fprint(w, lineReplacer.Replace(string(sc)))
-	return nil
 }

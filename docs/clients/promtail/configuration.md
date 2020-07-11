@@ -4,6 +4,7 @@ Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
 and how to scrape logs from files.
 
+* [Printing Promtail Config At Runtime](#printing-promtail-config-at-runtime)
 * [Configuration File Reference](#configuration-file-reference)
 * [server_config](#server_config)
 * [client_config](#client_config)
@@ -36,6 +37,25 @@ and how to scrape logs from files.
 * [Example Static Config](#example-static-config)
 * [Example Journal Config](#example-journal-config)
 * [Example Syslog Config](#example-syslog-config)
+
+## Printing Promtail Config At Runtime
+
+If you pass Promtail the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
+Promtail will dump the entire config object it has created from the built in defaults combined first with
+overrides from config file, and second by overrides from flags.
+
+The result is the value for every config object in the Promtail config struct.
+
+Some values may not be relevant to your install, this is expected as every option has a default value if it is being used or not.
+
+This config is what Promtail will use to run, it can be invaluable for debugging issues related to configuration and
+is especially useful in making sure your config files and flags are being read and loaded properly.
+
+`-print-config-stderr` is nice when running Promtail directly e.g. `./promtail ` as you can get a quick output of the entire Promtail config. 
+
+`-log-config-reverse-order` is the flag we run Promtail with in all our environments, the config entries are reversed so 
+that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
+
 
 ## Configuration File Reference
 
