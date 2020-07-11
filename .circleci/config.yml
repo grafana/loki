@@ -129,7 +129,7 @@ jobs:
       - run:
           name: Install Chart Testing tool
           command: |
-            pip install yamale yamllint
+            pip install yamale==2.2.0 yamllint
             curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
             sudo tar -C /usr/local/bin -xvf ct.tgz
             sudo mv /usr/local/bin/etc /etc/ct/
