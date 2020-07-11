@@ -1,7 +1,7 @@
 
 # Sending logs from EKS with Promtail
 
-In this tutorial we'll see how setup promtail on EKS. Amazon Elastic Kubernetes Service (Amazon EKS) is a fully managed Kubernetes service, using Promtail we'll get full visibility into our cluster logs weither it's node or pod logs and even Kubernetes events.
+In this tutorial we'll see how setup promtail on [EKS][eks]. Amazon Elastic Kubernetes Service (Amazon [EKS][eks]) is a fully managed Kubernetes service, using Promtail we'll get full visibility into our cluster logs. We'll start by forwarding pods logs then nodes services and finally Kubernetes events.
 
 After this tutorial you will able to query all your logs in one place using Grafana.
 
@@ -238,6 +238,7 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 
 > If you need to delete the cluster simply run `eksctl delete  cluster --name loki-promtail`
 
+[eks]: https://aws.amazon.com/eks/
 [aws cli]: https://aws.amazon.com/cli/
 [GrafanaCloud]: https://grafana.com/signup/
 [blog ship log with fargate]: https://aws.amazon.com/blogs/containers/how-to-capture-application-logs-when-using-amazon-eks-on-aws-fargate/
