@@ -44,7 +44,7 @@ of pre-defined formats to represent common forms:
 Additionally, support for common Unix timestamps is supported with the following
 `format` values:
 
-- `Unix`: `1562708916`
+- `Unix`: `1562708916` or with fractions `1562708916.000000123`
 - `UnixMs`: `1562708916414`
 - `UnixUs`: `1562708916414123`
 - `UnixNs`: `1562708916000000123`

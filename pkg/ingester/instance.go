@@ -292,9 +292,12 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 	if len(groups) == 0 {
 		series = make([]logproto.SeriesIdentifier, 0, len(i.streams))
 		err = i.forAllStreams(func(stream *stream) error {
-			series = append(series, logproto.SeriesIdentifier{
-				Labels: stream.labels.Map(),
-			})
+			// consider the stream only if it overlaps the request time range
+			if shouldConsiderStream(stream, req) {
+				series = append(series, logproto.SeriesIdentifier{
+					Labels: stream.labels.Map(),
+				})
+			}
 			return nil
 		})
 		if err != nil {
@@ -304,14 +307,17 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 		dedupedSeries := make(map[uint64]logproto.SeriesIdentifier)
 		for _, matchers := range groups {
 			err = i.forMatchingStreams(matchers, func(stream *stream) error {
-				// exit early when this stream was added by an earlier group
-				key := stream.labels.Hash()
-				if _, found := dedupedSeries[key]; found {
-					return nil
-				}
+				// consider the stream only if it overlaps the request time range
+				if shouldConsiderStream(stream, req) {
+					// exit early when this stream was added by an earlier group
+					key := stream.labels.Hash()
+					if _, found := dedupedSeries[key]; found {
+						return nil
+					}
 
-				dedupedSeries[key] = logproto.SeriesIdentifier{
-					Labels: stream.labels.Map(),
+					dedupedSeries[key] = logproto.SeriesIdentifier{
+						Labels: stream.labels.Map(),
+					}
 				}
 				return nil
 			})
@@ -515,4 +521,14 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		ingStats.TotalBatches++
 	}
 	return nil
+}
+
+func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {
+	firstchunkFrom, _ := stream.chunks[0].chunk.Bounds()
+	_, lastChunkTo := stream.chunks[len(stream.chunks)-1].chunk.Bounds()
+
+	if req.End.UnixNano() > firstchunkFrom.UnixNano() && req.Start.UnixNano() <= lastChunkTo.UnixNano() {
+		return true
+	}
+	return false
 }

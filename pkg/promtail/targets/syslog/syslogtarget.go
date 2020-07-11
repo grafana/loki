@@ -1,4 +1,4 @@
-package targets
+package syslog
 
 import (
 	"context"
@@ -22,8 +22,9 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 
 	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/scrape"
-	"github.com/grafana/loki/pkg/promtail/targets/syslogparser"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/pkg/promtail/targets/syslog/syslogparser"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 var (
@@ -45,7 +46,7 @@ var (
 type SyslogTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
-	config        *scrape.SyslogTargetConfig
+	config        *scrapeconfig.SyslogTargetConfig
 	relabelConfig []*relabel.Config
 
 	listener net.Listener
@@ -66,7 +67,7 @@ func NewSyslogTarget(
 	logger log.Logger,
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
-	config *scrape.SyslogTargetConfig,
+	config *scrapeconfig.SyslogTargetConfig,
 ) (*SyslogTarget, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -263,8 +264,8 @@ func lookupAddr(addr string) string {
 }
 
 // Type returns SyslogTargetType.
-func (t *SyslogTarget) Type() TargetType {
-	return SyslogTargetType
+func (t *SyslogTarget) Type() target.TargetType {
+	return target.SyslogTargetType
 }
 
 // Ready indicates whether or not the syslog target is ready to be read from.

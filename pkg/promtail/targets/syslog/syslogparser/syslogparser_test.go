@@ -9,7 +9,7 @@ import (
 	"github.com/influxdata/go-syslog/v3/rfc5424"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/promtail/targets/syslogparser"
+	"github.com/grafana/loki/pkg/promtail/targets/syslog/syslogparser"
 )
 
 func TestParseStream_OctetCounting(t *testing.T) {

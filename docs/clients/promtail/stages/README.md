@@ -9,6 +9,7 @@ Parsing stages:
   * [cri](./cri.md): Extract data by parsing the log line using the standard CRI format.
   * [regex](./regex.md): Extract data using a regular expression.
   * [json](./json.md): Extract data by parsing the log line as JSON.
+  * [replace](./replace.md): Replace data using a regular expression.
 
 Transform stages:
 

@@ -123,7 +123,7 @@ func (h iteratorMaxHeap) Less(i, j int) bool {
 	case un1 > un2:
 		return true
 	default: // un1 == un2
-		return h.iteratorHeap[i].Labels() > h.iteratorHeap[j].Labels()
+		return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
 	}
 }
 
@@ -233,8 +233,7 @@ func (i *heapIterator) Next() bool {
 		}
 
 		heap.Pop(i.heap)
-		// insert keeps i.tuples sorted
-		i.tuples = insert(i.tuples, tuple{
+		i.tuples = append(i.tuples, tuple{
 			Entry:         entry,
 			EntryIterator: next,
 		})
@@ -251,7 +250,7 @@ func (i *heapIterator) Next() bool {
 
 	// Find in tuples which entry occurs most often which, due to quorum based
 	// replication, is guaranteed to be the correct next entry.
-	t := mostCommon(i.tuples)
+	t := i.tuples[0]
 	i.currEntry = t.Entry
 	i.currLabels = t.Labels()
 
@@ -269,49 +268,6 @@ func (i *heapIterator) Next() bool {
 	}
 	i.tuples = i.tuples[:0]
 	return true
-}
-
-// Insert new tuple to correct position into ordered set of tuples.
-// Insert sort is fast for small number of elements, and here we only expect max [number of replicas] elements.
-func insert(ts []tuple, n tuple) []tuple {
-	ix := 0
-	for ix < len(ts) && ts[ix].Line <= n.Line {
-		ix++
-	}
-	if ix < len(ts) {
-		ts = append(ts, tuple{}) // zero element
-		copy(ts[ix+1:], ts[ix:])
-		ts[ix] = n
-	} else {
-		ts = append(ts, n)
-	}
-	return ts
-}
-
-// Expects that tuples are sorted already. We achieve that by using insert.
-func mostCommon(tuples []tuple) tuple {
-	// trivial case, no need to do extra work.
-	if len(tuples) == 1 {
-		return tuples[0]
-	}
-
-	result := tuples[0]
-	count, max := 0, 0
-	for i := 0; i < len(tuples)-1; i++ {
-		if tuples[i].Line == tuples[i+1].Line {
-			count++
-			continue
-		}
-		if count > max {
-			result = tuples[i]
-			max = count
-		}
-		count = 0
-	}
-	if count > max {
-		result = tuples[len(tuples)-1]
-	}
-	return result
 }
 
 func (i *heapIterator) Entry() logproto.Entry {

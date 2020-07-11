@@ -760,7 +760,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	}
 	for n < lineSize {
 		r, err := si.bufReader.Read(si.buf[n:lineSize])
-		if err != nil {
+		if err != nil && err != io.EOF {
 			si.err = err
 			return 0, nil, false
 		}

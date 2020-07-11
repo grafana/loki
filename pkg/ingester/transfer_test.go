@@ -20,6 +20,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -62,8 +63,9 @@ func TestTransferOut(t *testing.T) {
 		Streams: []logproto.Stream{
 			{
 				Entries: []logproto.Entry{
-					{Line: "out of order line", Timestamp: time.Unix(0, 0)},
 					{Line: "line 4", Timestamp: time.Unix(2, 0)},
+					{Line: "ooo", Timestamp: time.Unix(0, 0)},
+					{Line: "line 5", Timestamp: time.Unix(3, 0)},
 				},
 				Labels: `{foo="bar",bar="baz1"}`,
 			},
@@ -72,7 +74,7 @@ func TestTransferOut(t *testing.T) {
 
 	require.Error(t, err2)
 	require.Contains(t, err2.Error(), "out of order")
-	require.Contains(t, err2.Error(), "total ignored: 1 out of 2")
+	require.Contains(t, err2.Error(), "total ignored: 1 out of 3")
 
 	// Create a new ingester and transfer data to it
 	ing2 := f.getIngester(time.Second*60, t)
@@ -86,6 +88,7 @@ func TestTransferOut(t *testing.T) {
 		lines := []string{}
 
 		// Get all the lines back and make sure the blocks transferred successfully
+		ing2.instances["test"].streamsMtx.RLock()
 		for _, stream := range ing2.instances["test"].streams {
 			it, err := stream.Iterator(
 				context.TODO(),
@@ -103,12 +106,12 @@ func TestTransferOut(t *testing.T) {
 				lines = append(lines, entry.Line)
 			}
 		}
-
+		ing2.instances["test"].streamsMtx.RUnlock()
 		sort.Strings(lines)
 
 		assert.Equal(
 			t,
-			[]string{"line 0", "line 1", "line 2", "line 3", "line 4"},
+			[]string{"line 0", "line 1", "line 2", "line 3", "line 4", "line 5"},
 			lines,
 		)
 	}
@@ -141,6 +144,11 @@ func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T)
 	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = f.store
 	cfg.LifecyclerConfig.JoinAfter = joinAfter
 	cfg.LifecyclerConfig.Addr = cfg.LifecyclerConfig.ID
+	// Force a tiny chunk size and no encoding so we can guarantee multiple chunks
+	// These values are also crafted around the specific use of `line _` in the log line which is 6 bytes long
+	cfg.BlockSize = 3 // Block size needs to be less than chunk size so we can get more than one block per chunk
+	cfg.TargetChunkSize = 24
+	cfg.ChunkEncoding = chunkenc.EncNone.String()
 
 	cfg.ingesterClientFactory = func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error) {
 		ingester, ok := f.ingesters[addr]

@@ -3,7 +3,6 @@ package iter
 import (
 	"context"
 	"fmt"
-	"sort"
 	"testing"
 	"time"
 
@@ -231,50 +230,74 @@ func inverse(g generator) generator {
 	}
 }
 
-func TestMostCommon(t *testing.T) {
-	// First is most common.
-	tuples := []tuple{
-		{Entry: logproto.Entry{Line: "a"}},
-		{Entry: logproto.Entry{Line: "b"}},
-		{Entry: logproto.Entry{Line: "c"}},
-		{Entry: logproto.Entry{Line: "a"}},
-		{Entry: logproto.Entry{Line: "b"}},
-		{Entry: logproto.Entry{Line: "c"}},
-		{Entry: logproto.Entry{Line: "a"}},
+func TestHeapIteratorDeduplication(t *testing.T) {
+	foo := logproto.Stream{
+		Labels: `{app="foo"}`,
+		Entries: []logproto.Entry{
+			{Timestamp: time.Unix(0, 1), Line: "1"},
+			{Timestamp: time.Unix(0, 2), Line: "2"},
+			{Timestamp: time.Unix(0, 3), Line: "3"},
+		},
 	}
-	require.Equal(t, "a", mostCommon(tuples).Entry.Line)
+	bar := logproto.Stream{
+		Labels: `{app="bar"}`,
+		Entries: []logproto.Entry{
+			{Timestamp: time.Unix(0, 1), Line: "1"},
+			{Timestamp: time.Unix(0, 2), Line: "2"},
+			{Timestamp: time.Unix(0, 3), Line: "3"},
+		},
+	}
+	assertIt := func(it EntryIterator, reversed bool, length int) {
+		for i := 0; i < length; i++ {
+			j := i
+			if reversed {
+				j = length - 1 - i
+			}
+			require.True(t, it.Next())
+			require.NoError(t, it.Error())
+			require.Equal(t, bar.Labels, it.Labels())
+			require.Equal(t, bar.Entries[j], it.Entry())
 
-	tuples = []tuple{
-		{Entry: logproto.Entry{Line: "a"}},
-		{Entry: logproto.Entry{Line: "b"}},
-		{Entry: logproto.Entry{Line: "b"}},
-		{Entry: logproto.Entry{Line: "c"}},
-		{Entry: logproto.Entry{Line: "c"}},
-		{Entry: logproto.Entry{Line: "c"}},
-		{Entry: logproto.Entry{Line: "d"}},
+			require.True(t, it.Next())
+			require.NoError(t, it.Error())
+			require.Equal(t, foo.Labels, it.Labels())
+			require.Equal(t, foo.Entries[j], it.Entry())
+
+		}
+		require.False(t, it.Next())
+		require.NoError(t, it.Error())
 	}
-	require.Equal(t, "c", mostCommon(tuples).Entry.Line)
+	// forward iteration
+	it := NewHeapIterator(context.Background(), []EntryIterator{
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+		NewStreamIterator(bar),
+		NewStreamIterator(foo),
+	}, logproto.FORWARD)
+	assertIt(it, false, len(foo.Entries))
+
+	// backward iteration
+	it = NewHeapIterator(context.Background(), []EntryIterator{
+		mustReverseStreamIterator(NewStreamIterator(foo)),
+		mustReverseStreamIterator(NewStreamIterator(bar)),
+		mustReverseStreamIterator(NewStreamIterator(foo)),
+		mustReverseStreamIterator(NewStreamIterator(bar)),
+		mustReverseStreamIterator(NewStreamIterator(foo)),
+		mustReverseStreamIterator(NewStreamIterator(bar)),
+		mustReverseStreamIterator(NewStreamIterator(foo)),
+	}, logproto.BACKWARD)
+	assertIt(it, true, len(foo.Entries))
 }
 
-func TestInsert(t *testing.T) {
-	toInsert := []tuple{
-		{Entry: logproto.Entry{Line: "a"}},
-		{Entry: logproto.Entry{Line: "e"}},
-		{Entry: logproto.Entry{Line: "c"}},
-		{Entry: logproto.Entry{Line: "b"}},
-		{Entry: logproto.Entry{Line: "d"}},
-		{Entry: logproto.Entry{Line: "a"}},
-		{Entry: logproto.Entry{Line: "c"}},
+func mustReverseStreamIterator(it EntryIterator) EntryIterator {
+	reversed, err := NewReversedIter(it, 0, true)
+	if err != nil {
+		panic(err)
 	}
-
-	var ts []tuple
-	for _, e := range toInsert {
-		ts = insert(ts, e)
-	}
-
-	require.True(t, sort.SliceIsSorted(ts, func(i, j int) bool {
-		return ts[i].Line < ts[j].Line
-	}))
+	return reversed
 }
 
 func TestReverseIterator(t *testing.T) {
@@ -288,10 +311,10 @@ func TestReverseIterator(t *testing.T) {
 	for i := int64((testSize / 2) + 1); i <= testSize; i++ {
 		assert.Equal(t, true, reversedIter.Next())
 		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
-		assert.Equal(t, reversedIter.Labels(), itr1.Labels())
+		assert.Equal(t, reversedIter.Labels(), itr2.Labels())
 		assert.Equal(t, true, reversedIter.Next())
 		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
-		assert.Equal(t, reversedIter.Labels(), itr2.Labels())
+		assert.Equal(t, reversedIter.Labels(), itr1.Labels())
 	}
 
 	assert.Equal(t, false, reversedIter.Next())

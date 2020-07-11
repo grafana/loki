@@ -223,6 +223,28 @@ func TestTimestampStage_Process(t *testing.T) {
 			},
 			time.Date(2019, 7, 9, 21, 48, 36, 0, time.UTC),
 		},
+		"unix fractions ms success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: "Unix",
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "1562708916.414123",
+			},
+			time.Date(2019, 7, 9, 21, 48, 36, 414123*1000, time.UTC),
+		},
+		"unix fractions ns success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: "Unix",
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "1562708916.000000123",
+			},
+			time.Date(2019, 7, 9, 21, 48, 36, 123, time.UTC),
+		},
 		"unix millisecond success": {
 			TimestampConfig{
 				Source: "ts",

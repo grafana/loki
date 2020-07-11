@@ -1,4 +1,4 @@
-package targets
+package file
 
 import (
 	"os"

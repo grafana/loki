@@ -1,6 +1,6 @@
 // +build linux,cgo
 
-package targets
+package journal
 
 import (
 	"fmt"
@@ -16,10 +16,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 
 	"github.com/go-kit/kit/log"
 
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 
 	"github.com/coreos/go-systemd/sdjournal"
 	"github.com/pkg/errors"
@@ -92,7 +93,7 @@ type JournalTarget struct {
 	positions     positions.Positions
 	positionPath  string
 	relabelConfig []*relabel.Config
-	config        *scrape.JournalTargetConfig
+	config        *scrapeconfig.JournalTargetConfig
 	labels        model.LabelSet
 
 	r     journalReader
@@ -106,7 +107,7 @@ func NewJournalTarget(
 	positions positions.Positions,
 	jobName string,
 	relabelConfig []*relabel.Config,
-	targetConfig *scrape.JournalTargetConfig,
+	targetConfig *scrapeconfig.JournalTargetConfig,
 ) (*JournalTarget, error) {
 
 	return journalTargetWithReader(
@@ -127,7 +128,7 @@ func journalTargetWithReader(
 	positions positions.Positions,
 	jobName string,
 	relabelConfig []*relabel.Config,
-	targetConfig *scrape.JournalTargetConfig,
+	targetConfig *scrapeconfig.JournalTargetConfig,
 	readerFunc journalReaderFunc,
 	entryFunc journalEntryFunc,
 ) (*JournalTarget, error) {
@@ -292,8 +293,8 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 }
 
 // Type returns JournalTargetType.
-func (t *JournalTarget) Type() TargetType {
-	return JournalTargetType
+func (t *JournalTarget) Type() target.TargetType {
+	return target.JournalTargetType
 }
 
 // Ready indicates whether or not the journal is ready to be

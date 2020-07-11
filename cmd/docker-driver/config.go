@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/client"
-	"github.com/grafana/loki/pkg/promtail/targets"
+	"github.com/grafana/loki/pkg/promtail/targets/file"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -283,7 +283,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if err == nil {
 		labels[defaultHostLabelName] = model.LabelValue(host)
 	}
-	labels[targets.FilenameLabel] = model.LabelValue(logCtx.LogPath)
+	labels[file.FilenameLabel] = model.LabelValue(logCtx.LogPath)
 
 	// Process relabel configs.
 	if relabelString, ok := logCtx.Config[cfgRelabelKey]; ok && relabelString != "" {

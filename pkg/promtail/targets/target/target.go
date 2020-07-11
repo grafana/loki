@@ -1,4 +1,4 @@
-package targets
+package target
 
 import (
 	"github.com/prometheus/common/model"
@@ -19,6 +19,9 @@ const (
 
 	// DroppedTargetType is a target that's been dropped.
 	DroppedTargetType = TargetType("dropped")
+
+	// PushTargetType is a Loki push target
+	PushTargetType = TargetType("Push")
 )
 
 // Target is a promtail scrape target
@@ -46,7 +49,7 @@ type droppedTarget struct {
 	reason           string
 }
 
-func newDroppedTarget(reason string, discoveredLabels model.LabelSet) Target {
+func NewDroppedTarget(reason string, discoveredLabels model.LabelSet) Target {
 	return &droppedTarget{
 		discoveredLabels: discoveredLabels,
 		reason:           reason,
