@@ -6,6 +6,7 @@ depending on which mode Loki is launched in.
 
 Configuration examples can be found in the [Configuration Examples](examples.md) document.
 
+* [Printing Loki Config At Runtime](#printing-loki-config-at-runtime)
 * [Configuration File Reference](#configuration-file-reference)
 * [server_config](#server_config)
 * [distributor_config](#distributor_config)
@@ -29,6 +30,24 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [tracing_config](#tracing_config)
 * [Runtime Configuration file](#runtime-configuration-file)
 
+## Printing Loki Config At Runtime
+
+If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
+Loki will dump the entire config object it has created from the built in defaults combined first with
+overrides from config file, and second by overrides from flags.
+
+The result is the value for every config object in the Loki config struct, which is very large...
+
+Many values will not be relevant to your install such as storage configs which you are not using and which you did not define, 
+this is expected as every option has a default value if it is being used or not.
+
+This config is what Loki will use to run, it can be invaluable for debugging issues related to configuration and
+is especially useful in making sure your config files and flags are being read and loaded properly.
+
+`-print-config-stderr` is nice when running Loki directly e.g. `./loki ` as you can get a quick output of the entire Loki config. 
+
+`-log-config-reverse-order` is the flag we run Loki with in all our environments, the config entries are reversed so 
+that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
 
 ## Configuration File Reference
 

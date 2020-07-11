@@ -86,3 +86,11 @@ Depending on the compression used (we have been using snappy which has less comp
 Lots of small, unfilled chunks are currently kryptonite for Loki. We are always working to improve this and may consider a compactor to improve this in some situations. But, in general, the guidance should stay about the same: Try your best to fill chunks!
 
 If you have an application that can log fast enough to fill these chunks quickly (much less than `max_chunk_age`), then it becomes more reasonable to use dynamic labels to break that up into separate streams.
+
+## 8. Use `-print-config-stderr` or `-log-config-reverse-order`
+
+Starting in version 1.6.0 Loki and Promtail have flags which will dump the entire config object to stderr, or the log file, when they start.
+
+`-print-config-stderr` is nice when running loki directly e.g. `./loki ` as you can get a quick output of the entire Loki config. 
+
+`-log-config-reverse-order` is the flag we run Loki with in all our environments, the config entries are reversed so that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.

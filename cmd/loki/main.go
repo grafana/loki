@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,6 +16,7 @@ import (
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
+	logutil "github.com/grafana/loki/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -25,8 +27,13 @@ func init() {
 	prometheus.MustRegister(version.NewCollector("loki"))
 }
 
+var lineReplacer = strings.NewReplacer("\n", "\\n  ")
+
 func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
+	printConfig := flag.Bool("print-config-stderr", false, "Dump the entire Loki config object to stderr")
+	logConfig := flag.Bool("log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
+		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 
 	var config loki.Config
 	if err := cfg.Parse(&config); err != nil {
@@ -56,6 +63,20 @@ func main() {
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "validating config", "err", err.Error())
 		os.Exit(1)
+	}
+
+	if *printConfig {
+		err := logutil.PrintConfig(os.Stderr, &config)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
+		}
+	}
+
+	if *logConfig {
+		err := logutil.LogConfig(&config)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to log config object", "err", err.Error())
+		}
 	}
 
 	if config.Tracing.Enabled {
