@@ -235,6 +235,7 @@ That's it ! You can download the final and complete [`values.yaml`][final config
 Your EKS cluster is now ready, all your current and future application logs will now be shipped to Loki with Promtail. You will also able to [explore][explore] [kubelet][kubelet] and Kubernetes events. Since we've used a DaemonSet you'll automatically grab all your node logs as you scale them.
 
 If you want to push this further you can check out [Joe's blog post][blog annotations] on how to automatically create Grafana dashboard annotations with Loki when you deploy new Kubernetes applications.
+> If you need to delete the cluster simply run `eksctl delete  cluster --name loki-promtail`
 
 [aws cli]: https://aws.amazon.com/cli/
 [GrafanaCloud]: https://grafana.com/signup/
