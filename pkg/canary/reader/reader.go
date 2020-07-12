@@ -36,7 +36,7 @@ var (
 
 type LokiReader interface {
 	Query(start time.Time, end time.Time) ([]time.Time, error)
-	QueryCountOverTime(queryRange time.Duration) (float64, error)
+	QueryCountOverTime(queryRange string) (float64, error)
 }
 
 type Reader struct {
@@ -114,7 +114,7 @@ func (r *Reader) Stop() {
 	}
 }
 
-func (r *Reader) QueryCountOverTime(queryRange time.Duration) (float64, error) {
+func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 	scheme := "http"
 	if r.tls {
 		scheme = "https"
@@ -230,7 +230,12 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	case logql.ValueTypeStreams:
 		for _, stream := range value.(loghttp.Streams) {
 			for _, entry := range stream.Entries {
-				tss = append(tss, entry.Timestamp)
+				ts, err := parseResponse(&entry)
+				if err != nil {
+					fmt.Fprint(r.w, err)
+					continue
+				}
+				tss = append(tss, *ts)
 			}
 
 		}
@@ -263,7 +268,12 @@ func (r *Reader) run() {
 		}
 		for _, stream := range tailResponse.Streams {
 			for _, entry := range stream.Entries {
-				r.recv <- entry.Timestamp
+				ts, err := parseResponse(&entry)
+				if err != nil {
+					fmt.Fprint(r.w, err)
+					continue
+				}
+				r.recv <- *ts
 			}
 		}
 	}

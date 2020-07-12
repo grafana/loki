@@ -16,7 +16,7 @@ const (
 	ErrOutOfOrderEntry           = "out of order entry %s was received before entries: %v\n"
 	ErrEntryNotReceivedWs        = "websocket failed to receive entry %v within %f seconds\n"
 	ErrEntryNotReceived          = "failed to receive entry %v within %f seconds\n"
-	ErrSpotCheckEntryNotReceived = "failed to find entry %s in Loki when spot check querying %v after it was written\n"
+	ErrSpotCheckEntryNotReceived = "failed to find entry %v in Loki when spot check querying %v after it was written\n"
 	ErrDuplicateEntry            = "received a duplicate entry for ts %v\n"
 	ErrUnexpectedEntry           = "received an unexpected entry with ts %v\n"
 	DebugWebsocketMissingEntry   = "websocket missing entry: %v\n"
@@ -81,7 +81,8 @@ type Comparator struct {
 	spotCheckMax       time.Duration
 	spotCheckRunning   bool
 	metricTestInterval time.Duration
-	metricTestRange    time.Duration
+	metricTestRange    string
+	metricTestRagenDur time.Duration
 	metricTestRunning  bool
 	writeInterval      time.Duration
 	confirmAsync       bool
@@ -96,7 +97,8 @@ func NewComparator(writer io.Writer,
 	maxWait time.Duration,
 	pruneInterval time.Duration,
 	spotCheckInterval, spotCheckMax time.Duration,
-	metricTestInterval, metricTestRange time.Duration,
+	metricTestInterval time.Duration,
+	metricTestRange string,
 	writeInterval time.Duration,
 	buckets int,
 	sentChan chan time.Time,
@@ -132,6 +134,14 @@ func NewComparator(writer io.Writer,
 			Buckets:   prometheus.ExponentialBuckets(0.5, 2, buckets),
 		})
 	}
+	// Convert the string to a duration to save from doing this on every query.
+	// main.go should also be testing this and failing the application if this parse fails but we still need to be defensive here
+	d, err := time.ParseDuration(metricTestRange)
+	if err != nil {
+		fmt.Fprintf(writer, "failed to parse duration string for metric-test-range, metric queries will not be possible: %v", err.Error())
+		c.metricTestRagenDur = 0
+	}
+	c.metricTestRagenDur = d
 
 	go c.run()
 
@@ -261,11 +271,17 @@ func (c *Comparator) metricTest() {
 		c.metricTestRunning = false
 		c.metTestMtx.Unlock()
 	}()
+	// This should never happen, main.go should fail if we failed to parse this parameter as a duration
+	// but we still need to be defensive.
+	if c.metricTestRagenDur == 0 {
+		fmt.Fprintf(c.w, "Invalid metric-test-range parameter, metric test query failed")
+		return
+	}
 	actualCount, err := c.rdr.QueryCountOverTime(c.metricTestRange)
 	if err != nil {
 		fmt.Fprintf(c.w, "error running metric query test: %s", err.Error())
 	}
-	expectedCount := float64(c.metricTestRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
+	expectedCount := float64(c.metricTestRagenDur.Milliseconds()) / float64(c.writeInterval.Milliseconds())
 	metricTestDeviation.Set(expectedCount - actualCount)
 }
 
@@ -318,7 +334,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 			}
 		}
 		if !found {
-			fmt.Fprintf(c.w, ErrSpotCheckEntryNotReceived, sce, sce.Sub(currTime))
+			fmt.Fprintf(c.w, ErrSpotCheckEntryNotReceived, sce.UnixNano(), currTime.Sub(*sce))
 			spotCheckMissing.Inc()
 		}
 	}

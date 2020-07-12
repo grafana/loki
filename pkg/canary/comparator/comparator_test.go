@@ -338,6 +338,6 @@ func (r *mockReader) Query(start time.Time, end time.Time) ([]time.Time, error) 
 	return r.resp, nil
 }
 
-func (r *mockReader) QueryCountOverTime(queryRange time.Duration) (float64, error) {
+func (r *mockReader) QueryCountOverTime(queryRange string) (float64, error) {
 	return 0, nil
 }
