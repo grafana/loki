@@ -280,9 +280,14 @@ func (c *Comparator) metricTest() {
 	actualCount, err := c.rdr.QueryCountOverTime(fmt.Sprintf("%.0fs", adjustedRange.Seconds()))
 	if err != nil {
 		fmt.Fprintf(c.w, "error running metric query test: %s", err.Error())
+		return
 	}
 	expectedCount := float64(adjustedRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
-	metricTestDeviation.Set(expectedCount - actualCount)
+	deviation := expectedCount - actualCount
+	if deviation > 10 {
+		fmt.Fprintf(c.w, "large metric deviation: expected %v, actual %v", expectedCount, actualCount)
+	}
+	metricTestDeviation.Set(deviation)
 }
 
 func (c *Comparator) spotCheckEntries(currTime time.Time) {
@@ -336,6 +341,9 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 		}
 		if !found {
 			fmt.Fprintf(c.w, ErrSpotCheckEntryNotReceived, sce.UnixNano(), currTime.Sub(*sce))
+			for _, r := range recvd {
+				fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
+			}
 			spotCheckMissing.Inc()
 		}
 	}

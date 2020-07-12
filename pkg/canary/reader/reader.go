@@ -126,7 +126,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("count_over_time({%v=\"%v\",%v=\"%v\"}[%s])", r.sName, r.sValue, r.lName, r.lVal, queryRange)) +
 			"&limit=1000",
 	}
-	fmt.Fprintf(r.w, "Querying loki for missing values with query: %v\n", u.String())
+	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v\n", u.String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
 	defer cancel()
@@ -191,7 +191,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 			"&query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"}", r.sName, r.sValue, r.lName, r.lVal)) +
 			"&limit=1000",
 	}
-	fmt.Fprintf(r.w, "Querying loki for missing values with query: %v\n", u.String())
+	fmt.Fprintf(r.w, "Querying loki for logs with query: %v\n", u.String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
 	defer cancel()

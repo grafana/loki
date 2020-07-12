@@ -293,6 +293,11 @@ func TestSpotCheck(t *testing.T) {
 	expected := fmt.Sprintf(ErrSpotCheckEntryNotReceived, // List entry not received from Loki
 		entries[20].UnixNano(), "-9ms")
 
+	// We didn't send the last entry and our initial counter did not start at 0 so we should get back entries 1-19
+	for i := 1; i < 20; i++ {
+		expected = expected + fmt.Sprintf(DebugQueryResult, entries[i].UnixNano())
+	}
+
 	assert.Equal(t, expected, actual.String())
 
 	assert.Equal(t, 2, spotCheckEntries.(*mockCounter).count)
