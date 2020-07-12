@@ -1,7 +1,7 @@
 package logger // import "github.com/docker/docker/daemon/logger"
 
 import (
-	metrics "github.com/docker/go-metrics"
+	"github.com/docker/go-metrics"
 )
 
 var (

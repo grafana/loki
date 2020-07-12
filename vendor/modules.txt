@@ -136,8 +136,6 @@ github.com/cespare/xxhash
 github.com/cespare/xxhash/v2
 # github.com/containerd/containerd v1.3.4
 github.com/containerd/containerd/errdefs
-github.com/containerd/containerd/log
-github.com/containerd/containerd/platforms
 # github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448
 ## explicit
 github.com/containerd/fifo
@@ -151,12 +149,13 @@ github.com/coreos/go-systemd/journal
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.2.1-0.20200702073552-0ea5a8b50b19
+# github.com/cortexproject/cortex v1.2.1-0.20200709155522-19502213923d
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alerts
 github.com/cortexproject/cortex/pkg/alertmanager/alerts/configdb
 github.com/cortexproject/cortex/pkg/alertmanager/alerts/local
+github.com/cortexproject/cortex/pkg/alertmanager/alerts/objectclient
 github.com/cortexproject/cortex/pkg/api
 github.com/cortexproject/cortex/pkg/chunk
 github.com/cortexproject/cortex/pkg/chunk/aws
@@ -245,7 +244,7 @@ github.com/digitalocean/godo
 github.com/docker/distribution/digestset
 github.com/docker/distribution/reference
 github.com/docker/distribution/registry/api/errcode
-# github.com/docker/docker v17.12.0-ce-rc1.0.20200621004740-33fba35d42e7+incompatible
+# github.com/docker/docker v17.12.0-ce-rc1.0.20200706150819-a40b877fbb9e+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -285,6 +284,8 @@ github.com/docker/docker/pkg/pubsub
 github.com/docker/docker/pkg/streamformatter
 github.com/docker/docker/pkg/stringid
 github.com/docker/docker/pkg/tailfile
+github.com/docker/docker/pkg/term
+github.com/docker/docker/pkg/term/windows
 # github.com/docker/go-connections v0.4.0
 github.com/docker/go-connections/nat
 github.com/docker/go-connections/sockets
@@ -523,7 +524,7 @@ github.com/jonboulle/clockwork
 github.com/joncrlsn/dque
 # github.com/jpillora/backoff v1.0.0
 github.com/jpillora/backoff
-# github.com/json-iterator/go v1.1.9
+# github.com/json-iterator/go v1.1.10
 ## explicit
 github.com/json-iterator/go
 # github.com/jstemmer/go-junit-report v0.9.1
@@ -578,9 +579,6 @@ github.com/mitchellh/go-homedir
 # github.com/mitchellh/mapstructure v1.2.2
 ## explicit
 github.com/mitchellh/mapstructure
-# github.com/moby/term v0.0.0-20200611042045-63b9a826fb74
-github.com/moby/term
-github.com/moby/term/windows
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.1
@@ -659,7 +657,7 @@ github.com/prometheus/alertmanager/store
 github.com/prometheus/alertmanager/template
 github.com/prometheus/alertmanager/types
 github.com/prometheus/alertmanager/ui
-# github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
+# github.com/prometheus/client_golang v1.7.1
 ## explicit
 github.com/prometheus/client_golang/api
 github.com/prometheus/client_golang/api/prometheus/v1
@@ -683,11 +681,11 @@ github.com/prometheus/common/route
 github.com/prometheus/common/version
 # github.com/prometheus/node_exporter v1.0.0-rc.0.0.20200428091818-01054558c289
 github.com/prometheus/node_exporter/https
-# github.com/prometheus/procfs v0.0.11
+# github.com/prometheus/procfs v0.1.3
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20200626180636-d17d88935c8d
+# github.com/prometheus/prometheus v1.8.2-0.20200707115909-30505a202a4c
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery

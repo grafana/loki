@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -19,6 +20,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	tls_cfg "github.com/cortexproject/cortex/pkg/util/tls"
+)
+
+var (
+	errBadURL = errors.New("configs_api_url is not set or valid")
 )
 
 // Config says where we can find the ruler userconfig.
@@ -54,6 +59,11 @@ type Client interface {
 
 // New creates a new ConfigClient.
 func New(cfg Config) (*ConfigDBClient, error) {
+
+	if cfg.ConfigsAPIURL.URL == nil {
+		return nil, errBadURL
+	}
+
 	client := &ConfigDBClient{
 		URL:     cfg.ConfigsAPIURL.URL,
 		Timeout: cfg.ClientTimeout,

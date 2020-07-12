@@ -8,10 +8,10 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
 
-// BucketStoreSeriesServer is an fake in-memory gRPC server used to
+// bucketStoreSeriesServer is an fake in-memory gRPC server used to
 // call Thanos BucketStore.Series() without having to go through the
 // gRPC networking stack.
-type BucketStoreSeriesServer struct {
+type bucketStoreSeriesServer struct {
 	// This field just exist to pseudo-implement the unused methods of the interface.
 	storepb.Store_SeriesServer
 
@@ -21,11 +21,11 @@ type BucketStoreSeriesServer struct {
 	Warnings  storage.Warnings
 }
 
-func NewBucketStoreSeriesServer(ctx context.Context) *BucketStoreSeriesServer {
-	return &BucketStoreSeriesServer{ctx: ctx}
+func newBucketStoreSeriesServer(ctx context.Context) *bucketStoreSeriesServer {
+	return &bucketStoreSeriesServer{ctx: ctx}
 }
 
-func (s *BucketStoreSeriesServer) Send(r *storepb.SeriesResponse) error {
+func (s *bucketStoreSeriesServer) Send(r *storepb.SeriesResponse) error {
 	if r.GetWarning() != "" {
 		s.Warnings = append(s.Warnings, errors.New(r.GetWarning()))
 	}
@@ -51,6 +51,6 @@ func (s *BucketStoreSeriesServer) Send(r *storepb.SeriesResponse) error {
 	return nil
 }
 
-func (s *BucketStoreSeriesServer) Context() context.Context {
+func (s *bucketStoreSeriesServer) Context() context.Context {
 	return s.ctx
 }
