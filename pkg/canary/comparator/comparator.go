@@ -26,37 +26,37 @@ const (
 var (
 	totalEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "total_entries",
+		Name:      "entries_total",
 		Help:      "counts log entries written to the file",
 	})
 	outOfOrderEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "out_of_order_entries",
+		Name:      "out_of_order_entries_total",
 		Help:      "counts log entries received with a timestamp more recent than the others in the queue",
 	})
 	wsMissingEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "websocket_missing_entries",
+		Name:      "websocket_missing_entries_total",
 		Help:      "counts log entries not received within the maxWait duration via the websocket connection",
 	})
 	missingEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "missing_entries",
+		Name:      "missing_entries_total",
 		Help:      "counts log entries not received within the maxWait duration via both websocket and direct query",
 	})
 	spotCheckMissing = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "spot_check_missing_entries",
+		Name:      "spot_check_missing_entries_total",
 		Help:      "counts log entries not received when directly queried as part of spot checking",
 	})
 	unexpectedEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "unexpected_entries",
+		Name:      "unexpected_entries_total",
 		Help:      "counts a log entry received which was not expected (e.g. received after reported missing)",
 	})
 	duplicateEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "duplicate_entries",
+		Name:      "duplicate_entries_total",
 		Help:      "counts a log entry received more than one time",
 	})
 	metricTestDeviation = promauto.NewGauge(prometheus.GaugeOpts{
