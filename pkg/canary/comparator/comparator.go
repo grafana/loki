@@ -13,13 +13,14 @@ import (
 )
 
 const (
-	ErrOutOfOrderEntry         = "out of order entry %s was received before entries: %v\n"
-	ErrEntryNotReceivedWs      = "websocket failed to receive entry %v within %f seconds\n"
-	ErrEntryNotReceived        = "failed to receive entry %v within %f seconds\n"
-	ErrDuplicateEntry          = "received a duplicate entry for ts %v\n"
-	ErrUnexpectedEntry         = "received an unexpected entry with ts %v\n"
-	DebugWebsocketMissingEntry = "websocket missing entry: %v\n"
-	DebugQueryResult           = "confirmation query result: %v\n"
+	ErrOutOfOrderEntry           = "out of order entry %s was received before entries: %v\n"
+	ErrEntryNotReceivedWs        = "websocket failed to receive entry %v within %f seconds\n"
+	ErrEntryNotReceived          = "failed to receive entry %v within %f seconds\n"
+	ErrSpotCheckEntryNotReceived = "failed to find entry %s in Loki when spot check querying %v after it was written\n"
+	ErrDuplicateEntry            = "received a duplicate entry for ts %v\n"
+	ErrUnexpectedEntry           = "received an unexpected entry with ts %v\n"
+	DebugWebsocketMissingEntry   = "websocket missing entry: %v\n"
+	DebugQueryResult             = "confirmation query result: %v\n"
 )
 
 var (
@@ -43,6 +44,11 @@ var (
 		Name:      "missing_entries",
 		Help:      "counts log entries not received within the maxWait duration via both websocket and direct query",
 	})
+	spotCheckMissing = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "spot_check_missing_entries",
+		Help:      "counts log entries not received when directly queried as part of spot checking",
+	})
 	unexpectedEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
 		Name:      "unexpected_entries",
@@ -57,33 +63,48 @@ var (
 )
 
 type Comparator struct {
-	entMtx        sync.Mutex
-	w             io.Writer
-	entries       []*time.Time
-	ackdEntries   []*time.Time
-	maxWait       time.Duration
-	pruneInterval time.Duration
-	confirmAsync  bool
-	sent          chan time.Time
-	recv          chan time.Time
-	rdr           reader.LokiReader
-	quit          chan struct{}
-	done          chan struct{}
+	entMtx            sync.Mutex
+	spotMtx           sync.Mutex
+	w                 io.Writer
+	entries           []*time.Time
+	spotCheck         []*time.Time
+	ackdEntries       []*time.Time
+	maxWait           time.Duration
+	pruneInterval     time.Duration
+	spotCheckInterval time.Duration
+	spotCheckMax      time.Duration
+	confirmAsync      bool
+	sent              chan time.Time
+	recv              chan time.Time
+	rdr               reader.LokiReader
+	quit              chan struct{}
+	done              chan struct{}
 }
 
-func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.Duration,
-	buckets int, sentChan chan time.Time, receivedChan chan time.Time, reader reader.LokiReader, confirmAsync bool) *Comparator {
+func NewComparator(writer io.Writer,
+	maxWait time.Duration,
+	pruneInterval time.Duration,
+	spotCheckInterval time.Duration,
+	spotCheckMax time.Duration,
+	buckets int,
+	sentChan chan time.Time,
+	receivedChan chan time.Time,
+	reader reader.LokiReader,
+	confirmAsync bool) *Comparator {
 	c := &Comparator{
-		w:             writer,
-		entries:       []*time.Time{},
-		maxWait:       maxWait,
-		pruneInterval: pruneInterval,
-		confirmAsync:  confirmAsync,
-		sent:          sentChan,
-		recv:          receivedChan,
-		rdr:           reader,
-		quit:          make(chan struct{}),
-		done:          make(chan struct{}),
+		w:                 writer,
+		entries:           []*time.Time{},
+		spotCheck:         []*time.Time{},
+		maxWait:           maxWait,
+		pruneInterval:     pruneInterval,
+		spotCheckInterval: spotCheckInterval,
+		spotCheckMax:      spotCheckMax,
+		confirmAsync:      confirmAsync,
+		sent:              sentChan,
+		recv:              receivedChan,
+		rdr:               reader,
+		quit:              make(chan struct{}),
+		done:              make(chan struct{}),
 	}
 
 	if responseLatency == nil {
@@ -112,6 +133,12 @@ func (c *Comparator) entrySent(time time.Time) {
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 	c.entries = append(c.entries, &time)
+	//If this entry equals or exceeds the spot check interval from the last entry in the spot check array, add it.
+	if len(c.spotCheck) == 0 || time.Sub(*c.spotCheck[len(c.spotCheck)-1]) >= c.spotCheckInterval {
+		c.spotMtx.Lock()
+		c.spotCheck = append(c.spotCheck, &time)
+		c.spotMtx.Unlock()
+	}
 	totalEntries.Inc()
 }
 
@@ -186,10 +213,61 @@ func (c *Comparator) run() {
 			c.entrySent(e)
 		case <-t.C:
 			c.pruneEntries()
+			c.spotCheckEntries(time.Now())
 		case <-c.quit:
 			return
 		}
 	}
+}
+
+func (c *Comparator) spotCheckEntries(currTime time.Time) {
+	c.spotMtx.Lock()
+	k := 0
+	for i, e := range c.spotCheck {
+		if e.Before(currTime.Add(-c.spotCheckMax)) {
+			// Do nothing, if we don't increment the output index k, this will be dropped
+		} else {
+			if i != k {
+				c.spotCheck[k] = c.spotCheck[i]
+			}
+			k++
+		}
+	}
+	// Nil out the pointers to any trailing elements which were removed from the slice
+	for i := k; i < len(c.spotCheck); i++ {
+		c.spotCheck[i] = nil // or the zero value of T
+	}
+	c.spotCheck = c.spotCheck[:k]
+	cpy := make([]*time.Time, len(c.spotCheck))
+	//Make a copy so we don't have to hold the lock to verify entries
+	copy(cpy, c.spotCheck)
+	c.spotMtx.Unlock()
+
+	for _, sce := range cpy {
+		// Because we are querying loki timestamps vs the timestamp in the log,
+		// make the range +/- 10 seconds to allow for clock inaccuracies
+		start := *sce
+		start = start.Add(-10 * time.Second)
+		end := start.Add(10 * time.Second)
+		recvd, err := c.rdr.Query(start, end)
+		if err != nil {
+			fmt.Fprintf(c.w, "error querying loki: %s\n", err)
+			return
+		}
+
+		found := false
+		for _, r := range recvd {
+			if (*sce).Equal(r) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(c.w, ErrSpotCheckEntryNotReceived, sce, sce.Sub(currTime))
+			spotCheckMissing.Inc()
+		}
+	}
+
 }
 
 func (c *Comparator) pruneEntries() {

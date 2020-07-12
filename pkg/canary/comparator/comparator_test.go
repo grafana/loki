@@ -19,7 +19,7 @@ func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -60,7 +60,7 @@ func TestComparatorEntryReceivedNotExpected(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -101,7 +101,7 @@ func TestComparatorEntryReceivedDuplicate(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -158,7 +158,7 @@ func TestEntryNeverReceived(t *testing.T) {
 	mr := &mockReader{found}
 	maxWait := 50 * time.Millisecond
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call pruneEntries manually below
-	c := NewComparator(actual, maxWait, 50*time.Hour, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(actual, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	c.entrySent(t1)
 	c.entrySent(t2)
@@ -216,7 +216,7 @@ func TestPruneAckdEntires(t *testing.T) {
 	actual := &bytes.Buffer{}
 	maxWait := 30 * time.Millisecond
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call pruneEntries manually below
-	c := NewComparator(actual, maxWait, 50*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Millisecond)
@@ -249,6 +249,54 @@ func TestPruneAckdEntires(t *testing.T) {
 	assert.Equal(t, 1, len(c.ackdEntries))
 	assert.Equal(t, t4, *c.ackdEntries[0])
 
+}
+
+func TestSpotCheck(t *testing.T) {
+	spotCheckMissing = &mockCounter{}
+
+	actual := &bytes.Buffer{}
+
+	t1 := time.Unix(0, 0)
+	entries := []time.Time{}
+	found := []time.Time{}
+	entries = append(entries, t1)
+	for i := 1; i <= 20; i++ {
+		t := entries[i-1].Add(1 * time.Millisecond)
+		entries = append(entries, t)
+		// Don't add the last entry so we get one error in spot check
+		if i != 20 {
+			found = append(found, t)
+		}
+	}
+
+	mr := &mockReader{found}
+	maxWait := 50 * time.Millisecond
+	spotCheck := 10 * time.Millisecond
+	spotCheckMax := 10 * time.Millisecond
+	//We set the prune interval timer to a huge value here so that it never runs, instead we call spotCheckEntries manually below
+	c := NewComparator(actual, maxWait, 50*time.Hour, spotCheck, spotCheckMax, 1, make(chan time.Time), make(chan time.Time), mr, false)
+
+	// Send all the entries
+	for i := range entries {
+		c.entrySent(entries[i])
+	}
+
+	assert.Equal(t, 3, len(c.spotCheck))
+
+	// Run with "current time" 11ms after start which will prune the first entry which is no "before" the 10ms spot check max
+	c.spotCheckEntries(time.Unix(0, 11*time.Millisecond.Nanoseconds()))
+
+	// First entry should have been pruned
+	assert.Equal(t, 2, len(c.spotCheck))
+
+	expected := fmt.Sprintf(ErrSpotCheckEntryNotReceived, // List entry not received from Loki
+		entries[20], "9ms")
+
+	assert.Equal(t, expected, actual.String())
+
+	assert.Equal(t, 1, spotCheckMissing.(*mockCounter).count)
+
+	prometheus.Unregister(responseLatency)
 }
 
 type mockCounter struct {

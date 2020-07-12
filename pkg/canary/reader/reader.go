@@ -1,6 +1,7 @@
 package reader
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -42,6 +43,7 @@ type Reader struct {
 	addr         string
 	user         string
 	pass         string
+	queryTimeout time.Duration
 	sName        string
 	sValue       string
 	lName        string
@@ -54,8 +56,17 @@ type Reader struct {
 	done         chan struct{}
 }
 
-func NewReader(writer io.Writer, receivedChan chan time.Time, tls bool,
-	address string, user string, pass string, labelName string, labelVal string, streamName string, streamValue string) *Reader {
+func NewReader(writer io.Writer,
+	receivedChan chan time.Time,
+	tls bool,
+	address string,
+	user string,
+	pass string,
+	queryTimeout time.Duration,
+	labelName string,
+	labelVal string,
+	streamName string,
+	streamValue string) *Reader {
 	h := http.Header{}
 	if user != "" {
 		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
@@ -67,6 +78,7 @@ func NewReader(writer io.Writer, receivedChan chan time.Time, tls bool,
 		addr:         address,
 		user:         user,
 		pass:         pass,
+		queryTimeout: queryTimeout,
 		sName:        streamName,
 		sValue:       streamValue,
 		lName:        labelName,
@@ -115,7 +127,10 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	}
 	fmt.Fprintf(r.w, "Querying loki for missing values with query: %v\n", u.String())
 
-	req, err := http.NewRequest("GET", u.String(), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
