@@ -253,7 +253,7 @@ func (c *Comparator) run() {
 			c.metTestMtx.Lock()
 			if !c.metricTestRunning {
 				c.metricTestRunning = true
-				go c.metricTest()
+				go c.metricTest(time.Now())
 			}
 			c.metTestMtx.Unlock()
 		case <-c.quit:
@@ -262,7 +262,7 @@ func (c *Comparator) run() {
 	}
 }
 
-func (c *Comparator) metricTest() {
+func (c *Comparator) metricTest(currTime time.Time) {
 	// Always make sure to set the running state back to false
 	defer func() {
 		c.metTestMtx.Lock()
@@ -274,18 +274,18 @@ func (c *Comparator) metricTest() {
 	// Adjust the query range to not be longer than the canary has been running.
 	// We can't query for 24 hours of counts if it's only been running for 10m,
 	// so we adjusted the range to the run time until we reach the desired lookback time.
-	if time.Now().Add(-c.metricTestRange).Before(c.startTime) {
-		adjustedRange = time.Now().Sub(c.startTime)
+	if currTime.Add(-c.metricTestRange).Before(c.startTime) {
+		adjustedRange = currTime.Sub(c.startTime)
 	}
 	actualCount, err := c.rdr.QueryCountOverTime(fmt.Sprintf("%.0fs", adjustedRange.Seconds()))
 	if err != nil {
-		fmt.Fprintf(c.w, "error running metric query test: %s", err.Error())
+		fmt.Fprintf(c.w, "error running metric query test: %s\n", err.Error())
 		return
 	}
 	expectedCount := float64(adjustedRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
 	deviation := expectedCount - actualCount
 	if deviation > 10 {
-		fmt.Fprintf(c.w, "large metric deviation: expected %v, actual %v", expectedCount, actualCount)
+		fmt.Fprintf(c.w, "large metric deviation: expected %v, actual %v\n", expectedCount, actualCount)
 	}
 	metricTestDeviation.Set(deviation)
 }
