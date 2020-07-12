@@ -48,7 +48,8 @@ func main() {
 		"also the frequency which queries for missing logs will be dispatched to loki, and the frequency spot check queries are run")
 	buckets := flag.Int("buckets", 10, "Number of buckets in the response_latency histogram")
 
-	//countOverTimeQueryDuration := flag.Duration("count-over-time-duration", 24*time.Hour, "The range value [4h] used in the count_over_time instant-query")
+	metricTestInterval := flag.Duration("metric-test-interval", 1*time.Hour, "The interval the metric test query should be run")
+	metrictTestQueryRange := flag.Duration("metric-test-range", 24*time.Hour, "The range value [24h] used in the metric test instant-query")
 
 	spotCheckInterval := flag.Duration("spot-check-interval", 15*time.Minute, "Interval that a single result will be kept from sent entries and spot-checked against Loki, "+
 		"e.g. 15min default one entry every 15 min will be saved and then queried again every 15min until spot-check-max is reached")
@@ -80,7 +81,7 @@ func main() {
 
 		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *size)
 		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *queryTimeout, *lName, *lVal, *sName, *sValue)
-		c.comparator = comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *buckets, sentChan, receivedChan, c.reader, true)
+		c.comparator = comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *metricTestInterval, *metrictTestQueryRange, *interval, *buckets, sentChan, receivedChan, c.reader, true)
 	}
 
 	startCanary()

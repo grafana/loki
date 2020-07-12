@@ -19,7 +19,7 @@ func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1*time.Minute, 0, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -60,7 +60,7 @@ func TestComparatorEntryReceivedNotExpected(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1*time.Minute, 0, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -101,7 +101,7 @@ func TestComparatorEntryReceivedDuplicate(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 15*time.Minute, 4*time.Hour, 1*time.Minute, 0, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -158,7 +158,7 @@ func TestEntryNeverReceived(t *testing.T) {
 	mr := &mockReader{found}
 	maxWait := 50 * time.Millisecond
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call pruneEntries manually below
-	c := NewComparator(actual, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(actual, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 1*time.Minute, 0, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	c.entrySent(t1)
 	c.entrySent(t2)
@@ -216,7 +216,7 @@ func TestPruneAckdEntires(t *testing.T) {
 	actual := &bytes.Buffer{}
 	maxWait := 30 * time.Millisecond
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call pruneEntries manually below
-	c := NewComparator(actual, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
+	c := NewComparator(actual, maxWait, 50*time.Hour, 15*time.Minute, 4*time.Hour, 1*time.Minute, 0, 0, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Millisecond)
@@ -274,7 +274,7 @@ func TestSpotCheck(t *testing.T) {
 	spotCheck := 10 * time.Millisecond
 	spotCheckMax := 10 * time.Millisecond
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call spotCheckEntries manually below
-	c := NewComparator(actual, maxWait, 50*time.Hour, spotCheck, spotCheckMax, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(actual, maxWait, 50*time.Hour, spotCheck, spotCheckMax, 1*time.Minute, 0, 0, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	// Send all the entries
 	for i := range entries {
@@ -336,4 +336,8 @@ type mockReader struct {
 
 func (r *mockReader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	return r.resp, nil
+}
+
+func (r *mockReader) QueryCountOverTime(queryRange time.Duration) (float64, error) {
+	return 0, nil
 }

@@ -59,52 +59,69 @@ var (
 		Name:      "duplicate_entries",
 		Help:      "counts a log entry received more than one time",
 	})
+	metricTestDeviation = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki_canary",
+		Name:      "metric_test_deviation",
+		Help:      "How many counts was the actual query result from the expected based on the canary log write rate",
+	})
 	responseLatency prometheus.Histogram
 )
 
 type Comparator struct {
-	entMtx            sync.Mutex
-	spotMtx           sync.Mutex
-	w                 io.Writer
-	entries           []*time.Time
-	spotCheck         []*time.Time
-	ackdEntries       []*time.Time
-	maxWait           time.Duration
-	pruneInterval     time.Duration
-	spotCheckInterval time.Duration
-	spotCheckMax      time.Duration
-	confirmAsync      bool
-	sent              chan time.Time
-	recv              chan time.Time
-	rdr               reader.LokiReader
-	quit              chan struct{}
-	done              chan struct{}
+	entMtx             sync.Mutex
+	spotMtx            sync.Mutex
+	metTestMtx         sync.Mutex
+	w                  io.Writer
+	entries            []*time.Time
+	spotCheck          []*time.Time
+	ackdEntries        []*time.Time
+	maxWait            time.Duration
+	pruneInterval      time.Duration
+	spotCheckInterval  time.Duration
+	spotCheckMax       time.Duration
+	spotCheckRunning   bool
+	metricTestInterval time.Duration
+	metricTestRange    time.Duration
+	metricTestRunning  bool
+	writeInterval      time.Duration
+	confirmAsync       bool
+	sent               chan time.Time
+	recv               chan time.Time
+	rdr                reader.LokiReader
+	quit               chan struct{}
+	done               chan struct{}
 }
 
 func NewComparator(writer io.Writer,
 	maxWait time.Duration,
 	pruneInterval time.Duration,
-	spotCheckInterval time.Duration,
-	spotCheckMax time.Duration,
+	spotCheckInterval, spotCheckMax time.Duration,
+	metricTestInterval, metricTestRange time.Duration,
+	writeInterval time.Duration,
 	buckets int,
 	sentChan chan time.Time,
 	receivedChan chan time.Time,
 	reader reader.LokiReader,
 	confirmAsync bool) *Comparator {
 	c := &Comparator{
-		w:                 writer,
-		entries:           []*time.Time{},
-		spotCheck:         []*time.Time{},
-		maxWait:           maxWait,
-		pruneInterval:     pruneInterval,
-		spotCheckInterval: spotCheckInterval,
-		spotCheckMax:      spotCheckMax,
-		confirmAsync:      confirmAsync,
-		sent:              sentChan,
-		recv:              receivedChan,
-		rdr:               reader,
-		quit:              make(chan struct{}),
-		done:              make(chan struct{}),
+		w:                  writer,
+		entries:            []*time.Time{},
+		spotCheck:          []*time.Time{},
+		maxWait:            maxWait,
+		pruneInterval:      pruneInterval,
+		spotCheckInterval:  spotCheckInterval,
+		spotCheckMax:       spotCheckMax,
+		spotCheckRunning:   false,
+		metricTestInterval: metricTestInterval,
+		metricTestRange:    metricTestRange,
+		metricTestRunning:  false,
+		writeInterval:      writeInterval,
+		confirmAsync:       confirmAsync,
+		sent:               sentChan,
+		recv:               receivedChan,
+		rdr:                reader,
+		quit:               make(chan struct{}),
+		done:               make(chan struct{}),
 	}
 
 	if responseLatency == nil {
@@ -200,8 +217,10 @@ func (c *Comparator) Size() int {
 
 func (c *Comparator) run() {
 	t := time.NewTicker(c.pruneInterval)
+	mt := time.NewTicker(c.metricTestInterval)
 	defer func() {
 		t.Stop()
+		mt.Stop()
 		close(c.done)
 	}()
 
@@ -213,14 +232,50 @@ func (c *Comparator) run() {
 			c.entrySent(e)
 		case <-t.C:
 			c.pruneEntries()
-			c.spotCheckEntries(time.Now())
+
+			// Only run one instance of spot check at a time.
+			c.spotMtx.Lock()
+			if !c.spotCheckRunning {
+				c.spotCheckRunning = true
+				go c.spotCheckEntries(time.Now())
+			}
+			c.spotMtx.Unlock()
+		case <-mt.C:
+			// Only run one intstance of metric tests at a time.
+			c.metTestMtx.Lock()
+			if !c.metricTestRunning {
+				c.metricTestRunning = true
+				go c.metricTest()
+			}
+			c.metTestMtx.Unlock()
 		case <-c.quit:
 			return
 		}
 	}
 }
 
+func (c *Comparator) metricTest() {
+	// Always make sure to set the running state back to false
+	defer func() {
+		c.metTestMtx.Lock()
+		c.metricTestRunning = false
+		c.metTestMtx.Unlock()
+	}()
+	actualCount, err := c.rdr.QueryCountOverTime(c.metricTestRange)
+	if err != nil {
+		fmt.Fprintf(c.w, "error running metric query test: %s", err.Error())
+	}
+	expectedCount := float64(c.metricTestRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
+	metricTestDeviation.Set(expectedCount - actualCount)
+}
+
 func (c *Comparator) spotCheckEntries(currTime time.Time) {
+	// Always make sure to set the running state back to false
+	defer func() {
+		c.spotMtx.Lock()
+		c.spotCheckRunning = false
+		c.spotMtx.Unlock()
+	}()
 	c.spotMtx.Lock()
 	k := 0
 	for i, e := range c.spotCheck {
