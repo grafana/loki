@@ -253,6 +253,7 @@ func TestPruneAckdEntires(t *testing.T) {
 
 func TestSpotCheck(t *testing.T) {
 	spotCheckMissing = &mockCounter{}
+	spotCheckEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
 
@@ -290,10 +291,11 @@ func TestSpotCheck(t *testing.T) {
 	assert.Equal(t, 2, len(c.spotCheck))
 
 	expected := fmt.Sprintf(ErrSpotCheckEntryNotReceived, // List entry not received from Loki
-		entries[20], "9ms")
+		entries[20].UnixNano(), "-9ms")
 
 	assert.Equal(t, expected, actual.String())
 
+	assert.Equal(t, 2, spotCheckEntries.(*mockCounter).count)
 	assert.Equal(t, 1, spotCheckMissing.(*mockCounter).count)
 
 	prometheus.Unregister(responseLatency)

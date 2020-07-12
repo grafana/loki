@@ -49,6 +49,11 @@ var (
 		Name:      "spot_check_missing_entries_total",
 		Help:      "counts log entries not received when directly queried as part of spot checking",
 	})
+	spotCheckEntries = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "spot_check_entries_total",
+		Help:      "total count of entries pot checked",
+	})
 	unexpectedEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
 		Name:      "unexpected_entries_total",
@@ -81,11 +86,11 @@ type Comparator struct {
 	spotCheckMax       time.Duration
 	spotCheckRunning   bool
 	metricTestInterval time.Duration
-	metricTestRange    string
-	metricTestRagenDur time.Duration
+	metricTestRange    time.Duration
 	metricTestRunning  bool
 	writeInterval      time.Duration
 	confirmAsync       bool
+	startTime          time.Time
 	sent               chan time.Time
 	recv               chan time.Time
 	rdr                reader.LokiReader
@@ -98,7 +103,7 @@ func NewComparator(writer io.Writer,
 	pruneInterval time.Duration,
 	spotCheckInterval, spotCheckMax time.Duration,
 	metricTestInterval time.Duration,
-	metricTestRange string,
+	metricTestRange time.Duration,
 	writeInterval time.Duration,
 	buckets int,
 	sentChan chan time.Time,
@@ -119,6 +124,7 @@ func NewComparator(writer io.Writer,
 		metricTestRunning:  false,
 		writeInterval:      writeInterval,
 		confirmAsync:       confirmAsync,
+		startTime:          time.Now(),
 		sent:               sentChan,
 		recv:               receivedChan,
 		rdr:                reader,
@@ -134,14 +140,6 @@ func NewComparator(writer io.Writer,
 			Buckets:   prometheus.ExponentialBuckets(0.5, 2, buckets),
 		})
 	}
-	// Convert the string to a duration to save from doing this on every query.
-	// main.go should also be testing this and failing the application if this parse fails but we still need to be defensive here
-	d, err := time.ParseDuration(metricTestRange)
-	if err != nil {
-		fmt.Fprintf(writer, "failed to parse duration string for metric-test-range, metric queries will not be possible: %v", err.Error())
-		c.metricTestRagenDur = 0
-	}
-	c.metricTestRagenDur = d
 
 	go c.run()
 
@@ -271,17 +269,19 @@ func (c *Comparator) metricTest() {
 		c.metricTestRunning = false
 		c.metTestMtx.Unlock()
 	}()
-	// This should never happen, main.go should fail if we failed to parse this parameter as a duration
-	// but we still need to be defensive.
-	if c.metricTestRagenDur == 0 {
-		fmt.Fprintf(c.w, "Invalid metric-test-range parameter, metric test query failed")
-		return
+	adjustedRange := c.metricTestRange
+
+	// Adjust the query range to not be longer than the canary has been running.
+	// We can't query for 24 hours of counts if it's only been running for 10m,
+	// so we adjusted the range to the run time until we reach the desired lookback time.
+	if time.Now().Add(-c.metricTestRange).Before(c.startTime) {
+		adjustedRange = time.Now().Sub(c.startTime)
 	}
-	actualCount, err := c.rdr.QueryCountOverTime(c.metricTestRange)
+	actualCount, err := c.rdr.QueryCountOverTime(fmt.Sprintf("%.0fs", adjustedRange.Seconds()))
 	if err != nil {
 		fmt.Fprintf(c.w, "error running metric query test: %s", err.Error())
 	}
-	expectedCount := float64(c.metricTestRagenDur.Milliseconds()) / float64(c.writeInterval.Milliseconds())
+	expectedCount := float64(adjustedRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
 	metricTestDeviation.Set(expectedCount - actualCount)
 }
 
@@ -315,12 +315,13 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 	c.spotMtx.Unlock()
 
 	for _, sce := range cpy {
+		spotCheckEntries.Inc()
 		// Because we are querying loki timestamps vs the timestamp in the log,
 		// make the range +/- 10 seconds to allow for clock inaccuracies
 		start := *sce
-		start = start.Add(-10 * time.Second)
-		end := start.Add(10 * time.Second)
-		recvd, err := c.rdr.Query(start, end)
+		adjustedStart := start.Add(-10 * time.Second)
+		adjustedEnd := start.Add(10 * time.Second)
+		recvd, err := c.rdr.Query(adjustedStart, adjustedEnd)
 		if err != nil {
 			fmt.Fprintf(c.w, "error querying loki: %s\n", err)
 			return

@@ -49,7 +49,8 @@ func main() {
 	buckets := flag.Int("buckets", 10, "Number of buckets in the response_latency histogram")
 
 	metricTestInterval := flag.Duration("metric-test-interval", 1*time.Hour, "The interval the metric test query should be run")
-	metricTestQueryRange := flag.String("metric-test-range", "24h", "The range value [24h] used in the metric test instant-query")
+	metricTestQueryRange := flag.Duration("metric-test-range", 24*time.Hour, "The range value [24h] used in the metric test instant-query."+
+		" Note: this value is truncated to the running time of the canary until this value is reached")
 
 	spotCheckInterval := flag.Duration("spot-check-interval", 15*time.Minute, "Interval that a single result will be kept from sent entries and spot-checked against Loki, "+
 		"e.g. 15min default one entry every 15 min will be saved and then queried again every 15min until spot-check-max is reached")
@@ -58,12 +59,6 @@ func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
 	flag.Parse()
-
-	_, err := time.ParseDuration(*metricTestQueryRange)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse metric-test-range as a duration string: %v", err.Error())
-		os.Exit(1)
-	}
 
 	if *printVersion {
 		fmt.Println(version.Print("loki-canary"))
