@@ -115,12 +115,12 @@ func (t *Table) init(ctx context.Context) (err error) {
 	}
 
 	for _, object := range objects {
-		uploader, err := getUploaderFromObjectKey(object.Key)
+		dbName, err := getDBNameFromObjectKey(object.Key)
 		if err != nil {
 			return err
 		}
 
-		filePath := path.Join(folderPath, uploader)
+		filePath := path.Join(folderPath, dbName)
 		df := downloadedFile{}
 
 		err = t.getFileFromStorage(ctx, object.Key, filePath)
@@ -142,7 +142,7 @@ func (t *Table) init(ctx context.Context) (err error) {
 
 		totalFilesSize += stat.Size()
 
-		t.dbs[uploader] = &df
+		t.dbs[dbName] = &df
 	}
 
 	duration := time.Since(startTime).Seconds()
@@ -253,8 +253,8 @@ func (t *Table) Sync(ctx context.Context) error {
 	t.dbsMtx.Lock()
 	defer t.dbsMtx.Unlock()
 
-	for _, uploader := range toDelete {
-		err := t.cleanupDB(uploader)
+	for _, db := range toDelete {
+		err := t.cleanupDB(db)
 		if err != nil {
 			return err
 		}
@@ -272,28 +272,28 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 		return
 	}
 
-	listedUploaders := make(map[string]struct{}, len(objects))
+	listedDBs := make(map[string]struct{}, len(objects))
 
 	t.dbsMtx.RLock()
 	defer t.dbsMtx.RUnlock()
 
 	for _, object := range objects {
-		uploader, err := getUploaderFromObjectKey(object.Key)
+		dbName, err := getDBNameFromObjectKey(object.Key)
 		if err != nil {
 			return nil, nil, err
 		}
-		listedUploaders[uploader] = struct{}{}
+		listedDBs[dbName] = struct{}{}
 
 		// Checking whether file was updated in the store after we downloaded it, if not, no need to include it in updates
-		downloadedFileDetails, ok := t.dbs[uploader]
+		downloadedFileDetails, ok := t.dbs[dbName]
 		if !ok || downloadedFileDetails.mtime != object.ModifiedAt {
 			toDownload = append(toDownload, object)
 		}
 	}
 
-	for uploader := range t.dbs {
-		if _, isOK := listedUploaders[uploader]; !isOK {
-			toDelete = append(toDelete, uploader)
+	for db := range t.dbs {
+		if _, isOK := listedDBs[db]; !isOK {
+			toDelete = append(toDelete, db)
 		}
 	}
 
@@ -302,15 +302,15 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 
 // downloadFile first downloads file to a temp location so that we can close the existing db(if already exists), replace it with new one and then reopen it.
 func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObject) error {
-	uploader, err := getUploaderFromObjectKey(storageObject.Key)
+	dbName, err := getDBNameFromObjectKey(storageObject.Key)
 	if err != nil {
 		return err
 	}
 	folderPath, _ := t.folderPathForTable(false)
-	filePath := path.Join(folderPath, uploader)
+	filePath := path.Join(folderPath, dbName)
 
 	// download the file temporarily with some other name to allow boltdb client to close the existing file first if it exists
-	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", uploader, "temp"))
+	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", dbName, "temp"))
 
 	err = t.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
 	if err != nil {
@@ -320,7 +320,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	t.dbsMtx.Lock()
 	defer t.dbsMtx.Unlock()
 
-	df, ok := t.dbs[uploader]
+	df, ok := t.dbs[dbName]
 	if ok {
 		if err := df.boltdb.Close(); err != nil {
 			return err
@@ -341,7 +341,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 		return err
 	}
 
-	t.dbs[uploader] = df
+	t.dbs[dbName] = df
 
 	return nil
 }
@@ -387,14 +387,14 @@ func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
 	return folderPath, nil
 }
 
-func getUploaderFromObjectKey(objectKey string) (string, error) {
+func getDBNameFromObjectKey(objectKey string) (string, error) {
 	ss := strings.Split(objectKey, "/")
 
 	if len(ss) != 2 {
 		return "", fmt.Errorf("invalid object key: %v", objectKey)
 	}
 	if ss[1] == "" {
-		return "", fmt.Errorf("empty uploader, object key: %v", objectKey)
+		return "", fmt.Errorf("empty db name, object key: %v", objectKey)
 	}
 	return ss[1], nil
 }
