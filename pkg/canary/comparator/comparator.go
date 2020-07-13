@@ -84,6 +84,7 @@ type Comparator struct {
 	pruneInterval      time.Duration
 	spotCheckInterval  time.Duration
 	spotCheckMax       time.Duration
+	spotCheckQueryRate time.Duration
 	spotCheckRunning   bool
 	metricTestInterval time.Duration
 	metricTestRange    time.Duration
@@ -101,7 +102,7 @@ type Comparator struct {
 func NewComparator(writer io.Writer,
 	maxWait time.Duration,
 	pruneInterval time.Duration,
-	spotCheckInterval, spotCheckMax time.Duration,
+	spotCheckInterval, spotCheckMax, spotCheckQueryRate time.Duration,
 	metricTestInterval time.Duration,
 	metricTestRange time.Duration,
 	writeInterval time.Duration,
@@ -118,6 +119,7 @@ func NewComparator(writer io.Writer,
 		pruneInterval:      pruneInterval,
 		spotCheckInterval:  spotCheckInterval,
 		spotCheckMax:       spotCheckMax,
+		spotCheckQueryRate: spotCheckQueryRate,
 		spotCheckRunning:   false,
 		metricTestInterval: metricTestInterval,
 		metricTestRange:    metricTestRange,
@@ -226,9 +228,11 @@ func (c *Comparator) Size() int {
 func (c *Comparator) run() {
 	t := time.NewTicker(c.pruneInterval)
 	mt := time.NewTicker(c.metricTestInterval)
+	sc := time.NewTicker(c.spotCheckQueryRate)
 	defer func() {
 		t.Stop()
 		mt.Stop()
+		sc.Stop()
 		close(c.done)
 	}()
 
@@ -240,7 +244,7 @@ func (c *Comparator) run() {
 			c.entrySent(e)
 		case <-t.C:
 			c.pruneEntries()
-
+		case <-sc.C:
 			// Only run one instance of spot check at a time.
 			c.spotMtx.Lock()
 			if !c.spotCheckRunning {

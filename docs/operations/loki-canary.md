@@ -47,6 +47,52 @@ determine if they are truly missing or only missing from the WebSocket. If
 missing entries are not found in the direct query, the `missing_entries` counter
 is incremented.
 
+### Additional Queries
+
+#### Spot Check
+
+Starting with version 1.6.0, the canary will spot check certain results over time
+to make sure they are present in Loki, this is helpful for testing the transition
+of inmemory logs in the ingester to the store to make sure nothing is lost.
+
+`-spot-check-interval` and `-spot-check-max` are used to tune this feature,
+`-spot-check-interval` will pull a log entry from the stream at this interval
+and save it in a separate list up to `-spot-check-max`.
+
+Every `-spot-check-query-rate`, Loki will be queried for each entry in this list and
+`loki_canary_spot_check_entries_total` will be incremented, if a result
+is missing `loki_canary_spot_check_missing_entries_total` will be incremented.
+
+The defaults of `15m` for `spot-check-interval` and `4h` for `spot-check-max` 
+means that after 4 hours of running the canary will have a list of 16 entries
+it will query every minute (default `spot-check-query-rate` interval is 1m), 
+so be aware of the query load this can put on Loki if you have a lot of canaries.
+
+#### Metric Test
+
+Starting with version 1.6.0 the canary will run a metric query `count_over_time` to
+verify the rate of logs being stored in Loki corresponds to the rate they are being
+created by the canary.
+
+`-metric-test-interval` and `-metric-test-range` are used to tune this feature, but
+by default every `15m` the canary will run a `count_over_time` instant-query to Loki
+for a range of `24h`.
+
+If the canary has not run for `-metric-test-range` (`24h`) the query range is adjusted 
+to the amount of time the canary has been running such that the rate can be calculated 
+since the canary was started.
+
+The canary calculates what the expected count of logs would be for the range 
+(also adjusting this based on canary runtime) and compares the expected result with
+the actual result returned from Loki.  The _difference_ is stored as the value in
+the gauge `loki_canary_metric_test_deviation`
+
+It's expected that there will be some deviation, the method of creating an expected
+calculation based on the query rate compared to actual query data is imperfect
+and will lead to a deviation of a few log entries.
+
+It's not expected for there to be a deviation of more than 3-4 log entries.  
+
 ### Control
 
 Loki Canary responds to two endpoints to allow dynamic suspending/resuming of the 
@@ -246,14 +292,26 @@ All options:
         The label name for this instance of loki-canary to use in the log selector (default "name")
   -labelvalue string
         The unique label value for this instance of loki-canary to use in the log selector (default "loki-canary")
+  -metric-test-interval duration
+        The interval the metric test query should be run (default 1h0m0s)
+  -metric-test-range duration
+        The range value [24h] used in the metric test instant-query. Note: this value is truncated to the running time of the canary until this value is reached (default 24h0m0s)
   -pass string
         Loki password
   -port int
         Port which loki-canary should expose metrics (default 3500)
   -pruneinterval duration
-        Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki (default 1m0s)
+        Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki, and the frequency spot check queries are run (default 1m0s)
+  -query-timeout duration
+        How long to wait for a query response from Loki (default 10s)
   -size int
         Size in bytes of each log line (default 100)
+  -spot-check-interval duration
+        Interval that a single result will be kept from sent entries and spot-checked against Loki, e.g. 15min default one entry every 15 min will be saved andthen queried again every 15min until spot-check-max is reached (default 15m0s)
+  -spot-check-max duration
+        How far back to check a spot check entry before dropping it (default 4h0m0s)
+  -spot-check-query-rate duration
+        Interval that the canary will query Loki for the current list of all spot check entries (default 1m0s)
   -streamname string
         The stream name for this instance of loki-canary to use in the log selector (default "stream")
   -streamvalue string
