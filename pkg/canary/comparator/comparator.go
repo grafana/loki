@@ -13,77 +13,128 @@ import (
 )
 
 const (
-	ErrOutOfOrderEntry         = "out of order entry %s was received before entries: %v\n"
-	ErrEntryNotReceivedWs      = "websocket failed to receive entry %v within %f seconds\n"
-	ErrEntryNotReceived        = "failed to receive entry %v within %f seconds\n"
-	ErrDuplicateEntry          = "received a duplicate entry for ts %v\n"
-	ErrUnexpectedEntry         = "received an unexpected entry with ts %v\n"
-	DebugWebsocketMissingEntry = "websocket missing entry: %v\n"
-	DebugQueryResult           = "confirmation query result: %v\n"
+	ErrOutOfOrderEntry           = "out of order entry %s was received before entries: %v\n"
+	ErrEntryNotReceivedWs        = "websocket failed to receive entry %v within %f seconds\n"
+	ErrEntryNotReceived          = "failed to receive entry %v within %f seconds\n"
+	ErrSpotCheckEntryNotReceived = "failed to find entry %v in Loki when spot check querying %v after it was written\n"
+	ErrDuplicateEntry            = "received a duplicate entry for ts %v\n"
+	ErrUnexpectedEntry           = "received an unexpected entry with ts %v\n"
+	DebugWebsocketMissingEntry   = "websocket missing entry: %v\n"
+	DebugQueryResult             = "confirmation query result: %v\n"
 )
 
 var (
 	totalEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "total_entries",
+		Name:      "entries_total",
 		Help:      "counts log entries written to the file",
 	})
 	outOfOrderEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "out_of_order_entries",
+		Name:      "out_of_order_entries_total",
 		Help:      "counts log entries received with a timestamp more recent than the others in the queue",
 	})
 	wsMissingEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "websocket_missing_entries",
+		Name:      "websocket_missing_entries_total",
 		Help:      "counts log entries not received within the maxWait duration via the websocket connection",
 	})
 	missingEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "missing_entries",
+		Name:      "missing_entries_total",
 		Help:      "counts log entries not received within the maxWait duration via both websocket and direct query",
+	})
+	spotCheckMissing = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "spot_check_missing_entries_total",
+		Help:      "counts log entries not received when directly queried as part of spot checking",
+	})
+	spotCheckEntries = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "spot_check_entries_total",
+		Help:      "total count of entries pot checked",
 	})
 	unexpectedEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "unexpected_entries",
+		Name:      "unexpected_entries_total",
 		Help:      "counts a log entry received which was not expected (e.g. received after reported missing)",
 	})
 	duplicateEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "duplicate_entries",
+		Name:      "duplicate_entries_total",
 		Help:      "counts a log entry received more than one time",
+	})
+	metricTestDeviation = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki_canary",
+		Name:      "metric_test_deviation",
+		Help:      "How many counts was the actual query result from the expected based on the canary log write rate",
 	})
 	responseLatency prometheus.Histogram
 )
 
 type Comparator struct {
-	entMtx        sync.Mutex
-	w             io.Writer
-	entries       []*time.Time
-	ackdEntries   []*time.Time
-	maxWait       time.Duration
-	pruneInterval time.Duration
-	confirmAsync  bool
-	sent          chan time.Time
-	recv          chan time.Time
-	rdr           reader.LokiReader
-	quit          chan struct{}
-	done          chan struct{}
+	entMtx              sync.Mutex
+	spotMtx             sync.Mutex
+	metTestMtx          sync.Mutex
+	pruneMtx            sync.Mutex
+	w                   io.Writer
+	entries             []*time.Time
+	spotCheck           []*time.Time
+	ackdEntries         []*time.Time
+	maxWait             time.Duration
+	pruneInterval       time.Duration
+	pruneEntriesRunning bool
+	spotCheckInterval   time.Duration
+	spotCheckMax        time.Duration
+	spotCheckQueryRate  time.Duration
+	spotCheckRunning    bool
+	metricTestInterval  time.Duration
+	metricTestRange     time.Duration
+	metricTestRunning   bool
+	writeInterval       time.Duration
+	confirmAsync        bool
+	startTime           time.Time
+	sent                chan time.Time
+	recv                chan time.Time
+	rdr                 reader.LokiReader
+	quit                chan struct{}
+	done                chan struct{}
 }
 
-func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.Duration,
-	buckets int, sentChan chan time.Time, receivedChan chan time.Time, reader reader.LokiReader, confirmAsync bool) *Comparator {
+func NewComparator(writer io.Writer,
+	maxWait time.Duration,
+	pruneInterval time.Duration,
+	spotCheckInterval, spotCheckMax, spotCheckQueryRate time.Duration,
+	metricTestInterval time.Duration,
+	metricTestRange time.Duration,
+	writeInterval time.Duration,
+	buckets int,
+	sentChan chan time.Time,
+	receivedChan chan time.Time,
+	reader reader.LokiReader,
+	confirmAsync bool) *Comparator {
 	c := &Comparator{
-		w:             writer,
-		entries:       []*time.Time{},
-		maxWait:       maxWait,
-		pruneInterval: pruneInterval,
-		confirmAsync:  confirmAsync,
-		sent:          sentChan,
-		recv:          receivedChan,
-		rdr:           reader,
-		quit:          make(chan struct{}),
-		done:          make(chan struct{}),
+		w:                   writer,
+		entries:             []*time.Time{},
+		spotCheck:           []*time.Time{},
+		maxWait:             maxWait,
+		pruneInterval:       pruneInterval,
+		pruneEntriesRunning: false,
+		spotCheckInterval:   spotCheckInterval,
+		spotCheckMax:        spotCheckMax,
+		spotCheckQueryRate:  spotCheckQueryRate,
+		spotCheckRunning:    false,
+		metricTestInterval:  metricTestInterval,
+		metricTestRange:     metricTestRange,
+		metricTestRunning:   false,
+		writeInterval:       writeInterval,
+		confirmAsync:        confirmAsync,
+		startTime:           time.Now(),
+		sent:                sentChan,
+		recv:                receivedChan,
+		rdr:                 reader,
+		quit:                make(chan struct{}),
+		done:                make(chan struct{}),
 	}
 
 	if responseLatency == nil {
@@ -112,6 +163,12 @@ func (c *Comparator) entrySent(time time.Time) {
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 	c.entries = append(c.entries, &time)
+	//If this entry equals or exceeds the spot check interval from the last entry in the spot check array, add it.
+	if len(c.spotCheck) == 0 || time.Sub(*c.spotCheck[len(c.spotCheck)-1]) >= c.spotCheckInterval {
+		c.spotMtx.Lock()
+		c.spotCheck = append(c.spotCheck, &time)
+		c.spotMtx.Unlock()
+	}
 	totalEntries.Inc()
 }
 
@@ -173,8 +230,12 @@ func (c *Comparator) Size() int {
 
 func (c *Comparator) run() {
 	t := time.NewTicker(c.pruneInterval)
+	mt := time.NewTicker(c.metricTestInterval)
+	sc := time.NewTicker(c.spotCheckQueryRate)
 	defer func() {
 		t.Stop()
+		mt.Stop()
+		sc.Stop()
 		close(c.done)
 	}()
 
@@ -185,14 +246,133 @@ func (c *Comparator) run() {
 		case e := <-c.sent:
 			c.entrySent(e)
 		case <-t.C:
-			c.pruneEntries()
+			// Only run one instance of prune entries at a time.
+			c.pruneMtx.Lock()
+			if !c.pruneEntriesRunning {
+				c.pruneEntriesRunning = true
+				go c.pruneEntries()
+			}
+			c.pruneMtx.Unlock()
+		case <-sc.C:
+			// Only run one instance of spot check at a time.
+			c.spotMtx.Lock()
+			if !c.spotCheckRunning {
+				c.spotCheckRunning = true
+				go c.spotCheckEntries(time.Now())
+			}
+			c.spotMtx.Unlock()
+		case <-mt.C:
+			// Only run one intstance of metric tests at a time.
+			c.metTestMtx.Lock()
+			if !c.metricTestRunning {
+				c.metricTestRunning = true
+				go c.metricTest(time.Now())
+			}
+			c.metTestMtx.Unlock()
 		case <-c.quit:
 			return
 		}
 	}
 }
 
+func (c *Comparator) metricTest(currTime time.Time) {
+	// Always make sure to set the running state back to false
+	defer func() {
+		c.metTestMtx.Lock()
+		c.metricTestRunning = false
+		c.metTestMtx.Unlock()
+	}()
+	adjustedRange := c.metricTestRange
+
+	// Adjust the query range to not be longer than the canary has been running.
+	// We can't query for 24 hours of counts if it's only been running for 10m,
+	// so we adjusted the range to the run time until we reach the desired lookback time.
+	if currTime.Add(-c.metricTestRange).Before(c.startTime) {
+		adjustedRange = currTime.Sub(c.startTime)
+	}
+	actualCount, err := c.rdr.QueryCountOverTime(fmt.Sprintf("%.0fs", adjustedRange.Seconds()))
+	if err != nil {
+		fmt.Fprintf(c.w, "error running metric query test: %s\n", err.Error())
+		return
+	}
+	expectedCount := float64(adjustedRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
+	deviation := expectedCount - actualCount
+	// There is nothing special about the number 10 here, it's fairly common for the deviation to be 2-4
+	// based on how expected is calculated vs the actual query data, more than 10 would be unlikely
+	// unless there is a problem.
+	if deviation > 10 {
+		fmt.Fprintf(c.w, "large metric deviation: expected %v, actual %v\n", expectedCount, actualCount)
+	}
+	metricTestDeviation.Set(deviation)
+}
+
+func (c *Comparator) spotCheckEntries(currTime time.Time) {
+	// Always make sure to set the running state back to false
+	defer func() {
+		c.spotMtx.Lock()
+		c.spotCheckRunning = false
+		c.spotMtx.Unlock()
+	}()
+	c.spotMtx.Lock()
+	k := 0
+	for i, e := range c.spotCheck {
+		if e.Before(currTime.Add(-c.spotCheckMax)) {
+			// Do nothing, if we don't increment the output index k, this will be dropped
+		} else {
+			if i != k {
+				c.spotCheck[k] = c.spotCheck[i]
+			}
+			k++
+		}
+	}
+	// Nil out the pointers to any trailing elements which were removed from the slice
+	for i := k; i < len(c.spotCheck); i++ {
+		c.spotCheck[i] = nil // or the zero value of T
+	}
+	c.spotCheck = c.spotCheck[:k]
+	cpy := make([]*time.Time, len(c.spotCheck))
+	//Make a copy so we don't have to hold the lock to verify entries
+	copy(cpy, c.spotCheck)
+	c.spotMtx.Unlock()
+
+	for _, sce := range cpy {
+		spotCheckEntries.Inc()
+		// Because we are querying loki timestamps vs the timestamp in the log,
+		// make the range +/- 10 seconds to allow for clock inaccuracies
+		start := *sce
+		adjustedStart := start.Add(-10 * time.Second)
+		adjustedEnd := start.Add(10 * time.Second)
+		recvd, err := c.rdr.Query(adjustedStart, adjustedEnd)
+		if err != nil {
+			fmt.Fprintf(c.w, "error querying loki: %s\n", err)
+			return
+		}
+
+		found := false
+		for _, r := range recvd {
+			if (*sce).Equal(r) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(c.w, ErrSpotCheckEntryNotReceived, sce.UnixNano(), currTime.Sub(*sce))
+			for _, r := range recvd {
+				fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
+			}
+			spotCheckMissing.Inc()
+		}
+	}
+
+}
+
 func (c *Comparator) pruneEntries() {
+	// Always make sure to set the running state back to false
+	defer func() {
+		c.pruneMtx.Lock()
+		c.pruneEntriesRunning = false
+		c.pruneMtx.Unlock()
+	}()
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 
