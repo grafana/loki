@@ -189,7 +189,7 @@ func vectorAggEvaluator(
 	}
 	lb := labels.NewBuilder(nil)
 	buf := make([]byte, 0, 1024)
-	// sort.Strings(expr.grouping.groups)
+	sort.Strings(expr.grouping.groups)
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
 
