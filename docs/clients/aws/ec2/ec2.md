@@ -9,6 +9,7 @@ In this tutorial we're going to setup [Promtail][promtail] on an AWS EC2 instanc
     - [Creating an EC2 instance](#creating-an-ec2-instance)
     - [Setting up Promtail](#setting-up-promtail)
     - [Configuring Promtail as a service](#configuring-promtail-as-a-service)
+    - [Sending systemd logs](#sending-systemd-logs)
 
 <!-- /TOC -->
 
@@ -234,7 +235,32 @@ You can now verify in Grafana that Loki has correctly received your instance log
 
 ![Grafana Loki logs][ec2 logs]
 
-That's it you can `reboot` the machine and verify that you get startup logs in Grafana. You can even use [live tailing][live tailing] to see the instance appearing.
+## Sending systemd logs
+
+Just like we did with Promtail, you'll most likely manage your applications with [systemd][systemd] which usually store applications logs in [journald][journald]. Promtail actually support scraping logs from [journald][journald] so let's configure it.
+
+We will edit our previous config (`vi ec2-promtail.yaml`) and add the following block in the `scrape_configs` section.
+
+```yaml
+  - job_name: journal
+    journal:
+      json: false
+      max_age: 12h
+      path: /var/log/journal
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: 'unit'
+```
+
+Note that you can use [relabeling][relabeling] to convert systemd labels to match what you want. Finally make sure that the path of journald logs is correct, it might be different on some systems.
+
+> You can download the final config example in [our repository][final config].
+
+That's it, save the config and you can `reboot` the machine (or simply restart the service `systemctl restart promtail.service`).
+
+Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL][logql] query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
 
 [promtail]: ../../promtail/README.md
 [aws cli]: https://aws.amazon.com/cli/
@@ -260,3 +286,7 @@ That's it you can `reboot` the machine and verify that you get startup logs in G
 [labels]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
 [troubleshooting loki]: ../../../getting-started/troubleshooting.md#troubleshooting-targets
 [live tailing]: https://grafana.com/docs/grafana/latest/features/datasources/loki/#live-tailing
+[systemd]: https://github.com/grafana/loki/tree/master/production/helm/promtail#run-promtail-with-systemd-journal-support
+[journald]: https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html
+[final config]: https://github.com/grafana/loki/blob/master/docs/clients/aws/ec2/promtail-ec2-finyal.yaml
+[relabeling]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
