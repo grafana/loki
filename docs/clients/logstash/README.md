@@ -69,7 +69,7 @@ Loki is a multi-tenant log storage platform and all requests sent must include a
 ### include_labels
 
 Array specifiying the extracted labels. This is a mandatory field. A minimum of 1 label should be provided.
-All nested labels are extracted by prefixing the parent key i.e if there is a nested label like `{log => {file => {path => "/path/to/file.log"}}}`, extratced label would be `{log_file_path => /path/to/file.log}`
+All nested labels are extracted by prefixing the parent key i.e if there is a nested label like `{log => {file => {path => "/path/to/file.log"}}}`, extracted label would be `{log_file_path => /path/to/file.log}`
 
 ### extra_labels
 
