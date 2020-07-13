@@ -1,5 +1,5 @@
 *.gem
 .ruby-version
 .bundle
-logstash
-path
+logstash/
+path/

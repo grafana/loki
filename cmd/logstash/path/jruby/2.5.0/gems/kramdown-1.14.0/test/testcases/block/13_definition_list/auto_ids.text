@@ -1,0 +1,18 @@
+{:auto_ids}
+item
+: def
+
+item2
+: def
+
+^
+
+{:auto_ids-prefix-}
+item
+: def
+
+item2
+: def
+
+{:#id} item3
+: def

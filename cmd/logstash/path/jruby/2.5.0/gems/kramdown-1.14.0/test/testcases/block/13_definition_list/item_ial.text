@@ -1,0 +1,16 @@
+item
+:   {:.cls} definition
+    continued
+: another {:.cls}
+: {:.class}
+        code
+: {:.cls} IAL at last
+      no code bc of text
+
+
+{:.class} term
+: definition
+
+{:.class1} term1
+{:.class2} term2
+: definition

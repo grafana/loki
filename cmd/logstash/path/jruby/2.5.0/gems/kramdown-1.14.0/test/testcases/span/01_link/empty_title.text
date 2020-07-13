@@ -1,0 +1,7 @@
+Image with empty title: ![alt text](/images/other.png)
+
+Link [reference][1] with empty title.
+
+
+
+[1]: http://example.tld

@@ -1,0 +1,19 @@
+`cell 1 | cell 2`
+
+cell 1 \| cell 2
+
+cell 1 | cell 2 \| continued
+
+cell 1 | cell `2`
+
+cell 1 | `code | span`
+
+cell 1 `code | span`
+
+cell 1 \| `code | span`
+
+cell 1 | cell `2 | cell 3
+cell 1` | cell 2 | cell 3
+
+cell 1 \| cell `2 | cell 3
+cell 1` | cell 2 | cell 3

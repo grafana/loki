@@ -1,0 +1,3 @@
+--- alcn
+[converter/*.html, parser/*.html, documentation.en.html, options.en.html, tests.en.html]:
+  template: ../documentation.template

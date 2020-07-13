@@ -1,0 +1,83 @@
+.\" treetop - Bringing the simplicity of Ruby to syntactic analysis
+.\"
+.\" Copyright (c) 2007 Nathan Sobo.
+.\"
+.\" Permission is hereby granted, free of charge, to any person obtaining a copy
+.\" of this software and associated documentation files (the "Software"), to deal
+.\" in the Software without restriction, including without limitation the rights
+.\" to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+.\" copies of the Software, and to permit persons to whom the Software is
+.\" furnished to do so, subject to the following conditions:
+.\"
+.\" The above copyright notice and this permission notice shall be included in
+.\" all copies or substantial portions of the Software.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+.\" IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+.\" FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+.\" AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+.\" LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+.\" OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+.\" THE SOFTWARE.
+.TH tt 1 2013-06-19 Treetop "Treetop v1.4.14"
+.SH NAME
+tt \- Compile a treetop grammar file to ruby source code
+.SH SYNOPSIS
+.B tt
+.RI [ options "] " grammar_file "[.treetop|.tt] ..."
+
+.SH DESCRIPTION
+The
+.B tt
+program is a command-line script to compile .treetop files into Ruby
+source code.
+
+The
+.B tt
+program takes a list of files with a .treetop extension and compiles
+them into .rb files of the same name. You can then require these files
+like any other Ruby script.
+
+Alternately, you can supply just one .treetop file and a \-o flag to
+specify the name of the output file.
+
+Note: while treetop grammar files
+.B must
+have a supported filename extensions, (.treetop or .tt), the extension
+name is not required when calling the compiler with grammar file
+names.
+.SH OPTIONS
+.TP 4
+.BI "\-o, \-\-output" " FILENAME"
+
+Write parser source to 
+.I FILENAME.
+.TP 4
+.B \-f, \-\-force
+
+Overwrite existing output file(s)
+.TP 4
+.B \-v, \-\-version
+
+Show Treetop version
+.TP 4
+.B \-h, \-\-help
+
+.SH EXAMPLES
+.TP 4
+1 grammar -> 1 parser source
+
+tt foo.tt
+.TP 4
+2 grammars -> 2 separate parsers
+
+tt foo bar.treetop
+.TP 4
+Alternately named output file
+
+tt \-o alterate_name.rb foo
+.SH SEE ALSO
+
+The treetop website:
+
+.B http://cjheath.github.io/treetop/

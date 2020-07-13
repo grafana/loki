@@ -1,0 +1,30 @@
+install:
+  - SET PATH=C:\Ruby%RUBYVER%\bin;%PATH%
+  - SET RAKEOPT=-rdevkit
+  - ps: |
+      if ($env:RUBYVER -like "*head*") {
+        $(new-object net.webclient).DownloadFile("https://github.com/oneclick/rubyinstaller2/releases/download/rubyinstaller-head/rubyinstaller-$env:RUBYVER.exe", "$pwd/ruby-setup.exe")
+        cmd /c ruby-setup.exe /verysilent /dir=C:/Ruby$env:RUBYVER
+      }
+  - ridk version
+  - gem --version
+  - gem install bundler --quiet --no-document
+  - bundle install
+  # Update to libffi-3.3 since Appveyor version fails on LongDouble specs
+  - ridk exec pacman --sync --refresh --needed --noconfirm  mingw-w64-x86_64-libffi mingw-w64-i686-libffi
+build: off
+build_script:
+  - bundle exec rake libffi compile -- %EXTCONFOPTS% || bundle exec rake compile -- %EXTCONFOPTS%
+test_script:
+  - bundle exec rake test
+  - bundle exec rake types_conf && git --no-pager diff
+environment:
+  matrix:
+    - RUBYVER: "head-x64"
+      EXTCONFOPTS: "--disable-system-libffi"
+    - RUBYVER: 24
+      EXTCONFOPTS: "--disable-system-libffi"
+    - RUBYVER: 25-x64
+      EXTCONFOPTS: "--enable-system-libffi"
+    - RUBYVER: 26
+      EXTCONFOPTS: "--enable-system-libffi"

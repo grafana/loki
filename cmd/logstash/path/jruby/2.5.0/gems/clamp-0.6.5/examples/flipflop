@@ -1,0 +1,29 @@
+#! /usr/bin/env ruby
+
+# An example of subcommands
+
+require "clamp"
+require "clamp/version"
+
+Clamp do
+
+  option ["--version", "-v"], :flag, "Show version" do
+    puts "Powered by Clamp-#{Clamp::VERSION}"
+    exit(0)
+  end
+
+  self.default_subcommand = "flip"
+
+  subcommand "flip", "flip it" do
+    def execute
+      puts "FLIPPED"
+    end
+  end
+
+  subcommand "flop", "flop it" do
+    def execute
+      puts "FLOPPED"
+    end
+  end
+
+end

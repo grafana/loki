@@ -1,0 +1,3 @@
+:math_engine: mathjaxnode
+:math_engine_opts:
+  :semantics: true

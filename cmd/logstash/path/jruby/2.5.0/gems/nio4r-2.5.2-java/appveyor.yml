@@ -1,0 +1,40 @@
+build: off
+deploy: off
+
+environment:
+  PATH: C:\Ruby%RUBY_VERSION%\bin;%PATH%
+  APPVEYOR_SAVE_CACHE_ON_ERROR: True
+  matrix:
+  - RUBY_VERSION: _trunk
+  - RUBY_VERSION: 26-x64
+  - RUBY_VERSION: 25-x64
+  - RUBY_VERSION: 24-x64
+  - RUBY_VERSION: 23-x64
+  - RUBY_VERSION: 23
+
+init:
+  - ps: |
+      if ($env:RUBY_VERSION -eq '_trunk') {
+        $trunk_uri = 'https://ci.appveyor.com/api/projects/MSP-Greg/ruby-loco/artifacts/ruby_trunk.7z'
+        (New-Object Net.WebClient).DownloadFile($trunk_uri, 'C:\ruby_trunk.7z')
+        7z.exe x C:\ruby_trunk.7z -oC:\Ruby_trunk
+      }
+
+install:
+  - SET RAKEOPT=-rdevkit
+  - gem update --system --conservative --no-document
+  - ruby -v
+  - gem -v
+  - bundle -v
+  - bundle install --path vendor\bundle --without development
+
+test_script:
+  - bundle exec rake spec
+
+matrix:
+  allow_failures:
+    - RUBY_VERSION: _trunk
+
+cache:
+  # If one of the files after the right arrow changes, cache will be invalidated
+  - vendor\bundle -> appveyor.yml, Gemfile, nio4r.gemspec

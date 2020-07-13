@@ -1,0 +1,84 @@
+---
+title: Documentation
+in_menu: true
+sort_info: 7
+---
+# kramdown Documentation
+
+## Overview
+
+kramdown is first and foremost a library for converting text written in a superset of Markdown to
+HTML. However, due to its modular architecture it is able to support additional input and output
+formats. The following input and output formats are currently supported:
+
+* Input: [kramdown](parser/kramdown.html) (a superset of Markdown),
+  [Markdown](parser/markdown.html), [Github Flavored Markdown](parser/gfm.html), [HTML](parser/html.html)
+
+* Output: [HTML](converter/html.html), [LaTeX](converter/latex.html),
+  [kramdown](converter/kramdown.html), [RemoveHtmlTags](converter/remove_html_tags.html) (a special
+  converter which removes HTML tags, normally used in conjunction with the LaTeX or kramdown
+  converters)
+
+The [kramdown syntax page](syntax.html) describes in detail what is supported and how it differs
+from standard Markdown.
+
+For all available options have a look at the [options documentation](options.html) or have a look at
+a parser/converter page to see which options they support!
+
+
+## Usage
+
+{:ruby: .language-ruby}
+
+The kramdown package provides two ways for using it:
+
+* **As a library**
+
+  kramdown uses basically the same API as [RedCloth], [BlueCloth] and [Maruku]:
+
+      require 'kramdown'
+
+      puts Kramdown::Document.new(text).to_html
+  {:ruby}
+
+  The second parameter to the `new` call is an options hash for (de)activating certain features. For
+  example, to disable automatic header ID generation, you can do the following:
+
+      puts Kramdown::Document.new(text, :auto_ids => false).to_html
+  {:ruby}
+
+  The default parser used is `kramdown`, however, you can select a different one with the `:input`
+  option:
+
+      puts Kramdown::Document.new(text, :input => 'html').to_latex
+  {:ruby}
+
+  You can also reuse the created document object to produce multiple outputs:
+
+      doc = Kramdown::Document.new(text, :input => 'html')
+      puts doc.to_html
+      puts doc.to_latex
+  {:ruby}
+
+  More information on how to use or extend kramdown can be found in the [API
+  documentation](rdoc/index.html)!
+
+* **As an application**
+
+  Together with the library files a binary called `kramdown` is shipped which can be used to convert
+  text in any supported input format to any supported output format. It either reads from the files
+  specified as the command line arguments or from the standard input. For example:
+
+      kramdown path/to/kramdown/doc/syntax.page
+
+  The input and output formats as well as all available kramdown options are supported through
+  command line switches.
+
+
+## Tests
+
+kramdown uses various test suites to verify the correct working of the parsers and converters. For
+more information, have a look at the [tests document](tests.html).
+
+
+{include_file: doc/links.markdown}

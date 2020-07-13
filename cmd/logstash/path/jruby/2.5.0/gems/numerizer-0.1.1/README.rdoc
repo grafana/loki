@@ -1,0 +1,24 @@
+= Numerizer
+
+Numerizer is a gem to help with parsing numbers in natural language from strings (ex forty two). It was extracted from the awesome Chronic gem http://github.com/evaryont/chronic.
+
+== Installation
+
+    $ sudo gem sources -a http://gemcutter.org
+    $ sudo gem install numerizer
+
+== Usage
+
+    >> require 'numerizer'
+    => true
+    >> Numerizer.numerize('forty two')
+    => "42"
+    >> Numerizer.numerize('two and a half')
+    => "2.5"
+    >> Numerizer.numerize('three quarters')
+    => "3/4"
+    >> Numerizer.numerize('two and three eighths')
+    => "2.375"
+
+== Contributors
+Tom Preston-Werner, John Duff

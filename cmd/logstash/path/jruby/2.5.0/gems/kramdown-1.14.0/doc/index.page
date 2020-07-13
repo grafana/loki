@@ -1,0 +1,113 @@
+---
+title: Home
+in_menu: true
+sort_info: 1
+---
+## Overview
+
+If you want to get started with kramdown, have a look at the [installation page](installation.html)
+to see how you can install it on your system. Then look through the
+[documentation](documentation.html) for finding information about how to actually use kramdown and
+its parsers/converters. The [quick reference](quickref.html) provides a overview of the syntax -- if
+you need a more detailed description of the superset of Markdown which kramdown supports the [syntax
+page](syntax.html) is the place to go!
+
+{tikz::
+path: overview.png
+img_attr: {style: 'background:transparent'}
+content_processor.tikz.libraries: [mindmap, trees, arrows]
+content_processor.tikz.transparent: true
+content_processor.tikz.resolution: 300 100
+content_processor.tikz.opts: |
+  mindmap, concept color=black, text=white,
+  root concept/.append style={font=\Large},
+  level 1 concept/.append style={font=\Large, minimum size=2.6cm},
+  level 2 concept/.append style={font=\Large},
+}
+\node[concept, font=\Large] (lib) {kramdown's internal representation}
+  child[concept color=orange, grow=120, ->] {node[concept] (i-kramdown) {kramdown}}
+  child[concept color=orange, grow=160] {node[concept] (i-html) {HTML}}
+  child[concept color=orange, grow=200] {node[concept] (i-gfm) {GFM}}
+  child[concept color=orange, grow=240] {node[concept] (i-markdown) {Markdown}}
+  child[concept color=green!50!black, grow=60] {node[concept] (o-html) {HTML}}
+  child[concept color=green!50!black, grow=20] {node[concept] (o-kramdown) {kramdown}}
+  child[concept color=green!50!black, grow=-20] {
+    node[concept] (o-latex) {\LaTeX}
+    child[grow=0] {
+      node[concept] (o-latex-pdf) {PDF}
+    }
+  }
+  child[concept color=green!50!black, grow=-60] {node[concept] (o-pdf) {PDF}}
+;
+\draw [dash pattern=on 0pt off 2pt,line width=5pt,arrows=-angle 60,shorten >=15pt,shorten <=10pt,color=orange]
+   (i-kramdown) edge(lib)
+   (i-markdown) edge(lib)
+   (i-html) edge (lib)
+   (i-gfm) edge (lib);
+\draw [dash pattern=on 0pt off 2pt,line width=5pt,arrows=-angle 60,shorten >=10pt,shorten <=15pt,color=green!50!black]
+   (lib) edge(o-html)
+   (lib) edge (o-kramdown)
+   (lib) edge (o-latex)
+   (lib) edge (o-pdf);
+{tikz}
+{: style="text-align: center"}
+
+
+## Bugs, Forums, Mailing Lists
+
+If you have found a bug, you should [report it here][bug_report]. Also, there is the [kramdown-users
+google group][ml] available if you have any questions!
+
+[bug_report]: http://github.com/gettalong/kramdown/issues
+[ml]: https://groups.google.com/forum/#!forum/kramdown-users
+
+
+## Thanks
+
+kramdown would not be possible without the prior work of many other people. I want to thank everyone
+involved with making Markdown such a nice markup language and especially the developers of other
+Markdown implementations because kramdown borrowed many ideas from existing packages.
+
+
+## Author
+
+* Thomas Leitner
+* e-Mail: <mailto:t_leitner@gmx.at>
+
+[PHP Markdown Extra]: http://michelf.com/projects/php-markdown/extra/
+[Maruku]: http://maruku.rubyforge.org
+[BlueFeather]: http://ruby.morphball.net/bluefeather/index_en.html
+
+--- intro
+<div markdown="1" itemscope="" itemtype="http://schema.org/SoftwareApplication">
+<meta itemprop="applicationCategory" content="Markdown library, Markdown converter" />
+<meta itemprop="operatingSystem" content="Linux, Windows, Mac OS X" />
+<div itemprop="author" itemscope="" itemtype="http://schema.org/Person">
+<meta itemprop="name" content="Thomas Leitner" />
+<meta itemprop="email" content="t_leitner@gmx.at" />
+</div>
+
+**kramdown**{:itemprop="name"} (sic, not Kramdown or KramDown, just kramdown) is a *free*
+[MIT](https://github.com/gettalong/kramdown/blob/master/COPYING){:itemprop="license"}-licensed
+[Ruby](http://www.ruby-lang.org) library for parsing and converting a superset of Markdown. It is
+completely written in Ruby, supports standard Markdown (with some minor modifications) and various
+extensions that have been made popular by the [PHP Markdown Extra] package and [Maruku].
+{:itemprop="description"}
+
+It is probably the fastest pure-Ruby Markdown converter available (September 2014), being about 3x
+faster than [Maruku] and about 4.5x faster than [BlueFeather].
+
+Version **1.14.0**{:itemprop="softwareVersion"} released on
+**2017-06-26**{:itemprop="datePublished"}, [more news](news.html)
+{: style="text-align: center; font-size: 80%"}
+
+</div>
+
+<div id="call-to-arms">
+Support kramdown development and <a href="https://www.patreon.com/bePatron?u=4908963" class="patreon">become a patron</a>!
+</div>
+
+
+[PHP Markdown Extra]: http://michelf.com/projects/php-markdown/extra/
+[Maruku]: http://maruku.rubyforge.org
+[BlueFeather]: http://ruby.morphball.net/bluefeather/index_en.html

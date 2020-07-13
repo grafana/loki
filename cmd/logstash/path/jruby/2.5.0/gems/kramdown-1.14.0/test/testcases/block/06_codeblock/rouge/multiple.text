@@ -1,0 +1,11 @@
+~~~ ruby
+puts "Hello"
+~~~
+
+~~~ ruby
+puts "World"
+~~~
+
+~~~ php?start_inline=1
+$foo = new Bar;
+~~~

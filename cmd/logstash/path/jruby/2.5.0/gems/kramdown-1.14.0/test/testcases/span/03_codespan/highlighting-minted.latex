@@ -1,0 +1,2 @@
+You can say \mintinline{ruby}{x = Class.new}, for example.
+

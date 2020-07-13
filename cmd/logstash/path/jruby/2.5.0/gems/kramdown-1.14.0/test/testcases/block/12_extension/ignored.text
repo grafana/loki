@@ -1,0 +1,8 @@
+paragraph
+
+{::something}
+anotherthing
+{:/something}
+
+{::something/}
+paragraph

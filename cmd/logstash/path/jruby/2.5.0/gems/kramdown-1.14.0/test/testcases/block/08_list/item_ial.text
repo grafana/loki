@@ -1,0 +1,8 @@
+*   {:.cls} IAL at first
+    continued
+* another {:.cls}
+* {:.cls} IAL at last
+      code
+* {::nomarkdown type="html"}X{:/nomarkdown}
+    test
+* {::nomarkdown type="html"}X{:/nomarkdown} OK

@@ -1,0 +1,6 @@
+--no-private
+lib/**/*.rb
+-
+History.txt
+LICENSE
+README.md

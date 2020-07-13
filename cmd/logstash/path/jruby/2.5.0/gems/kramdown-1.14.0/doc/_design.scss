@@ -1,0 +1,441 @@
+/*  Based on the Less Framework 4
+    http://lessframework.com
+    by Joni Korpi
+    License: http://opensource.org/licenses/mit-license.php */
+
+
+/***** Variables for easy customization *****/
+
+/* the baseline height in px */
+$baseline-height: 24;
+
+/* The overlay color for the background image */
+$bg-grad-color: rgba(255,255,128,0.1);
+
+/* The font size of the logo in px */
+$logo-size: 36;
+
+/* Color settings */
+$link-color: #1666A3;
+
+
+
+/*  Resets
+    ------  */
+
+html, body, div, span, object, iframe, h1, h2, h3, h4, h5, h6,
+p, blockquote, pre, a, abbr, address, cite, code, del, dfn, em,
+img, ins, kbd, q, samp, small, strong, sub, sup, var, b, i, hr,
+dl, dt, dd, ol, ul, li, fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, figure, figcaption, hgroup,
+menu, footer, header, nav, section, summary, time, mark, audio, video {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+article, aside, canvas, figure, figure img, figcaption, hgroup,
+footer, header, nav, section, audio, video {
+    display: block;
+}
+
+a img {border: 0;}
+
+
+
+/*  Typography presets
+    ------------------  */
+
+.gigantic {
+    font-size: 59px;
+    line-height: 72px;
+}
+
+.huge {
+    font-size: 36px;
+    line-height: 48px;
+}
+
+.large {
+    font-size: 23px;
+    line-height: 24px;
+}
+
+.bigger {
+    font-size: 18px;
+    line-height: 24px;
+}
+
+.big {
+    font-size: 14px;
+    line-height: 24px;
+}
+
+body {
+    font: 14px/24px 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+}
+
+.small, small {
+    font-size: 12px;
+    line-height: 24px;
+}
+
+*:target::after {
+    content: " ☜";
+}
+
+
+/* Typographics grid overlay */
+
+.grid{
+    background-image: -moz-linear-gradient(top, rgba(0,0,0,0) 95%, rgba(0,0,0,0.3) 100%); /* FF3.6+ */
+    background-image: -webkit-gradient(linear, left top, left bottom, color-stop(95%,rgba(0,0,0,0)), color-stop(100%,rgba(0,0,0,0.3))); /* Chrome,Safari4+ */
+    background-image: -webkit-linear-gradient(top, rgba(0,0,0,0) 95%,rgba(0,0,0,0.3) 100%); /* Chrome10+,Safari5.1+ */
+    background-image: -o-linear-gradient(top, rgba(0,0,0,0) 95%, rgba(0,0,0,0.3) 100%); /* Opera11.10+ */
+    background-image: -ms-linear-gradient(top, rgba(0,0,0,0) 95%,rgba(0,0,0,0.3) 100%); /* IE10+ */
+    background-image: linear-gradient(top, rgba(0,0,0,0.3) 95%,rgba(0,0,0,0.3) 100%); /* W3C */
+
+    -webkit-background-size: 100% #{$baseline-height}px;
+         -o-background-size: 100% #{$baseline-height}px;
+            background-size: 100% #{$baseline-height}px;
+}
+
+
+/* Basic mixins */
+
+@mixin background {
+    background-image: -moz-linear-gradient($bg-grad-color, $bg-grad-color), url('bg.png');
+    background-image: -webkit-linear-gradient($bg-grad-color, $bg-grad-color), url('bg.png');
+    background-image: -o-linear-gradient($bg-grad-color, $bg-grad-color), url('bg.png');
+    background-image: -ms-linear-gradient($bg-grad-color, $bg-grad-color), url('bg.png');
+    background-image: linear-gradient($bg-grad-color, $bg-grad-color), url('bg.png');
+}
+
+@mixin typography($size: big) {
+    h3, h4, h5, h6, p, ul, ol, dl, pre, blockquote, table {
+        margin-top: 24px;
+        margin-bottom: 24px;
+    }
+
+    @if $size == big {
+        h1 { @extend .huge }
+        h2 { @extend .large }
+        h3 { @extend .bigger }
+        h4,h5,h6 { @extend .big }
+    } @else {
+        h1 { @extend .large }
+        h2 { @extend .bigger }
+        h3,h4,h5,h6 { @extend .big }
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        font-weight: normal;
+        padding-left: 48px;
+        margin-left: -48px;
+        margin-top: 36px;
+        margin-bottom: -12px;
+    }
+
+    ul, ol, dd {
+        padding-left: 24px;
+    }
+
+    ul ul, ul ol, ol ul, ol ol {
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+
+    pre {
+        padding-left: 12px;
+        padding-right: 12px;
+        border: 1px solid #ccc;
+        font-family: "Bitstream Vera Sans Mono", Consolas, monospace;
+    }
+
+    dt {
+        font-weight: bold;
+    }
+
+    a {
+        color: $link-color;
+        text-decoration: underline;
+    }
+
+    a:hover, a:link {
+        color: $link-color / 2;
+    }
+}
+
+/*      Default Layout: 992px.
+        Gutters: 24px.
+        Outer margins: 48px.
+        Leftover space for scrollbars @1024px: 32px.
+        -------------------------------------------------------------------------------
+        cols    1     2      3      4      5      6      7      8      9      10
+        px      68    160    252    344    436    528    620    712    804    896    */
+
+body {
+    width: 992px;
+    margin: 0 auto 48px;
+    color: rgb(60,60,60);
+    -webkit-text-size-adjust: 100%; /* Stops Mobile Safari from auto-adjusting font-sizes */
+    @include background;
+}
+
+body > header {
+    position: relative;
+    padding: 12px;
+    font-family: Verdana;
+    color: #eee;
+    -moz-box-shadow:     0 0 24px rgba(0,0,0,0.6);
+    -webkit-box-shadow:  0 0 24px rgba(0,0,0,0.6);
+    box-shadow:          0 0 24px rgba(0,0,0,0.6);
+    z-index: 1;
+}
+
+#logo {
+    font-size: #{$logo-size}px;
+    line-height:  #{$baseline-height * (floor($logo-size / $baseline-height) + 1)}px;
+    margin: 12px;
+    text-shadow: 0px 2px 5px rgba(0, 0, 0, 0.5);
+
+    a {
+        color: #eee;
+        text-decoration: none;
+
+        &:hover {
+            color: #fff;
+        }
+    }
+
+}
+
+#slogan {
+    font-size: 100%;
+    margin: 12px;
+    text-shadow: 0px 2px 5px rgba(0, 0, 0, 0.5);
+}
+
+nav {
+    position: absolute;
+    bottom: 0px;
+    right: 0px;
+    background-color: rgba(255,255,255,0.1);
+
+    li {
+        display: inline-block;
+    }
+
+    ul {
+        margin: 0;
+        padding: 0;
+    }
+
+    a, span {
+        display: block;
+        padding: 12px;
+        color: #ccc;
+        text-decoration: none;
+    }
+
+    span {
+        background-color: rgba(255,255,255,0.3);
+    }
+
+    a:hover {
+        background-color: rgba(255,255,255,0.3);
+    }
+
+}
+
+#wrapper {
+    clear: both;
+    position: relative;
+    background-color: white;
+    -moz-box-shadow:     0 0 24px rgba(0,0,0,0.6);
+    -webkit-box-shadow:  0 0 24px rgba(0,0,0,0.6);
+    box-shadow:          0 0 24px rgba(0,0,0,0.6);
+}
+
+aside {
+    float: right;
+    right: 0;
+    background-color: white;
+    width: 252px;
+    padding: 24px;
+
+    @include typography(small);
+
+    h1, h2, h3, h4, h5, h6 {
+        padding-left: 48px;
+        margin-left: -48px;
+    }
+}
+
+
+aside.banner {
+    @include background;
+    position: relative;
+    width: inherit;
+    margin: 0;
+    float: none;
+    padding: 24px;
+    border: 10px solid rgba(255,255,255,0.1);
+    color: #ccc;
+    font-size: 36px;
+    line-height: 48px;
+
+    a {
+        color: #ccc;
+        text-decoration: underline;
+    }
+
+    a:hover {
+        background-color: rgba(255,255,255,0.3);
+    }
+
+    p {
+        margin: 0;
+    }
+
+    p + p {
+        margin-top: 24px;
+    }
+}
+
+#content {
+    width: 620px;
+    padding: 24px 48px;
+
+    @include typography(big);
+}
+
+footer {
+   background-color: rgba(255,255,255,0.1);
+   min-height: 24px;
+   color: #eee;
+}
+
+
+/*      Tablet Layout: 768px.
+        Gutters: 24px.
+        Outer margins: 28px.
+        Inherits styles from: Default Layout.
+        -----------------------------------------------------------------
+        cols    1     2      3      4      5      6      7      8
+        px      68    160    252    344    436    528    620    712    */
+
+@media only screen and (min-width: 768px) and (max-width: 1005px) {
+
+    body {
+        width: 716px;
+    }
+
+    body > header {
+        padding: 0;
+    }
+
+    aside {
+        position: static;
+        float: right;
+    }
+
+    nav {
+        position: relative;
+        margin-top: 12px;
+    }
+}
+
+
+
+/*      Mobile Layout: 320px.
+        Gutters: 24px.
+        Outer margins: 34px.
+        Inherits styles from: Default Layout.
+        ---------------------------------------------
+        cols    1     2      3
+        px      68    160    252    */
+
+@media only screen and (max-width: 767px) {
+
+    body {
+        width: 320px;
+    }
+
+    body > header {
+        padding: 0;
+    }
+
+    nav {
+        position: relative;
+        margin-top: 12px;
+    }
+
+    aside {
+        position: relative;
+    }
+
+    #content, aside {
+        width: 296px;
+        padding: 24px 12px;
+    }
+
+    #content {
+        h1, h2, h3, h4, h5, h6 {
+            padding-left: 12px;
+            margin-left: -12px;
+        }
+    }
+
+}
+
+
+
+/*      Wide Mobile Layout: 480px.
+        Gutters: 24px.
+        Outer margins: 22px.
+        Inherits styles from: Default Layout, Mobile Layout.
+        ------------------------------------------------------------
+        cols    1     2      3      4      5
+        px      68    160    252    344    436    */
+
+@media only screen and (min-width: 480px) and (max-width: 767px) {
+
+    body {
+        width: 90%;
+    }
+
+    aside {
+        position: relative;
+    }
+
+    #content, aside {
+        width: inherit;
+        padding: 24px 48px;
+    }
+
+    #content {
+        h1, h2, h3, h4, h5, h6 {
+            padding-left: 48px;
+            margin-left: -48px;
+        }
+    }
+
+}
+
+
+/*  Retina media query.
+    Overrides styles for devices with a
+    device-pixel-ratio of 2+, such as iPhone 4.
+    -----------------------------------------------    */
+
+@media
+only screen and (-webkit-min-device-pixel-ratio: 2),
+only screen and (min-device-pixel-ratio: 2) {
+
+    body {
+
+    }
+
+}

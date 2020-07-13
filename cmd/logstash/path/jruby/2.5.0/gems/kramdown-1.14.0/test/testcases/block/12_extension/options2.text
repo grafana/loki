@@ -1,0 +1,5 @@
+{::options footnote_nr="da10" /}
+
+Some text[^ab].
+
+[^ab]: Some text.

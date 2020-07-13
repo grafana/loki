@@ -1,0 +1,73 @@
+grammar IndentedBlocks
+  rule top
+    # Initialise the indent stack with a sentinel:
+    &{|s| @indents = [-1] }
+    foo:('foo'?)
+    nested_blocks
+    {
+      def inspect
+	nested_blocks.inspect
+      end
+    }
+  end
+
+  rule nested_blocks
+    (
+      # Do not try to extract this semantic predicate into a new rule.
+      # It will be memo-ized incorrectly because @indents.last will change.
+      !{|s|
+	# Peek at the following indentation:
+	save = index; i = _nt_indentation; index = save
+	# We're closing if the indentation is less or the same as our enclosing block's:
+	closing = i.text_value.length <= @indents.last
+      }
+      block
+    )*
+    {
+      def inspect
+	elements.map{|e| e.block.inspect}*"\n"
+      end
+    }
+  end
+
+  rule block
+    indented_line       # The block's opening line
+    &{|s|               # Push the indent level to the stack
+      level = s[0].indentation.text_value.length
+      @indents << level
+      true
+    }
+    nested_blocks       # Parse any nested blocks
+    &{|s|               # Pop the indent stack
+      # Note that under no circumstances should "nested_blocks" fail, or the stack will be mis-aligned
+      @indents.pop
+      true
+    }
+    {
+      def inspect
+	indented_line.inspect +
+	  (nested_blocks.elements.size > 0 ? (
+	    "\n{\n" +
+	    nested_blocks.elements.map { |content|
+	      content.block.inspect+"\n"
+	    }*'' +
+	    "}"
+	  )
+	  : "")
+      end
+    }
+  end
+
+  rule indented_line
+    indentation text:((!"\n" .)*) "\n"
+    {
+      def inspect
+	text.text_value
+      end
+    }
+  end
+
+  rule indentation
+    ' '*
+  end
+end

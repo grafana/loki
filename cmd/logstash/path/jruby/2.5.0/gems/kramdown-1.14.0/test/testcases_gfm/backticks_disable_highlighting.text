@@ -1,0 +1,3 @@
+```ruby
+Kramdown::Document.new(text, :input => 'GFM')
+```

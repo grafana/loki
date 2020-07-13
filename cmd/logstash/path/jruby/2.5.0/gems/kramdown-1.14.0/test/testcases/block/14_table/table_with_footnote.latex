@@ -1,0 +1,11 @@
+\begin{longtable}{|l|l|}
+\hline
+this is \footnote{Something
+
+\begin{quote}
+special here
+\end{quote}} & a table\\
+with a & footnote\\
+\hline
+\end{longtable}
+

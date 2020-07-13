@@ -1,0 +1,4 @@
+:syntax_highlighter: minted
+:syntax_highlighter_opts:
+  wrap: true
+  line_numbers: true

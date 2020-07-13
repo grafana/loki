@@ -1,0 +1,70 @@
+#! /usr/bin/env ruby
+
+# Demonstrate how subcommands can be declared as classes
+
+require "clamp"
+
+module GitDown
+
+  class AbstractCommand < Clamp::Command
+
+    option ["-v", "--verbose"], :flag, "be verbose"
+
+    option "--version", :flag, "show version" do
+      puts "GitDown-0.0.0a"
+      exit(0)
+    end
+
+    def say(message)
+      message = message.upcase if verbose?
+      puts message
+    end
+
+  end
+
+  class CloneCommand < AbstractCommand
+
+    parameter "REPOSITORY", "repository to clone"
+    parameter "[DIR]", "working directory", :default => "."
+
+    def execute
+      say "cloning to #{dir}"
+    end
+
+  end
+
+  class PullCommand < AbstractCommand
+
+    option "--[no-]commit", :flag, "Perform the merge and commit the result."
+
+    def execute
+      say "pulling"
+    end
+
+  end
+
+  class StatusCommand < AbstractCommand
+
+    option ["-s", "--short"], :flag, "Give the output in the short-format."
+
+    def execute
+      if short?
+        say "good"
+      else
+        say "it's all good ..."
+      end
+    end
+
+  end
+
+  class MainCommand < AbstractCommand
+
+    subcommand "clone", "Clone a remote repository.", CloneCommand
+    subcommand "pull", "Fetch and merge updates.", PullCommand
+    subcommand "status", "Display status of local repository.", StatusCommand
+
+  end
+
+end
+
+GitDown::MainCommand.run

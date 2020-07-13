@@ -1,0 +1,16 @@
+Gemfile.lock
+pkg
+target
+Rakefile.old
+.idea
+*.iml
+.ruby-version
+
+linked
+/libyjpagent.so
+/.project
+
+lib/jrjackson_jars.rb
+lib/com/fasterxml/jackson/
+lib/jrjackson/jars/jrjackson-*.jar
+pom.xml

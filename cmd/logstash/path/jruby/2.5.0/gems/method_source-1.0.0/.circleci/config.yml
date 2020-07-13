@@ -1,0 +1,139 @@
+version: 2
+references:
+  repo_restore_cache: &repo_restore_cache
+    restore_cache:
+      keys:
+        - repo-{{ .Environment.CIRCLE_SHA1 }}
+
+  repo_save_cache: &repo_save_cache
+    save_cache:
+      key: repo-{{ .Environment.CIRCLE_SHA1 }}-{{ epoch }}
+      paths:
+        - ~/method_source
+
+  bundle_install: &bundle_install
+    run:
+      name: Install Bundler dependencies
+      command: bundle install --path ~/method_source/vendor/bundle --jobs 15
+
+  unit: &unit
+    run:
+      name: Run unit tests
+      command: bundle exec rake
+
+jobs:
+  "ruby-1.9":
+    docker:
+      - image: kyrylo/ruby-1.9.3p551
+    working_directory: /home/circleci/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "ruby-2.0":
+    docker:
+      - image: kyrylo/ruby-2.0.0p648
+    working_directory: /home/circleci/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "ruby-2.1":
+    docker:
+      - image: circleci/ruby:2.1
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "ruby-2.2":
+    docker:
+      - image: circleci/ruby:2.2
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "ruby-2.3":
+    docker:
+      - image: circleci/ruby:2.3
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "ruby-2.4":
+    docker:
+      - image: circleci/ruby:2.4
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "ruby-2.5":
+    docker:
+      - image: circleci/ruby:2.5
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "ruby-2.6":
+    docker:
+      - image: circleci/ruby:2.6
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "ruby-2.7":
+    docker:
+      - image: circleci/ruby:2.7.0
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "jruby-9.1-jdk":
+    docker:
+      - image: circleci/jruby:9.1-jdk
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+  "jruby-9.2-jdk":
+    docker:
+      - image: circleci/jruby:9.2-jdk
+    working_directory: ~/method_source
+    steps:
+      - checkout
+      - <<: *repo_restore_cache
+      - <<: *bundle_install
+      - <<: *unit
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - "ruby-1.9"
+      - "ruby-2.0"
+      - "ruby-2.1"
+      - "ruby-2.2"
+      - "ruby-2.3"
+      - "ruby-2.4"
+      - "ruby-2.5"
+      - "ruby-2.6"
+      - "ruby-2.7"
+      - "jruby-9.1-jdk"
+      - "jruby-9.2-jdk"

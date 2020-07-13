@@ -1,0 +1,15 @@
+{:.cls}
+<div>
+test
+</div>
+{:#id}
+
+{:.cls}
+<div markdown="1">
+test
+</div>
+{:#id}
+
+{:.cls}
+> para
+{:#id}

@@ -1,0 +1,7 @@
+    x = Class.new
+{: .language-ruby}
+
+{::options coderay_wrap="span" coderay_line_numbers="" coderay_css="class" coderay_tab_width="4" /}
+
+    x = Class.new
+{: .language-ruby}

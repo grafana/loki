@@ -1,0 +1,217 @@
+@import 'design';
+
+a:hover {
+    background-color: rgba(0,0,0,0.1);
+}
+
+aside.banner {
+    font-size: 18px;
+    line-height: 27px;
+}
+
+aside a {
+    text-decoration: none;
+
+    &:hover, &:link {
+        text-decoration: underline;
+    }
+
+}
+
+#content {
+    blockquote.information {
+        border-left: 12px solid #080;
+        background-color: #bfb;
+        padding: 12px 12px 12px 0;
+        margin-left: -48px;
+        padding-left: 48px;
+    }
+
+    blockquote.markdown-difference {
+        border-left: 12px solid #dc0;
+        background-color: #ffa;
+        padding: 12px 12px 12px 0;
+        margin-left: -48px;
+        padding-left: 48px;
+
+        &:before {
+            content: "Difference to Standard Markdown";
+            display: block;
+            font-weight: bold;
+        }
+    }
+
+    blockquote pre {
+        border: none;
+    }
+
+    table {
+        border-collapse: collapse;
+        margin-left: auto;
+        margin-right: auto;
+        width: 100%;
+
+        td, th {
+            padding: 3px 5px;
+        }
+        th {
+            background-color: #080;
+            color: white;
+        }
+    }
+
+    pre.show-whitespaces .ws-space {
+        background-color: #f44;
+    }
+    pre.show-whitespaces .ws-space-l {
+        background-color: #f22;
+    }
+    pre.show-whitespaces .ws-space-r {
+        background-color: #f00;
+    }
+    pre.show-whitespaces .ws-tab {
+        background-color: #ff4;
+    }
+    pre.show-whitespaces .ws-tab-l {
+        background-color: #ff2;
+    }
+    pre.show-whitespaces .ws-tab-r {
+        background-color: #ff0;
+    }
+    pre.show-whitespaces.ws-lr .ws-tab {
+        background-color: inherit;
+    }
+    pre.show-whitespaces.ws-lr .ws-space {
+        background-color: inherit;
+        opacity: 0;
+    }
+
+    table.kdexample td {
+        vertical-align: top;
+    }
+
+    table.kdexample pre {
+        margin: 5px 0px;
+    }
+
+    .kdexample:hover .kdexample-after-source {
+        display: block;
+    }
+
+    .kdexample-after-source {
+        display: none;
+        background-color: #ffffee;
+        border: 2px solid #e6e8e9;
+        margin: 0 10px;
+        padding: 5px;
+    }
+
+    .kdexample-after-live {
+        background-color: #eeffee;
+        border: 2px solid #e6e8e9;
+        margin: 5px 0px 12px;
+        padding: 5px;
+    }
+
+    div.kdsyntaxlink {
+        float: right;
+        position: relative;
+        top: -17px;
+        padding: 5px;
+        border: 1px solid #e6e8e9;
+        margin-right: 10px;
+        margin-left: 10px;
+
+        a {
+            text-decoration: none;
+        }
+    }
+}
+
+.news-item {
+    border-top: 2px solid #ddd;
+    margin-top: 46px;
+}
+
+.news-date {
+    float: right;
+    margin-top: 2px;
+    font-size: small;
+    color: #888;
+}
+
+footer {
+    clear: both;
+    font-size: 92%;
+    text-align: left;
+
+    a {
+        color: #898989;
+
+        &:hover {
+            text-decoration: none;
+            color: #666;
+        }
+    }
+}
+
+/* common rules */
+acronym {
+    cursor: help;
+    border-bottom: 1px solid #777;
+}
+
+.float-left {
+    float: left;
+}
+
+.float-right {
+    float: right;
+}
+
+.a-left, tr.a-left td {
+    text-align: left;
+}
+
+.a-center, tr.a-center td {
+    text-align: center;
+}
+
+.a-right, tr.a-right td {
+    text-align: right;
+}
+
+.clear {
+    clear: both;
+}
+
+.inline-important {
+    font-weight: bold;
+    display: block;
+    text-align: center;
+}
+
+
+.patreon, .patreon:hover {
+    border-radius: 50px;
+    padding: 5px 10px;
+    margin: 0 5px;
+    display: inline-block;
+    text-decoration: none !important;
+    background-color: #e6461a !important;
+    box-shadow: 0px 0px 5px 5px #e6461a;
+    color: white !important;
+    font-weight: bold;
+
+    &:hover {
+      box-shadow: 0px 0px 0px 5px #e6461a;
+    }
+}
+
+#call-to-arms {
+  text-align: center;
+  margin: 40px 0 10px;
+  background-color: rgba(255, 255, 255, 0.18);
+  padding: 30px;
+  border-radius: 100px;
+}

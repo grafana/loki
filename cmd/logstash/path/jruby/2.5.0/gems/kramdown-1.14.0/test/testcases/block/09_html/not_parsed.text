@@ -1,0 +1,24 @@
+<div>
+This is some text
+</div>
+
+<div><div>
+This is some text
+</div></div>
+
+<div>
+</p>
+</div>
+
+<div>
+<p><a href="/">Foo</a></p>
+</div>
+
+<p>This is some
+text</p>
+
+<http://example.com>
+
+<div>
+<http://example.com>
+</div>

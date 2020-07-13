@@ -1,0 +1,97 @@
+= minitar
+
+home :: https://github.com/halostatue/minitar/
+code :: https://github.com/halostatue/minitar/
+bugs :: https://github.com/halostatue/minitar/issues
+rdoc :: http://rdoc.info/gems/minitar/
+cli  :: https://github.com/halostatue/minitar-cli
+travis :: {<img src="https://travis-ci.org/halostatue/minitar.svg" />}[https://travis-ci.org/halostatue/minitar]
+appveyor :: {<img src="https://ci.appveyor.com/api/projects/status/bj4gqn3gp3gu45sa?svg=true" />}[https://ci.appveyor.com/project/halostatue/minitar]
+coveralls :: {<img src="https://coveralls.io/repos/halostatue/minitar/badge.svg" alt="Coverage Status" />}[https://coveralls.io/r/halostatue/minitar]
+
+== Description
+
+The minitar library is a pure-Ruby library that provides the ability to deal
+with POSIX tar(1) archive files.
+
+This is release 0.9, adding a minor feature to Minitar.unpack and
+Minitar::Input#extract_entry that when <tt>:fsync => false</tt> is provided,
+fsync will be skipped.
+
+minitar (previously called Archive::Tar::Minitar) is based heavily on code
+originally written by Mauricio Julio Fernández Pradier for the rpa-base
+project.
+
+== Synopsis
+
+Using minitar is easy. The simplest case is:
+
+  require 'minitar'
+
+  # Packs everything that matches Find.find('tests').
+  # test.tar will automatically be closed by Minitar.pack.
+  Minitar.pack('tests', File.open('test.tar', 'wb'))
+
+  # Unpacks 'test.tar' to 'x', creating 'x' if necessary.
+  Minitar.unpack('test.tar', 'x')
+
+A gzipped tar can be written with:
+
+  require 'zlib'
+  # test.tgz will be closed automatically.
+  Minitar.pack('tests', Zlib::GzipWriter.new(File.open('test.tgz', 'wb'))
+
+  # test.tgz will be closed automatically.
+  Minitar.unpack(Zlib::GzipReader.new(File.open('test.tgz', 'rb')), 'x')
+
+As the case above shows, one need not write to a file. However, it will
+sometimes require that one dive a little deeper into the API, as in the case of
+StringIO objects. Note that I'm not providing a block with Minitar::Output, as
+Minitar::Output#close automatically closes both the Output object and the
+wrapped data stream object.
+
+  begin
+    sgz = Zlib::GzipWriter.new(StringIO.new(String.new))
+    tar = Output.new(sgz)
+    Find.find('tests') do |entry|
+      Minitar.pack_file(entry, tar)
+    end
+  ensure
+      # Closes both tar and sgz.
+    tar.close
+  end
+
+== Minitar and Security
+
+Minitar aims to be secure by default for the data *inside* of a tarfile. If
+there are any security issues discovered, please feel free to open an issue.
+Should you wish to make a more confidential report, you can find my PGP key
+information at {Keybase}[https://keybase.io/halostatue]. Bear with me: I do not
+use PGP regularly, so it may take some time to remember the command invocations
+required to successfully handle this.
+
+Minitar does *not* perform validation of path names provided to the convenience
+calsses Minitar::Output and Minitar::Input, which use Kernel.open for their
+underlying implementations when not given an IO-like object.
+
+Improper use of these classes with arbitrary input filenames may leave your
+your software to the same class of vulnerability as reported for Net::FTP
+({CVE-2017-17405}[https://nvd.nist.gov/vuln/detail/CVE-2017-17405]). Of
+particular note, "if the localfile argument starts with the '|' pipe character,
+the command following the pipe character is executed."
+
+Additionally, the use of the `open-uri` library (which extends Kernel.open with
+transparent implementations of Net::HTTP, Net::HTTPS, and Net::FTP), there are
+other possible vulnerabilities when accepting arbitrary input, as
+{detailed}[https://sakurity.com/blog/2015/02/28/openuri.html] by Egor Homakov.
+
+These security vulnerabilities may be avoided, even with the Minitar::Output
+and Minitar::Input convenience classes, by providing IO-like objects instead of
+pathname-like objects as the source or destination of these classes.
+
+== minitar Semantic Versioning
+
+The minitar library uses a {Semantic Versioning}[http://semver.org/] scheme
+with one change:
+
+* When PATCH is zero (+0+), it will be omitted from version references.

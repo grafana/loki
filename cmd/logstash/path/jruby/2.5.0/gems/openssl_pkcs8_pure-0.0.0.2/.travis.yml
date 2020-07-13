@@ -1,0 +1,30 @@
+sudo: required
+language: ruby
+dist: trusty
+rvm:
+  - 1.8.7
+  - ree
+  - 1.9.3
+  - 2.0.0
+  - 2.1.10
+  - 2.2.6
+  - 2.3.3
+  - 2.4.0
+  - ruby-head
+  - jruby-19mode
+  - jruby-20mode
+  - jruby-21mode
+  - jruby-22mode
+  - jruby-23mode
+  - jruby-head
+  - rubinius-3
+matrix:
+  allow_failures:
+    - rvm: ruby-head
+    - rvm: jruby-head
+    - rvm: jruby-19mode
+    - rvm: jruby-20mode
+    - rvm: jruby-21mode
+    - rvm: jruby-22mode
+    - rvm: jruby-23mode
+    - rvm: rubinius-3

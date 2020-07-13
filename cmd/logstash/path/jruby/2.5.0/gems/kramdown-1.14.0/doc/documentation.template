@@ -1,0 +1,34 @@
+--- name:sidebar pipeline:erb,tags,kramdown
+<div style="text-align: right">
+<a href="https://www.patreon.com/bePatron?u=4908963" class="patreon">Become a Patron!</a>
+</div>
+
+<h1>Documentation</h1>
+
+* Parsers
+  * [kramdown](parser/kramdown.html)
+  * [Markdown](parser/markdown.html)
+  * [GFM](parser/gfm.html)
+  * [HTML](parser/html.html)
+* Converters
+  * [HTML](converter/html.html)
+  * [LaTeX](converter/latex.html)
+  * [man](converter/man.html)
+  * [kramdown](converter/kramdown.html)
+  * [RemoveHtmlTags](converter/remove_html_tags.html)
+* Syntax Highlighters
+  * [Coderay](syntax_highlighter/coderay.html)
+  * [Rouge](syntax_highlighter/rouge.html)
+* Math Engines
+  * [MathJax](math_engine/mathjax.html)
+  * [Ritex](math_engine/ritex.html)
+  * [itex2MML](math_engine/itex2mml.html)
+  * [Mathjax-Node](math_engine/mathjaxnode.html)
+* [Configuration Options](options.html)
+* [Tests](tests.html)
+
+<% if context.node.children.first && context.node.children.first.children.length > 1 %>
+<h1>Contents</h1>
+<% end %>
+
+{menu: {options: {descendants: true, levels: [3,6]}}}

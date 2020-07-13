@@ -1,0 +1,58 @@
+dist: trusty
+group: beta
+language: ruby
+git:
+  submodules: false
+
+script:
+  - bundle exec rake libffi
+  - bundle exec rake compile
+  - bundle exec rake test
+  - |
+      if [[ $(ruby -v) != *truffleruby* ]]; then
+        ITER=10 bundle exec rake bench:all
+      fi
+  - bundle exec rake types_conf && git --no-pager diff
+os:
+  - linux
+  - osx
+rvm:
+  - 2.3.8
+  - 2.4.6
+  - 2.5.5
+  - 2.6.5
+  - 2.7.0
+  - ruby-head
+  - truffleruby-head
+
+env:
+  - CC=gcc
+  - CC=clang
+matrix:
+  allow_failures:
+    - os: osx
+      rvm: ruby-head
+    - os: osx
+      rvm: 2.3.8
+    - os: linux
+      rvm: ruby-head
+  include:
+    - name: powerpc
+      language: generic
+      before_install: |
+        docker run --rm --privileged multiarch/qemu-user-static:register --reset &&
+          docker build --rm -t ffi-powerpc -f spec/env/Dockerfile.powerpc .
+      script: |
+        docker run --rm -t -v `pwd`:/ffi ffi-powerpc
+    - name: armhf
+      language: generic
+      before_install: |
+        docker run --rm --privileged multiarch/qemu-user-static:register --reset &&
+          docker build --rm -t ffi-armhf -f spec/env/Dockerfile.armhf .
+      script: |
+        docker run --rm -t -v `pwd`:/ffi ffi-armhf
+  exclude:
+    - os: osx
+      rvm: truffleruby-head
+after_failure:
+  - "find build -name mkmf.log | xargs cat"

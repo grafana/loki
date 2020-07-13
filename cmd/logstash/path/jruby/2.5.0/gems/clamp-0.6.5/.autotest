@@ -1,0 +1,11 @@
+require "autotest/bundler"
+
+Autotest.add_hook :initialize do |at|
+
+  at.add_exception ".git"
+
+  at.add_mapping(%r{^lib/(.*)\.rb$}, :prepend) do |_, match|
+    ["spec/unit/#{match[1]}_spec.rb"] + Dir['spec/clamp/command*_spec.rb']
+  end
+
+end
