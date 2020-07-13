@@ -3,3 +3,4 @@
 .bundle
 logstash/
 path/
+!lib/
