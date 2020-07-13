@@ -1,12 +1,16 @@
 {
     "description": "Loki Logging Driver",
     "documentation": "https://github.com/grafana/loki",
-    "entrypoint": ["/bin/docker-driver"],
+    "entrypoint": [
+        "/bin/docker-driver"
+    ],
     "network": {
         "type": "host"
     },
     "interface": {
-        "types": ["docker.logdriver/1.0"],
+        "types": [
+            "docker.logdriver/1.0"
+        ],
         "socket": "loki.sock"
     },
     "env": [
@@ -14,18 +18,9 @@
             "name": "LOG_LEVEL",
             "description": "Set log level to output for plugin logs",
             "value": "info",
-            "settable": ["value"]
-        }
-    ],
-    "mounts": [
-        {
-            "name": "data",
-            "description": "Optional external pipeline files",
-            "source": "",
-            "destination": "/data",
-            "type": "none",
-            "options": ["bind", "ro"],
-            "settable": ["source", "destination"]
+            "settable": [
+                "value"
+            ]
         }
     ]
 }
