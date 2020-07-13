@@ -1,1 +1,0 @@
-require 'mustermann/regular'

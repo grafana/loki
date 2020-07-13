@@ -1,9 +1,0 @@
-lib/composite_io.rb
-lib/multipartable.rb
-lib/parts.rb
-lib/net/http/post/multipart.rb
-Manifest.txt
-Rakefile
-README.txt
-test/test_composite_io.rb
-test/net/http/post/test_multipart.rb

@@ -1,4 +1,0 @@
-[submodule "ext/ffi_c/libffi"]
-	path = ext/ffi_c/libffi
-	url = https://github.com/libffi/libffi.git
-	branch = master

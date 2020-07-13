@@ -1,9 +1,0 @@
----
-title: kramdown News
-description: kramdown - a fast, pure Ruby Markdown-superset converter
-author: Thomas Leitner
-author_url: http://kramdown.gettalong.org
-entries: {alcn: news/*.html, sort: sort_info, reverse: true, limit: 10}
-versions:
-  atom:
-
