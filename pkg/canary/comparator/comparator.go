@@ -73,30 +73,32 @@ var (
 )
 
 type Comparator struct {
-	entMtx             sync.Mutex
-	spotMtx            sync.Mutex
-	metTestMtx         sync.Mutex
-	w                  io.Writer
-	entries            []*time.Time
-	spotCheck          []*time.Time
-	ackdEntries        []*time.Time
-	maxWait            time.Duration
-	pruneInterval      time.Duration
-	spotCheckInterval  time.Duration
-	spotCheckMax       time.Duration
-	spotCheckQueryRate time.Duration
-	spotCheckRunning   bool
-	metricTestInterval time.Duration
-	metricTestRange    time.Duration
-	metricTestRunning  bool
-	writeInterval      time.Duration
-	confirmAsync       bool
-	startTime          time.Time
-	sent               chan time.Time
-	recv               chan time.Time
-	rdr                reader.LokiReader
-	quit               chan struct{}
-	done               chan struct{}
+	entMtx              sync.Mutex
+	spotMtx             sync.Mutex
+	metTestMtx          sync.Mutex
+	pruneMtx            sync.Mutex
+	w                   io.Writer
+	entries             []*time.Time
+	spotCheck           []*time.Time
+	ackdEntries         []*time.Time
+	maxWait             time.Duration
+	pruneInterval       time.Duration
+	pruneEntriesRunning bool
+	spotCheckInterval   time.Duration
+	spotCheckMax        time.Duration
+	spotCheckQueryRate  time.Duration
+	spotCheckRunning    bool
+	metricTestInterval  time.Duration
+	metricTestRange     time.Duration
+	metricTestRunning   bool
+	writeInterval       time.Duration
+	confirmAsync        bool
+	startTime           time.Time
+	sent                chan time.Time
+	recv                chan time.Time
+	rdr                 reader.LokiReader
+	quit                chan struct{}
+	done                chan struct{}
 }
 
 func NewComparator(writer io.Writer,
@@ -112,26 +114,27 @@ func NewComparator(writer io.Writer,
 	reader reader.LokiReader,
 	confirmAsync bool) *Comparator {
 	c := &Comparator{
-		w:                  writer,
-		entries:            []*time.Time{},
-		spotCheck:          []*time.Time{},
-		maxWait:            maxWait,
-		pruneInterval:      pruneInterval,
-		spotCheckInterval:  spotCheckInterval,
-		spotCheckMax:       spotCheckMax,
-		spotCheckQueryRate: spotCheckQueryRate,
-		spotCheckRunning:   false,
-		metricTestInterval: metricTestInterval,
-		metricTestRange:    metricTestRange,
-		metricTestRunning:  false,
-		writeInterval:      writeInterval,
-		confirmAsync:       confirmAsync,
-		startTime:          time.Now(),
-		sent:               sentChan,
-		recv:               receivedChan,
-		rdr:                reader,
-		quit:               make(chan struct{}),
-		done:               make(chan struct{}),
+		w:                   writer,
+		entries:             []*time.Time{},
+		spotCheck:           []*time.Time{},
+		maxWait:             maxWait,
+		pruneInterval:       pruneInterval,
+		pruneEntriesRunning: false,
+		spotCheckInterval:   spotCheckInterval,
+		spotCheckMax:        spotCheckMax,
+		spotCheckQueryRate:  spotCheckQueryRate,
+		spotCheckRunning:    false,
+		metricTestInterval:  metricTestInterval,
+		metricTestRange:     metricTestRange,
+		metricTestRunning:   false,
+		writeInterval:       writeInterval,
+		confirmAsync:        confirmAsync,
+		startTime:           time.Now(),
+		sent:                sentChan,
+		recv:                receivedChan,
+		rdr:                 reader,
+		quit:                make(chan struct{}),
+		done:                make(chan struct{}),
 	}
 
 	if responseLatency == nil {
@@ -243,7 +246,13 @@ func (c *Comparator) run() {
 		case e := <-c.sent:
 			c.entrySent(e)
 		case <-t.C:
-			c.pruneEntries()
+			// Only run one instance of prune entries at a time.
+			c.pruneMtx.Lock()
+			if !c.pruneEntriesRunning {
+				c.pruneEntriesRunning = true
+				go c.pruneEntries()
+			}
+			c.pruneMtx.Unlock()
 		case <-sc.C:
 			// Only run one instance of spot check at a time.
 			c.spotMtx.Lock()
@@ -288,6 +297,9 @@ func (c *Comparator) metricTest(currTime time.Time) {
 	}
 	expectedCount := float64(adjustedRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
 	deviation := expectedCount - actualCount
+	// There is nothing special about the number 10 here, it's fairly common for the deviation to be 2-4
+	// based on how expected is calculated vs the actual query data, more than 10 would be unlikely
+	// unless there is a problem.
 	if deviation > 10 {
 		fmt.Fprintf(c.w, "large metric deviation: expected %v, actual %v\n", expectedCount, actualCount)
 	}
@@ -355,6 +367,12 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 }
 
 func (c *Comparator) pruneEntries() {
+	// Always make sure to set the running state back to false
+	defer func() {
+		c.pruneMtx.Lock()
+		c.pruneEntriesRunning = false
+		c.pruneMtx.Unlock()
+	}()
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 
