@@ -45,8 +45,8 @@ export LOGSTASH_SOURCE="1"
 export GEM_PATH=$LOGSTASH_PATH/vendor/bundle/
 export GEM_HOME=$LOGSTASH_PATH/vendor/bundle/
 cd ..
-bundle install --path
-bundle exec rake vendor
+ruby -S bundle install --path
+ruby -S bundle exec rake vendor
 ```
 
 ### Build the plugin
