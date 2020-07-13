@@ -127,7 +127,10 @@ func (t *ObjectTarget) run() {
 func (t *ObjectTarget) handleObjects(objects []chunk.StorageObject) {
 	for _, object := range objects {
 		if v, ok := t.watch[object.Key]; ok {
-			if v.err == nil && v.active {
+			v.readerMtx.RLock()
+			readerActive := v.active
+			v.readerMtx.RUnlock()
+			if readerActive {
 				continue
 			}
 			level.Info(t.logger).Log("msg", "stopping object reader", "object", v.object.Key)
@@ -204,7 +207,7 @@ func (t *ObjectTarget) Labels() model.LabelSet {
 	return t.labels
 }
 
-// Details implements a Target.
+// Details of the target.
 func (t *ObjectTarget) Details() interface{} {
 	objects := map[string]int64{}
 	for objectName := range t.watch {

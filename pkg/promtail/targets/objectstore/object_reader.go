@@ -27,13 +27,12 @@ type objectReader struct {
 	handler      api.EntryHandler
 	objectClient chunk.ObjectClient
 	logger       log.Logger
-	mux          *sync.RWMutex
+	readerMtx    *sync.RWMutex
 	labels       model.LabelSet
 	positions    positions.Positions
 	quit         chan struct{}
 	done         chan struct{}
 	object       *promtailObject
-	err          error
 	active       bool
 }
 
@@ -51,7 +50,6 @@ func newObjectReader(storeName string, object chunk.StorageObject, objectClient 
 		labels:       labels,
 		positions:    positions,
 		handler:      handler,
-		mux:          &sync.RWMutex{},
 		quit:         make(chan struct{}),
 		done:         make(chan struct{}),
 		objectClient: objectClient,
@@ -74,7 +72,9 @@ func (r *objectReader) run() {
 	bufReader, err := r.GetObject()
 	if err != nil {
 		level.Error(r.logger).Log("msg", "error in fetching and initializing object reader", "err", err)
-		r.err = errors.New("error in fetching and initializing object reader")
+		r.readerMtx.Lock()
+		r.active = false
+		r.readerMtx.Unlock()
 		return
 	}
 
@@ -104,7 +104,9 @@ func (r *objectReader) run() {
 					level.Debug(r.logger).Log("msg", "reached EOF while reading object", "object", r.object.Key)
 					r.object.BytesRead += int64(len(bytes))
 					r.markPositionAndSize()
+					r.readerMtx.Lock()
 					r.active = false
+					r.readerMtx.Unlock()
 					return
 				}
 				level.Error(r.logger).Log("msg", "error in reading line", "object", r.object.Key)
@@ -130,8 +132,8 @@ func (r *objectReader) run() {
 }
 
 func (r *objectReader) markPositionAndSize() {
-	r.mux.Lock()
-	defer r.mux.Unlock()
+	r.readerMtx.Lock()
+	defer r.readerMtx.Unlock()
 
 	// update positions
 	positionKey := fmt.Sprintf("s3object-%s", r.object.Key)
