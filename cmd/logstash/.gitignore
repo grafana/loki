@@ -2,3 +2,4 @@
 .ruby-version
 .bundle
 logstash
+path

@@ -20,7 +20,12 @@ ruby --version
 jruby 9.2.10
 ```
 
-You should use make sure you are running jruby and not ruby.
+You should use make sure you are running jruby and not ruby. If the command below still shows ruby and not jruby, check that PATH contains `$HOME/.rbenv/shims` and `$HOME/.rbenv/bin`. Also verify that you have this in your bash profile:
+
+```bash
+export PATH="$HOME/.rbenv/bin:$PATH"
+eval "$(rbenv init -)"
+```
 
 Then install bundler
 `gem install bundler:2.1.4`
