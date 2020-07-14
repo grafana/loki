@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util/runtime"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -113,18 +114,19 @@ type Loki struct {
 	moduleManager *modules.Manager
 	serviceMap    map[string]services.Service
 
-	server        *server.Server
-	ring          *ring.Ring
-	overrides     *validation.Overrides
-	distributor   *distributor.Distributor
-	ingester      *ingester.Ingester
-	querier       *querier.Querier
-	store         storage.Store
-	tableManager  *chunk.TableManager
-	frontend      *frontend.Frontend
-	stopper       queryrange.Stopper
-	runtimeConfig *runtimeconfig.Manager
-	memberlistKV  *memberlist.KVInitService
+	server         *server.Server
+	ring           *ring.Ring
+	overrides      *validation.Overrides
+	runtimeOptions *runtime.RuntimeOptions
+	distributor    *distributor.Distributor
+	ingester       *ingester.Ingester
+	querier        *querier.Querier
+	store          storage.Store
+	tableManager   *chunk.TableManager
+	frontend       *frontend.Frontend
+	stopper        queryrange.Stopper
+	runtimeConfig  *runtimeconfig.Manager
+	memberlistKV   *memberlist.KVInitService
 
 	httpAuthMiddleware middleware.Interface
 }
@@ -289,6 +291,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(RuntimeOptions, t.initRuntimeOptions)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -299,15 +302,16 @@ func (t *Loki) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		Ring:          {RuntimeConfig, Server, MemberlistKV},
-		Overrides:     {RuntimeConfig},
-		Distributor:   {Ring, Server, Overrides},
-		Store:         {Overrides},
-		Ingester:      {Store, Server, MemberlistKV},
-		Querier:       {Store, Ring, Server},
-		QueryFrontend: {Server, Overrides},
-		TableManager:  {Server},
-		All:           {Querier, Ingester, Distributor, TableManager},
+		Ring:           {RuntimeConfig, Server, MemberlistKV},
+		Overrides:      {RuntimeConfig},
+		RuntimeOptions: {RuntimeConfig},
+		Distributor:    {Ring, Server, Overrides},
+		Store:          {Overrides},
+		Ingester:       {RuntimeOptions, Store, Server, MemberlistKV},
+		Querier:        {Store, Ring, Server},
+		QueryFrontend:  {Server, Overrides},
+		TableManager:   {Server},
+		All:            {Querier, Ingester, Distributor, TableManager},
 	}
 
 	for mod, targets := range deps {

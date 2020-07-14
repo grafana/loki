@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 	listutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -117,6 +118,8 @@ type Ingester struct {
 
 	limiter *Limiter
 	factory func() chunkenc.Chunk
+
+	runtimeOptions *runtime.RuntimeOptions
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -127,7 +130,12 @@ type ChunkStore interface {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config,
+	clientConfig client.Config,
+	store ChunkStore,
+	limits *validation.Overrides,
+	runtimeOptions *runtime.RuntimeOptions,
+	registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -147,6 +155,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		factory: func() chunkenc.Chunk {
 			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
+		runtimeOptions: runtimeOptions,
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
@@ -268,7 +277,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization)
+		inst = newInstance(&i.cfg, instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization, i.runtimeOptions)
 		i.instances[instanceID] = inst
 	}
 	return inst

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -77,9 +79,11 @@ type instance struct {
 	// sync
 	syncPeriod  time.Duration
 	syncMinUtil float64
+
+	runtimeOptions *runtime.RuntimeOptions
 }
 
-func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, limiter *Limiter, syncPeriod time.Duration, syncMinUtil float64) *instance {
+func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, limiter *Limiter, syncPeriod time.Duration, syncMinUtil float64, runtimeOptions *runtime.RuntimeOptions) *instance {
 	i := &instance{
 		cfg:        cfg,
 		streams:    map[model.Fingerprint]*stream{},
@@ -95,6 +99,8 @@ func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, 
 
 		syncPeriod:  syncPeriod,
 		syncMinUtil: syncMinUtil,
+
+		runtimeOptions: runtimeOptions,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -173,6 +179,9 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+		if i.runtimeOptions.LogLimits(i.instanceID) {
+			level.Warn(cutil.Logger).Log("msg", "tenant hitting stream limit", "tenant", i.instanceID, "stream", pushReqStream.Labels, "err", err)
+		}
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
 	}
 

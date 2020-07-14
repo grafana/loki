@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/local"
+	"github.com/grafana/loki/pkg/util/runtime"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -43,18 +44,19 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring          string = "ring"
-	RuntimeConfig string = "runtime-config"
-	Overrides     string = "overrides"
-	Server        string = "server"
-	Distributor   string = "distributor"
-	Ingester      string = "ingester"
-	Querier       string = "querier"
-	QueryFrontend string = "query-frontend"
-	Store         string = "store"
-	TableManager  string = "table-manager"
-	MemberlistKV  string = "memberlist-kv"
-	All           string = "all"
+	Ring           string = "ring"
+	RuntimeConfig  string = "runtime-config"
+	Overrides      string = "overrides"
+	RuntimeOptions string = "runtime-options"
+	Server         string = "server"
+	Distributor    string = "distributor"
+	Ingester       string = "ingester"
+	Querier        string = "querier"
+	QueryFrontend  string = "query-frontend"
+	Store          string = "store"
+	TableManager   string = "table-manager"
+	MemberlistKV   string = "memberlist-kv"
+	All            string = "all"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -113,6 +115,12 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 func (t *Loki) initOverrides() (_ services.Service, err error) {
 	t.overrides, err = validation.NewOverrides(t.cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
 	// overrides are not a service, since they don't have any operational state.
+	return nil, err
+}
+
+func (t *Loki) initRuntimeOptions() (_ services.Service, err error) {
+	t.runtimeOptions, err = runtime.NewRuntimeOptions(tenantOptionsFromRuntimeConfig(t.runtimeConfig))
+	// runtimeoptions are not a service, since they don't have any operational state.
 	return nil, err
 }
 
@@ -188,7 +196,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
 	}
 
-	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, prometheus.DefaultRegisterer)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, t.runtimeOptions, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
