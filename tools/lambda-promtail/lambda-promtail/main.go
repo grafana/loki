@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/loki/pkg/logproto"
@@ -49,17 +50,18 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 
 	stream := logproto.Stream{
 		Labels: model.LabelSet{
-			model.LabelName("__aws_lambda_log_group"):  model.LabelValue(data.LogGroup),
-			model.LabelName("__aws_lambda_log_stream"): model.LabelValue(data.LogStream),
-			model.LabelName("__aws_lambda_owner"):      model.LabelValue(data.Owner),
+			model.LabelName("__aws_cloudwatch_log_group"):  model.LabelValue(data.LogGroup),
+			model.LabelName("__aws_cloudwatch_log_stream"): model.LabelValue(data.LogStream),
+			model.LabelName("__aws_cloudwatch_owner"):      model.LabelValue(data.Owner),
 		}.String(),
 		Entries: make([]logproto.Entry, 0, len(data.LogEvents)),
 	}
 
 	for _, entry := range data.LogEvents {
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			// We ignore timestamps from cloudwatch here as promtail is responsible for adding those.
 			Line: entry.Message,
+			// It's best practice to ignore timestamps from cloudwatch as promtail is responsible for adding those.
+			Timestamp: util.TimeFromMillis(entry.Timestamp),
 		})
 	}
 
@@ -78,7 +80,7 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 	}
 	req.Header.Set("Content-Type", contentType)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return err
 	}
