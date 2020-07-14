@@ -14,6 +14,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 )
 
+var (
+	errReadOnly = errors.New("local alertmanager config storage is read-only")
+)
+
 // StoreConfig configures a static file alertmanager store
 type StoreConfig struct {
 	Path string `yaml:"path"`
@@ -75,4 +79,27 @@ func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 	}
 
 	return configs, nil
+}
+
+func (f *Store) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+	cfgs, err := f.ListAlertConfigs(ctx)
+	if err != nil {
+		return alerts.AlertConfigDesc{}, err
+	}
+
+	cfg, exists := cfgs[user]
+
+	if !exists {
+		return alerts.AlertConfigDesc{}, alerts.ErrNotFound
+	}
+
+	return cfg, nil
+}
+
+func (f *Store) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+	return errReadOnly
+}
+
+func (f *Store) DeleteAlertConfig(ctx context.Context, user string) error {
+	return errReadOnly
 }

@@ -9,9 +9,9 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.2.1-0.20200702073552-0ea5a8b50b19
+	github.com/cortexproject/cortex v1.2.1-0.20200709155522-19502213923d
 	github.com/davecgh/go-spew v1.1.1
-	github.com/docker/docker v17.12.0-ce-rc1.0.20200621004740-33fba35d42e7+incompatible
+	github.com/docker/docker v17.12.0-ce-rc1.0.20200706150819-a40b877fbb9e+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
 	github.com/dustin/go-humanize v1.0.0
@@ -34,17 +34,17 @@ require (
 	github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da
 	github.com/jmespath/go-jmespath v0.3.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
-	github.com/json-iterator/go v1.1.9
+	github.com/json-iterator/go v1.1.10
 	github.com/klauspost/compress v1.9.5
 	github.com/mitchellh/mapstructure v1.2.2
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/pierrec/lz4 v2.5.3-0.20200429092203-e876bbd321b3+incompatible
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.6.1-0.20200604110148-03575cad4e55
+	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200626180636-d17d88935c8d
+	github.com/prometheus/prometheus v1.8.2-0.20200707115909-30505a202a4c
 	github.com/segmentio/fasthash v1.0.2
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd

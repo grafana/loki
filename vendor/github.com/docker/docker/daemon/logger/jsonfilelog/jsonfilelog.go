@@ -13,7 +13,7 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog/jsonlog"
 	"github.com/docker/docker/daemon/logger/loggerutils"
-	units "github.com/docker/go-units"
+	"github.com/docker/go-units"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -156,7 +156,6 @@ func ValidateLogOpt(cfg map[string]string) error {
 		case "max-size":
 		case "compress":
 		case "labels":
-		case "labels-regex":
 		case "env":
 		case "env-regex":
 		case "tag":

@@ -6,10 +6,38 @@ Unfortunately Loki is software and software is hard and sometimes things are not
 
 On this page we will document any upgrade issues/gotchas/considerations we are aware of.
 
-## 1.6.0
+
+## Master / Unreleased
+
+Configuration document has been re-orderd a bit and for all the config, corresponding `CLI` flag is
+provided. 
+
+S3 config now supports exapnded config. Example can be found here [s3_expanded_config](../configuration/examples.md#s3-expanded-config)
+
+### New Ingester GRPC API special rollout procedure in microservices mode
 
 A new ingester GRPC API has been added allowing to speed up metric queries, to ensure a rollout without query errors make sure you upgrade all ingesters first.
 Once this is done you can then proceed with the rest of the deployment, this is to ensure that queriers won't look for an API not yet available.
+
+If you roll out everything at once, queriers with this new code will attempt to query ingesters which may not have the new method on the API and queries will fail.
+
+This will only affect reads(queries) and not writes.
+
+### Breaking CLI flags changes
+
+```diff
+- querier.query_timeout
++ querier.query-timeout
+
+- distributor.extra-query-delay
++ querier.extra-query-delay
+
+- max-chunk-batch-size
++ store.max-chunk-batch-size
+
+- ingester.concurrent-flushed
++ ingester.concurrent-flushes
+```
 
 ### Loki Canary metric name changes
 

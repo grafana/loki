@@ -37,6 +37,11 @@ func ParseTime(s string) (int64, error) {
 }
 
 func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration {
+	// No duration? No jitter.
+	if input == 0 {
+		return 0
+	}
+
 	variance := int64(float64(input) * variancePerc)
 	jitter := rand.Int63n(variance*2) - variance
 

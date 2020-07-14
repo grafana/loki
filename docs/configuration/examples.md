@@ -5,7 +5,8 @@
 3. [Cassandra Index](#cassandra-index)
 4. [AWS](#aws)
 5. [Almost zero dependencies setup with Memberlist and BoltDB Shipper](#almost-zero-dependencies-setup)
-6. [Using the query-frontend](#query-frontend)
+6. [Schema config to migrate to new changes such as store, schema, index period etc..](#schema_config)
+7. [Using the query-frontend](#query-frontend)
 
 ## Complete Local config
 
@@ -136,7 +137,7 @@ storage_config:
 
 ### S3-compatible APIs
 
-S3-compatible APIs (e.g., Ceph Object Storage with an S3-compatible API) can be
+S3-compatible APIs (e.g. Ceph Object Storage with an S3-compatible API) can be
 used. If the API supports path-style URL rather than virtual hosted bucket
 addressing, configure the URL in `storage_config` with the custom endpoint:
 
@@ -147,12 +148,32 @@ storage_config:
     s3forcepathstyle: true
 ```
 
+### S3 Expanded Config
+
+S3 config now supports expanded config. Either `s3` endpoint URL can be used
+or expanded config can be used. 
+
+```yaml
+storage_config:
+  aws:
+    endpoint: s3.endpoint.com
+    region: s3_region
+    access_key_id: s3_access_key_id
+    secret_access_key: s3_secret_access_key
+    insecure: false
+    sse_encryption: false 
+    http_config:
+      idle_conn_timeout: 90s
+      response_header_timeout: 0s
+      insecure_skip_verify: false
+    s3forcepathstyle: true
+```
+
 ## Almost zero dependencies setup
 
 This is a configuration to deploy Loki depending only on storage solution, e.g. an
 S3-compatible API like minio. The ring configuration is based on the gossip memberlist
 and the index is shipped to storage via [boltdb-shipper](../operations/storage/boltdb-shipper.md).
-
 
 ```yaml
 auth_enabled: false
@@ -216,6 +237,31 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
+```
+
+## schema_config
+
+```yaml
+configs:
+  # Starting from 2018-04-15 Loki should store indexes on Cassandra 
+  # using weekly periodic tables and chunks on filesystem. 
+  # The index tables will be prefixed with "index_".
+  - from: "2018-04-15"
+    store: cassandra
+    object_store: filesystem
+    schema: v11
+    index:
+        period: 168h
+        prefix: index_
+
+  # Starting from 2020-6-15 we moved from filesystem to AWS S3 for storing the chunks.
+  - from: "2020-06-15"
+    store: cassandra
+    object_store: s3
+    schema: v11
+    index:
+        period: 168h
+        prefix: index_
 ```
 
 ## Query Frontend
