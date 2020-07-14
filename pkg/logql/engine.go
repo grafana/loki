@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"errors"
+	"flag"
 	"math"
 	"sort"
 	"time"
@@ -67,9 +68,14 @@ type EngineOpts struct {
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
+func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", 5*time.Minute, "Timeout for query execution.")
+	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
+}
+
 func (opts *EngineOpts) applyDefault() {
 	if opts.Timeout == 0 {
-		opts.Timeout = 3 * time.Minute
+		opts.Timeout = 5 * time.Minute
 	}
 	if opts.MaxLookBackPeriod == 0 {
 		opts.MaxLookBackPeriod = 30 * time.Second

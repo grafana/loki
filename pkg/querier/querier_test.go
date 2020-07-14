@@ -295,7 +295,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 
 	request.Start = request.End.Add(-3 * time.Minute)
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (3m0s > 2m0s)"), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m0s, limit: 2m0s)"), err)
 }
 
 func TestQuerier_SeriesAPI(t *testing.T) {

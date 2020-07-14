@@ -276,6 +276,11 @@ func ReuseSlice(ts []PreallocTimeseries) {
 
 // ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.
 func ReuseTimeseries(ts *TimeSeries) {
+	// Name and Value may point into a large gRPC buffer, so clear the reference to allow GC
+	for i := 0; i < len(ts.Labels); i++ {
+		ts.Labels[i].Name = ""
+		ts.Labels[i].Value = ""
+	}
 	ts.Labels = ts.Labels[:0]
 	ts.Samples = ts.Samples[:0]
 	timeSeriesPool.Put(ts)

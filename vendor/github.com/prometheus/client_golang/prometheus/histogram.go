@@ -607,7 +607,7 @@ func NewConstHistogram(
 }
 
 // MustNewConstHistogram is a version of NewConstHistogram that panics where
-// NewConstMetric would have returned an error.
+// NewConstHistogram would have returned an error.
 func MustNewConstHistogram(
 	desc *Desc,
 	count uint64,
