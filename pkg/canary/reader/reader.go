@@ -29,7 +29,7 @@ import (
 var (
 	reconnects = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "ws_reconnects",
+		Name:      "ws_reconnects_total",
 		Help:      "counts every time the websocket connection has to reconnect",
 	})
 	websocketPings = promauto.NewCounter(prometheus.CounterOpts{

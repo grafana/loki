@@ -3,7 +3,6 @@ package comparator
 import (
 	"fmt"
 	"io"
-	"math"
 	"sync"
 	"time"
 
@@ -65,10 +64,15 @@ var (
 		Name:      "duplicate_entries_total",
 		Help:      "counts a log entry received more than one time",
 	})
-	metricTestDeviation = promauto.NewGauge(prometheus.GaugeOpts{
+	metricTestExpected = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "loki_canary",
-		Name:      "metric_test_deviation",
-		Help:      "How many counts was the actual query result from the expected based on the canary log write rate",
+		Name:      "metric_test_expected",
+		Help:      "How many counts were expected by the metric test query",
+	})
+	metricTestActual = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki_canary",
+		Name:      "metric_test_actual",
+		Help:      "How many counts were actually recevied by the metric test query",
 	})
 	responseLatency prometheus.Histogram
 )
@@ -299,14 +303,8 @@ func (c *Comparator) metricTest(currTime time.Time) {
 		return
 	}
 	expectedCount := float64(adjustedRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
-	deviation := expectedCount - actualCount
-	// There is nothing special about the number 10 here, it's fairly common for the deviation to be 2-4
-	// based on how expected is calculated vs the actual query data, more than 10 would be unlikely
-	// unless there is a problem.
-	if math.Abs(deviation) > 10 {
-		fmt.Fprintf(c.w, "large metric deviation: expected %v, actual %v\n", expectedCount, actualCount)
-	}
-	metricTestDeviation.Set(deviation)
+	metricTestExpected.Set(expectedCount)
+	metricTestActual.Set(actualCount)
 }
 
 func (c *Comparator) spotCheckEntries(currTime time.Time) {
