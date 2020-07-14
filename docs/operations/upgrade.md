@@ -21,7 +21,7 @@ Once this is done you can then proceed with the rest of the deployment, this is 
 
 If you roll out everything at once, queriers with this new code will attempt to query ingesters which may not have the new method on the API and queries will fail.
 
-This will only affect reads(queries) and not writes.
+This will only affect reads(queries) and not writes and only for the duration of the rollout.
 
 ### Breaking CLI flags changes
 
