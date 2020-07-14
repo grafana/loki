@@ -42,10 +42,11 @@ cd logstash
 git checkout tags/v7.6.2
 export LOGSTASH_PATH=`pwd`
 export LOGSTASH_SOURCE="1"
-export GEM_PATH=$LOGSTASH_PATH/vendor/bundle/
-export GEM_HOME=$LOGSTASH_PATH/vendor/bundle/
+export GEM_PATH=$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0
+export GEM_HOME=$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0
+./gradlew assemble
 cd ..
-ruby -S bundle install --path
+ruby -S bundle install --path=$LOGSTASH_PATH/vendor/bundle/
 ruby -S bundle exec rake vendor
 ```
 
@@ -56,6 +57,14 @@ ruby -S bundle exec rake vendor
 ### Test
 
 `ruby -S bundle exec rspec`
+
+Alternatively if you don't want to install JRuby. Enter inside logstash-loki container.
+
+```bash
+docker build -t logstash-loki ./
+docker run -v  `pwd`/spec:/home/logstash/spec -it --rm --entrypoint /bin/sh logstash-loki
+bundle exec rspec
+```
 
 ## Install plugin to local logstash
 
