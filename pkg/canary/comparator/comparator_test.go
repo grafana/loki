@@ -307,7 +307,8 @@ func TestSpotCheck(t *testing.T) {
 }
 
 func TestMetricTest(t *testing.T) {
-	metricTestDeviation = &mockGauge{}
+	metricTestActual = &mockGauge{}
+	metricTestExpected = &mockGauge{}
 
 	actual := &bytes.Buffer{}
 
@@ -327,7 +328,8 @@ func TestMetricTest(t *testing.T) {
 	// We want to look back 30s but have only been running from time 10s to time 20s so the query range should be adjusted to 10s
 	assert.Equal(t, "10s", mr.queryRange)
 	// Should be no deviation we set countOverTime to the runtime/writeinterval which should be what metrictTest expected
-	assert.Equal(t, float64(0), metricTestDeviation.(*mockGauge).val)
+	assert.Equal(t, float64(20), metricTestExpected.(*mockGauge).val)
+	assert.Equal(t, float64(20), metricTestActual.(*mockGauge).val)
 
 	// Run test at time 30s which is 20s after start
 	mr.countOverTime = float64((20 * time.Second).Milliseconds()) / float64(writeInterval.Milliseconds())
@@ -335,7 +337,8 @@ func TestMetricTest(t *testing.T) {
 	// We want to look back 30s but have only been running from time 10s to time 20s so the query range should be adjusted to 10s
 	assert.Equal(t, "20s", mr.queryRange)
 	// Gauge should be equal to the countOverTime value
-	assert.Equal(t, float64(0), metricTestDeviation.(*mockGauge).val)
+	assert.Equal(t, float64(40), metricTestExpected.(*mockGauge).val)
+	assert.Equal(t, float64(40), metricTestActual.(*mockGauge).val)
 
 	// Run test 60s after start, we should now be capping the query range to 30s and expecting only 30s of counts
 	mr.countOverTime = float64((30 * time.Second).Milliseconds()) / float64(writeInterval.Milliseconds())
@@ -343,7 +346,8 @@ func TestMetricTest(t *testing.T) {
 	// We want to look back 30s but have only been running from time 10s to time 20s so the query range should be adjusted to 10s
 	assert.Equal(t, "30s", mr.queryRange)
 	// Gauge should be equal to the countOverTime value
-	assert.Equal(t, float64(0), metricTestDeviation.(*mockGauge).val)
+	assert.Equal(t, float64(60), metricTestExpected.(*mockGauge).val)
+	assert.Equal(t, float64(60), metricTestActual.(*mockGauge).val)
 
 	prometheus.Unregister(responseLatency)
 }
