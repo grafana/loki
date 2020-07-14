@@ -11,6 +11,20 @@ On this page we will document any upgrade issues/gotchas/considerations we are a
 A new ingester GRPC API has been added allowing to speed up metric queries, to ensure a rollout without query errors make sure you upgrade all ingesters first.
 Once this is done you can then proceed with the rest of the deployment, this is to ensure that queriers won't look for an API not yet available.
 
+### Loki Canary metric name changes
+
+When adding some new features to the canary we realized the existing metrics were not compliant with standards for counter names, the following metrics have been renamed:
+
+```nohighlight
+loki_canary_total_entries               ->      loki_canary_entries_total
+loki_canary_out_of_order_entries        ->      loki_canary_out_of_order_entries_total
+loki_canary_websocket_missing_entries   ->      loki_canary_websocket_missing_entries_total
+loki_canary_missing_entries             ->      loki_canary_missing_entries_total
+loki_canary_unexpected_entries          ->      loki_canary_unexpected_entries_total
+loki_canary_duplicate_entries           ->      loki_canary_duplicate_entries_total
+loki_canary_ws_reconnects               ->      loki_canary_ws_reconnects_total      
+```
+
 ## 1.5.0
 
 Note: The required upgrade path outlined for version 1.4.0 below is still true for moving to 1.5.0 from any release older than 1.4.0 (e.g. 1.3.0->1.5.0 needs to also look at the 1.4.0 upgrade requirements).
