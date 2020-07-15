@@ -1,5 +1,7 @@
 # encoding: utf-8
 require "logstash/outputs/base"
+require "logstash/outputs/loki/entry"
+require "logstash/outputs/loki/batch"
 require "logstash/namespace"
 require 'net/http'
 require 'concurrent-edge'
@@ -8,9 +10,7 @@ require 'uri'
 require 'json'
 
 class LogStash::Outputs::Loki < LogStash::Outputs::Base
-  require 'logstash/outputs/loki/batch'
-  require 'logstash/outputs/loki/entry'
-
+  include Loki
   config_name "loki"
 
   ## 'A single instance of the Output will be shared among the pipeline worker threads'

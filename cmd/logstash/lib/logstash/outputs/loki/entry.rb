@@ -3,6 +3,7 @@ module Loki
         (s.to_f * (10**9)).to_i
     end
     class Entry
+        include Loki
         attr_reader :labels, :entry
         def initialize(event,message_field)
             @entry = {

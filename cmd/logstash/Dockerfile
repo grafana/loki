@@ -2,16 +2,15 @@ FROM logstash:7.6.2
 
 ARG PLUGIN_VERSION=1.0.0
 USER logstash
-
-COPY --chown=logstash:logstash . /home/logstash/
-WORKDIR /home/logstash/
-
 ENV PATH /usr/share/logstash/vendor/jruby/bin:/usr/share/logstash/vendor/bundle/jruby/2.5.0/bin:$PATH
 ENV LOGSTASH_PATH="/usr/share/logstash"
 ENV GEM_PATH /usr/share/logstash/vendor/bundle/jruby/2.5.0
 ENV GEM_HOME /usr/share/logstash/vendor/bundle/jruby/2.5.0
 
 RUN gem install bundler:2.1.4
+
+COPY --chown=logstash:logstash . /home/logstash/
+WORKDIR /home/logstash/
 
 RUN bundle install --path=/usr/share/logstash/vendor/bundle && \
     bundle exec rake vendor && \
