@@ -222,6 +222,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       raise StandardError.new res
     rescue StandardError => e
       retry_count += 1
+<<<<<<< HEAD
       @logger.warn("Failed to send batch attempt: #{retry_count}/#{@retries}", :error_inspect => e.inspect, :error => e)
       if retry_count < @retries
         sleep delay
@@ -234,6 +235,15 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       else
         @logger.error("Failed to send batch", :error_inspect => e.inspect, :error => e)
         return res
+=======
+      @logger.warn("Trying to send again. Attempt number: #{retry_count}. Retrying in #{delay}s")
+      sleep delay
+
+      if delay * 2 <= max_delay
+        delay = delay * 2
+      else
+        delay = max_delay
+>>>>>>> d10f042129632184df8f4b85fdbe61eb8bd68776
       end
     end
   end
