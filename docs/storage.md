@@ -9,7 +9,7 @@ Loki uses a two pronged strategy regarding storage, which is responsible for bot
   * [S3](#S3)
   * [Notable Mentions](#Notable-Mentions)
 * [Index Clients](#Implementations---Index)
-  * [Cassandra](#Cassandra)
+  * [Cassandra](#Cassandra-1)
   * [BigTable](#BigTable)
   * [DynamoDB](#DynamoDB)
   * [BoltDB](#BoltDB)
@@ -161,7 +161,7 @@ With the exception of the `filesystem` chunk store, Loki will not delete old chu
 
 We're interested in adding targeted deletion in future Loki releases (think tenant or stream level granularity) and may include other strategies as well.
 
-For more information, see the configuration [docs](./operations/storage/retention.md)
+For more information, see the configuration [docs](./operations/storage/retention.md).
 
 
 ## Examples
