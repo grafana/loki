@@ -824,7 +824,7 @@ gcs:
   # CLI flag: -gcs.request-timeout
   [request_timeout: <duration> | default = 0s]
 
-# Configures storing chunks in Cassandra
+# Configures storing chunks and/or the index in Cassandra
 cassandra:
   # Comma-separated hostnames or IPs of Cassandra instances
   # CLI flag: -cassandra.addresses
