@@ -7,7 +7,6 @@ COPY --chown=logstash:logstash . /home/logstash/
 WORKDIR /home/logstash/
 
 ENV PATH /usr/share/logstash/vendor/jruby/bin:/usr/share/logstash/vendor/bundle/jruby/2.5.0/bin:$PATH
-ENV LOGSTASH_SOURCE="1"
 ENV LOGSTASH_PATH="/usr/share/logstash"
 ENV GEM_PATH /usr/share/logstash/vendor/bundle/jruby/2.5.0
 ENV GEM_HOME /usr/share/logstash/vendor/bundle/jruby/2.5.0

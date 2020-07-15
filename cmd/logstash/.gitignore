@@ -4,3 +4,4 @@
 logstash
 path
 !lib
+.rakeTasks

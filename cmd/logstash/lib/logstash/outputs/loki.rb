@@ -51,6 +51,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   ## 'Backoff configuration. Maximum number of retries to do'
   config :retries, :validate => :number, :default => 10, :required => false
 
+  attr_reader :batch
   public
   def register
     @uri = URI.parse(@url)
@@ -67,6 +68,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     # initialize channels
     @Channel = Concurrent::Channel
     @entries = @Channel.new
+    @stop = @Channel.new
 
     # create nil batch object.
     @batch = nil
@@ -126,10 +128,13 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     @max_wait_check = Concurrent::Channel.tick(max_wait_checkfrequency)
     loop do
       Concurrent::Channel.select do |s|
+        s.take(@stop) {
+          return
+        }
         s.take(@entries) { |e|
-         if add_entry_to_batch(e)
+         if !add_entry_to_batch(e)
            @logger.debug("Max batch_size is reached. Sending batch to loki")
-           send(@tenant_id, @batch)
+           send(@batch)
            @batch = Batch.new(e)
          end
         }
@@ -137,7 +142,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
           # Send batch if max wait time has been reached
           if is_batch_expired
             @logger.debug("Max batch_wait time is reached. Sending batch to loki")
-            send(@tenant_id, @batch)
+            send(@batch)
             @batch = nil
           end
         }
@@ -145,21 +150,23 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     end
   end
 
+  # add an entry to the current batch return false if the batch is full
+  # and the entry can't be added.
   def add_entry_to_batch(e)
     line = e.entry['line']
     # we don't want to send empty lines.
-    return false if line.to_s.strip.empty?
+    return true if line.to_s.strip.empty?
 
     if @batch.nil?
       @batch = Batch.new(e)
-      return false
+      return true
     end
 
     if @batch.size_bytes_after(line) > @batch_size
-      return true
+      return false
     end
     @batch.add(e)
-    return false
+    return true
   end
 
   def is_batch_expired
@@ -169,34 +176,36 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   ## Receives logstash events
   public
   def receive(event)
-    @entries << Entry.new(event,@message_field)
+    @entries << Entry.new(event, @message_field)
   end
 
   def close
-    @logger.info("Closing loki output plugin. Flushing all pending batches")
     @entries.close
-    send(@tenant_id, @batch) if !@batch.nil?
     @max_wait_check.close if !@max_wait_check.nil?
+    @stop << true # stop will block until it's accepted by the worker.
+
+    # if by any chance we still have a forming batch, we need to send it.
+    send(@batch) if !@batch.nil?
+    @batch = nil
   end
 
-  def send(tenant_id, batch)
-    res = loki_http_request(tenant_id, batch.to_json, @min_delay, @max_delay, @retries)
-
+  def send(batch)
+    payload = batch.to_json
+    res = loki_http_request(payload)
     if res.is_a?(Net::HTTPSuccess)
       @logger.debug("Successfully pushed data to loki")
-      return
     else
-      @logger.error("failed to write post to ", :uri => @uri, :code => res.code, :body => res.body, :message => res.message) if !res.nil?
-      @logger.debug("Payload object ", :payload => payload)
+      @logger.debug("failed payload", :payload => payload)
     end
   end
 
-  def loki_http_request(tenant_id, payload, min_delay, max_delay, retries)
+  def loki_http_request(payload)
     req = Net::HTTP::Post.new(
       @uri.request_uri
     )
     req.add_field('Content-Type', 'application/json')
-    req.add_field('X-Scope-OrgID', tenant_id) if tenant_id
+    req.add_field('X-Scope-OrgID', @tenant_id) if @tenant_id
+    req['User-Agent']= 'loki-logstash'
     req.basic_auth(@username, @password) if @username
     req.body = payload
 
@@ -204,30 +213,28 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
 
     @logger.debug("sending #{req.body.length} bytes to loki")
     retry_count = 0
-    delay = min_delay
+    delay = @min_delay
     begin
-      res = Net::HTTP.start(@uri.host, @uri.port, **opts) { |http| http.request(req) }
-    rescue Net::HTTPTooManyRequests, Net::HTTPServerError, Errno::ECONNREFUSED => e
-      unless retry_count < retries
-        @logger.error("Error while sending data to loki. Tried #{retry_count} times\n. :error => #{e}")
+      res = Net::HTTP.start(@uri.host, @uri.port, **opts) { |http|
+        http.request(req)
+      }
+      return res if !res.nil? && res.code.to_i != 429 && res.code.to_i.div(100) != 5
+      raise StandardError.new res
+    rescue StandardError => e
+      retry_count += 1
+      @logger.warn("Failed to send batch attempt: #{retry_count}/#{@retries}", :error_inspect => e.inspect, :error => e)
+      if retry_count < @retries
+        sleep delay
+        if (delay * 2 - delay) > @max_delay
+          delay = delay
+        else
+          delay = delay * 2
+        end
+        retry
+      else
+        @logger.error("Failed to send batch", :error_inspect => e.inspect, :error => e)
         return res
       end
-
-      retry_count += 1
-      @logger.warn("Trying to send again. Attempt number: #{retry_count}. Retrying in #{delay}s")
-      sleep delay
-
-      if (delay * 2 - delay) > max_delay
-        delay = delay
-      else
-        delay = delay * 2
-      end
-
-      retry
-    rescue StandardError => e
-      @logger.error("Error while connecting to loki server ", :error_inspect => e.inspect, :error => e)
-      return res
     end
-    return res
   end
 end

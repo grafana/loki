@@ -4,12 +4,12 @@ require "logstash/outputs/loki"
 require "logstash/codecs/plain"
 require "logstash/event"
 require "net/http"
+require 'webmock/rspec'
+include Loki
 
 describe LogStash::Outputs::Loki do
 
-  let (:simple_loki_config) {
-    {'url' => 'http://localhost:3100'}
-  }
+  let (:simple_loki_config) { {'url' => 'http://localhost:3100'} }
 
   context 'when initializing' do
     it "should register" do
@@ -26,47 +26,222 @@ describe LogStash::Outputs::Loki do
     end
   end
 
+  context 'when adding en entry to the batch' do
+    let (:simple_loki_config) {{'url' => 'http://localhost:3100'}}
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message")}
+    let (:lbs) { {"buzz"=>"bar","cluster"=>"us-central1"}.sort.to_h}
 
-  context 'test http requests' do
-    let (:simple_loki_config) {{'url' => 'http://localhost:3100', 'include_labels' => ["@version", "host", "test"],}}
-    let (:event) { LogStash::Event.new({'message' => 'hello', '@version' => '1', 'host' => '172.0.0.1',
-                                      '@timestamp' => LogStash::Timestamp.now}) }
-    let(:loki) { LogStash::Plugin.lookup("output", "loki").new(simple_loki_config) }
-
-    before do
-      loki.register
-      loki.close
+    it 'should not add empty line' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(simple_loki_config)
+      emptyEntry = Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"foo")
+      expect(plugin.add_entry_to_batch(emptyEntry)).to eql true
+      expect(plugin.batch).to eql nil
     end
 
-    it 'test http requests when' do
-      labels = {}
-      event_hash = event.to_hash
-      lbls = loki.handle_labels(event_hash, labels, "")
-      entry_hash = {
-        "ts" => event.get("@timestamp").to_i * (10**9),
-        "line" => event.get("message").to_s
+    it 'should add entry' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(simple_loki_config)
+      expect(plugin.batch).to eql nil
+      expect(plugin.add_entry_to_batch(entry)).to eql true
+      expect(plugin.add_entry_to_batch(entry)).to eql true
+      expect(plugin.batch).not_to be_nil
+      expect(plugin.batch.streams.length).to eq 1
+      expect(plugin.batch.streams[lbs.to_s]['entries'].length).to eq 2
+      expect(plugin.batch.streams[lbs.to_s]['labels']).to eq lbs
+      expect(plugin.batch.size_bytes).to eq 14
+    end
+
+    it 'should not add if full' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(simple_loki_config.merge!({'batch_size'=>10}))
+      expect(plugin.batch).to eql nil
+      expect(plugin.add_entry_to_batch(entry)).to eql true # first entry is fine.
+      expect(plugin.batch).not_to be_nil
+      expect(plugin.batch.streams.length).to eq 1
+      expect(plugin.batch.streams[lbs.to_s]['entries'].length).to eq 1
+      expect(plugin.batch.streams[lbs.to_s]['labels']).to eq lbs
+      expect(plugin.batch.size_bytes).to eq 7
+      expect(plugin.add_entry_to_batch(entry)).to eql false # second entry goes over the limit.
+      expect(plugin.batch).not_to be_nil
+      expect(plugin.batch.streams.length).to eq 1
+      expect(plugin.batch.streams[lbs.to_s]['entries'].length).to eq 1
+      expect(plugin.batch.streams[lbs.to_s]['labels']).to eq lbs
+      expect(plugin.batch.size_bytes).to eq 7
+    end
+  end
+
+  context 'batch expiration' do
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message")}
+
+    it 'should not expire if empty' do
+      loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5}))
+      sleep(1)
+      expect(loki.is_batch_expired).to be false
+    end
+    it 'should not expire batch if not old' do
+      loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5}))
+      expect(loki.add_entry_to_batch(entry)).to eql true
+      expect(loki.is_batch_expired).to be false
+    end
+    it 'should expire if old' do
+      loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5}))
+      expect(loki.add_entry_to_batch(entry)).to eql true
+      sleep(1)
+      expect(loki.is_batch_expired).to be true
+    end
+  end
+
+  context 'channel' do
+    let (:event) {LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)})}
+
+    it 'should send entry if batch size reached with no tenant' do
+      loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5,'batch_size'=>10}))
+      loki.register
+      sent = Concurrent::Channel.new(capacity: 3)
+      allow(loki).to receive(:send) do |batch|
+        Thread.new do
+          sent << batch
+        end
+      end
+      loki.receive(event)
+      loki.receive(event)
+      loki.close
+      ~sent
+      ~sent
+    end
+    it 'should send entry while closing' do
+      loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>10,'batch_size'=>10}))
+      loki.register
+      sent = Concurrent::Channel.new(capacity: 3)
+      allow(loki).to receive(:send) do | batch|
+        Thread.new  do
+          sent << batch
+        end
+      end
+      loki.receive(event)
+      loki.close
+      ~sent
+    end
+    it 'should send entry when batch is expiring' do
+      loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5,'batch_size'=>10}))
+      loki.register
+      sent = Concurrent::Channel.new(capacity: 3)
+      allow(loki).to receive(:send) do | batch|
+        Thread.new  do
+          sent << batch
+        end
+      end
+      loki.receive(event)
+      ~sent
+      expect(loki.batch).to be_nil
+      loki.close
+    end
+  end
+
+  context 'http requests' do
+    let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message")}
+
+    it 'should send credentials' do
+      conf = {
+          'url'=>'http://localhost:3100/loki/api/v1/push',
+          'username' => 'foo',
+          'password' => 'bar',
+          'tenant_id' => 't'
       }
-      e = LogStash::Outputs::Loki::Entry.new(lbls, entry_hash)
-      batch = LogStash::Outputs::Loki::Batch.new(e)
-      payload = loki.build_payload(batch)
+      loki = LogStash::Outputs::Loki.new(conf)
+      loki.register
+      b = Batch.new(entry)
+      post = stub_request(:post, "http://localhost:3100/loki/api/v1/push").with(
+          basic_auth: ['foo', 'bar'],
+          body: b.to_json,
+          headers:{
+              'Content-Type' => 'application/json' ,
+              'User-Agent' => 'loki-logstash',
+              'X-Scope-OrgID'=>'t',
+              'Accept'=>'*/*',
+              'Accept-Encoding'=>'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
+          }
+      )
+      loki.send(b)
+      expect(post).to have_been_requested.times(1)
+    end
 
-      # response should be nil on connection error
-      expect(loki.loki_http_request("fake", payload, 1, 2, 3)).to eql nil
-
-      success = Net::HTTPSuccess.new(1.0, 200, 'OK')
-      allow(loki).to receive(:loki_http_request) { success }
-      allow(success).to receive(:payload).and_return('fake body')
-      expect(loki.loki_http_request("fake", batch, 1, 300, 10).class).to eql Net::HTTPSuccess
-
-      too_many_requests = Net::HTTPTooManyRequests.new(1.0, 429, 'OK')
-      allow(loki).to receive(:loki_http_request) { too_many_requests }
-      allow(too_many_requests).to receive(:payload).and_return('fake body')
-      expect(loki.loki_http_request("fake", batch, 1, 300, 10).class).to eql Net::HTTPTooManyRequests
-
-      server_error = Net::HTTPServerError.new(1.0, 429, 'OK')
-      allow(loki).to receive(:loki_http_request) { server_error }
-      allow(server_error).to receive(:payload).and_return('fake body')
-      expect(loki.loki_http_request("fake", batch, 1, 300, 10).class).to eql Net::HTTPServerError
+    it 'should not send credentials' do
+      conf = {
+          'url'=>'http://foo.com/loki/api/v1/push',
+      }
+      loki = LogStash::Outputs::Loki.new(conf)
+      loki.register
+      b = Batch.new(entry)
+      post = stub_request(:post, "http://foo.com/loki/api/v1/push").with(
+          body: b.to_json,
+          headers:{
+              'Content-Type' => 'application/json' ,
+              'User-Agent' => 'loki-logstash',
+              'Accept'=>'*/*',
+              'Accept-Encoding'=>'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
+          }
+      )
+      loki.send(b)
+      expect(post).to have_been_requested.times(1)
+    end
+    it 'should retry 500' do
+      conf = {
+          'url'=>'http://foo.com/loki/api/v1/push',
+          'retries' => 3,
+      }
+      loki = LogStash::Outputs::Loki.new(conf)
+      loki.register
+      b = Batch.new(entry)
+      post = stub_request(:post, "http://foo.com/loki/api/v1/push").with(
+          body: b.to_json,
+      ).to_return(status: [500, "Internal Server Error"])
+      loki.send(b)
+      loki.close
+      expect(post).to have_been_requested.times(3)
+    end
+    it 'should retry 429' do
+      conf = {
+          'url'=>'http://foo.com/loki/api/v1/push',
+          'retries' => 2,
+      }
+      loki = LogStash::Outputs::Loki.new(conf)
+      loki.register
+      b = Batch.new(entry)
+      post = stub_request(:post, "http://foo.com/loki/api/v1/push").with(
+          body: b.to_json,
+          ).to_return(status: [429, "stop spamming"])
+      loki.send(b)
+      loki.close
+      expect(post).to have_been_requested.times(2)
+    end
+    it 'should not retry 400' do
+      conf = {
+          'url'=>'http://foo.com/loki/api/v1/push',
+          'retries' => 11,
+      }
+      loki = LogStash::Outputs::Loki.new(conf)
+      loki.register
+      b = Batch.new(entry)
+      post = stub_request(:post, "http://foo.com/loki/api/v1/push").with(
+          body: b.to_json,
+          ).to_return(status: [400, "bad request"])
+      loki.send(b)
+      loki.close
+      expect(post).to have_been_requested.times(1)
+    end
+    it 'should retry exception' do
+      conf = {
+          'url'=>'http://foo.com/loki/api/v1/push',
+          'retries' => 11,
+      }
+      loki = LogStash::Outputs::Loki.new(conf)
+      loki.register
+      b = Batch.new(entry)
+      post = stub_request(:post, "http://foo.com/loki/api/v1/push").with(
+          body: b.to_json,
+          ).to_raise("some error").then.to_return(status: [200, "fine !"])
+      loki.send(b)
+      loki.close
+      expect(post).to have_been_requested.times(2)
     end
   end
 end

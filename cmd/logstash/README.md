@@ -1,6 +1,6 @@
-# Loki Logstash Output Plugin
+# Contributing to Loki Logstash Output Plugin
 
-Logstash plugin to send logstash aggregated logs to Loki.
+For information about using this plugin see this [documentation](../../docs/clients/logstash/README.md).
 
 ## Install dependencies
 
@@ -41,12 +41,11 @@ git clone git@github.com:elastic/logstash.git
 cd logstash
 git checkout tags/v7.6.2
 export LOGSTASH_PATH=`pwd`
-export LOGSTASH_SOURCE="1"
 export GEM_PATH=$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0
 export GEM_HOME=$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0
 ./gradlew assemble
 cd ..
-ruby -S bundle install --path=$LOGSTASH_PATH/vendor/bundle/
+ruby -S bundle install
 ruby -S bundle exec rake vendor
 ```
 
