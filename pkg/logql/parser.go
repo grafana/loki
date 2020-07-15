@@ -59,6 +59,19 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	return matcherExpr.matchers, nil
 }
 
+// ParseSampleExpr parses a string and returns the sampleExpr
+func ParseSampleExpr(input string) (SampleExpr, error) {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		return nil, err
+	}
+	sampleExpr, ok := expr.(SampleExpr)
+	if !ok {
+		return nil, errors.New("only sample expression supported")
+	}
+	return sampleExpr, nil
+}
+
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string) (LogSelectorExpr, error) {
 	expr, err := ParseExpr(input)

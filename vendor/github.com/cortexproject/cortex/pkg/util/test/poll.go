@@ -7,7 +7,7 @@ import (
 )
 
 // Poll repeatedly evaluates condition until we either timeout, or it succeeds.
-func Poll(t *testing.T, d time.Duration, want interface{}, have func() interface{}) {
+func Poll(t testing.TB, d time.Duration, want interface{}, have func() interface{}) {
 	t.Helper()
 	deadline := time.Now().Add(d)
 	for {
@@ -17,7 +17,7 @@ func Poll(t *testing.T, d time.Duration, want interface{}, have func() interface
 		if reflect.DeepEqual(want, have()) {
 			return
 		}
-		time.Sleep(d / 10)
+		time.Sleep(d / 100)
 	}
 	h := have()
 	if !reflect.DeepEqual(want, h) {

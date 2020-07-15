@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -9,16 +10,24 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type streamEntryPair struct {
@@ -34,15 +43,26 @@ type Query struct {
 	Limit           int
 	Forward         bool
 	Step            time.Duration
+	Interval        time.Duration
 	Quiet           bool
 	NoLabels        bool
 	IgnoreLabelsKey []string
 	ShowLabelsKey   []string
 	FixedLabelsLen  int
+
+	LocalConfig string
 }
 
 // DoQuery executes the query and prints out the results
 func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool) {
+
+	if q.LocalConfig != "" {
+		if err := q.DoLocalQuery(out, statistics, c.OrgID); err != nil {
+			log.Fatalf("Query failed: %+v", err)
+		}
+		return
+	}
+
 	d := q.resultsDirection()
 
 	var resp *loghttp.QueryResponse
@@ -51,7 +71,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
 	} else {
-		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Step, q.Quiet)
+		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Step, q.Interval, q.Quiet)
 	}
 
 	if err != nil {
@@ -62,21 +82,95 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 		q.printStats(resp.Data.Statistics)
 	}
 
-	switch resp.Data.ResultType {
+	q.printResult(resp.Data.Result, out)
+
+}
+
+func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput) {
+	switch value.Type() {
 	case logql.ValueTypeStreams:
-		streams := resp.Data.Result.(loghttp.Streams)
-		q.printStream(streams, out)
-	case promql.ValueTypeScalar:
-		q.printScalar(resp.Data.Result.(loghttp.Scalar))
-	case promql.ValueTypeMatrix:
-		matrix := resp.Data.Result.(loghttp.Matrix)
-		q.printMatrix(matrix)
-	case promql.ValueTypeVector:
-		vector := resp.Data.Result.(loghttp.Vector)
-		q.printVector(vector)
+		q.printStream(value.(loghttp.Streams), out)
+	case parser.ValueTypeScalar:
+		q.printScalar(value.(loghttp.Scalar))
+	case parser.ValueTypeMatrix:
+		q.printMatrix(value.(loghttp.Matrix))
+	case parser.ValueTypeVector:
+		q.printVector(value.(loghttp.Vector))
 	default:
-		log.Fatalf("Unable to print unsupported type: %v", resp.Data.ResultType)
+		log.Fatalf("Unable to print unsupported type: %v", value.Type())
 	}
+}
+
+// DoLocalQuery executes the query against the local store using a Loki configuration file.
+func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string) error {
+
+	var conf loki.Config
+	if err := cfg.Defaults()(&conf); err != nil {
+		return err
+	}
+	if err := cfg.YAML(&q.LocalConfig)(&conf); err != nil {
+		return err
+	}
+
+	if err := conf.Validate(util.Logger); err != nil {
+		return err
+	}
+
+	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
+	if err != nil {
+		return err
+	}
+
+	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
+	if err != nil {
+		return err
+	}
+
+	eng := logql.NewEngine(conf.Querier.Engine, querier)
+	var query logql.Query
+
+	if q.isInstant() {
+		query = eng.Query(logql.NewLiteralParams(
+			q.QueryString,
+			q.Start,
+			q.Start,
+			0,
+			0,
+			q.resultsDirection(),
+			uint32(q.Limit),
+			nil,
+		))
+	} else {
+		query = eng.Query(logql.NewLiteralParams(
+			q.QueryString,
+			q.Start,
+			q.End,
+			q.Step,
+			q.Interval,
+			q.resultsDirection(),
+			uint32(q.Limit),
+			nil,
+		))
+	}
+
+	// execute the query
+	ctx := user.InjectOrgID(context.Background(), orgID)
+	result, err := query.Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	if statistics {
+		q.printStats(result.Statistics)
+	}
+
+	value, err := marshal.NewResultValue(result.Data)
+	if err != nil {
+		return err
+	}
+
+	q.printResult(value, out)
+	return nil
 }
 
 // SetInstant makes the Query an instant type
@@ -196,8 +290,8 @@ func (k kvLogger) Log(keyvals ...interface{}) error {
 }
 
 func (q *Query) printStats(stats stats.Result) {
-	writer := tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0)
-	stats.Summary.Log(kvLogger{Writer: writer})
+	writer := tabwriter.NewWriter(os.Stderr, 0, 8, 0, '\t', 0)
+	stats.Log(kvLogger{Writer: writer})
 }
 
 func (q *Query) resultsDirection() logproto.Direction {

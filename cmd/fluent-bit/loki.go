@@ -11,11 +11,17 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/go-logfmt/logfmt"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/pkg/promtail/client"
+)
+
+var (
+	lineReplacer = strings.NewReplacer(`\n`, "\n", `\t`, "\t")
+	keyReplacer  = strings.NewReplacer("/", "_", ".", "_", "-", "_")
 )
 
 type loki struct {
@@ -25,7 +31,7 @@ type loki struct {
 }
 
 func newPlugin(cfg *config, logger log.Logger) (*loki, error) {
-	client, err := client.New(cfg.clientConfig, logger)
+	client, err := NewClient(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +70,27 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	if err != nil {
 		return fmt.Errorf("error creating line: %v", err)
 	}
+
 	return l.client.Handle(lbs, ts, line)
+}
+
+// prevent base64-encoding []byte values (default json.Encoder rule) by
+// converting them to strings
+func toStringSlice(slice []interface{}) []interface{} {
+	var s []interface{}
+	for _, v := range slice {
+		switch t := v.(type) {
+		case []byte:
+			s = append(s, string(t))
+		case map[interface{}]interface{}:
+			s = append(s, toStringMap(t))
+		case []interface{}:
+			s = append(s, toStringSlice(t))
+		default:
+			s = append(s, t)
+		}
+	}
+	return s
 }
 
 func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
@@ -76,10 +102,11 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 		}
 		switch t := v.(type) {
 		case []byte:
-			// prevent encoding to base64
 			m[key] = string(t)
 		case map[interface{}]interface{}:
 			m[key] = toStringMap(t)
+		case []interface{}:
+			m[key] = toStringSlice(t)
 		default:
 			m[key] = v
 		}
@@ -94,12 +121,11 @@ func autoLabels(records map[string]interface{}, kuberneteslbs model.LabelSet) er
 		return errors.New("kubernetes labels not found, no labels will be added")
 	}
 
-	replacer := strings.NewReplacer("/", "_", ".", "_", "-", "_")
 	for k, v := range kube.(map[string]interface{}) {
 		switch k {
 		case "labels":
 			for m, n := range v.(map[string]interface{}) {
-				kuberneteslbs[model.LabelName(replacer.Replace(m))] = model.LabelValue(fmt.Sprintf("%v", n))
+				kuberneteslbs[model.LabelName(keyReplacer.Replace(m))] = model.LabelValue(fmt.Sprintf("%v", n))
 			}
 		case "docker_id", "pod_id", "annotations":
 			// do nothing
@@ -183,25 +209,29 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return string(js), nil
+		return lineReplacer.Replace(string(js)), nil
 	case kvPairFormat:
-		buff := &bytes.Buffer{}
-		var keys []string
+		buf := &bytes.Buffer{}
+		enc := logfmt.NewEncoder(buf)
+		keys := make([]string, 0, len(records))
 		for k := range records {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			_, err := fmt.Fprintf(buff, "%s=%v ", k, records[k])
+			err := enc.EncodeKeyval(k, records[k])
+			if err == logfmt.ErrUnsupportedValueType {
+				err := enc.EncodeKeyval(k, fmt.Sprintf("%+v", records[k]))
+				if err != nil {
+					return "", nil
+				}
+				continue
+			}
 			if err != nil {
-				return "", err
+				return "", nil
 			}
 		}
-		res := buff.String()
-		if len(records) > 0 {
-			return res[:len(res)-1], nil
-		}
-		return res, nil
+		return lineReplacer.Replace(buf.String()), nil
 	default:
 		return "", fmt.Errorf("invalid line format: %v", f)
 	}

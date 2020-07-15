@@ -18,7 +18,7 @@ var (
 	ErrOutOfOrder      = errors.New("entry out of order")
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidFlag     = errors.New("invalid flag")
-	ErrInvalidChecksum = errors.New("invalid checksum")
+	ErrInvalidChecksum = errors.New("invalid chunk checksum")
 )
 
 // Encoding is the identifier for a chunk encoding.
@@ -40,6 +40,7 @@ const (
 )
 
 var supportedEncoding = []Encoding{
+	EncNone,
 	EncGZIP,
 	EncLZ4_64k,
 	EncSnappy,
@@ -96,12 +97,31 @@ type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Append(*logproto.Entry) error
-	Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error)
+	Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error)
+	SampleIterator(ctx context.Context, from, through time.Time, filter logql.LineFilter, extractor logql.SampleExtractor) iter.SampleIterator
+	// Returns the list of blocks in the chunks.
+	Blocks(mintT, maxtT time.Time) []Block
 	Size() int
 	Bytes() ([]byte, error)
-	Blocks() int
+	BlockCount() int
 	Utilization() float64
 	UncompressedSize() int
 	CompressedSize() int
 	Close() error
+}
+
+// Block is a chunk block.
+type Block interface {
+	// MinTime is the minimum time of entries in the block
+	MinTime() int64
+	// MaxTime is the maximum time of entries in the block
+	MaxTime() int64
+	// Offset is the offset/position of the block in the chunk. Offset is unique for a given block per chunk.
+	Offset() int
+	// Entries is the amount of entries in the block.
+	Entries() int
+	// Iterator returns an entry iterator for the block.
+	Iterator(context.Context, logql.LineFilter) iter.EntryIterator
+	// SampleIterator returns a sample iterator for the block.
+	SampleIterator(context.Context, logql.LineFilter, logql.SampleExtractor) iter.SampleIterator
 }

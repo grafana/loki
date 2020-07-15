@@ -5,11 +5,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log/level"
 )
 
 // RingConfig masks the ring lifecycler config which contains
@@ -17,9 +18,9 @@ import (
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore          kv.Config     `yaml:"kvstore,omitempty"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
-	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout,omitempty"`
+	KVStore          kv.Config     `yaml:"kvstore"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -70,7 +71,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 
 	// Configure lifecycler
 	lc.RingConfig = rc
-	lc.ListenPort = &cfg.ListenPort
+	lc.ListenPort = cfg.ListenPort
 	lc.Addr = cfg.InstanceAddr
 	lc.Port = cfg.InstancePort
 	lc.ID = cfg.InstanceID

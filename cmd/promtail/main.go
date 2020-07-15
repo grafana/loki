@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail"
 	"github.com/grafana/loki/pkg/promtail/config"
+	logutil "github.com/grafana/loki/pkg/util"
 )
 
 func init() {
@@ -28,6 +29,9 @@ func init() {
 func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 	dryRun := flag.Bool("dry-run", false, "Start Promtail but print entries instead of sending them to Loki.")
+	printConfig := flag.Bool("print-config-stderr", false, "Dump the entire Loki config object to stderr")
+	logConfig := flag.Bool("log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
+		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 
 	// Load config, merging config file and CLI flags
 	var config config.Config
@@ -56,6 +60,20 @@ func main() {
 	// debug messages which otherwise cause huge allocations processing log lines for log messages never printed
 	if config.ServerConfig.Config.LogLevel.String() == "debug" {
 		stages.Debug = true
+	}
+
+	if *printConfig {
+		err := logutil.PrintConfig(os.Stderr, &config)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
+		}
+	}
+
+	if *logConfig {
+		err := logutil.LogConfig(&config)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to log config object", "err", err.Error())
+		}
 	}
 
 	p, err := promtail.New(config, *dryRun)

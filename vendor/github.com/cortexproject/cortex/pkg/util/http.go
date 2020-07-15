@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/blang/semver"
 	"github.com/gogo/protobuf/proto"
@@ -27,6 +29,21 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+}
+
+// RenderHTTPResponse either responds with json or a rendered html page using the passed in template
+// by checking the Accepts header
+func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Template, r *http.Request) {
+	accept := r.Header.Get("Accept")
+	if strings.Contains(accept, "application/json") {
+		WriteJSONResponse(w, v)
+		return
+	}
+
+	err := t.Execute(w, v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // CompressionType for encoding and decoding requests and responses.
@@ -129,9 +146,11 @@ func SerializeProtoResponse(w http.ResponseWriter, resp proto.Message, compressi
 	case NoCompression:
 	case FramedSnappy:
 		buf := bytes.Buffer{}
-		if _, err := snappy.NewWriter(&buf).Write(data); err != nil {
+		writer := snappy.NewBufferedWriter(&buf)
+		if _, err := writer.Write(data); err != nil {
 			return err
 		}
+		writer.Close()
 		data = buf.Bytes()
 	case RawSnappy:
 		data = snappy.Encode(nil, data)

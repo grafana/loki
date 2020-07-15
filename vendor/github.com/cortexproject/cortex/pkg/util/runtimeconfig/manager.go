@@ -1,20 +1,17 @@
 package runtimeconfig
 
 import (
+	"context"
 	"flag"
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-)
 
-var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
-	Name: "cortex_overrides_last_reload_successful",
-	Help: "Whether the last config reload attempt was successful.",
-})
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
+)
 
 // Loader loads the configuration from file.
 type Loader func(filename string) (interface{}, error)
@@ -36,34 +33,45 @@ func (mc *ManagerConfig) RegisterFlags(f *flag.FlagSet) {
 // Manager periodically reloads the configuration from a file, and keeps this
 // configuration available for clients.
 type Manager struct {
-	cfg  ManagerConfig
-	quit chan struct{}
+	services.Service
+
+	cfg ManagerConfig
 
 	listenersMtx sync.Mutex
 	listeners    []chan interface{}
 
 	configMtx sync.RWMutex
 	config    interface{}
+
+	configLoadSuccess prometheus.Gauge
 }
 
 // NewRuntimeConfigManager creates an instance of Manager and starts reload config loop based on config
-func NewRuntimeConfigManager(cfg ManagerConfig) (*Manager, error) {
+func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer) (*Manager, error) {
 	mgr := Manager{
-		cfg:  cfg,
-		quit: make(chan struct{}),
+		cfg: cfg,
+		configLoadSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_overrides_last_reload_successful",
+			Help: "Whether the last config reload attempt was successful.",
+		}),
 	}
 
-	if cfg.LoadPath != "" {
-		if err := mgr.loadConfig(); err != nil {
+	if registerer != nil {
+		registerer.MustRegister(mgr.configLoadSuccess)
+	}
+
+	mgr.Service = services.NewBasicService(mgr.start, mgr.loop, mgr.stop)
+	return &mgr, nil
+}
+
+func (om *Manager) start(_ context.Context) error {
+	if om.cfg.LoadPath != "" {
+		if err := om.loadConfig(); err != nil {
 			// Log but don't stop on error - we don't want to halt all ingesters because of a typo
 			level.Error(util.Logger).Log("msg", "failed to load config", "err", err)
 		}
-		go mgr.loop()
-	} else {
-		level.Info(util.Logger).Log("msg", "runtime config disabled: file not specified")
 	}
-
-	return &mgr, nil
+	return nil
 }
 
 // CreateListenerChannel creates new channel that can be used to receive new config values.
@@ -96,7 +104,13 @@ func (om *Manager) CloseListenerChannel(listener <-chan interface{}) {
 	}
 }
 
-func (om *Manager) loop() {
+func (om *Manager) loop(ctx context.Context) error {
+	if om.cfg.LoadPath == "" {
+		level.Info(util.Logger).Log("msg", "runtime config disabled: file not specified")
+		<-ctx.Done()
+		return nil
+	}
+
 	ticker := time.NewTicker(om.cfg.ReloadPeriod)
 	defer ticker.Stop()
 
@@ -108,8 +122,8 @@ func (om *Manager) loop() {
 				// Log but don't stop on error - we don't want to halt all ingesters because of a typo
 				level.Error(util.Logger).Log("msg", "failed to load config", "err", err)
 			}
-		case <-om.quit:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
@@ -119,10 +133,10 @@ func (om *Manager) loop() {
 func (om *Manager) loadConfig() error {
 	cfg, err := om.cfg.Loader(om.cfg.LoadPath)
 	if err != nil {
-		overridesReloadSuccess.Set(0)
+		om.configLoadSuccess.Set(0)
 		return err
 	}
-	overridesReloadSuccess.Set(1)
+	om.configLoadSuccess.Set(1)
 
 	om.setConfig(cfg)
 	om.callListeners(cfg)
@@ -151,9 +165,7 @@ func (om *Manager) callListeners(newValue interface{}) {
 }
 
 // Stop stops the Manager
-func (om *Manager) Stop() {
-	close(om.quit)
-
+func (om *Manager) stop(_ error) error {
 	om.listenersMtx.Lock()
 	defer om.listenersMtx.Unlock()
 
@@ -161,6 +173,7 @@ func (om *Manager) Stop() {
 		close(ch)
 	}
 	om.listeners = nil
+	return nil
 }
 
 // GetConfig returns last loaded config value, possibly nil.

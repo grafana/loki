@@ -35,18 +35,19 @@ var (
 
 // Config to create a ConsulClient
 type Config struct {
-	Host              string
-	ACLToken          string
-	HTTPClientTimeout time.Duration
-	ConsistentReads   bool
-	WatchKeyRateLimit float64 // Zero disables rate limit
-	WatchKeyBurstSize int     // Burst when doing rate-limit, defaults to 1
+	Host              string        `yaml:"host"`
+	ACLToken          string        `yaml:"acl_token"`
+	HTTPClientTimeout time.Duration `yaml:"http_client_timeout"`
+	ConsistentReads   bool          `yaml:"consistent_reads"`
+	WatchKeyRateLimit float64       `yaml:"watch_rate_limit"` // Zero disables rate limit
+	WatchKeyBurstSize int           `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
 }
 
 type kv interface {
 	CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error)
 	Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consul.QueryMeta, error)
 	List(path string, q *consul.QueryOptions) (consul.KVPairs, *consul.QueryMeta, error)
+	Delete(key string, q *consul.WriteOptions) (*consul.WriteMeta, error)
 	Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error)
 }
 
@@ -61,10 +62,10 @@ type Client struct {
 // If prefix is not an empty string it should end with a period.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
-	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
+	f.StringVar(&cfg.ACLToken, prefix+"consul.acl-token", "", "ACL Token used to interact with Consul.")
 	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul")
-	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to Consul.")
-	f.Float64Var(&cfg.WatchKeyRateLimit, prefix+"consul.watch-rate-limit", 0, "Rate limit when watching key or prefix in Consul, in requests per second. 0 disables the rate limit.")
+	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", false, "Enable consistent reads to Consul.")
+	f.Float64Var(&cfg.WatchKeyRateLimit, prefix+"consul.watch-rate-limit", 1, "Rate limit when watching key or prefix in Consul, in requests per second. 0 disables the rate limit.")
 	f.IntVar(&cfg.WatchKeyBurstSize, prefix+"consul.watch-burst-size", 1, "Burst size used in rate limit. Values less than 1 are treated as 1.")
 }
 
@@ -91,6 +92,22 @@ func NewClient(cfg Config, codec codec.Codec) (*Client, error) {
 	return c, nil
 }
 
+// Put is mostly here for testing.
+func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
+	bytes, err := c.codec.Encode(value)
+	if err != nil {
+		return err
+	}
+
+	return instrument.CollectedRequest(ctx, "Put", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		_, err := c.kv.Put(&consul.KVPair{
+			Key:   key,
+			Value: bytes,
+		}, nil)
+		return err
+	})
+}
+
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
@@ -103,7 +120,6 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 	var (
 		index   = uint64(0)
 		retries = 10
-		retry   = true
 	)
 	for i := 0; i < retries; i++ {
 		options := &consul.QueryOptions{
@@ -127,7 +143,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 			intermediate = out
 		}
 
-		intermediate, retry, err = f(intermediate)
+		intermediate, retry, err := f(intermediate)
 		if err != nil {
 			if !retry {
 				return err
@@ -284,6 +300,24 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	}
 }
 
+// List implements kv.List.
+func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
+	options := &consul.QueryOptions{
+		AllowStale:        !c.cfg.ConsistentReads,
+		RequireConsistent: c.cfg.ConsistentReads,
+	}
+	pairs, _, err := c.kv.List(prefix, options.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	keys := make([]string, 0, len(pairs))
+	for _, kvp := range pairs {
+		keys = append(keys, kvp.Key)
+	}
+	return keys, nil
+}
+
 // Get implements kv.Get.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	options := &consul.QueryOptions{
@@ -297,6 +331,12 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 		return nil, nil
 	}
 	return c.codec.Decode(kvp.Value)
+}
+
+// Delete implements kv.Delete.
+func (c *Client) Delete(ctx context.Context, key string) error {
+	_, err := c.kv.Delete(key, writeOptions.WithContext(ctx))
+	return err
 }
 
 func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {
@@ -327,9 +367,4 @@ func (c *Client) createRateLimiter() *rate.Limiter {
 		burst = 1
 	}
 	return rate.NewLimiter(rate.Limit(c.cfg.WatchKeyRateLimit), burst)
-}
-
-// Stop does nothing in Consul client.
-func (c *Client) Stop() {
-	// nothing to do
 }

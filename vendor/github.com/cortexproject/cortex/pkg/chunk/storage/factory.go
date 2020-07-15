@@ -7,16 +7,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
+	"github.com/cortexproject/cortex/pkg/chunk/grpc"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
+	"github.com/cortexproject/cortex/pkg/chunk/openstack"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
 )
 
 // Supported storage engines
@@ -25,17 +31,23 @@ const (
 	StorageEngineTSDB   = "tsdb"
 )
 
-type IndexClientFactoryFunc func() (chunk.IndexClient, error)
-
-var customIndexClients = map[string]IndexClientFactoryFunc{}
-
-func RegisterIndexClient(name string, factory IndexClientFactoryFunc) {
-	customIndexClients[name] = factory
+type indexStoreFactories struct {
+	indexClientFactoryFunc IndexClientFactoryFunc
+	tableClientFactoryFunc TableClientFactoryFunc
 }
 
-// useful for cleaning up state after tests
-func unregisterAllCustomIndexClients() {
-	customIndexClients = map[string]IndexClientFactoryFunc{}
+// IndexClientFactoryFunc defines signature of function which creates chunk.IndexClient for managing index in index store
+type IndexClientFactoryFunc func() (chunk.IndexClient, error)
+
+// TableClientFactoryFunc defines signature of function which creates chunk.TableClient for managing tables in index store
+type TableClientFactoryFunc func() (chunk.TableClient, error)
+
+var customIndexStores = map[string]indexStoreFactories{}
+
+// RegisterIndexStore is used for registering a custom index type.
+// When an index type is registered here with same name as existing types, the registered one takes the precedence.
+func RegisterIndexStore(name string, indexClientFactory IndexClientFactoryFunc, tableClientFactory TableClientFactoryFunc) {
+	customIndexStores[name] = indexStoreFactories{indexClientFactory, tableClientFactory}
 }
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -55,10 +67,15 @@ type Config struct {
 	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
 	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
 	FSConfig               local.FSConfig          `yaml:"filesystem"`
+	Swift                  openstack.SwiftConfig   `yaml:"swift"`
 
-	IndexCacheValidity time.Duration
+	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
-	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config,omitempty"`
+	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config"`
+
+	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
+
+	GrpcConfig grpc.Config `yaml:"grpc_store"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -70,6 +87,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
+	cfg.DeleteStoreConfig.RegisterFlags(f)
+	cfg.Swift.RegisterFlags(f)
+	cfg.GrpcConfig.RegisterFlags(f)
 
 	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or tsdb. Be aware tsdb is experimental and shouldn't be used in production.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
@@ -81,44 +101,76 @@ func (cfg *Config) Validate() error {
 	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineTSDB {
 		return errors.New("unsupported storage engine")
 	}
-
+	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Cassandra Storage config")
+	}
+	if err := cfg.Swift.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Swift Storage config")
+	}
+	if err := cfg.IndexQueriesCacheConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Index Queries Cache config")
+	}
 	return nil
 }
 
 // NewStore makes the storage clients based on the configuration.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits) (chunk.Store, error) {
-	tieredCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, reg prometheus.Registerer, cacheGenNumLoader chunk.CacheGenNumLoader) (chunk.Store, error) {
+	chunkMetrics := newChunkClientMetrics(reg)
+
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	chunkCacheCfg := storeCfg.ChunkCacheConfig
+	chunkCacheCfg.Prefix = "chunks"
+	chunksCache, err := cache.New(chunkCacheCfg)
 	if err != nil {
 		return nil, err
 	}
 
 	// Cache is shared by multiple stores, which means they will try and Stop
 	// it more than once.  Wrap in a StopOnce to prevent this.
-	tieredCache = cache.StopOnce(tieredCache)
+	indexReadCache = cache.StopOnce(indexReadCache)
+	chunksCache = cache.StopOnce(chunksCache)
+	writeDedupeCache = cache.StopOnce(writeDedupeCache)
+
+	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
+	// chunksCache is not wrapped because chunks content can't be anyways modified without changing its ID so there is no use of
+	// invalidating chunks cache. Also chunks can be fetched only by their ID found in index and we are anyways removing the index and invalidating index cache here.
+	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
+	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
 
 	err = schemaCfg.Load()
 	if err != nil {
 		return nil, errors.Wrap(err, "error loading schema config")
 	}
-	stores := chunk.NewCompositeStore()
+	stores := chunk.NewCompositeStore(cacheGenNumLoader)
 
 	for _, s := range schemaCfg.Configs {
 		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
-		index = newCachingIndexClient(index, tieredCache, cfg.IndexCacheValidity, limits)
+		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {
 			objectStoreType = s.IndexType
 		}
-		chunks, err := NewObjectClient(objectStoreType, cfg, schemaCfg)
+		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating object client")
 		}
 
-		err = stores.AddPeriod(storeCfg, s, index, chunks, limits)
+		chunks = newMetricsChunkClient(chunks, chunkMetrics)
+
+		err = stores.AddPeriod(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
 		if err != nil {
 			return nil, err
 		}
@@ -129,8 +181,10 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 
 // NewIndexClient makes a new index client of the desired type.
 func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	if factory, ok := customIndexClients[name]; ok {
-		return factory()
+	if indexClientFactory, ok := customIndexStores[name]; ok {
+		if indexClientFactory.indexClientFactoryFunc != nil {
+			return indexClientFactory.indexClientFactoryFunc()
+		}
 	}
 
 	switch name {
@@ -157,19 +211,20 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "boltdb":
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
+	case "grpc-store":
+		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}
 }
 
-// NewObjectClient makes a new ObjectClient of the desired types.
-func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+// NewChunkClient makes a new chunk.Client of the desired types.
+func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	switch name {
 	case "inmemory":
-		store := chunk.NewMockStorage()
-		return store, nil
+		return chunk.NewMockStorage(), nil
 	case "aws", "s3":
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config)
+		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, chunk.DirDelim))
 	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -178,26 +233,47 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewDynamoDBObjectClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "azure":
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig)
+		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim))
 	case "gcp":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
+		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim))
+	case "swift":
+		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim))
 	case "cassandra":
-		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
+		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":
-		return local.NewFSObjectClient(cfg.FSConfig)
+		store, err := local.NewFSObjectClient(cfg.FSConfig)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClient(store, objectclient.Base64Encoder), nil
+	case "grpc-store":
+		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store", name)
 	}
+}
+
+func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client, error) {
+	if err != nil {
+		return nil, err
+	}
+	return objectclient.NewClient(store, nil), nil
 }
 
 // NewTableClient makes a new table client based on the configuration.
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
+	if indexClientFactory, ok := customIndexStores[name]; ok {
+		if indexClientFactory.tableClientFactoryFunc != nil {
+			return indexClientFactory.tableClientFactoryFunc()
+		}
+	}
+
 	switch name {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
@@ -216,8 +292,10 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig)
 	case "boltdb":
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
+	case "grpc-store":
+		return grpc.NewTableClient(cfg.GrpcConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store", name)
 	}
 }
 
@@ -228,4 +306,24 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 	}
 
 	return nil, nil
+}
+
+// NewObjectClient makes a new StorageClient of the desired types.
+func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
+	switch name {
+	case "aws", "s3":
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, chunk.DirDelim)
+	case "gcs":
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim)
+	case "azure":
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim)
+	case "swift":
+		return openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim)
+	case "inmemory":
+		return chunk.NewMockStorage(), nil
+	case "filesystem":
+		return local.NewFSObjectClient(cfg.FSConfig)
+	default:
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, s3, gcs, azure, filesystem", name)
+	}
 }

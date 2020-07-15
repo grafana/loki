@@ -44,6 +44,10 @@ func direction(r *http.Request) (logproto.Direction, error) {
 	return parseDirection(r.Form.Get("direction"), logproto.BACKWARD)
 }
 
+func shards(r *http.Request) []string {
+	return r.Form["shards"]
+}
+
 func bounds(r *http.Request) (time.Time, time.Time, error) {
 	now := time.Now()
 	start, err := parseTimestamp(r.Form.Get("start"), now.Add(-defaultSince))
@@ -62,26 +66,19 @@ func step(r *http.Request, start, end time.Time) (time.Duration, error) {
 	if value == "" {
 		return time.Duration(defaultQueryRangeStep(start, end)) * time.Second, nil
 	}
+	return parseSecondsOrDuration(value)
+}
 
-	if d, err := strconv.ParseFloat(value, 64); err == nil {
-		ts := d * float64(time.Second)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", value)
-		}
-		return time.Duration(ts), nil
+func interval(r *http.Request) (time.Duration, error) {
+	value := r.Form.Get("interval")
+	if value == "" {
+		return 0, nil
 	}
-	if d, err := model.ParseDuration(value); err == nil {
-		return time.Duration(d), nil
-	}
-	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
+	return parseSecondsOrDuration(value)
 }
 
 // Match extracts and parses multiple matcher groups from a slice of strings
 func Match(xs []string) ([][]*labels.Matcher, error) {
-	if len(xs) == 0 {
-		return nil, errors.New("0 matcher groups supplied")
-	}
-
 	groups := make([][]*labels.Matcher, 0, len(xs))
 	for _, x := range xs {
 		ms, err := logql.ParseMatchers(x)
@@ -98,7 +95,7 @@ func Match(xs []string) ([][]*labels.Matcher, error) {
 }
 
 // defaultQueryRangeStep returns the default step used in the query range API,
-// which is dinamically calculated based on the time range
+// which is dynamically calculated based on the time range
 func defaultQueryRangeStep(start time.Time, end time.Time) int {
 	return int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
 }
@@ -159,4 +156,18 @@ func parseDirection(value string, def logproto.Direction) (logproto.Direction, e
 		return logproto.FORWARD, fmt.Errorf("invalid direction '%s'", value)
 	}
 	return logproto.Direction(d), nil
+}
+
+func parseSecondsOrDuration(value string) (time.Duration, error) {
+	if d, err := strconv.ParseFloat(value, 64); err == nil {
+		ts := d * float64(time.Second)
+		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
+			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", value)
+		}
+		return time.Duration(ts), nil
+	}
+	if d, err := model.ParseDuration(value); err == nil {
+		return time.Duration(d), nil
+	}
+	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
 }

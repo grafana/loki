@@ -10,12 +10,11 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/gogo/protobuf/proto"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-const tpl = `
+const pageContent = `
 <!DOCTYPE html>
 <html>
 	<head>
@@ -30,7 +29,8 @@ const tpl = `
 			<table width="100%" border="1">
 				<thead>
 					<tr>
-						<th>Ingester</th>
+						<th>Instance ID</th>
+						<th>Availability Zone</th>
 						<th>State</th>
 						<th>Address</th>
 						<th>Last Heartbeat</th>
@@ -47,10 +47,11 @@ const tpl = `
 					<tr bgcolor="#BEBEBE">
 					{{ end }}
 						<td>{{ .ID }}</td>
+						<td>{{ .Zone }}</td>
 						<td>{{ .State }}</td>
 						<td>{{ .Address }}</td>
 						<td>{{ .Timestamp }}</td>
-						<td>{{ .Tokens }}</td>
+						<td>{{ .NumTokens }}</td>
 						<td>{{ .Ownership }}%</td>
 						<td><button name="forget" value="{{ .ID }}" type="submit">Forget</button></td>
 					</tr>
@@ -59,21 +60,32 @@ const tpl = `
 			</table>
 			<br>
 			{{ if .ShowTokens }}
-			<input type="button" value="Hide Ingester Tokens" onclick="window.location.href = '?tokens=false' " />
+			<input type="button" value="Hide Tokens" onclick="window.location.href = '?tokens=false' " />
 			{{ else }}
-			<input type="button" value="Show Ingester Tokens" onclick="window.location.href = '?tokens=true'" />
+			<input type="button" value="Show Tokens" onclick="window.location.href = '?tokens=true'" />
 			{{ end }}
-			<pre>{{ .Ring }}</pre>
+
+			{{ if .ShowTokens }}
+				{{ range $i, $ing := .Ingesters }}
+					<h2>Instance: {{ .ID }}</h2>
+					<p>
+						Tokens:<br />
+						{{ range $token := .Tokens }}
+							{{ $token }}
+						{{ end }}
+					</p>
+				{{ end }}
+			{{ end }}
 		</form>
 	</body>
 </html>`
 
-var tmpl *template.Template
+var pageTemplate *template.Template
 
 func init() {
 	t := template.New("webpage")
 	t.Funcs(template.FuncMap{"mod": func(i, j int) bool { return i%j == 0 }})
-	tmpl = template.Must(t.Parse(tpl))
+	pageTemplate = template.Must(t.Parse(pageContent))
 }
 
 func (r *Ring) forget(ctx context.Context, id string) error {
@@ -93,7 +105,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodPost {
 		ingesterID := req.FormValue("forget")
 		if err := r.forget(req.Context(), ingesterID); err != nil {
-			level.Error(util.WithContext(req.Context(), util.Logger)).Log("msg", "error forgetting ingester", "err", err)
+			level.Error(util.WithContext(req.Context(), util.Logger)).Log("msg", "error forgetting instance", "err", err)
 		}
 
 		// Implement PRG pattern to prevent double-POST and work with CSRF middleware.
@@ -118,7 +130,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	sort.Strings(ingesterIDs)
 
 	ingesters := []interface{}{}
-	tokens, owned := countTokens(r.ringDesc, r.ringTokens)
+	_, owned := countTokens(r.ringDesc, r.ringTokens)
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
 		timestamp := time.Unix(ing.Timestamp, 0)
@@ -128,38 +140,35 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 
 		ingesters = append(ingesters, struct {
-			ID, State, Address, Timestamp string
-			Tokens                        uint32
-			Ownership                     float64
+			ID        string   `json:"id"`
+			State     string   `json:"state"`
+			Address   string   `json:"address"`
+			Timestamp string   `json:"timestamp"`
+			Zone      string   `json:"zone"`
+			Tokens    []uint32 `json:"tokens"`
+			NumTokens int      `json:"-"`
+			Ownership float64  `json:"-"`
 		}{
 			ID:        id,
 			State:     state,
 			Address:   ing.Addr,
 			Timestamp: timestamp.String(),
-			Tokens:    tokens[id],
+			Tokens:    ing.Tokens,
+			Zone:      ing.Zone,
+			NumTokens: len(ing.Tokens),
 			Ownership: (float64(owned[id]) / float64(math.MaxUint32)) * 100,
 		})
 	}
 
 	tokensParam := req.URL.Query().Get("tokens")
-	var ringDescString string
-	showTokens := false
-	if tokensParam == "true" {
-		ringDescString = proto.MarshalTextString(r.ringDesc)
-		showTokens = true
-	}
-	if err := tmpl.Execute(w, struct {
-		Ingesters  []interface{}
-		Now        time.Time
-		Ring       string
-		ShowTokens bool
+
+	util.RenderHTTPResponse(w, struct {
+		Ingesters  []interface{} `json:"shards"`
+		Now        time.Time     `json:"now"`
+		ShowTokens bool          `json:"-"`
 	}{
 		Ingesters:  ingesters,
 		Now:        time.Now(),
-		Ring:       ringDescString,
-		ShowTokens: showTokens,
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+		ShowTokens: tokensParam == "true",
+	}, pageTemplate, req)
 }

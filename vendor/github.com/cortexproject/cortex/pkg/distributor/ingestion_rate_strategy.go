@@ -1,9 +1,10 @@
 package distributor
 
 import (
+	"golang.org/x/time/rate"
+
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"golang.org/x/time/rate"
 )
 
 // ReadLifecycler represents the read interface to the lifecycler.

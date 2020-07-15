@@ -9,8 +9,9 @@ import (
 	"cloud.google.com/go/bigtable"
 	"google.golang.org/grpc/status"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 type tableClient struct {
@@ -115,4 +116,8 @@ func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chun
 
 func (c *tableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
 	return nil
+}
+
+func (c *tableClient) Stop() {
+	c.client.Close()
 }

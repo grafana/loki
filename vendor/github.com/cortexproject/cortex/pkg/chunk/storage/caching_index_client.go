@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	proto "github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
@@ -49,7 +49,7 @@ type cachingIndexClient struct {
 }
 
 func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits) chunk.IndexClient {
-	if c == nil {
+	if c == nil || cache.IsEmptyTieredCache(c) {
 		return client
 	}
 
@@ -63,6 +63,7 @@ func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity tim
 
 func (s *cachingIndexClient) Stop() {
 	s.cache.Stop()
+	s.IndexClient.Stop()
 }
 
 func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {

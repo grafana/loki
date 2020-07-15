@@ -44,6 +44,8 @@ type Limits struct {
 	CardinalityLimit           int           `yaml:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int           `yaml:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int           `yaml:"max_concurrent_tail_requests"`
+	MaxEntriesLimitPerQuery    int           `yaml:"max_entries_limit_per_query"`
+	MaxCacheFreshness          time.Duration `yaml:"max_cache_freshness_per_query"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration time.Duration `yaml:"split_queries_by_interval"`
@@ -66,6 +68,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
+	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Per-user entries limit per query")
 
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 0, "Maximum number of active streams per user, across the cluster. 0 to disable.")
@@ -76,6 +79,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Limit the number of concurrent tail requests")
+	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with this to reload the overrides.")
@@ -234,6 +238,15 @@ func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
 // MaxLineSize returns the maximum size in bytes the distributor should allow.
 func (o *Overrides) MaxLineSize(userID string) int {
 	return o.getOverridesForUser(userID).MaxLineSize.Val()
+}
+
+// MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
+func (o *Overrides) MaxEntriesLimitPerQuery(userID string) int {
+	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
+}
+
+func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
+	return o.getOverridesForUser(userID).MaxCacheFreshness
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

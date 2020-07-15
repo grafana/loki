@@ -4,6 +4,7 @@ Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
 and how to scrape logs from files.
 
+* [Printing Promtail Config At Runtime](#printing-promtail-config-at-runtime)
 * [Configuration File Reference](#configuration-file-reference)
 * [server_config](#server_config)
 * [client_config](#client_config)
@@ -26,6 +27,7 @@ and how to scrape logs from files.
         * [tenant](#tenant)
     * [journal_config](#journal_config)
     * [syslog_config](#syslog_config)
+    * [loki_push_api_config](#loki_push_api_config)
     * [relabel_config](#relabel_config)
     * [static_config](#static_config)
     * [file_sd_config](#file_sd_config)
@@ -35,6 +37,25 @@ and how to scrape logs from files.
 * [Example Static Config](#example-static-config)
 * [Example Journal Config](#example-journal-config)
 * [Example Syslog Config](#example-syslog-config)
+
+## Printing Promtail Config At Runtime
+
+If you pass Promtail the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
+Promtail will dump the entire config object it has created from the built in defaults combined first with
+overrides from config file, and second by overrides from flags.
+
+The result is the value for every config object in the Promtail config struct.
+
+Some values may not be relevant to your install, this is expected as every option has a default value if it is being used or not.
+
+This config is what Promtail will use to run, it can be invaluable for debugging issues related to configuration and
+is especially useful in making sure your config files and flags are being read and loaded properly.
+
+`-print-config-stderr` is nice when running Promtail directly e.g. `./promtail ` as you can get a quick output of the entire Promtail config. 
+
+`-log-config-reverse-order` is the flag we run Promtail with in all our environments, the config entries are reversed so 
+that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
+
 
 ## Configuration File Reference
 
@@ -68,6 +89,11 @@ Supported contents and default values of `config.yaml`:
 
 # Describes how Promtail connects to multiple instances
 # of Loki, sending logs to each.
+# WARNING: If one of the remote Loki servers fails to respond or responds
+# with any error which is retryable, this will impact sending logs to any
+# other configured remote Loki servers.  Sending is done on a single thread!
+# It is generally recommended to run multiple promtail clients in parallel
+# if you want to send to multiple remote Loki instances.
 clients:
   - [<client_config>]
 
@@ -86,16 +112,19 @@ scrape_configs:
 The `server_config` block configures Promtail's behavior as an HTTP server:
 
 ```yaml
+# Disable the HTTP and GRPC server.
+[disable: <boolean> | default = false]
+
 # HTTP server listen host
 [http_listen_address: <string>]
 
-# HTTP server listen port
+# HTTP server listen port (0 means random port)
 [http_listen_port: <int> | default = 80]
 
 # gRPC server listen host
 [grpc_listen_address: <string>]
 
-# gRPC server listen port
+# gRPC server listen port (0 means random port)
 [grpc_listen_port: <int> | default = 9095]
 
 # Register instrumentation handlers (/metrics, etc.)
@@ -128,6 +157,9 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 
 # Base path to server all API routes from (e.g., /v1/).
 [http_path_prefix: <string>]
+
+# Target managers check flag for promtail readiness, if set to false the check is ignored
+[health_check_target: <bool> | default = true]
 ```
 
 ## client_config
@@ -138,7 +170,8 @@ Loki:
 ```yaml
 # The URL where Loki is listening, denoted in Loki as http_listen_address and
 # http_listen_port. If Loki is running in microservices mode, this is the HTTP
-# URL for the Distributor.
+# URL for the Distributor. Path to the push API needs to be included.
+# Example: http://example.com:3100/loki/api/v1/push
 url: <string>
 
 # The tenant ID used by default to push logs to Loki. If omitted or empty
@@ -197,15 +230,18 @@ tls_config:
 
 # Configures how to retry requests to Loki when a request
 # fails.
+# Default backoff schedule:
+# 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s(4.267m)
+# For a total time of 511.5s(8.5m) before logs are lost
 backoff_config:
   # Initial backoff time between retries
-  [minbackoff: <duration> | default = 100ms]
+  [min_period: <duration> | default = 500ms]
 
   # Maximum backoff time between retries
-  [maxbackoff: <duration> | default = 10s]
+  [max_period: <duration> | default = 5m]
 
   # Maximum number of retries to do
-  [maxretries: <int> | default = 10]
+  [max_retries: <int> | default = 10]
 
 # Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with
@@ -243,7 +279,7 @@ of targets using a specified discovery method:
 # Name to identify this scrape config in the Promtail UI.
 job_name: <string>
 
-# Describes how to parse log lines. Suported values [cri docker raw]
+# Describes how to parse log lines. Supported values [cri docker raw]
 [entry_parser: <string> | default = "docker"]
 
 # Describes how to transform logs from targets.
@@ -254,6 +290,9 @@ job_name: <string>
 
 # Describes how to receive logs from syslog.
 [syslog: <syslog_config>]
+
+# Describes how to receive logs via the Loki push API, (e.g. from other Promtails or the Docker Logging Driver)
+[loki_push_api: <loki_push_api_config>]
 
 # Describes how to relabel targets to determine if they should
 # be processed.
@@ -299,11 +338,11 @@ Stages serve several purposes, more detail can be found [here](./pipelines.md), 
 
 #### docker
 
-The Docker stage parses the contents of logs from Docker containers, and is defined by name with an empty object: 
+The Docker stage parses the contents of logs from Docker containers, and is defined by name with an empty object:
 
 ```yaml
 docker: {}
-``` 
+```
 
 The docker stage will match and parse log lines of this format:
 
@@ -333,11 +372,11 @@ The Docker stage is just a convenience wrapper for this definition:
 
 #### cri
 
-The CRI stage parses the contents of logs from CRI containers, and is defined by name with an empty object: 
+The CRI stage parses the contents of logs from CRI containers, and is defined by name with an empty object:
 
 ```yaml
 cri: {}
-``` 
+```
 
 The CRI  stage will match and parse log lines of this format:
 
@@ -431,7 +470,7 @@ match:
   # Names the pipeline. When defined, creates an additional label in
   # the pipeline_duration_seconds histogram, where the value is
   # concatenated with job_name using an underscore.
-  [pipieline_name: <string>]
+  [pipeline_name: <string>]
 
   # Nested set of pipeline stages only if the selector
   # matches the labels of the log entries:
@@ -536,7 +575,7 @@ config:
 
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
-  # log line receieved that passed the filter. If add is chosen,
+  # log line received that passed the filter. If add is chosen,
   # the extracted value most be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
@@ -593,7 +632,7 @@ config:
 
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
-  # log line receieved that passed the filter. If add is chosen,
+  # log line received that passed the filter. If add is chosen,
   # the extracted value most be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
@@ -645,6 +684,8 @@ labels:
 # paths (/var/log/journal and /run/log/journal) when empty.
 [path: <string>]
 ```
+
+**Note**: priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
 
 ### syslog_config
 
@@ -698,6 +739,31 @@ labels:
 * `__syslog_message_proc_id`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
 * `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
 * `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
+
+### loki_push_api_config
+
+The `loki_push_api_config` block configures Promtail to expose a [Loki push API](../../api.md#post-lokiapiv1push) server.
+
+Each job configured with a `loki_push_api_config` will expose this API and will require a separate port.
+
+Note the `server` configuration is the same as [server_config](#server_config)
+
+
+
+```yaml
+# The push server configuration options
+[server: <server_config>]
+
+# Label map to add to every log line sent to the push API
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# If promtail should pass on the timestamp from the incoming log or not.
+# When false promtail will assign the current timestamp to the log when it was processed
+[use_incoming_timestamp: <bool> | default = false]
+```
+
+See [Example Push Config](#example-push-config)
 
 ### relabel_config
 
@@ -783,8 +849,11 @@ for them.  It is the canonical way to specify static targets in a scrape
 configuration.
 
 ```yaml
-# Configures the discovery to look on the current machine. Must be either
-# localhost or the hostname of the current computer.
+# Configures the discovery to look on the current machine. 
+# This is required by the prometheus service discovery code but doesn't
+# really apply to Promtail which can ONLY look at files on the local machine
+# As such it should only have the value of localhost, OR it can be excluded
+# entirely and a default value of localhost will be applied by Promtail.
 targets:
   - localhost
 
@@ -1059,7 +1128,32 @@ scrape_configs:
       - localhost
      labels:
       job: varlogs  # A `job` label is fairly standard in prometheus and useful for linking metrics and logs.
-      host: yourhost # A `host` label will help identify logs from this machine vs others  
+      host: yourhost # A `host` label will help identify logs from this machine vs others
+      __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
+```
+
+## Example Static Config without targets
+
+While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/log/positions.yaml # This location needs to be writeable by promtail.
+
+client:
+  url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+
+scrape_configs:
+ - job_name: system
+   pipeline_stages:
+   static_configs:
+   - labels:
+      job: varlogs  # A `job` label is fairly standard in prometheus and useful for linking metrics and logs.
+      host: yourhost # A `host` label will help identify logs from this machine vs others
       __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
 ```
 
@@ -1114,3 +1208,34 @@ scrape_configs:
       - source_labels: ['__syslog_message_hostname']
         target_label: 'host'
 ```
+
+## Example Push Config
+
+The example starts Promtail as a Push receiver and will accept logs from other Promtail instances or the Docker Logging Dirver:
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: push1
+  loki_push_api:
+    server:
+      http_listen_port: 3500
+      grpc_listen_port: 3600
+    labels:
+      pushserver: push1
+```
+
+Please note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
+
+A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the promtail `server` config section (unless it's disabled)
+
+You can set `grpc_listen_port` to `0` to have a random port assigned if not using httpgrpc.

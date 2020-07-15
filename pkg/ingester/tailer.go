@@ -22,7 +22,7 @@ type tailer struct {
 	id       uint32
 	orgID    string
 	matchers []*labels.Matcher
-	filter   logql.Filter
+	filter   logql.LineFilter
 	expr     logql.Expr
 
 	sendChan chan *logproto.Stream
@@ -94,7 +94,7 @@ func (t *tailer) loop() {
 			if err != nil {
 				// Don't log any error due to tail client closing the connection
 				if !util.IsConnCanceled(err) {
-					level.Error(cortex_util.Logger).Log("msg", "Error writing to tail client", "err", err)
+					level.Error(cortex_util.WithContext(t.conn.Context(), cortex_util.Logger)).Log("msg", "Error writing to tail client", "err", err)
 				}
 				t.close()
 				return
@@ -139,7 +139,7 @@ func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
 
 	var filteredEntries []logproto.Entry
 	for _, e := range stream.Entries {
-		if t.filter([]byte(e.Line)) {
+		if t.filter.Filter([]byte(e.Line)) {
 			filteredEntries = append(filteredEntries, e)
 		}
 	}

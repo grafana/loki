@@ -169,5 +169,3 @@ A set of schemas are used to map the matchers and label sets used on reads and
 writes to the chunk store into appropriate operations on the index. Schemas have
 been added as Loki has evolved, mainly in an attempt to better load balance
 writes and improve query performance.
-
-> The current schema recommendation is the **v10 schema**.

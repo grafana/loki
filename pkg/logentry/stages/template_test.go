@@ -27,12 +27,12 @@ pipeline_stages:
     source: level
     template: '{{ if eq .Value "WARN" }}{{ Replace .Value "WARN" "OK" -1 }}{{ else }}{{ .Value }}{{ end }}'
 - template:
-    source: notexist
+    source: nonexistent
     template: "TEST"
 - labels:
     app: ''
     level: ''
-    type: notexist
+    type: nonexistent
 `
 
 var testTemplateLogLine = `
@@ -73,7 +73,7 @@ func TestPipeline_Template(t *testing.T) {
 	assert.Equal(t, expectedLbls, lbls)
 }
 
-func TestPipelineWithMissingKey_Temaplate(t *testing.T) {
+func TestPipelineWithMissingKey_Template(t *testing.T) {
 	var buf bytes.Buffer
 	w := log.NewSyncWriter(&buf)
 	logger := log.NewLogfmtLogger(w)
@@ -204,6 +204,20 @@ func TestTemplateStage_Process(t *testing.T) {
 				"level":   "warn",
 				"app":     "loki",
 				"message": "warn for app loki in module <no value>",
+			},
+		},
+		"template with multiple keys with nil value in extracted key": {
+			TemplateConfig{
+				Source:   "level",
+				Template: "{{ Replace .Value \"Warning\" \"warn\" 1 }}",
+			},
+			map[string]interface{}{
+				"level":   "Warning",
+				"testval": nil,
+			},
+			map[string]interface{}{
+				"level":   "warn",
+				"testval": nil,
 			},
 		},
 		"ToLower": {

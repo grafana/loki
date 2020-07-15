@@ -46,31 +46,31 @@
             proxy_set_header     X-Scope-OrgID 1;
 
             location = /api/prom/push {
-              proxy_pass       http://distributor.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://distributor.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
 
             location = /api/prom/tail {
-              proxy_pass       http://querier.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://querier.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
               proxy_set_header Upgrade $http_upgrade;
               proxy_set_header Connection "upgrade";
             }
 
             location ~ /api/prom/.* {
-              proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
 
             location = /loki/api/v1/push {
-              proxy_pass       http://distributor.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://distributor.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
 
             location = /loki/api/v1/tail {
-              proxy_pass       http://querier.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://querier.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
               proxy_set_header Upgrade $http_upgrade;
               proxy_set_header Connection "upgrade";
             }
 
             location ~ /loki/api/.* {
-              proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;
             }
           }
         }
@@ -82,7 +82,7 @@
 
   gateway_container::
     container.new('nginx', $._images.nginx) +
-    container.withPorts($.core.v1.containerPort.new('http', 80)) +
+    container.withPorts($.core.v1.containerPort.new(name='http', port=80)) +
     $.util.resourcesRequests('50m', '100Mi'),
 
   local deployment = $.apps.v1.deployment,

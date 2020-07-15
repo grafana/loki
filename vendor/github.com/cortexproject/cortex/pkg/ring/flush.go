@@ -9,8 +9,11 @@ import (
 var ErrTransferDisabled = errors.New("transfers disabled")
 
 // FlushTransferer controls the shutdown of an instance in the ring.
+// Methods on this interface are called when lifecycler is stopping.
+// At that point, it no longer runs the "actor loop", but it keeps updating heartbeat in the ring.
+// Ring entry is in LEAVING state.
+// After calling TransferOut and then Flush, lifecycler stops.
 type FlushTransferer interface {
-	StopIncomingRequests()
 	Flush()
 	TransferOut(ctx context.Context) error
 }
@@ -23,9 +26,6 @@ type NoopFlushTransferer struct{}
 func NewNoopFlushTransferer() *NoopFlushTransferer {
 	return &NoopFlushTransferer{}
 }
-
-// StopIncomingRequests is a noop
-func (t *NoopFlushTransferer) StopIncomingRequests() {}
 
 // Flush is a noop
 func (t *NoopFlushTransferer) Flush() {}

@@ -67,7 +67,11 @@ $ helm upgrade --install fluent-bit loki/fluent-bit \
 To install Grafana on your cluster with helm, use the following command:
 
 ```bash
-$ helm install stable/grafana -n loki-grafana
+# with Helm 2
+$ helm install stable/grafana -n loki-grafana --namespace <YOUR-NAMESPACE>
+
+# with Helm 3
+$ helm install loki-grafana stable/grafana -n <YOUR-NAMESPACE>
 ```
 
 > The chart loki-stack contains a pre-configured Grafana, simply use `--set grafana.enabled=true`
@@ -75,7 +79,7 @@ $ helm install stable/grafana -n loki-grafana
 To get the admin password for the Grafana pod, run the following command:
 
 ```bash
-$  kubectl get secret --namespace <YOUR-NAMESPACE> loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+$ kubectl get secret --namespace <YOUR-NAMESPACE> loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
 ```
 
 To access the Grafana UI, run the following command:
@@ -147,6 +151,41 @@ syslogService:
   enabled: true
   type: LoadBalancer
   port: 1514
+```
+
+## Run promtail with systemd-journal support
+
+In order to receive and process syslog message into promtail, the following changes will be necessary:
+
+* Review the [promtail systemd-journal configuration documentation](/docs/clients/promtail/scraping.md#journal-scraping-linux-only)
+
+* Configure the promtail helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the promtail pods to access the log files. For example:
+
+```yaml
+# Add additional scrape config
+extraScrapeConfigs:
+  - job_name: journal
+    journal:
+      path: /var/log/journal
+      max_age: 12h
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: 'unit'
+      - source_labels: ['__journal__hostname']
+        target_label: 'hostname'
+
+# Mount journal directory into promtail pods
+extraVolumes:
+  - name: journal
+    hostPath:
+      path: /var/log/journal
+
+extraVolumeMounts:
+  - name: journal
+    mountPath: /var/log/journal
+    readOnly: true
 ```
 
 ## How to contribute

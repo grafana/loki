@@ -5,10 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Limits allows us to specify per-tenant runtime limits on the behavior of
@@ -16,6 +17,7 @@ import (
 type Limits interface {
 	MaxQueryLength(string) time.Duration
 	MaxQueryParallelism(string) int
+	MaxCacheFreshness(string) time.Duration
 }
 
 type limits struct {
@@ -36,7 +38,7 @@ func LimitsMiddleware(l Limits) Middleware {
 func (l limits) Do(ctx context.Context, r Request) (Response, error) {
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	maxQueryLen := l.MaxQueryLength(userid)
@@ -57,7 +59,7 @@ type RequestResponse struct {
 func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]RequestResponse, error) {
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	// If one of the requests fail, we want to be able to cancel the rest of them.

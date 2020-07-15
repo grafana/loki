@@ -9,6 +9,7 @@ local condition(verb) = {
       [verb]:
         [
           'refs/heads/master',
+          'refs/heads/k??',
           'refs/tags/v*',
         ],
     },
@@ -77,6 +78,30 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,m
       when: condition('include').tagMaster,
       settings+: {
         repo: 'grafana/fluent-bit-plugin-loki',
+      },
+    },
+  ],
+  depends_on: ['check'],
+};
+
+local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,master') {
+  steps+: [
+    // dry run for everything that is not tag or master
+    docker('amd64', 'fluentd') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMaster,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/fluent-plugin-loki',
+      },
+    },
+  ] + [
+    // publish for tag or master
+    docker('amd64', 'fluentd') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMaster,
+      settings+: {
+        repo: 'grafana/fluent-plugin-loki',
       },
     },
   ],
@@ -180,6 +205,7 @@ local manifest(apps) = pipeline('manifest') {
   for arch in archs
 ] + [
   fluentbit(),
+  fluentd(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMaster,

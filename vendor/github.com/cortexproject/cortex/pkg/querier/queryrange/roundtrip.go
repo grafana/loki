@@ -17,7 +17,6 @@ package queryrange
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"net/http"
 	"strings"
@@ -25,13 +24,29 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 )
 
 const day = 24 * time.Hour
+
+var (
+	// PassthroughMiddleware is a noop middleware
+	PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
+		return next
+	})
+
+	errInvalidMinShardingLookback = errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
+)
 
 // Config for query_range middleware chain.
 type Config struct {
@@ -41,6 +56,7 @@ type Config struct {
 	ResultsCacheConfig     `yaml:"results_cache"`
 	CacheResults           bool `yaml:"cache_results"`
 	MaxRetries             int  `yaml:"max_retries"`
+	ShardedQueries         bool `yaml:"parallelise_shardable_queries"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -50,9 +66,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
+	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
+// Validate validates the config.
 func (cfg *Config) Validate(log log.Logger) error {
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
 	if cfg.SplitQueriesByDay {
@@ -60,8 +78,13 @@ func (cfg *Config) Validate(log log.Logger) error {
 		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
 	}
 
-	if cfg.CacheResults && cfg.SplitQueriesByInterval <= 0 {
-		return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
+	if cfg.CacheResults {
+		if cfg.SplitQueriesByInterval <= 0 {
+			return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
+		}
+		if err := cfg.ResultsCacheConfig.CacheConfig.Validate(); err != nil {
+			return errors.Wrap(err, "invalid ResultsCache config")
+		}
 	}
 	return nil
 }
@@ -104,25 +127,69 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, cache.Cache, error) {
+func NewTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	codec Codec,
+	cacheExtractor Extractor,
+	schema chunk.SchemaConfig,
+	engineOpts promql.EngineOpts,
+	minShardingLookback time.Duration,
+	registerer prometheus.Registerer,
+	cacheGenNumberLoader CacheGenNumberLoader,
+) (frontend.Tripperware, cache.Cache, error) {
+	// Per tenant query metrics.
+	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "query_frontend_queries_total",
+		Help:      "Total queries sent per tenant.",
+	}, []string{"op", "user"})
+
+	// Metric used to keep track of each middleware execution duration.
+	metrics := NewInstrumentMiddlewareMetrics(registerer)
+
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec, registerer))
 	}
+
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader)
 		if err != nil {
 			return nil, nil, err
 		}
 		c = cache
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache"), queryCacheMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache", metrics), queryCacheMiddleware)
 	}
+
+	if cfg.ShardedQueries {
+		if minShardingLookback == 0 {
+			return nil, nil, errInvalidMinShardingLookback
+		}
+
+		shardingware := NewQueryShardMiddleware(
+			log,
+			promql.NewEngine(engineOpts),
+			schema.Configs,
+			codec,
+			minShardingLookback,
+			metrics,
+			registerer,
+		)
+
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			shardingware, // instrumentation is included in the sharding middleware
+		)
+	}
+
 	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry"), NewRetryMiddleware(log, cfg.MaxRetries))
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, NewRetryMiddlewareMetrics(registerer)))
 	}
 
 	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
@@ -130,7 +197,20 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 		if len(queryRangeMiddleware) > 0 {
 			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
 			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
-				if !strings.HasSuffix(r.URL.Path, "/query_range") {
+				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
+				op := "query"
+				if isQueryRange {
+					op = "query_range"
+				}
+
+				user, err := user.ExtractOrgID(r.Context())
+				// This should never happen anyways because we have auth middleware before this.
+				if err != nil {
+					return nil, err
+				}
+				queriesPerTenant.WithLabelValues(op, user).Inc()
+
+				if !isQueryRange {
 					return next.RoundTrip(r)
 				}
 				return queryrange.RoundTrip(r)
@@ -164,7 +244,9 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	LogToSpan(r.Context(), request)
+	if span := opentracing.SpanFromContext(r.Context()); span != nil {
+		request.LogToSpan(span)
+	}
 
 	response, err := q.handler.Do(r.Context(), request)
 	if err != nil {
@@ -182,7 +264,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	response, err := q.next.RoundTrip(request)

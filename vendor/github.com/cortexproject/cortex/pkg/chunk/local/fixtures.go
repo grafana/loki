@@ -1,6 +1,7 @@
 package local
 
 import (
+	"io"
 	"io/ioutil"
 	"os"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 )
 
@@ -21,8 +23,8 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	indexClient chunk.IndexClient, objectClient chunk.ObjectClient, tableClient chunk.TableClient,
-	schemaConfig chunk.SchemaConfig, err error,
+	indexClient chunk.IndexClient, chunkClient chunk.Client, tableClient chunk.TableClient,
+	schemaConfig chunk.SchemaConfig, closer io.Closer, err error,
 ) {
 	f.dirname, err = ioutil.TempDir(os.TempDir(), "boltdb")
 	if err != nil {
@@ -36,12 +38,14 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	objectClient, err = NewFSObjectClient(FSConfig{
+	oClient, err := NewFSObjectClient(FSConfig{
 		Directory: f.dirname,
 	})
 	if err != nil {
 		return
 	}
+
+	chunkClient = objectclient.NewClient(oClient, objectclient.Base64Encoder)
 
 	tableClient, err = NewTableClient(f.dirname)
 	if err != nil {
@@ -56,14 +60,18 @@ func (f *fixture) Clients() (
 				Prefix: "chunks",
 				Period: 10 * time.Minute,
 			},
+			IndexTables: chunk.PeriodicTableConfig{
+				Prefix: "index",
+				Period: 10 * time.Minute,
+			},
 		}},
 	}
 
-	return
-}
+	closer = testutils.CloserFunc(func() error {
+		return os.RemoveAll(f.dirname)
+	})
 
-func (f *fixture) Teardown() error {
-	return os.RemoveAll(f.dirname)
+	return
 }
 
 // Fixtures for unit testing GCP storage.

@@ -155,7 +155,7 @@ read/write capacity units and autoscaling.
 
 | DynamoDB            | Active table                            | Inactive table                       |
 | ------------------- | --------------------------------------- | ------------------------------------ |
-| Capacity mode       | `provisioned_throughput_on_demand_mode` | `inactive_throughput_on_demand_mode` |
+| Capacity mode       | `enable_ondemand_throughput_mode` | `enable_inactive_throughput_on_demand_mode` |
 | Read capacity unit  | `provisioned_read_throughput`           | `inactive_read_throughput`           |
 | Write capacity unit | `provisioned_write_throughput`          | `inactive_write_throughput`          |
 | Autoscaling         | Enabled (if configured)                 | Always disabled                      |

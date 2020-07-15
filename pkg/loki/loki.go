@@ -1,15 +1,25 @@
 package loki
 
 import (
+	"bytes"
+	"context"
 	"flag"
 	"fmt"
+	"net/http"
+
+	"github.com/cortexproject/cortex/pkg/util/modules"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/signals"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
@@ -22,14 +32,16 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/tracing"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      moduleName `yaml:"target,omitempty"`
-	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string     `yaml:"http_prefix"`
+	Target      string `yaml:"target,omitempty"`
+	AuthEnabled bool   `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix  string `yaml:"http_prefix"`
 
 	Server           server.Config               `yaml:"server,omitempty"`
 	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
@@ -45,14 +57,16 @@ type Config struct {
 	Frontend         frontend.Config             `yaml:"frontend,omitempty"`
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
+	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
+	Tracing          tracing.Config              `yaml:"tracing"`
 }
 
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "loki"
-	c.Target = All
 	c.Server.ExcludeRequestInLog = true
-	f.Var(&c.Target, "target", "target module (default All)")
+
+	f.StringVar(&c.Target, "target", All, "target module (default All)")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.Server.RegisterFlags(f)
@@ -69,11 +83,35 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
+	c.MemberlistKV.RegisterFlags(f, "")
+	c.Tracing.RegisterFlags(f)
+}
+
+// Validate the config and returns an error if the validation
+// doesn't pass
+func (c *Config) Validate(log log.Logger) error {
+	if err := c.SchemaConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid schema config")
+	}
+	if err := c.StorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
+	if err := c.QueryRange.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid queryrange config")
+	}
+	if err := c.TableManager.Validate(); err != nil {
+		return errors.Wrap(err, "invalid tablemanager config")
+	}
+	return nil
 }
 
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	cfg Config
+
+	// set during initialization
+	moduleManager *modules.Manager
+	serviceMap    map[string]services.Service
 
 	server        *server.Server
 	ring          *ring.Ring
@@ -83,10 +121,10 @@ type Loki struct {
 	querier       *querier.Querier
 	store         storage.Store
 	tableManager  *chunk.TableManager
-	worker        frontend.Worker
 	frontend      *frontend.Frontend
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
+	memberlistKV  *memberlist.KVInitService
 
 	httpAuthMiddleware middleware.Interface
 }
@@ -98,112 +136,187 @@ func New(cfg Config) (*Loki, error) {
 	}
 
 	loki.setupAuthMiddleware()
-
-	if err := loki.init(cfg.Target); err != nil {
+	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
+	storage.RegisterCustomIndexClients(cfg.StorageConfig, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }
 
 func (t *Loki) setupAuthMiddleware() {
+	t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
+	t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
 	if t.cfg.AuthEnabled {
-		t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
-			middleware.ServerUserHeaderInterceptor,
-		}
-		t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				switch info.FullMethod {
-				// Don't check auth header on TransferChunks, as we weren't originally
-				// sending it and this could cause transfers to fail on update.
-				//
-				// Also don't check auth /frontend.Frontend/Process, as this handles
-				// queries for multiple users.
-				case "/logproto.Ingester/TransferChunks", "/frontend.Frontend/Process":
-					return handler(srv, ss)
-				default:
-					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-				}
-			},
-		}
+		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
+		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
 		t.httpAuthMiddleware = middleware.AuthenticateUser
 	} else {
-		t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
-			fakeGRPCAuthUniaryMiddleware,
-		}
-		t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			fakeGRPCAuthStreamMiddleware,
-		}
+		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
+		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
 		t.httpAuthMiddleware = fakeHTTPAuthMiddleware
 	}
 }
 
-func (t *Loki) init(m moduleName) error {
-	// initialize all of our dependencies first
-	for _, dep := range orderedDeps(m) {
-		if err := t.initModule(dep); err != nil {
+var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	switch info.FullMethod {
+	// Don't check auth header on TransferChunks, as we weren't originally
+	// sending it and this could cause transfers to fail on update.
+	//
+	// Also don't check auth /frontend.Frontend/Process, as this handles
+	// queries for multiple users.
+	case "/logproto.Ingester/TransferChunks", "/frontend.Frontend/Process":
+		return handler(srv, ss)
+	default:
+		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+	}
+}
+
+// Run starts Loki running, and blocks until a Loki stops.
+func (t *Loki) Run() error {
+	serviceMap, err := t.moduleManager.InitModuleServices(t.cfg.Target)
+	if err != nil {
+		return err
+	}
+
+	t.serviceMap = serviceMap
+	t.server.HTTP.Handle("/services", http.HandlerFunc(t.servicesHandler))
+
+	// get all services, create service manager and tell it to start
+	var servs []services.Service
+	for _, s := range serviceMap {
+		servs = append(servs, s)
+	}
+
+	sm, err := services.NewManager(servs...)
+	if err != nil {
+		return err
+	}
+
+	// before starting servers, register /ready handler. It should reflect entire Loki.
+	t.server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
+
+	// Let's listen for events from this manager, and log them.
+	healthy := func() { level.Info(util.Logger).Log("msg", "Loki started") }
+	stopped := func() { level.Info(util.Logger).Log("msg", "Loki stopped") }
+	serviceFailed := func(service services.Service) {
+		// if any service fails, stop entire Loki
+		sm.StopAsync()
+
+		// let's find out which module failed
+		for m, s := range serviceMap {
+			if s == service {
+				if service.FailureCase() == util.ErrStopProcess {
+					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
+				} else {
+					level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				}
+				return
+			}
+		}
+
+		level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
+	}
+
+	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
+
+	// Setup signal handler. If signal arrives, we stop the manager, which stops all the services.
+	handler := signals.NewHandler(t.server.Log)
+	go func() {
+		handler.Loop()
+		sm.StopAsync()
+	}()
+
+	// Start all services. This can really only fail if some service is already
+	// in other state than New, which should not be the case.
+	err = sm.StartAsync(context.Background())
+	if err == nil {
+		// Wait until service manager stops. It can stop in two ways:
+		// 1) Signal is received and manager is stopped.
+		// 2) Any service fails.
+		err = sm.AwaitStopped(context.Background())
+	}
+
+	// If there is no error yet (= service manager started and then stopped without problems),
+	// but any service failed, report that failure as an error to caller.
+	if err == nil {
+		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
+			for _, f := range failed {
+				if f.FailureCase() != util.ErrStopProcess {
+					// Details were reported via failure listener before
+					err = errors.New("failed services")
+					break
+				}
+			}
+		}
+	}
+	return err
+}
+
+func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !sm.IsHealthy() {
+			msg := bytes.Buffer{}
+			msg.WriteString("Some services are not Running:\n")
+
+			byState := sm.ServicesByState()
+			for st, ls := range byState {
+				msg.WriteString(fmt.Sprintf("%v: %d\n", st, len(ls)))
+			}
+
+			http.Error(w, msg.String(), http.StatusServiceUnavailable)
+			return
+		}
+
+		// Ingester has a special check that makes sure that it was able to register into the ring,
+		// and that all other ring entries are OK too.
+		if t.ingester != nil {
+			if err := t.ingester.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
+		http.Error(w, "ready", http.StatusOK)
+	}
+}
+
+func (t *Loki) setupModuleManager() error {
+	mm := modules.NewManager()
+
+	mm.RegisterModule(Server, t.initServer)
+	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)
+	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
+	mm.RegisterModule(Ring, t.initRing)
+	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(Distributor, t.initDistributor)
+	mm.RegisterModule(Store, t.initStore)
+	mm.RegisterModule(Ingester, t.initIngester)
+	mm.RegisterModule(Querier, t.initQuerier)
+	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
+	mm.RegisterModule(TableManager, t.initTableManager)
+	mm.RegisterModule(All, nil)
+
+	// Add dependencies
+	deps := map[string][]string{
+		Ring:          {RuntimeConfig, Server, MemberlistKV},
+		Overrides:     {RuntimeConfig},
+		Distributor:   {Ring, Server, Overrides},
+		Store:         {Overrides},
+		Ingester:      {Store, Server, MemberlistKV},
+		Querier:       {Store, Ring, Server},
+		QueryFrontend: {Server, Overrides},
+		TableManager:  {Server},
+		All:           {Querier, Ingester, Distributor, TableManager},
+	}
+
+	for mod, targets := range deps {
+		if err := mm.AddDependency(mod, targets...); err != nil {
 			return err
 		}
 	}
-	// lastly, initialize the requested module
-	return t.initModule(m)
-}
 
-func (t *Loki) initModule(m moduleName) error {
-	level.Info(util.Logger).Log("msg", "initialising", "module", m)
-	if modules[m].init != nil {
-		if err := modules[m].init(t); err != nil {
-			return errors.Wrap(err, fmt.Sprintf("error initialising module: %s", m))
-		}
-	}
+	t.moduleManager = mm
+
 	return nil
-}
-
-// Run starts Loki running, and blocks until a signal is received.
-func (t *Loki) Run() error {
-	return t.server.Run()
-}
-
-// Stop gracefully stops a Loki.
-func (t *Loki) Stop() error {
-	t.stopping(t.cfg.Target)
-	t.stop(t.cfg.Target)
-	t.server.Shutdown()
-	return nil
-}
-
-func (t *Loki) stop(m moduleName) {
-	t.stopModule(m)
-	deps := orderedDeps(m)
-	// iterate over our deps in reverse order and call stopModule
-	for i := len(deps) - 1; i >= 0; i-- {
-		t.stopModule(deps[i])
-	}
-}
-
-func (t *Loki) stopModule(m moduleName) {
-	level.Info(util.Logger).Log("msg", "stopping", "module", m)
-	if modules[m].stop != nil {
-		if err := modules[m].stop(t); err != nil {
-			level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
-		}
-	}
-}
-
-func (t *Loki) stopping(m moduleName) {
-	t.stoppingModule(m)
-	deps := orderedDeps(m)
-	// iterate over our deps in reverse order and call stoppingModule
-	for i := len(deps) - 1; i >= 0; i-- {
-		t.stoppingModule(deps[i])
-	}
-}
-
-func (t *Loki) stoppingModule(m moduleName) {
-	level.Info(util.Logger).Log("msg", "notifying module about stopping", "module", m)
-	if modules[m].stopping != nil {
-		if err := modules[m].stopping(t); err != nil {
-			level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
-		}
-	}
 }

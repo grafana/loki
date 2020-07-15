@@ -62,7 +62,10 @@ type IndexReader interface {
 	// beyond the lifetime of the index reader.
 	Symbols() index.StringIter
 
-	// LabelValues returns sorted possible label values.
+	// SortedLabelValues returns sorted possible label values.
+	SortedLabelValues(name string) ([]string, error)
+
+	// LabelValues returns possible label values which may not be sorted.
 	LabelValues(name string) ([]string, error)
 
 	// Postings returns the postings list iterator for the label pairs.
@@ -77,7 +80,7 @@ type IndexReader interface {
 
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
-	// Returns ErrNotFound if the ref does not resolve to a known series.
+	// Returns storage.ErrNotFound if the ref does not resolve to a known series.
 	Series(ref uint64, lset *labels.Labels, chks *[]chunks.Meta) error
 
 	// LabelNames returns all the unique label names present in the index in sorted order.
@@ -122,12 +125,6 @@ type BlockReader interface {
 
 	// Meta provides meta information about the block reader.
 	Meta() BlockMeta
-}
-
-// Appendable defines an entity to which data can be appended.
-type Appendable interface {
-	// Appender returns a new Appender against an underlying store.
-	Appender() Appender
 }
 
 // BlockMeta provides meta information about a block.
@@ -423,6 +420,11 @@ type blockIndexReader struct {
 
 func (r blockIndexReader) Symbols() index.StringIter {
 	return r.ir.Symbols()
+}
+
+func (r blockIndexReader) SortedLabelValues(name string) ([]string, error) {
+	st, err := r.ir.SortedLabelValues(name)
+	return st, errors.Wrapf(err, "block: %s", r.b.Meta().ULID)
 }
 
 func (r blockIndexReader) LabelValues(name string) ([]string, error) {

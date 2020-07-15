@@ -8,20 +8,22 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
+
+	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 func TestTransferOut(t *testing.T) {
@@ -32,7 +34,7 @@ func TestTransferOut(t *testing.T) {
 	// Push some data into our original ingester
 	ctx := user.InjectOrgID(context.Background(), "test")
 	_, err := ing.Push(ctx, &logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Entries: []logproto.Entry{
 					{Line: "line 0", Timestamp: time.Unix(0, 0)},
@@ -58,11 +60,12 @@ func TestTransferOut(t *testing.T) {
 
 	// verify we get out of order exception on adding an entry with older timestamps
 	_, err2 := ing.Push(ctx, &logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Entries: []logproto.Entry{
-					{Line: "out of order line", Timestamp: time.Unix(0, 0)},
 					{Line: "line 4", Timestamp: time.Unix(2, 0)},
+					{Line: "ooo", Timestamp: time.Unix(0, 0)},
+					{Line: "line 5", Timestamp: time.Unix(3, 0)},
 				},
 				Labels: `{foo="bar",bar="baz1"}`,
 			},
@@ -71,11 +74,12 @@ func TestTransferOut(t *testing.T) {
 
 	require.Error(t, err2)
 	require.Contains(t, err2.Error(), "out of order")
-	require.Contains(t, err2.Error(), "total ignored: 1 out of 2")
+	require.Contains(t, err2.Error(), "total ignored: 1 out of 3")
 
 	// Create a new ingester and transfer data to it
 	ing2 := f.getIngester(time.Second*60, t)
-	ing.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), ing2) //nolint:errcheck
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	assert.Len(t, ing2.instances, 1)
 	if assert.Contains(t, ing2.instances, "test") {
@@ -84,13 +88,14 @@ func TestTransferOut(t *testing.T) {
 		lines := []string{}
 
 		// Get all the lines back and make sure the blocks transferred successfully
+		ing2.instances["test"].streamsMtx.RLock()
 		for _, stream := range ing2.instances["test"].streams {
 			it, err := stream.Iterator(
 				context.TODO(),
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,
-				func([]byte) bool { return true },
+				logql.LineFilterFunc(func([]byte) bool { return true }),
 			)
 			if !assert.NoError(t, err) {
 				continue
@@ -101,12 +106,12 @@ func TestTransferOut(t *testing.T) {
 				lines = append(lines, entry.Line)
 			}
 		}
-
+		ing2.instances["test"].streamsMtx.RUnlock()
 		sort.Strings(lines)
 
 		assert.Equal(
 			t,
-			[]string{"line 0", "line 1", "line 2", "line 3", "line 4"},
+			[]string{"line 0", "line 1", "line 2", "line 3", "line 4", "line 5"},
 			lines,
 		)
 	}
@@ -120,7 +125,7 @@ type testIngesterFactory struct {
 }
 
 func newTestIngesterFactory(t *testing.T) *testIngesterFactory {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.Proto{Factory: ring.ProtoDescFactory})
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil)
 	require.NoError(t, err)
 
 	return &testIngesterFactory{
@@ -139,20 +144,19 @@ func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T)
 	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = f.store
 	cfg.LifecyclerConfig.JoinAfter = joinAfter
 	cfg.LifecyclerConfig.Addr = cfg.LifecyclerConfig.ID
+	// Force a tiny chunk size and no encoding so we can guarantee multiple chunks
+	// These values are also crafted around the specific use of `line _` in the log line which is 6 bytes long
+	cfg.BlockSize = 3 // Block size needs to be less than chunk size so we can get more than one block per chunk
+	cfg.TargetChunkSize = 24
+	cfg.ChunkEncoding = chunkenc.EncNone.String()
 
-	cfg.ingesterClientFactory = func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error) {
+	cfg.ingesterClientFactory = func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error) {
 		ingester, ok := f.ingesters[addr]
 		if !ok {
 			return nil, fmt.Errorf("no ingester %s", addr)
 		}
 
-		return struct {
-			logproto.PusherClient
-			logproto.QuerierClient
-			logproto.IngesterClient
-			grpc_health_v1.HealthClient
-			io.Closer
-		}{
+		return client.ClosableHealthAndIngesterClient{
 			PusherClient:   nil,
 			QuerierClient:  nil,
 			IngesterClient: &testIngesterClient{t: f.t, i: ingester},
@@ -196,7 +200,11 @@ func (c *testIngesterClient) TransferChunks(context.Context, ...grpc.CallOption)
 	// unhealthy state, permanently stuck in the handler for claiming tokens.
 	go func() {
 		time.Sleep(time.Millisecond * 50)
-		c.i.lifecycler.Shutdown()
+		c.i.stopIncomingRequests() // used to be called from lifecycler, now it must be called *before* stopping lifecyler. (ingester does this on shutdown)
+		err := services.StopAndAwaitTerminated(context.Background(), c.i.lifecycler)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
+		}
 	}()
 
 	go func() {

@@ -12,28 +12,28 @@ workspace:
 
 steps:
 - name: test
-  image: grafana/loki-build-image:0.9.1
+  image: grafana/loki-build-image:0.9.3
   commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
 
 - name: lint
-  image: grafana/loki-build-image:0.9.1
+  image: grafana/loki-build-image:0.9.3
   commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
 
 - name: check-generated-files
-  image: grafana/loki-build-image:0.9.1
+  image: grafana/loki-build-image:0.9.3
   commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
 
 - name: check-mod
-  image: grafana/loki-build-image:0.9.1
+  image: grafana/loki-build-image:0.9.3
   commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
@@ -73,6 +73,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -93,6 +94,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -113,6 +115,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -131,6 +134,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -149,6 +153,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -167,6 +172,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -206,6 +212,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -226,6 +233,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -246,6 +254,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -264,6 +273,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -282,6 +292,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -300,6 +311,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -339,6 +351,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -359,6 +372,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -379,6 +393,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -397,6 +412,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -415,6 +431,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -433,6 +450,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -471,6 +489,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -487,6 +506,63 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
+    - refs/tags/v*
+  depends_on:
+  - image-tag
+
+depends_on:
+- check
+
+---
+kind: pipeline
+name: fluentd-amd64
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: image-tag
+  image: alpine
+  commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  - echo ",latest,master" >> .tags
+
+- name: build-fluentd-image
+  image: plugins/docker
+  settings:
+    dockerfile: cmd/fluentd/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/heads/k??
+      - refs/tags/v*
+  depends_on:
+  - image-tag
+
+- name: publish-fluentd-image
+  image: plugins/docker
+  settings:
+    dockerfile: cmd/fluentd/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+    - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -544,6 +620,7 @@ steps:
 trigger:
   ref:
   - refs/heads/master
+  - refs/heads/k??
   - refs/tags/v*
 
 depends_on:
@@ -561,7 +638,7 @@ platform:
 
 steps:
 - name: trigger
-  image: grafana/loki-build-image:0.9.1
+  image: grafana/loki-build-image:0.9.3
   commands:
   - ./tools/deploy.sh
   environment:
@@ -573,6 +650,7 @@ steps:
 trigger:
   ref:
   - refs/heads/master
+  - refs/heads/k??
   - refs/tags/v*
 
 depends_on:
@@ -588,7 +666,7 @@ platform:
 
 steps:
 - name: trigger
-  image: grafana/loki-build-image:0.9.1
+  image: grafana/loki-build-image:0.9.3
   commands:
   - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki -delete
   - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/promtail -delete
@@ -602,6 +680,7 @@ steps:
 trigger:
   ref:
   - refs/heads/master
+  - refs/heads/k??
   - refs/tags/v*
 
 depends_on:

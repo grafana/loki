@@ -3,9 +3,14 @@ package extract
 import (
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+)
+
+var (
+	errNoMetricNameLabel = fmt.Errorf("No metric name label")
 )
 
 // MetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.
@@ -17,7 +22,7 @@ func MetricNameFromLabelAdapters(labels []client.LabelAdapter) (string, error) {
 			return string([]byte(label.Value)), nil
 		}
 	}
-	return "", fmt.Errorf("No metric name label")
+	return "", errNoMetricNameLabel
 }
 
 // MetricNameFromMetric extract the metric name from a model.Metric
@@ -49,4 +54,13 @@ func MetricNameMatcherFromMatchers(matchers []*labels.Matcher) (*labels.Matcher,
 	}
 	// Return all matchers if none are metric name matchers
 	return nil, matchers, false
+}
+
+// MetricNameFromLabels extracts the metric name from a list of Prometheus Labels.
+func MetricNameFromLabels(lbls labels.Labels) (metricName string, err error) {
+	metricName = lbls.Get(model.MetricNameLabel)
+	if metricName == "" {
+		err = errNoMetricNameLabel
+	}
+	return
 }

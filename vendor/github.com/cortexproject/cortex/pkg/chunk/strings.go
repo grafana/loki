@@ -41,6 +41,7 @@ func intersectStrings(left, right []string) []string {
 	return result
 }
 
+//nolint:unused //Ignoring linting as this might be useful
 func nWayIntersectStrings(sets [][]string) []string {
 	l := len(sets)
 	switch l {

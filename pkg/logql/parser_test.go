@@ -21,6 +21,63 @@ func TestParse(t *testing.T) {
 		err error
 	}{
 		{
+			// raw string
+			in: "count_over_time({foo=~`bar\\w+`}[12h] |~ `error\\`)",
+			exp: &rangeAggregationExpr{
+				operation: "count_over_time",
+				left: &logRange{
+					left: &filterExpr{
+						ty:    labels.MatchRegexp,
+						match: "error\\",
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchRegexp, "foo", "bar\\w+"),
+							},
+						},
+					},
+					interval: 12 * time.Hour,
+				},
+			},
+		},
+		{
+			// test [12h] before filter expr
+			in: `count_over_time({foo="bar"}[12h] |= "error")`,
+			exp: &rangeAggregationExpr{
+				operation: "count_over_time",
+				left: &logRange{
+					left: &filterExpr{
+						ty:    labels.MatchEqual,
+						match: "error",
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+					},
+					interval: 12 * time.Hour,
+				},
+			},
+		},
+		{
+			// test [12h] after filter expr
+			in: `count_over_time({foo="bar"} |= "error" [12h])`,
+			exp: &rangeAggregationExpr{
+				operation: "count_over_time",
+				left: &logRange{
+					left: &filterExpr{
+						ty:    labels.MatchEqual,
+						match: "error",
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+					},
+					interval: 12 * time.Hour,
+				},
+			},
+		},
+		{
 			in:  `{foo="bar"}`,
 			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		},
@@ -48,6 +105,26 @@ func TestParse(t *testing.T) {
 					interval: 12 * time.Minute,
 				},
 				operation: "count_over_time",
+			},
+		},
+		{
+			in: `bytes_over_time({ foo !~ "bar" }[12m])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 12 * time.Minute,
+				},
+				operation: OpRangeTypeBytes,
+			},
+		},
+		{
+			in: `bytes_rate({ foo !~ "bar" }[12m])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 12 * time.Minute,
+				},
+				operation: OpRangeTypeBytesRate,
 			},
 		},
 		{
@@ -196,9 +273,9 @@ func TestParse(t *testing.T) {
 		{
 			in: `min({ foo !~ "bar" }[5m])`,
 			err: ParseError{
-				msg:  "syntax error: unexpected {",
-				line: 1,
-				col:  5,
+				msg:  "syntax error: unexpected DURATION",
+				line: 0,
+				col:  21,
 			},
 		},
 		{
@@ -236,9 +313,9 @@ func TestParse(t *testing.T) {
 		{
 			in: `stddev({ foo !~ "bar" })`,
 			err: ParseError{
-				msg:  "syntax error: unexpected {",
+				msg:  "syntax error: unexpected )",
 				line: 1,
-				col:  8,
+				col:  24,
 			},
 		},
 		{
@@ -298,7 +375,31 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
+		},
+		{
+			in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
+			exp: newRangeAggregationExpr(
+				&logRange{
+					left: &filterExpr{
+						left: &filterExpr{
+							left: &filterExpr{
+								left: &filterExpr{
+									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+									ty:    labels.MatchEqual,
+									match: "baz",
+								},
+								ty:    labels.MatchRegexp,
+								match: "blip",
+							},
+							ty:    labels.MatchNotEqual,
+							match: "flip",
+						},
+						ty:    labels.MatchNotRegexp,
+						match: "flap",
+					},
+					interval: 5 * time.Minute,
+				}, OpRangeTypeBytes),
 		},
 		{
 			in: `sum(count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
@@ -322,7 +423,37 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
+				"sum",
+				&grouping{
+					without: false,
+					groups:  []string{"foo"},
+				},
+				nil),
+		},
+		{
+			in: `sum(bytes_rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: &filterExpr{
+						left: &filterExpr{
+							left: &filterExpr{
+								left: &filterExpr{
+									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+									ty:    labels.MatchEqual,
+									match: "baz",
+								},
+								ty:    labels.MatchRegexp,
+								match: "blip",
+							},
+							ty:    labels.MatchNotEqual,
+							match: "flip",
+						},
+						ty:    labels.MatchNotRegexp,
+						match: "flap",
+					},
+					interval: 5 * time.Minute,
+				}, OpRangeTypeBytesRate),
 				"sum",
 				&grouping{
 					without: false,
@@ -352,7 +483,7 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
 				"topk",
 				&grouping{
 					without: true,
@@ -384,7 +515,7 @@ func TestParse(t *testing.T) {
 								match: "flap",
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeRate),
+						}, OpRangeTypeRate),
 					"sum",
 					&grouping{
 						without: false,
@@ -417,7 +548,7 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
 		},
 		{
 			in: `sum(count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (foo)`,
@@ -441,7 +572,7 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
 				"sum",
 				&grouping{
 					without: false,
@@ -471,7 +602,7 @@ func TestParse(t *testing.T) {
 						match: "flap",
 					},
 					interval: 5 * time.Minute,
-				}, OpTypeCountOverTime),
+				}, OpRangeTypeCount),
 				"topk",
 				&grouping{
 					without: true,
@@ -503,7 +634,7 @@ func TestParse(t *testing.T) {
 								match: "flap",
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeRate),
+						}, OpRangeTypeRate),
 					"sum",
 					&grouping{
 						without: false,
@@ -565,8 +696,10 @@ func TestParse(t *testing.T) {
 			`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
+				BinOpOptions{},
 				mustNewBinOpExpr(
 					OpTypeDiv,
+					BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -575,7 +708,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -591,7 +724,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -608,7 +741,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpTypeCountOverTime),
+					}, OpRangeTypeCount),
 					"sum",
 					&grouping{
 						without: false,
@@ -620,14 +753,16 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `
-			sum(count_over_time({foo="bar"}[5m])) by (foo) ^
-			sum(count_over_time({foo="bar"}[5m])) by (foo) /
-			sum(count_over_time({foo="bar"}[5m])) by (foo)
-			`,
+					sum(count_over_time({foo="bar"}[5m])) by (foo) ^
+					sum(count_over_time({foo="bar"}[5m])) by (foo) /
+					sum(count_over_time({foo="bar"}[5m])) by (foo)
+					`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
+				BinOpOptions{},
 				mustNewBinOpExpr(
 					OpTypePow,
+					BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -636,7 +771,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -652,7 +787,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -669,7 +804,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpTypeCountOverTime),
+					}, OpRangeTypeCount),
 					"sum",
 					&grouping{
 						without: false,
@@ -682,12 +817,13 @@ func TestParse(t *testing.T) {
 		{
 			// operator precedence before left associativity
 			in: `
-			sum(count_over_time({foo="bar"}[5m])) by (foo) +
-			sum(count_over_time({foo="bar"}[5m])) by (foo) /
-			sum(count_over_time({foo="bar"}[5m])) by (foo)
-			`,
+					sum(count_over_time({foo="bar"}[5m])) by (foo) +
+					sum(count_over_time({foo="bar"}[5m])) by (foo) /
+					sum(count_over_time({foo="bar"}[5m])) by (foo)
+					`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
+				BinOpOptions{},
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
 					&logRange{
 						left: &matchersExpr{
@@ -696,7 +832,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpTypeCountOverTime),
+					}, OpRangeTypeCount),
 					"sum",
 					&grouping{
 						without: false,
@@ -706,6 +842,7 @@ func TestParse(t *testing.T) {
 				),
 				mustNewBinOpExpr(
 					OpTypeDiv,
+					BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -714,7 +851,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -730,7 +867,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 						"sum",
 						&grouping{
 							without: false,
@@ -742,10 +879,77 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `sum by (job) (
+							count_over_time({namespace="tns"} |= "level=error"[5m])
+						/
+							count_over_time({namespace="tns"}[5m])
+						)`,
+			exp: mustNewVectorAggregationExpr(
+				mustNewBinOpExpr(OpTypeDiv,
+					BinOpOptions{},
+					newRangeAggregationExpr(
+						&logRange{
+							left: &filterExpr{
+								left: &matchersExpr{
+									matchers: []*labels.Matcher{
+										mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+									},
+								},
+								match: "level=error",
+								ty:    labels.MatchEqual,
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount),
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+		},
+		{
+			in: `sum by (job) (
+							count_over_time({namespace="tns"} |= "level=error"[5m])
+						/
+							count_over_time({namespace="tns"}[5m])
+						) * 100`,
+			exp: mustNewBinOpExpr(OpTypeMul, BinOpOptions{}, mustNewVectorAggregationExpr(
+				mustNewBinOpExpr(OpTypeDiv,
+					BinOpOptions{},
+					newRangeAggregationExpr(
+						&logRange{
+							left: &filterExpr{
+								left: &matchersExpr{
+									matchers: []*labels.Matcher{
+										mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+									},
+								},
+								match: "level=error",
+								ty:    labels.MatchEqual,
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount),
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+				mustNewLiteralExpr("100", false),
+			),
+		},
+		{
 			// reduces binop with two literalExprs
 			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 / 2`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
+				BinOpOptions{},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						&logRange{
@@ -755,7 +959,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpTypeCountOverTime),
+						}, OpRangeTypeCount),
 					"sum",
 					&grouping{
 						without: false,
@@ -771,8 +975,9 @@ func TestParse(t *testing.T) {
 			in: `1 + -2 / 1`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
+				BinOpOptions{},
 				&literalExpr{value: 1},
-				mustNewBinOpExpr(OpTypeDiv, &literalExpr{value: -2}, &literalExpr{value: 1}),
+				mustNewBinOpExpr(OpTypeDiv, BinOpOptions{}, &literalExpr{value: -2}, &literalExpr{value: 1}),
 			),
 		},
 		{
@@ -780,7 +985,8 @@ func TestParse(t *testing.T) {
 			in: `1 + 1 - -1`,
 			exp: mustNewBinOpExpr(
 				OpTypeSub,
-				mustNewBinOpExpr(OpTypeAdd, &literalExpr{value: 1}, &literalExpr{value: 1}),
+				BinOpOptions{},
+				mustNewBinOpExpr(OpTypeAdd, BinOpOptions{}, &literalExpr{value: 1}, &literalExpr{value: 1}),
 				&literalExpr{value: -1},
 			),
 		},
@@ -788,6 +994,41 @@ func TestParse(t *testing.T) {
 			// ensure binary ops with two literals are reduced recursively
 			in:  `1 + 1 + 1`,
 			exp: &literalExpr{value: 3},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 == 1`,
+			exp: &literalExpr{value: 1},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 != 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 > 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 >= 1`,
+			exp: &literalExpr{value: 1},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 < 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
+			// ensure binary ops with two literals are reduced when comparisons are used
+			in:  `1 <= 1`,
+			exp: &literalExpr{value: 1},
+		},
+		{
+			// ensure binary ops with two literals are reduced recursively when comparisons are used
+			in:  `1 >= 1 > 1`,
+			exp: &literalExpr{value: 0},
 		},
 		{
 			in: `{foo="bar"} + {foo="bar"}`,
@@ -835,6 +1076,90 @@ func TestParse(t *testing.T) {
 				msg:  `unexpected literal for right leg of logical/set binary operation (or): 1.000000`,
 				line: 0,
 				col:  0,
+			},
+		},
+		{
+			in: `count_over_time({ foo != "bar" }[12m]) > count_over_time({ foo = "bar" }[12m])`,
+			exp: &binOpExpr{
+				op: OpTypeGT,
+				SampleExpr: &rangeAggregationExpr{
+					left: &logRange{
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						interval: 12 * time.Minute,
+					},
+					operation: "count_over_time",
+				},
+				RHS: &rangeAggregationExpr{
+					left: &logRange{
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+						interval: 12 * time.Minute,
+					},
+					operation: "count_over_time",
+				},
+			},
+		},
+		{
+			in: `count_over_time({ foo != "bar" }[12m]) > 1`,
+			exp: &binOpExpr{
+				op: OpTypeGT,
+				SampleExpr: &rangeAggregationExpr{
+					left: &logRange{
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						interval: 12 * time.Minute,
+					},
+					operation: "count_over_time",
+				},
+				RHS: &literalExpr{value: 1},
+			},
+		},
+		{
+			// cannot compare metric & log queries
+			in: `count_over_time({ foo != "bar" }[12m]) > { foo = "bar" }`,
+			err: ParseError{
+				msg: "unexpected type for right leg of binary operation (>): *logql.matchersExpr",
+			},
+		},
+		{
+			in: `count_over_time({ foo != "bar" }[12m]) or count_over_time({ foo = "bar" }[12m]) > 1`,
+			exp: &binOpExpr{
+				op: OpTypeOr,
+				SampleExpr: &rangeAggregationExpr{
+					left: &logRange{
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						interval: 12 * time.Minute,
+					},
+					operation: "count_over_time",
+				},
+				RHS: &binOpExpr{
+					op: OpTypeGT,
+					SampleExpr: &rangeAggregationExpr{
+						left: &logRange{
+							left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+							interval: 12 * time.Minute,
+						},
+						operation: "count_over_time",
+					},
+					RHS: &literalExpr{value: 1},
+				},
+			},
+		},
+		{
+			// test associativity
+			in:  `1 > 1 < 1`,
+			exp: &literalExpr{value: 1},
+		},
+		{
+			// bool modifiers are reduced-away between two literal legs
+			in:  `1 > 1 > bool 1`,
+			exp: &literalExpr{value: 0},
+		},
+		{
+			// cannot lead with bool modifier
+			in: `bool 1 > 1 > bool 1`,
+			err: ParseError{
+				msg:  "syntax error: unexpected bool",
+				line: 1,
+				col:  1,
 			},
 		},
 	} {

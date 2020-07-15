@@ -3,20 +3,23 @@ package chunkenc
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/dustin/go-humanize"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 var testEncoding = []Encoding{
@@ -29,10 +32,15 @@ var testEncoding = []Encoding{
 	EncSnappy,
 }
 
+var (
+	testBlockSize  = 256 * 1024
+	testTargetSize = 1500 * 1024
+)
+
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := NewMemChunk(enc, testBlockSize, testTargetSize)
 			cases := []struct {
 				ts  int64
 				str string
@@ -104,6 +112,21 @@ func TestBlock(t *testing.T) {
 			}
 
 			require.NoError(t, it.Error())
+			require.NoError(t, it.Close())
+			require.Equal(t, len(cases), idx)
+
+			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			idx = 0
+			for sampleIt.Next() {
+				s := sampleIt.Sample()
+				require.Equal(t, cases[idx].ts, s.Timestamp)
+				require.Equal(t, 1., s.Value)
+				require.NotEmpty(t, s.Hash)
+				idx++
+			}
+
+			require.NoError(t, sampleIt.Error())
+			require.NoError(t, sampleIt.Close())
 			require.Equal(t, len(cases), idx)
 
 			t.Run("bounded-iteration", func(t *testing.T) {
@@ -125,7 +148,7 @@ func TestBlock(t *testing.T) {
 }
 
 func TestReadFormatV1(t *testing.T) {
-	c := NewMemChunk(EncGZIP)
+	c := NewMemChunk(EncGZIP, testBlockSize, testTargetSize)
 	fillChunk(c)
 	// overrides default v2 format
 	c.format = chunkFormatV1
@@ -135,7 +158,7 @@ func TestReadFormatV1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := NewByteChunk(b)
+	r, err := NewByteChunk(b, testBlockSize, testTargetSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +185,7 @@ func TestReadFormatV1(t *testing.T) {
 func TestRoundtripV2(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			c := NewMemChunk(enc)
+			c := NewMemChunk(enc, testBlockSize, testTargetSize)
 			populated := fillChunk(c)
 
 			assertLines := func(c *MemChunk) {
@@ -192,7 +215,7 @@ func TestRoundtripV2(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			r, err := NewByteChunk(b)
+			r, err := NewByteChunk(b, testBlockSize, testTargetSize)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -202,7 +225,7 @@ func TestRoundtripV2(t *testing.T) {
 			rOut, err := r.Bytes()
 			require.Nil(t, err)
 
-			loaded, err := NewByteChunk(rOut)
+			loaded, err := NewByteChunk(rOut, testBlockSize, testTargetSize)
 			require.Nil(t, err)
 
 			assertLines(loaded)
@@ -215,9 +238,9 @@ func TestRoundtripV2(t *testing.T) {
 func TestSerialization(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := NewMemChunk(enc, testBlockSize, testTargetSize)
 
-			numSamples := 500000
+			numSamples := 50000
 
 			for i := 0; i < numSamples; i++ {
 				require.NoError(t, chk.Append(logprotoEntry(int64(i), string(i))))
@@ -226,7 +249,7 @@ func TestSerialization(t *testing.T) {
 			byt, err := chk.Bytes()
 			require.NoError(t, err)
 
-			bc, err := NewByteChunk(byt)
+			bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
 			require.NoError(t, err)
 
 			it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
@@ -238,8 +261,17 @@ func TestSerialization(t *testing.T) {
 				require.Equal(t, int64(i), e.Timestamp.UnixNano())
 				require.Equal(t, string(i), e.Line)
 			}
-
 			require.NoError(t, it.Error())
+
+			sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			for i := 0; i < numSamples; i++ {
+				require.True(t, sampleIt.Next(), i)
+
+				s := sampleIt.Sample()
+				require.Equal(t, int64(i), s.Timestamp)
+				require.Equal(t, 1., s.Value)
+			}
+			require.NoError(t, sampleIt.Error())
 
 			byt2, err := chk.Bytes()
 			require.NoError(t, err)
@@ -252,7 +284,7 @@ func TestSerialization(t *testing.T) {
 func TestChunkFilling(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := NewMemChunk(enc, testBlockSize, 0)
 			chk.blockSize = 1024
 
 			// We should be able to append only 10KB of logs.
@@ -289,8 +321,7 @@ func TestChunkFilling(t *testing.T) {
 }
 
 func TestGZIPChunkTargetSize(t *testing.T) {
-	targetSize := 1024 * 1024
-	chk := NewMemChunkSize(EncGZIP, 1024, targetSize)
+	chk := NewMemChunk(EncGZIP, testBlockSize, testTargetSize)
 
 	lineSize := 512
 	entry := &logproto.Entry{
@@ -327,8 +358,8 @@ func TestGZIPChunkTargetSize(t *testing.T) {
 
 	// Even though the seed is static above and results should be deterministic,
 	// we will allow +/- 10% variance
-	minSize := int(float64(targetSize) * 0.9)
-	maxSize := int(float64(targetSize) * 1.1)
+	minSize := int(float64(testTargetSize) * 0.9)
+	maxSize := int(float64(testTargetSize) * 1.1)
 	require.Greater(t, chk.CompressedSize(), minSize)
 	require.Less(t, chk.CompressedSize(), maxSize)
 
@@ -375,7 +406,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			tester(t, NewMemChunk(EncGZIP))
+			tester(t, NewMemChunk(EncGZIP, testBlockSize, testTargetSize))
 		})
 	}
 }
@@ -383,7 +414,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 func TestChunkSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			c := NewMemChunk(enc)
+			c := NewMemChunk(enc, testBlockSize, testTargetSize)
 			inserted := fillChunk(c)
 			b, err := c.Bytes()
 			if err != nil {
@@ -394,6 +425,75 @@ func TestChunkSize(t *testing.T) {
 		})
 
 	}
+}
+
+func TestChunkStats(t *testing.T) {
+	c := NewMemChunk(EncSnappy, testBlockSize, 0)
+	first := time.Now()
+	entry := &logproto.Entry{
+		Timestamp: first,
+		Line:      `ts=2020-03-16T13:58:33.459Z caller=dedupe.go:112 component=remote level=debug remote_name=3ea44a url=https:/blan.goo.net/api/prom/push msg=QueueManager.updateShardsLoop lowerBound=45.5 desiredShards=56.724401194003136 upperBound=84.5`,
+	}
+	inserted := 0
+	// fill the chunk with known data size.
+	for {
+		if !c.SpaceFor(entry) {
+			break
+		}
+		if err := c.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+		inserted++
+		entry.Timestamp = entry.Timestamp.Add(time.Nanosecond)
+	}
+	expectedSize := (inserted * len(entry.Line)) + (inserted * 2 * binary.MaxVarintLen64)
+	ctx := stats.NewContext(context.Background())
+
+	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, logql.LineFilterFunc(func(line []byte) bool { return false }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for it.Next() {
+
+	}
+	if err := it.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// test on a chunk filling up
+	s := stats.Snapshot(ctx, time.Since(first))
+	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
+	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
+
+	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
+	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
+
+	b, err := c.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// test on a new chunk.
+	cb, err := NewByteChunk(b, testBlockSize, testTargetSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx = stats.NewContext(context.Background())
+	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, logql.LineFilterFunc(func(line []byte) bool { return false }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for it.Next() {
+
+	}
+	if err := it.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = stats.Snapshot(ctx, time.Since(first))
+	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
+	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
+
+	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
+	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
 }
 
 func TestIteratorClose(t *testing.T) {
@@ -424,7 +524,7 @@ func TestIteratorClose(t *testing.T) {
 					}
 				},
 			} {
-				c := NewMemChunk(enc)
+				c := NewMemChunk(enc, testBlockSize, testTargetSize)
 				inserted := fillChunk(c)
 				iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, nil)
 				if err != nil {
@@ -451,7 +551,7 @@ func BenchmarkWrite(b *testing.B) {
 	for _, enc := range testEncoding {
 		b.Run(enc.String(), func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
-				c := NewMemChunk(enc)
+				c := NewMemChunk(enc, testBlockSize, testTargetSize)
 				// adds until full so we trigger cut which serialize using gzip
 				for c.SpaceFor(entry) {
 					_ = c.Append(entry)
@@ -496,6 +596,25 @@ func BenchmarkRead(b *testing.B) {
 	}
 }
 
+func BenchmarkBackwardIterator(b *testing.B) {
+	b.ReportAllocs()
+	c := NewMemChunk(EncSnappy, testBlockSize, testTargetSize)
+	_ = fillChunk(c)
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
+		if err != nil {
+			panic(err)
+		}
+		for iterator.Next() {
+			_ = iterator.Entry()
+		}
+		if err := iterator.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestGenerateDataSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
@@ -504,9 +623,9 @@ func TestGenerateDataSize(t *testing.T) {
 			bytesRead := uint64(0)
 			for _, c := range chunks {
 				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, func(line []byte) bool {
+				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, logql.LineFilterFunc(func(line []byte) bool {
 					return true // return all
-				})
+				}))
 				if err != nil {
 					panic(err)
 				}
@@ -546,6 +665,93 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 					_ = iter.Entry()
 				}
 			}
+		})
+	}
+}
+
+func TestMemChunk_IteratorBounds(t *testing.T) {
+
+	var createChunk = func() *MemChunk {
+		t.Helper()
+		c := NewMemChunk(EncNone, 1e6, 1e6)
+
+		if err := c.Append(&logproto.Entry{
+			Timestamp: time.Unix(0, 1),
+			Line:      "1",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Append(&logproto.Entry{
+			Timestamp: time.Unix(0, 2),
+			Line:      "2",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+
+	for _, tt := range []struct {
+		mint, maxt time.Time
+		direction  logproto.Direction
+		expect     []bool // array of expected values for next call in sequence
+	}{
+		{time.Unix(0, 0), time.Unix(0, 1), logproto.FORWARD, []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 1), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 2), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 3), logproto.FORWARD, []bool{true, true, false}},
+		{time.Unix(0, 2), time.Unix(0, 3), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 3), time.Unix(0, 3), logproto.FORWARD, []bool{false}},
+
+		{time.Unix(0, 0), time.Unix(0, 1), logproto.BACKWARD, []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 1), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 2), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 3), logproto.BACKWARD, []bool{true, true, false}},
+		{time.Unix(0, 2), time.Unix(0, 3), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 3), time.Unix(0, 3), logproto.BACKWARD, []bool{false}},
+	} {
+		t.Run(
+			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
+			func(t *testing.T) {
+				tt := tt
+				c := createChunk()
+
+				// testing headchunk
+				it, err := c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, nil)
+				require.NoError(t, err)
+				for i := range tt.expect {
+					require.Equal(t, tt.expect[i], it.Next())
+				}
+				require.NoError(t, it.Close())
+
+				// testing chunk blocks
+				require.NoError(t, c.cut())
+				it, err = c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, nil)
+				require.NoError(t, err)
+				for i := range tt.expect {
+					require.Equal(t, tt.expect[i], it.Next())
+				}
+				require.NoError(t, it.Close())
+			})
+
+	}
+
+}
+
+func TestMemchunkLongLine(t *testing.T) {
+	for _, enc := range testEncoding {
+		t.Run(enc.String(), func(t *testing.T) {
+			c := NewMemChunk(enc, testBlockSize, testTargetSize)
+			for i := 1; i <= 10; i++ {
+				require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: strings.Repeat("e", 200000)}))
+			}
+			it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil)
+			require.NoError(t, err)
+			for i := 1; i <= 10; i++ {
+				require.True(t, it.Next())
+			}
+			require.False(t, it.Next())
 		})
 	}
 }

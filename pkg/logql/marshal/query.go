@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -13,7 +14,7 @@ import (
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
-func NewResultValue(v promql.Value) (loghttp.ResultValue, error) {
+func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 	var err error
 	var value loghttp.ResultValue
 
@@ -80,7 +81,7 @@ func NewStreams(s logql.Streams) (loghttp.Streams, error) {
 }
 
 // NewStream constructs a Stream from a logproto.Stream
-func NewStream(s *logproto.Stream) (loghttp.Stream, error) {
+func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 	labels, err := NewLabelSet(s.Labels)
 	if err != nil {
 		return loghttp.Stream{}, err

@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -14,11 +17,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -31,12 +33,12 @@ func TestIngester(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar",bar="baz1"}`,
 			},
@@ -103,12 +105,26 @@ func TestIngester(t *testing.T) {
 
 	// Series
 
-	// empty matchers
-	_, err = i.Series(ctx, &logproto.SeriesRequest{
+	// empty matcher return all series
+	resp, err := i.Series(ctx, &logproto.SeriesRequest{
 		Start: time.Unix(0, 0),
 		End:   time.Unix(1, 0),
 	})
-	require.Error(t, err)
+	require.Nil(t, err)
+	require.ElementsMatch(t, []logproto.SeriesIdentifier{
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz1",
+			},
+		},
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz2",
+			},
+		},
+	}, resp.GetSeries())
 
 	// wrong matchers fmt
 	_, err = i.Series(ctx, &logproto.SeriesRequest{
@@ -127,7 +143,7 @@ func TestIngester(t *testing.T) {
 	require.Error(t, err)
 
 	// foo=bar
-	resp, err := i.Series(ctx, &logproto.SeriesRequest{
+	resp, err = i.Series(ctx, &logproto.SeriesRequest{
 		Start:  time.Unix(0, 0),
 		End:    time.Unix(1, 0),
 		Groups: []string{`{foo="bar"}`},
@@ -199,12 +215,12 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, overrides)
+	i, err := New(ingesterConfig, client.Config{}, store, overrides, nil)
 	require.NoError(t, err)
-	defer i.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar",bar="baz1"}`,
 			},
@@ -247,6 +263,14 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
+func (s *mockStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	return nil, nil
+}
+
+func (s *mockStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	return nil, nil
+}
+
 type mockQuerierServer struct {
 	ctx   context.Context
 	resps []*logproto.QueryResponse
@@ -268,4 +292,67 @@ func defaultLimitsTestConfig() validation.Limits {
 	limits := validation.Limits{}
 	flagext.DefaultValues(&limits)
 	return limits
+}
+
+func TestIngester_buildStoreRequest(t *testing.T) {
+	now := time.Now()
+	for _, tc := range []struct {
+		name                       string
+		queryStore                 bool
+		maxLookBackPeriod          time.Duration
+		start, end                 time.Time
+		expectedStart, expectedEnd time.Time
+		shouldQuery                bool
+	}{
+		{
+			name:        "do not query store",
+			queryStore:  false,
+			start:       now.Add(-time.Minute),
+			end:         now,
+			shouldQuery: false,
+		},
+		{
+			name:              "query store with max look back covering whole request duration",
+			queryStore:        true,
+			maxLookBackPeriod: time.Hour,
+			start:             now.Add(-10 * time.Minute),
+			end:               now,
+			expectedStart:     now.Add(-10 * time.Minute),
+			expectedEnd:       now,
+			shouldQuery:       true,
+		},
+		{
+			name:              "query store with max look back covering partial request duration",
+			queryStore:        true,
+			maxLookBackPeriod: time.Hour,
+			start:             now.Add(-2 * time.Hour),
+			end:               now,
+			expectedStart:     now.Add(-time.Hour),
+			expectedEnd:       now,
+			shouldQuery:       true,
+		},
+		{
+			name:              "query store with max look back not covering request duration at all",
+			queryStore:        true,
+			maxLookBackPeriod: time.Hour,
+			start:             now.Add(-4 * time.Hour),
+			end:               now.Add(-2 * time.Hour),
+			shouldQuery:       false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ingesterConfig := defaultIngesterTestConfig(t)
+			ingesterConfig.QueryStore = tc.queryStore
+			ingesterConfig.QueryStoreMaxLookBackPeriod = tc.maxLookBackPeriod
+
+			start, end, ok := buildStoreRequest(ingesterConfig, tc.start, tc.end, now)
+
+			if !tc.shouldQuery {
+				require.False(t, ok)
+				return
+			}
+			require.Equal(t, tc.expectedEnd, end, "end")
+			require.Equal(t, tc.expectedStart, start, "start")
+		})
+	}
 }

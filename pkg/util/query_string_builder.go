@@ -19,6 +19,12 @@ func (b *QueryStringBuilder) SetString(name, value string) {
 	b.values.Set(name, value)
 }
 
+func (b *QueryStringBuilder) SetStringArray(name string, values []string) {
+	for _, v := range values {
+		b.values.Add(name, v)
+	}
+}
+
 func (b *QueryStringBuilder) SetInt(name string, value int64) {
 	b.SetString(name, strconv.FormatInt(value, 10))
 }
@@ -39,17 +45,4 @@ func (b *QueryStringBuilder) SetFloat32(name string, value float32) {
 // parameters added to the builder calling Set functions.
 func (b *QueryStringBuilder) Encode() string {
 	return b.values.Encode()
-}
-
-// Encode returns the URL-encoded query string, prefixing it with the
-// input URL path.
-func (b *QueryStringBuilder) EncodeWithPath(path string) string {
-	queryString := b.Encode()
-	if path == "" {
-		return queryString
-	} else if queryString == "" {
-		return path
-	}
-
-	return path + "?" + queryString
 }

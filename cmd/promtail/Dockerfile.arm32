@@ -1,4 +1,4 @@
-FROM golang:1.13 as build
+FROM golang:1.14.2 as build
 # TOUCH_PROTOS signifies if we should touch the compiled proto files and thus not regenerate them.
 # This is helpful when file system timestamps can't be trusted with make
 ARG TOUCH_PROTOS
@@ -16,7 +16,7 @@ RUN apt-get update && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/cmd/promtail/promtail /usr/bin/promtail
 COPY cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
-COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/docker-config.yaml
+COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
 
 # Drone CI builds arm32 images using armv8l rather than armv7l. Something in
 # our build process above causes ldconfig to be rerun and removes the armhf
@@ -28,3 +28,4 @@ COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/docker-config.yaml
 RUN sh -c '[ ! -f /lib/ld-linux-armhf.so.3 ] && echo RE-LINKING LD-LINUX-ARMHF.SO.3 && ln -s /lib/ld-linux.so.3 /lib/ld-linux-armhf.so.3'
 
 ENTRYPOINT ["/usr/bin/promtail"]
+CMD ["-config.file=/etc/promtail/config.yml"]

@@ -164,17 +164,19 @@ func (m *mockKV) List(prefix string, q *consul.QueryOptions) (consul.KVPairs, *c
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	deadline := time.Now().Add(mockedMaxWaitTime(q.WaitTime))
-	if ctxDeadline, ok := q.Context().Deadline(); ok && ctxDeadline.Before(deadline) {
-		// respect deadline from context, if set.
-		deadline = ctxDeadline
-	}
+	if q.WaitTime > 0 {
+		deadline := time.Now().Add(mockedMaxWaitTime(q.WaitTime))
+		if ctxDeadline, ok := q.Context().Deadline(); ok && ctxDeadline.Before(deadline) {
+			// respect deadline from context, if set.
+			deadline = ctxDeadline
+		}
 
-	for q.WaitIndex >= m.current && time.Now().Before(deadline) {
-		m.cond.Wait()
-	}
-	if time.Now().After(deadline) {
-		return nil, &consul.QueryMeta{LastIndex: q.WaitIndex}, nil
+		for q.WaitIndex >= m.current && time.Now().Before(deadline) {
+			m.cond.Wait()
+		}
+		if time.Now().After(deadline) {
+			return nil, &consul.QueryMeta{LastIndex: q.WaitIndex}, nil
+		}
 	}
 
 	result := consul.KVPairs{}
@@ -185,6 +187,13 @@ func (m *mockKV) List(prefix string, q *consul.QueryOptions) (consul.KVPairs, *c
 		}
 	}
 	return result, &consul.QueryMeta{LastIndex: m.current}, nil
+}
+
+func (m *mockKV) Delete(key string, q *consul.WriteOptions) (*consul.WriteMeta, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	delete(m.kvps, key)
+	return nil, nil
 }
 
 func (m *mockKV) ResetIndex() {

@@ -8,6 +8,7 @@ metadata:
     chart: {{ template "loki.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
+    variant: headless
 spec:
   clusterIP: None
   ports:

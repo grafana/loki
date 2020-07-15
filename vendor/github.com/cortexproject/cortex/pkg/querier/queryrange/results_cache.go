@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"sort"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/uber/jaeger-client-go"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -26,12 +28,19 @@ import (
 var (
 	// Value that cachecontrolHeader has if the response indicates that the results should not be cached.
 	noCacheValue = "no-store"
+
+	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
+	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
 )
+
+type CacheGenNumberLoader interface {
+	GetResultsCacheGenNumber(userID string) string
+}
 
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
-	CacheConfig       cache.Config  `yaml:"cache"`
-	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
+	CacheConfig             cache.Config  `yaml:"cache"`
+	LegacyMaxCacheFreshness time.Duration `yaml:"max_freshness" doc:"hidden"` // TODO: (deprecated) remove in Cortex v1.4.0
 }
 
 // RegisterFlags registers flags.
@@ -39,22 +48,42 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 
 	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
-
-	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
 type Extractor interface {
 	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
 	Extract(start, end int64, from Response) Response
+	ResponseWithoutHeaders(resp Response) Response
 }
 
-// ExtractorFunc is a sugar syntax for declaring an Extractor from a function.
-type ExtractorFunc func(start, end int64, from Response) Response
+// PrometheusResponseExtractor helps extracting specific info from Query Response.
+type PrometheusResponseExtractor struct{}
 
-// Extract calls the `ExtractorFunc` to implements an `Extractor`.
-func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
-	return e(start, end, from)
+// Extract extracts response for specific a range from a response.
+func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Response {
+	promRes := from.(*PrometheusResponse)
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: promRes.Data.ResultType,
+			Result:     extractMatrix(start, end, promRes.Data.Result),
+		},
+		Headers: promRes.Headers,
+	}
+}
+
+// ResponseWithoutHeaders is useful in caching data without headers since
+// we anyways do not need headers for sending back the response so this saves some space by reducing size of the objects.
+func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Response {
+	promRes := resp.(*PrometheusResponse)
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: promRes.Data.ResultType,
+			Result:     promRes.Data.Result,
+		},
+	}
 }
 
 // CacheSplitter generates cache keys. This is a useful interface for downstream
@@ -72,19 +101,6 @@ func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
-// PrometheusResponseExtractor is an `Extractor` for a Prometheus query range response.
-var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Response) Response {
-	promRes := from.(*PrometheusResponse)
-	return &PrometheusResponse{
-		Status: statusSuccess,
-		Data: PrometheusData{
-			ResultType: promRes.Data.ResultType,
-			Result:     extractMatrix(start, end, promRes.Data.Result),
-		},
-		Headers: promRes.Headers,
-	}
-})
-
 type resultsCache struct {
 	logger   log.Logger
 	cfg      ResultsCacheConfig
@@ -93,8 +109,9 @@ type resultsCache struct {
 	limits   Limits
 	splitter CacheSplitter
 
-	extractor Extractor
-	merger    Merger
+	extractor            Extractor
+	merger               Merger
+	cacheGenNumberLoader CacheGenNumberLoader
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
@@ -110,22 +127,28 @@ func NewResultsCacheMiddleware(
 	limits Limits,
 	merger Merger,
 	extractor Extractor,
+	cacheGenNumberLoader CacheGenNumberLoader,
 ) (Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	if cacheGenNumberLoader != nil {
+		c = cache.NewCacheGenNumMiddleware(c)
+	}
+
 	return MiddlewareFunc(func(next Handler) Handler {
 		return &resultsCache{
-			logger:    logger,
-			cfg:       cfg,
-			next:      next,
-			cache:     c,
-			limits:    limits,
-			merger:    merger,
-			extractor: extractor,
-			splitter:  splitter,
+			logger:               logger,
+			cfg:                  cfg,
+			next:                 next,
+			cache:                c,
+			limits:               limits,
+			merger:               merger,
+			extractor:            extractor,
+			splitter:             splitter,
+			cacheGenNumberLoader: cacheGenNumberLoader,
 		}
 	}), c, nil
 }
@@ -133,7 +156,11 @@ func NewResultsCacheMiddleware(
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	if s.cacheGenNumberLoader != nil {
+		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(userID))
 	}
 
 	var (
@@ -142,7 +169,12 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
-	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
+	// check if cache freshness value is provided in legacy config
+	maxCacheFreshness := s.cfg.LegacyMaxCacheFreshness
+	if maxCacheFreshness == time.Duration(0) {
+		maxCacheFreshness = s.limits.MaxCacheFreshness(userID)
+	}
+	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)
 	}
@@ -155,7 +187,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if err == nil && len(extents) > 0 {
-		extents, err := s.filterRecentExtents(r, extents)
+		extents, err := s.filterRecentExtents(r, maxCacheFreshness, extents)
 		if err != nil {
 			return nil, err
 		}
@@ -166,27 +198,49 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func shouldCacheResponse(r Response) bool {
-	if promResp, ok := r.(*PrometheusResponse); ok {
-		shouldCache := true
-	outer:
-		for _, hv := range promResp.Headers {
-			if hv == nil {
-				continue
-			}
-			if hv.Name != cachecontrolHeader {
-				continue
-			}
-			for _, v := range hv.Values {
-				if v == noCacheValue {
-					shouldCache = false
-					break outer
-				}
-			}
+func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool {
+	headerValues := getHeaderValuesWithName(r, cachecontrolHeader)
+	for _, v := range headerValues {
+		if v == noCacheValue {
+			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
+			return false
 		}
-		return shouldCache
 	}
+
+	if s.cacheGenNumberLoader == nil {
+		return true
+	}
+
+	genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
+	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
+
+	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
+		level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		return false
+	}
+
+	for _, gen := range genNumbersFromResp {
+		if gen != genNumberFromCtx {
+			level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			return false
+		}
+	}
+
 	return true
+}
+
+func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
+	if promResp, ok := r.(*PrometheusResponse); ok {
+		for _, hv := range promResp.Headers {
+			if hv.GetName() != headerName {
+				continue
+			}
+
+			headerValues = append(headerValues, hv.GetValues()...)
+		}
+	}
+
+	return
 }
 
 func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Extent, error) {
@@ -195,12 +249,11 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 		return nil, nil, err
 	}
 
-	if !shouldCacheResponse(response) {
-		level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
+	if !s.shouldCacheResponse(ctx, response) {
 		return response, []Extent{}, nil
 	}
 
-	extent, err := toExtent(ctx, r, response)
+	extent, err := toExtent(ctx, r, s.extractor.ResponseWithoutHeaders(response))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -236,7 +289,10 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.Response)
-		extent, err := toExtent(ctx, reqResp.Request, reqResp.Response)
+		if !s.shouldCacheResponse(ctx, reqResp.Response) {
+			continue
+		}
+		extent, err := toExtent(ctx, reqResp.Request, s.extractor.ResponseWithoutHeaders(reqResp.Response))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -364,8 +420,8 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 	return requests, cachedResponses, nil
 }
 
-func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Extent, error) {
-	maxCacheTime := (int64(model.Now().Add(-s.cfg.MaxCacheFreshness)) / req.GetStep()) * req.GetStep()
+func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {
+	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / req.GetStep()) * req.GetStep()
 	for i := range extents {
 		// Never cache data for the latest freshness period.
 		if extents[i].End > maxCacheTime {

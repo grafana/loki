@@ -94,7 +94,7 @@ func parseJSONConfig(config interface{}) (*JSONConfig, error) {
 // Process implements Stage
 func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	// If a source key is provided, the json stage should process it
-	// from the exctracted map, otherwise should fallback to the entry
+	// from the extracted map, otherwise should fallback to the entry
 	input := entry
 
 	if j.cfg.Source != nil {
@@ -108,7 +108,7 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 		value, err := getString(extracted[*j.cfg.Source])
 		if err != nil {
 			if Debug {
-				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
+				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]))
 			}
 			return
 		}

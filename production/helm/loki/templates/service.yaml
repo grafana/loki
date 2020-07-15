@@ -18,6 +18,9 @@ spec:
 {{- if (and (eq .Values.service.type "ClusterIP") (not (empty .Values.service.clusterIP))) }}
   clusterIP: {{ .Values.service.clusterIP }}
 {{- end }}
+{{- if (and (eq .Values.service.type "LoadBalancer") (not (empty .Values.service.loadBalancerIP))) }}
+  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
+{{- end }}
 {{- if .Values.service.loadBalancerSourceRanges }}
   loadBalancerSourceRanges:
   {{- range $cidr := .Values.service.loadBalancerSourceRanges }}

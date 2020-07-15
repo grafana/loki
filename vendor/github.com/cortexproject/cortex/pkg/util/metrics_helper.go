@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
@@ -29,6 +30,13 @@ func (m singleValueWithLabelsMap) aggregateFn(labelsKey string, labelValues []st
 
 	r.Value += value
 	m[labelsKey] = r
+}
+
+func (m singleValueWithLabelsMap) prependUserLabelValue(user string) {
+	for key, mlv := range m {
+		mlv.LabelValues = append([]string{user}, mlv.LabelValues...)
+		m[key] = mlv
+	}
 }
 
 func (m singleValueWithLabelsMap) WriteToMetricChannel(out chan<- prometheus.Metric, desc *prometheus.Desc, valueType prometheus.ValueType) {
@@ -69,6 +77,10 @@ func (mfm MetricFamilyMap) SumCounters(name string) float64 {
 
 func (mfm MetricFamilyMap) SumGauges(name string) float64 {
 	return sum(mfm[name], gaugeValue)
+}
+
+func (mfm MetricFamilyMap) MaxGauges(name string) float64 {
+	return max(mfm[name], gaugeValue)
 }
 
 func (mfm MetricFamilyMap) SumHistograms(name string) HistogramData {
@@ -130,12 +142,16 @@ func BuildMetricFamiliesPerUserFromUserRegistries(regs map[string]*prometheus.Re
 	return data
 }
 
-func (d MetricFamiliesPerUser) SendSumOfCounters(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
+func (d MetricFamiliesPerUser) GetSumOfCounters(counter string) float64 {
 	result := float64(0)
 	for _, userMetrics := range d {
 		result += userMetrics.SumCounters(counter)
 	}
-	out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, result)
+	return result
+}
+
+func (d MetricFamiliesPerUser) SendSumOfCounters(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
+	out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, d.GetSumOfCounters(counter))
 }
 
 func (d MetricFamiliesPerUser) SendSumOfCountersWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string, labelNames ...string) {
@@ -150,16 +166,31 @@ func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Me
 	}
 }
 
-func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
+func (d MetricFamiliesPerUser) GetSumOfGauges(gauge string) float64 {
 	result := float64(0)
 	for _, userMetrics := range d {
 		result += userMetrics.SumGauges(gauge)
 	}
-	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
+	return result
+}
+
+func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
+	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, d.GetSumOfGauges(gauge))
 }
 
 func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string, labelNames ...string) {
 	d.sumOfSingleValuesWithLabels(gauge, gaugeValue, labelNames).WriteToMetricChannel(out, desc, prometheus.GaugeValue)
+}
+
+// SendSumOfGaugesPerUserWithLabels provides metrics with the provided label names on a per-user basis. This function assumes that `user` is the
+// first label on the provided metric Desc
+func (d MetricFamiliesPerUser) SendSumOfGaugesPerUserWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, metric string, labelNames ...string) {
+	for user, userMetrics := range d {
+		result := singleValueWithLabelsMap{}
+		userMetrics.sumOfSingleValuesWithLabels(metric, labelNames, gaugeValue, result.aggregateFn)
+		result.prependUserLabelValue(user)
+		result.WriteToMetricChannel(out, desc, prometheus.GaugeValue)
+	}
 }
 
 func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn func(*dto.Metric) float64, labelNames []string) singleValueWithLabelsMap {
@@ -168,6 +199,22 @@ func (d MetricFamiliesPerUser) sumOfSingleValuesWithLabels(metric string, fn fun
 		userMetrics.sumOfSingleValuesWithLabels(metric, labelNames, fn, result.aggregateFn)
 	}
 	return result
+}
+
+func (d MetricFamiliesPerUser) SendMaxOfGauges(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
+	result := math.NaN()
+	for _, userMetrics := range d {
+		if value := userMetrics.MaxGauges(gauge); math.IsNaN(result) || value > result {
+			result = value
+		}
+	}
+
+	// If there's no metric, we do send 0 which is the gauge default.
+	if math.IsNaN(result) {
+		result = 0
+	}
+
+	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
 }
 
 func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
@@ -213,6 +260,35 @@ func (d MetricFamiliesPerUser) SendSumOfHistograms(out chan<- prometheus.Metric,
 		userMetrics.SumHistogramsTo(histogramName, &hd)
 	}
 	out <- hd.Metric(desc)
+}
+
+func (d MetricFamiliesPerUser) SendSumOfHistogramsWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, histogramName string, labelNames ...string) {
+	type histogramResult struct {
+		data        HistogramData
+		labelValues []string
+	}
+
+	result := map[string]histogramResult{}
+
+	for _, userMetrics := range d {
+		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[histogramName], labelNames)
+
+		for key, mwl := range metricsPerLabelValue {
+			for _, m := range mwl.metrics {
+				r := result[key]
+				if r.labelValues == nil {
+					r.labelValues = mwl.labelValues
+				}
+
+				r.data.AddHistogram(m.GetHistogram())
+				result[key] = r
+			}
+		}
+	}
+
+	for _, hg := range result {
+		out <- hg.data.Metric(desc, hg.labelValues...)
+	}
 }
 
 // struct for holding metrics with same label values
@@ -275,6 +351,25 @@ func sum(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	for _, m := range mf.GetMetric() {
 		result += fn(m)
 	}
+	return result
+}
+
+// max returns the max value from all metrics from same metric family (= series with the same metric name, but different labels)
+// Supplied function extracts value.
+func max(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
+	result := math.NaN()
+
+	for _, m := range mf.GetMetric() {
+		if value := fn(m); math.IsNaN(result) || value > result {
+			result = value
+		}
+	}
+
+	// If there's no metric, we do return 0 which is the gauge default.
+	if math.IsNaN(result) {
+		return 0
+	}
+
 	return result
 }
 
@@ -347,8 +442,8 @@ func (d *HistogramData) AddHistogramData(histo HistogramData) {
 }
 
 // Return prometheus metric from this histogram data.
-func (d *HistogramData) Metric(desc *prometheus.Desc) prometheus.Metric {
-	return prometheus.MustNewConstHistogram(desc, d.sampleCount, d.sampleSum, d.buckets)
+func (d *HistogramData) Metric(desc *prometheus.Desc, labelValues ...string) prometheus.Metric {
+	return prometheus.MustNewConstHistogram(desc, d.sampleCount, d.sampleSum, d.buckets, labelValues...)
 }
 
 // Creates new histogram data collector.

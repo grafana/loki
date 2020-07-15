@@ -6,9 +6,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // BenchmarkLabels is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated
@@ -34,7 +35,7 @@ var BenchmarkLabels = labels.Labels{
 
 // DefaultSchemaConfig creates a simple schema config for testing
 func DefaultSchemaConfig(store, schema string, from model.Time) SchemaConfig {
-	return SchemaConfig{
+	s := SchemaConfig{
 		Configs: []PeriodConfig{{
 			IndexType: store,
 			Schema:    schema,
@@ -49,6 +50,10 @@ func DefaultSchemaConfig(store, schema string, from model.Time) SchemaConfig {
 			},
 		}},
 	}
+	if err := s.Validate(); err != nil {
+		panic(err)
+	}
+	return s
 }
 
 // ChunksToMatrix converts a set of chunks to a model.Matrix.

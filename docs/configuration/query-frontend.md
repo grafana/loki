@@ -55,7 +55,7 @@ data:
 
     frontend:
       log_queries_longer_than: 5s
-      downstream: querier.<namespace>.svc.cluster.local:3100
+      downstream_url: querier.<namespace>.svc.cluster.local:3100
       compress_responses: true
 ```
 
@@ -135,3 +135,10 @@ spec:
 ### Grafana
 
 Once you've deployed these, you'll need your grafana datasource to point to the new frontend service, now available within the cluster at `http://query-frontend.<namespace>.svc.cluster.local:3100`.
+
+### GRPC Mode (Pull model)
+
+the query frontend operates in one of two fashions:
+
+1) with `--frontend.downstream-url` or its yaml equivalent `frontend.downstream_url`. This simply proxies requests over http to said url.
+2) without (1) it defaults to a pull service. In this form, the frontend instantiates per-tenant queues that downstream queriers pull queries from via grpc. When operating in this mode, queriers need to specify `-querier.frontend-address` or its yaml equivalent `frontend_worker.frontend_address`.

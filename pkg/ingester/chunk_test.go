@@ -47,7 +47,7 @@ func TestIterator(t *testing.T) {
 		new  func() chunkenc.Chunk
 	}{
 		{"dumbChunk", chunkenc.NewDumbChunk},
-		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP) }},
+		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0) }},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			chunk := chk.new()

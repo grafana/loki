@@ -1,13 +1,13 @@
-# Loki Clients
+# Loki clients
 
 Loki supports the following official clients for sending logs:
 
-1. [Promtail](./promtail/README.md)
-2. [Docker Driver](./docker-driver/README.md)
-3. [Fluentd](./fluentd/README.md)
-4. [Fluent Bit](../../cmd/fluent-bit/README.md)
+- [Promtail](./promtail/README.md)
+- [Docker Driver](./docker-driver/README.md)
+- [Fluentd](./fluentd/README.md)
+- [Fluent Bit](../../cmd/fluent-bit/README.md)
 
-## Picking a Client
+## Picking a client
 
 While all clients can be used simultaneously to cover multiple use cases, which
 client is initially picked to send logs depends on your use case.
@@ -41,9 +41,9 @@ and you already have configured `Parser` and `Filter` plugins.
 Fluentd also works well for extracting metrics from logs when using its
 Prometheus plugin.
 
-# Unofficial Clients
+# Unofficial clients
 
-Please note that the Loki API is not stable yet and breaking changes may occur
+Please note that the Loki API is not stable yet, so breaking changes might occur
 when using or writing a third-party client.
 
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)

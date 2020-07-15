@@ -19,6 +19,7 @@ message IngesterDesc {
 	int64 timestamp = 2; // unix timestamp
 	IngesterState state = 3;
 	repeated uint32 tokens = 6;
+	string zone = 7;
 }
 
 enum IngesterState {

@@ -46,7 +46,7 @@ k + config + scrape_config {
 
   promtail_container::
     container.new('promtail', $._images.promtail) +
-    container.withPorts($.core.v1.containerPort.new('http-metrics', 80)) +
+    container.withPorts($.core.v1.containerPort.new(name='http-metrics', port=80)) +
     container.withArgsMixin($.util.mapToFlags($.promtail_args)) +
     container.withEnv([
       container.envType.fromFieldPath('HOSTNAME', 'spec.nodeName'),

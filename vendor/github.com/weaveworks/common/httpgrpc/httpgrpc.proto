@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package httpgrpc;
 
-option go_package = "github.com/weaveworks/common/httpgrpc";
+option go_package = "httpgrpc";
 
 service HTTP {
   rpc Handle(HTTPRequest) returns (HTTPResponse) {};

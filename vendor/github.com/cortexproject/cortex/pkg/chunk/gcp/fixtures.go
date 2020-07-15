@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"cloud.google.com/go/bigtable"
 	"cloud.google.com/go/bigtable/bttest"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 )
 
@@ -34,8 +36,8 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	iClient chunk.IndexClient, cClient chunk.ObjectClient, tClient chunk.TableClient,
-	schemaConfig chunk.SchemaConfig, err error,
+	iClient chunk.IndexClient, cClient chunk.Client, tClient chunk.TableClient,
+	schemaConfig chunk.SchemaConfig, closer io.Closer, err error,
 ) {
 	f.btsrv, err = bttest.NewServer("localhost:0")
 	if err != nil {
@@ -76,20 +78,19 @@ func (f *fixture) Clients() (
 	}
 
 	if f.gcsObjectClient {
-		cClient = newGCSObjectClient(GCSConfig{
+		cClient = objectclient.NewClient(newGCSObjectClient(GCSConfig{
 			BucketName: "chunks",
-		}, f.gcssrv.Client())
+		}, f.gcssrv.Client(), chunk.DirDelim), nil)
 	} else {
 		cClient = newBigtableObjectClient(Config{}, schemaConfig, client)
 	}
 
-	return
-}
+	closer = testutils.CloserFunc(func() error {
+		conn.Close()
+		return nil
+	})
 
-func (f *fixture) Teardown() error {
-	f.btsrv.Close()
-	f.gcssrv.Stop()
-	return nil
+	return
 }
 
 // Fixtures for unit testing GCP storage.

@@ -14,11 +14,12 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 
+	"github.com/pkg/errors"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -39,8 +40,8 @@ type Config struct {
 	ColumnKey      bool `yaml:"-"`
 	DistributeKeys bool `yaml:"-"`
 
-	TableCacheEnabled    bool
-	TableCacheExpiration time.Duration
+	TableCacheEnabled    bool          `yaml:"table_cache_enabled"`
+	TableCacheExpiration time.Duration `yaml:"table_cache_expiration"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -50,7 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 
-	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
@@ -59,8 +60,6 @@ type storageClientColumnKey struct {
 	schemaCfg chunk.SchemaConfig
 	client    *bigtable.Client
 	keysFn    keysFn
-
-	distributeKeys bool
 }
 
 // storageClientV1 implements chunk.storageClient for GCP.
@@ -152,6 +151,18 @@ type bigtableWriteBatch struct {
 }
 
 func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+		mutation.Set(columnFamily, columnKey, 0, value)
+	})
+}
+
+func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+		mutation.DeleteCellsInColumn(columnFamily, columnKey)
+	})
+}
+
+func (b bigtableWriteBatch) addMutation(tableName, hashValue string, rangeValue []byte, callback func(mutation *bigtable.Mutation, columnKey string)) {
 	rows, ok := b.tables[tableName]
 	if !ok {
 		rows = map[string]*bigtable.Mutation{}
@@ -165,7 +176,7 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 		rows[rowKey] = mutation
 	}
 
-	mutation.Set(columnFamily, columnKey, 0, value)
+	callback(mutation, columnKey)
 }
 
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
@@ -306,7 +317,7 @@ func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQ
 	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	const null = string('\xff')
 
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
@@ -335,7 +346,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 
 	err := table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
 		if query.ValueEqual == nil || bytes.Equal(r[columnFamily][0].Value, query.ValueEqual) {
-			return callback(&rowBatch{
+			return callback(query, &rowBatch{
 				row: r,
 			})
 		}

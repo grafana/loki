@@ -11,6 +11,9 @@ metadata:
 data:
   fluent-bit.conf: |-
     [SERVICE]
+        HTTP_Server    On
+        HTTP_Listen    0.0.0.0
+        HTTP_PORT      {{ .Values.config.port }}
         Flush          1
         Daemon         Off
         Log_Level      {{ .Values.config.loglevel }}
@@ -36,12 +39,21 @@ data:
           {{- else }}
         Url {{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}{{ .Values.loki.servicePath }}
         {{- end }}
+        TenantID {{ .Values.config.tenantID }}
+        BatchWait {{ .Values.config.batchWait }}
+        BatchSize {{ .Values.config.batchSize }}
         Labels {{ .Values.config.labels }}
         RemoveKeys {{ include "helm-toolkit.utils.joinListWithComma" .Values.config.removeKeys }}
+        AutoKubernetesLabels {{ .Values.config.autoKubernetesLabels }}
         LabelMapPath /fluent-bit/etc/labelmap.json
         LineFormat {{ .Values.config.lineFormat }}
         LogLevel {{ .Values.config.loglevel }}
-
+    {{- range $extraOutput := .Values.config.extraOutputs }}
+    [OUTPUT]
+    {{- range $key,$value := $extraOutput }}
+        {{ $key }} {{ $value }}
+    {{- end }}
+    {{- end }}
   parsers.conf: |-
     [PARSER]
         Name        docker

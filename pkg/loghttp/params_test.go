@@ -137,6 +137,61 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 	}
 }
 
+func Test_interval(t *testing.T) {
+	tests := []struct {
+		name     string
+		reqPath  string
+		expected time.Duration
+		wantErr  bool
+	}{
+		{
+			"valid_step_int",
+			"/loki/api/v1/query_range?query={}&start=0&end=3600000000000&interval=5",
+			5 * time.Second,
+			false,
+		},
+		{
+			"valid_step_duration",
+			"/loki/api/v1/query_range?query={}&start=0&end=3600000000000&interval=5m",
+			5 * time.Minute,
+			false,
+		},
+		{
+			"invalid",
+			"/loki/api/v1/query_range?query={}&start=0&end=3600000000000&interval=a",
+			0,
+			true,
+		},
+		{
+			"valid_0",
+			"/loki/api/v1/query_range?query={}&start=0&end=3600000000000&interval=0",
+			0,
+			false,
+		},
+		{
+			"valid_not_included",
+			"/loki/api/v1/query_range?query={}&start=0&end=3600000000000",
+			0,
+			false,
+		},
+	}
+	for _, testData := range tests {
+		testData := testData
+
+		t.Run(testData.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", testData.reqPath, nil)
+			err := req.ParseForm()
+			require.Nil(t, err)
+			actual, err := interval(req)
+			if testData.wantErr {
+				require.Error(t, err)
+			} else {
+				assert.Equal(t, testData.expected, actual)
+			}
+		})
+	}
+}
+
 func Test_parseTimestamp(t *testing.T) {
 
 	now := time.Now()
@@ -179,7 +234,8 @@ func Test_match(t *testing.T) {
 		wantErr bool
 	}{
 		{"malformed", []string{`{a="1`}, nil, true},
-		{"errors on nil input", nil, nil, true},
+		{"empty on nil input", nil, [][]*labels.Matcher{}, false},
+		{"empty on empty input", []string{}, [][]*labels.Matcher{}, false},
 		{
 			"single",
 			[]string{`{a="1"}`},

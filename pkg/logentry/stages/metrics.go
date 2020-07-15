@@ -151,7 +151,13 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 		// There is a special case for counters where we count even if there is no match in the extracted map.
 		if c, ok := collector.(*metric.Counters); ok {
 			if c != nil && c.Cfg.MatchAll != nil && *c.Cfg.MatchAll {
-				m.recordCounter(name, c, labels, nil)
+				if c.Cfg.CountBytes != nil && *c.Cfg.CountBytes {
+					if entry != nil {
+						m.recordCounter(name, c, labels, len(*entry))
+					}
+				} else {
+					m.recordCounter(name, c, labels, nil)
+				}
 				continue
 			}
 		}
@@ -164,6 +170,8 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 			case *metric.Histograms:
 				m.recordHistogram(name, vec, labels, v)
 			}
+		} else {
+			level.Debug(m.logger).Log("msg", "source does not exist", "err", fmt.Sprintf("source: %s, does not exist", *m.cfg[name].Source))
 		}
 	}
 }

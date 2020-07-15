@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"sort"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // MockStorage is a fake in-memory StorageClient.
@@ -17,7 +20,8 @@ type MockStorage struct {
 	tables  map[string]*mockTable
 	objects map[string][]byte
 
-	numWrites int
+	numIndexWrites int
+	numChunkWrites int
 }
 
 type mockTable struct {
@@ -134,9 +138,9 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	mockBatch := *batch.(*mockWriteBatch)
 	seenWrites := map[string]bool{}
 
-	m.numWrites += len(mockBatch)
+	m.numIndexWrites += len(mockBatch.inserts)
 
-	for _, req := range mockBatch {
+	for _, req := range mockBatch.inserts {
 		table, ok := m.tables[req.tableName]
 		if !ok {
 			return fmt.Errorf("table not found")
@@ -161,19 +165,38 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 			items = append(items, mockItem{})
 			copy(items[i+1:], items[i:])
 		} else {
-			// Return error if duplicate write and not metric name entry or series entry
-			itemComponents := decodeRangeKey(items[i].rangeValue)
-			keyType := itemComponents[3][0]
-			if keyType != metricNameRangeKeyV1 &&
-				keyType != seriesRangeKeyV1 &&
-				keyType != labelNamesRangeKeyV1 &&
-				keyType != labelSeriesRangeKeyV1 {
-				return fmt.Errorf("Dupe write")
-			}
+			// if duplicate write then just update the value
+			items[i].value = req.value
+			continue
 		}
 		items[i] = mockItem{
 			rangeValue: req.rangeValue,
 			value:      req.value,
+		}
+
+		table.items[req.hashValue] = items
+	}
+
+	for _, req := range mockBatch.deletes {
+		table, ok := m.tables[req.tableName]
+		if !ok {
+			return fmt.Errorf("table not found")
+		}
+
+		items := table.items[req.hashValue]
+
+		i := sort.Search(len(items), func(i int) bool {
+			return bytes.Compare(items[i].rangeValue, req.rangeValue) >= 0
+		})
+
+		if i >= len(items) || !bytes.Equal(items[i].rangeValue, req.rangeValue) {
+			continue
+		}
+
+		if len(items) == 1 {
+			items = nil
+		} else {
+			items = items[:i+copy(items[i:], items[i+1:])]
 		}
 
 		table.items[req.hashValue] = items
@@ -279,6 +302,8 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	m.numChunkWrites += len(chunks)
+
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
@@ -300,7 +325,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 		key := chunk.ExternalKey()
 		buf, ok := m.objects[key]
 		if !ok {
-			return nil, fmt.Errorf("%v not found", key)
+			return nil, ErrStorageObjectNotFound
 		}
 		if err := chunk.Decode(decodeContext, buf); err != nil {
 			return nil, err
@@ -310,14 +335,82 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	return result, nil
 }
 
-type mockWriteBatch []struct {
-	tableName, hashValue string
-	rangeValue           []byte
-	value                []byte
+// DeleteChunk implements StorageClient.
+func (m *MockStorage) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+	return m.DeleteObject(ctx, chunkID)
+}
+
+func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	buf, ok := m.objects[objectKey]
+	if !ok {
+		return nil, ErrStorageObjectNotFound
+	}
+
+	return ioutil.NopCloser(bytes.NewReader(buf)), nil
+}
+
+func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+	buf, err := ioutil.ReadAll(object)
+	if err != nil {
+		return err
+	}
+
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	m.objects[objectKey] = buf
+	return nil
+}
+
+func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if _, ok := m.objects[objectKey]; !ok {
+		return ErrStorageObjectNotFound
+	}
+
+	delete(m.objects, objectKey)
+	return nil
+}
+
+func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject, []StorageCommonPrefix, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	storageObjects := make([]StorageObject, 0, len(m.objects))
+	for key := range m.objects {
+		// ToDo: Store mtime when we have mtime based use-cases for storage objects
+		storageObjects = append(storageObjects, StorageObject{Key: key})
+	}
+
+	return storageObjects, []StorageCommonPrefix{}, nil
+}
+
+type mockWriteBatch struct {
+	inserts []struct {
+		tableName, hashValue string
+		rangeValue           []byte
+		value                []byte
+	}
+	deletes []struct {
+		tableName, hashValue string
+		rangeValue           []byte
+	}
+}
+
+func (b *mockWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	b.deletes = append(b.deletes, struct {
+		tableName, hashValue string
+		rangeValue           []byte
+	}{tableName: tableName, hashValue: hashValue, rangeValue: rangeValue})
 }
 
 func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	*b = append(*b, struct {
+	b.inserts = append(b.inserts, struct {
 		tableName, hashValue string
 		rangeValue           []byte
 		value                []byte

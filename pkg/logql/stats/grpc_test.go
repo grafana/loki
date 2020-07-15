@@ -35,7 +35,7 @@ func TestCollectTrailer(t *testing.T) {
 		t.Fatalf("Failed to dial bufnet: %v", err)
 	}
 	defer conn.Close()
-	ing := ingesterFn(func(req *logproto.QueryRequest, s logproto.Querier_QueryServer) error {
+	ing := ingesterFn(func(s grpc.ServerStream) error {
 		ingCtx := NewContext(s.Context())
 		defer SendAsTrailer(ingCtx, s)
 		GetIngesterData(ingCtx).TotalChunksMatched++
@@ -60,7 +60,7 @@ func TestCollectTrailer(t *testing.T) {
 
 	ctx = NewContext(ctx)
 
-	// query the ingester twice.
+	// query the ingester twice once for logs , once for samples.
 	clientStream, err := ingClient.Query(ctx, &logproto.QueryRequest{}, CollectTrailer(ctx))
 	if err != nil {
 		t.Fatal(err)
@@ -69,35 +69,39 @@ func TestCollectTrailer(t *testing.T) {
 	if err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
-	clientStream, err = ingClient.Query(ctx, &logproto.QueryRequest{}, CollectTrailer(ctx))
+	clientSamples, err := ingClient.QuerySample(ctx, &logproto.SampleQueryRequest{}, CollectTrailer(ctx))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = clientStream.Recv()
+	_, err = clientSamples.Recv()
 	if err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
-	err = clientStream.CloseSend()
+	err = clientSamples.CloseSend()
 	if err != nil {
 		t.Fatal(err)
 	}
 	res := decodeTrailers(ctx)
-	require.Equal(t, int32(2), res.TotalReached)
-	require.Equal(t, int64(2), res.TotalChunksMatched)
-	require.Equal(t, int64(4), res.TotalBatches)
-	require.Equal(t, int64(6), res.TotalLinesSent)
-	require.Equal(t, int64(2), res.HeadChunkBytes)
-	require.Equal(t, int64(2), res.HeadChunkLines)
-	require.Equal(t, int64(2), res.DecompressedBytes)
-	require.Equal(t, int64(2), res.DecompressedLines)
-	require.Equal(t, int64(2), res.CompressedBytes)
-	require.Equal(t, int64(2), res.TotalDuplicates)
+	require.Equal(t, int32(2), res.Ingester.TotalReached)
+	require.Equal(t, int64(2), res.Ingester.TotalChunksMatched)
+	require.Equal(t, int64(4), res.Ingester.TotalBatches)
+	require.Equal(t, int64(6), res.Ingester.TotalLinesSent)
+	require.Equal(t, int64(2), res.Ingester.HeadChunkBytes)
+	require.Equal(t, int64(2), res.Ingester.HeadChunkLines)
+	require.Equal(t, int64(2), res.Ingester.DecompressedBytes)
+	require.Equal(t, int64(2), res.Ingester.DecompressedLines)
+	require.Equal(t, int64(2), res.Ingester.CompressedBytes)
+	require.Equal(t, int64(2), res.Ingester.TotalDuplicates)
 }
 
-type ingesterFn func(*logproto.QueryRequest, logproto.Querier_QueryServer) error
+type ingesterFn func(grpc.ServerStream) error
 
-func (i ingesterFn) Query(req *logproto.QueryRequest, s logproto.Querier_QueryServer) error {
-	return i(req, s)
+func (i ingesterFn) Query(_ *logproto.QueryRequest, s logproto.Querier_QueryServer) error {
+	return i(s)
+}
+
+func (i ingesterFn) QuerySample(_ *logproto.SampleQueryRequest, s logproto.Querier_QuerySampleServer) error {
+	return i(s)
 }
 func (ingesterFn) Label(context.Context, *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	return nil, nil

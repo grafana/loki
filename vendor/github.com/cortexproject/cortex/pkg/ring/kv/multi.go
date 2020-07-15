@@ -7,12 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/uber-go/atomic"
 )
 
 var (
@@ -282,11 +283,22 @@ func (m *MultiClient) runWithPrimaryClient(origCtx context.Context, fn func(newC
 	}
 }
 
+// List is a part of the kv.Client interface.
+func (m *MultiClient) List(ctx context.Context, prefix string) ([]string, error) {
+	_, kv := m.getPrimaryClient()
+	return kv.client.List(ctx, prefix)
+}
+
 // Get is a part of kv.Client interface.
 func (m *MultiClient) Get(ctx context.Context, key string) (interface{}, error) {
 	_, kv := m.getPrimaryClient()
-	val, err := kv.client.Get(ctx, key)
-	return val, err
+	return kv.client.Get(ctx, key)
+}
+
+// Delete is a part of the kv.Client interface.
+func (m *MultiClient) Delete(ctx context.Context, key string) error {
+	_, kv := m.getPrimaryClient()
+	return kv.client.Delete(ctx, key)
 }
 
 // CAS is a part of kv.Client interface.
@@ -348,14 +360,5 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 		} else {
 			level.Debug(m.logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)
 		}
-	}
-}
-
-// Stop the multiClient and all configured clients.
-func (m *MultiClient) Stop() {
-	m.cancel()
-
-	for _, kv := range m.clients {
-		kv.client.Stop()
 	}
 }

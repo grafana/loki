@@ -18,7 +18,7 @@ import (
 
 const positionFileMode = 0600
 
-// Config describes where to get postition information from.
+// Config describes where to get position information from.
 type Config struct {
 	SyncPeriod        time.Duration `yaml:"sync_period"`
 	PositionsFile     string        `yaml:"filename"`
@@ -57,7 +57,7 @@ type Positions interface {
 	// Get returns how far we've read through a file. Returns an error
 	// if the value stored for the file is not an integer.
 	Get(path string) (int64, error)
-	// PutString records (asynchronsouly) how far we've read through a file.
+	// PutString records (asynchronously) how far we've read through a file.
 	// Unlike Put, it records a string offset and is only useful for
 	// JournalTargets which doesn't have integer offsets.
 	PutString(path string, pos string)

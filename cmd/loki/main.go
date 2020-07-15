@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,6 +16,7 @@ import (
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
+	logutil "github.com/grafana/loki/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -25,8 +27,13 @@ func init() {
 	prometheus.MustRegister(version.NewCollector("loki"))
 }
 
+var lineReplacer = strings.NewReplacer("\n", "\\n  ")
+
 func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
+	printConfig := flag.Bool("print-config-stderr", false, "Dump the entire Loki config object to stderr")
+	logConfig := flag.Bool("log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
+		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 
 	var config loki.Config
 	if err := cfg.Parse(&config); err != nil {
@@ -50,30 +57,50 @@ func main() {
 	}
 	util.InitLogger(&config.Server)
 
-	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
-	defer func() {
-		if err := trace.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "error closing tracing", "err", err)
-			os.Exit(1)
+	// Validate the config once both the config file has been loaded
+	// and CLI flags parsed.
+	err := config.Validate(util.Logger)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "validating config", "err", err.Error())
+		os.Exit(1)
+	}
+
+	if *printConfig {
+		err := logutil.PrintConfig(os.Stderr, &config)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
 		}
-	}()
+	}
+
+	if *logConfig {
+		err := logutil.LogConfig(&config)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to log config object", "err", err.Error())
+		}
+	}
+
+	if config.Tracing.Enabled {
+		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+		trace, err := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
+		}
+		defer func() {
+			if trace != nil {
+				if err := trace.Close(); err != nil {
+					level.Error(util.Logger).Log("msg", "error closing tracing", "err", err)
+				}
+			}
+
+		}()
+	}
 
 	// Start Loki
 	t, err := loki.New(config)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initialising loki", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initialising loki", err)
 
 	level.Info(util.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
-	if err := t.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error running loki", "err", err)
-	}
-
-	if err := t.Stop(); err != nil {
-		level.Error(util.Logger).Log("msg", "error stopping loki", "err", err)
-		os.Exit(1)
-	}
+	err = t.Run()
+	util.CheckFatal("running loki", err)
 }

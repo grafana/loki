@@ -6,14 +6,14 @@ deployed to every machine that has applications needed to be monitored.
 
 It primarily:
 
-1. Discovers targets
-2. Attaches labels to log streams
-3. Pushes them to the Loki instance.
+- Discovers targets
+- Attaches labels to log streams
+- Pushes them to the Loki instance.
 
 Currently, Promtail can tail logs from two sources: local log files and the
 systemd journal (on AMD64 machines only).
 
-## Log File Discovery
+## Log file discovery
 
 Before Promtail can ship any data from log files to Loki, it needs to find out
 information about its environment. Specifically, this means discovering
@@ -32,12 +32,26 @@ Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 drop, and the final metadata to attach to the log line. Refer to the docs for
 [configuring Promtail](configuration.md) for more details.
 
-## Receiving Logs From Syslog
+## Loki Push API
 
-When the [Syslog Target](./scraping.md#syslog-target) is being used, logs
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](../../api.md#post-lokiapiv1push) with the [loki_push_api](./configuration.md#loki_push_api_config) scrape config.
+
+There are a few instances where this might be helpful:
+
+* complex network infrastructures where many machines having egress is not desirable.
+* using the Docker Logging Driver and wanting to provide a complex pipeline or to extract metrics from logs.
+* serverless setups where many ephemeral log sources want to send to Loki, sending to a Promtail instance with `use_incoming_timestamp` == false can avoid out of order errors and avoid having to use high cardinality labels.
+
+## Receiving logs From Syslog
+
+When the [Syslog Target](./configuration.md#syslog_config) is being used, logs
 can be written with the syslog protocol to the configured port.
 
-## Labeling and Parsing
+## AWS
+
+If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial](../aws/ec2/ec2.md).
+
+## Labeling and parsing
 
 During service discovery, metadata is determined (pod name, filename, etc.) that
 may be attached to the log line as a label for easier identification when

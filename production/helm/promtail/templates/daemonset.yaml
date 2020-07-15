@@ -16,10 +16,7 @@ spec:
       app: {{ template "promtail.name" . }}
       release: {{ .Release.Name }}
   updateStrategy:
-    type: {{ .Values.deploymentStrategy }}
-  {{- if ne .Values.deploymentStrategy "RollingUpdate" }}
-    rollingUpdate: null
-  {{- end }}
+    {{- toYaml .Values.deploymentStrategy | nindent 4 }}
   template:
     metadata:
       labels:
@@ -27,7 +24,7 @@ spec:
         release: {{ .Release.Name }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}          
+        {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
@@ -49,6 +46,12 @@ spec:
         securityContext:
           privileged: true
     {{- end }}
+      {{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.image.pullSecrets }}
+        - name: {{ . }}
+      {{- end}}
+      {{- end }}
       containers:
         - name: promtail
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -73,6 +76,9 @@ spec:
             - name: run
               mountPath: /run/promtail
             {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           env:
@@ -116,5 +122,8 @@ spec:
           hostPath:
             path: /run/promtail
         {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

@@ -23,9 +23,9 @@ var (
 		Name:      "bigtable_request_duration_seconds",
 		Help:      "Time spent doing Bigtable requests.",
 
-		// Bigtable latency seems to range from a few ms to a few hundred ms and is
-		// important.  So use 6 buckets from 1ms to 1s.
-		Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+		// Bigtable latency seems to range from a few ms to a several seconds and is
+		// important.  So use 9 buckets from 1ms to just over 1 minute (65s).
+		Buckets: prometheus.ExponentialBuckets(0.001, 4, 9),
 	}, []string{"operation", "status_code"})
 
 	gcsRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{

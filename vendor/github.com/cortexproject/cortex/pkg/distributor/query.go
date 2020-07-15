@@ -4,17 +4,19 @@ import (
 	"context"
 	"io"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
+	grpc_util "github.com/cortexproject/cortex/pkg/util/grpc"
 )
 
 // Query multiple ingesters and returns a Matrix of samples.
@@ -30,14 +32,18 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 		if err != nil {
 			return promql.ErrStorage{Err: err}
 		}
+
+		if s := opentracing.SpanFromContext(ctx); s != nil {
+			s.LogKV("series", len(matrix))
+		}
 		return nil
 	})
 	return matrix, err
 }
 
 // QueryStream multiple ingesters via the streaming interface and returns big ol' set of chunks.
-func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error) {
-	var result []client.TimeSeriesChunk
+func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
+	var result *ingester_client.QueryStreamResponse
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
 		if err != nil {
@@ -47,6 +53,10 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 		result, err = d.queryIngesterStream(ctx, replicationSet, req)
 		if err != nil {
 			return promql.ErrStorage{Err: err}
+		}
+
+		if s := opentracing.SpanFromContext(ctx); s != nil {
+			s.LogKV("chunk-series", len(result.GetChunkseries()), "time-series", len(result.GetTimeseries()))
 		}
 		return nil
 	})
@@ -70,7 +80,7 @@ func (d *Distributor) queryPrep(ctx context.Context, from, to model.Time, matche
 	if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
 		replicationSet, err = d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
 	} else {
-		replicationSet, err = d.ingestersRing.GetAll()
+		replicationSet, err = d.ingestersRing.GetAll(ring.Read)
 	}
 	return replicationSet, req, err
 }
@@ -122,7 +132,7 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 }
 
 // queryIngesterStream queries the ingesters using the new streaming API.
-func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *client.QueryRequest) ([]client.TimeSeriesChunk, error) {
+func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	// Fetch samples from multiple ingesters
 	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ing *ring.IngesterDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
@@ -136,17 +146,24 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 			return nil, err
 		}
-		defer stream.CloseSend()
+		defer stream.CloseSend() //nolint:errcheck
 
-		var result []*ingester_client.QueryStreamResponse
+		result := &ingester_client.QueryStreamResponse{}
 		for {
-			series, err := stream.Recv()
+			resp, err := stream.Recv()
 			if err == io.EOF {
 				break
 			} else if err != nil {
+				// Do not track a failure if the context was canceled.
+				if !grpc_util.IsGRPCContextCanceled(err) {
+					ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+				}
+
 				return nil, err
 			}
-			result = append(result, series)
+
+			result.Chunkseries = append(result.Chunkseries, resp.Chunkseries...)
+			result.Timeseries = append(result.Timeseries, resp.Timeseries...)
 		}
 		return result, nil
 	})
@@ -154,22 +171,85 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		return nil, err
 	}
 
-	hashToSeries := map[model.Fingerprint]ingester_client.TimeSeriesChunk{}
+	hashToChunkseries := map[model.Fingerprint]ingester_client.TimeSeriesChunk{}
+	hashToTimeSeries := map[model.Fingerprint]ingester_client.TimeSeries{}
+
 	for _, result := range results {
-		for _, response := range result.([]*ingester_client.QueryStreamResponse) {
-			for _, series := range response.Timeseries {
-				hash := client.FastFingerprint(series.Labels)
-				existing := hashToSeries[hash]
-				existing.Labels = series.Labels
-				existing.Chunks = append(existing.Chunks, series.Chunks...)
-				hashToSeries[hash] = existing
+		response := result.(*ingester_client.QueryStreamResponse)
+
+		// Parse any chunk series
+		for _, series := range response.Chunkseries {
+			hash := client.FastFingerprint(series.Labels)
+			existing := hashToChunkseries[hash]
+			existing.Labels = series.Labels
+			existing.Chunks = append(existing.Chunks, series.Chunks...)
+			hashToChunkseries[hash] = existing
+		}
+
+		// Parse any time series
+		for _, series := range response.Timeseries {
+			hash := client.FastFingerprint(series.Labels)
+			existing := hashToTimeSeries[hash]
+			existing.Labels = series.Labels
+			if existing.Samples == nil {
+				existing.Samples = series.Samples
+			} else {
+				existing.Samples = mergeSamples(existing.Samples, series.Samples)
 			}
+			hashToTimeSeries[hash] = existing
 		}
 	}
-	result := make([]client.TimeSeriesChunk, 0, len(hashToSeries))
-	for _, series := range hashToSeries {
-		result = append(result, series)
+
+	resp := &ingester_client.QueryStreamResponse{
+		Chunkseries: make([]client.TimeSeriesChunk, 0, len(hashToChunkseries)),
+		Timeseries:  make([]client.TimeSeries, 0, len(hashToTimeSeries)),
+	}
+	for _, series := range hashToChunkseries {
+		resp.Chunkseries = append(resp.Chunkseries, series)
+	}
+	for _, series := range hashToTimeSeries {
+		resp.Timeseries = append(resp.Timeseries, series)
 	}
 
-	return result, nil
+	return resp, nil
+}
+
+// Merges and dedupes two sorted slices with samples together.
+func mergeSamples(a, b []ingester_client.Sample) []ingester_client.Sample {
+	if sameSamples(a, b) {
+		return a
+	}
+
+	result := make([]ingester_client.Sample, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i].TimestampMs < b[j].TimestampMs {
+			result = append(result, a[i])
+			i++
+		} else if a[i].TimestampMs > b[j].TimestampMs {
+			result = append(result, b[j])
+			j++
+		} else {
+			result = append(result, a[i])
+			i++
+			j++
+		}
+	}
+	// Add the rest of a or b. One of them is empty now.
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
+	return result
+}
+
+func sameSamples(a, b []ingester_client.Sample) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

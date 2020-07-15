@@ -10,11 +10,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/instrument"
 )
 
 // Pluggable auto-scaler implementation
@@ -50,13 +50,6 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 	}
 
 	var autoscale autoscale
-	if cfg.ApplicationAutoScaling.URL != nil {
-		autoscale, err = newAWSAutoscale(cfg, callManager)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if cfg.Metrics.URL != "" {
 		autoscale, err = newMetrics(cfg)
 		if err != nil {
@@ -71,7 +64,7 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 	}, nil
 }
 
-func (d *dynamoTableClient) Stop() {
+func (d dynamoTableClient) Stop() {
 }
 
 func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.Context) error) error {
@@ -80,7 +73,7 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 
 func (d callManager) backoffAndRetry(ctx context.Context, fn func(context.Context) error) error {
 	if d.limiter != nil { // Tests will have a nil limiter.
-		d.limiter.Wait(ctx)
+		_ = d.limiter.Wait(ctx)
 	}
 
 	backoff := util.NewBackoff(ctx, d.backoffConfig)

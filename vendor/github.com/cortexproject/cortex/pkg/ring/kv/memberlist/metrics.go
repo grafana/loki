@@ -5,12 +5,14 @@ import (
 
 	armonmetrics "github.com/armon/go-metrics"
 	armonprometheus "github.com/armon/go-metrics/prometheus"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func (m *Client) createAndRegisterMetrics() {
+func (m *KV) createAndRegisterMetrics() {
 	const subsystem = "memberlist_client"
 
 	m.numberOfReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
@@ -68,7 +70,11 @@ func (m *Client) createAndRegisterMetrics() {
 		Name:      "messages_in_broadcast_queue",
 		Help:      "Number of user messages in the broadcast queue",
 	}, func() float64 {
-		return float64(m.broadcasts.NumQueued())
+		// m.broadcasts is not set before Starting state
+		if m.State() == services.Running || m.State() == services.Stopping {
+			return float64(m.broadcasts.NumQueued())
+		}
+		return 0
 	})
 
 	m.totalSizeOfBroadcastMessagesInQueue = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -115,7 +121,11 @@ func (m *Client) createAndRegisterMetrics() {
 		Name:      "cluster_members_count",
 		Help:      "Number of members in memberlist cluster",
 	}, func() float64 {
-		return float64(m.memberlist.NumMembers())
+		// m.memberlist is not set before Starting state
+		if m.State() == services.Running || m.State() == services.Stopping {
+			return float64(m.memberlist.NumMembers())
+		}
+		return 0
 	})
 
 	m.memberlistHealthScore = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
@@ -124,7 +134,11 @@ func (m *Client) createAndRegisterMetrics() {
 		Name:      "cluster_node_health_score",
 		Help:      "Health score of this cluster. Lower value is better. 0 = healthy",
 	}, func() float64 {
-		return float64(m.memberlist.GetHealthScore())
+		// m.memberlist is not set before Starting state
+		if m.State() == services.Running || m.State() == services.Stopping {
+			return float64(m.memberlist.GetHealthScore())
+		}
+		return 0
 	})
 
 	m.watchPrefixDroppedNotifications = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -182,13 +196,13 @@ func (m *Client) createAndRegisterMetrics() {
 }
 
 // Describe returns prometheus descriptions via supplied channel
-func (m *Client) Describe(ch chan<- *prometheus.Desc) {
+func (m *KV) Describe(ch chan<- *prometheus.Desc) {
 	ch <- m.storeValuesDesc
 	ch <- m.storeSizesDesc
 }
 
 // Collect returns extra metrics via supplied channel
-func (m *Client) Collect(ch chan<- prometheus.Metric) {
+func (m *KV) Collect(ch chan<- prometheus.Metric) {
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 

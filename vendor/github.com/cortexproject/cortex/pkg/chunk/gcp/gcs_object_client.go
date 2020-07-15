@@ -1,25 +1,22 @@
 package gcp
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"io"
-	"io/ioutil"
 	"time"
 
 	"cloud.google.com/go/storage"
-	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
 
 type GCSObjectClient struct {
-	cfg    GCSConfig
-	client *storage.Client
-	bucket *storage.BucketHandle
+	cfg       GCSConfig
+	client    *storage.Client
+	bucket    *storage.BucketHandle
+	delimiter string
 }
 
 // GCSConfig is config for the GCS Chunk Client.
@@ -41,8 +38,8 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
 }
 
-// NewGCSObjectClient makes a new chunk.ObjectClient that writes chunks to GCS.
-func NewGCSObjectClient(ctx context.Context, cfg GCSConfig) (*GCSObjectClient, error) {
+// NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
+func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, delimiter string) (*GCSObjectClient, error) {
 	option, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
 	if err != nil {
 		return nil, err
@@ -52,15 +49,16 @@ func NewGCSObjectClient(ctx context.Context, cfg GCSConfig) (*GCSObjectClient, e
 	if err != nil {
 		return nil, err
 	}
-	return newGCSObjectClient(cfg, client), nil
+	return newGCSObjectClient(cfg, client, delimiter), nil
 }
 
-func newGCSObjectClient(cfg GCSConfig, client *storage.Client) *GCSObjectClient {
+func newGCSObjectClient(cfg GCSConfig, client *storage.Client, delimiter string) *GCSObjectClient {
 	bucket := client.Bucket(cfg.BucketName)
 	return &GCSObjectClient{
-		cfg:    cfg,
-		client: client,
-		bucket: bucket,
+		cfg:       cfg,
+		client:    client,
+		bucket:    bucket,
+		delimiter: delimiter,
 	}
 }
 
@@ -68,45 +66,8 @@ func (s *GCSObjectClient) Stop() {
 	s.client.Close()
 }
 
-func (s *GCSObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	for _, chunk := range chunks {
-		buf, err := chunk.Encoded()
-		if err != nil {
-			return err
-		}
-
-		if err := s.PutObject(ctx, chunk.ExternalKey(), bytes.NewReader(buf)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *GCSObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, input, s.getChunk)
-}
-
-func (s *GCSObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
-	readCloser, err := s.GetObject(ctx, input.ExternalKey())
-	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
-	}
-
-	defer readCloser.Close()
-
-	buf, err := ioutil.ReadAll(readCloser)
-	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
-	}
-
-	if err := input.Decode(decodeContext, buf); err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	return input, nil
-}
-
-// Get object from the store
+// GetObject returns a reader for the specified object key from the configured GCS bucket. If the
+// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
 func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	if s.cfg.RequestTimeout > 0 {
 		// The context will be cancelled with the timeout or when the parent context is cancelled, whichever occurs first.
@@ -115,10 +76,19 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 		defer cancel()
 	}
 
-	return s.bucket.Object(objectKey).NewReader(ctx)
+	reader, err := s.bucket.Object(objectKey).NewReader(ctx)
+
+	if err != nil {
+		if err == storage.ErrObjectNotExist {
+			return nil, chunk.ErrStorageObjectNotFound
+		}
+		return nil, err
+	}
+
+	return reader, nil
 }
 
-// Put object into the store
+// PutObject puts the specified bytes into the configured GCS bucket at the provided key
 func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	writer := s.bucket.Object(objectKey).NewWriter(ctx)
 	// Default GCSChunkSize is 8M and for each call, 8M is allocated xD
@@ -137,14 +107,15 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 	return nil
 }
 
-// List only objects from the store non-recursively
-func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+// List objects and common-prefixes i.e synthetic directories from the store non-recursively
+func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
+	var commonPrefixes []chunk.StorageCommonPrefix
 
-	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: chunk.DirDelim})
+	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: s.delimiter})
 	for {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		}
 
 		attr, err := iter.Next()
@@ -152,12 +123,12 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 			if err == iterator.Done {
 				break
 			}
-			return nil, err
+			return nil, nil, err
 		}
 
 		// When doing query with Delimiter, Prefix is the only field set for entries which represent synthetic "directory entries".
-		// We do not want to consider those entries since we are doing only non-recursive listing of objects for now.
 		if attr.Name == "" {
+			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(attr.Prefix))
 			continue
 		}
 
@@ -167,5 +138,20 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 		})
 	}
 
-	return storageObjects, nil
+	return storageObjects, commonPrefixes, nil
+}
+
+// DeleteObject deletes the specified object key from the configured GCS bucket. If the
+// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
+func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	err := s.bucket.Object(objectKey).Delete(ctx)
+
+	if err != nil {
+		if err == storage.ErrObjectNotExist {
+			return chunk.ErrStorageObjectNotFound
+		}
+		return err
+	}
+
+	return nil
 }

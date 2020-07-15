@@ -1,4 +1,4 @@
-# Installing Promtail
+# Install Promtail
 
 Promtail is distributed as a [binary](#binary), [Docker container](#docker), and
 [Helm chart](#helm).
@@ -12,7 +12,7 @@ Every release includes binaries for Promtail which can be found on the
 
 ```bash
 # modify tag to most recent version
-$ docker pull grafana/promtail:v1.3.0
+docker pull grafana/promtail:1.5.0
 ```
 
 ## Helm
@@ -23,13 +23,13 @@ Make sure that Helm is
 Then you can add Loki's chart repository to Helm:
 
 ```bash
-$ helm repo add loki https://grafana.github.io/loki/charts
+helm repo add loki https://grafana.github.io/loki/charts
 ```
 
 And the chart repository can be updated by running:
 
 ```bash
-$ helm repo update
+helm repo update
 ```
 
 Finally, Promtail can be deployed with:
@@ -40,7 +40,7 @@ $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 
 ## Kubernetes
 
-### DaemonSet (Recommended)
+### DaemonSet (recommended)
 
 A `DaemonSet` will deploy `promtail` on every node within a Kubernetes cluster.
 
@@ -100,7 +100,7 @@ rules:
     resources:
     - nodes
     - services
-    - pod
+    - pods
     verbs:
     - get
     - watch

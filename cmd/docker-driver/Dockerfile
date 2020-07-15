@@ -9,7 +9,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false cmd/docker-driver/docker-driver
 
-FROM alpine:3.9
+FROM alpine:3.11
 RUN apk add --update --no-cache ca-certificates tzdata
 COPY --from=build /src/loki/cmd/docker-driver/docker-driver /bin/docker-driver
 WORKDIR /bin/

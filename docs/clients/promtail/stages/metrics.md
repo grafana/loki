@@ -33,11 +33,23 @@ type: Counter
 # defaulting to the metric's name if not present.
 [source: <string>]
 
+# Label values on metrics are dynamic which can cause exported metrics
+# to go stale (for example when a stream stops receiving logs).
+# To prevent unbounded growth of the /metrics endpoint any metrics which
+# have not been updated within this time will be removed.
+# Must be greater than or equal to '1s', if undefined default is '5m'
+[max_idle_duration: <string>]
+
 config:
   # If present and true all log lines will be counted without
   # attempting to match the source to the extract map.
   # It is an error to specify `match_all: true` and also specify a `value`
   [match_all: <bool>]
+
+  # If present and true all log line bytes will be counted.
+  # It is an error to specify `count_entry_bytes: true` without specifying `match_all: true`
+  # It is an error to specify `count_entry_bytes: true` without specifying `action: add`
+  [count_entry_bytes: <bool>]
   
   # Filters down source data and only changes the metric
   # if the targeted value exactly matches the provided string.
@@ -46,7 +58,7 @@ config:
 
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
-  # log line receieved that passed the filter. If add is chosen,
+  # log line received that passed the filter. If add is chosen,
   # the extracted value most be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
@@ -108,6 +120,13 @@ type: Histogram
 # defaulting to the metric's name if not present.
 [source: <string>]
 
+# Label values on metrics are dynamic which can cause exported metrics
+# to go stale (for example when a stream stops receiving logs).
+# To prevent unbounded growth of the /metrics endpoint any metrics which
+# have not been updated within this time will be removed.
+# Must be greater than or equal to '1s', if undefined default is '5m'
+[max_idle_duration: <string>]
+
 config:
   # Filters down source data and only changes the metric
   # if the targeted value exactly matches the provided string.
@@ -116,7 +135,7 @@ config:
 
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
-  # log line receieved that passed the filter. If add is chosen,
+  # log line received that passed the filter. If add is chosen,
   # the extracted value most be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
@@ -136,17 +155,34 @@ config:
       type: Counter
       description: "total number of log lines"
       prefix: my_promtail_custom_
-      source: time
+      max_idle_duration: 1d
       config:
+        match_all: true
         action: inc
+    log_bytes_total:
+      type: Counter
+      description: "total bytes of log lines"
+      prefix: my_promtail_custom_
+      max_idle_duration: 1d
+      config:
+        match_all: true
+        count_entry_bytes: true
+        action: add
 ```
 
-This pipeline creates a `log_lines_total` counter that increments whenever the
-extracted map contains a key for `time`. Since every log entry has a timestamp,
-this is a good field to use to count every line. Notice that `value` is not
-defined in the `config` section as we want to count every line and don't need to
-filter the value. Similarly, `inc` is used as the action because we want to
-increment the counter by one rather than by using the value of `time`.
+This pipeline creates a `log_lines_total` counter which increments for every log line received 
+by using the `match_all: true` parameter.
+
+It also creates a `log_bytes_total` counter which adds the byte size of every log line received 
+to the counter by using the `count_entry_bytes: true` parameter.
+
+Those two metrics will disappear after 1d if they don't receive new entries, this is useful to reduce the building up of stage metrics.
+
+The combination of these two metric stages will give you two counters to track the volume of 
+every log stream in both number of lines and bytes, which can be useful in identifying sources
+of very high volume, as well as helping understand why you may have too much cardinality.
+
+These stages should be placed towards the end of your pipeline after any `labels` stages
 
 ```yaml
 - regex:

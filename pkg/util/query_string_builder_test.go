@@ -14,12 +14,10 @@ func TestQueryStringBuilder(t *testing.T) {
 	tests := map[string]struct {
 		input           map[string]interface{}
 		expectedEncoded string
-		expectedPath    string
 	}{
 		"should return an empty query string on no params": {
 			input:           map[string]interface{}{},
 			expectedEncoded: "",
-			expectedPath:    "/test",
 		},
 		"should return the URL encoded query string parameters": {
 			input: map[string]interface{}{
@@ -31,7 +29,6 @@ func TestQueryStringBuilder(t *testing.T) {
 				"string":     "foo",
 			},
 			expectedEncoded: "float32=123.456&float64=123.456&float64int=12345&int32=32&int64=64&string=foo",
-			expectedPath:    "/test?float32=123.456&float64=123.456&float64int=12345&int32=32&int64=64&string=foo",
 		},
 	}
 
@@ -59,7 +56,6 @@ func TestQueryStringBuilder(t *testing.T) {
 			}
 
 			assert.Equal(t, testData.expectedEncoded, params.Encode())
-			assert.Equal(t, testData.expectedPath, params.EncodeWithPath("/test"))
 		})
 	}
 }

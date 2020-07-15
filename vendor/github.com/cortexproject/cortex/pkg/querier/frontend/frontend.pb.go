@@ -10,8 +10,11 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	httpgrpc "github.com/weaveworks/common/httpgrpc"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 )
@@ -25,7 +28,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type ProcessRequest struct {
 	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,1,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
@@ -44,7 +47,7 @@ func (m *ProcessRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return xxx_messageInfo_ProcessRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +90,7 @@ func (m *ProcessResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return xxx_messageInfo_ProcessResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -282,6 +285,14 @@ type FrontendServer interface {
 	Process(Frontend_ProcessServer) error
 }
 
+// UnimplementedFrontendServer can be embedded to have forward compatible implementations.
+type UnimplementedFrontendServer struct {
+}
+
+func (*UnimplementedFrontendServer) Process(srv Frontend_ProcessServer) error {
+	return status.Errorf(codes.Unimplemented, "method Process not implemented")
+}
+
 func RegisterFrontendServer(s *grpc.Server, srv FrontendServer) {
 	s.RegisterService(&_Frontend_serviceDesc, srv)
 }
@@ -330,7 +341,7 @@ var _Frontend_serviceDesc = grpc.ServiceDesc{
 func (m *ProcessRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -338,27 +349,34 @@ func (m *ProcessRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *ProcessRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ProcessRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.HttpRequest != nil {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintFrontend(dAtA, i, uint64(m.HttpRequest.Size()))
-		n1, err := m.HttpRequest.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
+		{
+			size, err := m.HttpRequest.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintFrontend(dAtA, i, uint64(size))
 		}
-		i += n1
+		i--
+		dAtA[i] = 0xa
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *ProcessResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -366,31 +384,40 @@ func (m *ProcessResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *ProcessResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ProcessResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.HttpResponse != nil {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintFrontend(dAtA, i, uint64(m.HttpResponse.Size()))
-		n2, err := m.HttpResponse.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
+		{
+			size, err := m.HttpResponse.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintFrontend(dAtA, i, uint64(size))
 		}
-		i += n2
+		i--
+		dAtA[i] = 0xa
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintFrontend(dAtA []byte, offset int, v uint64) int {
+	offset -= sovFrontend(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *ProcessRequest) Size() (n int) {
 	if m == nil {
@@ -419,14 +446,7 @@ func (m *ProcessResponse) Size() (n int) {
 }
 
 func sovFrontend(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozFrontend(x uint64) (n int) {
 	return sovFrontend(uint64((x << 1) ^ uint64((int64(x) >> 63))))

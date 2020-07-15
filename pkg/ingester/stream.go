@@ -60,11 +60,12 @@ type stream struct {
 	cfg *Config
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks   []chunkDesc
-	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
-	labels   labels.Labels
-	factory  func() chunkenc.Chunk
-	lastLine line
+	chunks       []chunkDesc
+	fp           model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	labels       labels.Labels
+	labelsString string
+	factory      func() chunkenc.Chunk
+	lastLine     line
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -73,6 +74,7 @@ type stream struct {
 type chunkDesc struct {
 	chunk   chunkenc.Chunk
 	closed  bool
+	synced  bool
 	flushed time.Time
 
 	lastUpdated time.Time
@@ -85,18 +87,19 @@ type entryWithError struct {
 
 func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, factory func() chunkenc.Chunk) *stream {
 	return &stream{
-		cfg:     cfg,
-		fp:      fp,
-		labels:  labels,
-		factory: factory,
-		tailers: map[uint32]*tailer{},
+		cfg:          cfg,
+		fp:           fp,
+		labels:       labels,
+		labelsString: labels.String(),
+		factory:      factory,
+		tailers:      map[uint32]*tailer{},
 	}
 }
 
 // consumeChunk manually adds a chunk to the stream that was received during
 // ingester chunk transfer.
 func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
-	c, err := chunkenc.NewByteChunk(chunk.Data)
+	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 	if err != nil {
 		return err
 	}
@@ -108,7 +111,7 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	return nil
 }
 
-func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
+func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
 	var lastChunkTimestamp time.Time
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
@@ -138,18 +141,18 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 		}
 
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk.chunk, synchronizePeriod, minUtilization) {
+		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk, synchronizePeriod, minUtilization) {
 			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 			err := chunk.chunk.Close()
 			if err != nil {
 				// This should be an unlikely situation, returning an error up the stack doesn't help much here
 				// so instead log this to help debug the issue if it ever arises.
-				level.Error(util.Logger).Log("msg", "failed to Close chunk", "err", err)
+				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to Close chunk", "err", err)
 			}
 			chunk.closed = true
 
 			samplesPerChunk.Observe(float64(chunk.chunk.Size()))
-			blocksPerChunk.Observe(float64(chunk.chunk.Blocks()))
+			blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
 			chunksCreatedTotal.Inc()
 
 			s.chunks = append(s.chunks, chunkDesc{
@@ -171,7 +174,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 
 	if len(storedEntries) != 0 {
 		go func() {
-			stream := logproto.Stream{Labels: s.labels.String(), Entries: storedEntries}
+			stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
 
 			closedTailers := []uint32{}
 
@@ -201,7 +204,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			// return bad http status request response with all failed entries
 			buf := bytes.Buffer{}
-			streamName := s.labels.String()
+			streamName := s.labelsString
 
 			limitedFailedEntries := failedEntriesWithError
 			if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
@@ -226,7 +229,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters
 // cut the chunk for this stream at the same moment, so that new chunk will contain exactly the same entries.
-func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp time.Time, chunk chunkenc.Chunk, synchronizePeriod time.Duration, minUtilization float64) bool {
+func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp time.Time, c *chunkDesc, synchronizePeriod time.Duration, minUtilization float64) bool {
 	if synchronizePeriod <= 0 || prevEntryTimestamp.IsZero() {
 		return false
 	}
@@ -239,10 +242,12 @@ func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp t
 	// if current entry timestamp has rolled over synchronization period
 	if cts < pts {
 		if minUtilization <= 0 {
+			c.synced = true
 			return true
 		}
 
-		if chunk.Utilization() > minUtilization {
+		if c.chunk.Utilization() > minUtilization {
+			c.synced = true
 			return true
 		}
 	}
@@ -251,7 +256,7 @@ func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp t
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
+func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
 		itr, err := c.chunk.Iterator(ctx, from, through, direction, filter)
@@ -269,7 +274,19 @@ func (s *stream) Iterator(ctx context.Context, from, through time.Time, directio
 		}
 	}
 
-	return iter.NewNonOverlappingIterator(iterators, s.labels.String()), nil
+	return iter.NewNonOverlappingIterator(iterators, s.labelsString), nil
+}
+
+// Returns an SampleIterator.
+func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, filter logql.LineFilter, extractor logql.SampleExtractor) (iter.SampleIterator, error) {
+	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
+	for _, c := range s.chunks {
+		if itr := c.chunk.SampleIterator(ctx, from, through, filter, extractor); itr != nil {
+			iterators = append(iterators, itr)
+		}
+	}
+
+	return iter.NewNonOverlappingSampleIterator(iterators, s.labelsString), nil
 }
 
 func (s *stream) addTailer(t *tailer) {

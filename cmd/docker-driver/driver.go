@@ -36,6 +36,10 @@ type logPair struct {
 	stream io.ReadCloser
 	info   logger.Info
 	logger log.Logger
+	// folder where json log files will be created.
+	folder string
+	// keep created files after stopping the container.
+	keepFile bool
 }
 
 func (l *logPair) Close() {
@@ -44,6 +48,9 @@ func (l *logPair) Close() {
 	}
 	if err := l.lokil.Close(); err != nil {
 		level.Error(l.logger).Log("msg", "error while closing loki logger", "err", err)
+	}
+	if l.jsonl == nil {
+		return
 	}
 	if err := l.jsonl.Close(); err != nil {
 		level.Error(l.logger).Log("msg", "error while closing json logger", "err", err)
@@ -65,30 +72,43 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 		return fmt.Errorf("logger for %q already exists", file)
 	}
 	d.mu.Unlock()
+	folder := fmt.Sprintf("/var/log/docker/%s/", logCtx.ContainerID)
+	logCtx.LogPath = filepath.Join(folder, "json.log")
+	level.Info(d.logger).Log("msg", "starting logging driver for container", "id", logCtx.ContainerID, "config", fmt.Sprintf("%+v", logCtx.Config), "file", file, "logpath", logCtx.LogPath)
 
-	if logCtx.LogPath == "" {
-		logCtx.LogPath = filepath.Join("/var/log/docker", logCtx.ContainerID)
-	}
-	if err := os.MkdirAll(filepath.Dir(logCtx.LogPath), 0755); err != nil {
-		return errors.Wrap(err, "error setting up logger dir")
-	}
-	jsonl, err := jsonfilelog.New(logCtx)
+	noFile, err := parseBoolean(cfgNofile, logCtx, false)
 	if err != nil {
-		return errors.Wrap(err, "error creating jsonfile logger")
+		return err
+	}
+
+	keepFile, err := parseBoolean(cfgKeepFile, logCtx, false)
+	if err != nil {
+		return err
+	}
+
+	var jsonl logger.Logger
+	if !noFile {
+		if err := os.MkdirAll(folder, 0755); err != nil {
+			return errors.Wrap(err, "error setting up logger dir")
+		}
+
+		jsonl, err = jsonfilelog.New(logCtx)
+		if err != nil {
+			return errors.Wrap(err, "error creating jsonfile logger")
+		}
 	}
 
 	lokil, err := New(logCtx, d.logger)
 	if err != nil {
 		return errors.Wrap(err, "error creating loki logger")
 	}
-	level.Debug(d.logger).Log("msg", "Start logging", "id", logCtx.ContainerID, "file", file, "logpath", logCtx.LogPath)
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
 		return errors.Wrapf(err, "error opening logger fifo: %q", file)
 	}
 
 	d.mu.Lock()
-	lf := &logPair{jsonl, lokil, f, logCtx, d.logger}
+	lf := &logPair{jsonl, lokil, f, logCtx, d.logger, folder, keepFile}
 	d.logs[file] = lf
 	d.idx[logCtx.ContainerID] = lf
 	d.mu.Unlock()
@@ -100,12 +120,19 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 func (d *driver) StopLogging(file string) {
 	level.Debug(d.logger).Log("msg", "Stop logging", "file", file)
 	d.mu.Lock()
+	defer d.mu.Unlock()
 	lf, ok := d.logs[file]
-	if ok {
-		lf.Close()
-		delete(d.logs, file)
+	if !ok {
+		return
 	}
-	d.mu.Unlock()
+	lf.Close()
+	delete(d.logs, file)
+	if !lf.keepFile && lf.jsonl != nil {
+		// delete the folder where all log files were created.
+		if err := os.RemoveAll(lf.folder); err != nil {
+			level.Debug(d.logger).Log("msg", "error deleting folder", "folder", lf.folder)
+		}
+	}
 }
 
 func consumeLog(lf *logPair) {
@@ -138,10 +165,11 @@ func consumeLog(lf *logPair) {
 		if err := lf.lokil.Log(&msg); err != nil {
 			level.Error(lf.logger).Log("msg", "error pushing message to loki", "id", lf.info.ContainerID, "err", err, "message", msg)
 		}
-
-		if err := lf.jsonl.Log(&msg); err != nil {
-			level.Error(lf.logger).Log("msg", "error writing log message", "id", lf.info.ContainerID, "err", err, "message", msg)
-			continue
+		if lf.jsonl != nil {
+			if err := lf.jsonl.Log(&msg); err != nil {
+				level.Error(lf.logger).Log("msg", "error writing log message", "id", lf.info.ContainerID, "err", err, "message", msg)
+				continue
+			}
 		}
 
 		buf.Reset()
@@ -156,10 +184,14 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 		return nil, fmt.Errorf("logger does not exist for %s", info.ContainerID)
 	}
 
+	if lf.jsonl == nil {
+		return nil, fmt.Errorf("%s option set to true, no reading capability", cfgNofile)
+	}
+
 	r, w := io.Pipe()
 	lr, ok := lf.jsonl.(logger.LogReader)
 	if !ok {
-		return nil, fmt.Errorf("logger does not support reading")
+		return nil, errors.New("logger does not support reading")
 	}
 
 	go func() {

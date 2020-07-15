@@ -1,15 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"io"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
+	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
-
-	"github.com/weaveworks/common/instrument"
 )
 
 // PrometheusGRPCUnaryInstrumentation records duration of gRPC requests client side.
@@ -17,7 +16,7 @@ func PrometheusGRPCUnaryInstrumentation(metric *prometheus.HistogramVec) grpc.Un
 	return func(ctx context.Context, method string, req, resp interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		start := time.Now()
 		err := invoker(ctx, method, req, resp, cc, opts...)
-		metric.WithLabelValues(method, instrument.ErrorCode(err)).Observe(time.Now().Sub(start).Seconds())
+		metric.WithLabelValues(method, instrument.ErrorCode(err)).Observe(time.Since(start).Seconds())
 		return err
 	}
 }
@@ -52,9 +51,9 @@ func (s *instrumentedClientStream) SendMsg(m interface{}) error {
 	}
 
 	if err == io.EOF {
-		s.metric.WithLabelValues(s.method, instrument.ErrorCode(nil)).Observe(time.Now().Sub(s.start).Seconds())
+		s.metric.WithLabelValues(s.method, instrument.ErrorCode(nil)).Observe(time.Since(s.start).Seconds())
 	} else {
-		s.metric.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Now().Sub(s.start).Seconds())
+		s.metric.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Since(s.start).Seconds())
 	}
 
 	return err
@@ -67,9 +66,9 @@ func (s *instrumentedClientStream) RecvMsg(m interface{}) error {
 	}
 
 	if err == io.EOF {
-		s.metric.WithLabelValues(s.method, instrument.ErrorCode(nil)).Observe(time.Now().Sub(s.start).Seconds())
+		s.metric.WithLabelValues(s.method, instrument.ErrorCode(nil)).Observe(time.Since(s.start).Seconds())
 	} else {
-		s.metric.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Now().Sub(s.start).Seconds())
+		s.metric.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Since(s.start).Seconds())
 	}
 
 	return err
@@ -78,7 +77,7 @@ func (s *instrumentedClientStream) RecvMsg(m interface{}) error {
 func (s *instrumentedClientStream) Header() (metadata.MD, error) {
 	md, err := s.ClientStream.Header()
 	if err != nil {
-		s.metric.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Now().Sub(s.start).Seconds())
+		s.metric.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Since(s.start).Seconds())
 	}
 	return md, err
 }

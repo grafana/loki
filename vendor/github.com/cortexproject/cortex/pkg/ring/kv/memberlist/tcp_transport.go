@@ -270,7 +270,7 @@ func (t *TCPTransport) handleConnection(conn *net.TCPConn) {
 
 		expectedDigest := md5.Sum(buf)
 
-		if bytes.Compare(receivedDigest, expectedDigest[:]) != 0 {
+		if !bytes.Equal(receivedDigest, expectedDigest[:]) {
 			t.receivedPacketsErrors.Inc()
 			level.Warn(util.Logger).Log("msg", "TCPTransport: packet digest mismatch", "expected", fmt.Sprintf("%x", expectedDigest), "received", fmt.Sprintf("%x", receivedDigest))
 		}

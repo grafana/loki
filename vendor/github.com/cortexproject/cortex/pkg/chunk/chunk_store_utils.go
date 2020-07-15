@@ -40,7 +40,7 @@ func labelNamesFromChunks(chunks []Chunk) []string {
 	var result UniqueStrings
 	for _, c := range chunks {
 		for _, l := range c.Metric {
-			result.Add(string(l.Name))
+			result.Add(l.Name)
 		}
 	}
 	return result.Strings()
@@ -80,7 +80,7 @@ outer:
 // and writing back any misses to the cache.  Also responsible for decoding
 // chunks from the cache, in parallel.
 type Fetcher struct {
-	storage    ObjectClient
+	storage    Client
 	cache      cache.Cache
 	cacheStubs bool
 
@@ -99,16 +99,10 @@ type decodeResponse struct {
 }
 
 // NewChunkFetcher makes a new ChunkFetcher.
-func NewChunkFetcher(cfg cache.Config, cacheStubs bool, storage ObjectClient) (*Fetcher, error) {
-	cfg.Prefix = "chunks"
-	cache, err := cache.New(cfg)
-	if err != nil {
-		return nil, err
-	}
-
+func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, storage Client) (*Fetcher, error) {
 	c := &Fetcher{
 		storage:        storage,
-		cache:          cache,
+		cache:          cacher,
 		cacheStubs:     cacheStubs,
 		decodeRequests: make(chan decodeRequest),
 	}
@@ -146,13 +140,13 @@ func (c *Fetcher) worker() {
 // FetchChunks fetches a set of chunks from cache and store. Note that the keys passed in must be
 // lexicographically sorted, while the returned chunks are not in the same order as the passed in chunks.
 func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error) {
-	log, ctx := spanlogger.New(ctx, "ChunkStore.fetchChunks")
+	log, ctx := spanlogger.New(ctx, "ChunkStore.FetchChunks")
 	defer log.Span.Finish()
 
 	// Now fetch the actual chunk data from Memcache / S3
 	cacheHits, cacheBufs, _ := c.cache.Fetch(ctx, keys)
 
-	fromCache, missing, err := c.processCacheResponse(chunks, cacheHits, cacheBufs)
+	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
 	if err != nil {
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
@@ -199,12 +193,14 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
 // hits and misses.
-func (c *Fetcher) processCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) ([]Chunk, []Chunk, error) {
+func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys []string, bufs [][]byte) ([]Chunk, []Chunk, error) {
 	var (
 		requests  = make([]decodeRequest, 0, len(keys))
 		responses = make(chan decodeResponse)
 		missing   []Chunk
 	)
+	log, _ := spanlogger.New(ctx, "Fetcher.processCacheResponse")
+	defer log.Span.Finish()
 
 	i, j := 0, 0
 	for i < len(chunks) && j < len(keys) {
@@ -229,6 +225,7 @@ func (c *Fetcher) processCacheResponse(chunks []Chunk, keys []string, bufs [][]b
 	for ; i < len(chunks); i++ {
 		missing = append(missing, chunks[i])
 	}
+	level.Debug(log).Log("chunks", len(chunks), "decodeRequests", len(requests), "missing", len(missing))
 
 	go func() {
 		for _, request := range requests {
