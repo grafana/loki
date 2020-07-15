@@ -64,16 +64,22 @@ var (
 		Name:      "duplicate_entries_total",
 		Help:      "counts a log entry received more than one time",
 	})
-	metricTestDeviation = promauto.NewGauge(prometheus.GaugeOpts{
+	metricTestExpected = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "loki_canary",
-		Name:      "metric_test_deviation",
-		Help:      "How many counts was the actual query result from the expected based on the canary log write rate",
+		Name:      "metric_test_expected",
+		Help:      "How many counts were expected by the metric test query",
+	})
+	metricTestActual = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki_canary",
+		Name:      "metric_test_actual",
+		Help:      "How many counts were actually recevied by the metric test query",
 	})
 	responseLatency prometheus.Histogram
 )
 
 type Comparator struct {
 	entMtx              sync.Mutex
+	spotEntMtx          sync.Mutex
 	spotMtx             sync.Mutex
 	metTestMtx          sync.Mutex
 	pruneMtx            sync.Mutex
@@ -161,15 +167,16 @@ func (c *Comparator) Stop() {
 
 func (c *Comparator) entrySent(time time.Time) {
 	c.entMtx.Lock()
-	defer c.entMtx.Unlock()
 	c.entries = append(c.entries, &time)
-	//If this entry equals or exceeds the spot check interval from the last entry in the spot check array, add it.
-	if len(c.spotCheck) == 0 || time.Sub(*c.spotCheck[len(c.spotCheck)-1]) >= c.spotCheckInterval {
-		c.spotMtx.Lock()
-		c.spotCheck = append(c.spotCheck, &time)
-		c.spotMtx.Unlock()
-	}
 	totalEntries.Inc()
+	c.entMtx.Unlock()
+	//If this entry equals or exceeds the spot check interval from the last entry in the spot check array, add it.
+	c.spotEntMtx.Lock()
+	if len(c.spotCheck) == 0 || time.Sub(*c.spotCheck[len(c.spotCheck)-1]) >= c.spotCheckInterval {
+		c.spotCheck = append(c.spotCheck, &time)
+	}
+	c.spotEntMtx.Unlock()
+
 }
 
 // entryReceived removes the received entry from the buffer if it exists, reports on out of order entries received
@@ -296,14 +303,8 @@ func (c *Comparator) metricTest(currTime time.Time) {
 		return
 	}
 	expectedCount := float64(adjustedRange.Milliseconds()) / float64(c.writeInterval.Milliseconds())
-	deviation := expectedCount - actualCount
-	// There is nothing special about the number 10 here, it's fairly common for the deviation to be 2-4
-	// based on how expected is calculated vs the actual query data, more than 10 would be unlikely
-	// unless there is a problem.
-	if deviation > 10 {
-		fmt.Fprintf(c.w, "large metric deviation: expected %v, actual %v\n", expectedCount, actualCount)
-	}
-	metricTestDeviation.Set(deviation)
+	metricTestExpected.Set(expectedCount)
+	metricTestActual.Set(actualCount)
 }
 
 func (c *Comparator) spotCheckEntries(currTime time.Time) {
@@ -313,7 +314,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 		c.spotCheckRunning = false
 		c.spotMtx.Unlock()
 	}()
-	c.spotMtx.Lock()
+	c.spotEntMtx.Lock()
 	k := 0
 	for i, e := range c.spotCheck {
 		if e.Before(currTime.Add(-c.spotCheckMax)) {
@@ -333,7 +334,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 	cpy := make([]*time.Time, len(c.spotCheck))
 	//Make a copy so we don't have to hold the lock to verify entries
 	copy(cpy, c.spotCheck)
-	c.spotMtx.Unlock()
+	c.spotEntMtx.Unlock()
 
 	for _, sce := range cpy {
 		spotCheckEntries.Inc()
