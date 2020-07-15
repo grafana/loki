@@ -217,10 +217,10 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       @logger.warn("Trying to send again. Attempt number: #{retry_count}. Retrying in #{delay}s")
       sleep delay
 
-      if (delay * 2 - delay) > max_delay
-        delay = delay
-      else
+      if delay * 2 <= max_delay
         delay = delay * 2
+      else
+        delay = max_delay
       end
 
       retry
