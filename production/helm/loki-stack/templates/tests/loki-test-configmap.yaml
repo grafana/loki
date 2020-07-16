@@ -3,6 +3,7 @@ kind: ConfigMap
 metadata:
   name: {{ template "loki-stack.fullname" . }}-test
   labels:
+    app.kubernetes.io/name: {{ template "loki-stack.name" . }}
     app: {{ template "loki-stack.name" . }}
     chart: {{ template "loki-stack.chart" . }}
     release: {{ .Release.Name }}

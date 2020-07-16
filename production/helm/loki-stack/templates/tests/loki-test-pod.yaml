@@ -4,6 +4,7 @@ metadata:
   annotations:
     "helm.sh/hook": test-success
   labels:
+    app.kubernetes.io/name: {{ template "loki-stack.name" . }}
     app: {{ template "loki-stack.name" . }}
     chart: {{ template "loki-stack.chart" . }}
     release: {{ .Release.Name }}

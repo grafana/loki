@@ -23,6 +23,7 @@ config:
     kubernetes:
       namespace_name: namespace
       labels:
+        app.kubernetes.io/name: app
         app: app
         release: release
       host: node

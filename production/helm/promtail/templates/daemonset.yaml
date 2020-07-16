@@ -4,6 +4,7 @@ metadata:
   name: {{ template "promtail.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
+    app.kubernetes.io/name: {{ template "promtail.name" . }}
     app: {{ template "promtail.name" . }}
     chart: {{ template "promtail.chart" . }}
     release: {{ .Release.Name }}
@@ -20,6 +21,7 @@ spec:
   template:
     metadata:
       labels:
+        app.kubernetes.io/name: {{ template "promtail.name" . }}
         app: {{ template "promtail.name" . }}
         release: {{ .Release.Name }}
         {{- with .Values.podLabels }}

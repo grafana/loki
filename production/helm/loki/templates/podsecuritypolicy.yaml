@@ -4,6 +4,7 @@ kind: PodSecurityPolicy
 metadata:
   name: {{ template "loki.fullname" . }}
   labels:
+    app.kubernetes.io/name: {{ template "loki.name" . }}
     app: {{ template "loki.name" . }}
     chart: {{ template "loki.chart" . }}
     heritage: {{ .Release.Service }}

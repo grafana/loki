@@ -4,6 +4,7 @@ metadata:
   name: {{ template "loki.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
+    app.kubernetes.io/name: {{ template "loki.name" . }}
     app: {{ template "loki.name" . }}
     chart: {{ template "loki.chart" . }}
     release: {{ .Release.Name }}
@@ -23,6 +24,7 @@ spec:
   template:
     metadata:
       labels:
+        app.kubernetes.io/name: {{ template "loki.name" . }}
         app: {{ template "loki.name" . }}
         name: {{ template "loki.name" . }}
         release: {{ .Release.Name }}
