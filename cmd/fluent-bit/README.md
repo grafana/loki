@@ -12,8 +12,12 @@ This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/flue
 | --------------|-----------------------------------------------|-------------------------------------|
 | Url           | Url of loki server API endpoint.               | http://localhost:3100/loki/api/v1/push |
 | TenantID      | The tenant ID used by default to push logs to Loki. If omitted or empty it assumes Loki is running in single-tenant mode and no `X-Scope-OrgID` header is sent.               | "" |
-| BatchWait     | Time to wait before send a log batch to Loki, full or not. (unit: sec) | 1 second   |
+| BatchWait     | Time to wait before send a log batch to Loki, full or not. | 1s   |
 | BatchSize     | Log batch size to send a log batch to Loki (unit: Bytes).    | 10 KiB (10 * 1024 Bytes) |
+| Timeout     | Maximum time to wait for loki server to respond to a request.   | 10s |
+| MinBackoff     | Initial backoff time between retries.   | 500ms |
+| MaxBackoff     | Maximum backoff time between retries.   | 5m |
+| MaxRetries     | Maximum number of retries when sending batches.   | 10 |
 | Labels        | labels for API requests.                       | {job="fluent-bit"}                    |
 | LogLevel      | LogLevel for plugin logger.                    | "info"                              |
 | RemoveKeys    | Specify removing keys.                         | none                                |
@@ -110,8 +114,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     Name loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
-    BatchWait 1
-    # (1sec)
+    BatchWait 1s
     BatchSize 30720
     # (30KiB)
     Labels {test="fluent-bit-go", lang="Golang"}
@@ -125,7 +128,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     Name loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
-    BatchWait 1 # (1sec)
+    BatchWait 1s
     BatchSize 30720 # (30KiB)
     AutoKubernetesLabels true
     RemoveKeys key1,key2
