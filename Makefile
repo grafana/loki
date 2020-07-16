@@ -440,7 +440,7 @@ fluentd-test:
 # logstash plugin #
 ##################
 logstash-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f cmd/logstash/Dockerfile ./cmd/logstash/
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f cmd/logstash/Dockerfile ./
 
 # Send 10 lines to the local Loki instance.
 logstash-push-test-logs: LOKI_URL ?= http://host.docker.internal:3100/loki/api/v1/push
