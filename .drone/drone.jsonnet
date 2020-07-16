@@ -108,6 +108,30 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,master
   depends_on: ['check'],
 };
 
+local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'latest,master') {
+  steps+: [
+    // dry run for everything that is not tag or master
+    docker('amd64', 'logstash') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMaster,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/logstash-output-loki',
+      },
+    },
+  ] + [
+    // publish for tag or master
+    docker('amd64', 'logstash') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMaster,
+      settings+: {
+        repo: 'grafana/logstash-output-loki',
+      },
+    },
+  ],
+  depends_on: ['check'],
+};
+
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or master
@@ -206,6 +230,7 @@ local manifest(apps) = pipeline('manifest') {
 ] + [
   fluentbit(),
   fluentd(),
+  logstash(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMaster,
