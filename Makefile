@@ -450,6 +450,10 @@ logstash-push-test-logs:
 logstash-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
 
+# Enter an env already configure to build and test logstash output plugin.
+logstash-env:
+	$(SUDO) docker run -v  `pwd`/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
+
 ########################
 # Bigtable Backup Tool #
 ########################

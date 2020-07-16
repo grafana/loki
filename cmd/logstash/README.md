@@ -1,6 +1,6 @@
 # Contributing to Loki Logstash Output Plugin
 
-For information about using this plugin see this [documentation](../../docs/clients/logstash/README.md).
+For information about hwo to use this plugin see this [documentation](../../docs/clients/logstash/README.md).
 
 ## Install dependencies
 
