@@ -22,5 +22,3 @@ RUN gem build logstash-output-loki.gemspec && \
     PLUGIN_VERSION=$(cat VERSION); /usr/share/logstash/bin/logstash-plugin install logstash-output-loki-${PLUGIN_VERSION}.gem
 
 EXPOSE 5044
-
-CMD ["/usr/share/logstash/bin/logstash", "-f", "loki.conf"]

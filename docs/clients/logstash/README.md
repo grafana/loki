@@ -2,15 +2,25 @@
 
 Loki has a [Logstash](https://www.elastic.co/logstash) output plugin called
 `logstash-output-loki` that enables shipping logs to a private Loki
-instance or [Grafana Cloud](https://grafana.com/oss/loki).
+instance or [Grafana Cloud](https://grafana.com/products/cloud/).
 
 ## Installation
+
+### Local
+
+If you need to install the Loki output plugin manually you can do simply so by using the command below:
 
 ```bash
 $ bin/logstash-plugin install logstash-output-loki
 ```
 
-## Usage
+### Docker
+
+### Kubernetes
+
+
+
+## Usage and Configuration
 
 In your Logstash configuration, use `output loki`. The configuration values would look like this.
 
