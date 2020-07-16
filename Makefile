@@ -445,7 +445,8 @@ logstash-image:
 # Send 10 lines to the local Loki instance.
 logstash-push-test-logs: LOKI_URL ?= http://host.docker.internal:3100/loki/api/v1/push
 logstash-push-test-logs:
-	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
+	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
+		$(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f loki.conf
 
 logstash-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
