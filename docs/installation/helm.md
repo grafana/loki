@@ -37,6 +37,13 @@ helm upgrade --install loki --namespace=loki loki/loki
 helm upgrade --install loki loki/loki --set "key1=val1,key2=val2,..."
 ```
 
+### Deploy with persistent volume claim
+
+```bash
+helm upgrade --install loki loki/loki --set "loki.persistence.enabled=true,loki.persistence.storageClassName=standard,loki.persistence.size=5Gi"
+```
+
+
 ### Deploy Loki Stack (Loki, Promtail, Grafana, Prometheus)
 
 ```bash
