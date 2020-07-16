@@ -26,9 +26,9 @@ timestamp:
   [action_on_failure: <string>]
 ```
 
-The `format` field can be provided as an "example" of what timestamps look like
-(such as `Mon Jan 02 15:04:05 -0700 2006`) but Promtail accepts using a series
-of pre-defined formats to represent common forms:
+### Reference Time
+
+The `format` field can be how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`, would be interpreted in the format or can alternatviely be one of the following common forms:
 
 - `ANSIC`: `Mon Jan _2 15:04:05 2006`
 - `UnixDate`: `Mon Jan _2 15:04:05 MST 2006`
@@ -73,6 +73,8 @@ should be used in the custom format.
 | Timezone name       | `MST`                                                                                                                                |
 | Timezone offset     | `-0700`, `-070000` (with seconds), `-07`, `07:00`, `-07:00:00` (with seconds)                                                        |
 | Timezone ISO-8601   | `Z0700` (Z for UTC or time offset), `Z070000`, `Z07`, `Z07:00`, `Z07:00:00`                                                          |
+
+### Action on Failure
 
 The `action_on_failure` setting defines which action should be taken by the
 stage in case the `source` field doesn't exist in the extracted data or the
