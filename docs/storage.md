@@ -18,7 +18,7 @@ Loki uses a two pronged strategy regarding storage, which is responsible for bot
 * [Upgrading Schemas](#Upgrading-Schemas)
 * [Retention](#Retention)
 * [Examples](Examples)
-  * [Proof of concept/local development (boltdb+filesystem)](Proof-of-concept/local-development-(boltdb+filesystem))
+  * [Single machine/local development (boltdb+filesystem)](Single-machine/local-development-(boltdb+filesystem))
   * [GCP deployment (GCS+BigTable)](GCP-deployment-(GCS+BigTable))
   * [AWS deployment (S3+DynamoDB)](AWS-deployment-(S3+DynamoDB))
   * [On prem deployment (Cassandra+Cassandra)](On-prem-deployment-(Cassandra+Cassandra))
@@ -36,7 +36,7 @@ GCS is a hosted object store offered by Google. It is a good candidate for a man
 
 ### File System
 
-The file system is the simplest backend for chunks, although it's also susceptible to data loss as it's unreplicated. This is common for single binary deployments though, as well as for those trying out loki or doing local development on the project. Without significant expertise and knowledge of Loki's operational patterns, the file system backend is not suggested for production use unless you can tolerate log loss.
+The file system is the simplest backend for chunks, although it's also susceptible to data loss as it's unreplicated. This is common for single binary deployments though, as well as for those trying out loki or doing local development on the project. It is similar in concept to many Prometheus deployments where a single Prometheus is responsible for monitoring a fleet.
 
 ### S3
 
@@ -166,7 +166,7 @@ For more information, see the configuration [docs](./operations/storage/retentio
 
 ## Examples
 
-### Proof of concept/local development (boltdb+filesystem)
+### Single machine/local development (boltdb+filesystem)
 
 ```yaml
 storage_config:
