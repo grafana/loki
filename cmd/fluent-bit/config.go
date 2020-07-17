@@ -75,11 +75,17 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 
 	batchWait := cfg.Get("BatchWait")
 	if batchWait != "" {
-		batchWaitValue, err := time.ParseDuration(batchWait)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse BatchWait: %s", batchWait)
+		// first try to parse as seconds format.
+		batchWaitSeconds, err := strconv.Atoi(batchWait)
+		if err == nil {
+			res.clientConfig.BatchWait = time.Duration(batchWaitSeconds) * time.Second
+		} else {
+			batchWaitValue, err := time.ParseDuration(batchWait)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse BatchWait: %s", batchWait)
+			}
+			res.clientConfig.BatchWait = batchWaitValue
 		}
-		res.clientConfig.BatchWait = batchWaitValue
 	}
 
 	batchSize := cfg.Get("BatchSize")

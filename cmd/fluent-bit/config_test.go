@@ -58,7 +58,7 @@ func Test_parseConfig(t *testing.T) {
 				"LogLevel":      "warn",
 				"Labels":        `{app="foo"}`,
 				"BatchSize":     "100",
-				"BatchWait":     "30s",
+				"BatchWait":     "30",
 				"Timeout":       "1s",
 				"RemoveKeys":    "buzz,fuzz",
 				"LabelKeys":     "foo,bar",
