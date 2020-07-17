@@ -19,8 +19,10 @@
 
   local deployment = $.apps.v1.deployment,
 
+  local name = 'ingester',
+
   ingester_deployment:
-    deployment.new('ingester', 3, [$.ingester_container]) +
+    deployment.new(name, 3, [$.ingester_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
@@ -32,4 +34,13 @@
 
   ingester_service:
     $.util.serviceFor($.ingester_deployment),
+
+  local podDisruptionBudget = $.policy.v1beta1.podDisruptionBudget,
+
+  ingester_pdb:
+    podDisruptionBudget.new() +
+    podDisruptionBudget.mixin.metadata.withName('loki-ingester-pdb') +
+    podDisruptionBudget.mixin.metadata.withLabels({ name: 'loki-ingester-pdb' }) +
+    podDisruptionBudget.mixin.spec.selector.withMatchLabels({ name: name }) +
+    podDisruptionBudget.mixin.spec.withMaxUnavailable(1),
 }
