@@ -11,8 +11,7 @@ version: 2
   branches: { only: master }
   <<: *tags
 
-.no-master:
-  &no-master # contrary to tags, the branches must be excluded
+.no-master: &no-master # contrary to tags, the branches must be excluded
   branches: { ignore: master }
 
 workflows:
@@ -136,6 +135,7 @@ jobs:
       - run:
           name: Run Chart Tests
           command: |
+            helm repo add elastic https://helm.elastic.co
             ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
             ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
 
