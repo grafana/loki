@@ -4,6 +4,8 @@ loki:
 
 promtail:
   enabled: true
+  loki:
+    serviceName: loki
 
 fluent-bit:
   enabled: false
