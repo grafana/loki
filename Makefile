@@ -327,6 +327,7 @@ helm:
 	-rm -f production/helm/*/requirements.lock
 	@set -e; \
 	helm init -c; \
+	helm repo add elastic https://helm.elastic.co ; \
 	for chart in $(CHARTS); do \
 		helm dependency build $$chart; \
 		helm lint $$chart; \
