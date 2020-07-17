@@ -107,12 +107,9 @@ func (p *Publisher) sendTopic(sub subscriber, topic topicFunc, v interface{}, wg
 
 	// send under a select as to not block if the receiver is unavailable
 	if p.timeout > 0 {
-		timeout := time.NewTimer(p.timeout)
-		defer timeout.Stop()
-
 		select {
 		case sub <- v:
-		case <-timeout.C:
+		case <-time.After(p.timeout):
 		}
 		return
 	}

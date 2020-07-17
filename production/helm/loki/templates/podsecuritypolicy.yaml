@@ -16,6 +16,8 @@ spec:
     - 'emptyDir'
     - 'persistentVolumeClaim'
     - 'secret'
+    - 'projected'
+    - 'downwardAPI'
   hostNetwork: false
   hostIPC: false
   hostPID: false
@@ -37,4 +39,3 @@ spec:
   requiredDropCapabilities:
     - ALL
 {{- end }}
-

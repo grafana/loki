@@ -169,7 +169,7 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
-	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
 	// Prometheus histograms for requests to the querier.
 	querierRequestDuration := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
@@ -254,10 +254,6 @@ func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, r
 		return querier.NewChunkStoreQueryable(cfg.Querier, chunkStore), nil
 
 	case storage.StorageEngineTSDB:
-		if !cfg.TSDB.StoreGatewayEnabled {
-			return querier.NewBlockQueryable(cfg.TSDB, cfg.Server.LogLevel, reg)
-		}
-
 		// When running in single binary, if the blocks sharding is disabled and no custom
 		// store-gateway address has been configured, we can set it to the running process.
 		if cfg.Target == All && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
@@ -455,7 +451,7 @@ func (t *Cortex) initTableManager() (services.Service, error) {
 func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	queryable, engine := querier.New(t.Cfg.Querier, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
+	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, prometheus.DefaultRegisterer)
 
 	t.Ruler, err = ruler.NewRuler(t.Cfg.Ruler, engine, queryable, t.Distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
@@ -487,7 +483,8 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	if err != nil {
 		return
 	}
-	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.Target == AlertManager)
+
+	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.Target == AlertManager, t.Cfg.Alertmanager.EnableAPI)
 	return t.Alertmanager, nil
 }
 
@@ -590,11 +587,11 @@ func (t *Cortex) setupModuleManager() error {
 		Store:          {Overrides, DeleteRequestsStore},
 		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
 		Flusher:        {Store, API},
-		Querier:        {Distributor, Store, Ring, API, StoreQueryable},
+		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable},
 		StoreQueryable: {Store},
 		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
 		TableManager:   {API},
-		Ruler:          {Distributor, Store, StoreQueryable},
+		Ruler:          {Overrides, Distributor, Store, StoreQueryable},
 		Configs:        {API},
 		AlertManager:   {API},
 		Compactor:      {API},

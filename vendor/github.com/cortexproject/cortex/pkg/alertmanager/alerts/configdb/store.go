@@ -2,11 +2,15 @@ package configdb
 
 import (
 	"context"
-
-	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+	"errors"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+)
+
+var (
+	errReadOnly = errors.New("configdb alertmanager config storage is read-only")
 )
 
 // Store is a concrete implementation of RuleStore that sources rules from the config service
@@ -58,4 +62,30 @@ func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 	c.since = configs.GetLatestConfigID()
 
 	return c.alertConfigs, nil
+}
+
+// GetAlertConfig finds and returns the AlertManager configuration of an user.
+func (c *Store) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+
+	// Refresh the local state before fetching an specific one.
+	_, err := c.ListAlertConfigs(ctx)
+	if err != nil {
+		return alerts.AlertConfigDesc{}, err
+	}
+
+	cfg, exists := c.alertConfigs[user]
+
+	if !exists {
+		return alerts.AlertConfigDesc{}, alerts.ErrNotFound
+	}
+
+	return cfg, nil
+}
+
+func (c *Store) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+	return errReadOnly
+}
+
+func (c *Store) DeleteAlertConfig(ctx context.Context, user string) error {
+	return errReadOnly
 }

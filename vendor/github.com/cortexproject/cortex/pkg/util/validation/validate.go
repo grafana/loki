@@ -39,8 +39,8 @@ const (
 	errDuplicateLabelName = "duplicate label name: %.200q metric %.200q"
 	errLabelsNotSorted    = "labels not sorted: %.200q metric %.200q"
 
-	// ErrQueryTooLong is used in chunk store and query frontend.
-	ErrQueryTooLong = "invalid query, length > limit (%s > %s)"
+	// ErrQueryTooLong is used in chunk store, querier and query frontend.
+	ErrQueryTooLong = "the query time range exceeds the limit (query length: %s, limit: %s)"
 
 	missingMetricName       = "missing_metric_name"
 	invalidMetricName       = "metric_name_invalid"
@@ -112,9 +112,9 @@ type LabelValidationConfig interface {
 }
 
 // ValidateLabels returns an err if the labels are invalid.
-func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelAdapter) error {
-	metricName, err := extract.MetricNameFromLabelAdapters(ls)
+func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelAdapter, skipLabelNameValidation bool) error {
 	if cfg.EnforceMetricName(userID) {
+		metricName, err := extract.MetricNameFromLabelAdapters(ls)
 		if err != nil {
 			DiscardedSamples.WithLabelValues(missingMetricName, userID).Inc()
 			return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
@@ -139,7 +139,7 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelA
 		var errTemplate string
 		var reason string
 		var cause interface{}
-		if !model.LabelName(l.Name).IsValid() {
+		if !skipLabelNameValidation && !model.LabelName(l.Name).IsValid() {
 			reason = invalidLabel
 			errTemplate = errInvalidLabel
 			cause = l.Name

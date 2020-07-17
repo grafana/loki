@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/tls"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Config contains the configuration require to create a querier
@@ -132,7 +134,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.SampleAndChunkQueryable, *promql.Engine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.SampleAndChunkQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
@@ -145,7 +147,7 @@ func New(cfg Config, distributor Distributor, stores []QueryableWithFilter, tomb
 		}
 	}
 
-	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, tombstonesLoader)
+	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits, tombstonesLoader)
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
 		querier, err := queryable.Querier(ctx, mint, maxt)
@@ -205,7 +207,7 @@ type QueryableWithFilter interface {
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, tombstonesLoader *purger.TombstonesLoader) storage.Queryable {
+func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides, tombstonesLoader *purger.TombstonesLoader) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		now := time.Now()
 
@@ -226,6 +228,7 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			maxt:             maxt,
 			chunkIterFn:      chunkIterFn,
 			tombstonesLoader: tombstonesLoader,
+			limits:           limits,
 		}
 
 		dqr, err := distributor.Querier(ctx, mint, maxt)
@@ -268,6 +271,7 @@ type querier struct {
 	mint, maxt  int64
 
 	tombstonesLoader *purger.TombstonesLoader
+	limits           *validation.Overrides
 }
 
 // Select implements storage.Querier interface.
@@ -293,7 +297,14 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
 
-	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, model.Time(sp.Start), model.Time(sp.End))
+	// Validate query time range.
+	startTime := model.Time(sp.Start)
+	endTime := model.Time(sp.End)
+	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
+		return storage.ErrSeriesSet(fmt.Errorf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+	}
+
+	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, startTime, endTime)
 	if err != nil {
 		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
 	}
@@ -302,7 +313,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		seriesSet := q.queriers[0].Select(true, sp, matchers...)
 
 		if tombstones.Len() != 0 {
-			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
+			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: startTime, End: endTime})
 		}
 
 		return seriesSet
@@ -331,7 +342,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	seriesSet := q.mergeSeriesSets(result)
 
 	if tombstones.Len() != 0 {
-		seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: model.Time(sp.Start), End: model.Time(sp.End)})
+		seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: startTime, End: endTime})
 	}
 	return seriesSet
 }

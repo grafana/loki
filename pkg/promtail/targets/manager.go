@@ -17,6 +17,13 @@ import (
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
+const (
+	FileScrapeConfigs    = "fileScrapeConfigs"
+	JournalScrapeConfigs = "journalScrapeConfigs"
+	SyslogScrapeConfigs  = "syslogScrapeConfigs"
+	PushScrapeConfigs    = "pushScrapeConfigs"
+)
+
 type targetManager interface {
 	Ready() bool
 	Stop()
@@ -40,10 +47,7 @@ func NewTargetManagers(
 	targetConfig *file.Config,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
-	var fileScrapeConfigs []scrapeconfig.Config
-	var journalScrapeConfigs []scrapeconfig.Config
-	var syslogScrapeConfigs []scrapeconfig.Config
-	var pushScrapeConfigs []scrapeconfig.Config
+	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
 
 	if targetConfig.Stdin {
 		level.Debug(util.Logger).Log("msg", "configured to read from stdin")
@@ -61,66 +65,68 @@ func NewTargetManagers(
 	}
 
 	for _, cfg := range scrapeConfigs {
-		if cfg.HasServiceDiscoveryConfig() {
-			fileScrapeConfigs = append(fileScrapeConfigs, cfg)
+		switch {
+		case cfg.HasServiceDiscoveryConfig():
+			targetScrapeConfigs[FileScrapeConfigs] = append(targetScrapeConfigs[FileScrapeConfigs], cfg)
+		case cfg.JournalConfig != nil:
+			targetScrapeConfigs[JournalScrapeConfigs] = append(targetScrapeConfigs[JournalScrapeConfigs], cfg)
+		case cfg.SyslogConfig != nil:
+			targetScrapeConfigs[SyslogScrapeConfigs] = append(targetScrapeConfigs[SyslogScrapeConfigs], cfg)
+		case cfg.PushConfig != nil:
+			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
+		default:
+			return nil, errors.New("unknown scrape config")
 		}
-	}
-	if len(fileScrapeConfigs) > 0 {
-		fileTargetManager, err := file.NewFileTargetManager(
-			logger,
-			positions,
-			client,
-			fileScrapeConfigs,
-			targetConfig,
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to make file target manager")
-		}
-		targetManagers = append(targetManagers, fileTargetManager)
 	}
 
-	for _, cfg := range scrapeConfigs {
-		if cfg.JournalConfig != nil {
-			journalScrapeConfigs = append(journalScrapeConfigs, cfg)
+	for target, scrapeConfigs := range targetScrapeConfigs {
+		switch target {
+		case FileScrapeConfigs:
+			fileTargetManager, err := file.NewFileTargetManager(
+				logger,
+				positions,
+				client,
+				scrapeConfigs,
+				targetConfig,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make file target manager")
+			}
+			targetManagers = append(targetManagers, fileTargetManager)
+		case JournalScrapeConfigs:
+			journalTargetManager, err := journal.NewJournalTargetManager(
+				logger,
+				positions,
+				client,
+				scrapeConfigs,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make journal target manager")
+			}
+			targetManagers = append(targetManagers, journalTargetManager)
+		case SyslogScrapeConfigs:
+			syslogTargetManager, err := syslog.NewSyslogTargetManager(
+				logger,
+				client,
+				scrapeConfigs,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make syslog target manager")
+			}
+			targetManagers = append(targetManagers, syslogTargetManager)
+		case PushScrapeConfigs:
+			pushTargetManager, err := lokipush.NewPushTargetManager(
+				logger,
+				client,
+				scrapeConfigs,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
+			}
+			targetManagers = append(targetManagers, pushTargetManager)
+		default:
+			return nil, errors.New("unknown scrape config")
 		}
-	}
-	if len(journalScrapeConfigs) > 0 {
-		journalTargetManager, err := journal.NewJournalTargetManager(
-			logger,
-			positions,
-			client,
-			journalScrapeConfigs,
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to make journal target manager")
-		}
-		targetManagers = append(targetManagers, journalTargetManager)
-	}
-
-	for _, cfg := range scrapeConfigs {
-		if cfg.SyslogConfig != nil {
-			syslogScrapeConfigs = append(syslogScrapeConfigs, cfg)
-		}
-	}
-	if len(syslogScrapeConfigs) > 0 {
-		syslogTargetManager, err := syslog.NewSyslogTargetManager(logger, client, syslogScrapeConfigs)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to make syslog target manager")
-		}
-		targetManagers = append(targetManagers, syslogTargetManager)
-	}
-
-	for _, cfg := range scrapeConfigs {
-		if cfg.PushConfig != nil {
-			pushScrapeConfigs = append(pushScrapeConfigs, cfg)
-		}
-	}
-	if len(pushScrapeConfigs) > 0 {
-		pushTargetManager, err := lokipush.NewPushTargetManager(logger, client, pushScrapeConfigs)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
-		}
-		targetManagers = append(targetManagers, pushTargetManager)
 	}
 
 	return &TargetManagers{
