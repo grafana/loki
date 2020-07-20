@@ -2,7 +2,6 @@ package objectstore
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -146,6 +145,7 @@ func Test_S3ResumeFromKnownPosition(t *testing.T) {
 	require.Equal(t, 2, len(client.Messages))
 
 	time.Sleep(1 * time.Second)
+
 	ps2, err := positions.New(logger, positions.Config{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
@@ -300,6 +300,7 @@ func Test_ReadMultipleObjects(t *testing.T) {
 	// Assert the number of messages the handler received is correct.
 	require.Equal(t, 6, len(client.Messages))
 
+	time.Sleep(1 * time.Second)
 	// add line and update log file
 	createLogFile(logFile1, []string{
 		logLines[0],
@@ -373,9 +374,6 @@ func (mockClient *mockObjectClient) List(ctx context.Context, prefix string) ([]
 				Key:        mockClient.logDirName + info.Name(),
 			})
 		}
-		fmt.Println("file modified time")
-		fmt.Println(info.Name())
-		fmt.Println(info.ModTime().UnixNano())
 		return nil
 	})
 
