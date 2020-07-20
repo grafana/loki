@@ -43,9 +43,10 @@ func main() {
 
 	interval := flag.Duration("interval", 1000*time.Millisecond, "Duration between log entries")
 	size := flag.Int("size", 100, "Size in bytes of each log line")
-	wait := flag.Duration("wait", 60*time.Second, "Duration to wait for log entries before reporting them lost")
+	wait := flag.Duration("wait", 60*time.Second, "Duration to wait for log entries on websocket before querying loki for them")
+	maxWait := flag.Duration("max-wait", 5*time.Minute, "Duration to keep querying Loki for missing websocket entries before reporting them missing")
 	pruneInterval := flag.Duration("pruneinterval", 60*time.Second, "Frequency to check sent vs received logs, "+
-		"also the frequency which queries for missing logs will be dispatched to loki, and the frequency spot check queries are run")
+		"also the frequency which queries for missing logs will be dispatched to loki")
 	buckets := flag.Int("buckets", 10, "Number of buckets in the response_latency histogram")
 
 	metricTestInterval := flag.Duration("metric-test-interval", 1*time.Hour, "The interval the metric test query should be run")
@@ -82,8 +83,8 @@ func main() {
 		defer c.lock.Unlock()
 
 		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *size)
-		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *queryTimeout, *lName, *lVal, *sName, *sValue)
-		c.comparator = comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *metricTestInterval, *metricTestQueryRange, *interval, *buckets, sentChan, receivedChan, c.reader, true)
+		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
+		c.comparator = comparator.NewComparator(os.Stderr, *wait, *maxWait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *metricTestInterval, *metricTestQueryRange, *interval, *buckets, sentChan, receivedChan, c.reader, true)
 	}
 
 	startCanary()

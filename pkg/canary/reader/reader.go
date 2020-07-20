@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -28,8 +29,13 @@ import (
 var (
 	reconnects = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
-		Name:      "ws_reconnects",
+		Name:      "ws_reconnects_total",
 		Help:      "counts every time the websocket connection has to reconnect",
+	})
+	websocketPings = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "ws_pings_total",
+		Help:      "counts every time the websocket receives a ping message",
 	})
 	userAgent = fmt.Sprintf("loki-canary/%s", build.Version)
 )
@@ -50,6 +56,7 @@ type Reader struct {
 	sValue       string
 	lName        string
 	lVal         string
+	interval     time.Duration
 	conn         *websocket.Conn
 	w            io.Writer
 	recv         chan time.Time
@@ -68,7 +75,8 @@ func NewReader(writer io.Writer,
 	labelName string,
 	labelVal string,
 	streamName string,
-	streamValue string) *Reader {
+	streamValue string,
+	interval time.Duration) *Reader {
 	h := http.Header{}
 	if user != "" {
 		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
@@ -85,6 +93,7 @@ func NewReader(writer io.Writer,
 		sValue:       streamValue,
 		lName:        labelName,
 		lVal:         labelVal,
+		interval:     interval,
 		w:            writer,
 		recv:         receivedChan,
 		quit:         make(chan struct{}),
@@ -251,20 +260,33 @@ func (r *Reader) run() {
 	r.closeAndReconnect()
 
 	tailResponse := &loghttp.TailResponse{}
+	lastMessage := time.Now()
 
 	for {
+		if r.shuttingDown {
+			if r.conn != nil {
+				_ = r.conn.Close()
+				r.conn = nil
+			}
+			close(r.done)
+			return
+		}
+
+		// Set a read timeout of 10x the interval we expect to see messages
+		// Ignore the error as it will get caught when we call ReadJSON
+		_ = r.conn.SetReadDeadline(time.Now().Add(10 * r.interval))
 		err := r.conn.ReadJSON(tailResponse)
 		if err != nil {
-			if r.shuttingDown {
-				close(r.done)
-				return
-			}
 			fmt.Fprintf(r.w, "error reading websocket, will retry in 10 seconds: %s\n", err)
 			// Even though we sleep between connection retries, we found it's possible to DOS Loki if the connection
 			// succeeds but some other error is returned, so also sleep here before retrying.
 			<-time.After(10 * time.Second)
 			r.closeAndReconnect()
 			continue
+		}
+		// If there were streams update last message timestamp
+		if len(tailResponse.Streams) > 0 {
+			lastMessage = time.Now()
 		}
 		for _, stream := range tailResponse.Streams {
 			for _, entry := range stream.Entries {
@@ -276,10 +298,22 @@ func (r *Reader) run() {
 				r.recv <- *ts
 			}
 		}
+		// Ping messages can reset the read deadline so also make sure we are receiving regular messages.
+		// We use the same 10x interval to make sure we are getting recent messages
+		if time.Since(lastMessage).Milliseconds() > 10*r.interval.Milliseconds() {
+			fmt.Fprintf(r.w, "Have not received a canary message from loki on the websocket in %vms, "+
+				"sleeping 10s and reconnecting\n", 10*r.interval.Milliseconds())
+			<-time.After(10 * time.Second)
+			r.closeAndReconnect()
+			continue
+		}
 	}
 }
 
 func (r *Reader) closeAndReconnect() {
+	if r.shuttingDown {
+		return
+	}
 	if r.conn != nil {
 		_ = r.conn.Close()
 		r.conn = nil
@@ -307,6 +341,17 @@ func (r *Reader) closeAndReconnect() {
 			<-time.After(10 * time.Second)
 			continue
 		}
+		// Use a custom ping handler so we can increment a metric, this is copied from the default ping handler
+		c.SetPingHandler(func(message string) error {
+			websocketPings.Inc()
+			err := c.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(time.Second))
+			if err == websocket.ErrCloseSent {
+				return nil
+			} else if e, ok := err.(net.Error); ok && e.Temporary() {
+				return nil
+			}
+			return err
+		})
 		r.conn = c
 	}
 }
