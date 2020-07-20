@@ -27,7 +27,7 @@ type objectReader struct {
 	handler      api.EntryHandler
 	objectClient chunk.ObjectClient
 	logger       log.Logger
-	readerMtx    *sync.RWMutex
+	readerMtx    sync.RWMutex
 	labels       model.LabelSet
 	positions    positions.Positions
 	quit         chan struct{}
