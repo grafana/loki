@@ -15,7 +15,16 @@ On this page we will document any upgrade issues/gotchas/considerations we are a
 Configuration document has been re-orderd a bit and for all the config, corresponding `CLI` flag is
 provided.
 
-S3 config now supports exapnded config. Example can be found here [s3_expanded_config](../../configuration/examples#s3-expanded-config)
+S3 config now supports exapnded config. Example can be found here [s3_expanded_config](../configuration/examples.md#s3-expanded-config)
+
+### New Ingester GRPC API special rollout procedure in microservices mode
+
+A new ingester GRPC API has been added allowing to speed up metric queries, to ensure a rollout without query errors make sure you upgrade all ingesters first.
+Once this is done you can then proceed with the rest of the deployment, this is to ensure that queriers won't look for an API not yet available.
+
+If you roll out everything at once, queriers with this new code will attempt to query ingesters which may not have the new method on the API and queries will fail.
+
+This will only affect reads(queries) and not writes and only for the duration of the rollout.
 
 ### Breaking CLI flags changes
 
@@ -33,11 +42,19 @@ S3 config now supports exapnded config. Example can be found here [s3_expanded_c
 + ingester.concurrent-flushes
 ```
 
-## 1.6.0
+### Loki Canary metric name changes
 
-A new ingester GRPC API has been added allowing to speed up metric queries, to ensure a rollout without query errors make sure you upgrade all ingesters first.
-Once this is done you can then proceed with the rest of the deployment, this is to ensure that queriers won't look for an API not yet available.
+When adding some new features to the canary we realized the existing metrics were not compliant with standards for counter names, the following metrics have been renamed:
 
+```nohighlight
+loki_canary_total_entries               ->      loki_canary_entries_total
+loki_canary_out_of_order_entries        ->      loki_canary_out_of_order_entries_total
+loki_canary_websocket_missing_entries   ->      loki_canary_websocket_missing_entries_total
+loki_canary_missing_entries             ->      loki_canary_missing_entries_total
+loki_canary_unexpected_entries          ->      loki_canary_unexpected_entries_total
+loki_canary_duplicate_entries           ->      loki_canary_duplicate_entries_total
+loki_canary_ws_reconnects               ->      loki_canary_ws_reconnects_total
+```
 
 ## 1.5.0
 
