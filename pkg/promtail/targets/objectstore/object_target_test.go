@@ -77,17 +77,17 @@ func Test_ObjectReader(t *testing.T) {
 
 	objectClient := newMockS3ObjectClient(logDirName)
 
-	target, err := newObjectReader("s3", object, objectClient, logger, model.LabelSet{}, ps, client, 0)
+	objectReader, err := newObjectReader("s3", object, objectClient, logger, model.LabelSet{}, ps, client, 0)
 	require.NoError(t, err)
 
-	countdown := 20
+	countdown := 100
 	for len(client.Messages) != 2 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
 
+	objectReader.stop()
 	ps.Stop()
-	target.stop()
 
 	// Assert the number of messages the handler received is correct.
 	require.Equal(t, 2, len(client.Messages))
@@ -132,14 +132,14 @@ func Test_S3ResumeFromKnownPosition(t *testing.T) {
 	target, err := NewObjectTarget(logger, client, ps, "test", objectClient, &testScrapeConfig)
 	require.NoError(t, err)
 
-	countdown := 20
+	countdown := 100
 	for len(client.Messages) != 2 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
 
-	ps.Stop()
 	target.Stop()
+	ps.Stop()
 
 	// Assert the number of messages the handler received is correct.
 	require.Equal(t, 2, len(client.Messages))
@@ -162,14 +162,14 @@ func Test_S3ResumeFromKnownPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	countdown = 20
+	countdown = 100
 	for len(client.Messages) != 3 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
 
-	ps2.Stop()
 	target2.Stop()
+	ps2.Stop()
 
 	// Assert the number of messages the handler received is correct.
 	require.Equal(t, 3, len(client.Messages))
@@ -217,7 +217,7 @@ func Test_PositionFileSync(t *testing.T) {
 	target, err := NewObjectTarget(logger, client, ps, "test", objectClient, &testScrapeConfig)
 	require.NoError(t, err)
 
-	countdown := 20
+	countdown := 100
 	for len(client.Messages) != 2 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
@@ -289,7 +289,7 @@ func Test_ReadMultipleObjects(t *testing.T) {
 	target, err := NewObjectTarget(logger, client, ps, "test", objectClient, &testScrapeConfig)
 	require.NoError(t, err)
 
-	countdown := 20
+	countdown := 100
 	for len(client.Messages) != 6 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
@@ -312,7 +312,7 @@ func Test_ReadMultipleObjects(t *testing.T) {
 		"test log line 3",
 	})
 
-	countdown = 20
+	countdown = 100
 	for len(client.Messages) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--

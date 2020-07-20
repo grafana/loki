@@ -166,16 +166,27 @@ func (t *ObjectTarget) getPosition(key string) (int64, int64, int64, error) {
 	if positionString == "" {
 		return 0, 0, 0, nil
 	}
+
 	position := strings.Split(positionString, ":")
 	if len(position) != 3 {
 		return 0, 0, 0, errors.New(fmt.Sprintf("position value is wrong, expected 3 values, found %d", len(position)))
 	}
+
 	modifiedAt, err := strconv.ParseInt(position[0], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
 	pos, err := strconv.ParseInt(position[1], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
 	size, err := strconv.ParseInt(position[2], 10, 64)
 	if err != nil {
 		return 0, 0, 0, err
 	}
+
 	return modifiedAt, pos, size, nil
 }
 

@@ -159,7 +159,12 @@ func (r *objectReader) GetObject() (*bufio.Reader, error) {
 		return nil, errors.Wrap(err, "failed to set object size")
 	}
 
-	availableBytes, err := bufReader.Peek(int(r.object.BytesRead))
+	if r.object.BytesRead == 0 {
+		return bufReader, nil
+	}
+
+	// if the object is previously known, we have to skip the previously read bytes.
+	_, err = bufReader.Peek(int(r.object.BytesRead))
 	if err != nil {
 		level.Warn(r.logger).Log("msg", "object size is less than previous known size. object will be tailed from begining", "object", r.object.Key)
 		r.positions.Remove(fmt.Sprintf("s3object-%s", r.object.Key))
@@ -168,7 +173,7 @@ func (r *objectReader) GetObject() (*bufio.Reader, error) {
 	}
 
 	// skip the bytes which we have already read
-	_, err = bufReader.Discard(len(availableBytes))
+	_, err = bufReader.Discard(int(r.object.BytesRead))
 	if err != nil {
 		return nil, err
 	}
