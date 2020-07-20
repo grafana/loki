@@ -1,5 +1,5 @@
 (import 'ksonnet-util/kausal.libsonnet') +
-(import 'ksonnet-util/jaeger.libsonnet') +
+(import 'jaeger-agent-mixin/jaeger.libsonnet') +
 (import 'images.libsonnet') +
 (import 'common.libsonnet') +
 (import 'config.libsonnet') +
