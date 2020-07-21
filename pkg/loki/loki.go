@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/tailproxy"
 	"github.com/grafana/loki/pkg/tracing"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -55,6 +56,7 @@ type Config struct {
 	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
 	Worker           frontend.WorkerConfig       `yaml:"frontend_worker,omitempty"`
 	Frontend         frontend.Config             `yaml:"frontend,omitempty"`
+	TailProxy        tailproxy.Config            `yaml:"tail_proxy,omitempty"`
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
@@ -85,6 +87,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.Tracing.RegisterFlags(f)
+	c.TailProxy.RegisterFlags(f)
 }
 
 // Validate the config and returns an error if the validation

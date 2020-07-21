@@ -3,8 +3,9 @@ package loki
 import (
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/pkg/tailproxy"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"sort"
 	"time"
@@ -302,8 +303,12 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		t.httpAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
 	)
-	tp := tailproxy.New(t.cfg.Frontend, util.Logger)
-	wsHandler := httpMiddleware.Wrap(http.HandlerFunc(tp.Handle))
+	tailURL, err := url.Parse(t.cfg.TailProxy.DownstreamURL)
+	if err != nil {
+		return
+	}
+	tp := httputil.NewSingleHostReverseProxy(tailURL)
+	wsHandler := httpMiddleware.Wrap(tp)
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
