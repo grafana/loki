@@ -33,17 +33,20 @@ type TableManager struct {
 	tables    map[string]*Table
 	tablesMtx sync.RWMutex
 
-	done chan struct{}
-	wg   sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
+	ctx, cancel := context.WithCancel(context.Background())
 	tm := TableManager{
 		cfg:             cfg,
 		boltIndexClient: boltIndexClient,
 		storageClient:   storageClient,
 		metrics:         newMetrics(registerer),
-		done:            make(chan struct{}),
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 
 	tables, err := tm.loadTables()
@@ -52,10 +55,12 @@ func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClien
 	}
 
 	tm.tables = tables
+	go tm.loop()
 	return &tm, nil
 }
 
 func (tm *TableManager) loop() {
+	tm.wg.Add(1)
 	defer tm.wg.Done()
 
 	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
@@ -68,14 +73,14 @@ func (tm *TableManager) loop() {
 			if err != nil {
 				level.Error(pkg_util.Logger).Log("msg", "error uploading local boltdb files to the storage", "err", err)
 			}
-		case <-tm.done:
+		case <-tm.ctx.Done():
 			return
 		}
 	}
 }
 
 func (tm *TableManager) Stop() {
-	close(tm.done)
+	tm.cancel()
 	tm.wg.Wait()
 
 	err := tm.uploadTables(context.Background())
