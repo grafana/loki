@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/targets/file"
 	"github.com/grafana/loki/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/pkg/promtail/targets/lokipush"
+	"github.com/grafana/loki/pkg/promtail/targets/objectstore"
 	"github.com/grafana/loki/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/pkg/promtail/targets/syslog"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
@@ -22,6 +23,7 @@ const (
 	JournalScrapeConfigs = "journalScrapeConfigs"
 	SyslogScrapeConfigs  = "syslogScrapeConfigs"
 	PushScrapeConfigs    = "pushScrapeConfigs"
+	S3ScrapeConfigs      = "s3ScrapeConfigs"
 )
 
 type targetManager interface {
@@ -74,6 +76,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[SyslogScrapeConfigs] = append(targetScrapeConfigs[SyslogScrapeConfigs], cfg)
 		case cfg.PushConfig != nil:
 			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
+		case cfg.S3Config != nil:
+			targetScrapeConfigs[S3ScrapeConfigs] = append(targetScrapeConfigs[S3ScrapeConfigs], cfg)
 		default:
 			return nil, errors.New("unknown scrape config")
 		}
@@ -124,9 +128,19 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
 			}
 			targetManagers = append(targetManagers, pushTargetManager)
+		case S3ScrapeConfigs:
+			s3TargetManager, err := objectstore.NewS3TargetManager(logger,
+				positions,
+				client,
+				scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make s3 target manager")
+			}
+			targetManagers = append(targetManagers, s3TargetManager)
 		default:
 			return nil, errors.New("unknown scrape config")
 		}
+
 	}
 
 	return &TargetManagers{

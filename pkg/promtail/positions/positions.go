@@ -164,7 +164,6 @@ func (p *positions) save() {
 		positions[k] = v
 	}
 	p.mtx.Unlock()
-
 	if err := writePositionFile(p.cfg.PositionsFile, positions); err != nil {
 		level.Error(p.logger).Log("msg", "error writing positions file", "error", err)
 	}
@@ -177,7 +176,7 @@ func (p *positions) cleanup() {
 	for k := range p.positions {
 		// If the position file is prefixed with journal, it's a
 		// JournalTarget cursor and not a file on disk.
-		if strings.HasPrefix(k, "journal-") {
+		if strings.HasPrefix(k, "journal-") || strings.HasPrefix(k, "s3object-") {
 			continue
 		}
 

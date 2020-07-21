@@ -25,6 +25,54 @@ type Config struct {
 	PushConfig             *PushTargetConfig                `yaml:"loki_push_api,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+	S3Config               *S3Targetconfig                  `yaml:"aws,omitempty"`
+}
+
+// S3TargetConfig describes s3 targets to scrape
+type S3Targetconfig struct {
+	// Set to true to force the request to use path-style addressing.
+	S3ForcePathStyle bool `yaml:"s3forcepathstyle"`
+
+	// Bucket Name to look for objects.
+	BucketName string `yaml:"bucketname"`
+
+	// AWS S3 Endpoint to connect to.
+	Endpoint string `yaml:"endpoint"`
+
+	// AWS Region to use.
+	Region string `yaml:"region"`
+
+	// AWS Access Key ID.
+	AccessKeyID string `yaml:"access_key_id"`
+
+	// AWS Secret Access Key.
+	SecretAccessKey string `yaml:"secret_access_key"`
+
+	// Disable https on s3 connection.
+	Insecure bool `yaml:"insecure"`
+
+	HTTPConfig HTTPConfig `yaml:"http_config"`
+
+	// Labels optionally holds labels to associate with each record read from S3 objects.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// Prefix to be use to look for objects in buckets.
+	Prefix string `yaml:"prefix"`
+
+	// How often to look for new objects
+	SyncPeriod time.Duration `yaml:"sync_period"`
+}
+
+type HTTPConfig struct {
+	// The maximum amount of time an idle connection will be held open.
+	IdleConnTimeout time.Duration `yaml:"idle_conn_timeout"`
+
+	// If non-zero, specifies the amount of time to wait for a server's response
+	// headers after fully writing the request.
+	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
+
+	// Set to false to skip verifying the certificate chain and hostname.
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 }
 
 // JournalTargetConfig describes systemd journal records to scrape.

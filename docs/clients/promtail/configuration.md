@@ -728,6 +728,28 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 ```
 
+### s3_config
+
+The `s3_config` block configures reading log files from s3 bucket.
+
+**File Formats Supported** : `GZip` and other normal files `.txt`, `.log`
+
+**Note**: With current verion of this implementation, we use a very [simple](./scraping.md/#Object-store-scraping) way to fetch and read files/objects. For a bucket with lot of files with large size, throuput might be affected and also there might be chances of `time out errors`.
+
+```yaml
+# S3 or S3-compatible URL to connect to
+[s3: <string>]
+
+# Set to true to force the request to use path-style addressing
+[s3forcepathstyle: <boolean> | default = false]
+
+# How often to check for new files/objects in s3 bucket
+[sync_period: duration | default = 2m]
+
+# Prefix to use to look for files/objects in s3 bucket
+[prefix: string | default = empty]
+```
+
 #### Available Labels
 
 * `__syslog_connection_ip_address`: The remote IP address.
@@ -1239,3 +1261,29 @@ Please note the `job_name` must be provided and must be unique between multiple 
 A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the promtail `server` config section (unless it's disabled)
 
 You can set `grpc_listen_port` to `0` to have a random port assigned if not using httpgrpc.
+  syn_period: 1m
+
+## Example S3 Config
+
+This example reads log files from s3
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+  
+clients:
+  - url: http://loki_addr:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: s3
+    aws:
+      s3: s3://acess_key:secret_key@region/bucketname
+      labels:
+        job: "awslogs"
+      prefix: ""
+      sync_period: 2m
+```

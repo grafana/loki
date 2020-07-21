@@ -22,6 +22,9 @@ const (
 
 	// PushTargetType is a Loki push target
 	PushTargetType = TargetType("Push")
+
+	// ObjectTargetType is a object store target
+	ObjectTargetType = TargetType("Object")
 )
 
 // Target is a promtail scrape target

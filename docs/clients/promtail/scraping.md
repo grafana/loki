@@ -207,6 +207,30 @@ destination d_loki {
 action(type="omfwd" protocol="tcp" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted")
 ```
 
+## Object store scraping
+
+Promtail supports scraping logs from Object store. Currently promtail supports scraping logs from S3.
+
+### How scraping object store works?
+
+With the current version we just use a generic way of fetching and reading new objects. Based on the configured `sync_period` promtail `Lists` the objects from the bucket. Then for each object we check if it's new or updated object. If the object is new, we start reading the object. If the object already exists, we check if it's modified date is changed. If it is changed we start reading the object from the previously known position which is available from `positions.yaml`. If the object already exists and the modified date is not changed then we check if we have completely read the object till `EOF` by matching the bytes read and size of the object from the `positions.yaml`. If we have not read completely, we read the object from the previously known position
+
+### Next steps
+
+In the next versions of object scraping, we would like to support identifying new objects via AWS SQS and AWS Lambda and also support multi part download to improve performance for scraping very large files. Also, we would like to support other Object storage providers like GCS, Swift etc...
+
+```yaml
+scrape_configs:
+  - job_name: s3
+    aws:
+      s3: s3://acess_key:secret_key@region/bucketname
+      labels:
+        job: "awslogs"
+      prefix: ""
+      sync_period: 2m
+```
+
+
 ## Relabeling
 
 Each `scrape_configs` entry can contain a `relabel_configs` stanza.
