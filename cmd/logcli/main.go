@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"runtime/pprof"
 	"time"
 
 	"github.com/prometheus/common/config"
@@ -20,10 +21,13 @@ import (
 
 var (
 	app        = kingpin.New("logcli", "A command-line for loki.").Version(version.Print("logcli"))
-	quiet      = app.Flag("quiet", "suppress query metadata").Default("false").Short('q').Bool()
-	statistics = app.Flag("stats", "show query statistics").Default("false").Bool()
-	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").Default("default").Short('o').Enum("default", "raw", "jsonl")
+	quiet      = app.Flag("quiet", "Suppress query metadata").Default("false").Short('q').Bool()
+	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
+	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
+
+	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
+	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
 
 	queryClient = newQueryClient(app)
 
@@ -70,8 +74,8 @@ LogQL documentation:
 https://github.com/grafana/loki/blob/master/docs/logql.md`)
 	instantQuery = newQuery(true, instantQueryCmd)
 
-	labelsCmd = app.Command("labels", "Find values for a given label.")
-	labelName = labelsCmd.Arg("label", "The name of the label.").HintAction(hintActionLabelNames).String()
+	labelsCmd   = app.Command("labels", "Find values for a given label.")
+	labelsQuery = newLabelQuery(labelsCmd)
 
 	seriesCmd   = app.Command("series", "Run series query.")
 	seriesQuery = newSeriesQuery(seriesCmd)
@@ -81,6 +85,31 @@ func main() {
 	log.SetOutput(os.Stderr)
 
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
+
+	if cpuProfile != nil && *cpuProfile != "" {
+		cpuFile, err := os.Create(*cpuProfile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer cpuFile.Close()
+		if err := pprof.StartCPUProfile(cpuFile); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
+	if memProfile != nil && *memProfile != "" {
+		memFile, err := os.Create(*memProfile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		defer memFile.Close()
+		defer func() {
+			if err := pprof.WriteHeapProfile(memFile); err != nil {
+				log.Fatal("could not write memory profile: ", err)
+			}
+		}()
+	}
 
 	switch cmd {
 	case queryCmd.FullCommand():
@@ -122,18 +151,10 @@ func main() {
 
 		instantQuery.DoQuery(queryClient, out, *statistics)
 	case labelsCmd.FullCommand():
-		q := newLabelQuery(*labelName, *quiet)
-
-		q.DoLabels(queryClient)
+		labelsQuery.DoLabels(queryClient)
 	case seriesCmd.FullCommand():
 		seriesQuery.DoSeries(queryClient)
 	}
-}
-
-func hintActionLabelNames() []string {
-	q := newLabelQuery("", *quiet)
-
-	return q.ListLabels(queryClient)
 }
 
 func newQueryClient(app *kingpin.Application) *client.Client {
@@ -163,11 +184,31 @@ func newQueryClient(app *kingpin.Application) *client.Client {
 	return client
 }
 
-func newLabelQuery(labelName string, quiet bool) *labelquery.LabelQuery {
-	return &labelquery.LabelQuery{
-		LabelName: labelName,
-		Quiet:     quiet,
-	}
+func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
+	var labelName, from, to string
+	var since time.Duration
+
+	q := &labelquery.LabelQuery{}
+
+	// executed after all command flags are parsed
+	cmd.Action(func(c *kingpin.ParseContext) error {
+
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+		q.LabelName = labelName
+		q.Quiet = *quiet
+		return nil
+	})
+
+	cmd.Arg("label", "The name of the label.").Default("").StringVar(&labelName)
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start looking for labels at this absolute time (inclusive)").StringVar(&from)
+	cmd.Flag("to", "Stop looking for labels at this absolute time (exclusive)").StringVar(&to)
+
+	return q
 }
 
 func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {

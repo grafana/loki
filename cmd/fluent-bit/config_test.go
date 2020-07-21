@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/logging"
 
@@ -41,7 +42,9 @@ func Test_parseConfig(t *testing.T) {
 					URL:            mustParseURL("http://localhost:3100/loki/api/v1/push"),
 					BatchSize:      defaultClientCfg.BatchSize,
 					BatchWait:      defaultClientCfg.BatchWait,
+					Timeout:        defaultClientCfg.Timeout,
 					ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"job": "fluent-bit"}},
+					BackoffConfig:  defaultClientCfg.BackoffConfig,
 				},
 				logLevel:      mustParseLogLevel("info"),
 				dropSingleKey: true,
@@ -54,11 +57,15 @@ func Test_parseConfig(t *testing.T) {
 				"LineFormat":    "key_value",
 				"LogLevel":      "warn",
 				"Labels":        `{app="foo"}`,
-				"BatchWait":     "30",
 				"BatchSize":     "100",
+				"BatchWait":     "30",
+				"Timeout":       "1s",
 				"RemoveKeys":    "buzz,fuzz",
 				"LabelKeys":     "foo,bar",
 				"DropSingleKey": "false",
+				"MinBackoff":    "1ms",
+				"MaxBackoff":    "5m",
+				"MaxRetries":    "10",
 			},
 			&config{
 				lineFormat: kvPairFormat,
@@ -66,8 +73,10 @@ func Test_parseConfig(t *testing.T) {
 					URL:            mustParseURL("http://somewhere.com:3100/loki/api/v1/push"),
 					TenantID:       "my-tenant-id",
 					BatchSize:      100,
-					BatchWait:      30 * time.Second,
+					BatchWait:      mustParseDuration("30s"),
+					Timeout:        mustParseDuration("1s"),
 					ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"app": "foo"}},
+					BackoffConfig:  util.BackoffConfig{MinBackoff: mustParseDuration("1ms"), MaxBackoff: mustParseDuration("5m"), MaxRetries: 10},
 				},
 				logLevel:      mustParseLogLevel("warn"),
 				labelKeys:     []string{"foo", "bar"},
@@ -81,11 +90,15 @@ func Test_parseConfig(t *testing.T) {
 				"LineFormat":    "key_value",
 				"LogLevel":      "warn",
 				"Labels":        `{app="foo"}`,
-				"BatchWait":     "30",
 				"BatchSize":     "100",
+				"BatchWait":     "30s",
+				"Timeout":       "1s",
 				"RemoveKeys":    "buzz,fuzz",
 				"LabelKeys":     "foo,bar",
 				"DropSingleKey": "false",
+				"MinBackoff":    "1ms",
+				"MaxBackoff":    "5m",
+				"MaxRetries":    "10",
 				"LabelMapPath":  fileName,
 			},
 			&config{
@@ -94,8 +107,10 @@ func Test_parseConfig(t *testing.T) {
 					URL:            mustParseURL("http://somewhere.com:3100/loki/api/v1/push"),
 					TenantID:       "", // empty as not set in fluent-bit plugin config map
 					BatchSize:      100,
-					BatchWait:      30 * time.Second,
+					BatchWait:      mustParseDuration("30s"),
+					Timeout:        mustParseDuration("1s"),
 					ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"app": "foo"}},
+					BackoffConfig:  util.BackoffConfig{MinBackoff: mustParseDuration("1ms"), MaxBackoff: mustParseDuration("5m"), MaxRetries: 10},
 				},
 				logLevel:      mustParseLogLevel("warn"),
 				labelKeys:     nil,
@@ -117,12 +132,16 @@ func Test_parseConfig(t *testing.T) {
 			},
 			false},
 		{"bad url", map[string]string{"URL": "::doh.com"}, nil, true},
-		{"bad BatchWait", map[string]string{"BatchWait": "a"}, nil, true},
+		{"bad BatchWait", map[string]string{"BatchWait": "30sa"}, nil, true},
 		{"bad BatchSize", map[string]string{"BatchSize": "a"}, nil, true},
+		{"bad Timeout", map[string]string{"Timeout": "1a"}, nil, true},
 		{"bad labels", map[string]string{"Labels": "a"}, nil, true},
 		{"bad format", map[string]string{"LineFormat": "a"}, nil, true},
 		{"bad log level", map[string]string{"LogLevel": "a"}, nil, true},
 		{"bad drop single key", map[string]string{"DropSingleKey": "a"}, nil, true},
+		{"bad MinBackoff", map[string]string{"MinBackoff": "1msa"}, nil, true},
+		{"bad MaxBackoff", map[string]string{"MaxBackoff": "5ma"}, nil, true},
+		{"bad MaxRetries", map[string]string{"MaxRetries": "a"}, nil, true},
 		{"bad labelmap file", map[string]string{"LabelMapPath": "a"}, nil, true},
 	}
 	for _, tt := range tests {
@@ -148,6 +167,18 @@ func assertConfig(t *testing.T, expected, actual *config) {
 	}
 	if expected.clientConfig.BatchWait != actual.clientConfig.BatchWait {
 		t.Errorf("incorrect batch wait want:%v got:%v", expected.clientConfig.BatchWait, actual.clientConfig.BatchWait)
+	}
+	if expected.clientConfig.Timeout != actual.clientConfig.Timeout {
+		t.Errorf("incorrect Timeout want:%v got:%v", expected.clientConfig.Timeout, actual.clientConfig.Timeout)
+	}
+	if expected.clientConfig.BackoffConfig.MinBackoff != actual.clientConfig.BackoffConfig.MinBackoff {
+		t.Errorf("incorrect MinBackoff want:%v got:%v", expected.clientConfig.BackoffConfig.MinBackoff, actual.clientConfig.BackoffConfig.MinBackoff)
+	}
+	if expected.clientConfig.BackoffConfig.MaxBackoff != actual.clientConfig.BackoffConfig.MaxBackoff {
+		t.Errorf("incorrect MaxBackoff want:%v got:%v", expected.clientConfig.BackoffConfig.MaxBackoff, actual.clientConfig.BackoffConfig.MaxBackoff)
+	}
+	if expected.clientConfig.BackoffConfig.MaxRetries != actual.clientConfig.BackoffConfig.MaxRetries {
+		t.Errorf("incorrect MaxRetries want:%v got:%v", expected.clientConfig.BackoffConfig.MaxRetries, actual.clientConfig.BackoffConfig.MaxRetries)
 	}
 	if !reflect.DeepEqual(expected.clientConfig.URL, actual.clientConfig.URL) {
 		t.Errorf("incorrect URL want:%v got:%v", expected.clientConfig.URL, actual.clientConfig.URL)
@@ -187,6 +218,14 @@ func mustParseLogLevel(l string) logging.Level {
 		panic(err)
 	}
 	return level
+}
+
+func mustParseDuration(u string) time.Duration {
+	parsed, err := time.ParseDuration(u)
+	if err != nil {
+		panic(err)
+	}
+	return parsed
 }
 
 func createTempLabelMap(t *testing.T) string {

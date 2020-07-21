@@ -14,16 +14,29 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-var jsonStd = jsoniter.ConfigCompatibleWithStandardLibrary
+var (
+	jsonStd   = jsoniter.ConfigCompatibleWithStandardLibrary
+	extractor = queryrange.PrometheusResponseExtractor{}
+)
 
-// prometheusResponseExtractor wraps the original prometheus cache extractor.
-// Statistics are discarded when using cache entries.
-var prometheusResponseExtractor = queryrange.ExtractorFunc(func(start, end int64, from queryrange.Response) queryrange.Response {
+// PrometheusExtractor implements Extractor interface
+type PrometheusExtractor struct{}
+
+// Extract wraps the original prometheus cache extractor
+func (PrometheusExtractor) Extract(start, end int64, from queryrange.Response) queryrange.Response {
+	response := extractor.Extract(start, end, from.(*LokiPromResponse).Response)
 	return &LokiPromResponse{
-		Response: queryrange.PrometheusResponseExtractor.
-			Extract(start, end, from.(*LokiPromResponse).Response).(*queryrange.PrometheusResponse),
+		Response: response.(*queryrange.PrometheusResponse),
 	}
-})
+}
+
+// ResponseWithoutHeaders wraps the original prometheus caching without headers
+func (PrometheusExtractor) ResponseWithoutHeaders(resp queryrange.Response) queryrange.Response {
+	response := extractor.ResponseWithoutHeaders(resp.(*LokiPromResponse).Response)
+	return &LokiPromResponse{
+		Response: response.(*queryrange.PrometheusResponse),
+	}
+}
 
 // encode encodes a Prometheus response and injects Loki stats.
 func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {

@@ -14,7 +14,7 @@ func NewTailResponse(r legacy.TailResponse) (loghttp.TailResponse, error) {
 	}
 
 	for i, s := range r.Streams {
-		ret.Streams[i], err = NewStream(&s)
+		ret.Streams[i], err = NewStream(s)
 
 		if err != nil {
 			return loghttp.TailResponse{}, err

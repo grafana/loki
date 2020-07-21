@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"sync"
 
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -10,6 +11,12 @@ import (
 )
 
 const maxParallel = 1000
+
+var decodeContextPool = sync.Pool{
+	New: func() interface{} {
+		return chunk.NewDecodeContext()
+	},
+}
 
 // GetParallelChunks fetches chunks in parallel (up to maxParallel).
 func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context.Context, *chunk.DecodeContext, chunk.Chunk) (chunk.Chunk, error)) ([]chunk.Chunk, error) {
@@ -31,7 +38,7 @@ func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context
 
 	for i := 0; i < min(maxParallel, len(chunks)); i++ {
 		go func() {
-			decodeContext := chunk.NewDecodeContext()
+			decodeContext := decodeContextPool.Get().(*chunk.DecodeContext)
 			for c := range queuedChunks {
 				c, err := f(ctx, decodeContext, c)
 				if err != nil {
@@ -40,6 +47,7 @@ func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context
 					processedChunks <- c
 				}
 			}
+			decodeContextPool.Put(decodeContext)
 		}()
 	}
 

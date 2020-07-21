@@ -44,9 +44,18 @@ $ helm upgrade --install loki loki/loki
 
 ## Deploy Promtail only
 
+We recommend Promtail to ship your logs to Loki as the configuration is very similar to Prometheus.
+This allows you to ensure that labels for metrics and logs are equivalent by re-using the same `scrape_configs` and `relabeling` configuration.
+When using Grafana having the same labels will allows you to pivot from Metrics to Logs verify easily by simply switching datasource.
+
+To only install Promtail use the following command:
+
 ```bash
 $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 ```
+
+If you're not familiar with Prometheus and you don't want to migrate your current agent configs from the start,
+ you can use our output plugins specified below.
 
 ## Deploy Loki and Fluent Bit to your cluster
 
@@ -62,12 +71,23 @@ $ helm upgrade --install fluent-bit loki/fluent-bit \
     --set "loki.serviceName=loki.svc.cluster.local"
 ```
 
+## Deploy Loki and Filebeat and logstash to your cluster
+
+```bash
+$ helm upgrade --install loki loki/loki-stack \
+    --set filebeat.enabled=true,logstash.enabled=true,promtail.enabled=false
+```
+
 ## Deploy Grafana to your cluster
 
 To install Grafana on your cluster with helm, use the following command:
 
 ```bash
-$ helm install stable/grafana -n loki-grafana
+# with Helm 2
+$ helm install stable/grafana -n loki-grafana --namespace <YOUR-NAMESPACE>
+
+# with Helm 3
+$ helm install loki-grafana stable/grafana -n <YOUR-NAMESPACE>
 ```
 
 > The chart loki-stack contains a pre-configured Grafana, simply use `--set grafana.enabled=true`
@@ -75,7 +95,7 @@ $ helm install stable/grafana -n loki-grafana
 To get the admin password for the Grafana pod, run the following command:
 
 ```bash
-$  kubectl get secret --namespace <YOUR-NAMESPACE> loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+$ kubectl get secret --namespace <YOUR-NAMESPACE> loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
 ```
 
 To access the Grafana UI, run the following command:

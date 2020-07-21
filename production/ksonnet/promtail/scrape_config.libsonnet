@@ -31,7 +31,7 @@ config {
         regex: '__meta_kubernetes_pod_label_(.+)',
       },
 
-      // Rename jobs to be <namespace>/<name, from pod name label>
+      // Rename jobs to be <namespace>/<service>.
       {
         source_labels: ['__meta_kubernetes_namespace', '__service__'],
         action: 'replace',
@@ -40,25 +40,24 @@ config {
         replacement: '$1',
       },
 
-      // But also include the namespace as a separate label, for routing alerts
+      // But also include the namespace, pod, container as separate
+      // labels. They uniquely identify a container. They are also
+      // identical to the target labels configured in Prometheus
+      // (but note that Loki does not use an instance label).
       {
         source_labels: ['__meta_kubernetes_namespace'],
         action: 'replace',
         target_label: 'namespace',
       },
-
-      // Rename instances to be the pod name
       {
         source_labels: ['__meta_kubernetes_pod_name'],
         action: 'replace',
-        target_label: 'instance',
+        target_label: 'pod',  // Not 'pod_name', which disappeared in K8s 1.16.
       },
-
-      // Include container_name label
       {
         source_labels: ['__meta_kubernetes_pod_container_name'],
         action: 'replace',
-        target_label: 'container_name',
+        target_label: 'container',  // Not 'container_name', which disappeared in K8s 1.16.
       },
 
       // Kubernetes puts logs under subdirectories keyed pod UID and container_name.
@@ -76,7 +75,6 @@ config {
       // Scrape config to scrape any pods with a 'name' label.
       gen_scrape_config('kubernetes-pods-name', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
-
           // Use name label as __service__.
           {
             source_labels: ['__meta_kubernetes_pod_label_name'],
@@ -85,7 +83,7 @@ config {
         ],
       },
 
-      // Scrape config to scrape any pods with a 'app' label.
+      // Scrape config to scrape any pods with an 'app' label.
       gen_scrape_config('kubernetes-pods-app', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
           // Drop pods with a 'name' label.  They will have already been added by

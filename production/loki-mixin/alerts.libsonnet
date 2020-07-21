@@ -23,6 +23,20 @@
             },
           },
           {
+            alert: 'LokiRequestPanics',
+            expr: |||
+              sum(increase(loki_panic_total[10m])) by (namespace, job) > 0
+            |||,
+            labels: {
+              severity: 'critical',
+            },
+            annotations: {
+              message: |||
+                {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
+              |||,
+            },
+          },
+          {
             alert: 'LokiRequestLatency',
             expr: |||
               namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*"} > 1

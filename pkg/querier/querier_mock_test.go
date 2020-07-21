@@ -207,13 +207,22 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
+func (s *storeMock) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
 	if res == nil {
 		return iter.EntryIterator(nil), args.Error(1)
 	}
 	return res.(iter.EntryIterator), args.Error(1)
+}
+
+func (s *storeMock) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	args := s.Called(ctx, req)
+	res := args.Get(0)
+	if res == nil {
+		return iter.SampleIterator(nil), args.Error(1)
+	}
+	return res.(iter.SampleIterator), args.Error(1)
 }
 
 func (s *storeMock) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
@@ -252,7 +261,7 @@ func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Tim
 	panic("don't call me please")
 }
 
-func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error) {
+func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
 	if res == nil {
@@ -294,7 +303,7 @@ func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.Replic
 	return []ring.ReplicationSet{r.replicationSet}, nil
 }
 
-func (r *readRingMock) GetAll() (ring.ReplicationSet, error) {
+func (r *readRingMock) GetAll(op ring.Operation) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
@@ -334,11 +343,11 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 
 // mockStream return a stream with quantity entries, where entries timestamp and
 // line string are constructed as sequential numbers starting at from
-func mockStream(from int, quantity int) *logproto.Stream {
+func mockStream(from int, quantity int) logproto.Stream {
 	return mockStreamWithLabels(from, quantity, `{type="test"}`)
 }
 
-func mockStreamWithLabels(from int, quantity int, labels string) *logproto.Stream {
+func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream {
 	entries := make([]logproto.Entry, 0, quantity)
 
 	for i := from; i < from+quantity; i++ {
@@ -348,7 +357,7 @@ func mockStreamWithLabels(from int, quantity int, labels string) *logproto.Strea
 		})
 	}
 
-	return &logproto.Stream{
+	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	}

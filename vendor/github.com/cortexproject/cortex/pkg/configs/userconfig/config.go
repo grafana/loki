@@ -12,7 +12,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 
 	legacy_promql "github.com/cortexproject/cortex/pkg/configs/legacy_promql"
@@ -289,7 +289,7 @@ func (c RulesConfig) parseV1Formatted() (map[string]legacy_rulefmt.RuleGroups, e
 			var rule legacy_rulefmt.Rule
 			switch r := stmt.(type) {
 			case *legacy_promql.AlertStmt:
-				_, err := promql.ParseExpr(r.Expr.String())
+				_, err := parser.ParseExpr(r.Expr.String())
 				if err != nil {
 					return nil, err
 				}
@@ -303,7 +303,7 @@ func (c RulesConfig) parseV1Formatted() (map[string]legacy_rulefmt.RuleGroups, e
 				}
 
 			case *legacy_promql.RecordStmt:
-				_, err := promql.ParseExpr(r.Expr.String())
+				_, err := parser.ParseExpr(r.Expr.String())
 				if err != nil {
 					return nil, err
 				}
@@ -356,7 +356,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 		for _, rg := range rgs.Groups {
 			rls := make([]rules.Rule, 0, len(rg.Rules))
 			for _, rl := range rg.Rules {
-				expr, err := promql.ParseExpr(rl.Expr)
+				expr, err := parser.ParseExpr(rl.Expr)
 				if err != nil {
 					return nil, err
 				}
@@ -411,7 +411,7 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 				// but it is of the type legacy_proql.Expr and not promql.Expr.
 				// So we convert it back to a string, and then parse it again with the
 				// upstream parser to get it into the right type.
-				expr, err := promql.ParseExpr(r.Expr.String())
+				expr, err := parser.ParseExpr(r.Expr.String())
 				if err != nil {
 					return nil, err
 				}
@@ -422,7 +422,7 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 				)
 
 			case *legacy_promql.RecordStmt:
-				expr, err := promql.ParseExpr(r.Expr.String())
+				expr, err := parser.ParseExpr(r.Expr.String())
 				if err != nil {
 					return nil, err
 				}

@@ -8,14 +8,27 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/pkg/promtail/targets/file"
+	"github.com/grafana/loki/pkg/promtail/targets/journal"
+	"github.com/grafana/loki/pkg/promtail/targets/lokipush"
+	"github.com/grafana/loki/pkg/promtail/targets/stdin"
+	"github.com/grafana/loki/pkg/promtail/targets/syslog"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
+)
+
+const (
+	FileScrapeConfigs    = "fileScrapeConfigs"
+	JournalScrapeConfigs = "journalScrapeConfigs"
+	SyslogScrapeConfigs  = "syslogScrapeConfigs"
+	PushScrapeConfigs    = "pushScrapeConfigs"
 )
 
 type targetManager interface {
 	Ready() bool
 	Stop()
-	ActiveTargets() map[string][]Target
-	AllTargets() map[string][]Target
+	ActiveTargets() map[string][]target.Target
+	AllTargets() map[string][]target.Target
 }
 
 // TargetManagers manages a list of target managers.
@@ -26,21 +39,19 @@ type TargetManagers struct {
 
 // NewTargetManagers makes a new TargetManagers
 func NewTargetManagers(
-	app Shutdownable,
+	app stdin.Shutdownable,
 	logger log.Logger,
 	positionsConfig positions.Config,
 	client api.EntryHandler,
-	scrapeConfigs []scrape.Config,
-	targetConfig *Config,
+	scrapeConfigs []scrapeconfig.Config,
+	targetConfig *file.Config,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
-	var fileScrapeConfigs []scrape.Config
-	var journalScrapeConfigs []scrape.Config
-	var syslogScrapeConfigs []scrape.Config
+	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
 
 	if targetConfig.Stdin {
 		level.Debug(util.Logger).Log("msg", "configured to read from stdin")
-		stdin, err := newStdinTargetManager(app, client, scrapeConfigs)
+		stdin, err := stdin.NewStdinTargetManager(app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err
 		}
@@ -54,53 +65,68 @@ func NewTargetManagers(
 	}
 
 	for _, cfg := range scrapeConfigs {
-		if cfg.HasServiceDiscoveryConfig() {
-			fileScrapeConfigs = append(fileScrapeConfigs, cfg)
+		switch {
+		case cfg.HasServiceDiscoveryConfig():
+			targetScrapeConfigs[FileScrapeConfigs] = append(targetScrapeConfigs[FileScrapeConfigs], cfg)
+		case cfg.JournalConfig != nil:
+			targetScrapeConfigs[JournalScrapeConfigs] = append(targetScrapeConfigs[JournalScrapeConfigs], cfg)
+		case cfg.SyslogConfig != nil:
+			targetScrapeConfigs[SyslogScrapeConfigs] = append(targetScrapeConfigs[SyslogScrapeConfigs], cfg)
+		case cfg.PushConfig != nil:
+			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
+		default:
+			return nil, errors.New("unknown scrape config")
 		}
-	}
-	if len(fileScrapeConfigs) > 0 {
-		fileTargetManager, err := NewFileTargetManager(
-			logger,
-			positions,
-			client,
-			fileScrapeConfigs,
-			targetConfig,
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to make file target manager")
-		}
-		targetManagers = append(targetManagers, fileTargetManager)
 	}
 
-	for _, cfg := range scrapeConfigs {
-		if cfg.JournalConfig != nil {
-			journalScrapeConfigs = append(journalScrapeConfigs, cfg)
+	for target, scrapeConfigs := range targetScrapeConfigs {
+		switch target {
+		case FileScrapeConfigs:
+			fileTargetManager, err := file.NewFileTargetManager(
+				logger,
+				positions,
+				client,
+				scrapeConfigs,
+				targetConfig,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make file target manager")
+			}
+			targetManagers = append(targetManagers, fileTargetManager)
+		case JournalScrapeConfigs:
+			journalTargetManager, err := journal.NewJournalTargetManager(
+				logger,
+				positions,
+				client,
+				scrapeConfigs,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make journal target manager")
+			}
+			targetManagers = append(targetManagers, journalTargetManager)
+		case SyslogScrapeConfigs:
+			syslogTargetManager, err := syslog.NewSyslogTargetManager(
+				logger,
+				client,
+				scrapeConfigs,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make syslog target manager")
+			}
+			targetManagers = append(targetManagers, syslogTargetManager)
+		case PushScrapeConfigs:
+			pushTargetManager, err := lokipush.NewPushTargetManager(
+				logger,
+				client,
+				scrapeConfigs,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
+			}
+			targetManagers = append(targetManagers, pushTargetManager)
+		default:
+			return nil, errors.New("unknown scrape config")
 		}
-	}
-	if len(journalScrapeConfigs) > 0 {
-		journalTargetManager, err := NewJournalTargetManager(
-			logger,
-			positions,
-			client,
-			journalScrapeConfigs,
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to make journal target manager")
-		}
-		targetManagers = append(targetManagers, journalTargetManager)
-	}
-
-	for _, cfg := range scrapeConfigs {
-		if cfg.SyslogConfig != nil {
-			syslogScrapeConfigs = append(syslogScrapeConfigs, cfg)
-		}
-	}
-	if len(syslogScrapeConfigs) > 0 {
-		syslogTargetManager, err := NewSyslogTargetManager(logger, client, syslogScrapeConfigs)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to make syslog target manager")
-		}
-		targetManagers = append(targetManagers, syslogTargetManager)
 	}
 
 	return &TargetManagers{
@@ -111,8 +137,8 @@ func NewTargetManagers(
 }
 
 // ActiveTargets returns active targets per jobs
-func (tm *TargetManagers) ActiveTargets() map[string][]Target {
-	result := map[string][]Target{}
+func (tm *TargetManagers) ActiveTargets() map[string][]target.Target {
+	result := map[string][]target.Target{}
 	for _, t := range tm.targetManagers {
 		for job, targets := range t.ActiveTargets() {
 			result[job] = append(result[job], targets...)
@@ -122,8 +148,8 @@ func (tm *TargetManagers) ActiveTargets() map[string][]Target {
 }
 
 // AllTargets returns all targets per jobs
-func (tm *TargetManagers) AllTargets() map[string][]Target {
-	result := map[string][]Target{}
+func (tm *TargetManagers) AllTargets() map[string][]target.Target {
+	result := map[string][]target.Target{}
 	for _, t := range tm.targetManagers {
 		for job, targets := range t.AllTargets() {
 			result[job] = append(result[job], targets...)

@@ -29,12 +29,22 @@ func ContextWithTracer(ctx context.Context, tracer opentracing.Tracer) context.C
 	return context.WithValue(ctx, tracerKey, tracer)
 }
 
+// tracerFromContext extracts opentracing.Tracer from the given context.
 func tracerFromContext(ctx context.Context) opentracing.Tracer {
 	val := ctx.Value(tracerKey)
 	if sp, ok := val.(opentracing.Tracer); ok {
 		return sp
 	}
 	return nil
+}
+
+// CopyTraceContext copies the necessary trace context from given source context to target context.
+func CopyTraceContext(trgt, src context.Context) context.Context {
+	ctx := ContextWithTracer(trgt, tracerFromContext(src))
+	if parentSpan := opentracing.SpanFromContext(src); parentSpan != nil {
+		ctx = opentracing.ContextWithSpan(ctx, parentSpan)
+	}
+	return ctx
 }
 
 // StartSpan starts and returns span with `operationName` and hooking as child to a span found within given context if any.
@@ -58,6 +68,14 @@ func StartSpan(ctx context.Context, operationName string, opts ...opentracing.St
 // It uses opentracing.Tracer propagated in context. If no found, it uses noop tracer notification.
 func DoInSpan(ctx context.Context, operationName string, doFn func(context.Context), opts ...opentracing.StartSpanOption) {
 	span, newCtx := StartSpan(ctx, operationName, opts...)
-	defer doFn(newCtx)
 	defer span.Finish()
+	doFn(newCtx)
+}
+
+// DoWithSpan executes function doFn inside new span with `operationName` name and hooking as child to a span found within given context if any.
+// It uses opentracing.Tracer propagated in context. If no found, it uses noop tracer notification.
+func DoWithSpan(ctx context.Context, operationName string, doFn func(context.Context, opentracing.Span), opts ...opentracing.StartSpanOption) {
+	span, newCtx := StartSpan(ctx, operationName, opts...)
+	defer span.Finish()
+	doFn(newCtx, span)
 }

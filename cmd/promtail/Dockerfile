@@ -1,4 +1,4 @@
-FROM golang:1.13 as build
+FROM golang:1.14.2 as build
 # TOUCH_PROTOS signifies if we should touch the compiled proto files and thus not regenerate them.
 # This is helpful when file system timestamps can't be trusted with make
 ARG TOUCH_PROTOS
@@ -15,6 +15,6 @@ RUN apt-get update && \
   tzdata ca-certificates libsystemd-dev && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/cmd/promtail/promtail /usr/bin/promtail
-COPY cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
-COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/docker-config.yaml
+COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
 ENTRYPOINT ["/usr/bin/promtail"]
+CMD ["-config.file=/etc/promtail/config.yml"]

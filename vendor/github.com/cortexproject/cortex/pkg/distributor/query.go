@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -31,6 +32,10 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 		if err != nil {
 			return promql.ErrStorage{Err: err}
 		}
+
+		if s := opentracing.SpanFromContext(ctx); s != nil {
+			s.LogKV("series", len(matrix))
+		}
 		return nil
 	})
 	return matrix, err
@@ -48,6 +53,10 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 		result, err = d.queryIngesterStream(ctx, replicationSet, req)
 		if err != nil {
 			return promql.ErrStorage{Err: err}
+		}
+
+		if s := opentracing.SpanFromContext(ctx); s != nil {
+			s.LogKV("chunk-series", len(result.GetChunkseries()), "time-series", len(result.GetTimeseries()))
 		}
 		return nil
 	})
@@ -71,7 +80,7 @@ func (d *Distributor) queryPrep(ctx context.Context, from, to model.Time, matche
 	if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
 		replicationSet, err = d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
 	} else {
-		replicationSet, err = d.ingestersRing.GetAll()
+		replicationSet, err = d.ingestersRing.GetAll(ring.Read)
 	}
 	return replicationSet, req, err
 }

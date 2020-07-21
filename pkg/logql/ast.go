@@ -21,29 +21,49 @@ type Expr interface {
 	fmt.Stringer
 }
 
+type QueryParams interface {
+	LogSelector() (LogSelectorExpr, error)
+	GetStart() time.Time
+	GetEnd() time.Time
+	GetShards() []string
+}
+
 // SelectParams specifies parameters passed to data selections.
-type SelectParams struct {
+type SelectLogParams struct {
 	*logproto.QueryRequest
 }
 
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
-func (s SelectParams) LogSelector() (LogSelectorExpr, error) {
+func (s SelectLogParams) LogSelector() (LogSelectorExpr, error) {
 	return ParseLogSelector(s.Selector)
 }
 
-// QuerierFunc implements Querier.
-type QuerierFunc func(context.Context, SelectParams) (iter.EntryIterator, error)
+type SelectSampleParams struct {
+	*logproto.SampleQueryRequest
+}
 
-// Select implements Querier.
-func (q QuerierFunc) Select(ctx context.Context, p SelectParams) (iter.EntryIterator, error) {
-	return q(ctx, p)
+// Expr returns the SampleExpr from the SelectSampleParams.
+// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
+func (s SelectSampleParams) Expr() (SampleExpr, error) {
+	return ParseSampleExpr(s.Selector)
+}
+
+// LogSelector returns the LogSelectorExpr from the SelectParams.
+// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
+func (s SelectSampleParams) LogSelector() (LogSelectorExpr, error) {
+	expr, err := ParseSampleExpr(s.Selector)
+	if err != nil {
+		return nil, err
+	}
+	return expr.Selector(), nil
 }
 
 // Querier allows a LogQL expression to fetch an EntryIterator for a
 // set of matchers and filters
 type Querier interface {
-	Select(context.Context, SelectParams) (iter.EntryIterator, error)
+	SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
 }
 
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
@@ -131,11 +151,15 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 		if err != nil {
 			return nil, err
 		}
-		f = newAndFilter(nextFilter, f)
+		if nextFilter != nil {
+			f = newAndFilter(nextFilter, f)
+		}
 	}
+
 	if f == TrueFilter {
 		return nil, nil
 	}
+
 	return f, nil
 }
 
@@ -158,9 +182,7 @@ type logRange struct {
 // impls Stringer
 func (r logRange) String() string {
 	var sb strings.Builder
-	sb.WriteString("(")
 	sb.WriteString(r.left.String())
-	sb.WriteString(")")
 	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
 	return sb.String()
 }
@@ -194,8 +216,10 @@ const (
 	OpTypeTopK    = "topk"
 
 	// range vector ops
-	OpTypeCountOverTime = "count_over_time"
-	OpTypeRate          = "rate"
+	OpRangeTypeCount     = "count_over_time"
+	OpRangeTypeRate      = "rate"
+	OpRangeTypeBytes     = "bytes_over_time"
+	OpRangeTypeBytesRate = "bytes_rate"
 
 	// binops - logical/set
 	OpTypeOr     = "or"
@@ -209,17 +233,40 @@ const (
 	OpTypeDiv = "/"
 	OpTypeMod = "%"
 	OpTypePow = "^"
+
+	// binops - comparison
+	OpTypeCmpEQ = "=="
+	OpTypeNEQ   = "!="
+	OpTypeGT    = ">"
+	OpTypeGTE   = ">="
+	OpTypeLT    = "<"
+	OpTypeLTE   = "<="
 )
+
+func IsComparisonOperator(op string) bool {
+	switch op {
+	case OpTypeCmpEQ, OpTypeNEQ, OpTypeGT, OpTypeGTE, OpTypeLT, OpTypeLTE:
+		return true
+	default:
+		return false
+	}
+}
 
 // IsLogicalBinOp tests whether an operation is a logical/set binary operation
 func IsLogicalBinOp(op string) bool {
-	return op == OpTypeOr || op == OpTypeAnd || op == OpTypeUnless
+	switch op {
+	case OpTypeOr, OpTypeAnd, OpTypeUnless:
+		return true
+	default:
+		return false
+	}
 }
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
+	Extractor() (SampleExtractor, error)
 	// Operations returns the list of operations used in this SampleExpr
 	Operations() []string
 	Expr
@@ -317,6 +364,10 @@ func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.Selector()
 }
 
+func (e *vectorAggregationExpr) Extractor() (SampleExtractor, error) {
+	return e.left.Extractor()
+}
+
 // impl Expr
 func (e *vectorAggregationExpr) logQLExpr() {}
 
@@ -335,13 +386,21 @@ func (e *vectorAggregationExpr) Operations() []string {
 	return append(e.left.Operations(), e.operation)
 }
 
+type BinOpOptions struct {
+	ReturnBool bool
+}
+
 type binOpExpr struct {
 	SampleExpr
-	RHS SampleExpr
-	op  string
+	RHS  SampleExpr
+	op   string
+	opts BinOpOptions
 }
 
 func (e *binOpExpr) String() string {
+	if e.opts.ReturnBool {
+		return fmt.Sprintf("%s %s bool %s", e.SampleExpr.String(), e.op, e.RHS.String())
+	}
 	return fmt.Sprintf("%s %s %s", e.SampleExpr.String(), e.op, e.RHS.String())
 }
 
@@ -351,7 +410,7 @@ func (e *binOpExpr) Operations() []string {
 	return append(ops, e.op)
 }
 
-func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
+func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
 		panic(newParseError(fmt.Sprintf(
@@ -400,10 +459,11 @@ func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
 		SampleExpr: left,
 		RHS:        right,
 		op:         op,
+		opts:       opts,
 	}
 }
 
-// Reduces a binary operation expression. A binop is reducable if both of its legs are literal expressions.
+// Reduces a binary operation expression. A binop is reducible if both of its legs are literal expressions.
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
 func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
@@ -411,6 +471,8 @@ func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
 		op,
 		&promql.Sample{Point: promql.Point{V: left.value}},
 		&promql.Sample{Point: promql.Point{V: right.value}},
+		false,
+		false,
 	)
 	return &literalExpr{value: merged.V}
 }
@@ -443,10 +505,11 @@ func (e *literalExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *literalExpr) Selector() LogSelectorExpr   { return e }
-func (e *literalExpr) Operations() []string        { return nil }
-func (e *literalExpr) Filter() (LineFilter, error) { return nil, nil }
-func (e *literalExpr) Matchers() []*labels.Matcher { return nil }
+func (e *literalExpr) Selector() LogSelectorExpr           { return e }
+func (e *literalExpr) Operations() []string                { return nil }
+func (e *literalExpr) Filter() (LineFilter, error)         { return nil, nil }
+func (e *literalExpr) Matchers() []*labels.Matcher         { return nil }
+func (e *literalExpr) Extractor() (SampleExtractor, error) { return nil, nil }
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer

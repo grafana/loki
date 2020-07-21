@@ -6,6 +6,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 )
 
@@ -15,13 +17,13 @@ type BoltdbIndexClientWithShipper struct {
 }
 
 // NewBoltDBIndexClientWithShipper creates a new IndexClient that used BoltDB.
-func NewBoltDBIndexClientWithShipper(cfg local.BoltDBConfig, archiveStoreClient chunk.ObjectClient, archiverCfg ShipperConfig) (chunk.IndexClient, error) {
+func NewBoltDBIndexClientWithShipper(cfg local.BoltDBConfig, archiveStoreClient chunk.ObjectClient, archiverCfg ShipperConfig, registerer prometheus.Registerer) (chunk.IndexClient, error) {
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	shipper, err := NewShipper(archiverCfg, archiveStoreClient, boltDBIndexClient)
+	shipper, err := NewShipper(archiverCfg, archiveStoreClient, boltDBIndexClient, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +57,9 @@ func (b *BoltdbIndexClientWithShipper) query(ctx context.Context, query chunk.In
 		}
 	}
 
-	return b.shipper.forEach(ctx, query.TableName, func(db *bbolt.DB) error {
-		return b.QueryDB(ctx, db, query, callback)
+	return instrument.CollectedRequest(ctx, "QUERY", instrument.NewHistogramCollector(b.shipper.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		return b.shipper.forEach(ctx, query.TableName, func(db *bbolt.DB) error {
+			return b.QueryDB(ctx, db, query, callback)
+		})
 	})
 }

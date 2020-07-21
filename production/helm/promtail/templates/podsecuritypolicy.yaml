@@ -3,7 +3,6 @@ apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 metadata:
   name: {{ template "promtail.fullname" . }}
-  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ template "promtail.name" . }}
     chart: {{ template "promtail.chart" . }}
@@ -16,6 +15,9 @@ spec:
     - 'secret'
     - 'configMap'
     - 'hostPath'
+    - 'projected'
+    - 'downwardAPI'
+    - 'emptyDir'
   hostNetwork: false
   hostIPC: false
   hostPID: false

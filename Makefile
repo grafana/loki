@@ -3,6 +3,7 @@
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
+.PHONY: fluentd-image, fluentd-push, fluentd-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
@@ -38,7 +39,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.9.2
+BUILD_IMAGE_VERSION := 0.9.3
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -67,6 +68,8 @@ DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
 DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
 DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+# Docker mount flag, ignored on native docker host. see (https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated)
+MOUNT_FLAGS := :delegated
 
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
@@ -272,9 +275,9 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/src/loki \
+		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
+		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
@@ -297,9 +300,9 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/src/loki \
+		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
+		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	case "$@" in	\
@@ -324,6 +327,7 @@ helm:
 	-rm -f production/helm/*/requirements.lock
 	@set -e; \
 	helm init -c; \
+	helm repo add elastic https://helm.elastic.co ; \
 	for chart in $(CHARTS); do \
 		helm dependency build $$chart; \
 		helm lint $$chart; \
@@ -414,6 +418,44 @@ fluent-bit-test:
 	docker run -v /var/log:/var/log -e LOG_PATH="/var/log/*.log" -e LOKI_URL="$(LOKI_URL)" \
 	 $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
+
+##################
+# fluentd plugin #
+##################
+fluentd-plugin:
+	gem install bundler --version 1.16.2
+	bundle config silence_root_warning true
+	bundle install --gemfile=cmd/fluentd/Gemfile --path=cmd/fluentd/vendor/bundle
+
+fluentd-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f cmd/fluentd/Dockerfile .
+
+fluentd-push:
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+
+fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
+fluentd-test:
+	LOKI_URL="$(LOKI_URL)" docker-compose -f cmd/fluentd/docker/docker-compose.yml up --build #$(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+
+##################
+# logstash plugin #
+##################
+logstash-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f cmd/logstash/Dockerfile ./
+
+# Send 10 lines to the local Loki instance.
+logstash-push-test-logs: LOKI_URL ?= http://host.docker.internal:3100/loki/api/v1/push
+logstash-push-test-logs:
+	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
+		$(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f loki.conf
+
+logstash-push:
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
+
+# Enter an env already configure to build and test logstash output plugin.
+logstash-env:
+	$(SUDO) docker run -v  `pwd`/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
+
 ########################
 # Bigtable Backup Tool #
 ########################
@@ -432,7 +474,7 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image
+images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
 
 print-images:
 	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))
@@ -516,9 +558,9 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/src/loki \
+		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
+		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
@@ -529,8 +571,8 @@ endif
 check-mod:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(SUDO) docker run  $(RM) $(TTY) -i \
-		-v $(shell go env GOPATH)/pkg:/go/pkg \
-		-v $(shell pwd):/src/loki \
+		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download

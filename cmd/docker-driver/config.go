@@ -9,39 +9,45 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/templates"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
+	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/client"
-	"github.com/grafana/loki/pkg/promtail/targets"
+	"github.com/grafana/loki/pkg/promtail/targets/file"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
 	driverName = "loki"
 
-	cfgExternalLabelsKey = "loki-external-labels"
-	cfgURLKey            = "loki-url"
-	cfgTLSCAFileKey      = "loki-tls-ca-file"
-	cfgTLSCertFileKey    = "loki-tls-cert-file"
-	cfgTLSKeyFileKey     = "loki-tls-key-file"
-	cfgTLSServerNameKey  = "loki-tls-server-name"
-	cfgTLSInsecure       = "loki-tls-insecure-skip-verify"
-	cfgProxyURLKey       = "loki-proxy-url"
-	cfgTimeoutKey        = "loki-timeout"
-	cfgBatchWaitKey      = "loki-batch-wait"
-	cfgBatchSizeKey      = "loki-batch-size"
-	cfgMinBackoffKey     = "loki-min-backoff"
-	cfgMaxBackoffKey     = "loki-max-backoff"
-	cfgMaxRetriesKey     = "loki-retries"
-	cfgPipelineStagesKey = "loki-pipeline-stage-file"
-	cfgTenantIDKey       = "loki-tenant-id"
-	cfgNofile            = "no-file"
-	cfgKeepFile          = "keep-file"
+	cfgExternalLabelsKey     = "loki-external-labels"
+	cfgURLKey                = "loki-url"
+	cfgTLSCAFileKey          = "loki-tls-ca-file"
+	cfgTLSCertFileKey        = "loki-tls-cert-file"
+	cfgTLSKeyFileKey         = "loki-tls-key-file"
+	cfgTLSServerNameKey      = "loki-tls-server-name"
+	cfgTLSInsecure           = "loki-tls-insecure-skip-verify"
+	cfgProxyURLKey           = "loki-proxy-url"
+	cfgTimeoutKey            = "loki-timeout"
+	cfgBatchWaitKey          = "loki-batch-wait"
+	cfgBatchSizeKey          = "loki-batch-size"
+	cfgMinBackoffKey         = "loki-min-backoff"
+	cfgMaxBackoffKey         = "loki-max-backoff"
+	cfgMaxRetriesKey         = "loki-retries"
+	cfgPipelineStagesFileKey = "loki-pipeline-stage-file"
+	cfgPipelineStagesKey     = "loki-pipeline-stages"
+	cfgTenantIDKey           = "loki-tenant-id"
+	cfgNofile                = "no-file"
+	cfgKeepFile              = "keep-file"
+	cfgRelabelKey            = "loki-relabel-config"
 
 	swarmServiceLabelKey = "com.docker.swarm.service.name"
 	swarmStackLabelKey   = "com.docker.stack.namespace"
@@ -63,7 +69,7 @@ var (
 	defaultClientConfig = client.Config{
 		BatchWait: 1 * time.Second,
 		BatchSize: 100 * 1024,
-		BackoffConfig: util.BackoffConfig{
+		BackoffConfig: cortex_util.BackoffConfig{
 			MinBackoff: 100 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
 			MaxRetries: 10,
@@ -102,7 +108,9 @@ func validateDriverOpt(loggerInfo logger.Info) error {
 		case cfgMaxBackoffKey:
 		case cfgMaxRetriesKey:
 		case cfgPipelineStagesKey:
+		case cfgPipelineStagesFileKey:
 		case cfgTenantIDKey:
+		case cfgRelabelKey:
 		case cfgNofile:
 		case cfgKeepFile:
 		case "labels":
@@ -110,6 +118,8 @@ func validateDriverOpt(loggerInfo logger.Info) error {
 		case "env-regex":
 		case "max-size":
 		case "max-file":
+		case "mode":
+		case "max-buffer-size":
 		default:
 			return fmt.Errorf("%s: wrong log-opt: '%s' - %s", driverName, opt, loggerInfo.ContainerID)
 		}
@@ -273,22 +283,47 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if err == nil {
 		labels[defaultHostLabelName] = model.LabelValue(host)
 	}
-	labels[targets.FilenameLabel] = model.LabelValue(logCtx.LogPath)
+	labels[file.FilenameLabel] = model.LabelValue(logCtx.LogPath)
 
-	// parse pipeline stages
-	var pipeline PipelineConfig
-	pipelineFile, ok := logCtx.Config[cfgPipelineStagesKey]
-	if ok {
-		if err := helpers.LoadConfig(pipelineFile, &pipeline); err != nil {
-			return nil, fmt.Errorf("%s: error loading config file %s: %s", driverName, pipelineFile, err)
+	// Process relabel configs.
+	if relabelString, ok := logCtx.Config[cfgRelabelKey]; ok && relabelString != "" {
+		relabeled, err := relabelConfig(relabelString, labels)
+		if err != nil {
+			return nil, fmt.Errorf("error applying relabel config: %s err:%s", relabelString, err)
 		}
+		labels = relabeled
 	}
 
+	// parse pipeline stages
+	pipeline, err := parsePipeline(logCtx)
+	if err != nil {
+		return nil, err
+	}
 	return &config{
 		labels:       labels,
 		clientConfig: clientConfig,
 		pipeline:     pipeline,
 	}, nil
+}
+
+func parsePipeline(logCtx logger.Info) (PipelineConfig, error) {
+	var pipeline PipelineConfig
+	pipelineFile, okFile := logCtx.Config[cfgPipelineStagesFileKey]
+	pipelineString, okString := logCtx.Config[cfgPipelineStagesKey]
+	if okFile && okString {
+		return pipeline, fmt.Errorf("only one of %s or %s can be configured", cfgPipelineStagesFileKey, cfgPipelineStagesFileKey)
+	}
+	if okFile {
+		if err := helpers.LoadConfig(pipelineFile, &pipeline); err != nil {
+			return pipeline, fmt.Errorf("error loading config file %s: %s", pipelineFile, err)
+		}
+	}
+	if okString {
+		if err := yaml.UnmarshalStrict([]byte(pipelineString), &pipeline.PipelineStages); err != nil {
+			return pipeline, err
+		}
+	}
+	return pipeline, nil
 }
 
 func expandLabelValue(info logger.Info, defaultTemplate string) (string, error) {
@@ -324,6 +359,15 @@ func parseInt(key string, logCtx logger.Info, set func(i int)) error {
 		set(val)
 	}
 	return nil
+}
+
+func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
+	relabelConfig := make([]*relabel.Config, 0)
+	if err := yaml.UnmarshalStrict([]byte(config), &relabelConfig); err != nil {
+		return nil, err
+	}
+	relabed := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
+	return model.LabelSet(util.LabelsToMetric(relabed)), nil
 }
 
 func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, error) {

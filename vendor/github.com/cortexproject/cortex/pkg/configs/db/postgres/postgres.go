@@ -60,7 +60,7 @@ func dbWait(db *sql.DB) error {
 		if err == nil {
 			return nil
 		}
-		level.Warn(util.Logger).Log("msg", "db connection not established, retrying...", "error", err)
+		level.Warn(util.Logger).Log("msg", "db connection not established, retrying...", "err", err)
 		time.Sleep(time.Second << uint(tries))
 	}
 	return errors.Wrapf(err, "db connection not established after %s", dbTimeout)
@@ -94,7 +94,7 @@ func New(uri, migrationsDir string) (DB, error) {
 			if err != migrate.ErrNoChange {
 				return DB{}, errors.Wrap(err, "database migrations failed")
 			}
-			level.Debug(util.Logger).Log("msg", "no change in schema, error (ignored)", "error", err)
+			level.Debug(util.Logger).Log("msg", "no change in schema, error (ignored)", "err", err)
 		}
 	}
 
@@ -340,7 +340,7 @@ func (d DB) Transaction(f func(DB) error) error {
 	if err != nil {
 		// Rollback error is ignored as we already have one in progress
 		if err2 := tx.Rollback(); err2 != nil {
-			level.Warn(util.Logger).Log("msg", "transaction rollback error (ignored)", "error", err2)
+			level.Warn(util.Logger).Log("msg", "transaction rollback error (ignored)", "err", err2)
 		}
 		return err
 	}

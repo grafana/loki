@@ -85,10 +85,10 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	}
 
 	store := newStoreMock()
-	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
+	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
 
 	queryClient := newQueryClientMock()
-	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
+	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
 
 	tailClient := newTailClientMock()
 	tailClient.On("Recv").Return(mockTailResponse(mockStream(1, 2)), nil)
@@ -124,7 +124,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	_, ok = calls[0].Arguments.Get(0).(context.Context).Deadline()
 	assert.False(t, ok)
 
-	calls = store.GetMockedCallsByMethod("LazyQuery")
+	calls = store.GetMockedCallsByMethod("SelectLogs")
 	assert.Equal(t, 1, len(calls))
 	deadline, ok = calls[0].Arguments.Get(0).(context.Context).Deadline()
 	assert.True(t, ok)
@@ -233,7 +233,7 @@ func mockQuerierConfig() Config {
 	}
 }
 
-func mockQueryResponse(streams []*logproto.Stream) *logproto.QueryResponse {
+func mockQueryResponse(streams []logproto.Stream) *logproto.QueryResponse {
 	return &logproto.QueryResponse{
 		Streams: streams,
 	}
@@ -261,10 +261,10 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	}
 
 	store := newStoreMock()
-	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
+	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
 
 	queryClient := newQueryClientMock()
-	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
+	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
 
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("Query", mock.Anything, &request, mock.Anything).Return(queryClient, nil)
@@ -286,16 +286,16 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "test")
 
-	_, err = q.Select(ctx, logql.SelectParams{QueryRequest: &request})
+	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max streams matchers per query exceeded, matchers-count > limit (2 > 1)"), err)
 
 	request.Selector = "{type=\"test\"}"
-	_, err = q.Select(ctx, logql.SelectParams{QueryRequest: &request})
+	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.NoError(t, err)
 
 	request.Start = request.End.Add(-3 * time.Minute)
-	_, err = q.Select(ctx, logql.SelectParams{QueryRequest: &request})
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (3m0s > 2m0s)"), err)
+	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m0s, limit: 2m0s)"), err)
 }
 
 func TestQuerier_SeriesAPI(t *testing.T) {
@@ -488,15 +488,15 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 
 			if !tc.skipIngesters {
 				ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
-				queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 1)}), nil).Once()
+				queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil).Once()
 				queryClient.On("Recv").Return(nil, io.EOF).Once()
 			}
 
 			store := newStoreMock()
-			store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
+			store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
 
 			conf := mockQuerierConfig()
-			conf.IngesterMaxQueryLookback = tc.lookback
+			conf.QueryIngestersWithin = tc.lookback
 			q, err := newQuerier(
 				conf,
 				mockIngesterClientConfig(),
@@ -507,7 +507,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), "test")
 
-			res, err := q.Select(ctx, logql.SelectParams{QueryRequest: &req})
+			res, err := q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &req})
 			require.Nil(t, err)
 
 			// since streams are loaded lazily, force iterators to exhaust
@@ -558,7 +558,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 		"ring containing one active ingester and max active tailers": {
 			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
 			expectedError: httpgrpc.Errorf(http.StatusBadRequest,
-				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", 6, 1),
+				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", 6, 5),
 			tailersCount: 5,
 		},
 	}
@@ -570,10 +570,10 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			// For this test's purpose, whenever a new ingester client needs to
 			// be created, the factory will always return the same mock instance
 			store := newStoreMock()
-			store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
+			store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
 
 			queryClient := newQueryClientMock()
-			queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
+			queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
 
 			tailClient := newTailClientMock()
 			tailClient.On("Recv").Return(mockTailResponse(mockStream(1, 2)), nil)

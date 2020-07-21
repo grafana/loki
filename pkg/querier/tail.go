@@ -223,7 +223,7 @@ func (t *Tailer) pushTailResponseFromIngester(resp *logproto.TailResponse) {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
-	t.openStreamIterator.Push(iter.NewStreamIterator(resp.Stream))
+	t.openStreamIterator.Push(iter.NewStreamIterator(*resp.Stream))
 }
 
 // finds oldest entry by peeking at open stream iterator.

@@ -9,6 +9,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -19,12 +20,12 @@ import (
 
 // covers responses from /loki/api/v1/query_range and /loki/api/v1/query
 var queryTests = []struct {
-	actual   promql.Value
+	actual   parser.Value
 	expected string
 }{
 	{
 		logql.Streams{
-			&logproto.Stream{
+			logproto.Stream{
 				Entries: []logproto.Entry{
 					{
 						Timestamp: time.Unix(0, 123456789012345),
@@ -73,9 +74,9 @@ var queryTests = []struct {
 						"totalDuplicates": 0
 					},
 					"summary": {
-						"bytesProcessedPerSeconds": 0,
+						"bytesProcessedPerSecond": 0,
 						"execTime": 0,
-						"linesProcessedPerSeconds": 0,
+						"linesProcessedPerSecond": 0,
 						"totalBytesProcessed":0,
 						"totalLinesProcessed":0
 					}
@@ -169,9 +170,9 @@ var queryTests = []struct {
 					"totalDuplicates": 0
 				},
 				"summary": {
-					"bytesProcessedPerSeconds": 0,
+					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
-					"linesProcessedPerSeconds": 0,
+					"linesProcessedPerSecond": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
 				}
@@ -282,9 +283,9 @@ var queryTests = []struct {
 					"totalDuplicates": 0
 				},
 				"summary": {
-					"bytesProcessedPerSeconds": 0,
+					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
-					"linesProcessedPerSeconds": 0,
+					"linesProcessedPerSecond": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
 				}

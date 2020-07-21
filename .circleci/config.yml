@@ -1,6 +1,6 @@
 version: 2
 
-.tags: &tags # tags need to be explicitely defined (whitelist)
+.tags: &tags # tags need to be explicitly defined (whitelist)
   tags: { only: "/.*/" }
 
 .only-tags: &only-tags
@@ -11,8 +11,7 @@ version: 2
   branches: { only: master }
   <<: *tags
 
-.no-master:
-  &no-master # contrary to tags, the branches must be excluded (blacklist)
+.no-master: &no-master # contrary to tags, the branches must be excluded
   branches: { ignore: master }
 
 workflows:
@@ -47,7 +46,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.9.2
+    - image: grafana/loki-build-image:0.9.3
   working_directory: /src/loki
 
 jobs:
@@ -129,13 +128,14 @@ jobs:
       - run:
           name: Install Chart Testing tool
           command: |
-            pip install yamale yamllint
+            pip install yamale==2.2.0 yamllint
             curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
             sudo tar -C /usr/local/bin -xvf ct.tgz
             sudo mv /usr/local/bin/etc /etc/ct/
       - run:
           name: Run Chart Tests
           command: |
+            helm repo add elastic https://helm.elastic.co
             ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
             ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
 

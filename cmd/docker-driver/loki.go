@@ -53,7 +53,7 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 // Log implements `logger.Logger`
 func (l *loki) Log(m *logger.Message) error {
 	if len(bytes.Fields(m.Line)) == 0 {
-		level.Info(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
+		level.Debug(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
 	}
 	lbs := l.labels.Clone()

@@ -332,13 +332,17 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	return nil
 }
 
-// ObjectSize returns the size of the specified object.
-func (b *Bucket) ObjectSize(_ context.Context, name string) (uint64, error) {
+// Attributes returns information about the specified object.
+func (b *Bucket) Attributes(_ context.Context, name string) (objstore.ObjectAttributes, error) {
 	objInfo, err := b.client.StatObject(b.name, name, minio.StatObjectOptions{})
 	if err != nil {
-		return 0, err
+		return objstore.ObjectAttributes{}, err
 	}
-	return uint64(objInfo.Size), nil
+
+	return objstore.ObjectAttributes{
+		Size:         objInfo.Size,
+		LastModified: objInfo.LastModified,
+	}, nil
 }
 
 // Delete removes the object with the given name.

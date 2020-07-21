@@ -33,8 +33,6 @@ const (
 	MetaFilename = "meta.json"
 	// IndexFilename is the known index file for block index.
 	IndexFilename = "index"
-	// IndexCacheFilename is the canonical name for json index cache file that stores essential information.
-	IndexCacheFilename = "index.cache.json"
 	// IndexHeaderFilename is the canonical name for binary index header file that stores essential information.
 	IndexHeaderFilename = "index-header"
 	// ChunksDirname is the known dir name for chunks with compressed samples.
@@ -103,12 +101,6 @@ func Upload(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir st
 
 	if err := objstore.UploadFile(ctx, logger, bkt, path.Join(bdir, IndexFilename), path.Join(id.String(), IndexFilename)); err != nil {
 		return cleanUp(logger, bkt, id, errors.Wrap(err, "upload index"))
-	}
-
-	if meta.Thanos.Source == metadata.CompactorSource {
-		if err := objstore.UploadFile(ctx, logger, bkt, path.Join(bdir, IndexCacheFilename), path.Join(id.String(), IndexCacheFilename)); err != nil {
-			return cleanUp(logger, bkt, id, errors.Wrap(err, "upload index cache"))
-		}
 	}
 
 	// Meta.json always need to be uploaded as a last item. This will allow to assume block directories without meta file

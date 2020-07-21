@@ -9,6 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -25,7 +26,7 @@ var fooLabels = "{foo=\"bar\"}"
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
 
-func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
+func assertStream(t *testing.T, expected, actual []logproto.Stream) {
 	if len(expected) != len(actual) {
 		t.Fatalf("error stream length are different expected %d actual %d\n%s", len(expected), len(actual), spew.Sdump(expected, actual))
 		return
@@ -46,16 +47,38 @@ func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
 	}
 }
 
-func newLazyChunk(stream logproto.Stream) *chunkenc.LazyChunk {
-	return &chunkenc.LazyChunk{
+func assertSeries(t *testing.T, expected, actual []logproto.Series) {
+	if len(expected) != len(actual) {
+		t.Fatalf("error stream length are different expected %d actual %d\n%s", len(expected), len(actual), spew.Sdump(expected, actual))
+		return
+	}
+	sort.Slice(expected, func(i int, j int) bool { return expected[i].Labels < expected[j].Labels })
+	sort.Slice(actual, func(i int, j int) bool { return actual[i].Labels < actual[j].Labels })
+	for i := range expected {
+		assert.Equal(t, expected[i].Labels, actual[i].Labels)
+		if len(expected[i].Samples) != len(actual[i].Samples) {
+			t.Fatalf("error entries length are different expected %d actual%d\n%s", len(expected[i].Samples), len(actual[i].Samples), spew.Sdump(expected[i].Samples, actual[i].Samples))
+
+			return
+		}
+		for j := range expected[i].Samples {
+			assert.Equal(t, expected[i].Samples[j].Timestamp, actual[i].Samples[j].Timestamp)
+			assert.Equal(t, expected[i].Samples[j].Value, actual[i].Samples[j].Value)
+			assert.Equal(t, expected[i].Samples[j].Hash, actual[i].Samples[j].Hash)
+		}
+	}
+}
+
+func newLazyChunk(stream logproto.Stream) *LazyChunk {
+	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: true,
 		Chunk:   newChunk(stream),
 	}
 }
 
-func newLazyInvalidChunk(stream logproto.Stream) *chunkenc.LazyChunk {
-	return &chunkenc.LazyChunk{
+func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
+	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: false,
 		Chunk:   newChunk(stream),
@@ -101,14 +124,27 @@ func newMatchers(matchers string) []*labels.Matcher {
 	return res
 }
 
-func newQuery(query string, start, end time.Time, direction logproto.Direction) *logproto.QueryRequest {
-	return &logproto.QueryRequest{
+func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation) *logproto.QueryRequest {
+	req := &logproto.QueryRequest{
 		Selector:  query,
 		Start:     start,
 		Limit:     1000,
 		End:       end,
-		Direction: direction,
+		Direction: logproto.FORWARD,
 	}
+	for _, shard := range shards {
+		req.Shards = append(req.Shards, shard.String())
+	}
+	return req
+}
+
+func newSampleQuery(query string, start, end time.Time) *logproto.SampleQueryRequest {
+	req := &logproto.SampleQueryRequest{
+		Selector: query,
+		Start:    start,
+		End:      end,
+	}
+	return req
 }
 
 type mockChunkStore struct {
@@ -200,7 +236,7 @@ func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chun
 	return res, nil
 }
 
-func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, chunkID string) error {
+func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	return nil
 }
 

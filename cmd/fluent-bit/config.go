@@ -36,8 +36,14 @@ const (
 	kvPairFormat
 )
 
+const (
+	falseStr = "false"
+	trueStr  = "true"
+)
+
 type config struct {
 	clientConfig         client.Config
+	bufferConfig         bufferConfig
 	logLevel             logging.Level
 	autoKubernetesLabels bool
 	removeKeys           []string
@@ -51,6 +57,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	res := &config{}
 
 	res.clientConfig = defaultClientCfg
+	res.bufferConfig = defaultBufferConfig
 
 	url := cfg.Get("URL")
 	var clientURL flagext.URLValue
@@ -68,11 +75,17 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 
 	batchWait := cfg.Get("BatchWait")
 	if batchWait != "" {
-		batchWaitValue, err := strconv.Atoi(batchWait)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse BatchWait: %s", batchWait)
+		// first try to parse as seconds format.
+		batchWaitSeconds, err := strconv.Atoi(batchWait)
+		if err == nil {
+			res.clientConfig.BatchWait = time.Duration(batchWaitSeconds) * time.Second
+		} else {
+			batchWaitValue, err := time.ParseDuration(batchWait)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse BatchWait: %s", batchWait)
+			}
+			res.clientConfig.BatchWait = batchWaitValue
 		}
-		res.clientConfig.BatchWait = time.Duration(batchWaitValue) * time.Second
 	}
 
 	batchSize := cfg.Get("BatchSize")
@@ -82,6 +95,42 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 			return nil, fmt.Errorf("failed to parse BatchSize: %s", batchSize)
 		}
 		res.clientConfig.BatchSize = batchSizeValue
+	}
+
+	timeout := cfg.Get("Timeout")
+	if timeout != "" {
+		timeoutValue, err := time.ParseDuration(timeout)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse Timeout: %s", timeout)
+		}
+		res.clientConfig.Timeout = timeoutValue
+	}
+
+	minBackoff := cfg.Get("MinBackoff")
+	if minBackoff != "" {
+		minBackoffValue, err := time.ParseDuration(minBackoff)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse MinBackoff: %s", minBackoff)
+		}
+		res.clientConfig.BackoffConfig.MinBackoff = minBackoffValue
+	}
+
+	maxBackoff := cfg.Get("MaxBackoff")
+	if maxBackoff != "" {
+		maxBackoffValue, err := time.ParseDuration(maxBackoff)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse MaxBackoff: %s", maxBackoff)
+		}
+		res.clientConfig.BackoffConfig.MaxBackoff = maxBackoffValue
+	}
+
+	maxRetries := cfg.Get("MaxRetries")
+	if maxRetries != "" {
+		maxRetriesValue, err := strconv.Atoi(maxRetries)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse MaxRetries: %s", maxRetries)
+		}
+		res.clientConfig.BackoffConfig.MaxRetries = maxRetriesValue
 	}
 
 	labels := cfg.Get("Labels")
@@ -110,9 +159,9 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 
 	autoKubernetesLabels := cfg.Get("AutoKubernetesLabels")
 	switch autoKubernetesLabels {
-	case "false", "":
+	case falseStr, "":
 		res.autoKubernetesLabels = false
-	case "true":
+	case trueStr:
 		res.autoKubernetesLabels = true
 	default:
 		return nil, fmt.Errorf("invalid boolean AutoKubernetesLabels: %v", autoKubernetesLabels)
@@ -130,9 +179,9 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 
 	dropSingleKey := cfg.Get("DropSingleKey")
 	switch dropSingleKey {
-	case "false":
+	case falseStr:
 		res.dropSingleKey = false
-	case "true", "":
+	case trueStr, "":
 		res.dropSingleKey = true
 	default:
 		return nil, fmt.Errorf("invalid boolean DropSingleKey: %v", dropSingleKey)
@@ -159,5 +208,55 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		}
 		res.labelKeys = nil
 	}
+
+	// enable loki plugin buffering
+	buffer := cfg.Get("Buffer")
+	switch buffer {
+	case falseStr, "":
+		res.bufferConfig.buffer = false
+	case trueStr:
+		res.bufferConfig.buffer = true
+	default:
+		return nil, fmt.Errorf("invalid boolean Buffer: %v", buffer)
+	}
+
+	// buffering type
+	bufferType := cfg.Get("BufferType")
+	if bufferType != "" {
+		res.bufferConfig.bufferType = bufferType
+	}
+
+	// dque directory
+	queueDir := cfg.Get("DqueDir")
+	if queueDir != "" {
+		res.bufferConfig.dqueConfig.queueDir = queueDir
+	}
+
+	// dque segment size (queueEntry unit)
+	queueSegmentSize := cfg.Get("DqueSegmentSize")
+	if queueSegmentSize != "" {
+		res.bufferConfig.dqueConfig.queueSegmentSize, err = strconv.Atoi(queueSegmentSize)
+		if err != nil {
+			return nil, fmt.Errorf("impossible to convert string to integer DqueSegmentSize: %v", queueSegmentSize)
+		}
+	}
+
+	// dque control file change sync to disk as they happen aka dque.turbo mode
+	queueSync := cfg.Get("DqueSync")
+	switch queueSync {
+	case "normal", "":
+		res.bufferConfig.dqueConfig.queueSync = false
+	case "full":
+		res.bufferConfig.dqueConfig.queueSync = true
+	default:
+		return nil, fmt.Errorf("invalid string queueSync: %v", queueSync)
+	}
+
+	// dque name
+	queueName := cfg.Get("DqueName")
+	if queueName != "" {
+		res.bufferConfig.dqueConfig.queueName = queueName
+	}
+
 	return res, nil
 }

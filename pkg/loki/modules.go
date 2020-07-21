@@ -1,17 +1,18 @@
 package loki
 
 import (
+	"errors"
 	"fmt"
 	"github.com/grafana/loki/pkg/tailproxy"
 	"net/http"
 	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/cortex"
+	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -35,52 +36,31 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/local"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const maxChunkAgeForTableManager = 12 * time.Hour
 
-type moduleName string
-
 // The various modules that make up Loki.
 const (
-	Ring          moduleName = "ring"
-	RuntimeConfig moduleName = "runtime-config"
-	Overrides     moduleName = "overrides"
-	Server        moduleName = "server"
-	Distributor   moduleName = "distributor"
-	Ingester      moduleName = "ingester"
-	Querier       moduleName = "querier"
-	QueryFrontend moduleName = "query-frontend"
-	Store         moduleName = "store"
-	TableManager  moduleName = "table-manager"
-	MemberlistKV  moduleName = "memberlist-kv"
-	All           moduleName = "all"
+	Ring          string = "ring"
+	RuntimeConfig string = "runtime-config"
+	Overrides     string = "overrides"
+	Server        string = "server"
+	Distributor   string = "distributor"
+	Ingester      string = "ingester"
+	Querier       string = "querier"
+	QueryFrontend string = "query-frontend"
+	Store         string = "store"
+	TableManager  string = "table-manager"
+	MemberlistKV  string = "memberlist-kv"
+	All           string = "all"
 )
 
-func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var val string
-	if err := unmarshal(&val); err != nil {
-		return err
-	}
-
-	return m.Set(val)
-}
-
-func (m moduleName) String() string {
-	return string(m)
-}
-
-func (m *moduleName) Set(s string) error {
-	l := moduleName(strings.ToLower(s))
-	if _, ok := modules[l]; !ok {
-		return fmt.Errorf("unrecognised module name: %s", s)
-	}
-	*m = l
-	return nil
-}
-
 func (t *Loki) initServer() (services.Service, error) {
+	// Loki handles signals on its own.
+	cortex.DisableSignalHandling(&t.cfg.Server)
 	serv, err := server.New(t.cfg.Server)
 	if err != nil {
 		return nil, err
@@ -107,7 +87,7 @@ func (t *Loki) initServer() (services.Service, error) {
 func (t *Loki) initRing() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
+	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -141,12 +121,13 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	var err error
-	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides)
+	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
 
 	pushHandler := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
@@ -157,19 +138,22 @@ func (t *Loki) initDistributor() (services.Service, error) {
 
 func (t *Loki) initQuerier() (services.Service, error) {
 	level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
-	worker, err := frontend.NewWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	worker, err := frontend.NewWorker(t.cfg.Worker, cortex_querier.Config{MaxConcurrent: t.cfg.Querier.MaxConcurrent}, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
 	if err != nil {
 		return nil, err
 	}
-
+	if t.cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
+		t.cfg.Querier.IngesterQueryStoreMaxLookback = t.cfg.Ingester.QueryStoreMaxLookBackPeriod
+	}
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
 		return nil, err
 	}
 
 	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
-		querier.NewPrepopulateMiddleware(),
+		serverutil.NewPrepopulateMiddleware(),
 	)
 	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
@@ -195,13 +179,17 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
 
 	// We want ingester to also query the store when using boltdb-shipper
-	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
+	pc := activePeriodConfig(t.cfg.SchemaConfig)
+	if pc.IndexType == local.BoltDBShipperType {
 		t.cfg.Ingester.QueryStore = true
-		// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
-		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = t.cfg.Ingester.MaxChunkAge + local.ShipperFileUploadInterval + (15 * time.Minute)
+		mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
+		if err != nil {
+			return nil, err
+		}
+		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
 	}
 
-	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -236,7 +224,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		os.Exit(1)
 	}
 
-	tableClient, err := loki_storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +232,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, prometheus.DefaultRegisterer)
+	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +241,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
-	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
+	if activePeriodConfig(t.cfg.SchemaConfig).IndexType == local.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
@@ -288,7 +276,14 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
 		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
 	)
-	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides, prometheus.DefaultRegisterer)
+	tripperware, stopper, err := queryrange.NewTripperware(
+		t.cfg.QueryRange,
+		util.Logger,
+		t.overrides,
+		t.cfg.SchemaConfig,
+		t.cfg.Querier.QueryIngestersWithin,
+		prometheus.DefaultRegisterer,
+	)
 	if err != nil {
 		return
 	}
@@ -296,7 +291,12 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.frontend.Wrap(tripperware)
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
-	frontendHandler := queryrange.StatsHTTPMiddleware.Wrap(t.httpAuthMiddleware.Wrap(t.frontend.Handler()))
+	frontendHandler := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+		queryrange.StatsHTTPMiddleware,
+		t.httpAuthMiddleware,
+		serverutil.NewPrepopulateMiddleware(),
+	).Wrap(t.frontend.Handler())
 
 	httpMiddleware := middleware.Merge(
 		t.httpAuthMiddleware,
@@ -333,159 +333,14 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
-	t.memberlistKV = memberlist.NewKVInit(&t.cfg.MemberlistKV)
-	return services.NewIdleService(nil, func(_ error) error {
-		t.memberlistKV.Stop()
-		return nil
-	}), nil
+
+	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV)
+	return t.memberlistKV, nil
 }
 
-// listDeps recursively gets a list of dependencies for a passed moduleName
-func listDeps(m moduleName) []moduleName {
-	deps := modules[m].deps
-	for _, d := range modules[m].deps {
-		deps = append(deps, listDeps(d)...)
-	}
-	return deps
-}
-
-// orderedDeps gets a list of all dependencies ordered so that items are always after any of their dependencies.
-func orderedDeps(m moduleName) []moduleName {
-	// get a unique list of dependencies and init a map to keep whether they have been added to our result
-	deps := uniqueDeps(listDeps(m))
-	added := map[moduleName]bool{}
-
-	result := make([]moduleName, 0, len(deps))
-
-	// keep looping through all modules until they have all been added to the result.
-	for len(result) < len(deps) {
-	OUTER:
-		for _, name := range deps {
-			if added[name] {
-				continue
-			}
-
-			for _, dep := range modules[name].deps {
-				// stop processing this module if one of its dependencies has
-				// not been added to the result yet.
-				if !added[dep] {
-					continue OUTER
-				}
-			}
-
-			// if all of the module's dependencies have been added to the result slice,
-			// then we can safely add this module to the result slice as well.
-			added[name] = true
-			result = append(result, name)
-		}
-	}
-
-	return result
-}
-
-// uniqueDeps returns the unique list of input dependencies, guaranteeing input order stability
-func uniqueDeps(deps []moduleName) []moduleName {
-	result := make([]moduleName, 0, len(deps))
-	uniq := map[moduleName]bool{}
-
-	for _, dep := range deps {
-		if !uniq[dep] {
-			result = append(result, dep)
-			uniq[dep] = true
-		}
-	}
-
-	return result
-}
-
-// find modules in the supplied list, that depend on mod
-func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
-	result := []moduleName(nil)
-
-	for _, n := range mods {
-		for _, d := range modules[n].deps {
-			if d == mod {
-				result = append(result, n)
-				break
-			}
-		}
-	}
-
-	return result
-}
-
-type module struct {
-	deps []moduleName
-
-	// service for this module (can return nil)
-	service func(t *Loki) (services.Service, error)
-
-	// service that will be wrapped into moduleServiceWrapper, to wait for dependencies to start / end
-	// (can return nil)
-	wrappedService func(t *Loki) (services.Service, error)
-}
-
-var modules = map[moduleName]module{
-	Server: {
-		service: (*Loki).initServer,
-	},
-
-	RuntimeConfig: {
-		wrappedService: (*Loki).initRuntimeConfig,
-	},
-
-	MemberlistKV: {
-		wrappedService: (*Loki).initMemberlistKV,
-	},
-
-	Ring: {
-		deps:           []moduleName{RuntimeConfig, Server, MemberlistKV},
-		wrappedService: (*Loki).initRing,
-	},
-
-	Overrides: {
-		deps:           []moduleName{RuntimeConfig},
-		wrappedService: (*Loki).initOverrides,
-	},
-
-	Distributor: {
-		deps:           []moduleName{Ring, Server, Overrides},
-		wrappedService: (*Loki).initDistributor,
-	},
-
-	Store: {
-		deps:           []moduleName{Overrides},
-		wrappedService: (*Loki).initStore,
-	},
-
-	Ingester: {
-		deps:           []moduleName{Store, Server, MemberlistKV},
-		wrappedService: (*Loki).initIngester,
-	},
-
-	Querier: {
-		deps:           []moduleName{Store, Ring, Server},
-		wrappedService: (*Loki).initQuerier,
-	},
-
-	QueryFrontend: {
-		deps:           []moduleName{Server, Overrides},
-		wrappedService: (*Loki).initQueryFrontend,
-	},
-
-	TableManager: {
-		deps:           []moduleName{Server},
-		wrappedService: (*Loki).initTableManager,
-	},
-
-	All: {
-		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
-	},
-}
-
-// activeIndexType type returns index type which would be applicable to logs that would be pushed starting now
+// activePeriodConfig type returns index type which would be applicable to logs that would be pushed starting now
 // Note: Another periodic config can be applicable in future which can change index type
-func activeIndexType(cfg chunk.SchemaConfig) string {
+func activePeriodConfig(cfg chunk.SchemaConfig) chunk.PeriodConfig {
 	now := model.Now()
 	i := sort.Search(len(cfg.Configs), func(i int) bool {
 		return cfg.Configs[i].From.Time > now
@@ -493,5 +348,25 @@ func activeIndexType(cfg chunk.SchemaConfig) string {
 	if i > 0 {
 		i--
 	}
-	return cfg.Configs[i].IndexType
+	return cfg.Configs[i]
+}
+
+func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge time.Duration) (time.Duration, error) {
+	if pc.ObjectType != local.FilesystemObjectStoreType && maxLookBackConfig.Nanoseconds() != 0 {
+		return 0, errors.New("it is an error to specify a non zero `query_store_max_look_back_period` value when using any object store other than `filesystem`")
+	}
+	// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
+	defaultMaxLookBack := maxChunkAge + local.ShipperFileUploadInterval + (15 * time.Minute)
+
+	if maxLookBackConfig == 0 {
+		// If the QueryStoreMaxLookBackPeriod is still it's default value of 0, set it to the default calculated value.
+		return defaultMaxLookBack, nil
+	} else if maxLookBackConfig > 0 && maxLookBackConfig < defaultMaxLookBack {
+		// If the QueryStoreMaxLookBackPeriod is > 0 (-1 is allowed for infinite), make sure it's at least greater than the default or throw an error
+		return 0, fmt.Errorf("the configured query_store_max_look_back_period of '%v' is less than the calculated default of '%v' "+
+			"which is calculated based on the max_chunk_age + 15 minute boltdb-shipper interval + 15 min additional buffer.  Increase this value"+
+			"greater than the default or remove it from the configuration to use the default", maxLookBackConfig, defaultMaxLookBack)
+
+	}
+	return maxLookBackConfig, nil
 }

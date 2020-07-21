@@ -16,7 +16,7 @@
 package sdjournal
 
 import (
-	"github.com/coreos/pkg/dlopen"
+	"github.com/coreos/go-systemd/internal/dlopen"
 	"sync"
 	"unsafe"
 )

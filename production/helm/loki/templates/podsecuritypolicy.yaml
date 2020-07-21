@@ -3,7 +3,6 @@ apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 metadata:
   name: {{ template "loki.fullname" . }}
-  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ template "loki.name" . }}
     chart: {{ template "loki.chart" . }}
@@ -17,6 +16,8 @@ spec:
     - 'emptyDir'
     - 'persistentVolumeClaim'
     - 'secret'
+    - 'projected'
+    - 'downwardAPI'
   hostNetwork: false
   hostIPC: false
   hostPID: false
@@ -38,4 +39,3 @@ spec:
   requiredDropCapabilities:
     - ALL
 {{- end }}
-

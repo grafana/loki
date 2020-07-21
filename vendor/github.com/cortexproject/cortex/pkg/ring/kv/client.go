@@ -6,11 +6,28 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
+
+const (
+	// Primary is a role to use KV store primarily.
+	Primary = role("primary")
+	// Secondary is a role for KV store used by "multi" KV store.
+	Secondary = role("secondary")
+)
+
+// The role type indicates a role of KV store.
+type role string
+
+// Labels method returns Prometheus labels relevant to itself.
+func (r *role) Labels() prometheus.Labels {
+	return prometheus.Labels{"role": string(*r)}
+}
 
 // The NewInMemoryKVClient returned by NewClient() is a singleton, so
 // that distributors and ingesters started in the same process can
@@ -59,7 +76,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f 
 		flagsPrefix = "ring."
 	}
 	f.StringVar(&cfg.Prefix, flagsPrefix+"prefix", defaultPrefix, "The prefix for the keys in the store. Should end with a /.")
-	f.StringVar(&cfg.Store, flagsPrefix+"store", "consul", "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, multi, memberlist (experimental).")
+	f.StringVar(&cfg.Store, flagsPrefix+"store", "consul", "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, memberlist, multi.")
 }
 
 // Client is a high-level client for key-value stores (such as Etcd and
@@ -97,19 +114,19 @@ type Client interface {
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
 // encodes and decodes data for storage using the codec.
-func NewClient(cfg Config, codec codec.Codec) (Client, error) {
+func NewClient(cfg Config, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	if cfg.Mock != nil {
 		return cfg.Mock, nil
 	}
 
-	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec)
+	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, Primary, reg)
 }
 
-func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec) (Client, error) {
+func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Codec, role role, reg prometheus.Registerer) (Client, error) {
 	var client Client
 	var err error
 
-	switch name {
+	switch backend {
 	case "consul":
 		client, err = consul.NewClient(cfg.Consul, codec)
 
@@ -135,10 +152,14 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		}
 
 	case "multi":
-		client, err = buildMultiClient(cfg, codec)
+		client, err = buildMultiClient(cfg, codec, reg)
+
+	// This case is for testing. The mock KV client does not do anything internally.
+	case "mock":
+		client, err = buildMockClient()
 
 	default:
-		return nil, fmt.Errorf("invalid KV store type: %s", name)
+		return nil, fmt.Errorf("invalid KV store type: %s", backend)
 	}
 
 	if err != nil {
@@ -149,10 +170,15 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		client = PrefixClient(client, prefix)
 	}
 
-	return metrics{client}, nil
+	// If no Registerer is provided return the raw client.
+	if reg == nil {
+		return client, nil
+	}
+
+	return newMetricsClient(backend, client, prometheus.WrapRegistererWith(role.Labels(), reg)), nil
 }
 
-func buildMultiClient(cfg StoreConfig, codec codec.Codec) (Client, error) {
+func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
 	if cfg.Multi.Primary == "" || cfg.Multi.Secondary == "" {
 		return nil, fmt.Errorf("primary or secondary store not set")
 	}
@@ -163,12 +189,12 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec) (Client, error) {
 		return nil, fmt.Errorf("primary and secondary stores must be different")
 	}
 
-	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec)
+	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec, Primary, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec)
+	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec, Secondary, reg)
 	if err != nil {
 		return nil, err
 	}

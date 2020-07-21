@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -64,7 +66,7 @@ type Config struct {
 	ingesterClientFactory func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error)
 
 	QueryStore                  bool          `yaml:"-"`
-	QueryStoreMaxLookBackPeriod time.Duration `yaml:"-"`
+	QueryStoreMaxLookBackPeriod time.Duration `yaml:"query_store_max_look_back_period"`
 }
 
 // RegisterFlags registers the flags.
@@ -72,7 +74,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
-	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushed", 16, "")
+	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 16, "")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
@@ -84,6 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
+	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -119,11 +122,12 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
-	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -145,7 +149,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		},
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -282,13 +286,21 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	itrs, err := instance.Query(ctx, req)
+	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
 	}
 
-	if storeReq := buildStoreRequest(i.cfg, req); storeReq != nil {
-		storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: storeReq})
+	if start, end, ok := buildStoreRequest(i.cfg, req.End, req.End, time.Now()); ok {
+		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  req.Selector,
+			Direction: req.Direction,
+			Start:     start,
+			End:       end,
+			Limit:     req.Limit,
+			Shards:    req.Shards,
+		}}
+		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
 			return err
 		}
@@ -303,6 +315,45 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
 }
 
+// QuerySample the ingesters for series from logs matching a set of matchers.
+func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
+	// initialize stats collection for ingester queries and set grpc trailer with stats.
+	ctx := stats.NewContext(queryServer.Context())
+	defer stats.SendAsTrailer(ctx, queryServer)
+
+	instanceID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	if err != nil {
+		return err
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start:    start,
+			End:      end,
+			Selector: req.Selector,
+			Shards:   req.Shards,
+		}}
+		storeItr, err := i.store.SelectSamples(ctx, storeReq)
+		if err != nil {
+			return err
+		}
+
+		itrs = append(itrs, storeItr)
+	}
+
+	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
+
+	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+
+	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
+}
+
 // Label returns the set of labels for the stream this ingester knows about.
 func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	instanceID, err := user.ExtractOrgID(ctx)
@@ -311,7 +362,50 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	return instance.Label(ctx, req)
+	resp, err := instance.Label(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only continue if we should query the store for labels
+	if !i.cfg.QueryStore {
+		return resp, nil
+	}
+
+	// Only continue if the store is a chunk.Store
+	var cs chunk.Store
+	var ok bool
+	if cs, ok = i.store.(chunk.Store); !ok {
+		return resp, nil
+	}
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
+	start := adjustQueryStartTime(i.cfg, *req.Start, time.Now())
+	if start.After(*req.End) {
+		// The request is older than we are allowed to query the store, just return what we have.
+		return resp, nil
+	}
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	var storeValues []string
+	if req.Values {
+		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &logproto.LabelResponse{
+		Values: listutil.MergeStringLists(resp.Values, storeValues),
+	}, nil
 }
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
@@ -408,26 +502,24 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 // buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
 // we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
-func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRequest {
+func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.Time, bool) {
 	if !cfg.QueryStore {
-		return nil
+		return time.Time{}, time.Time{}, false
 	}
-	start := req.Start
-	end := req.End
-	if cfg.QueryStoreMaxLookBackPeriod != 0 {
-		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
-		if oldestStartTime.After(req.Start) {
-			start = oldestStartTime
-		}
-	}
+	start = adjustQueryStartTime(cfg, start, now)
 
 	if start.After(end) {
-		return nil
+		return time.Time{}, time.Time{}, false
 	}
+	return start, end, true
+}
 
-	newRequest := *req
-	newRequest.Start = start
-	newRequest.End = end
-
-	return &newRequest
+func adjustQueryStartTime(cfg Config, start, now time.Time) time.Time {
+	if cfg.QueryStoreMaxLookBackPeriod > 0 {
+		oldestStartTime := now.Add(-cfg.QueryStoreMaxLookBackPeriod)
+		if oldestStartTime.After(start) {
+			return oldestStartTime
+		}
+	}
+	return start
 }

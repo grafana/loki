@@ -10,14 +10,14 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/cfg"
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -90,11 +90,11 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput) {
 	switch value.Type() {
 	case logql.ValueTypeStreams:
 		q.printStream(value.(loghttp.Streams), out)
-	case promql.ValueTypeScalar:
+	case parser.ValueTypeScalar:
 		q.printScalar(value.(loghttp.Scalar))
-	case promql.ValueTypeMatrix:
+	case parser.ValueTypeMatrix:
 		q.printMatrix(value.(loghttp.Matrix))
-	case promql.ValueTypeVector:
+	case parser.ValueTypeVector:
 		q.printVector(value.(loghttp.Vector))
 	default:
 		log.Fatalf("Unable to print unsupported type: %v", value.Type())
@@ -112,17 +112,45 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	querier, err := localStore(conf)
+	if err := conf.Validate(util.Logger); err != nil {
+		return err
+	}
+
+	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
+	if err != nil {
+		return err
+	}
+
+	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}
 
 	eng := logql.NewEngine(conf.Querier.Engine, querier)
 	var query logql.Query
+
 	if q.isInstant() {
-		query = eng.NewInstantQuery(q.QueryString, q.Start, q.resultsDirection(), uint32(q.Limit))
+		query = eng.Query(logql.NewLiteralParams(
+			q.QueryString,
+			q.Start,
+			q.Start,
+			0,
+			0,
+			q.resultsDirection(),
+			uint32(q.Limit),
+			nil,
+		))
 	} else {
-		query = eng.NewRangeQuery(q.QueryString, q.Start, q.End, q.Step, q.Interval, q.resultsDirection(), uint32(q.Limit))
+		query = eng.Query(logql.NewLiteralParams(
+			q.QueryString,
+			q.Start,
+			q.End,
+			q.Step,
+			q.Interval,
+			q.resultsDirection(),
+			uint32(q.Limit),
+			nil,
+		))
 	}
 
 	// execute the query
@@ -143,20 +171,6 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	q.printResult(value, out)
 	return nil
-}
-
-func localStore(conf loki.Config) (logql.Querier, error) {
-	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
-	if err != nil {
-		return nil, err
-	}
-	s, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, err
-	}
-	return logql.QuerierFunc(func(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
-		return s.LazyQuery(ctx, params)
-	}), nil
 }
 
 // SetInstant makes the Query an instant type

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -17,6 +17,13 @@ type ByToken []TokenDesc
 func (ts ByToken) Len() int           { return len(ts) }
 func (ts ByToken) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts ByToken) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
+
+// ByAddr is a sortable list of IngesterDesc.
+type ByAddr []IngesterDesc
+
+func (ts ByAddr) Len() int           { return len(ts) }
+func (ts ByAddr) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
+func (ts ByAddr) Less(i, j int) bool { return ts[i].Addr < ts[j].Addr }
 
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
@@ -403,23 +410,6 @@ func (d *Desc) getTokens() []TokenDesc {
 
 	sort.Sort(ByToken(tokens))
 	return tokens
-}
-
-// TokenDescs holds a sorted list of TokenDesc.
-type TokenDescs []TokenDesc
-
-func (t TokenDescs) Equals(other TokenDescs) bool {
-	if len(t) != len(other) {
-		return false
-	}
-
-	for i := 0; i < len(t); i++ {
-		if (t[i].Token != other[i].Token) || (t[i].Ingester != other[i].Ingester) || (t[i].Zone != other[i].Zone) {
-			return false
-		}
-	}
-
-	return true
 }
 
 func GetOrCreateRingDesc(d interface{}) *Desc {

@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -17,7 +18,7 @@ const (
 	// the scrape interval of a series is greater than this TTL.
 	DefaultRefCacheTTL = 10 * time.Minute
 
-	numRefCacheStripes = 128
+	numRefCacheStripes = 512
 )
 
 // RefCache is a single-tenant cache mapping a labels set with the reference
@@ -27,20 +28,20 @@ const (
 type RefCache struct {
 	// The cache is split into stripes, each one with a dedicated lock, in
 	// order to reduce lock contention.
-	stripes [numRefCacheStripes]*refCacheStripe
+	stripes [numRefCacheStripes]refCacheStripe
 }
 
 // refCacheStripe holds a subset of the series references for a single tenant.
 type refCacheStripe struct {
-	refsMu sync.Mutex
-	refs   map[model.Fingerprint][]*refCacheEntry
+	refsMu sync.RWMutex
+	refs   map[model.Fingerprint][]refCacheEntry
 }
 
 // refCacheEntry holds a single series reference.
 type refCacheEntry struct {
 	lbs       labels.Labels
 	ref       uint64
-	touchedAt time.Time
+	touchedAt int64 // Unix nano time.
 }
 
 // NewRefCache makes a new RefCache.
@@ -48,10 +49,8 @@ func NewRefCache() *RefCache {
 	c := &RefCache{}
 
 	// Stripes are pre-allocated so that we only read on them and no lock is required.
-	for i := uint8(0); i < numRefCacheStripes; i++ {
-		c.stripes[i] = &refCacheStripe{
-			refs: map[model.Fingerprint][]*refCacheEntry{},
-		}
+	for i := 0; i < numRefCacheStripes; i++ {
+		c.stripes[i].refs = map[model.Fingerprint][]refCacheEntry{}
 	}
 
 	return c
@@ -61,7 +60,7 @@ func NewRefCache() *RefCache {
 // is NOT retained.
 func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
 	fp := client.Fingerprint(series)
-	stripeID := uint8(util.HashFP(fp) % numRefCacheStripes)
+	stripeID := util.HashFP(fp) % numRefCacheStripes
 
 	return c.stripes[stripeID].ref(now, series, fp)
 }
@@ -69,7 +68,7 @@ func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
 // SetRef sets/updates the cached series reference. The input labels set IS retained.
 func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
 	fp := client.Fingerprint(series)
-	stripeID := uint8(util.HashFP(fp) % numRefCacheStripes)
+	stripeID := util.HashFP(fp) % numRefCacheStripes
 
 	c.stripes[stripeID].setRef(now, series, fp, ref)
 }
@@ -77,27 +76,25 @@ func (c *RefCache) SetRef(now time.Time, series labels.Labels, ref uint64) {
 // Purge removes expired entries from the cache. This function should be called
 // periodically to avoid memory leaks.
 func (c *RefCache) Purge(keepUntil time.Time) {
-	for s := uint8(0); s < numRefCacheStripes; s++ {
+	for s := 0; s < numRefCacheStripes; s++ {
 		c.stripes[s].purge(keepUntil)
 	}
 }
 
 func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Fingerprint) (uint64, bool) {
-	s.refsMu.Lock()
-	defer s.refsMu.Unlock()
+	s.refsMu.RLock()
+	defer s.refsMu.RUnlock()
 
 	entries, ok := s.refs[fp]
 	if !ok {
 		return 0, false
 	}
 
-	for _, entry := range entries {
-		if labels.Equal(entry.lbs, series) {
-			// Get the reference and touch the timestamp before releasing the lock
-			ref := entry.ref
-			entry.touchedAt = now
-
-			return ref, true
+	for ix := range entries {
+		if labels.Equal(entries[ix].lbs, series) {
+			// Since we use read-only lock, we need to use atomic update.
+			atomic.StoreInt64(&entries[ix].touchedAt, now.UnixNano())
+			return entries[ix].ref, true
 		}
 	}
 
@@ -109,29 +106,32 @@ func (s *refCacheStripe) setRef(now time.Time, series labels.Labels, fp model.Fi
 	defer s.refsMu.Unlock()
 
 	// Check if already exists within the entries.
-	for _, entry := range s.refs[fp] {
+	for ix, entry := range s.refs[fp] {
 		if !labels.Equal(entry.lbs, series) {
 			continue
 		}
 
 		entry.ref = ref
-		entry.touchedAt = now
+		entry.touchedAt = now.UnixNano()
+		s.refs[fp][ix] = entry
 		return
 	}
 
 	// The entry doesn't exist, so we have to add a new one.
-	s.refs[fp] = append(s.refs[fp], &refCacheEntry{lbs: series, ref: ref, touchedAt: now})
+	s.refs[fp] = append(s.refs[fp], refCacheEntry{lbs: series, ref: ref, touchedAt: now.UnixNano()})
 }
 
 func (s *refCacheStripe) purge(keepUntil time.Time) {
 	s.refsMu.Lock()
 	defer s.refsMu.Unlock()
 
+	keepUntilNanos := keepUntil.UnixNano()
+
 	for fp, entries := range s.refs {
 		// Since we do expect very few fingerprint collisions, we
 		// have an optimized implementation for the common case.
 		if len(entries) == 1 {
-			if entries[0].touchedAt.Before(keepUntil) {
+			if entries[0].touchedAt < keepUntilNanos {
 				delete(s.refs, fp)
 			}
 
@@ -141,7 +141,7 @@ func (s *refCacheStripe) purge(keepUntil time.Time) {
 		// We have more entries, which means there's a collision,
 		// so we have to iterate over the entries.
 		for i := 0; i < len(entries); {
-			if entries[i].touchedAt.Before(keepUntil) {
+			if entries[i].touchedAt < keepUntilNanos {
 				entries = append(entries[:i], entries[i+1:]...)
 			} else {
 				i++

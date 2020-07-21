@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
@@ -23,10 +24,10 @@ func newTimeSeriesSeriesSet(series []client.TimeSeries) *timeSeriesSeriesSet {
 	}
 }
 
-// Next implements SeriesSet interface
+// Next implements storage.SeriesSet interface.
 func (t *timeSeriesSeriesSet) Next() bool { t.i++; return t.i < len(t.ts) }
 
-// At implements SeriesSet interface
+// At implements storage.SeriesSet interface.
 func (t *timeSeriesSeriesSet) At() storage.Series {
 	if t.i < 0 {
 		return nil
@@ -34,8 +35,11 @@ func (t *timeSeriesSeriesSet) At() storage.Series {
 	return &timeseries{series: t.ts[t.i]}
 }
 
-// Err implements SeriesSet interface
+// Err implements storage.SeriesSet interface.
 func (t *timeSeriesSeriesSet) Err() error { return nil }
+
+// Warnings implements storage.SeriesSet interface.
+func (t *timeSeriesSeriesSet) Warnings() storage.Warnings { return nil }
 
 // timeseries is a type wrapper that implements the storage.Series interface
 type timeseries struct {
@@ -63,7 +67,7 @@ func (t *timeseries) Labels() labels.Labels {
 }
 
 // Iterator implements the storage.Series interface
-func (t *timeseries) Iterator() storage.SeriesIterator {
+func (t *timeseries) Iterator() chunkenc.Iterator {
 	return &timeSeriesSeriesIterator{
 		ts: t,
 		i:  -1,

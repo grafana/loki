@@ -19,12 +19,12 @@ package series
 import (
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
@@ -44,19 +44,24 @@ func NewConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
 	}
 }
 
-// Next iterates through a series set and impls storage.SeriesSet
+// Next iterates through a series set and implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) Next() bool {
 	c.cur++
 	return c.cur < len(c.series)
 }
 
-// At returns the current series and impls storage.SeriesSet
+// At returns the current series and implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) At() storage.Series {
 	return c.series[c.cur]
 }
 
-// Err impls storage.SeriesSet
+// Err implements storage.SeriesSet.
 func (c *ConcreteSeriesSet) Err() error {
+	return nil
+}
+
+// Warnings implements storage.SeriesSet.
+func (c *ConcreteSeriesSet) Warnings() storage.Warnings {
 	return nil
 }
 
@@ -74,24 +79,24 @@ func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSe
 	}
 }
 
-// Labels impls storage.Series
+// Labels implements storage.Series
 func (c *ConcreteSeries) Labels() labels.Labels {
 	return c.labels
 }
 
-// Iterator impls storage.Series
-func (c *ConcreteSeries) Iterator() storage.SeriesIterator {
+// Iterator implements storage.Series
+func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
 
-// concreteSeriesIterator implements storage.SeriesIterator.
+// concreteSeriesIterator implements chunkenc.Iterator.
 type concreteSeriesIterator struct {
 	cur    int
 	series *ConcreteSeries
 }
 
-// NewConcreteSeriesIterator instaniates an in memory storage.SeriesIterator
-func NewConcreteSeriesIterator(series *ConcreteSeries) storage.SeriesIterator {
+// NewConcreteSeriesIterator instaniates an in memory chunkenc.Iterator
+func NewConcreteSeriesIterator(series *ConcreteSeries) chunkenc.Iterator {
 	return &concreteSeriesIterator{
 		cur:    -1,
 		series: series,
@@ -120,11 +125,11 @@ func (c *concreteSeriesIterator) Err() error {
 }
 
 // NewErrIterator instantiates an errIterator
-func NewErrIterator(err error) storage.SeriesIterator {
+func NewErrIterator(err error) chunkenc.Iterator {
 	return errIterator{err}
 }
 
-// errIterator implements storage.SeriesIterator, just returning an error.
+// errIterator implements chunkenc.Iterator, just returning an error.
 type errIterator struct {
 	err error
 }
@@ -224,6 +229,10 @@ func (d DeletedSeriesSet) Err() error {
 	return d.seriesSet.Err()
 }
 
+func (d DeletedSeriesSet) Warnings() storage.Warnings {
+	return nil
+}
+
 type DeletedSeries struct {
 	series           storage.Series
 	deletedIntervals []model.Interval
@@ -240,16 +249,16 @@ func (d DeletedSeries) Labels() labels.Labels {
 	return d.series.Labels()
 }
 
-func (d DeletedSeries) Iterator() storage.SeriesIterator {
+func (d DeletedSeries) Iterator() chunkenc.Iterator {
 	return NewDeletedSeriesIterator(d.series.Iterator(), d.deletedIntervals)
 }
 
 type DeletedSeriesIterator struct {
-	itr              storage.SeriesIterator
+	itr              chunkenc.Iterator
 	deletedIntervals []model.Interval
 }
 
-func NewDeletedSeriesIterator(itr storage.SeriesIterator, deletedIntervals []model.Interval) storage.SeriesIterator {
+func NewDeletedSeriesIterator(itr chunkenc.Iterator, deletedIntervals []model.Interval) chunkenc.Iterator {
 	return &DeletedSeriesIterator{
 		itr:              itr,
 		deletedIntervals: deletedIntervals,
@@ -320,14 +329,14 @@ func (e emptySeries) Labels() labels.Labels {
 	return e.labels
 }
 
-func (emptySeries) Iterator() storage.SeriesIterator {
+func (emptySeries) Iterator() chunkenc.Iterator {
 	return NewEmptySeriesIterator()
 }
 
 type emptySeriesIterator struct {
 }
 
-func NewEmptySeriesIterator() storage.SeriesIterator {
+func NewEmptySeriesIterator() chunkenc.Iterator {
 	return emptySeriesIterator{}
 }
 
@@ -347,13 +356,30 @@ func (emptySeriesIterator) Err() error {
 	return nil
 }
 
-type emptySeriesSet struct{}
+type seriesSetWithWarnings struct {
+	wrapped  storage.SeriesSet
+	warnings storage.Warnings
+}
 
-func (emptySeriesSet) Next() bool         { return false }
-func (emptySeriesSet) At() storage.Series { return nil }
-func (emptySeriesSet) Err() error         { return nil }
+func NewSeriesSetWithWarnings(wrapped storage.SeriesSet, warnings storage.Warnings) storage.SeriesSet {
+	return seriesSetWithWarnings{
+		wrapped:  wrapped,
+		warnings: warnings,
+	}
+}
 
-// NewEmptySeriesSet returns a new series set that contains no series.
-func NewEmptySeriesSet() storage.SeriesSet {
-	return emptySeriesSet{}
+func (s seriesSetWithWarnings) Next() bool {
+	return s.wrapped.Next()
+}
+
+func (s seriesSetWithWarnings) At() storage.Series {
+	return s.wrapped.At()
+}
+
+func (s seriesSetWithWarnings) Err() error {
+	return s.wrapped.Err()
+}
+
+func (s seriesSetWithWarnings) Warnings() storage.Warnings {
+	return append(s.wrapped.Warnings(), s.warnings...)
 }

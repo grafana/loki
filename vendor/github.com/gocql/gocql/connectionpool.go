@@ -15,6 +15,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 // interface to implement to receive the host information
@@ -63,6 +68,9 @@ func setupTLSConfig(sslOpts *SslOptions) (*tls.Config, error) {
 }
 
 type policyConnPool struct {
+	logger     log.Logger
+	registerer prometheus.Registerer
+
 	session *Session
 
 	port     int
@@ -73,6 +81,8 @@ type policyConnPool struct {
 	hostConnPools map[string]*hostConnPool
 
 	endpoints []string
+
+	numHosts prometheus.GaugeFunc
 }
 
 func connConfig(cfg *ClusterConfig) (*ConnConfig, error) {
@@ -104,9 +114,11 @@ func connConfig(cfg *ClusterConfig) (*ConnConfig, error) {
 	}, nil
 }
 
-func newPolicyConnPool(session *Session) *policyConnPool {
+func newPolicyConnPool(logger log.Logger, registerer prometheus.Registerer, session *Session) *policyConnPool {
 	// create the pool
 	pool := &policyConnPool{
+		logger:        logger,
+		registerer:    registerer,
 		session:       session,
 		port:          session.cfg.Port,
 		numConns:      session.cfg.NumConns,
@@ -116,6 +128,15 @@ func newPolicyConnPool(session *Session) *policyConnPool {
 
 	pool.endpoints = make([]string, len(session.cfg.Hosts))
 	copy(pool.endpoints, session.cfg.Hosts)
+
+	pool.numHosts = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "gocql_connection_pool_hosts",
+		Help: "Current number of hosts in the connection pool.",
+	}, func() float64 {
+		pool.mu.RLock()
+		defer pool.mu.RUnlock()
+		return float64(len(pool.hostConnPools))
+	})
 
 	return pool
 }
@@ -147,6 +168,8 @@ func (p *policyConnPool) SetHosts(hosts []*HostInfo) {
 		go func(host *HostInfo) {
 			// create a connection pool for the host
 			pools <- newHostConnPool(
+				p.logger,
+				p.registerer,
 				p.session,
 				host,
 				p.port,
@@ -168,6 +191,7 @@ func (p *policyConnPool) SetHosts(hosts []*HostInfo) {
 
 	for addr := range toRemove {
 		pool := p.hostConnPools[addr]
+		pool.deregisterMetrics()
 		delete(p.hostConnPools, addr)
 		go pool.Close()
 	}
@@ -193,12 +217,17 @@ func (p *policyConnPool) getPool(host *HostInfo) (pool *hostConnPool, ok bool) {
 }
 
 func (p *policyConnPool) Close() {
+	if p.registerer != nil {
+		p.registerer.Unregister(p.numHosts)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	// close the pools
 	for addr, pool := range p.hostConnPools {
 		delete(p.hostConnPools, addr)
+		pool.deregisterMetrics()
 		pool.Close()
 	}
 }
@@ -209,6 +238,8 @@ func (p *policyConnPool) addHost(host *HostInfo) {
 	pool, ok := p.hostConnPools[ip]
 	if !ok {
 		pool = newHostConnPool(
+			p.logger,
+			p.registerer,
 			p.session,
 			host,
 			host.Port(), // TODO: if port == 0 use pool.port?
@@ -232,6 +263,7 @@ func (p *policyConnPool) removeHost(ip net.IP) {
 		return
 	}
 
+	pool.deregisterMetrics()
 	delete(p.hostConnPools, k)
 	p.mu.Unlock()
 
@@ -253,6 +285,9 @@ func (p *policyConnPool) hostDown(ip net.IP) {
 // hostConnPool is a connection pool for a single host.
 // Connection selection is based on a provided ConnSelectionPolicy
 type hostConnPool struct {
+	logger     log.Logger
+	registerer prometheus.Registerer
+
 	session  *Session
 	host     *HostInfo
 	port     int
@@ -266,6 +301,11 @@ type hostConnPool struct {
 	filling bool
 
 	pos uint32
+
+	connections        prometheus.GaugeFunc
+	connectionAttempts prometheus.Counter
+	connectionFailures prometheus.Counter
+	connectionDrops    prometheus.Counter
 }
 
 func (h *hostConnPool) String() string {
@@ -275,23 +315,51 @@ func (h *hostConnPool) String() string {
 		h.filling, h.closed, len(h.conns), h.size, h.host)
 }
 
-func newHostConnPool(session *Session, host *HostInfo, port, size int,
+func newHostConnPool(logger log.Logger, registerer prometheus.Registerer, session *Session, host *HostInfo, port, size int,
 	keyspace string) *hostConnPool {
 
 	pool := &hostConnPool{
-		session:  session,
-		host:     host,
-		port:     port,
-		addr:     (&net.TCPAddr{IP: host.ConnectAddress(), Port: host.Port()}).String(),
-		size:     size,
-		keyspace: keyspace,
-		conns:    make([]*Conn, 0, size),
-		filling:  false,
-		closed:   false,
+		logger:     logger,
+		registerer: prometheus.WrapRegistererWith(prometheus.Labels{"host": host.ConnectAddress().String()}, registerer),
+		session:    session,
+		host:       host,
+		port:       port,
+		addr:       (&net.TCPAddr{IP: host.ConnectAddress(), Port: host.Port()}).String(),
+		size:       size,
+		keyspace:   keyspace,
+		conns:      make([]*Conn, 0, size),
+		filling:    false,
+		closed:     false,
 	}
+
+	pool.connections = promauto.With(pool.registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "gocql_connection_pool_connections",
+		Help: "Number of TCP connections in the pool for given host",
+	}, func() float64 {
+		return float64(pool.Size())
+	})
+	pool.connectionAttempts = promauto.With(pool.registerer).NewCounter(prometheus.CounterOpts{
+		Name: "gocql_connection_pool_connection_attempts_total",
+		Help: "Number of TCP connection attempts for given host",
+	})
+	pool.connectionFailures = promauto.With(pool.registerer).NewCounter(prometheus.CounterOpts{
+		Name: "gocql_connection_pool_connection_failures_total",
+		Help: "Number of TCP connection failures for given host",
+	})
+	pool.connectionDrops = promauto.With(pool.registerer).NewCounter(prometheus.CounterOpts{
+		Name: "gocql_connection_pool_connection_drops_total",
+		Help: "Number of TCP connection drops for given host",
+	})
 
 	// the pool is not filled or connected
 	return pool
+}
+
+func (pool *hostConnPool) deregisterMetrics() {
+	pool.registerer.Unregister(pool.connections)
+	pool.registerer.Unregister(pool.connectionAttempts)
+	pool.registerer.Unregister(pool.connectionFailures)
+	pool.registerer.Unregister(pool.connectionDrops)
 }
 
 // Pick a connection from this connection pool for the given query.
@@ -448,11 +516,11 @@ func (pool *hostConnPool) logConnectErr(err error) {
 		// connection refused
 		// these are typical during a node outage so avoid log spam.
 		if gocqlDebug {
-			Logger.Printf("unable to dial %q: %v\n", pool.host.ConnectAddress(), err)
+			level.Debug(pool.logger).Log("msg", "unable to dial", "address", pool.host.ConnectAddress(), "error", err)
 		}
 	} else if err != nil {
 		// unexpected error
-		Logger.Printf("error: failed to connect to %s due to error: %v", pool.addr, err)
+		level.Error(pool.logger).Log("msg", "failed to connect", "address", pool.addr, "error", err)
 	}
 }
 
@@ -501,13 +569,20 @@ func (pool *hostConnPool) connectMany(count int) error {
 
 // create a new connection to the host and add it to the pool
 func (pool *hostConnPool) connect() (err error) {
+	pool.connectionAttempts.Inc()
+	defer func() {
+		if err != nil {
+			pool.connectionFailures.Inc()
+		}
+	}()
+
 	// TODO: provide a more robust connection retry mechanism, we should also
 	// be able to detect hosts that come up by trying to connect to downed ones.
 	// try to connect
 	var conn *Conn
 	reconnectionPolicy := pool.session.cfg.ReconnectionPolicy
 	for i := 0; i < reconnectionPolicy.GetMaxRetries(); i++ {
-		conn, err = pool.session.connect(pool.session.ctx, pool.host, pool)
+		conn, err = pool.session.connect(pool.session.ctx, pool.logger, pool.host, pool)
 		if err == nil {
 			break
 		}
@@ -519,8 +594,8 @@ func (pool *hostConnPool) connect() (err error) {
 			}
 		}
 		if gocqlDebug {
-			Logger.Printf("connection failed %q: %v, reconnecting with %T\n",
-				pool.host.ConnectAddress(), err, reconnectionPolicy)
+			level.Debug(pool.logger).Log("msg", "connection failed", "address", pool.host.ConnectAddress(),
+				"policy", reconnectionPolicy)
 		}
 		time.Sleep(reconnectionPolicy.GetInterval(i))
 	}
@@ -553,10 +628,14 @@ func (pool *hostConnPool) connect() (err error) {
 
 // handle any error from a Conn
 func (pool *hostConnPool) HandleError(conn *Conn, err error, closed bool) {
+	level.Error(pool.logger).Log("msg", "hostConnPool.HandleError", "err", err, "closed", closed)
+
 	if !closed {
 		// still an open connection, so continue using it
 		return
 	}
+
+	pool.connectionDrops.Inc()
 
 	// TODO: track the number of errors per host and detect when a host is dead,
 	// then also have something which can detect when a host comes back.

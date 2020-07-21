@@ -1,9 +1,9 @@
-FROM golang:1.13 as build
+FROM golang:1.14.2 as build
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false fluent-bit-plugin
 
-FROM fluent/fluent-bit:1.2
+FROM fluent/fluent-bit:1.4
 COPY --from=build /src/loki/cmd/fluent-bit/out_loki.so /fluent-bit/bin
 COPY cmd/fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 EXPOSE 2020

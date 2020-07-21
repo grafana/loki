@@ -201,7 +201,12 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 	return storageObjects, commonPrefixes, nil
 }
 
-func (b *BlobStorage) DeleteObject(ctx context.Context, chunkID string) error {
-	// ToDo: implement this to support deleting chunks from Azure BlobStorage
-	return chunk.ErrMethodNotImplemented
+func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
+	blockBlobURL, err := b.getBlobURL(blobID)
+	if err != nil {
+		return err
+	}
+
+	_, err = blockBlobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
+	return err
 }

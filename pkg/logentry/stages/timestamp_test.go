@@ -87,7 +87,7 @@ func TestPipelineWithMissingKey_Timestamp(t *testing.T) {
 func TestTimestampValidation(t *testing.T) {
 	tests := map[string]struct {
 		config *TimestampConfig
-		// Note the error text validation is a little loosey as it only validates with strings.HasPrefix
+		// Note the error text validation is a little loose as it only validates with strings.HasPrefix
 		// this is to work around different errors related to timezone loading on different systems
 		err          error
 		testString   string
@@ -222,6 +222,28 @@ func TestTimestampStage_Process(t *testing.T) {
 				"ts":           "1562708916",
 			},
 			time.Date(2019, 7, 9, 21, 48, 36, 0, time.UTC),
+		},
+		"unix fractions ms success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: "Unix",
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "1562708916.414123",
+			},
+			time.Date(2019, 7, 9, 21, 48, 36, 414123*1000, time.UTC),
+		},
+		"unix fractions ns success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: "Unix",
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "1562708916.000000123",
+			},
+			time.Date(2019, 7, 9, 21, 48, 36, 123, time.UTC),
 		},
 		"unix millisecond success": {
 			TimestampConfig{

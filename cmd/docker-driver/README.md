@@ -110,7 +110,79 @@ Loki can received a set of labels along with log line. These labels are used to 
 
 By default the Docker driver will add the `filename` where the log is written, the `host` where the log has been generated as well as the `container_name`. Additionally `swarm_stack` and `swarm_service` are added for Docker Swarm deployments.
 
-You can add more labels by using `loki-external-labels`,`loki-pipeline-stage-file`,`labels`,`env` and `env-regex` options as described below.
+You can add more labels by using `loki-external-labels`,`loki-pipeline-stages`,`loki-pipeline-stage-file`,`labels`,`env` and `env-regex` options as described below.
+
+## Pipeline stages
+
+While you can provide `loki-pipeline-stage-file` it can be hard to mount the configuration file to the driver root filesystem.
+This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined.
+
+The example [docker-compose](./docker-compose.yaml) below configures 2 stages, one to extract level values and one to set it as a label:
+
+```yaml
+version: "3"
+services:
+  nginx:
+    image: grafana/grafana
+    logging:
+      driver: loki
+      options:
+        loki-url: http://host.docker.internal:3100/loki/api/v1/push
+        loki-pipeline-stages: |
+          - regex:
+              expression: '(level|lvl|severity)=(?P<level>\w+)'
+          - labels:
+              level:
+    ports:
+      - "3000:3000"
+```
+
+> Note the `loki-pipeline-stages: |` allowing to keep the indentation correct.
+
+When using docker run you can also pass the value via a string parameter like such:
+
+```bash
+read -d '' stages << EOF
+- regex:
+     expression: '(level|lvl|severity)=(?P<level>\\\w+)'
+- labels:
+    level:
+EOF
+
+docker run --log-driver=loki \
+    --log-opt loki-url="http://host.docker.internal:3100/loki/api/v1/push" \
+    --log-opt loki-pipeline-stages="$stages" \
+    -p 3000:3000 grafana/grafana
+```
+
+This is a bit more difficult as you need to properly escape bash special characters. (note `\\\w+` for `\w+`)
+
+Providing both `loki-pipeline-stage-file` and `loki-pipeline-stages` will cause an error.
+
+## Relabeling
+
+You can use [Prometheus relabeling](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) configuration to modify labels discovered by the driver. The configuration must be passed as a YAML string like the [pipeline stages](#pipeline-stages).
+
+For example the configuration below will rename the label `swarm_stack` and `swarm_service` to respectively `namespace` and `service`.
+
+```yaml
+version: "3"
+services:
+  nginx:
+    image: grafana/grafana
+    logging:
+      driver: loki
+      options:
+        loki-url: http://host.docker.internal:3100/loki/api/v1/push
+        loki-relabel-config: |
+          - action: labelmap
+            regex: swarm_stack
+            replacement: namespace
+          - action: labelmap
+            regex: swarm_(service)
+    ports:
+      - "3000:3000"
+```
 
 ## log-opt options
 
@@ -127,6 +199,8 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-max-backoff`              |    No     |           `10s`            | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
 | `loki-retries`                  |    No     |            `10`            | The maximum amount of retries for a log batch.                                                                                                                                                                                                                                |
 | `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](./pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels. [see documentation](../../docs/logentry/processing-log-lines.md)                                                  |
+| `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see](#pipeline-stages) and  [see documentation](../../docs/clients/promtail/pipelines.md)                                                                                                                              |
+| `loki-relabel-config`           |    No     |                            | A [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) allowing you to rename labels [see](#relabeling)                                                                                            |
 | `loki-tenant-id`                |    No     |                            | Set the tenant id (http header`X-Scope-OrgID`) when sending logs to Loki. It can be overrides by a pipeline stage.                                                                                                                                                            |
 | `loki-tls-ca-file`              |    No     |                            | Set the path to a custom certificate authority.                                                                                                                                                                                                                               |
 | `loki-tls-cert-file`            |    No     |                            | Set the path to a client certificate file.                                                                                                                                                                                                                                    |
@@ -141,6 +215,7 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `labels`                        |    No     |                            | Comma-separated list of keys of labels, which should be included in message, if these labels are specified for container.                                                                                                                                                     |
 | `env`                           |    No     |                            | Comma-separated list of keys of environment variables to be included in message if they specified for a container.                                                                                                                                                            |
 | `env-regex`                     |    No     |                            | A regular expression to match logging-related environment variables. Used for advanced log label options. If there is collision between the label and env keys, the value of the env takes precedence. Both options add additional fields to the labels of a logging message. |
+
 
 ## Uninstall the plugin
 

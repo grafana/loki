@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -35,7 +36,7 @@ const (
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore           kv.Config     `yaml:"kvstore"`
+	KVStore           kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances. This option needs be set both on the store-gateway and querier when running in microservices mode."`
 	HeartbeatPeriod   time.Duration `yaml:"heartbeat_period"`
 	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout"`
 	ReplicationFactor int           `yaml:"replication_factor"`
@@ -63,8 +64,8 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	// Ring flags
 	cfg.KVStore.RegisterFlagsWithPrefix("experimental.store-gateway.sharding-ring.", "collectors/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, "experimental.store-gateway.sharding-ring.heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring.")
-	f.DurationVar(&cfg.HeartbeatTimeout, "experimental.store-gateway.sharding-ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which store gateways are considered unhealthy within the ring.")
-	f.IntVar(&cfg.ReplicationFactor, "experimental.store-gateway.replication-factor", 3, "The replication factor to use when sharding blocks.")
+	f.DurationVar(&cfg.HeartbeatTimeout, "experimental.store-gateway.sharding-ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which store gateways are considered unhealthy within the ring."+sharedOptionWithQuerier)
+	f.IntVar(&cfg.ReplicationFactor, "experimental.store-gateway.replication-factor", 3, "The replication factor to use when sharding blocks."+sharedOptionWithQuerier)
 	f.StringVar(&cfg.TokensFilePath, "experimental.store-gateway.tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	// Instance flags
@@ -104,4 +105,31 @@ func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) 
 		TokensObservePeriod: 0,
 		NumTokens:           RingNumTokens,
 	}, nil
+}
+
+func hasRingTopologyChanged(before, after ring.ReplicationSet) bool {
+	beforeInstances := before.Ingesters
+	afterInstances := after.Ingesters
+
+	if len(beforeInstances) != len(afterInstances) {
+		return true
+	}
+
+	sort.Sort(ring.ByAddr(beforeInstances))
+	sort.Sort(ring.ByAddr(afterInstances))
+
+	for i := 0; i < len(beforeInstances); i++ {
+		b := beforeInstances[i]
+		a := afterInstances[i]
+
+		// Exclude the heartbeat timestamp from the comparison.
+		b.Timestamp = 0
+		a.Timestamp = 0
+
+		if !b.Equal(a) {
+			return true
+		}
+	}
+
+	return false
 }

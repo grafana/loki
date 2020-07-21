@@ -9,33 +9,36 @@ import (
 )
 
 var tokens = map[string]int{
-	",":                 COMMA,
-	".":                 DOT,
-	"{":                 OPEN_BRACE,
-	"}":                 CLOSE_BRACE,
-	"=":                 EQ,
-	"!=":                NEQ,
-	"=~":                RE,
-	"!~":                NRE,
-	"|=":                PIPE_EXACT,
-	"|~":                PIPE_MATCH,
-	"(":                 OPEN_PARENTHESIS,
-	")":                 CLOSE_PARENTHESIS,
-	"by":                BY,
-	"without":           WITHOUT,
-	OpTypeCountOverTime: COUNT_OVER_TIME,
-	"[":                 OPEN_BRACKET,
-	"]":                 CLOSE_BRACKET,
-	OpTypeRate:          RATE,
-	OpTypeSum:           SUM,
-	OpTypeAvg:           AVG,
-	OpTypeMax:           MAX,
-	OpTypeMin:           MIN,
-	OpTypeCount:         COUNT,
-	OpTypeStddev:        STDDEV,
-	OpTypeStdvar:        STDVAR,
-	OpTypeBottomK:       BOTTOMK,
-	OpTypeTopK:          TOPK,
+	",":                  COMMA,
+	".":                  DOT,
+	"{":                  OPEN_BRACE,
+	"}":                  CLOSE_BRACE,
+	"=":                  EQ,
+	OpTypeNEQ:            NEQ,
+	"=~":                 RE,
+	"!~":                 NRE,
+	"|=":                 PIPE_EXACT,
+	"|~":                 PIPE_MATCH,
+	"(":                  OPEN_PARENTHESIS,
+	")":                  CLOSE_PARENTHESIS,
+	"by":                 BY,
+	"without":            WITHOUT,
+	"bool":               BOOL,
+	"[":                  OPEN_BRACKET,
+	"]":                  CLOSE_BRACKET,
+	OpRangeTypeRate:      RATE,
+	OpRangeTypeCount:     COUNT_OVER_TIME,
+	OpRangeTypeBytesRate: BYTES_RATE,
+	OpRangeTypeBytes:     BYTES_OVER_TIME,
+	OpTypeSum:            SUM,
+	OpTypeAvg:            AVG,
+	OpTypeMax:            MAX,
+	OpTypeMin:            MIN,
+	OpTypeCount:          COUNT,
+	OpTypeStddev:         STDDEV,
+	OpTypeStdvar:         STDVAR,
+	OpTypeBottomK:        BOTTOMK,
+	OpTypeTopK:           TOPK,
 
 	// binops
 	OpTypeOr:     OR,
@@ -47,6 +50,12 @@ var tokens = map[string]int{
 	OpTypeDiv:    DIV,
 	OpTypeMod:    MOD,
 	OpTypePow:    POW,
+	// comparison binops
+	OpTypeCmpEQ: CMP_EQ,
+	OpTypeGT:    GT,
+	OpTypeGTE:   GTE,
+	OpTypeLT:    LT,
+	OpTypeLTE:   LTE,
 }
 
 type lexer struct {
@@ -66,7 +75,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		lval.str = l.TokenText()
 		return NUMBER
 
-	case scanner.String:
+	case scanner.String, scanner.RawString:
 		var err error
 		lval.str, err = strconv.Unquote(l.TokenText())
 		if err != nil {
@@ -76,7 +85,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return STRING
 	}
 
-	// scaning duration tokens
+	// scanning duration tokens
 	if l.TokenText() == "[" {
 		d := ""
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {

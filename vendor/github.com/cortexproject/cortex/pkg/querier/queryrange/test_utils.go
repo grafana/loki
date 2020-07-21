@@ -82,17 +82,14 @@ func (q *MockShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (s
 	return q, nil
 }
 
-func (q *MockShardedQueryable) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.SelectSorted(sp, matchers...)
-}
-
-// Select impls storage.Querier
-func (q *MockShardedQueryable) SelectSorted(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
+func (q *MockShardedQueryable) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	tStart := time.Now()
 
 	shard, _, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
-		return nil, nil, err
+		return storage.ErrSeriesSet(err)
 	}
 
 	var (
@@ -144,7 +141,7 @@ func (q *MockShardedQueryable) SelectSorted(_ *storage.SelectParams, matchers ..
 	}
 
 	// sorted
-	return series.NewConcreteSeriesSet(results), nil, nil
+	return series.NewConcreteSeriesSet(results)
 }
 
 // ShardLabelSeries allows extending a Series with new labels. This is helpful for adding cortex shard labels

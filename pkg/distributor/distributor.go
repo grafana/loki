@@ -28,10 +28,6 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-const (
-	metricName = "logs"
-)
-
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -92,7 +88,7 @@ type Distributor struct {
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overrides *validation.Overrides) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overrides *validation.Overrides, registerer prometheus.Registerer) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
 		factory = func(addr string) (ring_client.PoolClient, error) {
@@ -113,7 +109,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		var err error
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false)
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false, registerer)
 		if err != nil {
 			return nil, err
 		}
@@ -165,7 +161,7 @@ func (d *Distributor) stopping(_ error) error {
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
-	stream      *logproto.Stream
+	stream      logproto.Stream
 	minSuccess  int
 	maxFailures int
 	succeeded   int32
@@ -209,14 +205,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
-		if err := d.validator.ValidateLabels(userID, stream.Labels); err != nil {
+		if err := d.validator.ValidateLabels(userID, stream); err != nil {
 			validationErr = err
 			continue
 		}
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
-			if err := d.validator.ValidateEntry(userID, entry); err != nil {
+			if err := d.validator.ValidateEntry(userID, stream.Labels, entry); err != nil {
 				validationErr = err
 				continue
 			}
@@ -241,11 +237,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	now := time.Now()
 	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
-		// Return a 4xx here to have the client discard the data and not retry. If a client
-		// is sending too much data consistently we will unlikely ever catch up otherwise.
+		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%d bytes) exceeded while adding %d lines for a total size of %d bytes", int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize))
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
@@ -334,7 +329,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 	}
 
 	req := &logproto.PushRequest{
-		Streams: make([]*logproto.Stream, len(streams)),
+		Streams: make([]logproto.Stream, len(streams)),
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream

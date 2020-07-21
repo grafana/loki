@@ -154,6 +154,10 @@ type Config struct {
 
 	// for testing
 	ingesterClientFactory ring_client.PoolFactory `yaml:"-"`
+
+	// when true the distributor does not validate the label name, Cortex doesn't directly use
+	// this (and should never use it) but this feature is used by other projects built on top of it
+	SkipLabelNameValidation bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -174,7 +178,7 @@ func (cfg *Config) Validate() error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -184,7 +188,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	replicas, err := newClusterTracker(cfg.HATrackerConfig)
+	replicas, err := newClusterTracker(cfg.HATrackerConfig, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +205,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true)
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true, reg)
 		if err != nil {
 			return nil, err
 		}
@@ -332,7 +336,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Returns the validated series with it's labels/samples, and any error.
 func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (client.PreallocTimeseries, error) {
 	labelsHistogram.Observe(float64(len(ts.Labels)))
-	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
+	if err := validation.ValidateLabels(d.limits, userID, ts.Labels, d.cfg.SkipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
 	}
 
@@ -599,7 +603,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, time
 
 // forAllIngesters runs f, in parallel, for all ingesters
 func (d *Distributor) forAllIngesters(ctx context.Context, reallyAll bool, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
-	replicationSet, err := d.ingestersRing.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -702,11 +706,10 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 	return result, nil
 }
 
-// MetricMetadata returns all metric metadata of a user.
+// MetricsMetadata returns all metric metadata of a user.
 func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
 	req := &ingester_client.MetricsMetadataRequest{}
-	// TODO: We only need to look in all the ingesters if we're shardByAllLabels is enabled.
-	// Look into distributor/query.go
+	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
 	resps, err := d.forAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
 		return client.MetricsMetadata(ctx, req)
 	})
@@ -778,7 +781,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.forAllIngesters(), so we can fail after first error.
-	replicationSet, err := d.ingestersRing.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
 	}

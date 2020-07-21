@@ -59,10 +59,18 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 
 		// Enter PENDING state (only valid from JOINING)
 		if i.lifecycler.GetState() == ring.JOINING {
-			if err := i.lifecycler.ChangeState(stream.Context(), ring.PENDING); err != nil {
-				level.Error(logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
+			// Create a new context here to attempt to update the state back to pending to allow
+			// a failed transfer to try again.  If we fail to set the state back to PENDING then
+			// exit Loki as we will effectively be hung anyway stuck in a JOINING state and will
+			// never join.
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+			if err := i.lifecycler.ChangeState(ctx, ring.PENDING); err != nil {
+				level.Error(logger).Log("msg", "failed to update the ring state back to PENDING after "+
+					"a chunk transfer failure, there is nothing more Loki can do from this state "+
+					"so the process will exit...", "err", err)
 				os.Exit(1)
 			}
+			cancel()
 		}
 	}()
 
@@ -221,36 +229,39 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 
 	for instanceID, inst := range i.instances {
 		for _, istream := range inst.streams {
-			chunks := make([]*logproto.Chunk, 0, len(istream.chunks))
+			lbls := []*logproto.LabelPair{}
+			for _, lbl := range istream.labels {
+				lbls = append(lbls, &logproto.LabelPair{Name: lbl.Name, Value: lbl.Value})
+			}
 
+			// We moved to sending one chunk at a time in a stream instead of sending all chunks for a stream
+			// as large chunks can create large payloads of >16MB which can hit GRPC limits,
+			// typically streams won't have many chunks in memory so sending one at a time
+			// shouldn't add too much overhead.
 			for _, c := range istream.chunks {
 				bb, err := c.chunk.Bytes()
 				if err != nil {
 					return err
 				}
 
-				chunks = append(chunks, &logproto.Chunk{
+				chunks := make([]*logproto.Chunk, 1, 1)
+				chunks[0] = &logproto.Chunk{
 					Data: bb,
+				}
+
+				err = stream.Send(&logproto.TimeSeriesChunk{
+					Chunks:         chunks,
+					UserId:         instanceID,
+					Labels:         lbls,
+					FromIngesterId: i.lifecycler.ID,
 				})
-			}
+				if err != nil {
+					level.Error(logger).Log("msg", "failed sending stream's chunks to ingester", "to_ingester", targetIngester.Addr, "err", err)
+					return err
+				}
 
-			lbls := []*logproto.LabelPair{}
-			for _, lbl := range istream.labels {
-				lbls = append(lbls, &logproto.LabelPair{Name: lbl.Name, Value: lbl.Value})
+				sentChunks.Add(float64(len(chunks)))
 			}
-
-			err := stream.Send(&logproto.TimeSeriesChunk{
-				Chunks:         chunks,
-				UserId:         instanceID,
-				Labels:         lbls,
-				FromIngesterId: i.lifecycler.ID,
-			})
-			if err != nil {
-				level.Error(logger).Log("msg", "failed sending stream's chunks to ingester", "to_ingester", targetIngester.Addr, "err", err)
-				return err
-			}
-
-			sentChunks.Add(float64(len(chunks)))
 		}
 	}
 

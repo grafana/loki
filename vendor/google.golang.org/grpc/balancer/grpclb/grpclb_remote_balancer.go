@@ -34,7 +34,6 @@ import (
 	lbpb "google.golang.org/grpc/balancer/grpclb/grpc_lb_v1"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/grpclog"
-	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/channelz"
 	"google.golang.org/grpc/keepalive"
@@ -42,7 +41,7 @@ import (
 	"google.golang.org/grpc/resolver"
 )
 
-// processServerList updates balaner's internal state, create/remove SubConns
+// processServerList updates balancer's internal state, create/remove SubConns
 // and regenerates picker using the received serverList.
 func (lb *lbBalancer) processServerList(l *lbpb.ServerList) {
 	if grpclog.V(2) {
@@ -228,8 +227,7 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() {
 	}
 	// Explicitly set pickfirst as the balancer.
 	dopts = append(dopts, grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"pick_first"}`))
-	wrb := internal.WithResolverBuilder.(func(resolver.Builder) grpc.DialOption)
-	dopts = append(dopts, wrb(lb.manualResolver))
+	dopts = append(dopts, grpc.WithResolvers(lb.manualResolver))
 	if channelz.IsOn() {
 		dopts = append(dopts, grpc.WithChannelzParentID(lb.opt.ChannelzParentID))
 	}
@@ -245,7 +243,7 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() {
 	//
 	// The grpclb server addresses will set field ServerName, and creds will
 	// receive ServerName as authority.
-	cc, err := grpc.DialContext(context.Background(), "grpclb.subClientConn", dopts...)
+	cc, err := grpc.DialContext(context.Background(), lb.manualResolver.Scheme()+":///grpclb.subClientConn", dopts...)
 	if err != nil {
 		grpclog.Fatalf("failed to dial: %v", err)
 	}
@@ -280,12 +278,19 @@ func (ccw *remoteBalancerCCWrapper) readServerList(s *balanceLoadClientStream) e
 		if serverList := reply.GetServerList(); serverList != nil {
 			ccw.lb.processServerList(serverList)
 		}
+		if reply.GetFallbackResponse() != nil {
+			// Eagerly enter fallback
+			ccw.lb.mu.Lock()
+			ccw.lb.refreshSubConns(ccw.lb.resolvedBackendAddrs, true, ccw.lb.usePickFirst)
+			ccw.lb.mu.Unlock()
+		}
 	}
 }
 
 func (ccw *remoteBalancerCCWrapper) sendLoadReport(s *balanceLoadClientStream, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	lastZero := false
 	for {
 		select {
 		case <-ticker.C:
@@ -293,6 +298,12 @@ func (ccw *remoteBalancerCCWrapper) sendLoadReport(s *balanceLoadClientStream, i
 			return
 		}
 		stats := ccw.lb.clientStats.toClientStats()
+		zero := isZeroStats(stats)
+		if zero && lastZero {
+			// Quash redundant empty load reports.
+			continue
+		}
+		lastZero = zero
 		t := time.Now()
 		stats.Timestamp = &timestamppb.Timestamp{
 			Seconds: t.Unix(),
@@ -339,9 +350,6 @@ func (ccw *remoteBalancerCCWrapper) callRemoteBalancer() (backoff bool, _ error)
 	if initResp == nil {
 		return true, fmt.Errorf("grpclb: reply from remote balancer did not include initial response")
 	}
-	if initResp.LoadBalancerDelegate != "" {
-		return true, fmt.Errorf("grpclb: Delegation is not supported")
-	}
 
 	ccw.wg.Add(1)
 	go func() {
@@ -372,7 +380,7 @@ func (ccw *remoteBalancerCCWrapper) watchRemoteBalancer() {
 			}
 		}
 		// Trigger a re-resolve when the stream errors.
-		ccw.lb.cc.cc.ResolveNow(resolver.ResolveNowOption{})
+		ccw.lb.cc.cc.ResolveNow(resolver.ResolveNowOptions{})
 
 		ccw.lb.mu.Lock()
 		ccw.lb.remoteBalancerConnected = false

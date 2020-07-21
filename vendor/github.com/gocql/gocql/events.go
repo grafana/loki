@@ -4,9 +4,14 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 type eventDebouncer struct {
+	logger log.Logger
+
 	name   string
 	timer  *time.Timer
 	mu     sync.Mutex
@@ -16,8 +21,9 @@ type eventDebouncer struct {
 	quit     chan struct{}
 }
 
-func newEventDebouncer(name string, eventHandler func([]frame)) *eventDebouncer {
+func newEventDebouncer(logger log.Logger, name string, eventHandler func([]frame)) *eventDebouncer {
 	e := &eventDebouncer{
+		logger:   logger,
 		name:     name,
 		quit:     make(chan struct{}),
 		timer:    time.NewTimer(eventDebounceTime),
@@ -73,7 +79,7 @@ func (e *eventDebouncer) debounce(frame frame) {
 	if len(e.events) < eventBufferSize {
 		e.events = append(e.events, frame)
 	} else {
-		Logger.Printf("%s: buffer full, dropping event frame: %s", e.name, frame)
+		level.Info(e.logger).Log("msg", "buffer full, dropping event frame", "name", e.name, "frame", frame)
 	}
 
 	e.mu.Unlock()
@@ -82,15 +88,11 @@ func (e *eventDebouncer) debounce(frame frame) {
 func (s *Session) handleEvent(framer *framer) {
 	frame, err := framer.parseFrame()
 	if err != nil {
-		// TODO: logger
-		Logger.Printf("gocql: unable to parse event frame: %v\n", err)
+		level.Error(s.logger).Log("msg", "unable to parse event frame", "error", err)
 		return
 	}
 
-	if gocqlDebug {
-		Logger.Printf("gocql: handling frame: %v\n", frame)
-	}
-
+	level.Debug(s.logger).Log("msg", "handling frame", "frame", frame)
 	switch f := frame.(type) {
 	case *schemaChangeKeyspace, *schemaChangeFunction,
 		*schemaChangeTable, *schemaChangeAggregate, *schemaChangeType:
@@ -99,7 +101,7 @@ func (s *Session) handleEvent(framer *framer) {
 	case *topologyChangeEventFrame, *statusChangeEventFrame:
 		s.nodeEvents.debounce(frame)
 	default:
-		Logger.Printf("gocql: invalid event frame (%T): %v\n", f, f)
+		level.Error(s.logger).Log("msg", "invalid event frame", "frame", f)
 	}
 }
 
@@ -158,9 +160,7 @@ func (s *Session) handleNodeEvent(frames []frame) {
 	}
 
 	for _, f := range events {
-		if gocqlDebug {
-			Logger.Printf("gocql: dispatching event: %+v\n", f)
-		}
+		level.Debug(s.logger).Log("msg", "dispatching event", "event", f)
 
 		switch f.change {
 		case "NEW_NODE":
@@ -189,16 +189,14 @@ func (s *Session) addNewNode(host *HostInfo) {
 }
 
 func (s *Session) handleNewNode(ip net.IP, port int, waitForBinary bool) {
-	if gocqlDebug {
-		Logger.Printf("gocql: Session.handleNewNode: %s:%d\n", ip.String(), port)
-	}
+	level.Info(s.logger).Log("msg", "Session.handleNewNode", "ip", ip.String(), "port", port)
 
 	ip, port = s.cfg.translateAddressPort(ip, port)
 
 	// Get host info and apply any filters to the host
 	hostInfo, err := s.hostSource.getHostInfo(ip, port)
 	if err != nil {
-		Logger.Printf("gocql: events: unable to fetch host info for (%s:%d): %v\n", ip, port, err)
+		level.Error(s.logger).Log("msg", "events: unable to fetch host info", "ip", ip.String(), "port", port, "error", err)
 		return
 	} else if hostInfo == nil {
 		// If hostInfo is nil, this host was filtered out by cfg.HostFilter
@@ -221,9 +219,7 @@ func (s *Session) handleNewNode(ip net.IP, port int, waitForBinary bool) {
 }
 
 func (s *Session) handleRemovedNode(ip net.IP, port int) {
-	if gocqlDebug {
-		Logger.Printf("gocql: Session.handleRemovedNode: %s:%d\n", ip.String(), port)
-	}
+	level.Debug(s.logger).Log("msg", "Session.handleRemovedNode", "ip", ip.String(), "port", port)
 
 	ip, port = s.cfg.translateAddressPort(ip, port)
 
@@ -248,9 +244,7 @@ func (s *Session) handleRemovedNode(ip net.IP, port int) {
 }
 
 func (s *Session) handleNodeUp(eventIp net.IP, eventPort int, waitForBinary bool) {
-	if gocqlDebug {
-		Logger.Printf("gocql: Session.handleNodeUp: %s:%d\n", eventIp.String(), eventPort)
-	}
+	level.Info(s.logger).Log("msg", "Session.handleNodeUp", "ip", eventIp.String(), "port", eventPort)
 
 	ip, _ := s.cfg.translateAddressPort(eventIp, eventPort)
 
@@ -274,9 +268,7 @@ func (s *Session) handleNodeUp(eventIp net.IP, eventPort int, waitForBinary bool
 }
 
 func (s *Session) handleNodeDown(ip net.IP, port int) {
-	if gocqlDebug {
-		Logger.Printf("gocql: Session.handleNodeDown: %s:%d\n", ip.String(), port)
-	}
+	level.Info(s.logger).Log("msg", "Session.handleNodeDown", "ip", ip.String(), "port", port)
 
 	host := s.ring.getHost(ip)
 	if host == nil {

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -22,12 +23,16 @@ var errNotFound = errors.New("inmem: object not found")
 type InMemBucket struct {
 	mtx     sync.RWMutex
 	objects map[string][]byte
+	attrs   map[string]ObjectAttributes
 }
 
 // NewInMemBucket returns a new in memory Bucket.
 // NOTE: Returned bucket is just a naive in memory bucket implementation. For test use cases only.
 func NewInMemBucket() *InMemBucket {
-	return &InMemBucket{objects: map[string][]byte{}}
+	return &InMemBucket{
+		objects: map[string][]byte{},
+		attrs:   map[string]ObjectAttributes{},
+	}
 }
 
 // Objects returns internally stored objects.
@@ -144,15 +149,15 @@ func (b *InMemBucket) Exists(_ context.Context, name string) (bool, error) {
 	return ok, nil
 }
 
-// ObjectSize returns the size of the specified object.
-func (b *InMemBucket) ObjectSize(_ context.Context, name string) (uint64, error) {
+// Attributes returns information about the specified object.
+func (b *InMemBucket) Attributes(_ context.Context, name string) (ObjectAttributes, error) {
 	b.mtx.RLock()
-	file, ok := b.objects[name]
+	attrs, ok := b.attrs[name]
 	b.mtx.RUnlock()
 	if !ok {
-		return 0, errNotFound
+		return ObjectAttributes{}, errNotFound
 	}
-	return uint64(len(file)), nil
+	return attrs, nil
 }
 
 // Upload writes the file specified in src to into the memory.
@@ -164,6 +169,10 @@ func (b *InMemBucket) Upload(_ context.Context, name string, r io.Reader) error 
 		return err
 	}
 	b.objects[name] = body
+	b.attrs[name] = ObjectAttributes{
+		Size:         int64(len(body)),
+		LastModified: time.Now(),
+	}
 	return nil
 }
 
@@ -175,6 +184,7 @@ func (b *InMemBucket) Delete(_ context.Context, name string) error {
 		return errNotFound
 	}
 	delete(b.objects, name)
+	delete(b.attrs, name)
 	return nil
 }
 

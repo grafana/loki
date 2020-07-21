@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -19,26 +20,35 @@ const (
 type ShardedQueryable struct {
 	Req     Request
 	Handler Handler
+
+	sharededQuerier *ShardedQuerier
 }
 
 // Querier implements Queryable
 func (q *ShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return &ShardedQuerier{ctx, q.Req, q.Handler}, nil
+	q.sharededQuerier = &ShardedQuerier{Ctx: ctx, Req: q.Req, Handler: q.Handler, ResponseHeaders: map[string][]string{}}
+	return q.sharededQuerier, nil
+}
+
+func (q *ShardedQueryable) getResponseHeaders() []*PrometheusResponseHeader {
+	q.sharededQuerier.ResponseHeadersMtx.Lock()
+	defer q.sharededQuerier.ResponseHeadersMtx.Unlock()
+
+	return headersMapToPrometheusResponseHeaders(q.sharededQuerier.ResponseHeaders)
 }
 
 // ShardedQuerier is a an implementor of the Querier interface.
 type ShardedQuerier struct {
-	Ctx     context.Context
-	Req     Request
-	Handler Handler
-}
-
-func (q *ShardedQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return q.SelectSorted(sp, matchers...)
+	Ctx                context.Context
+	Req                Request
+	Handler            Handler
+	ResponseHeaders    map[string][]string
+	ResponseHeadersMtx sync.Mutex
 }
 
 // Select returns a set of series that matches the given label matchers.
-func (q *ShardedQuerier) SelectSorted(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+// The bool passed is ignored because the series is always sorted.
+func (q *ShardedQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	var embeddedQuery string
 	var isEmbedded bool
 	for _, matcher := range matchers {
@@ -55,18 +65,18 @@ func (q *ShardedQuerier) SelectSorted(_ *storage.SelectParams, matchers ...*labe
 		if embeddedQuery != "" {
 			return q.handleEmbeddedQuery(embeddedQuery)
 		}
-		return nil, nil, errors.Errorf(missingEmbeddedQueryMsg)
+		return storage.ErrSeriesSet(errors.Errorf(missingEmbeddedQueryMsg))
 
 	}
 
-	return nil, nil, errors.Errorf(nonEmbeddedErrMsg)
+	return storage.ErrSeriesSet(errors.Errorf(nonEmbeddedErrMsg))
 }
 
 // handleEmbeddedQuery defers execution of an encoded query to a downstream Handler
-func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet, storage.Warnings, error) {
+func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) storage.SeriesSet {
 	queries, err := astmapper.JSONCodec.Decode(encoded)
 	if err != nil {
-		return nil, nil, err
+		return storage.ErrSeriesSet(err)
 	}
 
 	ctx, cancel := context.WithCancel(q.Ctx)
@@ -88,6 +98,7 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet,
 				errCh <- err
 				return
 			}
+			q.setResponseHeaders(resp.(*PrometheusResponse).Headers)
 			samplesCh <- streams
 		}(query)
 	}
@@ -97,13 +108,26 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet,
 	for i := 0; i < len(queries); i++ {
 		select {
 		case err := <-errCh:
-			return nil, nil, err
+			return storage.ErrSeriesSet(err)
 		case streams := <-samplesCh:
 			samples = append(samples, streams...)
 		}
 	}
 
-	return NewSeriesSet(samples), nil, err
+	return NewSeriesSet(samples)
+}
+
+func (q *ShardedQuerier) setResponseHeaders(headers []*PrometheusResponseHeader) {
+	q.ResponseHeadersMtx.Lock()
+	defer q.ResponseHeadersMtx.Unlock()
+
+	for _, header := range headers {
+		if _, ok := q.ResponseHeaders[header.Name]; !ok {
+			q.ResponseHeaders[header.Name] = header.Values
+		} else {
+			q.ResponseHeaders[header.Name] = append(q.ResponseHeaders[header.Name], header.Values...)
+		}
+	}
 }
 
 // LabelValues returns all potential values for a label name.
@@ -119,4 +143,12 @@ func (q *ShardedQuerier) LabelNames() ([]string, storage.Warnings, error) {
 // Close releases the resources of the Querier.
 func (q *ShardedQuerier) Close() error {
 	return nil
+}
+
+func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusResponseHeader) {
+	for h, v := range headersMap {
+		prs = append(prs, &PrometheusResponseHeader{Name: h, Values: v})
+	}
+
+	return
 }

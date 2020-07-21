@@ -101,6 +101,8 @@ type MultitenantAlertmanagerConfig struct {
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
 	Store AlertStoreConfig `yaml:"storage"`
+
+	EnableAPI bool `yaml:"enable_api"`
 }
 
 const defaultClusterAddr = "0.0.0.0:9094"
@@ -120,6 +122,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ClusterAdvertiseAddr, "cluster.advertise-address", "", "Explicit address to advertise in cluster.")
 	f.Var(&cfg.Peers, "cluster.peer", "Initial peers (may be repeated).")
 	f.DurationVar(&cfg.PeerTimeout, "cluster.peer-timeout", time.Second*15, "Time to wait between peers to send notifications.")
+
+	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
 
 	cfg.Store.RegisterFlags(f)
 }
@@ -481,7 +485,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Unlock()
 
 	if !ok || !userAM.IsActive() {
-		http.Error(w, fmt.Sprintf("no Alertmanager for this user ID"), http.StatusNotFound)
+		http.Error(w, "no Alertmanager for this user ID", http.StatusNotFound)
 		return
 	}
 	userAM.mux.ServeHTTP(w, req)

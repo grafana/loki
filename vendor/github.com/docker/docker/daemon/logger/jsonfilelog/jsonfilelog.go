@@ -156,7 +156,6 @@ func ValidateLogOpt(cfg map[string]string) error {
 		case "max-size":
 		case "compress":
 		case "labels":
-		case "labels-regex":
 		case "env":
 		case "env-regex":
 		case "tag":
