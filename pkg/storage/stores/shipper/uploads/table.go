@@ -3,6 +3,7 @@ package uploads
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -32,13 +33,17 @@ type BoltDBIndexClient interface {
 	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
 }
 
+type StorageClient interface {
+	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
+}
+
 // Table is a collection of multiple dbs created for a same table by the ingester.
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type Table struct {
 	name              string
 	path              string
 	uploader          string
-	storageClient     chunk.ObjectClient
+	storageClient     StorageClient
 	boltdbIndexClient BoltDBIndexClient
 
 	dbs    map[string]*bbolt.DB
@@ -49,7 +54,7 @@ type Table struct {
 }
 
 // NewTable create a new Table without looking for any existing local dbs belonging to the table.
-func NewTable(path, uploader string, storageClient chunk.ObjectClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
+func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
 	err := chunk_util.EnsureDirectory(path)
 	if err != nil {
 		return nil, err
@@ -59,7 +64,7 @@ func NewTable(path, uploader string, storageClient chunk.ObjectClient, boltdbInd
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, storageClient chunk.ObjectClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
+func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
 	dbs, err := loadBoltDBsFromDir(path)
 	if err != nil {
 		return nil, err
@@ -72,7 +77,7 @@ func LoadTable(path, uploader string, storageClient chunk.ObjectClient, boltdbIn
 	return newTableWithDBs(dbs, path, uploader, storageClient, boltdbIndexClient)
 }
 
-func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageClient chunk.ObjectClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
+func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
 	return &Table{
 		name:              filepath.Base(path),
 		path:              path,

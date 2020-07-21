@@ -24,7 +24,7 @@ type Config struct {
 type TableManager struct {
 	cfg             Config
 	boltIndexClient BoltDBIndexClient
-	storageClient   chunk.ObjectClient
+	storageClient   StorageClient
 
 	tables    map[string]*Table
 	tablesMtx sync.RWMutex
@@ -34,7 +34,7 @@ type TableManager struct {
 	wg   sync.WaitGroup
 }
 
-func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
 	return &TableManager{
 		cfg:             cfg,
 		boltIndexClient: boltIndexClient,

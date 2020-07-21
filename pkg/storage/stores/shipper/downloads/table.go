@@ -25,6 +25,11 @@ type BoltDBIndexClient interface {
 	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 }
 
+type StorageClient interface {
+	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
+	List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error)
+}
+
 type downloadedFile struct {
 	mtime  time.Time
 	boltdb *bbolt.DB
@@ -36,7 +41,7 @@ type Table struct {
 	name              string
 	cacheLocation     string
 	metrics           *metrics
-	storageClient     chunk.ObjectClient
+	storageClient     StorageClient
 	boltDBIndexClient BoltDBIndexClient
 
 	lastUsedAt time.Time
@@ -48,7 +53,9 @@ type Table struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewTable(name, cacheLocation string, storageClient chunk.ObjectClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
+func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	table := Table{
 		name:              name,
 		cacheLocation:     cacheLocation,
@@ -57,6 +64,7 @@ func NewTable(name, cacheLocation string, storageClient chunk.ObjectClient, bolt
 		boltDBIndexClient: boltDBIndexClient,
 		dbs:               map[string]*downloadedFile{},
 		ready:             make(chan struct{}),
+		cancelFunc:        cancel,
 	}
 
 	// keep the files collection locked until all the files are downloaded.
@@ -65,10 +73,8 @@ func NewTable(name, cacheLocation string, storageClient chunk.ObjectClient, bolt
 		defer table.dbsMtx.Unlock()
 		defer close(table.ready)
 
-		ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 		defer cancel()
-
-		table.cancelFunc = cancel
 
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
@@ -154,11 +160,11 @@ func (t *Table) init(ctx context.Context) (err error) {
 
 // Closes references to all the dbs.
 func (t *Table) Close() {
-	t.dbsMtx.Lock()
-	defer t.dbsMtx.Unlock()
-
 	// stop the initialization if it is still ongoing.
 	t.cancelFunc()
+
+	t.dbsMtx.Lock()
+	defer t.dbsMtx.Unlock()
 
 	for name, db := range t.dbs {
 		if err := db.boltdb.Close(); err != nil {

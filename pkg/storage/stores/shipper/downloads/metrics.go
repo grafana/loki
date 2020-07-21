@@ -65,14 +65,14 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			gauge: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 				Namespace: "loki_boltdb_shipper",
 				Name:      "initial_files_download_duration_seconds",
-				Help:      "Time (in seconds) spent in downloading of files per period, initially i.e for the first time",
+				Help:      "Time (in seconds) spent in downloading of files per table, initially i.e for the first time",
 			})},
 		filesDownloadSizeBytes: &downloadTableBytesMetric{
 			periods: map[string]int64{},
 			gauge: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 				Namespace: "loki_boltdb_shipper",
 				Name:      "initial_files_download_size_bytes",
-				Help:      "Size of files (in bytes) downloaded per period, initially i.e for the first time",
+				Help:      "Size of files (in bytes) downloaded per table, initially i.e for the first time",
 			})},
 		filesDownloadOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
