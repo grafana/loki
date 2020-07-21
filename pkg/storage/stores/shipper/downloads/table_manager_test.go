@@ -20,7 +20,7 @@ func buildTestTableManager(t *testing.T, path string) (*TableManager, *local.Bol
 		SyncInterval: time.Hour,
 		CacheTTL:     time.Hour,
 	}
-	tableManager, err := NewTableManager(cfg, boltDBIndexClient, fsObjectClient,nil)
+	tableManager, err := NewTableManager(cfg, boltDBIndexClient, fsObjectClient, nil)
 	require.NoError(t, err)
 
 	return tableManager, boltDBIndexClient, func() {
@@ -38,7 +38,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 	tables := map[string]map[string]testutil.DBRecords{
 		"table1": {
 			"db1": {
-				Start: 0,
+				Start:      0,
 				NumRecords: 10,
 			},
 			"db2": {
@@ -52,7 +52,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 		},
 		"table2": {
 			"db1": {
-				Start: 30,
+				Start:      30,
 				NumRecords: 10,
 			},
 			"db2": {

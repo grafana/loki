@@ -30,22 +30,28 @@ type TableManager struct {
 	tablesMtx sync.RWMutex
 	metrics   *metrics
 
-	done chan struct{}
-	wg   sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
-	return &TableManager{
+	ctx, cancel := context.WithCancel(context.Background())
+	tm := &TableManager{
 		cfg:             cfg,
 		boltIndexClient: boltIndexClient,
 		storageClient:   storageClient,
 		tables:          make(map[string]*Table),
 		metrics:         newMetrics(registerer),
-		done:            make(chan struct{}),
-	}, nil
+		ctx:             ctx,
+		cancel:          cancel,
+	}
+	go tm.loop()
+	return tm, nil
 }
 
 func (tm *TableManager) loop() {
+	tm.wg.Add(1)
 	defer tm.wg.Done()
 
 	syncTicker := time.NewTicker(tm.cfg.SyncInterval)
@@ -57,7 +63,7 @@ func (tm *TableManager) loop() {
 	for {
 		select {
 		case <-syncTicker.C:
-			err := tm.syncTables(context.Background())
+			err := tm.syncTables(tm.ctx)
 			if err != nil {
 				level.Error(pkg_util.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
 			}
@@ -66,14 +72,14 @@ func (tm *TableManager) loop() {
 			if err != nil {
 				level.Error(pkg_util.Logger).Log("msg", "error cleaning up expired tables", "err", err)
 			}
-		case <-tm.done:
+		case <-tm.ctx.Done():
 			return
 		}
 	}
 }
 
 func (tm *TableManager) Stop() {
-	close(tm.done)
+	tm.cancel()
 	tm.wg.Wait()
 
 	tm.tablesMtx.Lock()
