@@ -17,6 +17,7 @@ spec:
     - 'hostPath'
     - 'projected'
     - 'downwardAPI'
+    - 'emptyDir'
   hostNetwork: false
   hostIPC: false
   hostPID: false
