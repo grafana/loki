@@ -103,21 +103,28 @@ func (lt *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chu
 	return nil
 }
 
-func (lt *Table) addDB(name string) error {
+func (lt *Table) getOrAddDB(name string) (*bbolt.DB, error) {
 	lt.dbsMtx.Lock()
 	defer lt.dbsMtx.Unlock()
 
-	_, ok := lt.dbs[name]
+	var (
+		db  *bbolt.DB
+		err error
+		ok  bool
+	)
+
+	db, ok = lt.dbs[name]
 	if !ok {
-		db, err := local.OpenBoltdbFile(filepath.Join(lt.path, name))
+		db, err = local.OpenBoltdbFile(filepath.Join(lt.path, name))
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		lt.dbs[name] = db
+		return db, nil
 	}
 
-	return nil
+	return db, nil
 }
 
 // Write writes to a db locally with write time set to now.
@@ -131,20 +138,9 @@ func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
 func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrites) error {
 	shard := fmt.Sprint(tm.Truncate(shardDBsByDuration).Unix())
 
-	lt.dbsMtx.RLock()
-	defer lt.dbsMtx.RUnlock()
-
-	db, ok := lt.dbs[shard]
-	if !ok {
-		lt.dbsMtx.RUnlock()
-
-		err := lt.addDB(shard)
-		if err != nil {
-			return err
-		}
-
-		lt.dbsMtx.RLock()
-		db = lt.dbs[shard]
+	db, err := lt.getOrAddDB(shard)
+	if err != nil {
+		return err
 	}
 
 	return lt.boltdbIndexClient.WriteToDB(ctx, db, writes)

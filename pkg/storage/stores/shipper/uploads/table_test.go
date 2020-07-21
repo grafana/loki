@@ -235,7 +235,8 @@ func TestTable_Cleanup(t *testing.T) {
 	// build and add the outsideRetentionButNeverUploaded db
 	testutil.AddRecordsToDB(t, outsideRetentionButNeverUploaded, boltDBIndexClient, 30, 10)
 	require.NoError(t, os.Chtimes(outsideRetentionButNeverUploaded, time.Now().Add(-2*dbRetainPeriod), time.Now().Add(-2*dbRetainPeriod)))
-	require.NoError(t, table.addDB(filepath.Base(outsideRetentionButNeverUploaded)))
+	_, err = table.getOrAddDB(filepath.Base(outsideRetentionButNeverUploaded))
+	require.NoError(t, err)
 
 	// there must be 4 dbs now in the table
 	require.Len(t, table.dbs, 4)

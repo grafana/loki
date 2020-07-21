@@ -10,8 +10,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 const (
