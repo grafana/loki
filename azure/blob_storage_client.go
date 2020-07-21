@@ -210,3 +210,7 @@ func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
 	_, err = blockBlobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
 	return err
 }
+
+func (b *BlobStorage) PathSeparator() string {
+	return b.delimiter
+}

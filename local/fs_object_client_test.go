@@ -75,12 +75,12 @@ func TestFSObjectClient_List(t *testing.T) {
 	}()
 
 	foldersWithFiles := make(map[string][]string)
-	foldersWithFiles["folder1/"] = []string{"file1", "file2"}
-	foldersWithFiles["folder2/"] = []string{"file3", "file4", "file5"}
+	foldersWithFiles["folder1"] = []string{"file1", "file2"}
+	foldersWithFiles["folder2"] = []string{"file3", "file4", "file5"}
 
 	for folder, files := range foldersWithFiles {
 		for _, filename := range files {
-			err := bucketClient.PutObject(context.Background(), folder+filename, bytes.NewReader([]byte(filename)))
+			err := bucketClient.PutObject(context.Background(), filepath.Join(folder, filename), bytes.NewReader([]byte(filename)))
 			require.NoError(t, err)
 		}
 	}
@@ -105,7 +105,7 @@ func TestFSObjectClient_List(t *testing.T) {
 
 	require.Len(t, commonPrefixes, len(foldersWithFiles))
 	for _, commonPrefix := range commonPrefixes {
-		_, ok := foldersWithFiles[string(commonPrefix)]
+		_, ok := foldersWithFiles[string(commonPrefix)[:len(commonPrefix)-len(bucketClient.PathSeparator())]]
 		require.True(t, ok)
 	}
 
@@ -115,7 +115,7 @@ func TestFSObjectClient_List(t *testing.T) {
 
 		require.Len(t, storageObjects, len(files))
 		for i := range storageObjects {
-			require.Equal(t, storageObjects[i].Key, folder+files[i])
+			require.Equal(t, storageObjects[i].Key, filepath.Join(folder, files[i]))
 		}
 
 		require.Len(t, commonPrefixes, 0)
@@ -136,11 +136,11 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	}()
 
 	foldersWithFiles := make(map[string][]string)
-	foldersWithFiles["folder1/"] = []string{"file1", "file2"}
+	foldersWithFiles["folder1"] = []string{"file1", "file2"}
 
 	for folder, files := range foldersWithFiles {
 		for _, filename := range files {
-			err := bucketClient.PutObject(context.Background(), folder+filename, bytes.NewReader([]byte(filename)))
+			err := bucketClient.PutObject(context.Background(), filepath.Join(folder, filename), bytes.NewReader([]byte(filename)))
 			require.NoError(t, err)
 		}
 	}
@@ -151,15 +151,15 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.Len(t, commonPrefixes, len(foldersWithFiles))
 
 	// let us delete file1 from folder1 and check that file1 is gone but folder1 with file2 is still there
-	require.NoError(t, bucketClient.DeleteObject(context.Background(), "folder1/file1"))
-	_, err = os.Stat(filepath.Join(fsObjectsDir, "folder1/file1"))
+	require.NoError(t, bucketClient.DeleteObject(context.Background(), filepath.Join("folder1", "file1")))
+	_, err = os.Stat(filepath.Join(fsObjectsDir, filepath.Join("folder1", "file1")))
 	require.True(t, os.IsNotExist(err))
 
-	_, err = os.Stat(filepath.Join(fsObjectsDir, "folder1/file2"))
+	_, err = os.Stat(filepath.Join(fsObjectsDir, filepath.Join("folder1", "file2")))
 	require.NoError(t, err)
 
 	// let us delete second file as well and check that folder1 also got removed
-	require.NoError(t, bucketClient.DeleteObject(context.Background(), "folder1/file2"))
+	require.NoError(t, bucketClient.DeleteObject(context.Background(), filepath.Join("folder1", "file2")))
 	_, err = os.Stat(filepath.Join(fsObjectsDir, "folder1"))
 	require.True(t, os.IsNotExist(err))
 

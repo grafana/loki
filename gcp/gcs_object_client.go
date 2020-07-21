@@ -155,3 +155,7 @@ func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 
 	return nil
 }
+
+func (s *GCSObjectClient) PathSeparator() string {
+	return s.delimiter
+}

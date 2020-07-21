@@ -325,3 +325,7 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 
 	return storageObjects, commonPrefixes, nil
 }
+
+func (a *S3ObjectClient) PathSeparator() string {
+	return a.delimiter
+}
