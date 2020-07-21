@@ -35,6 +35,10 @@ var (
 	}, []string{"operation", "status_code"}))
 )
 
+// InjectRequestMiddleware gives users of this client the ability to make arbitrary
+// changes to outgoing requests.
+type InjectRequestMiddleware func(next http.RoundTripper) http.RoundTripper
+
 func init() {
 	s3RequestDuration.Register()
 }
@@ -52,6 +56,8 @@ type S3Config struct {
 	Insecure        bool       `yaml:"insecure"`
 	SSEEncryption   bool       `yaml:"sse_encryption"`
 	HTTPConfig      HTTPConfig `yaml:"http_config"`
+
+	Inject InjectRequestMiddleware `yaml:"-"`
 }
 
 // HTTPConfig stores the http.Transport configuration
@@ -165,22 +171,28 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	// to maintain backwards compatibility with previous versions of Cortex while providing
 	// more flexible configuration of the http client
 	// https://github.com/weaveworks/common/blob/4b1847531bc94f54ce5cf210a771b2a86cd34118/aws/config.go#L23
+	transport := http.RoundTripper(&http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
+		MaxIdleConnsPerHost:   100,
+		TLSHandshakeTimeout:   3 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: time.Duration(cfg.HTTPConfig.ResponseHeaderTimeout),
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
+	})
+
+	if cfg.Inject != nil {
+		transport = cfg.Inject(transport)
+	}
+
 	s3Config = s3Config.WithHTTPClient(&http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).DialContext,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
-			MaxIdleConnsPerHost:   100,
-			TLSHandshakeTimeout:   3 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-			ResponseHeaderTimeout: time.Duration(cfg.HTTPConfig.ResponseHeaderTimeout),
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
-		},
+		Transport: transport,
 	})
 
 	// bucketnames
