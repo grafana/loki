@@ -43,7 +43,7 @@ func buildTestTable(t *testing.T, path string) (*Table, *local.BoltIndexClient, 
 
 	// wait for either table to get ready or a timeout hits
 	select {
-	case <-table.IsReady():
+	case <-table.ready:
 	case <-time.Tick(2 * time.Second):
 		t.Fatal("failed to initialize table in time")
 	}

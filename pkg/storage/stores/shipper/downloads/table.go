@@ -180,6 +180,13 @@ func (t *Table) Close() {
 
 // Queries all the dbs for index.
 func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+	// let us check if table is ready for use while also honoring the context timeout
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.ready:
+	}
+
 	t.dbsMtx.RLock()
 	defer t.dbsMtx.RUnlock()
 
@@ -209,11 +216,6 @@ func (t *Table) CleanupAllDBs() error {
 		}
 	}
 	return nil
-}
-
-// IsReady returns a channel which gets closed when the Table is ready for queries.
-func (t *Table) IsReady() chan struct{} {
-	return t.ready
 }
 
 // Err returns the err which is usually set when there was any issue in init.

@@ -97,24 +97,21 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 func (tm *TableManager) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	table := tm.getOrCreateTable(query.TableName)
 
-	// let us check if table is ready for use while also honoring the context timeout
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-table.IsReady():
+	err := table.Query(ctx, query, callback)
+	if err != nil {
+		if table.Err() != nil {
+			// table is in invalid state, remove the table so that next queries re-create it.
+			tm.tablesMtx.Lock()
+			defer tm.tablesMtx.Unlock()
+
+			level.Error(pkg_util.Logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", query.TableName), "err", table.Err())
+
+			delete(tm.tables, query.TableName)
+			return table.Err()
+		}
 	}
 
-	if table.Err() != nil {
-		tm.tablesMtx.Lock()
-		defer tm.tablesMtx.Unlock()
-
-		level.Error(pkg_util.Logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", query.TableName), "err", table.Err())
-
-		delete(tm.tables, query.TableName)
-		return table.Err()
-	}
-
-	return table.Query(ctx, query, callback)
+	return err
 }
 
 func (tm *TableManager) getOrCreateTable(tableName string) *Table {
