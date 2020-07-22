@@ -16,6 +16,8 @@ spec:
     - 'secret'
     - 'configMap'
     - 'hostPath'
+    - 'projected'
+    - 'downwardAPI'
   hostNetwork: false
   hostIPC: false
   hostPID: false

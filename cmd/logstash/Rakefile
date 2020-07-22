@@ -1,0 +1,1 @@
+require "logstash/devutils/rake"

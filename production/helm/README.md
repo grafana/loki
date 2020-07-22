@@ -44,9 +44,18 @@ $ helm upgrade --install loki loki/loki
 
 ## Deploy Promtail only
 
+We recommend Promtail to ship your logs to Loki as the configuration is very similar to Prometheus.
+This allows you to ensure that labels for metrics and logs are equivalent by re-using the same `scrape_configs` and `relabeling` configuration.
+When using Grafana having the same labels will allows you to pivot from Metrics to Logs verify easily by simply switching datasource.
+
+To only install Promtail use the following command:
+
 ```bash
 $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 ```
+
+If you're not familiar with Prometheus and you don't want to migrate your current agent configs from the start,
+ you can use our output plugins specified below.
 
 ## Deploy Loki and Fluent Bit to your cluster
 
@@ -60,6 +69,13 @@ $ helm upgrade --install loki loki/loki-stack \
 ```bash
 $ helm upgrade --install fluent-bit loki/fluent-bit \
     --set "loki.serviceName=loki.svc.cluster.local"
+```
+
+## Deploy Loki and Filebeat and logstash to your cluster
+
+```bash
+$ helm upgrade --install loki loki/loki-stack \
+    --set filebeat.enabled=true,logstash.enabled=true,promtail.enabled=false
 ```
 
 ## Deploy Grafana to your cluster
