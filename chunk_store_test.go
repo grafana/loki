@@ -865,7 +865,7 @@ func TestIndexCachingWorks(t *testing.T) {
 	store := newTestChunkStoreConfig(t, "v9", storeCfg)
 	defer store.Stop()
 
-	storage := store.(CompositeStore).stores[0].Store.(*seriesStore).storage.(*MockStorage)
+	storage := store.(CompositeStore).stores[0].Store.(*seriesStore).fetcher.storage.(*MockStorage)
 
 	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
 	err := fooChunk1.Encode()
@@ -1326,7 +1326,7 @@ func TestDisableIndexDeduplication(t *testing.T) {
 			store := newTestChunkStoreConfig(t, "v9", storeCfg)
 			defer store.Stop()
 
-			storage := store.(CompositeStore).stores[0].Store.(*seriesStore).storage.(*MockStorage)
+			storage := store.(CompositeStore).stores[0].Store.(*seriesStore).fetcher.storage.(*MockStorage)
 
 			fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
 			err := fooChunk1.Encode()
