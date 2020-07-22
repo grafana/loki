@@ -435,7 +435,7 @@ fluentd-push:
 
 fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
 fluentd-test:
-	LOKI_URL="$(LOKI_URL)" docker-compose -f cmd/fluentd/docker/docker-compose.yml up --build #$(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+	LOKI_URL="$(LOKI_URL)" docker-compose -f cmd/fluentd/docker/docker-compose.yml up --build $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 ##################
 # logstash plugin #
