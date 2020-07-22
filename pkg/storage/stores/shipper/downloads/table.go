@@ -62,6 +62,7 @@ func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBInd
 		metrics:           metrics,
 		storageClient:     storageClient,
 		boltDBIndexClient: boltDBIndexClient,
+		lastUsedAt:        time.Now(),
 		dbs:               map[string]*downloadedFile{},
 		ready:             make(chan struct{}),
 		cancelFunc:        cancel,
@@ -79,7 +80,7 @@ func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBInd
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
 		if err := table.init(ctx); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to download files", "name", table.name)
+			level.Error(util.Logger).Log("msg", "failed to download table", "name", table.name)
 		}
 	}()
 
@@ -94,6 +95,8 @@ func (t *Table) init(ctx context.Context) (err error) {
 		if err != nil {
 			status = statusFailure
 			t.err = err
+
+			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to initialize table %s, cleaning it up", t.name), "err", err)
 
 			// cleaning up files due to error to avoid returning invalid results.
 			for fileName := range t.dbs {
@@ -177,12 +180,12 @@ func (t *Table) Close() {
 
 // Queries all the dbs for index.
 func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+	t.dbsMtx.RLock()
+	defer t.dbsMtx.RUnlock()
+
 	if t.err != nil {
 		return t.err
 	}
-
-	t.dbsMtx.RLock()
-	defer t.dbsMtx.RUnlock()
 
 	t.lastUsedAt = time.Now()
 
@@ -242,12 +245,14 @@ func (t *Table) cleanupDB(fileName string) error {
 
 // Sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *Table) Sync(ctx context.Context) error {
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("syncing files for period %s", t.name))
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
 
 	toDownload, toDelete, err := t.checkStorageForUpdates(ctx)
 	if err != nil {
 		return err
 	}
+
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.name, toDownload, toDelete))
 
 	for _, storageObject := range toDownload {
 		err = t.downloadFile(ctx, storageObject)
@@ -308,6 +313,8 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 
 // downloadFile first downloads file to a temp location so that we can close the existing db(if already exists), replace it with new one and then reopen it.
 func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObject) error {
+	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloading object from storage with key %s", storageObject.Key))
+
 	dbName, err := getDBNameFromObjectKey(storageObject.Key)
 	if err != nil {
 		return err

@@ -3,6 +3,7 @@ package uploads
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -80,6 +81,8 @@ func (tm *TableManager) loop() {
 }
 
 func (tm *TableManager) Stop() {
+	level.Info(pkg_util.Logger).Log("msg", "stopping table manager")
+
 	tm.cancel()
 	tm.wg.Wait()
 
@@ -154,6 +157,8 @@ func (tm *TableManager) uploadTables(ctx context.Context) (err error) {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
+	level.Info(pkg_util.Logger).Log("msg", "uploading tables")
+
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -200,6 +205,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		// since we are moving to keeping files for same table in a folder, if current element is a file we need to move it inside a directory with the same name
 		// i.e file index_123 would be moved to path index_123/index_123.
 		if !fileInfo.IsDir() {
+			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("found a legacy file %s, moving it to folder with same name", fileInfo.Name()))
 			filePath := filepath.Join(tm.cfg.IndexDir, fileInfo.Name())
 
 			// create a folder with .temp suffix since we can't create a directory with same name as file.
@@ -219,6 +225,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			}
 		}
 
+		level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("loading table %s", fileInfo.Name()))
 		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.storageClient, tm.boltIndexClient)
 		if err != nil {
 			return nil, err

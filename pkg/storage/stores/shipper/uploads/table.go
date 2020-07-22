@@ -185,6 +185,8 @@ func (lt *Table) Upload(ctx context.Context) error {
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
 
+	level.Info(util.Logger).Log("msg", fmt.Sprintf("uploading table %s", lt.name))
+
 	for name, db := range lt.dbs {
 		stat, err := os.Stat(db.Path())
 		if err != nil {
@@ -213,7 +215,9 @@ func (lt *Table) Upload(ctx context.Context) error {
 }
 
 func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error {
-	filePath := path.Join(lt.path, fmt.Sprintf("%s.%s", lt.uploader, "temp"))
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
+
+	filePath := path.Join(lt.path, fmt.Sprintf("%s.%s", name, "temp"))
 	f, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -253,6 +257,8 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 // Cleanup removes dbs which are already uploaded and have not been modified for period longer than dbRetainPeriod.
 // This is to avoid keeping all the files forever in the ingesters.
 func (lt *Table) Cleanup() error {
+	level.Info(util.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted dbs from table %s", lt.name))
+
 	var filesToCleanup []string
 	cutoffTime := time.Now().Add(-dbRetainPeriod)
 
@@ -277,6 +283,8 @@ func (lt *Table) Cleanup() error {
 	lt.dbsMtx.RUnlock()
 
 	for i := range filesToCleanup {
+		level.Debug(util.Logger).Log("msg", fmt.Sprintf("removing db %s from table %s", filesToCleanup[i], lt.name))
+
 		if err := lt.RemoveDB(filesToCleanup[i]); err != nil {
 			return err
 		}

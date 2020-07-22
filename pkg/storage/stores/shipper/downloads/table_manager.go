@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const cacheCleanupInterval = 24 * time.Hour
+const cacheCleanupInterval = time.Hour
 
 type Config struct {
 	CacheDir     string
@@ -108,6 +108,8 @@ func (tm *TableManager) query(ctx context.Context, query chunk.IndexQuery, callb
 		tm.tablesMtx.Lock()
 		defer tm.tablesMtx.Unlock()
 
+		level.Error(pkg_util.Logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", query.TableName), "err", table.Err())
+
 		delete(tm.tables, query.TableName)
 		return table.Err()
 	}
@@ -142,6 +144,8 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
+	level.Info(pkg_util.Logger).Log("msg", "syncing tables")
+
 	for _, table := range tm.tables {
 		err := table.Sync(ctx)
 		if err != nil {
@@ -156,9 +160,12 @@ func (tm *TableManager) cleanupCache() error {
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
 
+	level.Info(pkg_util.Logger).Log("msg", "cleaning tables cache")
+
 	for name, table := range tm.tables {
 		lastUsedAt := table.LastUsedAt()
 		if lastUsedAt.Add(tm.cfg.CacheTTL).Before(time.Now()) {
+			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
 			err := table.CleanupAllDBs()
 			if err != nil {
 				return err

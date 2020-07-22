@@ -61,6 +61,10 @@ func TestTable_Query(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "table-writes")
 	require.NoError(t, err)
 
+	defer func() {
+		require.NoError(t, os.RemoveAll(tempDir))
+	}()
+
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 
 	testDBs := map[string]testutil.DBRecords{
@@ -83,7 +87,6 @@ func TestTable_Query(t *testing.T) {
 	table, _, stopFunc := buildTestTable(t, tempDir)
 	defer func() {
 		stopFunc()
-		require.NoError(t, os.RemoveAll(tempDir))
 	}()
 
 	testutil.TestSingleQuery(t, chunk.IndexQuery{}, table, 0, 30)
@@ -163,4 +166,31 @@ func TestTable_Sync(t *testing.T) {
 		_, ok := expectedFilesInDir[fileInfo.Name()]
 		require.True(t, ok)
 	}
+}
+
+func TestTable_LastUsedAt(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "table-writes")
+	require.NoError(t, err)
+
+	table, _, stopFunc := buildTestTable(t, tempDir)
+	defer func() {
+		stopFunc()
+		require.NoError(t, os.RemoveAll(tempDir))
+	}()
+
+	// a newly built table should have last used at close to now.
+	require.InDelta(t, time.Now().Unix(), table.LastUsedAt().Unix(), 1)
+
+	// change the last used at to an hour before
+	table.lastUsedAt = time.Now().Add(-time.Hour)
+	require.InDelta(t, time.Now().Add(-time.Hour).Unix(), table.LastUsedAt().Unix(), 1)
+
+	// query the table which should set the last used at to now.
+	err = table.Query(context.Background(), chunk.IndexQuery{}, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		return true
+	})
+	require.NoError(t, err)
+
+	// check whether last used at got update to now.
+	require.InDelta(t, time.Now().Unix(), table.LastUsedAt().Unix(), 1)
 }
