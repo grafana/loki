@@ -39,7 +39,7 @@ func Unmarshal(dst interface{}, sources ...Source) error {
 func Parse(dst interface{}) error {
 	return dParse(dst,
 		Defaults(),
-		YAMLFlag("config.file", "", "yaml file to load"),
+		YAMLFlag("config.file"),
 		Flags(),
 	)
 }
