@@ -41,6 +41,11 @@ helm upgrade --install loki-stack loki/loki-stack \
     --set fluent-bit.enabled=true,promtail.enabled=false
 ```
 
+### AWS Elastic Container Service (ECS)
+
+You can use fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
+For more information about this see our [AWS documentation](../aws/ecs/_index.md)
+
 ### Local
 
 First you need to follow those [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md) to build the plugin dynamic library.
