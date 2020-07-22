@@ -98,3 +98,83 @@ The template here uses Go's [`string.Replace`
 function](https://golang.org/pkg/strings/#Replace). When the template executes,
 the entire contents of the `app` key from the extracted map will have at most
 `1` instance of `loki` changed to `blokey`.
+
+## Supported Functions
+
+### ToLower & ToUpper
+
+ToLower and ToUpper convert the entire string respectively to lowercase and uppercase.
+
+Examples:
+
+```yaml
+- template:
+    source: out
+    template: '{{ ToLower .app }}'
+```
+
+```yaml
+- template:
+    source: out
+    template: '{{ .app | ToUpper }}'
+```
+
+### Replace
+
+`Replace` returns a copy of the string s with the first n non-overlapping instances of old replaced by new. If old is empty, it matches at the beginning of the string and after each UTF-8 sequence, yielding up to k+1 replacements for a k-rune string. If n < 0, there is no limit on the number of replacements.
+
+The example below will replace the first two words `loki` by `Loki`.
+
+```yaml
+- template:
+    source: output
+    template: '{{ Replace .Value "loki" "Loki" 2 }}'
+```
+
+### Trim
+
+`Trim` returns a slice of the string s with all leading and
+trailing Unicode code points contained in cutset removed.
+
+`TrimLeft` and `TrimRight` are the same as `Trim` except that it respectively trim only leading and trailing characters.
+
+```yaml
+- template:
+    source: output
+    template: '{{ Trim .Value ",. " }}'
+```
+
+`TrimSpace` TrimSpace returns a slice of the string s, with all leading
+and trailing white space removed, as defined by Unicode.
+
+```yaml
+- template:
+    source: output
+    template: '{{ TrimSpace .Value }}'
+```
+
+`TrimPrefix` and `TrimSuffix` will trim respectively the prefix or suffix supplied.
+
+```yaml
+- template:
+    source: output
+    template: '{{ TrimPrefix .Value "--" }}'
+```
+
+### Regex
+
+`regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first submatch
+
+```yaml
+- template:
+    source: output
+    template: '{{ regexReplaceAllLiteral "(a*)bc" .Value "{1}a" }}'
+```
+
+`regexReplaceAllLiteral` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement The replacement string is substituted directly, without using Expand.
+
+```yaml
+- template:
+    source: output
+    template: '{{ regexReplaceAllLiteral "(ts=)" .Value "timestamp=" }}'
+```

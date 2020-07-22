@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"reflect"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -31,6 +32,14 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
+		"regexReplaceAll": func(regex string, s string, repl string) string {
+			r := regexp.MustCompile(regex)
+			return r.ReplaceAllString(s, repl)
+		},
+		"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
+			r := regexp.MustCompile(regex)
+			return r.ReplaceAllLiteralString(s, repl)
+		},
 	}
 )
 
