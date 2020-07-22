@@ -29,7 +29,7 @@ docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all
 To check installed plugins, use the `docker plugin ls` command. Plugins that
 have started successfully are listed as enabled:
 
-```
+```bash
 $ docker plugin ls
 ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
