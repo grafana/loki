@@ -1,4 +1,4 @@
-package rules
+package manager
 
 import (
 	"context"

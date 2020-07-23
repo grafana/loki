@@ -1,192 +1,140 @@
 package manager
 
-// func TestMemStoreStop(t *testing.T) {
-// 	hist := NewMemStore(&rules.Manager{}, time.Millisecond, NewMetrics(nil))
-// 	<-time.After(2 * time.Millisecond) // allow it to start ticking (not strictly required for this test)
-// 	hist.Stop()
-// 	// ensure idempotency
-// 	hist.Stop()
+import (
+	"context"
+	"testing"
+	"time"
 
-// 	// ensure ticker is cleaned up
-// 	select {
-// 	case <-time.After(10 * time.Millisecond):
-// 		t.Fatalf("done channel not closed")
-// 	case <-hist.done:
-// 	}
-// }
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/rules"
+	"github.com/stretchr/testify/require"
+)
 
-// func mustParseLabels(s string) labels.Labels {
-// 	labels, err := parser.ParseMetric(s)
-// 	if err != nil {
-// 		panic(fmt.Sprintf("failed to parse %s", s))
-// 	}
+var (
+	NilMetrics = NewMetrics(nil)
+	NilLogger  = log.NewNopLogger()
+)
 
-// 	return labels
-// }
+func labelsToMatchers(ls labels.Labels) (res []*labels.Matcher) {
+	for _, l := range ls {
+		res = append(res, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
+	}
+	return res
+}
 
-// func newRule(name, qry, ls string, forDur time.Duration) *rules.AlertingRule {
-// 	return rules.NewAlertingRule(name, &parser.StringLiteral{Val: qry}, forDur, mustParseLabels(ls), nil, nil, false, log.NewNopLogger())
-// }
+type MockRuleIter []*rules.AlertingRule
 
-// func TestForStateAppenderAdd(t *testing.T) {
-// 	app := NewForStateAppender(NewMetrics(nil))
-// 	require.Equal(t, map[uint64]*series.ConcreteSeries{}, app.data)
+func (xs MockRuleIter) AlertingRules() []*rules.AlertingRule { return xs }
 
-// 	// create first series
-// 	first := mustParseLabels(`{foo="bar", bazz="buzz", __name__="ALERTS_FOR_STATE"}`)
-// 	_, err := app.Add(first, 1, 1)
-// 	require.Nil(t, err)
-// 	require.Equal(t, map[uint64]*series.ConcreteSeries{
-// 		first.Hash(): series.NewConcreteSeries(
-// 			first, []model.SamplePair{{Timestamp: model.Time(1), Value: model.SampleValue(1)}},
-// 		),
-// 	}, app.data)
+func testStore(alerts []*rules.AlertingRule, queryFunc rules.QueryFunc, itv time.Duration) *MemStore {
+	return NewMemStore("test", MockRuleIter(alerts), queryFunc, NilMetrics, itv, NilLogger)
+}
 
-// 	// create second series
-// 	second := mustParseLabels(`{foo="bar", bazz="barf", __name__="ALERTS_FOR_STATE"}`)
-// 	_, err = app.Add(second, 1, 1)
-// 	require.Nil(t, err)
+func TestIdempotentStop(t *testing.T) {
+	store := testStore(nil, nil, time.Millisecond)
 
-// 	require.Equal(t, map[uint64]*series.ConcreteSeries{
-// 		first.Hash(): series.NewConcreteSeries(
-// 			first, []model.SamplePair{{Timestamp: model.Time(1), Value: model.SampleValue(1)}},
-// 		),
-// 		second.Hash(): series.NewConcreteSeries(
-// 			second, []model.SamplePair{{Timestamp: model.Time(1), Value: model.SampleValue(1)}},
-// 		),
-// 	}, app.data)
+	store.Stop()
+	store.Stop()
+}
 
-// 	// append first series
-// 	_, err = app.Add(first, 3, 3)
-// 	require.Nil(t, err)
+func TestSelectRestores(t *testing.T) {
+	ruleName := "testrule"
+	ars := []*rules.AlertingRule{
+		rules.NewAlertingRule(
+			ruleName,
+			&parser.StringLiteral{Val: "unused"},
+			time.Minute,
+			labels.FromMap(map[string]string{"foo": "bar"}),
+			nil,
+			nil,
+			false,
+			NilLogger,
+		),
+	}
 
-// 	require.Equal(t, map[uint64]*series.ConcreteSeries{
-// 		first.Hash(): series.NewConcreteSeries(
-// 			first, []model.SamplePair{
-// 				{Timestamp: model.Time(1), Value: model.SampleValue(1)},
-// 				{Timestamp: model.Time(3), Value: model.SampleValue(3)},
-// 			},
-// 		),
-// 		second.Hash(): series.NewConcreteSeries(
-// 			second, []model.SamplePair{{Timestamp: model.Time(1), Value: model.SampleValue(1)}},
-// 		),
-// 	}, app.data)
+	callCount := 0
+	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		callCount++
+		return promql.Vector{
+			promql.Sample{
+				Metric: labels.FromMap(map[string]string{
+					labels.MetricName: "some_metric",
+					"foo":             "bar",  // from the AlertingRule.labels spec
+					"bazz":            "buzz", // an extra label
+				}),
+				Point: promql.Point{
+					T: util.TimeToMillis(t),
+					V: 1,
+				},
+			},
+			promql.Sample{
+				Metric: labels.FromMap(map[string]string{
+					labels.MetricName: "some_metric",
+					"foo":             "bar",  // from the AlertingRule.labels spec
+					"bazz":            "bork", // an extra label (second variant)
+				}),
+				Point: promql.Point{
+					T: util.TimeToMillis(t),
+					V: 1,
+				},
+			},
+		}, nil
+	})
 
-// 	// insert new points at correct position
-// 	_, err = app.Add(first, 2, 2)
-// 	require.Nil(t, err)
+	store := testStore(ars, fn, time.Minute)
 
-// 	require.Equal(t, map[uint64]*series.ConcreteSeries{
-// 		first.Hash(): series.NewConcreteSeries(
-// 			first, []model.SamplePair{
-// 				{Timestamp: model.Time(1), Value: model.SampleValue(1)},
-// 				{Timestamp: model.Time(2), Value: model.SampleValue(2)},
-// 				{Timestamp: model.Time(3), Value: model.SampleValue(3)},
-// 			},
-// 		),
-// 		second.Hash(): series.NewConcreteSeries(
-// 			second, []model.SamplePair{{Timestamp: model.Time(1), Value: model.SampleValue(1)}},
-// 		),
-// 	}, app.data)
+	now := util.TimeToMillis(time.Now())
 
-// 	// ignore non ALERTS_FOR_STATE metrics
-// 	_, err = app.Add(mustParseLabels(`{foo="bar", bazz="barf", __name__="test"}`), 1, 1)
-// 	require.Nil(t, err)
+	q, err := store.Querier(context.Background(), 0, now)
+	require.Nil(t, err)
 
-// 	require.Equal(t, map[uint64]*series.ConcreteSeries{
-// 		first.Hash(): series.NewConcreteSeries(
-// 			first, []model.SamplePair{
-// 				{Timestamp: model.Time(1), Value: model.SampleValue(1)},
-// 				{Timestamp: model.Time(2), Value: model.SampleValue(2)},
-// 				{Timestamp: model.Time(3), Value: model.SampleValue(3)},
-// 			},
-// 		),
-// 		second.Hash(): series.NewConcreteSeries(
-// 			second, []model.SamplePair{{Timestamp: model.Time(1), Value: model.SampleValue(1)}},
-// 		),
-// 	}, app.data)
-// }
+	ls := ForStateMetric(labels.FromMap(map[string]string{
+		"foo":  "bar",
+		"bazz": "buzz",
+	}), ruleName)
 
-// func TestForStateAppenderCleanup(t *testing.T) {
-// 	app := NewForStateAppender(NewMetrics(nil))
-// 	now := time.Now()
+	// First call evaluates the rule at ts-ForDuration and populates the cache
+	sset := q.Select(false, nil, labelsToMatchers(ls)...)
 
-// 	// create ls series
-// 	ls := mustParseLabels(`{foo="bar", bazz="buzz", __name__="ALERTS_FOR_STATE"}`)
-// 	_, err := app.Add(ls, util.TimeToMillis(now.Add(-3*time.Minute)), 1)
-// 	require.Nil(t, err)
-// 	_, err = app.Add(ls, util.TimeToMillis(now.Add(-1*time.Minute)), 2)
-// 	require.Nil(t, err)
+	require.Equal(t, true, sset.Next())
+	require.Equal(t, ls, sset.At().Labels())
+	iter := sset.At().Iterator()
+	require.Equal(t, true, iter.Next())
+	ts, v := iter.At()
+	require.Equal(t, now, ts)
+	require.Equal(t, float64(now), v)
+	require.Equal(t, false, iter.Next())
+	require.Equal(t, false, sset.Next())
 
-// 	rem := app.CleanupOldSamples(time.Minute)
-// 	require.Equal(t, 1, rem)
+	// Second call uses cache
+	ls = ForStateMetric(labels.FromMap(map[string]string{
+		"foo":  "bar",
+		"bazz": "bork",
+	}), ruleName)
 
-// 	require.Equal(t, map[uint64]*series.ConcreteSeries{
-// 		ls.Hash(): series.NewConcreteSeries(
-// 			ls, []model.SamplePair{
-// 				{Timestamp: model.Time(util.TimeToMillis(now.Add(-1 * time.Minute))), Value: model.SampleValue(2)},
-// 			},
-// 		),
-// 	}, app.data)
+	sset = q.Select(false, nil, labelsToMatchers(ls)...)
+	require.Equal(t, true, sset.Next())
+	require.Equal(t, ls, sset.At().Labels())
+	iter = sset.At().Iterator()
+	require.Equal(t, true, iter.Next())
+	ts, v = iter.At()
+	require.Equal(t, now, ts)
+	require.Equal(t, float64(now), v)
+	require.Equal(t, false, iter.Next())
+	require.Equal(t, false, sset.Next())
+	require.Equal(t, 1, callCount)
 
-// }
+	// Third call uses cache & has no match
+	ls = ForStateMetric(labels.FromMap(map[string]string{
+		"foo":  "bar",
+		"bazz": "unknown",
+	}), ruleName)
 
-// func TestForStateAppenderQuerier(t *testing.T) {
-// 	app := NewForStateAppender(NewMetrics(nil))
-// 	now := time.Now()
-
-// 	// create ls series
-// 	ls := mustParseLabels(`{foo="bar", bazz="buzz", __name__="ALERTS_FOR_STATE"}`)
-// 	_, err := app.Add(ls, util.TimeToMillis(now.Add(-3*time.Minute)), 1)
-// 	require.Nil(t, err)
-// 	_, err = app.Add(ls, util.TimeToMillis(now.Add(-1*time.Minute)), 2)
-// 	require.Nil(t, err)
-// 	_, err = app.Add(ls, util.TimeToMillis(now.Add(1*time.Minute)), 3)
-// 	require.Nil(t, err)
-
-// 	// never included due to bounds
-// 	_, err = app.Add(mustParseLabels(`{foo="bar", bazz="blip", __name__="ALERTS_FOR_STATE"}`), util.TimeToMillis(now.Add(-2*time.Hour)), 3)
-// 	require.Nil(t, err)
-
-// 	// should succeed with nil selecthints
-// 	q := app.Querier(context.Background(), util.TimeToMillis(now.Add(-2*time.Minute)), util.TimeToMillis(now))
-
-// 	set := q.Select(
-// 		false,
-// 		nil,
-// 		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, AlertForStateMetricName),
-// 	)
-// 	require.Equal(
-// 		t,
-// 		series.NewConcreteSeriesSet(
-// 			[]storage.Series{
-// 				series.NewConcreteSeries(ls, []model.SamplePair{
-// 					{Timestamp: model.Time(util.TimeToMillis(now.Add(-1 * time.Minute))), Value: model.SampleValue(2)},
-// 				}),
-// 			},
-// 		),
-// 		set,
-// 	)
-
-// 	// // should be able to minimize selection window via hints
-// 	q = app.Querier(context.Background(), util.TimeToMillis(now.Add(-time.Hour)), util.TimeToMillis(now.Add(time.Hour)))
-// 	set2 := q.Select(
-// 		false,
-// 		&storage.SelectHints{
-// 			Start: util.TimeToMillis(now.Add(-2 * time.Minute)),
-// 			End:   util.TimeToMillis(now),
-// 		},
-// 		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, AlertForStateMetricName),
-// 	)
-// 	require.Equal(
-// 		t,
-// 		series.NewConcreteSeriesSet(
-// 			[]storage.Series{
-// 				series.NewConcreteSeries(ls, []model.SamplePair{
-// 					{Timestamp: model.Time(util.TimeToMillis(now.Add(-1 * time.Minute))), Value: model.SampleValue(2)},
-// 				}),
-// 			},
-// 		),
-// 		set2,
-// 	)
-// }
+	sset = q.Select(false, nil, labelsToMatchers(ls)...)
+	require.Equal(t, false, sset.Next())
+	require.Equal(t, 1, callCount)
+}

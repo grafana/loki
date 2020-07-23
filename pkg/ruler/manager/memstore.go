@@ -35,6 +35,13 @@ func (a NoopAppender) AddFast(ref uint64, t int64, v float64) error {
 func (a NoopAppender) Commit() error   { return nil }
 func (a NoopAppender) Rollback() error { return nil }
 
+func ForStateMetric(base labels.Labels, alertName string) labels.Labels {
+	b := labels.NewBuilder(base)
+	b.Set(labels.MetricName, AlertForStateMetricName)
+	b.Set(labels.AlertName, alertName)
+	return b.Labels()
+}
+
 type Metrics struct {
 	evaluations *prometheus.CounterVec
 	Series      prometheus.Gauge // in memory series
@@ -54,12 +61,16 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 	}
 }
 
+type RuleIter interface {
+	AlertingRules() []*rules.AlertingRule
+}
+
 type MemStore struct {
 	mtx       sync.Mutex
 	userID    string
 	queryFunc rules.QueryFunc
 	metrics   *Metrics
-	mgr       *rules.Manager
+	mgr       RuleIter
 	logger    log.Logger
 	rules     map[string]*RuleCache
 
@@ -67,7 +78,7 @@ type MemStore struct {
 	cleanupInterval time.Duration
 }
 
-func NewMemStore(userID string, mgr *rules.Manager, queryFunc rules.QueryFunc, metrics *Metrics, cleanupInterval time.Duration, logger log.Logger) *MemStore {
+func NewMemStore(userID string, mgr RuleIter, queryFunc rules.QueryFunc, metrics *Metrics, cleanupInterval time.Duration, logger log.Logger) *MemStore {
 	s := &MemStore{
 		userID:          userID,
 		metrics:         metrics,
@@ -199,23 +210,23 @@ func (m *MemStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	if !ok {
 		cache = NewRuleCache(m.metrics)
 		m.rules[ruleKey] = cache
-	} else {
-		smpl, cached := cache.Get(m.ts, ls)
-		if cached {
-			// Assuming the result is cached but the desired series is not in the result, it wouldn't be considered active.
-			if smpl == nil {
-				return storage.NoopSeriesSet()
-			}
+	}
 
-			// If the labelset is cached we can consider it active. Return the for state sample active immediately.
-			return series.NewConcreteSeriesSet(
-				[]storage.Series{
-					series.NewConcreteSeries(smpl.Metric, []model.SamplePair{
-						{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.V)},
-					}),
-				},
-			)
+	smpl, cached := cache.Get(m.ts, ls)
+	if cached {
+		// Assuming the result is cached but the desired series is not in the result, it wouldn't be considered active.
+		if smpl == nil {
+			return storage.NoopSeriesSet()
 		}
+
+		// If the labelset is cached we can consider it active. Return the for state sample active immediately.
+		return series.NewConcreteSeriesSet(
+			[]storage.Series{
+				series.NewConcreteSeries(smpl.Metric, []model.SamplePair{
+					{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.V)},
+				}),
+			},
+		)
 	}
 
 	// see if alert condition had any inhabitants at ts-forDuration. We can assume it's still firing because
@@ -231,14 +242,11 @@ func (m *MemStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	// considered active & written at the timetamp requested
 	forStateVec := make(promql.Vector, 0, len(vec))
 	for _, smpl := range vec {
-		b := labels.NewBuilder(smpl.Metric)
-		b.Set(labels.MetricName, AlertForStateMetricName)
-		b.Set(labels.AlertName, rule.Name())
 
 		ts := util.TimeToMillis(m.ts)
 
 		forStateVec = append(forStateVec, promql.Sample{
-			Metric: b.Labels(),
+			Metric: ForStateMetric(smpl.Metric, rule.Name()),
 			Point: promql.Point{
 				T: ts,
 				V: float64(ts),
@@ -247,11 +255,11 @@ func (m *MemStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 
 	}
 
-	// cache the result of the evalauation at this timestamp
+	// cache the result of the evaluation at this timestamp
 	cache.Set(m.ts, forStateVec)
 
 	// Finally return the series if it exists
-	smpl, ok := cache.Get(m.ts, ls)
+	smpl, ok = cache.Get(m.ts, ls)
 	if !ok || smpl == nil {
 		return storage.NoopSeriesSet()
 	}
@@ -307,13 +315,13 @@ func (c *RuleCache) Set(ts time.Time, vec promql.Vector) {
 }
 
 // Get returns ok if that timestamp's result is cached.
-func (c *RuleCache) Get(ts time.Time, ls labels.Labels) (pt *promql.Sample, ok bool) {
+func (c *RuleCache) Get(ts time.Time, ls labels.Labels) (*promql.Sample, bool) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
 	match, ok := c.data[ts.UnixNano()]
 	if !ok {
-		return pt, false
+		return nil, false
 	}
 
 	smp, ok := match[ls.Hash()]
