@@ -233,7 +233,7 @@ That's it ! Make sure to checkout the [LogQL][logql] to learn more about Loki po
 [fluentbit]: https://fluentbit.io/
 [fluentd]: https://www.fluentd.org/
 [fluentbit loki image]: https://hub.docker.com/r/grafana/fluent-bit-plugin-loki
-[logql]: https://github.com/grafana/loki/blob/master/docs/logql.md
+[logql]: https://grafana.com/docs/loki/latest/logql/
 [alpine]:https://hub.docker.com/_/alpine
 [fluentbit ouput]: https://fluentbit.io/documentation/0.14/output/
 [routing]: https://fluentbit.io/documentation/0.13/getting_started/routing.html
