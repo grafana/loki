@@ -13,5 +13,5 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
-	f.StringVar(&cfg.DownstreamURL, "frontend.tail-proxy-url", "", "URL of querier for tail proxy.")
+	f.StringVar(&cfg.TailProxyUrl, "frontend.tail-proxy-url", "", "URL of querier for tail proxy.")
 }
