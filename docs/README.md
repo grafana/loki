@@ -60,3 +60,40 @@ simplifies the operation and significantly lowers the cost of Loki.
     3. [Contributing to Loki](sources/community/contributing.md)
 12. [Loki Maintainers Guide](sources/./maintaining/_index.md)
     1. [Releasing Loki](sources/./maintaining/release.md)
+
+## Updating docs
+
+### Building the docs locally
+
+When you contribute to documentation, it is a good practice to build the docs on your local machine to make sure your changes appear as you expect. This README explains the process for doing that.
+
+#### Requirements
+
+Docker >= 2.1.0.3
+
+### Build the doc site
+
+1. In the command line, make sure you are in the docs folder: `cd docs`.
+2. Run `make docs`. This launches a preview of the docs website at `http://localhost:3002/docs/loki/latest/` which will refresh automatically when changes to content in the `sources` directory are made.
+
+---
+
+### Content guidelines
+
+Edit content in the `sources` directory.
+
+### Edit the side menu
+
+The side menu is built automatically from the folder structure. Ordering is done with the `weight` front matter param.
+
+### Add images
+
+Images are sourced in this repo alonside content. They will sync to the website repo just like markdown files.
+
+---
+
+## Deploy changes to grafana.com
+
+When a PR is merged to master with changes in the `docs/sources` directory, those changes are automatically synched to the grafana/website repo and published to the staging site.
+
+Generally, someone from marketing will publish to production each day, so as long as the sync is successful your docs edits will be published. Alternatively, you can refer to [publishing to production](https://github.com/grafana/website#publishing-to-production-grafanacom) if you'd like to do it yourself.
