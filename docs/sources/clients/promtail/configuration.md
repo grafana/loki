@@ -292,6 +292,7 @@ of targets using a specified discovery method:
 job_name: <string>
 
 # Describes how to parse log lines. Supported values [cri docker raw]
+# Deprecated in favor of pipeline_stages using the cri or docker stages.
 [entry_parser: <string> | default = "docker"]
 
 # Describes how to transform logs from targets.
