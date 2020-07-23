@@ -269,7 +269,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
-	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
+	t.frontend, err = frontend.New(t.cfg.Frontend.Config, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -300,12 +300,12 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	).Wrap(t.frontend.Handler())
 
 	var defaultHandler http.Handler
-	if t.cfg.TailProxy.DownstreamURL != "" {
+	if t.cfg.Frontend.TailProxyUrl != "" {
 		httpMiddleware := middleware.Merge(
 			t.httpAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
 		)
-		tailURL, err := url.Parse(t.cfg.TailProxy.DownstreamURL)
+		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyUrl)
 		if err != nil {
 			return nil, err
 		}
