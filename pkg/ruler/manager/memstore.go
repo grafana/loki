@@ -74,28 +74,46 @@ type MemStore struct {
 	logger    log.Logger
 	rules     map[string]*RuleCache
 
+	initiated       chan struct{}
 	done            chan struct{}
 	cleanupInterval time.Duration
 }
 
-func NewMemStore(userID string, mgr RuleIter, queryFunc rules.QueryFunc, metrics *Metrics, cleanupInterval time.Duration, logger log.Logger) *MemStore {
+func NewMemStore(userID string, queryFunc rules.QueryFunc, metrics *Metrics, cleanupInterval time.Duration, logger log.Logger) *MemStore {
 	s := &MemStore{
 		userID:          userID,
 		metrics:         metrics,
 		queryFunc:       queryFunc,
 		logger:          logger,
-		mgr:             mgr,
 		cleanupInterval: cleanupInterval,
 		rules:           make(map[string]*RuleCache),
 
-		done: make(chan struct{}),
+		initiated: make(chan struct{}), // blocks execution until Start() is called
+		done:      make(chan struct{}),
 	}
-	go s.run()
 	return s
 
 }
 
+// Calling Start will set the RuleIter, unblock the MemStore, and start the run() function in a separate goroutine.
+func (m *MemStore) Start(iter RuleIter) error {
+	if iter == nil {
+		return errors.New("nil RuleIter")
+	}
+	m.mgr = iter
+	close(m.initiated)
+	go m.run()
+	return nil
+}
+
 func (m *MemStore) Stop() {
+	select {
+	case <-m.initiated:
+	default:
+		// If initiated is blocked, the MemStore has yet to start: easy no-op.
+		return
+	}
+
 	// Need to nil all series & decrement gauges
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -116,6 +134,7 @@ func (m *MemStore) Stop() {
 
 // run periodically cleans up old series/samples to ensure memory consumption doesn't grow unbounded.
 func (m *MemStore) run() {
+	<-m.initiated
 	t := time.NewTicker(m.cleanupInterval)
 	for {
 		select {
@@ -151,13 +170,12 @@ func (m *MemStore) run() {
 	}
 }
 
-func (m *MemStore) Appender() storage.Appender { return NoopAppender{} }
-
 // implement storage.Queryable. It is only called with the desired ts as maxtime. Mint is
 // parameterized via the outage tolerance, but since we're synthetically generating these,
 // we only care about the desired time.
 func (m *MemStore) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return &MemStoreQuerier{
+	<-m.initiated
+	return &memStoreQuerier{
 		ts:       util.TimeFromMillis(maxt),
 		MemStore: m,
 		ctx:      ctx,
@@ -165,13 +183,13 @@ func (m *MemStore) Querier(ctx context.Context, mint, maxt int64) (storage.Queri
 
 }
 
-type MemStoreQuerier struct {
+type memStoreQuerier struct {
 	ts  time.Time
 	ctx context.Context
 	*MemStore
 }
 
-func (m *MemStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	b := labels.NewBuilder(nil)
 	var ruleKey string
 	for _, matcher := range matchers {
@@ -274,17 +292,17 @@ func (m *MemStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 }
 
 // LabelValues returns all potential values for a label name.
-func (*MemStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (*memStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (*MemStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (*memStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 
 // Close releases the resources of the Querier.
-func (*MemStoreQuerier) Close() error { return nil }
+func (*memStoreQuerier) Close() error { return nil }
 
 type RuleCache struct {
 	mtx     sync.Mutex

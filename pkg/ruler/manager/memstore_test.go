@@ -30,15 +30,9 @@ type MockRuleIter []*rules.AlertingRule
 
 func (xs MockRuleIter) AlertingRules() []*rules.AlertingRule { return xs }
 
-func testStore(alerts []*rules.AlertingRule, queryFunc rules.QueryFunc, itv time.Duration) *MemStore {
-	return NewMemStore("test", MockRuleIter(alerts), queryFunc, NilMetrics, itv, NilLogger)
-}
+func testStore(queryFunc rules.QueryFunc, itv time.Duration) *MemStore {
+	return NewMemStore("test", queryFunc, NilMetrics, itv, NilLogger)
 
-func TestIdempotentStop(t *testing.T) {
-	store := testStore(nil, nil, time.Millisecond)
-
-	store.Stop()
-	store.Stop()
 }
 
 func TestSelectRestores(t *testing.T) {
@@ -85,7 +79,9 @@ func TestSelectRestores(t *testing.T) {
 		}, nil
 	})
 
-	store := testStore(ars, fn, time.Minute)
+	store := testStore(fn, time.Minute)
+	err := store.Start(MockRuleIter(ars))
+	require.Nil(t, err)
 
 	now := util.TimeToMillis(time.Now())
 
@@ -137,4 +133,87 @@ func TestSelectRestores(t *testing.T) {
 	sset = q.Select(false, nil, labelsToMatchers(ls)...)
 	require.Equal(t, false, sset.Next())
 	require.Equal(t, 1, callCount)
+}
+
+func TestMemstoreStart(t *testing.T) {
+	ruleName := "testrule"
+	ars := []*rules.AlertingRule{
+		rules.NewAlertingRule(
+			ruleName,
+			&parser.StringLiteral{Val: "unused"},
+			time.Minute,
+			labels.FromMap(map[string]string{"foo": "bar"}),
+			nil,
+			nil,
+			false,
+			NilLogger,
+		),
+	}
+
+	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		return nil, nil
+	})
+
+	store := testStore(fn, time.Minute)
+
+	err := store.Start(nil)
+	require.NotNil(t, err)
+	err = store.Start(MockRuleIter(ars))
+	require.Nil(t, err)
+}
+
+func TestMemStoreStopBeforeStart(t *testing.T) {
+	store := testStore(nil, time.Minute)
+	done := make(chan struct{})
+	go func() {
+		store.Stop()
+		done <- struct{}{}
+	}()
+	select {
+	case <-time.After(time.Millisecond):
+		t.FailNow()
+	case <-done:
+	}
+}
+
+func TestMemstoreBlocks(t *testing.T) {
+	ruleName := "testrule"
+	ars := []*rules.AlertingRule{
+		rules.NewAlertingRule(
+			ruleName,
+			&parser.StringLiteral{Val: "unused"},
+			time.Minute,
+			labels.FromMap(map[string]string{"foo": "bar"}),
+			nil,
+			nil,
+			false,
+			NilLogger,
+		),
+	}
+
+	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		return nil, nil
+	})
+
+	store := testStore(fn, time.Minute)
+
+	done := make(chan struct{})
+	go func() {
+		store.Querier(context.Background(), 0, 1)
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-time.After(time.Millisecond):
+	case <-done:
+		t.FailNow()
+	}
+
+	store.Start(MockRuleIter(ars))
+	select {
+	case <-done:
+	case <-time.After(time.Millisecond):
+		t.FailNow()
+	}
+
 }
