@@ -25,10 +25,9 @@ docker run --log-driver=loki \
     grafana/grafana
 ```
 
-> **Note**: The Loki logging driver still uses the json-log driver in
-> combination with sending logs to Loki. This is mainly useful to keep the
-> `docker logs` command working. You can adjust file size and rotation
-> using the respective log option `max-size` and `max-file`.
+> **Note**: The Loki logging driver still uses the json-log driver in combination with sending logs to Loki, this is mainly useful to keep the `docker logs` command working.
+> You can adjust file size and rotation using the respective log option `max-size` and `max-file`.
+> You can deactivate this behavior by setting the log option `no-file` to true.
 
 ## Change the default logging driver
 
@@ -66,8 +65,7 @@ effect. All containers from that host will then send logs to Loki.
 
 ## Configure the logging driver for a Swarm service or Compose
 
-You can also configure the logging driver for a [swarm
-service](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/)
+You can also configure the logging driver for a [swarm service](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/)
 directly in your compose file. This also applies for `docker-compose`:
 
 ```yaml
@@ -78,7 +76,7 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: "https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push"
+        loki-url: "https://<user_id>:<password>@logs-prod-us-central1.grafana.net/loki/api/v1/push"
 ```
 
 You can then deploy your stack using:
@@ -101,6 +99,8 @@ Once deployed, the Grafana service will send its logs to Loki.
 
 ## Labels
 
+Loki can received a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector](../../logql/_index.md#log-stream-selector).
+
 By default, the Docker driver will add the following labels to each log line:
 
 - `filename`: where the log is written to on disk
@@ -108,36 +108,113 @@ By default, the Docker driver will add the following labels to each log line:
 - `container_name`: the name of the container generating logs
 - `swarm_stack`, `swarm_service`: added when deploying from Docker Swarm.
 
-Custom labels can be added using the `loki-external-labels`,
+Custom labels can be added using the `loki-external-labels`, `loki-pipeline-stages`,
 `loki-pipeline-stage-file`, `labels`, `env`, and `env-regex` options. See the
 next section for all supported options.
 
+## Pipeline stages
+
+While you can provide `loki-pipeline-stage-file` it can be hard to mount the configuration file to the driver root filesystem.
+This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined.
+
+The example [docker-compose](https://github.com/grafana/loki/blob/master/cmd/docker-driver/docker-compose.yaml) below configures 2 stages, one to extract level values and one to set it as a label:
+
+```yaml
+version: "3"
+services:
+  nginx:
+    image: grafana/grafana
+    logging:
+      driver: loki
+      options:
+        loki-url: http://host.docker.internal:3100/loki/api/v1/push
+        loki-pipeline-stages: |
+          - regex:
+              expression: '(level|lvl|severity)=(?P<level>\w+)'
+          - labels:
+              level:
+    ports:
+      - "3000:3000"
+```
+
+> Note the `loki-pipeline-stages: |` allowing to keep the indentation correct.
+
+When using docker run you can also pass the value via a string parameter like such:
+
+```bash
+read -d '' stages << EOF
+- regex:
+     expression: '(level|lvl|severity)=(?P<level>\\\w+)'
+- labels:
+    level:
+EOF
+
+docker run --log-driver=loki \
+    --log-opt loki-url="http://host.docker.internal:3100/loki/api/v1/push" \
+    --log-opt loki-pipeline-stages="$stages" \
+    -p 3000:3000 grafana/grafana
+```
+
+This is a bit more difficult as you need to properly escape bash special characters. (note `\\\w+` for `\w+`)
+
+Providing both `loki-pipeline-stage-file` and `loki-pipeline-stages` will cause an error.
+
+## Relabeling
+
+You can use [Prometheus relabeling](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) configuration to modify labels discovered by the driver. The configuration must be passed as a YAML string like the [pipeline stages](#pipeline-stages).
+
+For example the configuration below will rename the label `swarm_stack` and `swarm_service` to respectively `namespace` and `service`.
+
+```yaml
+version: "3"
+services:
+  nginx:
+    image: grafana/grafana
+    logging:
+      driver: loki
+      options:
+        loki-url: http://host.docker.internal:3100/loki/api/v1/push
+        loki-relabel-config: |
+          - action: labelmap
+            regex: swarm_stack
+            replacement: namespace
+          - action: labelmap
+            regex: swarm_(service)
+    ports:
+      - "3000:3000"
+```
+
 ## Supported log-opt options
 
-The following are all supported options that the Loki logging driver supports:
+To specify additional logging driver options, you can use the --log-opt NAME=VALUE flag.
 
-| Option                          | Required? | Default Value              | Description
-| ------------------------------- | :-------: | :------------------------: | -------------------------------------- |
-| `loki-url`                      | Yes       |                            | Loki HTTP push endpoint.
-| `loki-external-labels`          | No        | `container_name={{.Name}}` | Additional label value pairs separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/engine/admin/logging/log_tags/). (e.g.,: `container_name={{.ID}}.{{.Name}},cluster=prod`)
-| `loki-timeout`                  | No        | `10s`                      | The timeout to use when sending logs to the Loki instance. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
-| `loki-batch-wait`               | No        | `1s`                       | The amount of time to wait before sending a log batch complete or not. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
-| `loki-batch-size`               | No        | `102400`                   | The maximum size of a log batch to send.
-| `loki-min-backoff`              | No        | `100ms`                    | The minimum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
-| `loki-max-backoff`              | No        | `10s`                      | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
-| `loki-retries`                  | No        | `10`                       | The maximum amount of retries for a log batch.
-| `loki-pipeline-stage-file`      | No        |                            | The location of a pipeline stage configuration file. Pipeline stages allows to parse log lines to extract more labels. [See the Promtail documentation for more info.](../../promtail/pipelines/)
-| `loki-tls-ca-file`              | No        |                            | Set the path to a custom certificate authority.
-| `loki-tls-cert-file`            | No        |                            | Set the path to a client certificate file.
-| `loki-tls-key-file`             | No        |                            | Set the path to a client key.
-| `loki-tls-server-name`          | No        |                            | Name used to validate the server certificate.
-| `loki-tls-insecure-skip-verify` | No        | `false`                    | Allow to skip tls verification.
-| `loki-proxy-url`                | No        |                            | Proxy URL use to connect to Loki.
-| `max-size`                      | No        |       -1                   | The maximum size of the log before it is rolled. A positive integer plus a modifier representing the unit of measure (k, m, or g). Defaults to -1 (unlimited). This is used by json-log required to keep the `docker log` command working.
-| `max-file`                      | No        |       1                    | The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. Only effective when max-size is also set. A positive integer. Defaults to 1.
-| `labels`                        | No        |                            | Comma-separated list of keys of labels, which should be included in message, if these labels are specified for container.
-| `env`                           | No        |                            | Comma-separated list of keys of environment variables to be included in message if they specified for a container.
-| `env-regex`                     | No        |                            | A regular expression to match logging-related environment variables. Used for advanced log label options. If there is collision between the label and env keys, the value of the env takes precedence. Both options add additional fields to the labels of a logging message.
+| Option                          | Required? |       Default Value        | Description                                                                                                                                                                                                                                                                   |
+|---------------------------------|:---------:|:--------------------------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `loki-url`                      |    Yes    |                            | Loki HTTP push endpoint.                                                                                                                                                                                                                                                      |
+| `loki-external-labels`          |    No     | `container_name={{.Name}}` | Additional label value pair separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/config/containers/logging/log_tags/). (eg: `container_name={{.ID}}.{{.Name}},cluster=prod`)                               |
+| `loki-timeout`                  |    No     |           `10s`            | The timeout to use when sending logs to the Loki instance. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                    |
+| `loki-batch-wait`               |    No     |            `1s`            | The amount of time to wait before sending a log batch complete or not. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                        |
+| `loki-batch-size`               |    No     |          `102400`          | The maximum size of a log batch to send.                                                                                                                                                                                                                                      |
+| `loki-min-backoff`              |    No     |          `100ms`           | The minimum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
+| `loki-max-backoff`              |    No     |           `10s`            | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
+| `loki-retries`                  |    No     |            `10`            | The maximum amount of retries for a log batch.                                                                                                                                                                                                                                |
+| `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/master/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels. [see documentation](../promtail/stages/)              |
+| `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see](#pipeline-stages) and  [see documentation](../promtail/stages/)                                                                                                                                                   |
+| `loki-relabel-config`           |    No     |                            | A [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) allowing you to rename labels [see](#relabeling)                                                                                            |
+| `loki-tenant-id`                |    No     |                            | Set the tenant id (http header`X-Scope-OrgID`) when sending logs to Loki. It can be overrides by a pipeline stage.                                                                                                                                                            |
+| `loki-tls-ca-file`              |    No     |                            | Set the path to a custom certificate authority.                                                                                                                                                                                                                               |
+| `loki-tls-cert-file`            |    No     |                            | Set the path to a client certificate file.                                                                                                                                                                                                                                    |
+| `loki-tls-key-file`             |    No     |                            | Set the path to a client key.                                                                                                                                                                                                                                                 |
+| `loki-tls-server-name`          |    No     |                            | Name used to validate the server certificate.                                                                                                                                                                                                                                 |
+| `loki-tls-insecure-skip-verify` |    No     |          `false`           | Allow to skip tls verification.                                                                                                                                                                                                                                               |
+| `loki-proxy-url`                |    No     |                            | Proxy URL use to connect to Loki.                                                                                                                                                                                                                                             |
+| `no-file`                       |    No     |          `false`           | This indicates the driver to not create log files on disk, however this means you won't be able to use `docker logs` on the container anymore. You can use this if you don't need to use `docker logs` and you run with limited disk space. (By default files are created)    |
+| `keep-file`                     |    No     |          `false`           | This indicates the driver to keep json log files once the container is stopped. By default files are removed, this means you won't be able to use `docker logs` once the container is stopped.                                                                                |
+| `max-size`                      |    No     |             -1             | The maximum size of the log before it is rolled. A positive integer plus a modifier representing the unit of measure (k, m, or g). Defaults to -1 (unlimited). This is used by json-log required to keep the `docker log` command working.                                    |
+| `max-file`                      |    No     |             1              | The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. Only effective when max-size is also set. A positive integer. Defaults to 1.                                                                       |
+| `labels`                        |    No     |                            | Comma-separated list of keys of labels, which should be included in message, if these labels are specified for container.                                                                                                                                                     |
+| `env`                           |    No     |                            | Comma-separated list of keys of environment variables to be included in message if they specified for a container.                                                                                                                                                            |
+| `env-regex`                     |    No     |                            | A regular expression to match logging-related environment variables. Used for advanced log label options. If there is collision between the label and env keys, the value of the env takes precedence. Both options add additional fields to the labels of a logging message. |
 
 ## Troubleshooting
 
