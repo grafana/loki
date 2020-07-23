@@ -308,7 +308,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		return
 	}
 	tp := httputil.NewSingleHostReverseProxy(tailURL)
-	proxy := httpMiddleware.Wrap(tp)
+	tailProxy := httpMiddleware.Wrap(tp)
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
@@ -320,7 +320,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
 	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
 	// fallback route
-	t.server.HTTP.PathPrefix("/").Handler(proxy)
+	t.server.HTTP.PathPrefix("/").Handler(tailProxy)
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
