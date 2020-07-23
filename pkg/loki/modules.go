@@ -57,6 +57,7 @@ const (
 	Ingester      string = "ingester"
 	Querier       string = "querier"
 	QueryFrontend string = "query-frontend"
+	RulerStorage  string = "ruler-storage"
 	Ruler         string = "ruler"
 	Store         string = "store"
 	TableManager  string = "table-manager"
@@ -354,7 +355,27 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}), nil
 }
 
+func (t *Loki) initRulerStorage() (_ services.Service, err error) {
+	// if the ruler is not configured and we're in single binary then let's just log an error and continue.
+	// unfortunately there is no way to generate a "default" config and compare default against actual
+	// to determine if it's unconfigured.  the following check, however, correctly tests this.
+	// Single binary integration tests will break if this ever drifts
+	if t.Cfg.Target == All && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Info(util.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+		return
+	}
+
+	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig)
+
+	return
+}
+
 func (t *Loki) initRuler() (_ services.Service, err error) {
+	if t.RulerStorage == nil {
+		level.Info(util.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
+		return nil, nil
+	}
+
 	t.cfg.Ruler.Ring.ListenPort = t.cfg.Server.GRPCListenPort
 	t.cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	q, err := querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
@@ -364,13 +385,12 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	engine := logql.NewEngine(t.cfg.Querier.Engine, q)
 
-	t.ruler, err = cortex_ruler.NewRuler(
-		t.cfg.Ruler,
-		ruler.LokiDelayedQueryFunc(engine),
-		ruler.InMemoryAppendableHistory(prometheus.DefaultRegisterer),
+	t.Ruler, err = ruler.NewRuler(
+		t.Cfg.Ruler,
+		engine,
 		prometheus.DefaultRegisterer,
-		func(s string) (fmt.Stringer, error) { return logql.ParseExpr(s) },
 		util.Logger,
+		t.RulerStorage,
 	)
 
 	if err != nil {
