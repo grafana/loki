@@ -49,7 +49,7 @@ type DayTime struct {
 
 // MarshalYAML implements yaml.Marshaller.
 func (d DayTime) MarshalYAML() (interface{}, error) {
-	return d.Time.Time().Format("2006-01-02"), nil
+	return d.String(), nil
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
@@ -64,6 +64,10 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	d.Time = model.TimeFromUnix(t.Unix())
 	return nil
+}
+
+func (d *DayTime) String() string {
+	return d.Time.Time().Format("2006-01-02")
 }
 
 // SchemaConfig contains the config for our chunk index schemas

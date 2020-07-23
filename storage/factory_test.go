@@ -5,11 +5,14 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -135,7 +138,7 @@ func TestCustomIndexClient(t *testing.T) {
 			RegisterIndexStore(tc.indexClientName, tc.indexClientFactories.indexClientFactoryFunc, tc.indexClientFactories.tableClientFactoryFunc)
 		}
 
-		indexClient, err := NewIndexClient(tc.indexClientName, cfg, schemaCfg)
+		indexClient, err := NewIndexClient(tc.indexClientName, cfg, schemaCfg, nil)
 		if tc.errorExpected {
 			require.Error(t, err)
 		} else {
@@ -143,7 +146,7 @@ func TestCustomIndexClient(t *testing.T) {
 			require.Equal(t, tc.expectedIndexClientType, reflect.TypeOf(indexClient))
 		}
 
-		tableClient, err := NewTableClient(tc.indexClientName, cfg)
+		tableClient, err := NewTableClient(tc.indexClientName, cfg, nil)
 		if tc.errorExpected {
 			require.Error(t, err)
 		} else {
@@ -152,6 +155,45 @@ func TestCustomIndexClient(t *testing.T) {
 		}
 		unregisterAllCustomIndexStores()
 	}
+}
+
+func TestCassandraInMultipleSchemas(t *testing.T) {
+	addresses := os.Getenv("CASSANDRA_TEST_ADDRESSES")
+	if addresses == "" {
+		return
+	}
+
+	// cassandra config
+	var cassandraCfg cassandra.Config
+	flagext.DefaultValues(&cassandraCfg)
+	cassandraCfg.Addresses = addresses
+	cassandraCfg.Keyspace = "test"
+	cassandraCfg.Consistency = "QUORUM"
+	cassandraCfg.ReplicationFactor = 1
+
+	// build schema with cassandra in multiple periodic configs
+	schemaCfg := chunk.DefaultSchemaConfig("cassandra", "v1", model.Now().Add(-7*24*time.Hour))
+	newSchemaCfg := schemaCfg.Configs[0]
+	newSchemaCfg.Schema = "v2"
+	newSchemaCfg.From = chunk.DayTime{Time: model.Now()}
+
+	schemaCfg.Configs = append(schemaCfg.Configs, newSchemaCfg)
+
+	var (
+		cfg         Config
+		storeConfig chunk.StoreConfig
+		defaults    validation.Limits
+	)
+	flagext.DefaultValues(&cfg, &storeConfig, &defaults)
+	cfg.CassandraStorageConfig = cassandraCfg
+
+	limits, err := validation.NewOverrides(defaults, nil)
+	require.NoError(t, err)
+
+	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, prometheus.NewRegistry(), nil)
+	require.NoError(t, err)
+
+	store.Stop()
 }
 
 // useful for cleaning up state after tests

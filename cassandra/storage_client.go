@@ -89,7 +89,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) session(name string) (*gocql.Session, error) {
+func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, error) {
 	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -107,7 +107,7 @@ func (cfg *Config) session(name string) (*gocql.Session, error) {
 	cluster.NumConns = cfg.NumConnections
 	cluster.Logger = log.With(pkgutil.Logger, "module", "gocql", "client", name)
 	cluster.Registerer = prometheus.WrapRegistererWith(
-		prometheus.Labels{"client": name}, prometheus.DefaultRegisterer)
+		prometheus.Labels{"client": name}, reg)
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
 			NumRetries: cfg.Retries,
@@ -222,15 +222,15 @@ type StorageClient struct {
 }
 
 // NewStorageClient returns a new StorageClient.
-func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
+func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*StorageClient, error) {
 	pkgutil.WarnExperimentalUse("Cassandra Backend")
 
-	readSession, err := cfg.session("index-read")
+	readSession, err := cfg.session("index-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session("index-write")
+	writeSession, err := cfg.session("index-write", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -407,15 +407,15 @@ type ObjectClient struct {
 }
 
 // NewObjectClient returns a new ObjectClient.
-func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig) (*ObjectClient, error) {
+func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*ObjectClient, error) {
 	pkgutil.WarnExperimentalUse("Cassandra Backend")
 
-	readSession, err := cfg.session("chunks-read")
+	readSession, err := cfg.session("chunks-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session("chunks-write")
+	writeSession, err := cfg.session("chunks-write", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

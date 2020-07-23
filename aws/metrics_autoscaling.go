@@ -78,7 +78,7 @@ type metricsData struct {
 	readErrorRates       map[string]float64
 }
 
-func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
+func newMetricsAutoScaling(cfg DynamoDBConfig) (*metricsData, error) {
 	client, err := promApi.NewClient(promApi.Config{Address: cfg.Metrics.URL})
 	if err != nil {
 		return nil, err

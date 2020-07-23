@@ -139,6 +139,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 			},
 			tableLastUpdated: make(map[string]time.Time),
 		},
+		metrics: newMetrics(nil),
 	}
 
 	indexWriteScale := fixtureWriteScale()
@@ -299,6 +300,7 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 			tableLastUpdated:     make(map[string]time.Time),
 			tableReadLastUpdated: make(map[string]time.Time),
 		},
+		metrics: newMetrics(nil),
 	}
 
 	indexReadScale := fixtureReadScale()
