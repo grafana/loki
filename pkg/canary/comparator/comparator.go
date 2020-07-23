@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/canary/reader"
 )
@@ -75,7 +76,19 @@ var (
 		Name:      "metric_test_actual",
 		Help:      "How many counts were actually received by the metric test query",
 	})
-	responseLatency prometheus.Histogram
+	responseLatency   prometheus.Histogram
+	metricTestLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki_canary",
+		Name:      "metric_test_request_duration_seconds",
+		Help:      "how long the metric test query execution took in seconds.",
+		Buckets:   instrument.DefBuckets,
+	})
+	spotTestLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki_canary",
+		Name:      "spot_check_request_duration_seconds",
+		Help:      "how long the spot check test query execution took in seconds.",
+		Buckets:   instrument.DefBuckets,
+	})
 )
 
 type Comparator struct {
@@ -97,6 +110,7 @@ type Comparator struct {
 	spotCheckInterval   time.Duration
 	spotCheckMax        time.Duration
 	spotCheckQueryRate  time.Duration
+	spotCheckWait       time.Duration
 	spotCheckRunning    bool
 	metricTestInterval  time.Duration
 	metricTestRange     time.Duration
@@ -115,7 +129,7 @@ func NewComparator(writer io.Writer,
 	wait time.Duration,
 	maxWait time.Duration,
 	pruneInterval time.Duration,
-	spotCheckInterval, spotCheckMax, spotCheckQueryRate time.Duration,
+	spotCheckInterval, spotCheckMax, spotCheckQueryRate, spotCheckWait time.Duration,
 	metricTestInterval time.Duration,
 	metricTestRange time.Duration,
 	writeInterval time.Duration,
@@ -135,6 +149,7 @@ func NewComparator(writer io.Writer,
 		spotCheckInterval:   spotCheckInterval,
 		spotCheckMax:        spotCheckMax,
 		spotCheckQueryRate:  spotCheckQueryRate,
+		spotCheckWait:       spotCheckWait,
 		spotCheckRunning:    false,
 		metricTestInterval:  metricTestInterval,
 		metricTestRange:     metricTestRange,
@@ -152,7 +167,7 @@ func NewComparator(writer io.Writer,
 	if responseLatency == nil {
 		responseLatency = promauto.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki_canary",
-			Name:      "response_latency",
+			Name:      "response_latency_seconds",
 			Help:      "is how long it takes for log lines to be returned from Loki in seconds.",
 			Buckets:   prometheus.ExponentialBuckets(0.5, 2, buckets),
 		})
@@ -292,7 +307,9 @@ func (c *Comparator) metricTest(currTime time.Time) {
 	if currTime.Add(-c.metricTestRange).Before(c.startTime) {
 		adjustedRange = currTime.Sub(c.startTime)
 	}
+	begin := time.Now()
 	actualCount, err := c.rdr.QueryCountOverTime(fmt.Sprintf("%.0fs", adjustedRange.Seconds()))
+	metricTestLatency.Observe(time.Since(begin).Seconds())
 	if err != nil {
 		fmt.Fprintf(c.w, "error running metric query test: %s\n", err.Error())
 		return
@@ -326,13 +343,19 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 	c.spotEntMtx.Unlock()
 
 	for _, sce := range cpy {
+		// Make sure enough time has passed to start checking for this entry
+		if currTime.Sub(*sce) < c.spotCheckWait {
+			continue
+		}
 		spotCheckEntries.Inc()
 		// Because we are querying loki timestamps vs the timestamp in the log,
 		// make the range +/- 10 seconds to allow for clock inaccuracies
 		start := *sce
 		adjustedStart := start.Add(-10 * time.Second)
 		adjustedEnd := start.Add(10 * time.Second)
+		begin := time.Now()
 		recvd, err := c.rdr.Query(adjustedStart, adjustedEnd)
+		spotTestLatency.Observe(time.Since(begin).Seconds())
 		if err != nil {
 			fmt.Fprintf(c.w, "error querying loki: %s\n", err)
 			return

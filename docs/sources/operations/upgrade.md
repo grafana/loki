@@ -54,6 +54,7 @@ loki_canary_missing_entries             ->      loki_canary_missing_entries_tota
 loki_canary_unexpected_entries          ->      loki_canary_unexpected_entries_total
 loki_canary_duplicate_entries           ->      loki_canary_duplicate_entries_total
 loki_canary_ws_reconnects               ->      loki_canary_ws_reconnects_total
+loki_canary_response_latency            ->      loki_canary_response_latency_seconds
 ```
 
 ## 1.5.0
