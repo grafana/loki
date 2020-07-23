@@ -35,7 +35,7 @@ Try to keep values bounded to as small a set as possible. We don't have perfect 
 
 Loki has several client options: [Promtail](https://github.com/grafana/loki/tree/master/docs/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-grafana-loki), [Fluent Bit](https://github.com/grafana/loki/tree/master/cmd/fluent-bit), a [Docker plugin](https://grafana.com/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
 
-Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied. Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality. Details of the Series API can be found [here](https://github.com/grafana/loki/blob/master/docs/api.md#series), or you can use [logcli](https://github.com/grafana/loki/blob/master/docs/getting-started/logcli/) to query Loki for series information.
+Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied. Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality. Details of the Series API can be found [here](https://grafana.com/docs/loki/latest/api/#series), or you can use [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) to query Loki for series information.
 
 ## 5. Configure caching
 
@@ -72,7 +72,7 @@ What can we do about this? What if this was because the sources of these logs we
 {job=”syslog”, instance=”host2”} 00:00:02 i’m a syslog!  <- Accepted, still in order for stream 2
 ```
 
-But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the promtail pipeline stage](https://github.com/grafana/loki/blob/master/docs/clients/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
+But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the promtail pipeline stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
 
 But I want Loki to fix this! Why can’t you buffer streams and re-order them for me?! To be honest, because this would add a lot of memory overhead and complication to Loki, and as has been a common thread in this post, we want Loki to be simple and cost-effective. Ideally we would want to improve our clients to do some basic buffering and sorting as this seems a better place to solve this problem.
 

@@ -11,7 +11,9 @@ to a private Loki instance or [Grafana Cloud](https://grafana.com/oss/loki).
 > [Docker docs](https://docs.docker.com/engine/extend) for more information.
 
 Documentation on configuring the Loki Docker Driver can be found on the
-[configuration page](../../configuration/).
+[configuration page](./configuration.md).
+
+If you have any questions or issues using the Docker plugin feel free to open an issue in this [repository](https://github.com/grafana/loki/issues).
 
 ## Installing
 
@@ -27,7 +29,7 @@ docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all
 To check installed plugins, use the `docker plugin ls` command. Plugins that
 have started successfully are listed as enabled:
 
-```
+```bash
 $ docker plugin ls
 ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
@@ -54,8 +56,3 @@ To cleanly uninstall the plugin, disable and remove it:
 docker plugin disable loki
 docker plugin rm loki
 ```
-
-## Amazon ECS
-The Docker driver is not currently supported on [Amazon ECS](https://aws.amazon.com/ecs/), although you can work around this if you are using EC2 based ECS (as opposed to Fargate based ECS).
-The solution suggested in the [LogConfiguration Documentation](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_LogConfiguration.html) is to fork the ECS agent and modify it to work with your log driver of choice.
-The other option is to configure the Loki Docker driver as the default Docker logging driver, and then specify no logging configuration within the ECS task.

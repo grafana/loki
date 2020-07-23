@@ -36,7 +36,7 @@ module Fluent
       DEFAULT_BUFFER_TYPE = 'memory'
 
       desc 'url of loki server'
-      config_param :url, :string, default: 'https://logs-us-west1.grafana.net'
+      config_param :url, :string, default: 'https://logs-prod-us-central1.grafana.net'
 
       desc 'BasicAuth credentials'
       config_param :username, :string, default: nil
