@@ -211,6 +211,8 @@ func (lt *Table) Upload(ctx context.Context) error {
 		lt.uploadedDBsMtimeMtx.Unlock()
 	}
 
+	level.Info(util.Logger).Log("msg", fmt.Sprintf("finished uploading table %s", lt.name))
+
 	return nil
 }
 
