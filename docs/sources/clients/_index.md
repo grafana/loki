@@ -9,7 +9,8 @@ Loki supports the following official clients for sending logs:
 - [Promtail](promtail/)
 - [Docker Driver](docker-driver/)
 - [Fluentd](fluentd/)
-- [Fluent Bit](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md)
+- [Fluent Bit](fluentbit/)
+- [Logstash](logstash/)
 
 ## Picking a client
 
