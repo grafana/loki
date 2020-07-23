@@ -80,8 +80,7 @@ func TestSelectRestores(t *testing.T) {
 	})
 
 	store := testStore(fn, time.Minute)
-	err := store.Start(MockRuleIter(ars))
-	require.Nil(t, err)
+	store.Start(MockRuleIter(ars))
 
 	now := util.TimeToMillis(time.Now())
 
@@ -156,10 +155,7 @@ func TestMemstoreStart(t *testing.T) {
 
 	store := testStore(fn, time.Minute)
 
-	err := store.Start(nil)
-	require.NotNil(t, err)
-	err = store.Start(MockRuleIter(ars))
-	require.Nil(t, err)
+	store.Start(MockRuleIter(ars))
 }
 
 func TestMemStoreStopBeforeStart(t *testing.T) {

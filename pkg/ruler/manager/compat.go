@@ -5,12 +5,16 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/go-kit/kit/log"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/weaveworks/common/user"
 )
 
 func LokiDelayedQueryFunc(engine *logql.Engine) ruler.DelayedQueryFunc {
@@ -49,31 +53,46 @@ func LokiDelayedQueryFunc(engine *logql.Engine) ruler.DelayedQueryFunc {
 
 }
 
-// func MemstoreTenantManager(
-// 	cfg ruler.Config,
-// 	queryFunc ruler.DelayedQueryFunc,
-// ) ruler.TenantManagerFunc {
-// 	metrics := NewMetrics()
+func MemstoreTenantManager(
+	cfg ruler.Config,
+	delayedQueryFunc ruler.DelayedQueryFunc,
+) ruler.TenantManagerFunc {
+	var metrics *Metrics
 
-// 	return ruler.TenantOptionsFunc(func(
-// 		ctx context.Context,
-// 		userID string,
-// 		notifier *notifier.Manager,
-// 		logger log.Logger,
-// 		reg prometheus.Registerer,
-// 	) *rules.Manager {
-// 		return &rules.ManagerOptions{
-// 			Appendable:      NoopAppender{},
-// 			Queryable:       q,
-// 			QueryFunc:       queryFunc(cfg.EvaluationDelay),
-// 			Context:         user.InjectOrgID(ctx, userID),
-// 			ExternalURL:     cfg.ExternalURL.URL,
-// 			NotifyFunc:      sendAlerts(notifier, cfg.ExternalURL.URL.String()),
-// 			Logger:          log.With(logger, "user", userID),
-// 			Registerer:      reg,
-// 			OutageTolerance: cfg.OutageTolerance,
-// 			ForGracePeriod:  cfg.ForGracePeriod,
-// 			ResendDelay:     cfg.ResendDelay,
-// 		}
-// 	})
-// }
+	return ruler.TenantManagerFunc(func(
+		ctx context.Context,
+		userID string,
+		notifier *notifier.Manager,
+		logger log.Logger,
+		reg prometheus.Registerer,
+	) *rules.Manager {
+
+		// Note: this currently does not distinguish between different managers between tenants,
+		// but is used solely to prevent re-registering the same metrics.
+		if metrics == nil {
+			metrics = NewMetrics(reg)
+		}
+		logger = log.With(logger, "user", userID)
+		queryFunc := delayedQueryFunc(cfg.EvaluationDelay)
+		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+
+		mgr := rules.NewManager(&rules.ManagerOptions{
+			Appendable:      NoopAppender{},
+			Queryable:       memStore,
+			QueryFunc:       queryFunc,
+			Context:         user.InjectOrgID(ctx, userID),
+			ExternalURL:     cfg.ExternalURL.URL,
+			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			Logger:          logger,
+			Registerer:      reg,
+			OutageTolerance: cfg.OutageTolerance,
+			ForGracePeriod:  cfg.ForGracePeriod,
+			ResendDelay:     cfg.ResendDelay,
+		})
+
+		// initialize memStore, bound to the manager's alerting rules
+		memStore.Start(mgr)
+
+		return mgr
+	})
+}

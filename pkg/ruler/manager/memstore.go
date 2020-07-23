@@ -27,7 +27,7 @@ const (
 
 type NoopAppender struct{}
 
-func (a NoopAppender) Appender() (storage.Appender, error)                     { return a, nil }
+func (a NoopAppender) Appender() storage.Appender                              { return a }
 func (a NoopAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) { return 0, nil }
 func (a NoopAppender) AddFast(ref uint64, t int64, v float64) error {
 	return errors.New("unimplemented")
@@ -96,14 +96,10 @@ func NewMemStore(userID string, queryFunc rules.QueryFunc, metrics *Metrics, cle
 }
 
 // Calling Start will set the RuleIter, unblock the MemStore, and start the run() function in a separate goroutine.
-func (m *MemStore) Start(iter RuleIter) error {
-	if iter == nil {
-		return errors.New("nil RuleIter")
-	}
+func (m *MemStore) Start(iter RuleIter) {
 	m.mgr = iter
 	close(m.initiated)
 	go m.run()
-	return nil
 }
 
 func (m *MemStore) Stop() {
