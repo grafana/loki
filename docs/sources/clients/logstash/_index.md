@@ -1,3 +1,7 @@
+---
+title: Logstash
+---
+
 # Logstash
 
 Loki has a [Logstash](https://www.elastic.co/logstash) output plugin called
