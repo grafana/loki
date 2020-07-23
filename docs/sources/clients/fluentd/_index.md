@@ -1,5 +1,5 @@
 ---
-title: Fulentd
+title: Fluentd
 ---
 # Fluentd
 
