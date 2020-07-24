@@ -45,6 +45,7 @@ git checkout tags/v7.6.2
 export LOGSTASH_PATH=`pwd`
 export GEM_PATH=$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0
 export GEM_HOME=$LOGSTASH_PATH/vendor/bundle/jruby/2.5.0
+./gradlew assemble
 cd ..
 ruby -S bundle install
 ruby -S bundle exec rake vendor
