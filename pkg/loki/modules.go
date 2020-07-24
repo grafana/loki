@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"sort"
 	"time"
@@ -267,7 +269,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
-	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
+	t.frontend, err = frontend.New(t.cfg.Frontend.Config, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -297,6 +299,21 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		serverutil.NewPrepopulateMiddleware(),
 	).Wrap(t.frontend.Handler())
 
+	var defaultHandler http.Handler
+	if t.cfg.Frontend.TailProxyUrl != "" {
+		httpMiddleware := middleware.Merge(
+			t.httpAuthMiddleware,
+			queryrange.StatsHTTPMiddleware,
+		)
+		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyUrl)
+		if err != nil {
+			return nil, err
+		}
+		tp := httputil.NewSingleHostReverseProxy(tailURL)
+		defaultHandler = httpMiddleware.Wrap(tp)
+	} else {
+		defaultHandler = frontendHandler
+	}
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
@@ -308,7 +325,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
 	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
 	// fallback route
-	t.server.HTTP.PathPrefix("/").Handler(frontendHandler)
+	t.server.HTTP.PathPrefix("/").Handler(defaultHandler)
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
