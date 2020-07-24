@@ -74,6 +74,7 @@ output {
 
     [ca_cert => path | default = nil | required=false]
 
+    [insecure_skip_verify => boolean | default = fasle | required=false]
   }
 }
 ```
@@ -228,6 +229,10 @@ Loki is a multi-tenant log storage platform and all requests sent must include a
 #### client certificate verification
 
 Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
+
+### insecure_skip_verify
+
+A flag to disable server certificate verification. By default it is set to `false`.
 
 ### Full configuration example
 
