@@ -331,7 +331,7 @@ func TestMetricTest(t *testing.T) {
 	mr := &mockReader{}
 	metricTestRange := 30 * time.Second
 	//We set the prune interval timer to a huge value here so that it never runs, instead we call spotCheckEntries manually below
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 50*time.Hour, 0, 0, 0, 4*time.Hour, 10*time.Minute, metricTestRange, writeInterval, 1, make(chan time.Time), make(chan time.Time), mr, false)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 50*time.Hour, 0, 0, 4*time.Hour, 0, 10*time.Minute, metricTestRange, writeInterval, 1, make(chan time.Time), make(chan time.Time), mr, false)
 	// Force the start time to a known value
 	c.startTime = time.Unix(10, 0)
 
