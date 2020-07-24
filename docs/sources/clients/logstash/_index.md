@@ -35,7 +35,8 @@ You can switch from Promtail to logstash by using the following command:
 
 ```bash
 helm upgrade --install loki loki/loki-stack \
-    --set filebeat.enabled=true,logstash.enabled=true,promtail.enabled=false
+    --set filebeat.enabled=true,logstash.enabled=true,promtail.enabled=false \
+    --set loki.fullnameOverride=loki,logstash.fullnameOverride=logstash-loki
 ```
 
 This will automatically scrape all pods logs in the cluster and send them to Loki with Kubernetes metadata attached as labels.
