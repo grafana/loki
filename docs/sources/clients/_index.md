@@ -9,7 +9,8 @@ Loki supports the following official clients for sending logs:
 - [Promtail](promtail/)
 - [Docker Driver](docker-driver/)
 - [Fluentd](fluentd/)
-- [Fluent Bit](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md)
+- [Fluent Bit](fluentbit/)
+- [Logstash](logstash/)
 
 ## Picking a client
 
@@ -44,6 +45,11 @@ and you already have configured `Parser` and `Filter` plugins.
 
 Fluentd also works well for extracting metrics from logs when using its
 Prometheus plugin.
+
+### Logstash
+
+If you are already using logstash and/or beats, this will be the easiest way to start.
+By adding our output plugin you can quickly try Loki without doing big configuration changes.
 
 # Unofficial clients
 
