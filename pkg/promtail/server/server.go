@@ -50,10 +50,18 @@ type Config struct {
 	Disable           bool   `yaml:"disable"`
 }
 
+// RegisterFlags with prefix registers flags where every name is prefixed by
+// prefix. If prefix is a non-empty string, prefix should end with a period.
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	// NOTE: weaveworks server's config can't be registered with a prefix.
+	cfg.Config.RegisterFlags(f)
+
+	f.BoolVar(&cfg.Disable, prefix+"server.disable", false, "Disable the http and grpc server.")
+}
+
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Config.RegisterFlags(f)
-	f.BoolVar(&cfg.Disable, "server.disable", false, "Disable the http and grpc server.")
+	cfg.RegisterFlagsWithPrefix("", f)
 }
 
 // New makes a new Server

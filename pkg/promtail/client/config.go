@@ -29,19 +29,25 @@ type Config struct {
 	TenantID string `yaml:"tenant_id"`
 }
 
+// RegisterFlags with prefix registers flags where every name is prefixed by
+// prefix. If prefix is a non-empty string, prefix should end with a period.
+func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.Var(&c.URL, prefix+"client.url", "URL of log server")
+	f.DurationVar(&c.BatchWait, prefix+"client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
+	f.IntVar(&c.BatchSize, prefix+"client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
+	// Default backoff schedule: 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s(4.267m) For a total time of 511.5s(8.5m) before logs are lost
+	f.IntVar(&c.BackoffConfig.MaxRetries, prefix+"client.max-retries", 10, "Maximum number of retires when sending batches.")
+	f.DurationVar(&c.BackoffConfig.MinBackoff, prefix+"client.min-backoff", 500*time.Millisecond, "Initial backoff time between retries.")
+	f.DurationVar(&c.BackoffConfig.MaxBackoff, prefix+"client.max-backoff", 5*time.Minute, "Maximum backoff time between retries.")
+	f.DurationVar(&c.Timeout, prefix+"client.timeout", 10*time.Second, "Maximum time to wait for server to respond to a request")
+	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2)")
+
+	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki.")
+}
+
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(flags *flag.FlagSet) {
-	flags.Var(&c.URL, "client.url", "URL of log server")
-	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
-	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
-	// Default backoff schedule: 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s(4.267m) For a total time of 511.5s(8.5m) before logs are lost
-	flag.IntVar(&c.BackoffConfig.MaxRetries, "client.max-retries", 10, "Maximum number of retires when sending batches.")
-	flag.DurationVar(&c.BackoffConfig.MinBackoff, "client.min-backoff", 500*time.Millisecond, "Initial backoff time between retries.")
-	flag.DurationVar(&c.BackoffConfig.MaxBackoff, "client.max-backoff", 5*time.Minute, "Maximum backoff time between retries.")
-	flag.DurationVar(&c.Timeout, "client.timeout", 10*time.Second, "Maximum time to wait for server to respond to a request")
-	flags.Var(&c.ExternalLabels, "client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2)")
-
-	flags.StringVar(&c.TenantID, "client.tenant-id", "", "Tenant ID to use when pushing logs to Loki.")
+	c.RegisterFlagsWithPrefix("", flags)
 }
 
 // UnmarshalYAML implement Yaml Unmarshaler
