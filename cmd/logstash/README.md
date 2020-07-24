@@ -1,10 +1,12 @@
 # Contributing to Loki Logstash Output Plugin
 
-For information about hwo to use this plugin see this [documentation](../../docs/clients/logstash/README.md).
+For information about how to use this plugin see this [documentation](../../docs/sources/clients/logstash/_index.md).
 
 ## Install dependencies
 
-First you need to setup JRuby environment to build this plugin. Refer https://github.com/rbenv/rbenv for setting up your rbenv environment.
+First, make sure you have JDK version `8` or `11` installed and you have set the `JAVA_HOME` environment variable.
+
+You need to setup JRuby environment to build this plugin. Refer https://github.com/rbenv/rbenv for setting up your rbenv environment.
 
 After setting up `rbenv`. Install JRuby
 
@@ -20,7 +22,7 @@ ruby --version
 jruby 9.2.10
 ```
 
-You should use make sure you are running jruby and not ruby. If the command below still shows ruby and not jruby, check that PATH contains `$HOME/.rbenv/shims` and `$HOME/.rbenv/bin`. Also verify that you have this in your bash profile:
+You should make sure you are running `jruby` and not `ruby`. If the command `ruby --version` still shows `ruby` and not `jruby`, check that PATH contains `$HOME/.rbenv/shims` and `$HOME/.rbenv/bin`. Also verify that you have this in your bash profile:
 
 ```bash
 export PATH="$HOME/.rbenv/bin:$PATH"
@@ -32,7 +34,7 @@ Then install bundler
 
 Follow those instructions to [install logstash](https://www.elastic.co/guide/en/logstash/current/installing-logstash.html) before moving to the next section.
 
-## Install dependencies and Build plugin
+## Build and test the plugin
 
 ### Install required packages
 
