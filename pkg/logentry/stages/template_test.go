@@ -342,6 +342,18 @@ func TestTemplateStage_Process(t *testing.T) {
 			map[string]interface{}{},
 			map[string]interface{}{},
 		},
+		"Sha256": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: "{{ Sha256 .Value \"salt\" }}",
+			},
+			map[string]interface{}{
+				"testval": "this is PII data",
+			},
+			map[string]interface{}{
+				"testval": "de33958efc1d63cd095a30e308a209d8b4e25cb281799494528505459ed6b2f2",
+			},
+		},
 	}
 	for name, test := range tests {
 		test := test

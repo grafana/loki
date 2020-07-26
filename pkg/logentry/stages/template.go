@@ -2,6 +2,8 @@ package stages
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"reflect"
 	"regexp"
@@ -32,6 +34,11 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
+		"Sha256": func(salt string, s string) string {
+			hasher := sha256.New()
+			hasher.Write([]byte(salt + s))
+			return hex.EncodeToString(hasher.Sum(nil))
+		},
 		"regexReplaceAll": func(regex string, s string, repl string) string {
 			r := regexp.MustCompile(regex)
 			return r.ReplaceAllString(s, repl)
