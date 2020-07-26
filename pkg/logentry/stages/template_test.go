@@ -351,7 +351,7 @@ func TestTemplateStage_Process(t *testing.T) {
 				"testval": "this is PII data",
 			},
 			map[string]interface{}{
-				"testval": "de33958efc1d63cd095a30e308a209d8b4e25cb281799494528505459ed6b2f2",
+				"testval": "5526fd6f8ad457279cf8ff06453c6cb61bf479fa826e3b099caa6c846f9376f2",
 			},
 		},
 	}
