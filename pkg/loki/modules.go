@@ -255,7 +255,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable both chunks dedupe and write dedupe cache.
+	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
 	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && usingBoltdbShipper(t.cfg.SchemaConfig) {
 		t.cfg.ChunkStoreConfig.DisableIndexDeduplication = true
@@ -337,7 +337,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	return t.memberlistKV, nil
 }
 
-// activePeriodConfig type returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
+// activePeriodConfig returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
 // Note: Another PeriodicConfig might be applicable for future logs which can change index type.
 func activePeriodConfig(cfg chunk.SchemaConfig) int {
 	now := model.Now()
