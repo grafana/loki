@@ -96,7 +96,7 @@ func (s *lazySeriesSet) Next() bool {
 }
 
 // At implements storage.SeriesSet.
-func (s lazySeriesSet) At() storage.Series {
+func (s *lazySeriesSet) At() storage.Series {
 	if s.next == nil {
 		s.next = <-s.future
 	}
@@ -104,7 +104,7 @@ func (s lazySeriesSet) At() storage.Series {
 }
 
 // Err implements storage.SeriesSet.
-func (s lazySeriesSet) Err() error {
+func (s *lazySeriesSet) Err() error {
 	if s.next == nil {
 		s.next = <-s.future
 	}
@@ -112,6 +112,6 @@ func (s lazySeriesSet) Err() error {
 }
 
 // Warnings implements storage.SeriesSet.
-func (s lazySeriesSet) Warnings() storage.Warnings {
+func (s *lazySeriesSet) Warnings() storage.Warnings {
 	return nil
 }

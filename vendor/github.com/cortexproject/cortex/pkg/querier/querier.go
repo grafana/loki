@@ -167,7 +167,6 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		level.Warn(util.Logger).Log("msg", "Using deprecated flag -promql.lookback-delta, use -querier.lookback-delta instead")
 	}
 
-	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util.Logger,
 		Reg:                reg,
@@ -175,6 +174,9 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
 		LookbackDelta:      lookbackDelta,
+		NoStepSubqueryIntervalFn: func(int64) int64 {
+			return cfg.DefaultEvaluationInterval.Milliseconds()
+		},
 	})
 	return &sampleAndChunkQueryable{lazyQueryable}, engine
 }

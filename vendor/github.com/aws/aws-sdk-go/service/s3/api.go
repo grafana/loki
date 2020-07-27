@@ -9599,6 +9599,8 @@ func (c *S3) SelectObjectContentWithContext(ctx aws.Context, input *SelectObject
 	return out, req.Send()
 }
 
+var _ awserr.Error
+
 // SelectObjectContentEventStream provides the event stream handling for the SelectObjectContent.
 type SelectObjectContentEventStream struct {
 
@@ -9673,6 +9675,7 @@ func (es *SelectObjectContentEventStream) waitStreamPartClose() {
 //     * ProgressEvent
 //     * RecordsEvent
 //     * StatsEvent
+//     * SelectObjectContentEventStreamUnknownEvent
 func (es *SelectObjectContentEventStream) Events() <-chan SelectObjectContentEventStreamEvent {
 	return es.Reader.Events()
 }
@@ -11558,6 +11561,8 @@ func (s *ContinuationEvent) UnmarshalEvent(
 	return nil
 }
 
+// MarshalEvent marshals the type into an stream event value. This method
+// should only used internally within the SDK's EventStream handling.
 func (s *ContinuationEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
 	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
 	return msg, err
@@ -14774,6 +14779,8 @@ func (s *EndEvent) UnmarshalEvent(
 	return nil
 }
 
+// MarshalEvent marshals the type into an stream event value. This method
+// should only used internally within the SDK's EventStream handling.
 func (s *EndEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
 	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
 	return msg, err
@@ -23548,6 +23555,8 @@ func (s *ProgressEvent) UnmarshalEvent(
 	return nil
 }
 
+// MarshalEvent marshals the type into an stream event value. This method
+// should only used internally within the SDK's EventStream handling.
 func (s *ProgressEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
 	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
 	var buf bytes.Buffer
@@ -26984,6 +26993,8 @@ func (s *RecordsEvent) UnmarshalEvent(
 	return nil
 }
 
+// MarshalEvent marshals the type into an stream event value. This method
+// should only used internally within the SDK's EventStream handling.
 func (s *RecordsEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
 	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
 	msg.Headers.Set(":content-type", eventstream.StringValue("application/octet-stream"))
@@ -28204,6 +28215,7 @@ type SelectObjectContentEventStreamEvent interface {
 //     * ProgressEvent
 //     * RecordsEvent
 //     * StatsEvent
+//     * SelectObjectContentEventStreamUnknownEvent
 type SelectObjectContentEventStreamReader interface {
 	// Returns a channel of events as they are read from the event stream.
 	Events() <-chan SelectObjectContentEventStreamEvent
@@ -28278,6 +28290,9 @@ func (r *readSelectObjectContentEventStream) readEventStream() {
 				return
 			default:
 			}
+			if _, ok := err.(*eventstreamapi.UnknownMessageTypeError); ok {
+				continue
+			}
 			r.err.SetError(err)
 			return
 		}
@@ -28307,12 +28322,37 @@ func (u unmarshalerForSelectObjectContentEventStreamEvent) UnmarshalerForEventNa
 	case "Stats":
 		return &StatsEvent{}, nil
 	default:
-		return nil, awserr.New(
-			request.ErrCodeSerialization,
-			fmt.Sprintf("unknown event type name, %s, for SelectObjectContentEventStream", eventType),
-			nil,
-		)
+		return &SelectObjectContentEventStreamUnknownEvent{Type: eventType}, nil
 	}
+}
+
+// SelectObjectContentEventStreamUnknownEvent provides a failsafe event for the
+// SelectObjectContentEventStream group of events when an unknown event is received.
+type SelectObjectContentEventStreamUnknownEvent struct {
+	Type    string
+	Message eventstream.Message
+}
+
+// The SelectObjectContentEventStreamUnknownEvent is and event in the SelectObjectContentEventStream
+// group of events.
+func (s *SelectObjectContentEventStreamUnknownEvent) eventSelectObjectContentEventStream() {}
+
+// MarshalEvent marshals the type into an stream event value. This method
+// should only used internally within the SDK's EventStream handling.
+func (e *SelectObjectContentEventStreamUnknownEvent) MarshalEvent(pm protocol.PayloadMarshaler) (
+	msg eventstream.Message, err error,
+) {
+	return e.Message.Clone(), nil
+}
+
+// UnmarshalEvent unmarshals the EventStream Message into the SelectObjectContentEventStreamData value.
+// This method is only used internally within the SDK's EventStream handling.
+func (e *SelectObjectContentEventStreamUnknownEvent) UnmarshalEvent(
+	payloadUnmarshaler protocol.PayloadUnmarshaler,
+	msg eventstream.Message,
+) error {
+	e.Message = msg.Clone()
+	return nil
 }
 
 // Request to filter the contents of an Amazon S3 object based on a simple Structured
@@ -28966,6 +29006,8 @@ func (s *StatsEvent) UnmarshalEvent(
 	return nil
 }
 
+// MarshalEvent marshals the type into an stream event value. This method
+// should only used internally within the SDK's EventStream handling.
 func (s *StatsEvent) MarshalEvent(pm protocol.PayloadMarshaler) (msg eventstream.Message, err error) {
 	msg.Headers.Set(eventstreamapi.MessageTypeHeader, eventstream.StringValue(eventstreamapi.EventMessageType))
 	var buf bytes.Buffer

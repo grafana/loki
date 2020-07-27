@@ -15,7 +15,9 @@ import (
 // FromResult transforms a promql query result into a samplestream
 func FromResult(res *promql.Result) ([]SampleStream, error) {
 	if res.Err != nil {
-		return nil, res.Err
+		// The error could be wrapped by the PromQL engine. We get the error's cause in order to
+		// correctly parse the error in parent callers (eg. gRPC response status code extraction).
+		return nil, errors.Cause(res.Err)
 	}
 	switch v := res.Value.(type) {
 	case promql.Scalar:

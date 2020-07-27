@@ -51,4 +51,4 @@ func (a *Alerts) Firing() prometheus.Counter { return a.firing }
 func (a *Alerts) Resolved() prometheus.Counter { return a.resolved }
 
 // Invalid returns a counter of invalid alerts.
-func (a *Alerts) Invalid() prometheus.Counter { return a.firing }
+func (a *Alerts) Invalid() prometheus.Counter { return a.invalid }

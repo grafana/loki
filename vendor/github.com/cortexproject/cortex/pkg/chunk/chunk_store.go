@@ -90,11 +90,11 @@ func (cfg *StoreConfig) Validate() error {
 type baseStore struct {
 	cfg StoreConfig
 
-	index  IndexClient
-	chunks Client
-	schema BaseSchema
-	limits StoreLimits
-	*Fetcher
+	index   IndexClient
+	chunks  Client
+	schema  BaseSchema
+	limits  StoreLimits
+	fetcher *Fetcher
 }
 
 func newBaseStore(cfg StoreConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
@@ -109,8 +109,15 @@ func newBaseStore(cfg StoreConfig, schema BaseSchema, index IndexClient, chunks 
 		chunks:  chunks,
 		schema:  schema,
 		limits:  limits,
-		Fetcher: fetcher,
+		fetcher: fetcher,
 	}, nil
+}
+
+// Stop any background goroutines (ie in the cache.)
+func (c *baseStore) Stop() {
+	c.fetcher.storage.Stop()
+	c.fetcher.Stop()
+	c.index.Stop()
 }
 
 // store implements Store
@@ -131,13 +138,6 @@ func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Cli
 	}, nil
 }
 
-// Stop any background goroutines (ie in the cache.)
-func (c *store) Stop() {
-	c.storage.Stop()
-	c.Fetcher.Stop()
-	c.index.Stop()
-}
-
 // Put implements ChunkStore
 func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
@@ -153,12 +153,12 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
 	chunks := []Chunk{chunk}
 
-	err := c.storage.PutChunks(ctx, chunks)
+	err := c.fetcher.storage.PutChunks(ctx, chunks)
 	if err != nil {
 		return err
 	}
 
-	if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
+	if cacheErr := c.fetcher.writeBackCache(ctx, chunks); cacheErr != nil {
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
@@ -278,7 +278,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 	level.Debug(log).Log("msg", "Chunks post filtering", "chunks", len(chunks))
 
 	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	allChunks, err := c.fetcher.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
@@ -370,7 +370,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 
 	// Now fetch the actual chunk data from Memcache / S3
 	keys := keysFromChunks(filtered)
-	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	allChunks, err := c.fetcher.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -648,7 +648,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 		return ErrParialDeleteChunkNoOverlap
 	}
 
-	chunks, err := c.Fetcher.FetchChunks(ctx, []Chunk{chunk}, []string{chunkID})
+	chunks, err := c.fetcher.FetchChunks(ctx, []Chunk{chunk}, []string{chunkID})
 	if err != nil {
 		if err == ErrStorageObjectNotFound {
 			return nil

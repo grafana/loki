@@ -67,6 +67,7 @@ type ObjectClient interface {
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
 	List(ctx context.Context, prefix string) ([]StorageObject, []StorageCommonPrefix, error)
 	DeleteObject(ctx context.Context, objectKey string) error
+	PathSeparator() string
 	Stop()
 }
 

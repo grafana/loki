@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/alecthomas/units"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -33,6 +34,8 @@ import (
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
 )
+
+const maxEventSize int = 512000
 
 // Notifier implements a Notifier for PagerDuty notifications.
 type Notifier struct {
@@ -107,6 +110,33 @@ type pagerDutyPayload struct {
 	CustomDetails map[string]string `json:"custom_details,omitempty"`
 }
 
+func (n *Notifier) encodeMessage(msg *pagerDutyMessage) (bytes.Buffer, error) {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(msg); err != nil {
+		return buf, errors.Wrap(err, "failed to encode PagerDuty message")
+	}
+
+	if buf.Len() > maxEventSize {
+		truncatedMsg := fmt.Sprintf("Custom details have been removed because the original event exceeds the maximum size of %s", units.MetricBytes(maxEventSize).String())
+
+		if n.apiV1 != "" {
+			msg.Details = map[string]string{"error": truncatedMsg}
+		} else {
+			msg.Payload.CustomDetails = map[string]string{"error": truncatedMsg}
+		}
+
+		warningMsg := fmt.Sprintf("Truncated Details because message of size %s exceeds limit %s", units.MetricBytes(buf.Len()).String(), units.MetricBytes(maxEventSize).String())
+		level.Warn(n.logger).Log("msg", warningMsg)
+
+		buf.Reset()
+		if err := json.NewEncoder(&buf).Encode(msg); err != nil {
+			return buf, errors.Wrap(err, "failed to encode PagerDuty message")
+		}
+	}
+
+	return buf, nil
+}
+
 func (n *Notifier) notifyV1(
 	ctx context.Context,
 	eventType string,
@@ -145,12 +175,12 @@ func (n *Notifier) notifyV1(
 		return false, errors.New("service key cannot be empty")
 	}
 
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(msg); err != nil {
-		return false, errors.Wrap(err, "failed to encode PagerDuty v1 message")
+	encodedMsg, err := n.encodeMessage(msg)
+	if err != nil {
+		return false, err
 	}
 
-	resp, err := notify.PostJSON(ctx, n.client, n.apiV1, &buf)
+	resp, err := notify.PostJSON(ctx, n.client, n.apiV1, &encodedMsg)
 	if err != nil {
 		return true, errors.Wrap(err, "failed to post message to PagerDuty v1")
 	}
@@ -218,12 +248,12 @@ func (n *Notifier) notifyV2(
 		return false, errors.New("routing key cannot be empty")
 	}
 
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(msg); err != nil {
-		return false, errors.Wrap(err, "failed to encode PagerDuty v2 message")
+	encodedMsg, err := n.encodeMessage(msg)
+	if err != nil {
+		return false, err
 	}
 
-	resp, err := notify.PostJSON(ctx, n.client, n.conf.URL.String(), &buf)
+	resp, err := notify.PostJSON(ctx, n.client, n.conf.URL.String(), &encodedMsg)
 	if err != nil {
 		return true, errors.Wrap(err, "failed to post message to PagerDuty")
 	}

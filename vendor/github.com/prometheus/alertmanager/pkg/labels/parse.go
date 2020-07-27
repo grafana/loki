@@ -14,9 +14,10 @@
 package labels
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 var (
@@ -70,17 +71,17 @@ func ParseMatcher(s string) (*Matcher, error) {
 
 	ms := re.FindStringSubmatch(s)
 	if len(ms) < 4 {
-		return nil, fmt.Errorf("bad matcher format: %s", s)
+		return nil, errors.Errorf("bad matcher format: %s", s)
 	}
 
 	name = ms[1]
 	if name == "" {
-		return nil, fmt.Errorf("failed to parse label name")
+		return nil, errors.New("failed to parse label name")
 	}
 
 	matchType, found := typeMap[ms[2]]
 	if !found {
-		return nil, fmt.Errorf("failed to find match operator")
+		return nil, errors.New("failed to find match operator")
 	}
 
 	if ms[3] != "" {

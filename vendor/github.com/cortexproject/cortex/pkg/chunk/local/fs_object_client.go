@@ -34,7 +34,8 @@ func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // FSObjectClient holds config for filesystem as object store
 type FSObjectClient struct {
-	cfg FSConfig
+	cfg           FSConfig
+	pathSeparator string
 }
 
 // NewFSObjectClient makes a chunk.Client which stores chunks as files in the local filesystem.
@@ -48,7 +49,8 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 	}
 
 	return &FSObjectClient{
-		cfg: cfg,
+		cfg:           cfg,
+		pathSeparator: string(os.PathSeparator),
 	}, nil
 }
 
@@ -124,7 +126,7 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 
 			// add the directory only if it is not empty
 			if !empty {
-				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(nameWithPrefix+chunk.DirDelim))
+				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(nameWithPrefix+f.pathSeparator))
 			}
 			continue
 		}
@@ -171,6 +173,10 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 		}
 		return nil
 	})
+}
+
+func (f *FSObjectClient) PathSeparator() string {
+	return f.pathSeparator
 }
 
 // copied from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L181

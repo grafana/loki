@@ -49,7 +49,7 @@ type DayTime struct {
 
 // MarshalYAML implements yaml.Marshaller.
 func (d DayTime) MarshalYAML() (interface{}, error) {
-	return d.Time.Time().Format("2006-01-02"), nil
+	return d.String(), nil
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
@@ -66,6 +66,10 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+func (d *DayTime) String() string {
+	return d.Time.Time().Format("2006-01-02")
+}
+
 // SchemaConfig contains the config for our chunk index schemas
 type SchemaConfig struct {
 	Configs []PeriodConfig `yaml:"configs"`
@@ -76,9 +80,9 @@ type SchemaConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file.")
+	f.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file.")
 	// TODO(gouthamve): Add a metric for this.
-	flag.StringVar(&cfg.legacyFileName, "config-yaml", "", "DEPRECATED(use -schema-config-file) The path to the schema config file.")
+	f.StringVar(&cfg.legacyFileName, "config-yaml", "", "DEPRECATED(use -schema-config-file) The path to the schema config file.")
 }
 
 // loadFromFile loads the schema config from a yaml file

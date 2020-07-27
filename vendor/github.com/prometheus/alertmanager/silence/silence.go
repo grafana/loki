@@ -122,7 +122,7 @@ func (s *Silencer) Mutes(lset model.LabelSet) bool {
 	)
 	if markerVersion == s.silences.Version() {
 		// No new silences added, just need to check which of the old
-		// silences are still revelant.
+		// silences are still relevant.
 		if len(ids) == 0 {
 			// Super fast path: No silences ever applied to this
 			// alert, none have been added. We are done.

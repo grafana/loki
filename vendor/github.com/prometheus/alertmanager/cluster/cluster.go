@@ -405,7 +405,7 @@ func (p *Peer) reconnect() {
 		// peerJoin().
 		if _, err := p.mlist.Join([]string{pr.Address()}); err != nil {
 			p.failedReconnectionsCounter.Inc()
-			level.Debug(logger).Log("result", "failure", "peer", pr.Node, "addr", pr.Address())
+			level.Debug(logger).Log("result", "failure", "peer", pr.Node, "addr", pr.Address(), "err", err)
 		} else {
 			p.reconnectionsCounter.Inc()
 			level.Debug(logger).Log("result", "success", "peer", pr.Node, "addr", pr.Address())
@@ -435,7 +435,7 @@ func (p *Peer) refresh() {
 		if !isPeerFound {
 			if _, err := p.mlist.Join([]string{peer}); err != nil {
 				p.failedRefreshCounter.Inc()
-				level.Warn(logger).Log("result", "failure", "addr", peer)
+				level.Warn(logger).Log("result", "failure", "addr", peer, "err", err)
 			} else {
 				p.refreshCounter.Inc()
 				level.Debug(logger).Log("result", "success", "addr", peer)

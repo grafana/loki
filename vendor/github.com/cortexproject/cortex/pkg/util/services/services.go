@@ -7,7 +7,7 @@ import (
 
 // Initializes basic service as an "idle" service -- it doesn't do anything in its Running state,
 // but still supports all state transitions.
-func NewIdleService(up StartingFn, down StoppingFn) Service {
+func NewIdleService(up StartingFn, down StoppingFn) *BasicService {
 	run := func(ctx context.Context) error {
 		<-ctx.Done()
 		return nil

@@ -39,7 +39,7 @@ func init() {
 // InitLogger initialises the global gokit logger (util.Logger) and overrides the
 // default logger for the server.
 func InitLogger(cfg *server.Config) {
-	l, err := NewPrometheusLogger(cfg.LogLevel)
+	l, err := NewPrometheusLogger(cfg.LogLevel, cfg.LogFormat)
 	if err != nil {
 		panic(err)
 	}
@@ -61,8 +61,11 @@ type PrometheusLogger struct {
 
 // NewPrometheusLogger creates a new instance of PrometheusLogger which exposes
 // Prometheus counters for various log levels.
-func NewPrometheusLogger(l logging.Level) (log.Logger, error) {
+func NewPrometheusLogger(l logging.Level, format logging.Format) (log.Logger, error) {
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	if format.String() == "json" {
+		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
+	}
 	logger = level.NewFilter(logger, l.Gokit)
 
 	// Initialise counters for all supported levels:

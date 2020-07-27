@@ -20,10 +20,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/cespare/xxhash"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -88,6 +89,11 @@ func (i *Integration) Name() string {
 // Index returns the index of the integration.
 func (i *Integration) Index() int {
 	return i.idx
+}
+
+// String implements the Stringer interface.
+func (i *Integration) String() string {
+	return fmt.Sprintf("%s[%d]", i.name, i.idx)
 }
 
 // notifyKey defines a custom type with which a context is populated to
@@ -233,7 +239,6 @@ func newMetrics(r prometheus.Registerer) *metrics {
 	}
 	for _, integration := range []string{
 		"email",
-		"hipchat",
 		"pagerduty",
 		"wechat",
 		"pushover",
@@ -316,12 +321,12 @@ type RoutingStage map[string]Stage
 func (rs RoutingStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	receiver, ok := ReceiverName(ctx)
 	if !ok {
-		return ctx, nil, fmt.Errorf("receiver missing")
+		return ctx, nil, errors.New("receiver missing")
 	}
 
 	s, ok := rs[receiver]
 	if !ok {
-		return ctx, nil, fmt.Errorf("stage for receiver missing")
+		return ctx, nil, errors.New("stage for receiver missing")
 	}
 
 	return s.Exec(ctx, l, alerts...)
@@ -362,14 +367,6 @@ func (fs FanoutStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.A
 		go func(s Stage) {
 			if _, _, err := s.Exec(ctx, l, alerts...); err != nil {
 				me.Add(err)
-				lvl := level.Error(l)
-				if ctx.Err() == context.Canceled {
-					// It is expected for the context to be canceled on
-					// configuration reload or shutdown. In this case, the
-					// message should only be logged at the debug level.
-					lvl = level.Debug(l)
-				}
-				lvl.Log("msg", "Error on notify", "err", err, "context_err", ctx.Err())
 			}
 			wg.Done()
 		}(s)
@@ -547,12 +544,12 @@ func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint
 func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	gkey, ok := GroupKey(ctx)
 	if !ok {
-		return ctx, nil, fmt.Errorf("group key missing")
+		return ctx, nil, errors.New("group key missing")
 	}
 
 	repeatInterval, ok := RepeatInterval(ctx)
 	if !ok {
-		return ctx, nil, fmt.Errorf("repeat interval missing")
+		return ctx, nil, errors.New("repeat interval missing")
 	}
 
 	firingSet := map[uint64]struct{}{}
@@ -586,7 +583,7 @@ func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 	case 1:
 		entry = entries[0]
 	default:
-		return ctx, nil, fmt.Errorf("unexpected entry result size %d", len(entries))
+		return ctx, nil, errors.Errorf("unexpected entry result size %d", len(entries))
 	}
 
 	if n.needsUpdate(entry, firingSet, resolvedSet, repeatInterval) {
@@ -622,7 +619,7 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 	if !r.integration.SendResolved() {
 		firing, ok := FiringAlerts(ctx)
 		if !ok {
-			return ctx, nil, fmt.Errorf("firing alerts missing")
+			return ctx, nil, errors.New("firing alerts missing")
 		}
 		if len(firing) == 0 {
 			return ctx, alerts, nil
@@ -636,24 +633,28 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 		sent = alerts
 	}
 
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 0 // Always retry.
+
+	tick := backoff.NewTicker(b)
+	defer tick.Stop()
+
 	var (
 		i    = 0
-		b    = backoff.NewExponentialBackOff()
-		tick = backoff.NewTicker(b)
 		iErr error
 	)
-	defer tick.Stop()
+	l = log.With(l, "receiver", r.groupName, "integration", r.integration.String())
 
 	for {
 		i++
 		// Always check the context first to not notify again.
 		select {
 		case <-ctx.Done():
-			if iErr != nil {
-				return ctx, nil, iErr
+			if iErr == nil {
+				iErr = ctx.Err()
 			}
 
-			return ctx, nil, ctx.Err()
+			return ctx, nil, errors.Wrapf(iErr, "%s/%s: notify retry canceled after %d attempts", r.groupName, r.integration.String(), i)
 		default:
 		}
 
@@ -665,23 +666,31 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 			r.metrics.numNotifications.WithLabelValues(r.integration.Name()).Inc()
 			if err != nil {
 				r.metrics.numFailedNotifications.WithLabelValues(r.integration.Name()).Inc()
-				level.Debug(l).Log("msg", "Notify attempt failed", "attempt", i, "integration", r.integration.Name(), "receiver", r.groupName, "err", err)
 				if !retry {
-					return ctx, alerts, fmt.Errorf("cancelling notify retry for %q due to unrecoverable error: %s", r.integration.Name(), err)
+					return ctx, alerts, errors.Wrapf(err, "%s/%s: notify retry canceled due to unrecoverable error after %d attempts", r.groupName, r.integration.String(), i)
+				}
+				if ctx.Err() == nil && (iErr == nil || err.Error() != iErr.Error()) {
+					// Log the error if the context isn't done and the error isn't the same as before.
+					level.Warn(l).Log("msg", "Notify attempt failed, will retry later", "attempts", i, "err", err)
 				}
 
 				// Save this error to be able to return the last seen error by an
 				// integration upon context timeout.
 				iErr = err
 			} else {
+				lvl := level.Debug(l)
+				if i > 1 {
+					lvl = level.Info(l)
+				}
+				lvl.Log("msg", "Notify success", "attempts", i)
 				return ctx, alerts, nil
 			}
 		case <-ctx.Done():
-			if iErr != nil {
-				return ctx, nil, iErr
+			if iErr == nil {
+				iErr = ctx.Err()
 			}
 
-			return ctx, nil, ctx.Err()
+			return ctx, nil, errors.Wrapf(iErr, "%s/%s: notify retry canceled after %d attempts", r.groupName, r.integration.String(), i)
 		}
 	}
 }
@@ -705,17 +714,17 @@ func NewSetNotifiesStage(l NotificationLog, recv *nflogpb.Receiver) *SetNotifies
 func (n SetNotifiesStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	gkey, ok := GroupKey(ctx)
 	if !ok {
-		return ctx, nil, fmt.Errorf("group key missing")
+		return ctx, nil, errors.New("group key missing")
 	}
 
 	firing, ok := FiringAlerts(ctx)
 	if !ok {
-		return ctx, nil, fmt.Errorf("firing alerts missing")
+		return ctx, nil, errors.New("firing alerts missing")
 	}
 
 	resolved, ok := ResolvedAlerts(ctx)
 	if !ok {
-		return ctx, nil, fmt.Errorf("resolved alerts missing")
+		return ctx, nil, errors.New("resolved alerts missing")
 	}
 
 	return ctx, alerts, n.nflog.Log(n.recv, gkey, firing, resolved)

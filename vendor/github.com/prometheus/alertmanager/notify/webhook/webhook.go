@@ -69,12 +69,22 @@ type Message struct {
 	*template.Data
 
 	// The protocol version.
-	Version  string `json:"version"`
-	GroupKey string `json:"groupKey"`
+	Version         string `json:"version"`
+	GroupKey        string `json:"groupKey"`
+	TruncatedAlerts uint64 `json:"truncatedAlerts"`
+}
+
+func truncateAlerts(maxAlerts uint64, alerts []*types.Alert) ([]*types.Alert, uint64) {
+	if maxAlerts != 0 && uint64(len(alerts)) > maxAlerts {
+		return alerts[:maxAlerts], uint64(len(alerts)) - maxAlerts
+	}
+
+	return alerts, 0
 }
 
 // Notify implements the Notifier interface.
 func (n *Notifier) Notify(ctx context.Context, alerts ...*types.Alert) (bool, error) {
+	alerts, numTruncated := truncateAlerts(n.conf.MaxAlerts, alerts)
 	data := notify.GetTemplateData(ctx, n.tmpl, alerts, n.logger)
 
 	groupKey, err := notify.ExtractGroupKey(ctx)
@@ -83,9 +93,10 @@ func (n *Notifier) Notify(ctx context.Context, alerts ...*types.Alert) (bool, er
 	}
 
 	msg := &Message{
-		Version:  "4",
-		Data:     data,
-		GroupKey: groupKey.String(),
+		Version:         "4",
+		Data:            data,
+		GroupKey:        groupKey.String(),
+		TruncatedAlerts: numTruncated,
 	}
 
 	var buf bytes.Buffer
