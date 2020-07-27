@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -57,8 +56,8 @@ type stdinTargetManager struct {
 	app Shutdownable
 }
 
-func NewStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*stdinTargetManager, error) {
-	reader, err := newReaderTarget(stdIn, client, getStdinConfig(configs))
+func NewStdinTargetManager(log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*stdinTargetManager, error) {
+	reader, err := newReaderTarget(log, stdIn, client, getStdinConfig(log, configs))
 	if err != nil {
 		return nil, err
 	}
@@ -74,12 +73,12 @@ func NewStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []
 	return stdinManager, nil
 }
 
-func getStdinConfig(configs []scrapeconfig.Config) scrapeconfig.Config {
+func getStdinConfig(log log.Logger, configs []scrapeconfig.Config) scrapeconfig.Config {
 	cfg := defaultStdInCfg
 	// if we receive configs we use the first one.
 	if len(configs) > 0 {
 		if len(configs) > 1 {
-			level.Warn(util.Logger).Log("msg", fmt.Sprintf("too many scrape configs, skipping %d configs.", len(configs)-1))
+			level.Warn(log).Log("msg", fmt.Sprintf("too many scrape configs, skipping %d configs.", len(configs)-1))
 		}
 		cfg = configs[0]
 	}
@@ -103,8 +102,8 @@ type readerTarget struct {
 	ctx    context.Context
 }
 
-func newReaderTarget(in io.Reader, client api.EntryHandler, cfg scrapeconfig.Config) (*readerTarget, error) {
-	pipeline, err := stages.NewPipeline(log.With(util.Logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, prometheus.DefaultRegisterer)
+func newReaderTarget(logger log.Logger, in io.Reader, client api.EntryHandler, cfg scrapeconfig.Config) (*readerTarget, error) {
+	pipeline, err := stages.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +120,7 @@ func newReaderTarget(in io.Reader, client api.EntryHandler, cfg scrapeconfig.Con
 		cancel: cancel,
 		ctx:    ctx,
 		lbs:    lbs,
-		logger: log.With(util.Logger, "component", "reader"),
+		logger: log.With(logger, "component", "reader"),
 	}
 	go t.read()
 
