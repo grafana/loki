@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -51,7 +53,7 @@ var stores = []struct {
 			flagext.DefaultValues(&storeCfg)
 			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 				MaxSizeItems: 500,
-			})
+			}, prometheus.NewRegistry(), log.NewNopLogger())
 			return storeCfg
 		},
 	},
@@ -91,9 +93,11 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	chunksCache, err := cache.New(storeCfg.ChunkCacheConfig)
+	reg := prometheus.NewRegistry()
+	logger := log.NewNopLogger()
+	chunksCache, err := cache.New(storeCfg.ChunkCacheConfig, reg, logger)
 	require.NoError(t, err)
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, reg, logger)
 	require.NoError(t, err)
 
 	store := NewCompositeStore(nil)
@@ -1320,7 +1324,7 @@ func TestDisableIndexDeduplication(t *testing.T) {
 			storeCfg := storeMaker.configFn()
 			storeCfg.ChunkCacheConfig.Cache = cache.NewFifoCache("chunk-cache", cache.FifoCacheConfig{
 				MaxSizeItems: 5,
-			})
+			}, prometheus.NewRegistry(), log.NewNopLogger())
 			storeCfg.DisableIndexDeduplication = disableIndexDeduplication
 
 			store := newTestChunkStoreConfig(t, "v9", storeCfg)

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -204,7 +205,7 @@ func TestCardinalityLimit(t *testing.T) {
 		limits, err := defaultLimits()
 		require.NoError(t, err)
 
-		client = newCachingIndexClient(client, cache.NewMockCache(), time.Minute, limits)
+		client = newCachingIndexClient(client, cache.NewMockCache(), time.Minute, limits, log.NewNopLogger())
 		batch := client.NewWriteBatch()
 		for i := 0; i < 10; i++ {
 			batch.Add(tableName, "bar", []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i)))

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -158,7 +159,8 @@ func testCache(t *testing.T, cache cache.Cache) {
 
 func TestMemcache(t *testing.T) {
 	t.Run("Unbatched", func(t *testing.T) {
-		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache(), "test")
+		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache(),
+			"test", nil, log.NewNopLogger())
 		testCache(t, cache)
 	})
 
@@ -166,17 +168,18 @@ func TestMemcache(t *testing.T) {
 		cache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 3,
-		}, newMockMemcache(), "test")
+		}, newMockMemcache(), "test", nil, log.NewNopLogger())
 		testCache(t, cache)
 	})
 }
 
 func TestFifoCache(t *testing.T) {
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 1e3, Validity: 1 * time.Hour})
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 1e3, Validity: 1 * time.Hour},
+		nil, log.NewNopLogger())
 	testCache(t, cache)
 }
 
 func TestSnappyCache(t *testing.T) {
-	cache := cache.NewSnappy(cache.NewMockCache())
+	cache := cache.NewSnappy(cache.NewMockCache(), log.NewNopLogger())
 	testCache(t, cache)
 }

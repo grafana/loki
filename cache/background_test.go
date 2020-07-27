@@ -10,7 +10,7 @@ func TestBackground(t *testing.T) {
 	c := cache.NewBackground("mock", cache.BackgroundConfig{
 		WriteBackGoroutines: 1,
 		WriteBackBuffer:     100,
-	}, cache.NewMockCache())
+	}, cache.NewMockCache(), nil)
 
 	keys, chunks := fillCache(t, c)
 	cache.Flush(c)

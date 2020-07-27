@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/gomodule/redigo/redis"
 	"github.com/rafaeljusto/redigomock"
 	"github.com/stretchr/testify/require"
@@ -53,7 +54,7 @@ func TestRedisCache(t *testing.T) {
 	conn.Command("MGET", missIntf...).ExpectError(nil)
 
 	// mock the cache
-	c := cache.NewRedisCache(cfg, "mock", pool)
+	c := cache.NewRedisCache(cfg, "mock", pool, log.NewNopLogger())
 	ctx := context.Background()
 
 	c.Store(ctx, keys, bufs)

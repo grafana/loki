@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -17,16 +18,6 @@ import (
 	instr "github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/util"
-)
-
-var (
-	memcacheRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "memcache_request_duration_seconds",
-		Help:      "Total time spent in seconds doing memcache requests.",
-		// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
-		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
-	}, []string{"method", "status_code", "name"})
 )
 
 type observableVecCollector struct {
@@ -64,20 +55,26 @@ type Memcached struct {
 
 	wg      sync.WaitGroup
 	inputCh chan *work
+
+	logger log.Logger
 }
 
 // NewMemcached makes a new Memcache.
-// TODO(bwplotka): Fix metrics, get them out of globals, separate or allow prefixing.
-// TODO(bwplotka): Remove globals & util packages from cache package entirely (e.g util.Logger).
-func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string) *Memcached {
+func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg prometheus.Registerer, logger log.Logger) *Memcached {
 	c := &Memcached{
 		cfg:      cfg,
 		memcache: client,
 		name:     name,
+		logger:   logger,
 		requestDuration: observableVecCollector{
-			v: memcacheRequestDuration.MustCurryWith(prometheus.Labels{
-				"name": name,
-			}),
+			v: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+				Namespace: "cortex",
+				Name:      "memcache_request_duration_seconds",
+				Help:      "Total time spent in seconds doing memcache requests.",
+				// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
+				Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+				ConstLabels: prometheus.Labels{"name": name},
+			}, []string{"method", "status_code"}),
 		},
 	}
 
@@ -161,7 +158,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		// Memcached returns partial results even on error.
 		if err != nil {
 			sp.LogFields(otlog.Error(err))
-			level.Error(util.Logger).Log("msg", "Failed to get keys from memcached", "err", err)
+			level.Error(c.logger).Log("msg", "Failed to get keys from memcached", "err", err)
 		}
 		return err
 	})
@@ -234,7 +231,7 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 			return c.memcache.Set(&item)
 		})
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
+			level.Error(c.logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
 		}
 	}
 }

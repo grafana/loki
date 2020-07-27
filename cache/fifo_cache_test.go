@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,7 +38,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		c := NewFifoCache(test.name, test.cfg)
+		c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger())
 		ctx := context.Background()
 
 		// Check put / get works
@@ -185,7 +186,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		c := NewFifoCache(test.name, test.cfg)
+		c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger())
 		ctx := context.Background()
 
 		c.Store(ctx,
