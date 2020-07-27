@@ -46,6 +46,10 @@ func (p PrefixedObjectClient) Stop() {
 	p.downstreamClient.Stop()
 }
 
+func (p PrefixedObjectClient) PathSeparator() string {
+	return p.downstreamClient.PathSeparator()
+}
+
 func NewPrefixedObjectClient(downstreamClient chunk.ObjectClient, prefix string) chunk.ObjectClient {
 	return PrefixedObjectClient{downstreamClient: downstreamClient, prefix: prefix}
 }

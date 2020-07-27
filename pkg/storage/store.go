@@ -68,7 +68,7 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 		name = "boltdb"
 		cfg.FSConfig = cortex_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
 	}
-	return storage.NewTableClient(name, cfg.Config)
+	return storage.NewTableClient(name, cfg.Config, prometheus.DefaultRegisterer)
 }
 
 // decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,

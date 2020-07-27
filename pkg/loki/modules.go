@@ -103,6 +103,12 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 		t.cfg.RuntimeConfig.LoadPath = t.cfg.LimitsConfig.PerTenantOverrideConfig
 		t.cfg.RuntimeConfig.ReloadPeriod = t.cfg.LimitsConfig.PerTenantOverridePeriod
 	}
+
+	if t.cfg.RuntimeConfig.LoadPath == "" {
+		// no need to initialize module if load path is empty
+		return nil, nil
+	}
+
 	t.cfg.RuntimeConfig.Loader = loadRuntimeConfig
 
 	// make sure to set default limits before we start loading configuration into memory
@@ -226,7 +232,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
