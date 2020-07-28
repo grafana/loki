@@ -20,7 +20,8 @@ replace:
   [source: <string>]
 
   # Value to which the captured group will be replaced. The captured group or the named captured group will be
-  # replaced with this value and the log line will be replaced with new replaced values
+  # replaced with this value and the log line will be replaced with new replaced values. An empty value will
+  # remove the captured group from the log line.
   [replace: <string>]
 ```
 
@@ -220,3 +221,26 @@ The log line would become
 ```
 11.11.11.11 - FRANK [25/JAN/2000:14:00:01 -0500] "GET /1986.JS HTTP/1.1" 200 932 "-" "MOZILLA/5.0 (WINDOWS; U; WINDOWS NT 5.1; DE; RV:1.9.1.7) GECKO/20091221 FIREFOX/3.5.7 GTB6"
 ```
+
+### With empty `replace`
+
+Given the pipeline:
+
+```yaml
+- replace:
+    expression: "11.11.11.11 - (\\S+\\s)"
+    replace: ""
+```
+
+And the log line:
+
+```
+11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+```
+
+The log line becomes
+
+```
+11.11.11.11 - [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+```
+
