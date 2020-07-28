@@ -96,8 +96,9 @@ func (r *LokiSeriesRequest) GetQuery() string {
 	return ""
 }
 
+// set default step value, this will be used in caching
 func (r *LokiSeriesRequest) GetStep() int64 {
-	return 0
+	return int64(1 * time.Millisecond)
 }
 
 func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {

@@ -45,7 +45,7 @@ func NewTripperware(
 	schema chunk.SchemaConfig,
 	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
-) (frontend.Tripperware, Stopper, error) {
+) (frontend.Tripperware, []Stopper, error) {
 	// Ensure that QuerySplitDuration uses configuration defaults.
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
 	limits = WithDefaultLimits(limits, cfg.Config)
@@ -54,27 +54,31 @@ func NewTripperware(
 	retryMetrics := queryrange.NewRetryMiddlewareMetrics(registerer)
 	shardingMetrics := logql.NewShardingMetrics(registerer)
 	splitByMetrics := NewSplitByMetrics(registerer)
+	stoppers := make([]Stopper, 0, 2)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
+	metricsTripperware, metricsCache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
+	seriesTripperware, seriesCache, err := NewSeriesTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	stoppers = append(stoppers, metricsCache, seriesCache)
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
 		seriesRT := seriesTripperware(next)
 		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, limits)
-	}, cache, nil
+	}, stoppers, nil
 }
 
 type roundTripper struct {
@@ -239,11 +243,32 @@ func NewSeriesTripperware(
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	splitByMetrics *SplitByMetrics,
-) (frontend.Tripperware, error) {
+) (frontend.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByMetrics))
 	}
+
+	var c cache.Cache
+	if cfg.CacheResults {
+		queryCacheMiddleware, cache, err := NewLokiResultsCacheMiddleware(
+			log,
+			cfg.ResultsCacheConfig,
+			cacheKeyLimits{limits},
+			limits,
+			codec,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		c = cache
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("results_cache", instrumentMetrics),
+			queryCacheMiddleware,
+		)
+	}
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
@@ -253,7 +278,7 @@ func NewSeriesTripperware(
 			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
 		}
 		return next
-	}, nil
+	}, c, nil
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
