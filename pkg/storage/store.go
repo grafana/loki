@@ -287,7 +287,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func RegisterCustomIndexClients(cfg Config, registerer prometheus.Registerer) {
+func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 	// BoltDB Shipper is supposed to be run as a singleton.
 	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 	// in tests for creating multiple instances of it at a time.
