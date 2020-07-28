@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"text/template"
 
-	logutil "github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
@@ -37,6 +37,7 @@ type Server interface {
 // Server embed weaveworks server with static file and templating capability
 type server struct {
 	*serverww.Server
+	log               log.Logger
 	tms               *targets.TargetManagers
 	externalURL       *url.URL
 	healthCheckTarget bool
@@ -65,9 +66,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // New makes a new Server
-func New(cfg Config, tms *targets.TargetManagers) (Server, error) {
+func New(cfg Config, log log.Logger, tms *targets.TargetManagers) (Server, error) {
 	if cfg.Disable {
-		return NoopServer, nil
+		return noopServer{log: log}, nil
 	}
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
@@ -87,6 +88,7 @@ func New(cfg Config, tms *targets.TargetManagers) (Server, error) {
 
 	serv := &server{
 		Server:            wws,
+		log:               log,
 		tms:               tms,
 		externalURL:       externalURL,
 		healthCheckTarget: healthCheckTargetFlag,
@@ -211,7 +213,7 @@ func (s *server) ready(rw http.ResponseWriter, _ *http.Request) {
 
 	rw.WriteHeader(http.StatusOK)
 	if _, err := rw.Write(readinessProbeSuccess); err != nil {
-		level.Error(logutil.Logger).Log("msg", "error writing success message", "error", err)
+		level.Error(s.log).Log("msg", "error writing success message", "error", err)
 	}
 }
 
@@ -241,15 +243,13 @@ func computeExternalURL(u string, port int) (*url.URL, error) {
 	return eu, nil
 }
 
-var NoopServer Server = noopServer{}
+type noopServer struct{ log log.Logger }
 
-type noopServer struct{}
-
-func (noopServer) Run() error {
+func (s noopServer) Run() error {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigs
-	level.Info(logutil.Logger).Log("msg", "received shutdown signal", "sig", sig)
+	level.Info(s.log).Log("msg", "received shutdown signal", "sig", sig)
 	return nil
 }
 func (noopServer) Shutdown() {}

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
@@ -11,18 +12,38 @@ import (
 	"github.com/grafana/loki/pkg/promtail/targets"
 )
 
+// Option is a function that can be passed to the New method of Promtail and
+// customize the Promtail that is created.
+type Option func(p *Promtail)
+
+// WithLogger overrides the default logger for Promtail.
+func WithLogger(log log.Logger) Option {
+	return func(p *Promtail) {
+		p.logger = log
+	}
+}
+
 // Promtail is the root struct for Promtail...
 type Promtail struct {
 	client         client.Client
 	targetManagers *targets.TargetManagers
 	server         server.Server
+	logger         log.Logger
 
 	stopped bool
 	mtx     sync.Mutex
 }
 
 // New makes a new Promtail.
-func New(cfg config.Config, dryRun bool) (*Promtail, error) {
+func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
+	// Initialize promtail with some defaults and allow the options to override
+	// them.
+	promtail := &Promtail{
+		logger: util.Logger,
+	}
+	for _, o := range opts {
+		o(promtail)
+	}
 
 	if cfg.ClientConfig.URL.URL != nil {
 		// if a single client config is used we add it to the multiple client config for backward compatibility
@@ -30,30 +51,25 @@ func New(cfg config.Config, dryRun bool) (*Promtail, error) {
 	}
 
 	var err error
-	var cl client.Client
 	if dryRun {
-		cl, err = client.NewLogger(cfg.ClientConfigs...)
+		promtail.client, err = client.NewLogger(promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		cl, err = client.NewMulti(util.Logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewMulti(promtail.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	promtail := &Promtail{
-		client: cl,
-	}
-
-	tms, err := targets.NewTargetManagers(promtail, util.Logger, cfg.PositionsConfig, cl, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(promtail, promtail.logger, cfg.PositionsConfig, promtail.client, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return nil, err
 	}
 	promtail.targetManagers = tms
-	server, err := server.New(cfg.ServerConfig, tms)
+	server, err := server.New(cfg.ServerConfig, promtail.logger, tms)
 	if err != nil {
 		return nil, err
 	}

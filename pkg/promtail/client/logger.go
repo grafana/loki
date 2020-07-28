@@ -8,8 +8,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/fatih/color"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 )
@@ -32,9 +32,9 @@ type logger struct {
 }
 
 // NewLogger creates a new client logger that logs entries instead of sending them.
-func NewLogger(cfgs ...Config) (Client, error) {
+func NewLogger(log log.Logger, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
-	c, err := NewMulti(util.Logger, cfgs...)
+	c, err := NewMulti(log, cfgs...)
 	if err != nil {
 		return nil, err
 	}
