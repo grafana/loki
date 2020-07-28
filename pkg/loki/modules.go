@@ -370,8 +370,8 @@ func activePeriodConfig(cfg chunk.SchemaConfig) int {
 // usingBoltdbShipper check whether current or the next index type is boltdb-shipper, returns true if yes.
 func usingBoltdbShipper(cfg chunk.SchemaConfig) bool {
 	activePCIndex := activePeriodConfig(cfg)
-	if cfg.Configs[activePCIndex].IndexType == local.BoltDBShipperType ||
-		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == local.BoltDBShipperType) {
+	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
+		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
 		return true
 	}
 
