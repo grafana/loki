@@ -39,13 +39,14 @@ Once the plugin is installed it can be [configured](../../configuration/).
 
 ## Upgrading
 
-The upgrade process involves disabling the existing plugin, upgrading, and then
-re-enabling:
+The upgrade process involves disabling the existing plugin, upgrading, then
+re-enabling and restarting Docker:
 
 ```bash
 docker plugin disable loki
 docker plugin upgrade loki grafana/loki-docker-driver:master
 docker plugin enable loki
+systemctl restart docker
 ```
 
 ## Uninstalling
