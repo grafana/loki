@@ -178,3 +178,13 @@ and trailing white space removed, as defined by Unicode.
     source: output
     template: '{{ regexReplaceAllLiteral "(ts=)" .Value "timestamp=" }}'
 ```
+
+### Sha256
+
+`Sha256` returns a Sha256 hash of the string, represented as a hexadecimal number of 64 digits. It can be used to obfuscate sensitive data / PII in the logs. It requires a (fixed) salt value, to add complexity to low input domains (e.g. all possible Social Security Numbers)
+
+```yaml
+- template:
+    source: output
+    template: '{{ Sha256 .Value "salt" }}'
+```

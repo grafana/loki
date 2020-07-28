@@ -125,6 +125,29 @@ The log line would become
 11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" HttpStatusOk 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
 ```
 
+### With `replace` value in `template` format with hashing for obfuscating data
+
+To obfuscate sensitive data, you can combine the `replace` stage with the `Sha256` template method
+
+```yaml
+- replace:
+    # SSN
+    expression: '([0-9]{3}-[0-9]{2}-[0-9]{4})'
+    replace: '*SSN*{{ .Value | Sha256 "salt" }}*'
+- replace:
+    # IP4
+    expression: '(\d{1,3}[.]\d{1,3}[.]\d{1,3}[.]\d{1,3})'
+    replace: '*IP4*{{ .Value | Sha256 "salt" }}*'    
+- replace:
+    # email
+    expression: '([\w\.=-]+@[\w\.-]+\.[\w]{2,64})'
+    replace: '*email*{{ .Value | Sha256 "salt" }}*'  
+- replace:
+    # creditcard
+    expression: '((?:\d[ -]*?){13,16})'
+    replace: '*creditcard*{{ .Value | Sha256 "salt" }}*'  
+```
+
 ### `replace` with named captured group
 
 Given the pipeline:
