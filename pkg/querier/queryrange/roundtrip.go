@@ -242,7 +242,11 @@ func NewSeriesTripperware(
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByMetrics))
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
+			// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
+			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByMetrics),
+		)
 	}
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
