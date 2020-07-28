@@ -283,7 +283,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.indexCache,
 		u.queryGate,
 		u.cfg.BucketStore.MaxChunkPoolBytes,
-		u.cfg.BucketStore.MaxSampleCount,
+		0,                              // No max samples limit (it's flawed in Thanos)
 		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.

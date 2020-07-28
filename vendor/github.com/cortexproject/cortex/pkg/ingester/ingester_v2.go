@@ -124,6 +124,9 @@ type TSDBState struct {
 	dbs    map[string]*userTSDB // tsdb sharded by userID
 	bucket objstore.Bucket
 
+	// Value used by shipper as external label.
+	shipperIngesterID string
+
 	// Keeps count of in-flight requests
 	inflightWriteReqs sync.WaitGroup
 
@@ -147,7 +150,47 @@ type TSDBState struct {
 	refCachePurgeDuration  prometheus.Histogram
 }
 
-// NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
+func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
+	return TSDBState{
+		dbs:                 make(map[string]*userTSDB),
+		bucket:              bucketClient,
+		tsdbMetrics:         newTSDBMetrics(registerer),
+		forceCompactTrigger: make(chan chan<- struct{}),
+		shipTrigger:         make(chan chan<- struct{}),
+
+		compactionsTriggered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_tsdb_compactions_triggered_total",
+			Help: "Total number of triggered compactions.",
+		}),
+
+		compactionsFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_tsdb_compactions_failed_total",
+			Help: "Total number of compactions that failed.",
+		}),
+		walReplayTime: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_tsdb_wal_replay_duration_seconds",
+			Help:    "The total time it takes to open and replay a TSDB WAL.",
+			Buckets: prometheus.DefBuckets,
+		}),
+		appenderAddDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_tsdb_appender_add_duration_seconds",
+			Help:    "The total time it takes for a push request to add samples to the TSDB appender.",
+			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		}),
+		appenderCommitDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_tsdb_appender_commit_duration_seconds",
+			Help:    "The total time it takes for a push request to commit samples appended to TSDB.",
+			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		}),
+		refCachePurgeDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_tsdb_refcache_purge_duration_seconds",
+			Help:    "The total time it takes to purge the TSDB series reference cache for a single tenant.",
+			Buckets: prometheus.DefBuckets,
+		}),
+	}
+}
+
+// NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "ingester", util.Logger, registerer)
@@ -163,43 +206,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		chunkStore:    nil,
 		usersMetadata: map[string]*userMetricsMetadata{},
 		wal:           &noopWAL{},
-		TSDBState: TSDBState{
-			dbs:                 make(map[string]*userTSDB),
-			bucket:              bucketClient,
-			tsdbMetrics:         newTSDBMetrics(registerer),
-			forceCompactTrigger: make(chan chan<- struct{}),
-			shipTrigger:         make(chan chan<- struct{}),
-
-			compactionsTriggered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Name: "cortex_ingester_tsdb_compactions_triggered_total",
-				Help: "Total number of triggered compactions.",
-			}),
-
-			compactionsFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Name: "cortex_ingester_tsdb_compactions_failed_total",
-				Help: "Total number of compactions that failed.",
-			}),
-			walReplayTime: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-				Name:    "cortex_ingester_tsdb_wal_replay_duration_seconds",
-				Help:    "The total time it takes to open and replay a TSDB WAL.",
-				Buckets: prometheus.DefBuckets,
-			}),
-			appenderAddDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-				Name:    "cortex_ingester_tsdb_appender_add_duration_seconds",
-				Help:    "The total time it takes for a push request to add samples to the TSDB appender.",
-				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-			}),
-			appenderCommitDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-				Name:    "cortex_ingester_tsdb_appender_commit_duration_seconds",
-				Help:    "The total time it takes for a push request to commit samples appended to TSDB.",
-				Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-			}),
-			refCachePurgeDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-				Name:    "cortex_ingester_tsdb_refcache_purge_duration_seconds",
-				Help:    "The total time it takes to purge the TSDB series reference cache for a single tenant.",
-				Buckets: prometheus.DefBuckets,
-			}),
-		},
+		TSDBState:     newTSDBState(bucketClient, registerer),
 	}
 
 	// Replace specific metrics which we can't directly track but we need to read
@@ -223,13 +230,47 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
+	i.TSDBState.shipperIngesterID = i.lifecycler.ID
+
 	i.BasicService = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
 }
 
+// Special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
+// on Flush method and flush all openened TSDBs when called.
+func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, error) {
+	util.WarnExperimentalUse("Blocks storage engine")
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "ingester", util.Logger, registerer)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create the bucket client")
+	}
+
+	i := &Ingester{
+		cfg:       cfg,
+		metrics:   newIngesterMetrics(registerer, false),
+		wal:       &noopWAL{},
+		TSDBState: newTSDBState(bucketClient, registerer),
+	}
+
+	i.TSDBState.shipperIngesterID = "flusher"
+
+	// This ingester will not start any subservices (lifecycler, compaction, shipping),
+	// and will only open TSDBs, wait for Flush to be called, and then close TSDBs again.
+	i.BasicService = services.NewIdleService(i.startingV2ForFlusher, i.stoppingV2ForFlusher)
+	return i, nil
+}
+
+func (i *Ingester) startingV2ForFlusher(ctx context.Context) error {
+	if err := i.openExistingTSDB(ctx); err != nil {
+		return errors.Wrap(err, "opening existing TSDBs")
+	}
+
+	// Don't start any sub-services (lifecycler, compaction, shipper) at all.
+	return nil
+}
+
 func (i *Ingester) startingV2(ctx context.Context) error {
-	// Scan and open TSDB's that already exist on disk
-	if err := i.openExistingTSDB(context.Background()); err != nil {
+	if err := i.openExistingTSDB(ctx); err != nil {
 		return errors.Wrap(err, "opening existing TSDBs")
 	}
 
@@ -260,6 +301,13 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 	return errors.Wrap(err, "failed to start ingester components")
 }
 
+func (i *Ingester) stoppingV2ForFlusher(_ error) error {
+	if !i.cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown {
+		i.closeAllTSDB()
+	}
+	return nil
+}
+
 // runs when V2 ingester is stopping
 func (i *Ingester) stoppingV2(_ error) error {
 	// It's important to wait until shipper is finished,
@@ -267,11 +315,18 @@ func (i *Ingester) stoppingV2(_ error) error {
 	// there's no shipping on-going.
 
 	if err := services.StopManagerAndAwaitStopped(context.Background(), i.TSDBState.subservices); err != nil {
-		level.Warn(util.Logger).Log("msg", "stopping ingester subservices", "err", err)
+		level.Warn(util.Logger).Log("msg", "failed to stop ingester subservices", "err", err)
 	}
 
 	// Next initiate our graceful exit from the ring.
-	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	if err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler); err != nil {
+		level.Warn(util.Logger).Log("msg", "failed to stop ingester lifecycler", "err", err)
+	}
+
+	if !i.cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown {
+		i.closeAllTSDB()
+	}
+	return nil
 }
 
 func (i *Ingester) updateLoop(ctx context.Context) error {
@@ -891,9 +946,18 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		SeriesLifecycleCallback: userDB,
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
 	}
 	db.DisableCompactions() // we will compact on our own schedule
+
+	// Run compaction before using this TSDB. If there is data in head that needs to be put into blocks,
+	// this will actually create the blocks. If there is no data (empty TSDB), this is a no-op, although
+	// local blocks compaction may still take place if configured.
+	level.Info(userLogger).Log("msg", "Running compaction after WAL replay")
+	err = db.Compact()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
+	}
 
 	userDB.DB = db
 	// We set the limiter here because we don't want to limit
@@ -910,7 +974,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			Value: userID,
 		}, {
 			Name:  cortex_tsdb.IngesterIDExternalLabel,
-			Value: i.lifecycler.ID,
+			Value: i.TSDBState.shipperIngesterID,
 		},
 	}
 
@@ -1080,9 +1144,11 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
 	// run the shipper in such state we could end up with race conditions.
-	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.PENDING || ingesterState == ring.JOINING {
-		level.Info(util.Logger).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state", "state", ingesterState)
-		return
+	if i.lifecycler != nil {
+		if ingesterState := i.lifecycler.GetState(); ingesterState == ring.PENDING || ingesterState == ring.JOINING {
+			level.Info(util.Logger).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state", "state", ingesterState)
+			return
+		}
 	}
 
 	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
@@ -1131,9 +1197,11 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
-	if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING {
-		level.Info(util.Logger).Log("msg", "TSDB blocks compaction has been skipped because of the current ingester state", "state", ingesterState)
-		return
+	if i.lifecycler != nil {
+		if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING {
+			level.Info(util.Logger).Log("msg", "TSDB blocks compaction has been skipped because of the current ingester state", "state", ingesterState)
+			return
+		}
 	}
 
 	i.runConcurrentUserWorkers(ctx, i.cfg.TSDBConfig.HeadCompactionConcurrency, func(userID string) {
@@ -1209,9 +1277,12 @@ sendLoop:
 	wg.Wait()
 }
 
-// This method is called as part of Lifecycler's shutdown, to flush all data.
-// Lifecycler shutdown happens as part of Ingester shutdown (see stoppingV2 method).
+// This method will flush all data. It is called as part of Lifecycler's shutdown (if flush on shutdown is configured), or from the flusher.
+//
+// When called as during Lifecycler shutdown, this happens as part of normal Ingester shutdown (see stoppingV2 method).
 // Samples are not received at this stage. Compaction and Shipping loops have already been stopped as well.
+//
+// When used from flusher, ingester is constructed in a way that compaction, shipping and receiving of samples is never started.
 func (i *Ingester) v2LifecyclerFlush() {
 	level.Info(util.Logger).Log("msg", "starting to flush and ship TSDB blocks")
 

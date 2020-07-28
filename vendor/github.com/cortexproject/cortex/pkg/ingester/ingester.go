@@ -262,19 +262,17 @@ func (i *Ingester) startFlushLoops() {
 // Compared to the 'New' method:
 //   * Always replays the WAL.
 //   * Does not start the lifecycler.
-//   * No ingester v2.
-func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
-	if cfg.ingesterClientFactory == nil {
-		cfg.ingesterClientFactory = client.MakeIngesterClient
+func NewForFlusher(cfg Config, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+	if cfg.TSDBEnabled {
+		return NewV2ForFlusher(cfg, registerer)
 	}
 
 	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true),
-		chunkStore:   chunkStore,
-		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		wal:          &noopWAL{},
+		cfg:         cfg,
+		metrics:     newIngesterMetrics(registerer, true),
+		chunkStore:  chunkStore,
+		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		wal:         &noopWAL{},
 	}
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)

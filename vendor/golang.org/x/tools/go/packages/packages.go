@@ -19,7 +19,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +26,7 @@ import (
 	"golang.org/x/tools/go/gcexportdata"
 	"golang.org/x/tools/internal/gocommand"
 	"golang.org/x/tools/internal/packagesinternal"
+	"golang.org/x/tools/internal/typesinternal"
 )
 
 // A LoadMode controls the amount of detail to return when loading.
@@ -73,9 +73,9 @@ const (
 	// NeedTypesSizes adds TypesSizes.
 	NeedTypesSizes
 
-	// TypecheckCgo enables full support for type checking cgo. Requires Go 1.15+.
+	// typecheckCgo enables full support for type checking cgo. Requires Go 1.15+.
 	// Modifies CompiledGoFiles and Types, and has no effect on its own.
-	TypecheckCgo
+	typecheckCgo
 
 	// NeedModule adds Module.
 	NeedModule
@@ -191,6 +191,13 @@ type driver func(cfg *Config, patterns ...string) (*driverResponse, error)
 
 // driverResponse contains the results for a driver query.
 type driverResponse struct {
+	// NotHandled is returned if the request can't be handled by the current
+	// driver. If an external driver returns a response with NotHandled, the
+	// rest of the driverResponse is ignored, and go/packages will fallback
+	// to the next driver. If go/packages is extended in the future to support
+	// lists of multiple drivers, go/packages will fall back to the next driver.
+	NotHandled bool
+
 	// Sizes, if not nil, is the types.Sizes to use when type checking.
 	Sizes *types.StdSizes
 
@@ -232,14 +239,22 @@ func Load(cfg *Config, patterns ...string) ([]*Package, error) {
 	return l.refine(response.Roots, response.Packages...)
 }
 
-// defaultDriver is a driver that looks for an external driver binary, and if
-// it does not find it falls back to the built in go list driver.
+// defaultDriver is a driver that implements go/packages' fallback behavior.
+// It will try to request to an external driver, if one exists. If there's
+// no external driver, or the driver returns a response with NotHandled set,
+// defaultDriver will fall back to the go list driver.
 func defaultDriver(cfg *Config, patterns ...string) (*driverResponse, error) {
 	driver := findExternalDriver(cfg)
 	if driver == nil {
 		driver = goListDriver
 	}
-	return driver(cfg, patterns...)
+	response, err := driver(cfg, patterns...)
+	if err != nil {
+		return response, err
+	} else if response.NotHandled {
+		return goListDriver(cfg, patterns...)
+	}
+	return response, nil
 }
 
 // A Package describes a loaded Go package.
@@ -346,6 +361,7 @@ func init() {
 	packagesinternal.SetGoCmdRunner = func(config interface{}, runner *gocommand.Runner) {
 		config.(*Config).gocmdRunner = runner
 	}
+	packagesinternal.TypecheckCgo = int(typecheckCgo)
 }
 
 // An Error describes a problem with a package's metadata, syntax, or types.
@@ -906,18 +922,14 @@ func (ld *loader) loadPackage(lpkg *loaderPackage) {
 		Error: appendError,
 		Sizes: ld.sizes,
 	}
-	if (ld.Mode & TypecheckCgo) != 0 {
-		// TODO: remove this when we stop supporting 1.14.
-		rtc := reflect.ValueOf(tc).Elem()
-		usesCgo := rtc.FieldByName("UsesCgo")
-		if !usesCgo.IsValid() {
+	if (ld.Mode & typecheckCgo) != 0 {
+		if !typesinternal.SetUsesCgo(tc) {
 			appendError(Error{
-				Msg:  "TypecheckCgo requires Go 1.15+",
+				Msg:  "typecheckCgo requires Go 1.15+",
 				Kind: ListError,
 			})
 			return
 		}
-		usesCgo.SetBool(true)
 	}
 	types.NewChecker(tc, ld.Fset, lpkg.Types, lpkg.TypesInfo).Files(lpkg.Syntax)
 

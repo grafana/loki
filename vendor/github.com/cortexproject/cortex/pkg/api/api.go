@@ -44,9 +44,9 @@ type Config struct {
 	PrometheusHTTPPrefix   string `yaml:"prometheus_http_prefix"`
 
 	// The following configs are injected by the upstream caller.
-	ServerPrefix       string          `yaml:"-"`
-	LegacyHTTPPrefix   string          `yaml:"-"`
-	HTTPAuthMiddleware middleware.Func `yaml:"-"`
+	ServerPrefix       string               `yaml:"-"`
+	LegacyHTTPPrefix   string               `yaml:"-"`
+	HTTPAuthMiddleware middleware.Interface `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -62,7 +62,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 type API struct {
 	cfg            Config
-	authMiddleware middleware.Func
+	authMiddleware middleware.Interface
 	server         *server.Server
 	logger         log.Logger
 }

@@ -50,6 +50,11 @@ var (
 		Name:      "ruler_config_updates_total",
 		Help:      "Total number of config updates triggered by a user",
 	}, []string{"user"})
+	configUpdateFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ruler_config_update_failures_total",
+		Help:      "Total number of config update failures triggered by a user",
+	}, []string{"user", "reason"})
 	managersTotal = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "ruler_managers_total",
@@ -76,12 +81,12 @@ type Config struct {
 	RulePath string `yaml:"rule_path"`
 
 	// URL of the Alertmanager to send notifications to.
-	AlertmanagerURL flagext.URLValue `yaml:"alertmanager_url"`
-	// Whether to use DNS SRV records to discover alertmanagers.
+	AlertmanagerURL flagext.StringSlice `yaml:"alertmanager_url"`
+	// Whether to use DNS SRV records to discover Alertmanager.
 	AlertmanagerDiscovery bool `yaml:"enable_alertmanager_discovery"`
-	// How long to wait between refreshing the list of alertmanagers based on DNS service discovery.
+	// How long to wait between refreshing the list of Alertmanager based on DNS service discovery.
 	AlertmanagerRefreshInterval time.Duration `yaml:"alertmanager_refresh_interval"`
-	// Enables the ruler notifier to use the alertmananger V2 API.
+	// Enables the ruler notifier to use the Alertmananger V2 API.
 	AlertmanangerEnableV2API bool `yaml:"enable_alertmanager_v2"`
 	// Capacity of the queue for notifications to be sent to the Alertmanager.
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
@@ -128,12 +133,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
 	f.DurationVar(&cfg.EvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure they underlying metrics have been pushed to cortex.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
-	f.Var(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "URL of the Alertmanager to send notifications to.")
-	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover alertmanager hosts.")
-	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing alertmanager hosts.")
-	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", false, "If enabled requests to alertmanager will utilize the V2 API.")
+
+	f.Var(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "Space-separated list of URL(s) of the Alertmanager(s) to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via -ruler.alertmanager-discovery.")
+	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover Alertmanager hosts.")
+	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
+	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", false, "If enabled requests to Alertmanager will utilize the V2 API.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
+
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
@@ -173,13 +180,8 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, pusher Pusher, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	ruleStore, err := NewRuleStorage(cfg.StoreConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -503,14 +505,18 @@ func (r *Ruler) syncManager(ctx context.Context, user string, groups store.RuleG
 		if !exists {
 			manager, err = r.newManager(ctx, user)
 			if err != nil {
+				configUpdateFailuresTotal.WithLabelValues(user, "rule-manager-creation-failure").Inc()
 				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
 				return
 			}
-			manager.Run()
+			// manager.Run() starts running the manager and blocks until Stop() is called.
+			// Hence run it as another goroutine.
+			go manager.Run()
 			r.userManagers[user] = manager
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
 		if err != nil {
+			configUpdateFailuresTotal.WithLabelValues(user, "rules-update-failure").Inc()
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
 			return
 		}

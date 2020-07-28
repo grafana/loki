@@ -543,7 +543,7 @@ func (state *golistState) createDriverResponse(words ...string) (*driverResponse
 			Module:          p.Module,
 		}
 
-		if (state.cfg.Mode&TypecheckCgo) != 0 && len(p.CgoFiles) != 0 {
+		if (state.cfg.Mode&typecheckCgo) != 0 && len(p.CgoFiles) != 0 {
 			if len(p.CompiledGoFiles) > len(p.GoFiles) {
 				// We need the cgo definitions, which are in the first
 				// CompiledGoFile after the non-cgo ones. This is a hack but there
@@ -633,6 +633,39 @@ func (state *golistState) createDriverResponse(words ...string) (*driverResponse
 		// Can we delete this?
 		if len(pkg.CompiledGoFiles) == 0 {
 			pkg.CompiledGoFiles = pkg.GoFiles
+		}
+
+		// Temporary work-around for golang/go#39986. Parse filenames out of
+		// error messages. This happens if there are unrecoverable syntax
+		// errors in the source, so we can't match on a specific error message.
+		if err := p.Error; err != nil && len(err.ImportStack) == 0 && len(pkg.CompiledGoFiles) == 0 {
+			addFilenameFromPos := func(pos string) bool {
+				split := strings.Split(pos, ":")
+				if len(split) < 1 {
+					return false
+				}
+				filename := strings.TrimSpace(split[0])
+				if filename == "" {
+					return false
+				}
+				if !filepath.IsAbs(filename) {
+					filename = filepath.Join(state.cfg.Dir, filename)
+				}
+				info, _ := os.Stat(filename)
+				if info == nil {
+					return false
+				}
+				pkg.CompiledGoFiles = append(pkg.CompiledGoFiles, filename)
+				pkg.GoFiles = append(pkg.GoFiles, filename)
+				return true
+			}
+			found := addFilenameFromPos(err.Pos)
+			// In some cases, go list only reports the error position in the
+			// error text, not the error position. One such case is when the
+			// file's package name is a keyword (see golang.org/issue/39763).
+			if !found {
+				addFilenameFromPos(err.Err)
+			}
 		}
 
 		if p.Error != nil {

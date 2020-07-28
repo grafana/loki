@@ -4,11 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 
 	"github.com/cortexproject/cortex/pkg/configs/client"
-
-	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
 
 var (
@@ -34,11 +33,11 @@ type RuleGroupList []*RuleGroupDesc
 
 // Formatted returns the rule group list as a set of formatted rule groups mapped
 // by namespace
-func (l RuleGroupList) Formatted() map[string][]legacy_rulefmt.RuleGroup {
-	ruleMap := map[string][]legacy_rulefmt.RuleGroup{}
+func (l RuleGroupList) Formatted() map[string][]rulefmt.RuleGroup {
+	ruleMap := map[string][]rulefmt.RuleGroup{}
 	for _, g := range l {
 		if _, exists := ruleMap[g.Namespace]; !exists {
-			ruleMap[g.Namespace] = []legacy_rulefmt.RuleGroup{FromProto(g)}
+			ruleMap[g.Namespace] = []rulefmt.RuleGroup{FromProto(g)}
 			continue
 		}
 		ruleMap[g.Namespace] = append(ruleMap[g.Namespace], FromProto(g))

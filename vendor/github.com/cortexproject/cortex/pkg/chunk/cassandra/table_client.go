@@ -6,6 +6,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -16,8 +17,8 @@ type tableClient struct {
 }
 
 // NewTableClient returns a new TableClient.
-func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
-	session, err := cfg.session("table-manager")
+func NewTableClient(ctx context.Context, cfg Config, registerer prometheus.Registerer) (chunk.TableClient, error) {
+	session, err := cfg.session("table-manager", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

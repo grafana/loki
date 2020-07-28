@@ -80,6 +80,10 @@ type Config struct {
 	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
+
+	// If true, user TSDBs are not closed on shutdown. Only for testing.
+	// If false (default), user TSDBs are closed to make sure all resources are released and closed properly.
+	KeepUserTSDBOpenOnShutdown bool `yaml:"-"`
 }
 
 // DurationList is the block ranges for a tsdb
@@ -180,7 +184,6 @@ type BucketStoreConfig struct {
 	SyncDir                  string              `yaml:"sync_dir"`
 	SyncInterval             time.Duration       `yaml:"sync_interval"`
 	MaxChunkPoolBytes        uint64              `yaml:"max_chunk_pool_bytes"`
-	MaxSampleCount           uint64              `yaml:"max_sample_count"`
 	MaxConcurrent            int                 `yaml:"max_concurrent"`
 	TenantSyncConcurrency    int                 `yaml:"tenant_sync_concurrency"`
 	BlockSyncConcurrency     int                 `yaml:"block_sync_concurrency"`
@@ -208,14 +211,13 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.SyncDir, "experimental.tsdb.bucket-store.sync-dir", "tsdb-sync", "Directory to store synchronized TSDB index headers.")
 	f.DurationVar(&cfg.SyncInterval, "experimental.tsdb.bucket-store.sync-interval", 5*time.Minute, "How frequently scan the bucket to look for changes (new blocks shipped by ingesters and blocks removed by retention or compaction). 0 disables it.")
 	f.Uint64Var(&cfg.MaxChunkPoolBytes, "experimental.tsdb.bucket-store.max-chunk-pool-bytes", uint64(2*units.Gibibyte), "Max size - in bytes - of a per-tenant chunk pool, used to reduce memory allocations.")
-	f.Uint64Var(&cfg.MaxSampleCount, "experimental.tsdb.bucket-store.max-sample-count", 0, "Max number of samples per query when loading series from the long-term storage. 0 disables the limit.")
 	f.IntVar(&cfg.MaxConcurrent, "experimental.tsdb.bucket-store.max-concurrent", 100, "Max number of concurrent queries to execute against the long-term storage. The limit is shared across all tenants.")
 	f.IntVar(&cfg.TenantSyncConcurrency, "experimental.tsdb.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants synching blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "experimental.tsdb.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks synching per tenant.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "experimental.tsdb.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
 	f.DurationVar(&cfg.ConsistencyDelay, "experimental.tsdb.bucket-store.consistency-delay", 0, "Minimum age of a block before it's being read. Set it to safe value (e.g 30m) if your object storage is eventually consistent. GCS and S3 are (roughly) strongly consistent.")
 	f.DurationVar(&cfg.IgnoreDeletionMarksDelay, "experimental.tsdb.bucket-store.ignore-deletion-marks-delay", time.Hour*6, "Duration after which the blocks marked for deletion will be filtered out while fetching blocks. "+
-		"The idea of ignore-deletion-marks-delay is to ignore blocks that are marked for deletion with some delay. This ensures store can still serve blocks that are meant to be deleted but do not have a replacement yet."+
+		"The idea of ignore-deletion-marks-delay is to ignore blocks that are marked for deletion with some delay. This ensures store can still serve blocks that are meant to be deleted but do not have a replacement yet. "+
 		"Default is 6h, half of the default value for -compactor.deletion-delay.")
 	f.IntVar(&cfg.PostingOffsetsInMemSampling, "experimental.tsdb.bucket-store.posting-offsets-in-mem-sampling", store.DefaultPostingOffsetInMemorySampling, "Controls what is the ratio of postings offsets that the store will hold in memory.")
 }

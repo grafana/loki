@@ -26,7 +26,7 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"u9GIe6H63LSGq-9_t39K2Zx_EAc/SMGMLKKvE-TZrla7d9TA_SDVTI0\"",
+  "etag": "\"u9GIe6H63LSGq-9_t39K2Zx_EAc/5Ir-e9ddNPcr5skzvRsSnJlvTYg\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -1781,7 +1781,7 @@
               "type": "string"
             },
             "kmsKeyName": {
-              "description": "Resource name of the Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that will be used to encrypt the object. Overrides the object metadata's kms_key_name value, if any.",
+              "description": "Not currently supported. Specifying the parameter causes the request to fail with status code 400 - Bad Request.",
               "location": "query",
               "type": "string"
             },
@@ -3229,7 +3229,7 @@
       }
     }
   },
-  "revision": "20200430",
+  "revision": "20200611",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "Bucket": {

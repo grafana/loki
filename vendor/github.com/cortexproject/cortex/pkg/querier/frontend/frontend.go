@@ -123,6 +123,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 			r.URL.Scheme = u.Scheme
 			r.URL.Host = u.Host
 			r.URL.Path = path.Join(u.Path, r.URL.Path)
+			r.Host = ""
 			return http.DefaultTransport.RoundTrip(r)
 		})
 	}

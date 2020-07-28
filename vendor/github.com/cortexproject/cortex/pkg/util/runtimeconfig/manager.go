@@ -1,27 +1,36 @@
 package runtimeconfig
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"errors"
 	"flag"
+	"fmt"
+	"io"
+	"io/ioutil"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Loader loads the configuration from file.
-type Loader func(filename string) (interface{}, error)
+type Loader func(r io.Reader) (interface{}, error)
 
 // ManagerConfig holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
 type ManagerConfig struct {
 	ReloadPeriod time.Duration `yaml:"period"`
-	LoadPath     string        `yaml:"file"`
-	Loader       Loader        `yaml:"-"`
+	// LoadPath contains the path to the runtime config file, requires an
+	// non-empty value
+	LoadPath string `yaml:"file"`
+	Loader   Loader `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -44,20 +53,25 @@ type Manager struct {
 	config    interface{}
 
 	configLoadSuccess prometheus.Gauge
+	configHash        *prometheus.GaugeVec
 }
 
 // NewRuntimeConfigManager creates an instance of Manager and starts reload config loop based on config
 func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer) (*Manager, error) {
-	mgr := Manager{
-		cfg: cfg,
-		configLoadSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_overrides_last_reload_successful",
-			Help: "Whether the last config reload attempt was successful.",
-		}),
+	if cfg.LoadPath == "" {
+		return nil, errors.New("LoadPath is empty")
 	}
 
-	if registerer != nil {
-		registerer.MustRegister(mgr.configLoadSuccess)
+	mgr := Manager{
+		cfg: cfg,
+		configLoadSuccess: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_runtime_config_last_reload_successful",
+			Help: "Whether the last runtime-config reload attempt was successful.",
+		}),
+		configHash: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_runtime_config_hash",
+			Help: "Hash of the currently active runtime config file.",
+		}, []string{"sha256"}),
 	}
 
 	mgr.Service = services.NewBasicService(mgr.start, mgr.loop, mgr.stop)
@@ -131,7 +145,14 @@ func (om *Manager) loop(ctx context.Context) error {
 // loadConfig loads configuration using the loader function, and if successful,
 // stores it as current configuration and notifies listeners.
 func (om *Manager) loadConfig() error {
-	cfg, err := om.cfg.Loader(om.cfg.LoadPath)
+	buf, err := ioutil.ReadFile(om.cfg.LoadPath)
+	if err != nil {
+		om.configLoadSuccess.Set(0)
+		return err
+	}
+	hash := sha256.Sum256(buf)
+
+	cfg, err := om.cfg.Loader(bytes.NewReader(buf))
 	if err != nil {
 		om.configLoadSuccess.Set(0)
 		return err
@@ -140,6 +161,10 @@ func (om *Manager) loadConfig() error {
 
 	om.setConfig(cfg)
 	om.callListeners(cfg)
+
+	// expose hash of runtime config
+	om.configHash.Reset()
+	om.configHash.WithLabelValues(fmt.Sprintf("%x", hash[:])).Set(1)
 
 	return nil
 }

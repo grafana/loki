@@ -53,7 +53,11 @@ func NewDispatcherMetrics(r prometheus.Registerer) *DispatcherMetrics {
 			},
 		),
 	}
-	prometheus.MustRegister(m.aggrGroups, m.processingDuration)
+
+	if r != nil {
+		r.MustRegister(m.aggrGroups, m.processingDuration)
+	}
+
 	return &m
 }
 
@@ -107,9 +111,8 @@ func (d *Dispatcher) Run() {
 	d.mtx.Lock()
 	d.aggrGroups = map[*Route]map[model.Fingerprint]*aggrGroup{}
 	d.metrics.aggrGroups.Set(0)
-	d.mtx.Unlock()
-
 	d.ctx, d.cancel = context.WithCancel(context.Background())
+	d.mtx.Unlock()
 
 	d.run(d.alerts.Subscribe())
 	close(d.done)
@@ -251,11 +254,16 @@ func (d *Dispatcher) Groups(routeFilter func(*Route) bool, alertFilter func(*typ
 
 // Stop the dispatcher.
 func (d *Dispatcher) Stop() {
-	if d == nil || d.cancel == nil {
+	if d == nil {
+		return
+	}
+	d.mtx.Lock()
+	if d.cancel == nil {
 		return
 	}
 	d.cancel()
 	d.cancel = nil
+	d.mtx.Unlock()
 
 	<-d.done
 }

@@ -122,10 +122,10 @@ func Float64(key string, val float64) Field {
 	}
 }
 
-// Error adds an error with the key "error" to a Span.LogFields() record
+// Error adds an error with the key "error.object" to a Span.LogFields() record
 func Error(err error) Field {
 	return Field{
-		key:          "error",
+		key:          "error.object",
 		fieldType:    errorType,
 		interfaceVal: err,
 	}

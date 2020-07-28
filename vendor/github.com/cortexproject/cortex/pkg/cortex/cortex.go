@@ -13,10 +13,8 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
 
@@ -42,9 +40,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -212,6 +212,7 @@ type Cortex struct {
 	TombstonesLoader *purger.TombstonesLoader
 
 	Ruler        *ruler.Ruler
+	RulerStorage rules.RuleStore
 	ConfigAPI    *configAPI.API
 	ConfigDB     db.DB
 	Alertmanager *alertmanager.MultitenantAlertmanager
@@ -233,11 +234,18 @@ func New(cfg Config) (*Cortex, error) {
 		os.Exit(0)
 	}
 
+	// Don't check auth header on TransferChunks, as we weren't originally
+	// sending it and this could cause transfers to fail on update.
+	//
+	// Also don't check auth /frontend.Frontend/Process, as this handles
+	// queries for multiple users.
+	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
+		[]string{"/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process"})
+
 	cortex := &Cortex{
 		Cfg: cfg,
 	}
 
-	cortex.setupAuthMiddleware()
 	cortex.setupThanosTracing()
 
 	if err := cortex.setupModuleManager(); err != nil {
@@ -245,37 +253,6 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	return cortex, nil
-}
-
-func (t *Cortex) setupAuthMiddleware() {
-	if t.Cfg.AuthEnabled {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
-			middleware.ServerUserHeaderInterceptor,
-		)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				switch info.FullMethod {
-				// Don't check auth header on TransferChunks, as we weren't originally
-				// sending it and this could cause transfers to fail on update.
-				//
-				// Also don't check auth /frontend.Frontend/Process, as this handles
-				// queries for multiple users.
-				case "/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process":
-					return handler(srv, ss)
-				default:
-					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-				}
-			},
-		)
-	} else {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
-			fakeGRPCAuthUniaryMiddleware,
-		)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
-			fakeGRPCAuthStreamMiddleware,
-		)
-		t.Cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
-	}
 }
 
 // setupThanosTracing appends a gRPC middleware used to inject our tracer into the custom
