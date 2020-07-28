@@ -18,15 +18,15 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
-	"github.com/grafana/loki/pkg/storage/stores/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util"
 )
 
 // Config is the loki storage configuration
 type Config struct {
 	storage.Config      `yaml:",inline"`
-	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig local.ShipperConfig `yaml:"boltdb_shipper"`
+	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -64,7 +64,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 // NewTableClient creates a TableClient for managing tables for index/chunk store.
 // ToDo: Add support in Cortex for registering custom table client like index client.
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
-	if name == local.BoltDBShipperType {
+	if name == shipper.BoltDBShipperType {
 		name = "boltdb"
 		cfg.FSConfig = cortex_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
 	}
@@ -287,13 +287,13 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func RegisterCustomIndexClients(cfg Config, registerer prometheus.Registerer) {
+func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 	// BoltDB Shipper is supposed to be run as a singleton.
 	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 	// in tests for creating multiple instances of it at a time.
 	var boltDBIndexClientWithShipper chunk.IndexClient
 
-	storage.RegisterIndexStore(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
+	storage.RegisterIndexStore(shipper.BoltDBShipperType, func() (chunk.IndexClient, error) {
 		if boltDBIndexClientWithShipper != nil {
 			return boltDBIndexClientWithShipper, nil
 		}
@@ -303,9 +303,7 @@ func RegisterCustomIndexClients(cfg Config, registerer prometheus.Registerer) {
 			return nil, err
 		}
 
-		boltDBIndexClientWithShipper, err = local.NewBoltDBIndexClientWithShipper(
-			cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory},
-			objectClient, cfg.BoltDBShipperConfig, registerer)
+		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, registerer)
 
 		return boltDBIndexClientWithShipper, err
 	}, func() (client chunk.TableClient, e error) {
@@ -314,6 +312,6 @@ func RegisterCustomIndexClients(cfg Config, registerer prometheus.Registerer) {
 			return nil, err
 		}
 
-		return local.NewBoltDBShipperTableClient(objectClient), nil
+		return shipper.NewBoltDBShipperTableClient(objectClient), nil
 	})
 }

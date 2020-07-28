@@ -37,7 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -182,7 +182,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 
 	// We want ingester to also query the store when using boltdb-shipper
 	pc := t.cfg.SchemaConfig.Configs[activePeriodConfig(t.cfg.SchemaConfig)]
-	if pc.IndexType == local.BoltDBShipperType {
+	if pc.IndexType == shipper.BoltDBShipperType {
 		t.cfg.Ingester.QueryStore = true
 		mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
 		if err != nil {
@@ -243,17 +243,17 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
-	if t.cfg.SchemaConfig.Configs[activePeriodConfig(t.cfg.SchemaConfig)].IndexType == local.BoltDBShipperType {
+	if t.cfg.SchemaConfig.Configs[activePeriodConfig(t.cfg.SchemaConfig)].IndexType == shipper.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
 			// We do not want ingester to unnecessarily keep downloading files
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeWriteOnly
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
 		case Querier:
 			// We do not want query to do any updates to index
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadOnly
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadWrite
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadWrite
 		}
 	}
 
@@ -370,8 +370,8 @@ func activePeriodConfig(cfg chunk.SchemaConfig) int {
 // usingBoltdbShipper check whether current or the next index type is boltdb-shipper, returns true if yes.
 func usingBoltdbShipper(cfg chunk.SchemaConfig) bool {
 	activePCIndex := activePeriodConfig(cfg)
-	if cfg.Configs[activePCIndex].IndexType == local.BoltDBShipperType ||
-		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == local.BoltDBShipperType) {
+	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
+		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
 		return true
 	}
 
@@ -379,11 +379,11 @@ func usingBoltdbShipper(cfg chunk.SchemaConfig) bool {
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge time.Duration) (time.Duration, error) {
-	if pc.ObjectType != local.FilesystemObjectStoreType && maxLookBackConfig.Nanoseconds() != 0 {
+	if pc.ObjectType != shipper.FilesystemObjectStoreType && maxLookBackConfig.Nanoseconds() != 0 {
 		return 0, errors.New("it is an error to specify a non zero `query_store_max_look_back_period` value when using any object store other than `filesystem`")
 	}
 	// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
-	defaultMaxLookBack := maxChunkAge + local.ShipperFileUploadInterval + (15 * time.Minute)
+	defaultMaxLookBack := maxChunkAge + shipper.UploadInterval + (15 * time.Minute)
 
 	if maxLookBackConfig == 0 {
 		// If the QueryStoreMaxLookBackPeriod is still it's default value of 0, set it to the default calculated value.

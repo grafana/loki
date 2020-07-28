@@ -28,7 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
-	"github.com/grafana/loki/pkg/storage/stores/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -731,7 +731,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := local.ShipperConfig{}
+	boltdbShipperConfig := shipper.Config{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = "filesystem"
@@ -748,7 +748,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
 
-	RegisterCustomIndexClients(config, nil)
+	RegisterCustomIndexClients(&config, nil)
 
 	store, err := NewStore(config, chunk.StoreConfig{}, chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{

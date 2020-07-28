@@ -140,7 +140,7 @@ func New(cfg Config) (*Loki, error) {
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(cfg.StorageConfig, prometheus.DefaultRegisterer)
+	storage.RegisterCustomIndexClients(&loki.cfg.StorageConfig, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }
