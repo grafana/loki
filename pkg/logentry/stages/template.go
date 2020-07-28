@@ -35,9 +35,8 @@ var (
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
 		"Sha256": func(salt string, s string) string {
-			hasher := sha256.New()
-			hasher.Write([]byte(salt + s))
-			return hex.EncodeToString(hasher.Sum(nil))
+			hash := sha256.Sum256([]byte(salt + s))
+			return hex.EncodeToString(hash[:])
 		},
 		"regexReplaceAll": func(regex string, s string, repl string) string {
 			r := regexp.MustCompile(regex)
