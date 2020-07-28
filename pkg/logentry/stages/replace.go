@@ -41,10 +41,6 @@ func validateReplaceConfig(c *ReplaceConfig) (*regexp.Regexp, error) {
 		return nil, errors.New(ErrEmptyReplaceStageSource)
 	}
 
-	if c.Replace == "" {
-		return nil, errors.New(ErrEmptyReplaceStageConfig)
-	}
-
 	expr, err := regexp.Compile(c.Expression)
 	if err != nil {
 		return nil, errors.Wrap(err, ErrCouldNotCompileRegex)
