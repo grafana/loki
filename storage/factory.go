@@ -29,7 +29,7 @@ import (
 // Supported storage engines
 const (
 	StorageEngineChunks = "chunks"
-	StorageEngineTSDB   = "tsdb"
+	StorageEngineBlocks = "blocks"
 )
 
 type indexStoreFactories struct {
@@ -92,14 +92,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Swift.RegisterFlags(f)
 	cfg.GrpcConfig.RegisterFlags(f)
 
-	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or tsdb. Be aware tsdb is experimental and shouldn't be used in production.")
+	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or blocks. Be aware that blocks storage is experimental and shouldn't be used in production.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 }
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineTSDB {
+	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineBlocks {
 		return errors.New("unsupported storage engine")
 	}
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
