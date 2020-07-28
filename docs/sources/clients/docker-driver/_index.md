@@ -44,7 +44,7 @@ re-enabling:
 
 ```bash
 docker plugin disable loki
-docker plugin upgrade loki grafana/loki-docker-driver:master
+docker plugin upgrade loki grafana/loki-docker-driver:latest
 docker plugin enable loki
 ```
 
