@@ -41,7 +41,9 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 	promtail := &Promtail{
 		logger: util.Logger,
 	}
-	promtail.applyOptions(opts...)
+	for _, o := range opts {
+		o(promtail)
+	}
 
 	if cfg.ClientConfig.URL.URL != nil {
 		// if a single client config is used we add it to the multiple client config for backward compatibility
@@ -73,12 +75,6 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 	}
 	promtail.server = server
 	return promtail, nil
-}
-
-func (p *Promtail) applyOptions(opts ...Option) {
-	for _, o := range opts {
-		o(p)
-	}
 }
 
 // Run the promtail; will block until a signal is received.
