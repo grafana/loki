@@ -69,27 +69,34 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
+	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
 		seriesRT := seriesTripperware(next)
-		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, limits)
+		labelsRT := labelsTripperware(next)
+		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, labelsRT, limits)
 	}, cache, nil
 }
 
 type roundTripper struct {
-	next, log, metric, series http.RoundTripper
+	next, log, metric, series, labels http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(next, log, metric, series http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(next, log, metric, series, labels http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
 		log:    log,
 		limits: limits,
 		metric: metric,
 		series: series,
+		labels: labels,
 		next:   next,
 	}
 }
@@ -100,7 +107,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	switch op := getOperation(req); op {
+	switch op := getOperation(req.URL.Path); op {
 	case QueryRangeOp:
 		rangeQuery, err := loghttp.ParseRangeQuery(req)
 		if err != nil {
@@ -135,6 +142,12 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		return r.series.RoundTrip(req)
+	case LabelNamesOp:
+		_, err := loghttp.ParseLabelQuery(req)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return r.labels.RoundTrip(req)
 	default:
 		return r.next.RoundTrip(req)
 	}
@@ -173,14 +186,18 @@ func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
 const (
 	QueryRangeOp = "query_range"
 	SeriesOp     = "series"
+	LabelNamesOp = "labels"
 )
 
-func getOperation(req *http.Request) string {
-	if strings.HasSuffix(req.URL.Path, "/query_range") || strings.HasSuffix(req.URL.Path, "/prom/query") {
+func getOperation(path string) string {
+	switch {
+	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
-	} else if strings.HasSuffix(req.URL.Path, "/series") {
+	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
-	} else {
+	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
+		return LabelNamesOp
+	default:
 		return ""
 	}
 }
@@ -242,7 +259,11 @@ func NewSeriesTripperware(
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByMetrics))
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
+			// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
+			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByMetrics),
+		)
 	}
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
@@ -254,6 +275,20 @@ func NewSeriesTripperware(
 		}
 		return next
 	}, nil
+}
+
+// NewLabelsTripperware creates a new frontend tripperware responsible for handling labels requests.
+func NewLabelsTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	codec queryrange.Codec,
+	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
+	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
+	splitByMetrics *SplitByMetrics,
+) (frontend.Tripperware, error) {
+	// for now we'll use the same config as for the Series API.
+	return NewSeriesTripperware(cfg, log, limits, codec, instrumentMetrics, retryMiddlewareMetrics, splitByMetrics)
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries

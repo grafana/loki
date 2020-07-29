@@ -108,12 +108,47 @@ func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
+func (r *LokiLabelNamesRequest) GetEnd() int64 {
+	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiLabelNamesRequest) GetStart() int64 {
+	return r.StartTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiLabelNamesRequest) WithStartEnd(s int64, e int64) queryrange.Request {
+	new := *r
+	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &new
+}
+
+func (r *LokiLabelNamesRequest) WithQuery(query string) queryrange.Request {
+	new := *r
+	return &new
+}
+
+func (r *LokiLabelNamesRequest) GetQuery() string {
+	return ""
+}
+
+func (r *LokiLabelNamesRequest) GetStep() int64 {
+	return 0
+}
+
+func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("start", timestamp.Time(r.GetStart()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
+	)
+}
+
 func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	switch op := getOperation(r); op {
+	switch op := getOperation(r.URL.Path); op {
 	case QueryRangeOp:
 		req, err := loghttp.ParseRangeQuery(r)
 		if err != nil {
@@ -139,6 +174,16 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 			Match:   req.Groups,
 			StartTs: req.Start.UTC(),
 			EndTs:   req.End.UTC(),
+			Path:    r.URL.Path,
+		}, nil
+	case LabelNamesOp:
+		req, err := loghttp.ParseLabelQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &LokiLabelNamesRequest{
+			StartTs: *req.Start,
+			EndTs:   *req.End,
 			Path:    r.URL.Path,
 		}, nil
 	default:
@@ -196,6 +241,24 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			Header:     http.Header{},
 		}
 		return req.WithContext(ctx), nil
+	case *LokiLabelNamesRequest:
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/labels",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     http.Header{},
+		}
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
 	}
@@ -238,6 +301,16 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Version: uint32(loghttp.GetVersion(req.Path)),
 			Data:    data,
 		}, nil
+	case *LokiLabelNamesRequest:
+		var resp loghttp.LabelResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &LokiLabelNamesResponse{
+			Status:  resp.Status,
+			Version: uint32(loghttp.GetVersion(req.Path)),
+			Data:    resp.Data,
+		}, nil
 	default:
 		var resp loghttp.QueryResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
@@ -277,6 +350,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
+	var buf bytes.Buffer
 
 	switch response := res.(type) {
 	case *LokiPromResponse:
@@ -294,7 +368,6 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 			Data:       logql.Streams(streams),
 			Statistics: response.Statistics,
 		}
-		var buf bytes.Buffer
 		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
 			if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
 				return nil, err
@@ -305,38 +378,37 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 			}
 		}
 
-		sp.LogFields(otlog.Int("bytes", buf.Len()))
-
-		resp := http.Response{
-			Header: http.Header{
-				"Content-Type": []string{"application/json"},
-			},
-			Body:       ioutil.NopCloser(&buf),
-			StatusCode: http.StatusOK,
-		}
-		return &resp, nil
 	case *LokiSeriesResponse:
 		result := logproto.SeriesResponse{
 			Series: response.Data,
 		}
-		var buf bytes.Buffer
 		if err := marshal.WriteSeriesResponseJSON(result, &buf); err != nil {
 			return nil, err
 		}
-
-		sp.LogFields(otlog.Int("bytes", buf.Len()))
-
-		resp := http.Response{
-			Header: http.Header{
-				"Content-Type": []string{"application/json"},
-			},
-			Body:       ioutil.NopCloser(&buf),
-			StatusCode: http.StatusOK,
+	case *LokiLabelNamesResponse:
+		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
+			if err := marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, &buf); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, &buf); err != nil {
+				return nil, err
+			}
 		}
-		return &resp, nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
+
+	sp.LogFields(otlog.Int("bytes", buf.Len()))
+
+	resp := http.Response{
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+		},
+		Body:       ioutil.NopCloser(&buf),
+		StatusCode: http.StatusOK,
+	}
+	return &resp, nil
 }
 
 func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Response, error) {
@@ -405,6 +477,28 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 			Status:  lokiSeriesRes.Status,
 			Version: lokiSeriesRes.Version,
 			Data:    lokiSeriesData,
+		}, nil
+	case *LokiLabelNamesResponse:
+		labelNameRes := responses[0].(*LokiLabelNamesResponse)
+		uniqueNames := make(map[string]struct{})
+		names := []string{}
+
+		// only unique name should be merged
+		for _, res := range responses {
+			lokiResult := res.(*LokiLabelNamesResponse)
+			for _, labelName := range lokiResult.Data {
+				if _, ok := uniqueNames[labelName]; !ok {
+					names = append(names, labelName)
+					uniqueNames[labelName] = struct{}{}
+				}
+
+			}
+		}
+
+		return &LokiLabelNamesResponse{
+			Status:  labelNameRes.Status,
+			Version: labelNameRes.Version,
+			Data:    names,
 		}, nil
 	default:
 		return nil, errors.New("unknown response in merging responses")

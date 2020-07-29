@@ -216,7 +216,7 @@ func TestSeriesTripperware(t *testing.T) {
 
 	lreq := &LokiSeriesRequest{
 		Match:   []string{`{job="varlogs"}`},
-		StartTs: testTime.Add(-6 * time.Hour), // bigger than the limit
+		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
 		EndTs:   testTime,
 		Path:    "/loki/api/v1/series",
 	}
@@ -244,6 +244,54 @@ func TestSeriesTripperware(t *testing.T) {
 	require.Equal(t, series.Series, res.Data)
 	require.NoError(t, err)
 }
+
+func TestLabelsTripperware(t *testing.T) {
+
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiLabelNamesRequest{
+		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
+		EndTs:   testTime,
+		Path:    "/loki/api/v1/labels",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	handler := newFakeHandler(
+		// we expect 2 calls.
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blop"}}, w))
+		}),
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blip"}}, w))
+		}),
+	)
+	rt.setHandler(handler)
+	resp, err := tpw(rt).RoundTrip(req)
+	// verify 2 calls have been made to downstream.
+	require.Equal(t, 2, handler.count)
+	require.NoError(t, err)
+	lokiLabelsResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
+	res, ok := lokiLabelsResponse.(*LokiLabelNamesResponse)
+	require.Equal(t, true, ok)
+	require.Equal(t, []string{"foo", "bar", "blop", "blip"}, res.Data)
+	require.Equal(t, "success", res.Status)
+	require.NoError(t, err)
+}
+
 func TestLogNoRegex(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
@@ -289,7 +337,7 @@ func TestUnhandledPath(t *testing.T) {
 	defer rt.Close()
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := http.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+	req, err := http.NewRequest(http.MethodGet, "/loki/api/v1/labels/foo/values", nil)
 	require.NoError(t, err)
 	req = req.WithContext(ctx)
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
@@ -370,6 +418,10 @@ func TestPostQueries(t *testing.T) {
 		}),
 		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected series roundtripper called")
+			return nil, nil
+		}),
+		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected labels roundtripper called")
 			return nil, nil
 		}),
 		fakeLimits{},
@@ -516,6 +568,23 @@ func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
 		}
 		count++
 	})
+}
+
+type fakeHandler struct {
+	count int
+	lock  sync.Mutex
+	calls []http.Handler
+}
+
+func newFakeHandler(calls ...http.Handler) *fakeHandler {
+	return &fakeHandler{calls: calls}
+}
+
+func (f *fakeHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.calls[f.count].ServeHTTP(w, req)
+	f.count++
 }
 
 type fakeRoundTripper struct {
