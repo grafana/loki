@@ -75,7 +75,8 @@ $ helm upgrade --install fluent-bit loki/fluent-bit \
 
 ```bash
 $ helm upgrade --install loki loki/loki-stack \
-    --set filebeat.enabled=true,logstash.enabled=true,promtail.enabled=false
+    --set filebeat.enabled=true,logstash.enabled=true,promtail.enabled=false \
+    --set loki.fullnameOverride=loki,logstash.fullnameOverride=logstash-loki
 ```
 
 ## Deploy Grafana to your cluster
