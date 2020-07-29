@@ -61,7 +61,7 @@ Options for the logging driver can also be configured with `log-opts` in the
 > the example above) must therefore be enclosed in quotes (`"`).
 
 After changing `daemon.json`, restart the Docker daemon for the changes to take
-effect. All containers from that host will then send logs to Loki.
+effect. All **newly created** containers from that host will then send logs to Loki via the driver.
 
 ## Configure the logging driver for a Swarm service or Compose
 
