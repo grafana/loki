@@ -1,3 +1,7 @@
+## Unreleased (Master)
+
+* [2282](https://github.com/grafana/loki/pull/2282) **owen-d**: introduces a [lambda-promtail](https://github.com/grafana/loki/blob/master/docs/clients/lambda-promtail/README.md) workflow for shipping Cloudwatch logs to Loki.
+
 ## 1.5.0 (2020-05-20)
 
 It's been a busy month and a half since 1.4.0 was released, and a lot of new improvements have been added to Loki since!
