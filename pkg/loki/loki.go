@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -131,6 +132,7 @@ type Loki struct {
 	tableManager  *chunk.TableManager
 	frontend      *frontend.Frontend
 	ruler         *cortex_ruler.Ruler
+	RulerStorage  rules.RuleStore
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
 	memberlistKV  *memberlist.KVInitService

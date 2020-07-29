@@ -360,12 +360,12 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// unfortunately there is no way to generate a "default" config and compare default against actual
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
-	if t.Cfg.Target == All && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+	if t.cfg.Target == All && t.cfg.Ruler.StoreConfig.IsDefaults() {
 		level.Info(util.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
 		return
 	}
 
-	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig)
+	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig)
 
 	return
 }
@@ -385,8 +385,8 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	engine := logql.NewEngine(t.cfg.Querier.Engine, q)
 
-	t.Ruler, err = ruler.NewRuler(
-		t.Cfg.Ruler,
+	t.ruler, err = ruler.NewRuler(
+		t.cfg.Ruler,
 		engine,
 		prometheus.DefaultRegisterer,
 		util.Logger,

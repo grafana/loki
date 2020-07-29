@@ -6,15 +6,17 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 func LokiDelayedQueryFunc(engine *logql.Engine) ruler.DelayedQueryFunc {
@@ -88,6 +90,7 @@ func MemstoreTenantManager(
 			OutageTolerance: cfg.OutageTolerance,
 			ForGracePeriod:  cfg.ForGracePeriod,
 			ResendDelay:     cfg.ResendDelay,
+			GroupLoader:     groupLoader{},
 		})
 
 		// initialize memStore, bound to the manager's alerting rules
@@ -96,3 +99,25 @@ func MemstoreTenantManager(
 		return mgr
 	})
 }
+
+type groupLoader struct {
+	rules.FileLoader // embed the default and override the parse method for logql queries
+}
+
+func (groupLoader) Parse(query string) (parser.Expr, error) {
+	expr, err := logql.ParseExpr(query)
+	if err != nil {
+		return nil, err
+	}
+
+	return exprAdapter{expr}, nil
+}
+
+// Allows logql expressions to be treated as promql expressions by the prometheus rules pkg.
+type exprAdapter struct {
+	logql.Expr
+}
+
+func (exprAdapter) PositionRange() parser.PositionRange { return parser.PositionRange{} }
+func (exprAdapter) PromQLExpr()                         {}
+func (exprAdapter) Type() parser.ValueType              { return parser.ValueType("unimplemented") }
