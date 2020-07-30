@@ -11,7 +11,10 @@
 
 
     querier: {
-      concurrency: 32,
+      // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
+      // A higher value will lead to a querier trying to process more requests than there are available
+      // cores and will result in scheduling delays.
+      concurrency: 4,
     },
 
     queryFrontend: {
@@ -28,8 +31,7 @@
       query_split_factor:: 3,
     },
 
-    // Default to GCS and Bigtable for chunk and index store
-    storage_backend: 'bigtable,gcs',
+    storage_backend: error 'must define storage_backend as a comma separated list of backends in use,\n    valid entries: dynamodb,s3,gcs,bigtable,cassandra. Typically this would be two entries, e.g. `gcs,bigtable`',
 
     enabledBackends: [
       backend
@@ -162,7 +164,7 @@
         parallelise_shardable_queries: true,
       } else {},
       querier: {
-        query_ingesters_within: '2h', // twice the max-chunk age (1h default) for safety buffer
+        query_ingesters_within: '2h',  // twice the max-chunk age (1h default) for safety buffer
       },
       limits_config: {
         enforce_metric_name: false,
