@@ -43,14 +43,14 @@ func ForStateMetric(base labels.Labels, alertName string) labels.Labels {
 }
 
 type Metrics struct {
-	evaluations *prometheus.CounterVec
-	Series      prometheus.Gauge // in memory series
-	Samples     prometheus.Gauge // in memory samples
+	Evaluations *prometheus.CounterVec
+	Samples     prometheus.Gauge       // in memory samples
+	CacheHits   *prometheus.CounterVec // cache hits on in memory samples
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
-		evaluations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Evaluations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "ruler_memory_for_state_evaluations",
 		}, []string{"status", "tenant"}),
@@ -58,6 +58,10 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Namespace: "loki",
 			Name:      "ruler_memory_samples",
 		}),
+		CacheHits: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "ruler_memory_for_state_cache_hits",
+		}, []string{"tenant"}),
 	}
 }
 
@@ -216,6 +220,8 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 		return storage.NoopSeriesSet()
 	}
 
+	level.Debug(m.logger).Log("msg", "restoring for state via evaluation", "rule", ruleKey, "tenant", m.MemStore.userID)
+
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	cache, ok := m.rules[ruleKey]
@@ -227,7 +233,9 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	}
 
 	smpl, cached := cache.Get(m.ts, ls)
+	m.metrics.CacheHits.WithLabelValues(m.userID).Inc()
 	if cached {
+		level.Debug(m.logger).Log("msg", "result cached", "rule", ruleKey, "tenant", m.MemStore.userID)
 		// Assuming the result is cached but the desired series is not in the result, it wouldn't be considered active.
 		if smpl == nil {
 			return storage.NoopSeriesSet()
@@ -247,10 +255,12 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	// that's the only condition under which this is queried (via RestoreForState).
 	vec, err := m.queryFunc(m.ctx, rule.Query().String(), m.ts.Add(-rule.HoldDuration()))
 	if err != nil {
-		m.metrics.evaluations.WithLabelValues(statusFailure, m.userID).Inc()
+		level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "tenant", m.MemStore.userID, "err", err.Error())
+		m.metrics.Evaluations.WithLabelValues(statusFailure, m.userID).Inc()
 		return storage.NoopSeriesSet()
 	}
-	m.metrics.evaluations.WithLabelValues(statusSuccess, m.userID).Inc()
+	m.metrics.Evaluations.WithLabelValues(statusSuccess, m.userID).Inc()
+	level.Debug(m.logger).Log("msg", "rule state successfully restored", "rule", ruleKey, "tenant", m.MemStore.userID, "len", len(vec))
 
 	// translate the result into the ALERTS_FOR_STATE series for caching,
 	// considered active & written at the timetamp requested

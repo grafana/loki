@@ -19,45 +19,45 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 
-func LokiDelayedQueryFunc(engine *logql.Engine) ruler.DelayedQueryFunc {
-	return func(delay time.Duration) rules.QueryFunc {
-		return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-			adjusted := t.Add(-delay)
-			params := logql.NewLiteralParams(
-				qs,
-				adjusted,
-				adjusted,
-				0,
-				0,
-				logproto.FORWARD,
-				0,
-				nil,
-			)
-			q := engine.Query(params)
+// engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
+// and passing an altered timestamp.
+func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc {
+	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		adjusted := t.Add(-delay)
+		params := logql.NewLiteralParams(
+			qs,
+			adjusted,
+			adjusted,
+			0,
+			0,
+			logproto.FORWARD,
+			0,
+			nil,
+		)
+		q := engine.Query(params)
 
-			res, err := q.Exec(ctx)
-			if err != nil {
-				return nil, err
-			}
-			switch v := res.Data.(type) {
-			case promql.Vector:
-				return v, nil
-			case promql.Scalar:
-				return promql.Vector{promql.Sample{
-					Point:  promql.Point(v),
-					Metric: labels.Labels{},
-				}}, nil
-			default:
-				return nil, errors.New("rule result is not a vector or scalar")
-			}
-		})
-	}
+		res, err := q.Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+		switch v := res.Data.(type) {
+		case promql.Vector:
+			return v, nil
+		case promql.Scalar:
+			return promql.Vector{promql.Sample{
+				Point:  promql.Point(v),
+				Metric: labels.Labels{},
+			}}, nil
+		default:
+			return nil, errors.New("rule result is not a vector or scalar")
+		}
+	})
 
 }
 
 func MemstoreTenantManager(
 	cfg ruler.Config,
-	delayedQueryFunc ruler.DelayedQueryFunc,
+	engine *logql.Engine,
 ) ruler.TenantManagerFunc {
 	var metrics *Metrics
 
@@ -75,7 +75,7 @@ func MemstoreTenantManager(
 			metrics = NewMetrics(reg)
 		}
 		logger = log.With(logger, "user", userID)
-		queryFunc := delayedQueryFunc(cfg.EvaluationDelay)
+		queryFunc := engineQueryFunc(engine, cfg.EvaluationDelay)
 		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{

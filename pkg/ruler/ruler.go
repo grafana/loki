@@ -17,7 +17,7 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 
 	tenantManager := manager.MemstoreTenantManager(
 		cfg.Config,
-		manager.LokiDelayedQueryFunc(engine),
+		engine,
 	)
 	return ruler.NewRuler(
 		cfg.Config,
