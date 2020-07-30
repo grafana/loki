@@ -3,12 +3,12 @@ package cache_test
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
@@ -71,7 +71,7 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 // mockMemcache whose calls fail 1/3rd of the time.
 type mockMemcacheFailing struct {
 	*mockMemcache
-	calls uint64
+	calls atomic.Uint64
 }
 
 func newMockMemcacheFailing() *mockMemcacheFailing {
@@ -81,7 +81,7 @@ func newMockMemcacheFailing() *mockMemcacheFailing {
 }
 
 func (c *mockMemcacheFailing) GetMulti(keys []string) (map[string]*memcache.Item, error) {
-	calls := atomic.AddUint64(&c.calls, 1)
+	calls := c.calls.Inc()
 	if calls%3 == 0 {
 		return nil, errors.New("fail")
 	}
