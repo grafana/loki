@@ -69,10 +69,10 @@ func MemstoreTenantManager(
 		reg prometheus.Registerer,
 	) *rules.Manager {
 
-		// Note: this currently does not distinguish between different managers between tenants,
-		// but is used solely to prevent re-registering the same metrics.
+		// We'll ignore the passed registere and use the default registerer to avoid prefix issues and other weirdness.
+		// This closure prevents re-registering.
 		if metrics == nil {
-			metrics = NewMetrics(reg)
+			metrics = NewMetrics(prometheus.DefaultRegisterer)
 		}
 		logger = log.With(logger, "user", userID)
 		queryFunc := engineQueryFunc(engine, cfg.EvaluationDelay)
