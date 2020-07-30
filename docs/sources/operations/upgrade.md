@@ -12,8 +12,9 @@ On this page we will document any upgrade issues/gotchas/considerations we are a
 
 ## Master / Unreleased
 
-Configuration document has been re-orderd a bit and for all the config, corresponding `CLI` flag is
-provided.
+#### Documentation changes:
+
+Configuration document has been re-orderd a bit and for all the config, corresponding `CLI` flag is provided.
 
 S3 config now supports exapnded config. Example can be found here [s3_expanded_config](../configuration/examples.md#s3-expanded-config)
 
@@ -56,6 +57,21 @@ loki_canary_duplicate_entries           ->      loki_canary_duplicate_entries_to
 loki_canary_ws_reconnects               ->      loki_canary_ws_reconnects_total
 loki_canary_response_latency            ->      loki_canary_response_latency_seconds
 ```
+
+### Ksonnet Changes
+
+In `production/ksonnet/loki/config.libsonnet` the variable `storage_backend` used to have a default value of `'bigtable,gcs'`.
+This has been changed to providing no default and will error if not supplied in your environment jsonnet, 
+here is an example of what you should add to have the same behavior as the default (namespace and cluster should already be defined):
+
+```jsonnet
+_config+:: {
+    namespace: 'loki-dev',
+    cluster: 'us-central1',
+    storage_backend: 'gcs,bigtable',
+```
+
+Defaulting to `gcs,bigtable` was confusing for anyone using ksonnet with other storage backends as it would manifest itself with obscure bigtable errors.
 
 ## 1.5.0
 
