@@ -53,12 +53,12 @@ func (cfg *SchemaConfig) Validate() error {
 	activePCIndex := ActivePeriodConfig(*cfg)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
-	if cfg.Configs[activePCIndex].IndexType == local.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
+	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
 		return currentBoltdbShipperNon24HoursErr
 	}
 
 	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
-	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == local.BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
+	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
 		return upcomingBoltdbShipperNon24HoursErr
 	}
 
@@ -361,8 +361,8 @@ func ActivePeriodConfig(cfg SchemaConfig) int {
 // UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
 func UsingBoltdbShipper(cfg SchemaConfig) bool {
 	activePCIndex := ActivePeriodConfig(cfg)
-	if cfg.Configs[activePCIndex].IndexType == local.BoltDBShipperType ||
-		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == local.BoltDBShipperType) {
+	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
+		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
 		return true
 	}
 
