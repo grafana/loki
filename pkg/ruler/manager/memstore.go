@@ -233,8 +233,8 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	}
 
 	smpl, cached := cache.Get(m.ts, ls)
-	m.metrics.CacheHits.WithLabelValues(m.userID).Inc()
 	if cached {
+		m.metrics.CacheHits.WithLabelValues(m.userID).Inc()
 		level.Debug(m.logger).Log("msg", "result cached", "rule", ruleKey, "tenant", m.MemStore.userID)
 		// Assuming the result is cached but the desired series is not in the result, it wouldn't be considered active.
 		if smpl == nil {
