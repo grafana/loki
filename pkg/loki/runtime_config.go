@@ -32,6 +32,9 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 }
 
 func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
+	if c == nil {
+		return nil
+	}
 	return func(userID string) *validation.Limits {
 		cfg, ok := c.GetConfig().(*runtimeConfigValues)
 		if !ok || cfg == nil {
@@ -43,6 +46,9 @@ func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLi
 }
 
 func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {
+	if manager == nil {
+		return nil
+	}
 	// returns function that can be used in MultiConfig.ConfigProvider
 	return func() <-chan kv.MultiRuntimeConfig {
 		outCh := make(chan kv.MultiRuntimeConfig, 1)
