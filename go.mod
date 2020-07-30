@@ -73,3 +73,6 @@ replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
+
+// cortex compatibility
+replace google.golang.org/grpc => google.golang.org/grpc v1.29.1
