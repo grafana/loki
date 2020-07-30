@@ -335,6 +335,7 @@ func NewMetricTripperware(
 			codec,
 			extractor,
 			nil,
+			nil,
 		)
 		if err != nil {
 			return nil, nil, err

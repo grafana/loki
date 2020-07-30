@@ -199,7 +199,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		refs = append(refs, r)
 	}
 
-	cache, err := cache.New(cache.Config{Prefix: "chunks"})
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, nil)
 	if err != nil {
 		panic(err)
 	}
