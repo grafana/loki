@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
@@ -14,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -164,14 +164,14 @@ type streamTracker struct {
 	stream      logproto.Stream
 	minSuccess  int
 	maxFailures int
-	succeeded   int32
-	failed      int32
+	succeeded   atomic.Int32
+	failed      atomic.Int32
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type pushTracker struct {
-	samplesPending int32
-	samplesFailed  int32
+	samplesPending atomic.Int32
+	samplesFailed  atomic.Int32
 	done           chan struct{}
 	err            chan error
 }
@@ -263,10 +263,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	tracker := pushTracker{
-		samplesPending: int32(len(streams)),
 		done:           make(chan struct{}),
 		err:            make(chan error),
 	}
+	tracker.samplesPending.Store(int32(len(streams)))
 	for ingester, samples := range samplesByIngester {
 		go func(ingester ring.IngesterDesc, samples []*streamTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
@@ -304,17 +304,17 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 	// goroutine will write to either channel.
 	for i := range streamTrackers {
 		if err != nil {
-			if atomic.AddInt32(&streamTrackers[i].failed, 1) <= int32(streamTrackers[i].maxFailures) {
+			if streamTrackers[i].failed.Inc() <= int32(streamTrackers[i].maxFailures) {
 				continue
 			}
-			if atomic.AddInt32(&pushTracker.samplesFailed, 1) == 1 {
+			if pushTracker.samplesFailed.Inc() == 1 {
 				pushTracker.err <- err
 			}
 		} else {
-			if atomic.AddInt32(&streamTrackers[i].succeeded, 1) != int32(streamTrackers[i].minSuccess) {
+			if streamTrackers[i].succeeded.Inc() != int32(streamTrackers[i].minSuccess) {
 				continue
 			}
-			if atomic.AddInt32(&pushTracker.samplesPending, -1) == 0 {
+			if pushTracker.samplesPending.Dec() == 0 {
 				pushTracker.done <- struct{}{}
 			}
 		}
