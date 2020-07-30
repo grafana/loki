@@ -20,6 +20,14 @@ RUN apk add --no-cache docker-cli
 FROM golang:1.14.2 as drone
 RUN GO111MODULE=on go get github.com/drone/drone-cli/drone@1fad337d74ca0ecf420993d9d2d7229a1c99f054
 
+# Install faillint used to lint go imports in CI.
+# This collisions with the version of go tools used in the base image, thus we install it in its own image and copy it over.
+# Error:
+#	github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
+#   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
+FROM golang:1.14.2 as faillint
+RUN GO111MODULE=on go get github.com/fatih/faillint@v1.5.0
+
 FROM golang:1.14.2-stretch
 RUN apt-get update && \
     apt-get install -qy \
@@ -33,6 +41,7 @@ COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
 COPY --from=drone /go/bin/drone /usr/bin/drone
+COPY --from=faillint /go/bin/faillint /usr/bin/faillint
 
 # Install some necessary dependencies.
 # Forcing GO111MODULE=on is required to specify dependencies at specific versions using the go mod notation.

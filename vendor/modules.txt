@@ -984,6 +984,7 @@ go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
 # go.uber.org/atomic v1.6.0
+## explicit
 go.uber.org/atomic
 # go.uber.org/goleak v1.0.0
 go.uber.org/goleak
