@@ -2,8 +2,10 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"sort"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
@@ -22,6 +24,11 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
+var (
+	currentBoltdbShipperNon24HoursErr  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
+	upcomingBoltdbShipperNon24HoursErr = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
+)
+
 // Config is the loki storage configuration
 type Config struct {
 	storage.Config      `yaml:",inline"`
@@ -34,6 +41,28 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
 	cfg.BoltDBShipperConfig.RegisterFlags(f)
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
+}
+
+// SchemaConfig contains the config for our chunk index schemas
+type SchemaConfig struct {
+	chunk.SchemaConfig `yaml:",inline"`
+}
+
+// Validate the schema config and returns an error if the validation doesn't pass
+func (cfg *SchemaConfig) Validate() error {
+	activePCIndex := ActivePeriodConfig(*cfg)
+
+	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
+	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
+		return currentBoltdbShipperNon24HoursErr
+	}
+
+	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
+	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
+		return upcomingBoltdbShipperNon24HoursErr
+	}
+
+	return cfg.SchemaConfig.Validate()
 }
 
 // Store is the Loki chunk store to retrieve and save chunks.
@@ -50,8 +79,8 @@ type store struct {
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, registerer, nil)
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
+	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg.SchemaConfig, limits, registerer, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -314,4 +343,28 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 
 		return shipper.NewBoltDBShipperTableClient(objectClient), nil
 	})
+}
+
+// ActivePeriodConfig returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
+// Note: Another PeriodicConfig might be applicable for future logs which can change index type.
+func ActivePeriodConfig(cfg SchemaConfig) int {
+	now := model.Now()
+	i := sort.Search(len(cfg.Configs), func(i int) bool {
+		return cfg.Configs[i].From.Time > now
+	})
+	if i > 0 {
+		i--
+	}
+	return i
+}
+
+// UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
+func UsingBoltdbShipper(cfg SchemaConfig) bool {
+	activePCIndex := ActivePeriodConfig(cfg)
+	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
+		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
+		return true
+	}
+
+	return false
 }
