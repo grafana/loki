@@ -58,10 +58,10 @@ func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc 
 func MemstoreTenantManager(
 	cfg ruler.Config,
 	engine *logql.Engine,
-) ruler.TenantManagerFunc {
+) ruler.ManagerFactory {
 	var metrics *Metrics
 
-	return ruler.TenantManagerFunc(func(
+	return func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
@@ -97,7 +97,7 @@ func MemstoreTenantManager(
 		memStore.Start(mgr)
 
 		return mgr
-	})
+	}
 }
 
 type groupLoader struct {
