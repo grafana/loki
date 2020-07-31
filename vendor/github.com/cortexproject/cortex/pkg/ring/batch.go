@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
+
+	"go.uber.org/atomic"
 )
 
 type batchTracker struct {
-	rpcsPending int32
-	rpcsFailed  int32
+	rpcsPending atomic.Int32
+	rpcsFailed  atomic.Int32
 	done        chan struct{}
 	err         chan error
 }
@@ -23,8 +24,8 @@ type ingester struct {
 type itemTracker struct {
 	minSuccess  int
 	maxFailures int
-	succeeded   int32
-	failed      int32
+	succeeded   atomic.Int32
+	failed      atomic.Int32
 }
 
 // DoBatch request against a set of keys in the ring, handling replication and
@@ -70,10 +71,10 @@ func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(Inges
 	}
 
 	tracker := batchTracker{
-		rpcsPending: int32(len(itemTrackers)),
-		done:        make(chan struct{}, 1),
-		err:         make(chan error, 1),
+		done: make(chan struct{}, 1),
+		err:  make(chan error, 1),
 	}
+	tracker.rpcsPending.Store(int32(len(itemTrackers)))
 
 	var wg sync.WaitGroup
 
@@ -115,17 +116,17 @@ func (b *batchTracker) record(sampleTrackers []*itemTracker, err error) {
 	// goroutine will write to either channel.
 	for i := range sampleTrackers {
 		if err != nil {
-			if atomic.AddInt32(&sampleTrackers[i].failed, 1) <= int32(sampleTrackers[i].maxFailures) {
+			if sampleTrackers[i].failed.Inc() <= int32(sampleTrackers[i].maxFailures) {
 				continue
 			}
-			if atomic.AddInt32(&b.rpcsFailed, 1) == 1 {
+			if b.rpcsFailed.Inc() == 1 {
 				b.err <- err
 			}
 		} else {
-			if atomic.AddInt32(&sampleTrackers[i].succeeded, 1) != int32(sampleTrackers[i].minSuccess) {
+			if sampleTrackers[i].succeeded.Inc() != int32(sampleTrackers[i].minSuccess) {
 				continue
 			}
-			if atomic.AddInt32(&b.rpcsPending, -1) == 0 {
+			if b.rpcsPending.Dec() == 0 {
 				b.done <- struct{}{}
 			}
 		}

@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -17,6 +16,7 @@ import (
 	"github.com/hashicorp/go-sockaddr"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -79,7 +79,7 @@ type TCPTransport struct {
 	wg           sync.WaitGroup
 	tcpListeners []*net.TCPListener
 
-	shutdown int32
+	shutdown atomic.Int32
 
 	advertiseMu   sync.RWMutex
 	advertiseAddr string
@@ -172,7 +172,7 @@ func (t *TCPTransport) tcpListen(tcpLn *net.TCPListener) {
 	for {
 		conn, err := tcpLn.AcceptTCP()
 		if err != nil {
-			if s := atomic.LoadInt32(&t.shutdown); s == 1 {
+			if s := t.shutdown.Load(); s == 1 {
 				break
 			}
 
@@ -503,7 +503,7 @@ func (t *TCPTransport) StreamCh() <-chan net.Conn {
 // transport a chance to clean up any listeners.
 func (t *TCPTransport) Shutdown() error {
 	// This will avoid log spam about errors when we shut down.
-	atomic.StoreInt32(&t.shutdown, 1)
+	t.shutdown.Store(1)
 
 	// Rip through all the connections and shut them down.
 	for _, conn := range t.tcpListeners {

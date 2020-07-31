@@ -6,6 +6,7 @@ import (
 	"flag"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -60,7 +61,7 @@ func (cfg *Config) Validate() error {
 }
 
 // New creates a new Cache using Config.
-func New(cfg Config) (Cache, error) {
+func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error) {
 	if cfg.Cache != nil {
 		return cfg.Cache, nil
 	}
@@ -72,8 +73,8 @@ func New(cfg Config) (Cache, error) {
 			cfg.Fifocache.Validity = cfg.DefaultValidity
 		}
 
-		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache); cache != nil {
-			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache))
+		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {
+			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
 		}
 	}
 
@@ -86,11 +87,11 @@ func New(cfg Config) (Cache, error) {
 			cfg.Memcache.Expiration = cfg.DefaultValidity
 		}
 
-		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, prometheus.DefaultRegisterer)
-		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix)
+		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger)
+		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger)
 
 		cacheName := cfg.Prefix + "memcache"
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache)))
+		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
 	}
 
 	if cfg.Redis.Endpoint != "" {
@@ -98,13 +99,13 @@ func New(cfg Config) (Cache, error) {
 			cfg.Redis.Expiration = cfg.DefaultValidity
 		}
 		cacheName := cfg.Prefix + "redis"
-		cache := NewRedisCache(cfg.Redis, cacheName, nil)
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache)))
+		cache := NewRedisCache(cfg.Redis, cacheName, nil, logger)
+		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
 	}
 
 	cache := NewTiered(caches)
 	if len(caches) > 1 {
-		cache = Instrument(cfg.Prefix+"tiered", cache)
+		cache = Instrument(cfg.Prefix+"tiered", cache, reg)
 	}
 	return cache, nil
 }

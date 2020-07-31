@@ -7,7 +7,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 
@@ -25,12 +24,12 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 	err := instrument.CollectedRequest(ctx, "Distributor.Query", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
 		if err != nil {
-			return promql.ErrStorage{Err: err}
+			return err
 		}
 
 		matrix, err = d.queryIngesters(ctx, replicationSet, req)
 		if err != nil {
-			return promql.ErrStorage{Err: err}
+			return err
 		}
 
 		if s := opentracing.SpanFromContext(ctx); s != nil {
@@ -47,12 +46,12 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
 		if err != nil {
-			return promql.ErrStorage{Err: err}
+			return err
 		}
 
 		result, err = d.queryIngesterStream(ctx, replicationSet, req)
 		if err != nil {
-			return promql.ErrStorage{Err: err}
+			return err
 		}
 
 		if s := opentracing.SpanFromContext(ctx); s != nil {

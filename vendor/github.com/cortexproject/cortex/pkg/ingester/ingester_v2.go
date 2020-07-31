@@ -193,7 +193,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "ingester", util.Logger, registerer)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -219,7 +219,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		}, i.numSeriesInTSDB)
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, cfg.TSDBConfig.FlushBlocksOnShutdown, registerer)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +240,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 // on Flush method and flush all openened TSDBs when called.
 func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "ingester", util.Logger, registerer)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -288,7 +288,7 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 	compactionService := services.NewBasicService(nil, i.compactionLoop, nil)
 	servs = append(servs, compactionService)
 
-	if i.cfg.TSDBConfig.ShipInterval > 0 {
+	if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
 		shippingService := services.NewBasicService(nil, i.shipBlocksLoop, nil)
 		servs = append(servs, shippingService)
 	}
@@ -302,7 +302,7 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 }
 
 func (i *Ingester) stoppingV2ForFlusher(_ error) error {
-	if !i.cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown {
+	if !i.cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown {
 		i.closeAllTSDB()
 	}
 	return nil
@@ -323,7 +323,7 @@ func (i *Ingester) stoppingV2(_ error) error {
 		level.Warn(util.Logger).Log("msg", "failed to stop ingester lifecycler", "err", err)
 	}
 
-	if !i.cfg.TSDBConfig.KeepUserTSDBOpenOnShutdown {
+	if !i.cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown {
 		i.closeAllTSDB()
 	}
 	return nil
@@ -921,10 +921,10 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 // createTSDB creates a TSDB for a given userID, and returns the created db.
 func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	tsdbPromReg := prometheus.NewRegistry()
-	udir := i.cfg.TSDBConfig.BlocksDir(userID)
+	udir := i.cfg.BlocksStorageConfig.TSDB.BlocksDir(userID)
 	userLogger := util.WithUserID(userID, util.Logger)
 
-	blockRanges := i.cfg.TSDBConfig.BlockRanges.ToMilliseconds()
+	blockRanges := i.cfg.BlocksStorageConfig.TSDB.BlockRanges.ToMilliseconds()
 
 	userDB := &userTSDB{
 		userID:              userID,
@@ -937,12 +937,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
-		RetentionDuration:       i.cfg.TSDBConfig.Retention.Milliseconds(),
+		RetentionDuration:       i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
 		MinBlockDuration:        blockRanges[0],
 		MaxBlockDuration:        blockRanges[len(blockRanges)-1],
 		NoLockfile:              true,
-		StripeSize:              i.cfg.TSDBConfig.StripeSize,
-		WALCompression:          i.cfg.TSDBConfig.WALCompressionEnabled,
+		StripeSize:              i.cfg.BlocksStorageConfig.TSDB.StripeSize,
+		WALCompression:          i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
 		SeriesLifecycleCallback: userDB,
 	})
 	if err != nil {
@@ -979,7 +979,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	// Create a new shipper for this database
-	if i.cfg.TSDBConfig.ShipInterval > 0 {
+	if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
 		userDB.shipper = shipper.New(
 			userLogger,
 			tsdbPromReg,
@@ -1033,15 +1033,15 @@ func (i *Ingester) closeAllTSDB() {
 func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
 	wg := &sync.WaitGroup{}
-	openGate := gate.New(i.cfg.TSDBConfig.MaxTSDBOpeningConcurrencyOnStartup)
+	openGate := gate.New(i.cfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup)
 
-	err := filepath.Walk(i.cfg.TSDBConfig.Dir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(i.cfg.BlocksStorageConfig.TSDB.Dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return filepath.SkipDir
 		}
 
 		// Skip root dir and all other files
-		if path == i.cfg.TSDBConfig.Dir || !info.IsDir() {
+		if path == i.cfg.BlocksStorageConfig.TSDB.Dir || !info.IsDir() {
 			return nil
 		}
 
@@ -1116,7 +1116,7 @@ func (i *Ingester) numSeriesInTSDB() float64 {
 }
 
 func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
-	shipTicker := time.NewTicker(i.cfg.TSDBConfig.ShipInterval)
+	shipTicker := time.NewTicker(i.cfg.BlocksStorageConfig.TSDB.ShipInterval)
 	defer shipTicker.Stop()
 
 	for {
@@ -1153,7 +1153,7 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 
 	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
 	// of tenants in a large cluster.
-	i.runConcurrentUserWorkers(ctx, i.cfg.TSDBConfig.ShipConcurrency, func(userID string) {
+	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(userID string) {
 		// Get the user's DB. If the user doesn't exist, we skip it.
 		userDB := i.getTSDB(userID)
 		if userDB == nil || userDB.shipper == nil {
@@ -1170,7 +1170,7 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 }
 
 func (i *Ingester) compactionLoop(ctx context.Context) error {
-	ticker := time.NewTicker(i.cfg.TSDBConfig.HeadCompactionInterval)
+	ticker := time.NewTicker(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval)
 	defer ticker.Stop()
 
 	for {
@@ -1204,7 +1204,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		}
 	}
 
-	i.runConcurrentUserWorkers(ctx, i.cfg.TSDBConfig.HeadCompactionConcurrency, func(userID string) {
+	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(userID string) {
 		userDB := i.getTSDB(userID)
 		if userDB == nil {
 			return
@@ -1226,7 +1226,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 			reason = "forced"
 			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
 
-		case i.cfg.TSDBConfig.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.TSDBConfig.HeadCompactionIdleTimeout):
+		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):
 			reason = "idle"
 			level.Info(util.Logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
 			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
@@ -1289,7 +1289,7 @@ func (i *Ingester) v2LifecyclerFlush() {
 	ctx := context.Background()
 
 	i.compactBlocks(ctx, true)
-	if i.cfg.TSDBConfig.ShipInterval > 0 {
+	if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
 		i.shipBlocks(ctx)
 	}
 
@@ -1325,7 +1325,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 			return
 		}
 
-		if i.cfg.TSDBConfig.ShipInterval > 0 {
+		if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
 			level.Info(util.Logger).Log("msg", "flushing TSDB blocks: triggering shipping")
 
 			select {

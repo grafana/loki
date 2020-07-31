@@ -54,13 +54,13 @@ import (
 )
 
 const (
-	// maxSamplesPerChunk is approximately the max number of samples that we may have in any given chunk. This is needed
+	// MaxSamplesPerChunk is approximately the max number of samples that we may have in any given chunk. This is needed
 	// for precalculating the number of samples that we may have to retrieve and decode for any given query
 	// without downloading them. Please take a look at https://github.com/prometheus/tsdb/pull/397 to know
 	// where this number comes from. Long story short: TSDB is made in such a way, and it is made in such a way
 	// because you barely get any improvements in compression when the number of samples is beyond this.
 	// Take a look at Figure 6 in this whitepaper http://www.vldb.org/pvldb/vol8/p1816-teller.pdf.
-	maxSamplesPerChunk = 120
+	MaxSamplesPerChunk = 120
 	maxChunkSize       = 16000
 	maxSeriesSize      = 64 * 1024
 
@@ -240,9 +240,9 @@ type BucketStore struct {
 	// Query gate which limits the maximum amount of concurrent queries.
 	queryGate gate.Gate
 
-	// samplesLimiter limits the number of samples per each Series() call.
-	samplesLimiter SampleLimiter
-	partitioner    partitioner
+	// chunksLimiterFactory creates a new limiter used to limit the number of chunks fetched by each Series() call.
+	chunksLimiterFactory ChunksLimiterFactory
+	partitioner          partitioner
 
 	filterConfig             *FilterConfig
 	advLabelSets             []storepb.LabelSet
@@ -269,7 +269,7 @@ func NewBucketStore(
 	indexCache storecache.IndexCache,
 	queryGate gate.Gate,
 	maxChunkPoolBytes uint64,
-	maxSampleCount uint64,
+	chunksLimiterFactory ChunksLimiterFactory,
 	debugLogging bool,
 	blockSyncConcurrency int,
 	filterConfig *FilterConfig,
@@ -287,7 +287,6 @@ func NewBucketStore(
 		return nil, errors.Wrap(err, "create chunk pool")
 	}
 
-	metrics := newBucketStoreMetrics(reg)
 	s := &BucketStore{
 		logger:                      logger,
 		bkt:                         bkt,
@@ -301,14 +300,14 @@ func NewBucketStore(
 		blockSyncConcurrency:        blockSyncConcurrency,
 		filterConfig:                filterConfig,
 		queryGate:                   queryGate,
-		samplesLimiter:              NewLimiter(maxSampleCount, metrics.queriesDropped),
+		chunksLimiterFactory:        chunksLimiterFactory,
 		partitioner:                 gapBasedPartitioner{maxGapSize: partitionerMaxGapSize},
 		enableCompatibilityLabel:    enableCompatibilityLabel,
 		enablePostingsCompression:   enablePostingsCompression,
 		postingOffsetsInMemSampling: postingOffsetsInMemSampling,
 		enableSeriesResponseHints:   enableSeriesResponseHints,
+		metrics:                     newBucketStoreMetrics(reg),
 	}
-	s.metrics = metrics
 
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return nil, errors.Wrap(err, "create dir")
@@ -649,7 +648,7 @@ func blockSeries(
 	chunkr *bucketChunkReader,
 	matchers []*labels.Matcher,
 	req *storepb.SeriesRequest,
-	samplesLimiter SampleLimiter,
+	chunksLimiter ChunksLimiter,
 ) (storepb.SeriesSet, *queryStats, error) {
 	ps, err := indexr.ExpandedPostings(matchers)
 	if err != nil {
@@ -722,12 +721,16 @@ func blockSeries(
 			s.refs = append(s.refs, meta.Ref)
 		}
 		if len(s.chks) > 0 {
+			if err := chunksLimiter.Reserve(uint64(len(s.chks))); err != nil {
+				return nil, nil, errors.Wrap(err, "exceeded chunks limit")
+			}
+
 			res = append(res, s)
 		}
 	}
 
 	// Preload all chunks that were marked in the previous stage.
-	if err := chunkr.preload(samplesLimiter); err != nil {
+	if err := chunkr.preload(); err != nil {
 		return nil, nil, errors.Wrap(err, "preload chunks")
 	}
 
@@ -858,6 +861,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		g, gctx          = errgroup.WithContext(ctx)
 		resHints         = &hintspb.SeriesResponseHints{}
 		reqBlockMatchers []*labels.Matcher
+		chunksLimiter    = s.chunksLimiterFactory(s.metrics.queriesDropped)
 	)
 
 	if req.Hints != nil {
@@ -909,7 +913,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 					chunkr,
 					blockMatchers,
 					req,
-					s.samplesLimiter,
+					chunksLimiter,
 				)
 				if err != nil {
 					return errors.Wrapf(err, "fetch series for block %s", b.meta.ULID)
@@ -1705,7 +1709,8 @@ func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings
 					// Errors from corrupted postings will be reported when postings are used.
 					compressions++
 					s := time.Now()
-					data, err := diffVarintSnappyEncode(newBigEndianPostings(pBytes[4:]))
+					bep := newBigEndianPostings(pBytes[4:])
+					data, err := diffVarintSnappyEncode(bep, bep.length())
 					compressionTime = time.Since(s)
 					if err == nil {
 						dataToCache = data
@@ -1801,6 +1806,11 @@ func (it *bigEndianPostings) Seek(x uint64) bool {
 
 func (it *bigEndianPostings) Err() error {
 	return nil
+}
+
+// Returns number of remaining postings values.
+func (it *bigEndianPostings) length() int {
+	return len(it.list) / 4
 }
 
 func (r *bucketIndexReader) PreloadSeries(ids []uint64) error {
@@ -1977,18 +1987,8 @@ func (r *bucketChunkReader) addPreload(id uint64) error {
 }
 
 // preload all added chunk IDs. Must be called before the first call to Chunk is made.
-func (r *bucketChunkReader) preload(samplesLimiter SampleLimiter) error {
+func (r *bucketChunkReader) preload() error {
 	g, ctx := errgroup.WithContext(r.ctx)
-
-	numChunks := uint64(0)
-	for _, offsets := range r.preloads {
-		for range offsets {
-			numChunks++
-		}
-	}
-	if err := samplesLimiter.Check(numChunks * maxSamplesPerChunk); err != nil {
-		return errors.Wrap(err, "exceeded samples limit")
-	}
 
 	for seq, offsets := range r.preloads {
 		sort.Slice(offsets, func(i, j int) bool {

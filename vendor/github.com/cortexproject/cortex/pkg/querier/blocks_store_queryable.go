@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -150,7 +149,7 @@ func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consist
 	return q, nil
 }
 
-func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegateway.Config, storageCfg cortex_tsdb.Config, limits BlocksStoreLimits, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
+func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegateway.Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits BlocksStoreLimits, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
 	var stores BlocksStoreSet
 
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), storageCfg, "querier", logger, reg)
@@ -249,12 +248,12 @@ func (q *BlocksStoreQueryable) stopping(_ error) error {
 // Querier returns a new Querier on the storage.
 func (q *BlocksStoreQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	if s := q.State(); s != services.Running {
-		return nil, promql.ErrStorage{Err: errors.Errorf("BlocksStoreQueryable is not running: %v", s)}
+		return nil, errors.Errorf("BlocksStoreQueryable is not running: %v", s)
 	}
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, promql.ErrStorage{Err: err}
+		return nil, err
 	}
 
 	return &blocksStoreQuerier{
@@ -291,14 +290,7 @@ type blocksStoreQuerier struct {
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q *blocksStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	set := q.selectSorted(sp, matchers...)
-
-	// We need to wrap the error in order to have Prometheus returning a 5xx error.
-	if err := set.Err(); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-		set = storage.ErrSeriesSet(promql.ErrStorage{Err: err})
-	}
-
-	return set
+	return q.selectSorted(sp, matchers...)
 }
 
 func (q *blocksStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
@@ -334,7 +326,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		maxT = util.Min64(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
 
 		if origMaxT != maxT {
-			level.Debug(spanLog).Log("msg", "query max time has been manipulated", "original", origMaxT, "updated", maxT)
+			level.Debug(spanLog).Log("msg", "the max time of the query to blocks storage has been manipulated", "original", origMaxT, "updated", maxT)
 		}
 
 		if maxT < minT {
