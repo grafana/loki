@@ -241,8 +241,8 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	}
 
 	// other labels coming from docker labels or env selected by user labels, labels-regex, env, env-regex config.
-	attrs, err := logCtx.ExtraAttributes(func(label String) String {
-                return label.ReplaceAll(".", "_")
+	attrs, err := logCtx.ExtraAttributes(func(label string) string {
+                return strings.ReplaceAll(label, ".", "_")
         })
 	if err != nil {
 		return nil, err
