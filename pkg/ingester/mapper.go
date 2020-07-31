@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 )
 
 const maxMappedFP = 1 << 20 // About 1M fingerprints reserved for mapping.
@@ -24,7 +24,7 @@ var separatorString = string([]byte{model.SeparatorByte})
 // collisions.
 type fpMapper struct {
 	// highestMappedFP has to be aligned for atomic operations.
-	highestMappedFP model.Fingerprint
+	highestMappedFP atomic.Uint64
 
 	mtx sync.RWMutex // Protects mappings.
 	// maps original fingerprints to a map of string representations of
@@ -163,7 +163,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric []clien
 }
 
 func (m *fpMapper) nextMappedFP() model.Fingerprint {
-	mappedFP := model.Fingerprint(atomic.AddUint64((*uint64)(&m.highestMappedFP), 1))
+	mappedFP := model.Fingerprint(m.highestMappedFP.Inc())
 	if mappedFP > maxMappedFP {
 		panic(fmt.Errorf("more than %v fingerprints mapped in collision detection", maxMappedFP))
 	}

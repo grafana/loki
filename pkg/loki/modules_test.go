@@ -5,57 +5,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/assert"
 )
-
-func TestActiveIndexType(t *testing.T) {
-	var cfg chunk.SchemaConfig
-
-	// just one PeriodConfig in the past
-	cfg.Configs = []chunk.PeriodConfig{{
-		From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
-		IndexType: "first",
-	}}
-
-	assert.Equal(t, 0, activePeriodConfig(cfg))
-
-	// add a newer PeriodConfig in the past which should be considered
-	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
-		From:      chunk.DayTime{Time: model.Now().Add(-12 * time.Hour)},
-		IndexType: "second",
-	})
-	assert.Equal(t, 1, activePeriodConfig(cfg))
-
-	// add a newer PeriodConfig in the future which should not be considered
-	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
-		From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
-		IndexType: "third",
-	})
-	assert.Equal(t, 1, activePeriodConfig(cfg))
-}
-
-func TestUsingBoltdbShipper(t *testing.T) {
-	var cfg chunk.SchemaConfig
-
-	// just one PeriodConfig in the past using boltdb-shipper
-	cfg.Configs = []chunk.PeriodConfig{{
-		From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
-		IndexType: "boltdb-shipper",
-	}}
-	assert.Equal(t, true, usingBoltdbShipper(cfg))
-
-	// just one PeriodConfig in the past not using boltdb-shipper
-	cfg.Configs[0].IndexType = "boltdb"
-	assert.Equal(t, false, usingBoltdbShipper(cfg))
-
-	// add a newer PeriodConfig in the future using boltdb-shipper
-	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
-		From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
-		IndexType: "boltdb-shipper",
-	})
-	assert.Equal(t, true, usingBoltdbShipper(cfg))
-}
 
 func Test_calculateMaxLookBack(t *testing.T) {
 	type args struct {

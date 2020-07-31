@@ -54,7 +54,7 @@ type Config struct {
 	Ingester         ingester.Config             `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config              `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig chunk.StoreConfig           `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     chunk.SchemaConfig          `yaml:"schema_config,omitempty"`
+	SchemaConfig     storage.SchemaConfig        `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits           `yaml:"limits_config,omitempty"`
 	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
 	Worker           frontend.WorkerConfig       `yaml:"frontend_worker,omitempty"`

@@ -10,6 +10,9 @@ It locally stores the index in BoltDB files instead and keeps shipping those fil
 It also keeps syncing BoltDB files from shared object store to a configured local directory for getting index entries created by other services of same Loki cluster.
 This helps run Loki with one less dependency and also saves costs in storage since object stores are likely to be much cheaper compared to cost of a hosted NoSQL store or running a self hosted instance of Cassandra.
 
+**Note:** BoltDB shipper works best with 24h periodic index files. It is a requirement to have index period set to 24h for either active or upcoming usage of boltdb-shipper.
+          If boltdb-shipper already has created index files with 7 days period, and you want to retain previous data then just add a new schema config using boltdb-shipper with a future date and index files period set to 24h.
+
 ## Example Configuration
 
 Example configuration with GCS:
@@ -23,7 +26,7 @@ schema_config:
       schema: v11
       index:
         prefix: loki_index_
-        period: 168h
+        period: 24h
 
 storage_config:
   gcs:
@@ -45,20 +48,20 @@ Loki can be configured to run as just a single vertically scaled instance or as 
 When it comes to reads and writes, Ingesters are the ones which writes the index and chunks to stores and Queriers are the ones which reads index and chunks from the store for serving requests.
 
 Before we get into more details, it is important to understand how Loki manages index in stores. Loki shards index as per configured period which defaults to 7 days i.e when it comes to table based stores like Bigtable/Cassandra/DynamoDB there would be separate table per week containing index for that week.
-In case of BoltDB files there is no concept of tables so it creates a BoltDB file per week. Files/Tables created per week are identified by a configured `prefix_` + `<period-number-since-epoch>`.
-Here `<period-number-since-epoch>` in case of default config would be week number since epoch.
-For example, if you have prefix set to `loki_index_` and a write requests comes in on 20th April 2020, it would be stored in table/file named `loki_index_2624` because it has been `2623` weeks since epoch and we are in `2624`th week.
-Since sharding of index creates multiple files when using BoltDB, BoltDB Shipper would create a folder per week and add files for that week in that folder and names those files after ingesters which created them.
+In case of BoltDB files there is no concept of tables, so it creates a BoltDB file per period(i.e day in case of boltdb-shipper store). Files/Tables created per day are identified by a configured `prefix_` + `<period-number-since-epoch>`.
+Here `<period-number-since-epoch>` in case of boltdb-shipper would be day number since epoch.
+For example, if you have prefix set to `loki_index_` and a write request comes in on 20th April 2020, it would be stored in table/file named `loki_index_18372` because it has been `18371` days since epoch, and we are in `18372`th day.
+Since sharding of index creates multiple files when using BoltDB, BoltDB Shipper would create a folder per day and add files for that day in that folder and names those files after ingesters which created them.
 
-To show how BoltDB files in shared object store would look like, let us consider 2 ingesters named `ingester-0` and `ingester-1` running in a Loki cluster and
-they both having shipped files for week `2623` and `2624` with prefix `loki_index_`, here is how the files would look like:
+To show how BoltDB files in shared object store would look like, let us consider 2 ingesters named `ingester-0` and `ingester-1` running in a Loki cluster, and
+they both having shipped files for day `18371` and `18372` with prefix `loki_index_`, here is how the files would look like:
 
 ```
 └── index
-    ├── loki_index_2623
+    ├── loki_index_18371
     │   ├── ingester-0
     │   └── ingester-1
-    └── loki_index_2624
+    └── loki_index_18372
         ├── ingester-0
         └── ingester-1
 ```
