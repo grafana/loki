@@ -129,7 +129,7 @@ func (c *LazyChunk) SampleIterator(
 			continue
 		}
 		if nextChunk != nil {
-			delete(c.overlappingBlocks, b.Offset())
+			delete(c.overlappingSampleBlocks, b.Offset())
 		}
 		// non-overlapping block with the next chunk are not cached.
 		its = append(its, b.SampleIterator(ctx, filter, extractor))
