@@ -49,7 +49,7 @@ k + config + scrape_config {
     container.withPorts($.core.v1.containerPort.new(name='http-metrics', port=80)) +
     container.withArgsMixin($.util.mapToFlags($.promtail_args)) +
     container.withEnv([
-      container.envType.fromFieldPath('HOSTNAME', 'spec.nodeName'),
+      $.core.v1.envVar.fromFieldPath('HOSTNAME', 'spec.nodeName'),
     ]) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort(80) +
