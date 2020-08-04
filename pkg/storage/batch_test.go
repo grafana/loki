@@ -548,6 +548,108 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 			logproto.BACKWARD,
 			2,
 		},
+		// This test is rather complex under the hood.
+		// It should cause three sub batches in the iterator.
+		// The first batch has no overlap -- it cannot as the first. It has bounds [1,2)
+		// The second batch has one chunk overlap, but it includes no entries in the overlap.
+		// It has bounds [2,4).
+		// The third batch finally consumes the overlap, with bounds [4,max).
+		// Notably it also ends up testing the code paths for increasing batch sizes past
+		// the default due to nextChunks with the same start timestamp.
+		"forward identicals": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+			},
+			[]logproto.Stream{
+				{
+					Labels: fooLabels,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			from, from.Add(4 * time.Millisecond),
+			logproto.FORWARD,
+			1,
+		},
 	}
 
 	for name, tt := range tests {

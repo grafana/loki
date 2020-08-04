@@ -140,17 +140,23 @@ func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 	batch := make([]*LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
 	var nextChunk *LazyChunk
 
+	var includesOverlap bool
+
 	for it.chunks.Len() > 0 {
+		// reset nextChunk on each loop to prevent it from pointing to previous chunks
+		nextChunk = nil
 
 		// pop the next batch of chunks and append/prepend previous overlapping chunks
 		// so we can merge/de-dupe overlapping entries.
-		if it.direction == logproto.FORWARD {
+		if !includesOverlap && it.direction == logproto.FORWARD {
 			batch = append(batch, it.lastOverlapping...)
 		}
 		batch = append(batch, it.chunks.pop(it.batchSize)...)
-		if it.direction == logproto.BACKWARD {
+		if !includesOverlap && it.direction == logproto.BACKWARD {
 			batch = append(batch, it.lastOverlapping...)
 		}
+
+		includesOverlap = true
 
 		if it.chunks.Len() > 0 {
 			nextChunk = it.chunks.Peek()
@@ -294,6 +300,7 @@ func newLogBatchIterator(
 		filter:   filter,
 		ctx:      ctx,
 	}
+
 	batch := newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, logbatch.newChunksIterator)
 	logbatch.batchChunkIterator = batch
 	return logbatch, nil
@@ -321,10 +328,12 @@ func (it *logBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through
 func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
+
 		iterator, err := it.buildHeapIterator(chunks, from, through, nextChunk)
 		if err != nil {
 			return nil, err
 		}
+
 		result = append(result, iterator)
 	}
 
