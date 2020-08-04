@@ -146,9 +146,9 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 		for _, entry := range stream.Entries {
 			var err error
 			if t.config.KeepTimestamp {
-				err = t.handler.Handle(filtered, entry.Timestamp, entry.Line)
+				err = t.handler.Handle(filtered.Clone(), entry.Timestamp, entry.Line)
 			} else {
-				err = t.handler.Handle(filtered, time.Now(), entry.Line)
+				err = t.handler.Handle(filtered.Clone(), time.Now(), entry.Line)
 			}
 
 			if err != nil {
