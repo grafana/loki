@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
+
 	"github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns"
 	"github.com/thanos-io/thanos/pkg/extprom"
 )
@@ -53,7 +54,7 @@ func (t ResolverType) ToResolver(logger log.Logger) ipLookupResolver {
 }
 
 // NewProvider returns a new empty provider with a given resolver type.
-// If empty resolver type is net.DefaultResolver.w
+// If empty resolver type is net.DefaultResolver.
 func NewProvider(logger log.Logger, reg prometheus.Registerer, resolverType ResolverType) *Provider {
 	p := &Provider{
 		resolver: NewResolver(resolverType.ToResolver(logger)),

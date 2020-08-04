@@ -253,13 +253,11 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
-		if instanceDesc.State != state || !tokens.Equals(instanceDesc.Tokens) {
-			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state)
-			return ringDesc, true, nil
-		}
-
-		// We haven't modified the ring, so don't try to store it.
-		return nil, true, nil
+		// Always overwrite the instance in the ring (even if already exists) because some properties
+		// may have changed (stated, tokens, zone, address) and even if they didn't the heartbeat at
+		// least did.
+		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state)
+		return ringDesc, true, nil
 	})
 
 	if err != nil {

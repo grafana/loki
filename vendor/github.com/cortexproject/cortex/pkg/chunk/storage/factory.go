@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,7 +29,7 @@ import (
 // Supported storage engines
 const (
 	StorageEngineChunks = "chunks"
-	StorageEngineTSDB   = "tsdb"
+	StorageEngineBlocks = "blocks"
 )
 
 type indexStoreFactories struct {
@@ -91,18 +92,21 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Swift.RegisterFlags(f)
 	cfg.GrpcConfig.RegisterFlags(f)
 
-	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or tsdb. Be aware tsdb is experimental and shouldn't be used in production.")
+	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or blocks. Be aware that blocks storage is experimental and shouldn't be used in production.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 }
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineTSDB {
+	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineBlocks {
 		return errors.New("unsupported storage engine")
 	}
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")
+	}
+	if err := cfg.GCPStorageConfig.Validate(util.Logger); err != nil {
+		return errors.Wrap(err, "invalid GCP Storage Storage config")
 	}
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
@@ -114,22 +118,30 @@ func (cfg *Config) Validate() error {
 }
 
 // NewStore makes the storage clients based on the configuration.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, reg prometheus.Registerer, cacheGenNumLoader chunk.CacheGenNumLoader) (chunk.Store, error) {
+func NewStore(
+	cfg Config,
+	storeCfg chunk.StoreConfig,
+	schemaCfg chunk.SchemaConfig,
+	limits StoreLimits,
+	reg prometheus.Registerer,
+	cacheGenNumLoader chunk.CacheGenNumLoader,
+	logger log.Logger,
+) (chunk.Store, error) {
 	chunkMetrics := newChunkClientMetrics(reg)
 
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, reg, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, reg, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
-	chunksCache, err := cache.New(chunkCacheCfg)
+	chunksCache, err := cache.New(chunkCacheCfg, reg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +172,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
-		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits)
+		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits, logger)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {

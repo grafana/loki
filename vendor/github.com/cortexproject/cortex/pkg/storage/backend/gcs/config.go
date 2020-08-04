@@ -14,7 +14,7 @@ type Config struct {
 
 // RegisterFlags registers the flags for TSDB GCS storage
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("experimental.tsdb.", f)
+	cfg.RegisterFlagsWithPrefix("experimental.blocks-storage.", f)
 }
 
 // RegisterFlagsWithPrefix registers the flags for TSDB GCS storage with the provided prefix

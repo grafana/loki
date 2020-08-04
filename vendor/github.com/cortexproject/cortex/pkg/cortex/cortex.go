@@ -94,7 +94,7 @@ type Config struct {
 	QueryRange     queryrange.Config        `yaml:"query_range"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB           tsdb.Config              `yaml:"tsdb"`
+	BlocksStorage  tsdb.BlocksStorageConfig `yaml:"blocks_storage"`
 	Compactor      compactor.Config         `yaml:"compactor"`
 	StoreGateway   storegateway.Config      `yaml:"store_gateway"`
 	PurgerConfig   purger.Config            `yaml:"purger"`
@@ -133,7 +133,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.QueryRange.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
-	c.TSDB.RegisterFlags(f)
+	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
 	c.PurgerConfig.RegisterFlags(f)
@@ -166,7 +166,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Ruler.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
-	if err := c.TSDB.Validate(); err != nil {
+	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
 	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
@@ -178,11 +178,17 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
+	if err := c.IngesterClient.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid ingester_client config")
+	}
+	if err := c.Worker.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid frontend_worker config")
+	}
 	if err := c.QueryRange.Validate(log); err != nil {
-		return errors.Wrap(err, "invalid queryrange config")
+		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid tablemanager config")
+		return errors.Wrap(err, "invalid table_manager config")
 	}
 	return nil
 }

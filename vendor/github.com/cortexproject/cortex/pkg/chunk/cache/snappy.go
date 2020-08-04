@@ -3,20 +3,21 @@ package cache
 import (
 	"context"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/snappy"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type snappyCache struct {
-	next Cache
+	next   Cache
+	logger log.Logger
 }
 
 // NewSnappy makes a new snappy encoding cache wrapper.
-func NewSnappy(next Cache) Cache {
+func NewSnappy(next Cache, logger log.Logger) Cache {
 	return &snappyCache{
-		next: next,
+		next:   next,
+		logger: logger,
 	}
 }
 
@@ -35,7 +36,7 @@ func (s *snappyCache) Fetch(ctx context.Context, keys []string) ([]string, [][]b
 	for _, buf := range bufs {
 		d, err := snappy.Decode(nil, buf)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to decode cache entry", "err", err)
+			level.Error(s.logger).Log("msg", "failed to decode cache entry", "err", err)
 			return nil, nil, keys
 		}
 		ds = append(ds, d)

@@ -24,7 +24,7 @@ const (
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		i.v2LifecyclerFlush()
 		return
 	}
@@ -45,7 +45,7 @@ func (i *Ingester) Flush() {
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		i.v2FlushHandler(w, r)
 		return
 	}
@@ -106,6 +106,12 @@ const (
 	reasonIdle
 	reasonStale
 	reasonSpreadFlush
+	// Following are flush outcomes
+	noUser
+	noSeries
+	noChunks
+	flushError
+	maxFlushReason // Used for testing String() method. Should be last.
 )
 
 func (f flushReason) String() string {
@@ -124,6 +130,14 @@ func (f flushReason) String() string {
 		return "Stale"
 	case reasonSpreadFlush:
 		return "Spread"
+	case noUser:
+		return "NoUser"
+	case noSeries:
+		return "NoSeries"
+	case noChunks:
+		return "NoChunksToFlush"
+	case flushError:
+		return "FlushError"
 	default:
 		panic("unrecognised flushReason")
 	}
@@ -146,6 +160,7 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 
 	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
 	if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
+		i.metrics.seriesEnqueuedForFlush.WithLabelValues(flush.String()).Inc()
 		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "nlabels", len(series.metric), "queue", flushQueueIndex)
 	}
 }
@@ -217,7 +232,8 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		err := i.flushUserSeries(j, op.userID, op.fp, op.immediate)
+		outcome, err := i.flushUserSeries(j, op.userID, op.fp, op.immediate)
+		i.metrics.seriesDequeuedOutcome.WithLabelValues(outcome.String()).Inc()
 		if err != nil {
 			level.Error(util.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
@@ -231,7 +247,8 @@ func (i *Ingester) flushLoop(j int) {
 	}
 }
 
-func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.Fingerprint, immediate bool) error {
+// Returns flush outcome (either original reason, if series was flushed, noFlush if it doesn't need flushing anymore, or one of the errors)
+func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.Fingerprint, immediate bool) (flushReason, error) {
 	i.metrics.flushSeriesInProgress.Inc()
 	defer i.metrics.flushSeriesInProgress.Dec()
 
@@ -241,19 +258,19 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 
 	userState, ok := i.userStates.get(userID)
 	if !ok {
-		return nil
+		return noUser, nil
 	}
 
 	series, ok := userState.fpToSeries.get(fp)
 	if !ok {
-		return nil
+		return noSeries, nil
 	}
 
 	userState.fpLocker.Lock(fp)
 	reason := i.shouldFlushSeries(series, fp, immediate)
 	if reason == noFlush {
 		userState.fpLocker.Unlock(fp)
-		return nil
+		return noFlush, nil
 	}
 
 	// shouldFlushSeries() has told us we have at least one chunk.
@@ -302,10 +319,8 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	}
 
 	if len(chunks) == 0 {
-		return nil
+		return noChunks, nil
 	}
-
-	i.metrics.flushedSeries.WithLabelValues(reason.String()).Inc()
 
 	// flush the chunks without locking the series, as we don't want to hold the series lock for the duration of the dynamo/s3 rpcs.
 	ctx, cancel := context.WithTimeout(context.Background(), i.cfg.FlushOpTimeout)
@@ -318,7 +333,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "nlabels", len(series.metric), "queue", flushQueueIndex)
 	err := i.flushChunks(ctx, userID, fp, series.metric, chunks)
 	if err != nil {
-		return err
+		return flushError, err
 	}
 
 	userState.fpLocker.Lock(fp)
@@ -329,7 +344,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 		chunks[i].LastUpdate = model.Now()
 	}
 	userState.fpLocker.Unlock(fp)
-	return nil
+	return reason, err
 }
 
 // must be called under fpLocker lock

@@ -296,7 +296,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(err)
 	}
 
 	// Validate query time range.
@@ -308,7 +308,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, startTime, endTime)
 	if err != nil {
-		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(err)
 	}
 
 	if len(q.queriers) == 1 {

@@ -221,7 +221,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 	xfer := func() error {
 
 		// Validate the final directory is empty, if it exists and is empty delete it so a move can succeed
-		err := removeEmptyDir(i.cfg.TSDBConfig.Dir)
+		err := removeEmptyDir(i.cfg.BlocksStorageConfig.TSDB.Dir)
 		if err != nil {
 			return errors.Wrap(err, "remove existing TSDB directory")
 		}
@@ -304,9 +304,9 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 		level.Info(util.Logger).Log("msg", "Total xfer", "from_ingester", fromIngesterID, "files", filesXfer, "bytes", bytesXfer)
 
 		// Move the tmpdir to the final location
-		err = os.Rename(tmpDir, i.cfg.TSDBConfig.Dir)
+		err = os.Rename(tmpDir, i.cfg.BlocksStorageConfig.TSDB.Dir)
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("unable to move received TSDB blocks from %s to %s", tmpDir, i.cfg.TSDBConfig.Dir))
+			return errors.Wrap(err, fmt.Sprintf("unable to move received TSDB blocks from %s to %s", tmpDir, i.cfg.BlocksStorageConfig.TSDB.Dir))
 		}
 
 		// At this point all TSDBs have been received, so we can proceed loading TSDBs in memory.
@@ -315,9 +315,9 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 		// 2. If a query is received on user X, for which the TSDB has been transferred, before
 		//    the first series is ingested, if we don't open the TSDB the query will return an
 		//    empty result (because the TSDB is opened only on first push or transfer)
-		userIDs, err := ioutil.ReadDir(i.cfg.TSDBConfig.Dir)
+		userIDs, err := ioutil.ReadDir(i.cfg.BlocksStorageConfig.TSDB.Dir)
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("unable to list TSDB users in %s", i.cfg.TSDBConfig.Dir))
+			return errors.Wrap(err, fmt.Sprintf("unable to list TSDB users in %s", i.cfg.BlocksStorageConfig.TSDB.Dir))
 		}
 
 		for _, user := range userIDs {
@@ -438,7 +438,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 }
 
 func (i *Ingester) transferOut(ctx context.Context) error {
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2TransferOut(ctx)
 	}
 
@@ -584,7 +584,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	}
 
 	// Grab a list of all blocks that need to be shipped
-	blocks, err := unshippedBlocks(i.cfg.TSDBConfig.Dir)
+	blocks, err := unshippedBlocks(i.cfg.BlocksStorageConfig.TSDB.Dir)
 	if err != nil {
 		return err
 	}
@@ -592,7 +592,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	for user, blockIDs := range blocks {
 		// Transfer the users TSDB
 		// TODO(thor) transferring users can be done concurrently
-		i.transferUser(ctx, stream, i.cfg.TSDBConfig.Dir, i.lifecycler.ID, user, blockIDs)
+		i.transferUser(ctx, stream, i.cfg.BlocksStorageConfig.TSDB.Dir, i.lifecycler.ID, user, blockIDs)
 	}
 
 	_, err = stream.CloseAndRecv()

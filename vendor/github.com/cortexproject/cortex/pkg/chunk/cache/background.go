@@ -11,19 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-var (
-	droppedWriteBack = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "cache_dropped_background_writes_total",
-		Help:      "Total count of dropped write backs to cache.",
-	}, []string{"name"})
-	queueLength = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "cache_background_queue_length",
-		Help:      "Length of the cache background write queue.",
-	}, []string{"name"})
-)
-
 // BackgroundConfig is config for a Background Cache.
 type BackgroundConfig struct {
 	WriteBackGoroutines int `yaml:"writeback_goroutines"`
@@ -54,14 +41,25 @@ type backgroundWrite struct {
 }
 
 // NewBackground returns a new Cache that does stores on background goroutines.
-func NewBackground(name string, cfg BackgroundConfig, cache Cache) Cache {
+func NewBackground(name string, cfg BackgroundConfig, cache Cache, reg prometheus.Registerer) Cache {
 	c := &backgroundCache{
-		Cache:            cache,
-		quit:             make(chan struct{}),
-		bgWrites:         make(chan backgroundWrite, cfg.WriteBackBuffer),
-		name:             name,
-		droppedWriteBack: droppedWriteBack.WithLabelValues(name),
-		queueLength:      queueLength.WithLabelValues(name),
+		Cache:    cache,
+		quit:     make(chan struct{}),
+		bgWrites: make(chan backgroundWrite, cfg.WriteBackBuffer),
+		name:     name,
+		droppedWriteBack: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   "cortex",
+			Name:        "cache_dropped_background_writes_total",
+			Help:        "Total count of dropped write backs to cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+
+		queueLength: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace:   "cortex",
+			Name:        "cache_background_queue_length",
+			Help:        "Length of the cache background write queue.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
 	}
 
 	c.wg.Add(cfg.WriteBackGoroutines)

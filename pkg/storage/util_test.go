@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	pkg_util "github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -199,7 +201,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		refs = append(refs, r)
 	}
 
-	cache, err := cache.New(cache.Config{Prefix: "chunks"})
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, pkg_util.Logger)
 	if err != nil {
 		panic(err)
 	}
