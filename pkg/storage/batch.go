@@ -143,8 +143,6 @@ func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 	var includesOverlap bool
 
 	for it.chunks.Len() > 0 {
-		// reset nextChunk on each loop to prevent it from pointing to previous chunks
-		nextChunk = nil
 
 		// pop the next batch of chunks and append/prepend previous overlapping chunks
 		// so we can merge/de-dupe overlapping entries.
