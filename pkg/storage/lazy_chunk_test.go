@@ -54,6 +54,36 @@ func TestLazyChunkIterator(t *testing.T) {
 	}
 }
 
+func TestLazyChunksPop(t *testing.T) {
+	for i, tc := range []struct {
+		initial    int
+		n          int
+		expectedLn int
+		rem        int
+	}{
+		{1, 1, 1, 0},
+		{2, 1, 1, 1},
+		{3, 4, 3, 0},
+	} {
+
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			lc := &lazyChunks{}
+			for i := 0; i < tc.initial; i++ {
+				lc.chunks = append(lc.chunks, &LazyChunk{})
+			}
+			out := lc.pop(tc.n)
+
+			for i := 0; i < tc.expectedLn; i++ {
+				require.NotNil(t, out[i])
+			}
+
+			for i := 0; i < tc.rem; i++ {
+				require.NotNil(t, lc.chunks[i])
+			}
+		})
+	}
+}
+
 func TestIsOverlapping(t *testing.T) {
 	tests := []struct {
 		name      string
