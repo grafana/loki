@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-var fooLabelsWithName = "{foo=\"bar\", __name__=\"log\"}"
+var fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
 var fooLabels = "{foo=\"bar\"}"
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
