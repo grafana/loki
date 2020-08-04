@@ -56,7 +56,7 @@ func dYAML(y []byte) Source {
 	}
 }
 
-func YAMLFlag(name string) Source {
+func YAMLFlag(args []string, name string) Source {
 	type cloneable interface {
 		Clone() flagext.Registerer
 	}
@@ -76,7 +76,7 @@ func YAMLFlag(name string) Source {
 		usage := freshFlags.Usage
 		freshFlags.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }
 
-		err := freshFlags.Parse(os.Args[1:])
+		err := freshFlags.Parse(args)
 		if err == flag.ErrHelp {
 			// print available parameters to stdout, so that users can grep/less it easily
 			freshFlags.SetOutput(os.Stdout)

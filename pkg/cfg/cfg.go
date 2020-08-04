@@ -1,6 +1,7 @@
 package cfg
 
 import (
+	"os"
 	"reflect"
 
 	"github.com/pkg/errors"
@@ -39,7 +40,7 @@ func Unmarshal(dst interface{}, sources ...Source) error {
 func Parse(dst interface{}) error {
 	return dParse(dst,
 		Defaults(),
-		YAMLFlag("config.file"),
+		YAMLFlag(os.Args[1:], "config.file"),
 		Flags(),
 	)
 }
