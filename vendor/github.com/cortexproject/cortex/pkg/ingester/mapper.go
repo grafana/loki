@@ -5,10 +5,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -24,8 +24,7 @@ type fpMappings map[model.Fingerprint]map[string]model.Fingerprint
 // fpMapper is used to map fingerprints in order to work around fingerprint
 // collisions.
 type fpMapper struct {
-	// highestMappedFP has to be aligned for atomic operations.
-	highestMappedFP model.Fingerprint
+	highestMappedFP atomic.Uint64
 
 	mtx      sync.RWMutex // Protects mappings.
 	mappings fpMappings
@@ -130,7 +129,7 @@ func (m *fpMapper) maybeAddMapping(
 }
 
 func (m *fpMapper) nextMappedFP() model.Fingerprint {
-	mappedFP := model.Fingerprint(atomic.AddUint64((*uint64)(&m.highestMappedFP), 1))
+	mappedFP := model.Fingerprint(m.highestMappedFP.Inc())
 	if mappedFP > maxMappedFP {
 		panic(fmt.Errorf("more than %v fingerprints mapped in collision detection", maxMappedFP))
 	}

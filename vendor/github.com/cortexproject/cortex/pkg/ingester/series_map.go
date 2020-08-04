@@ -2,10 +2,10 @@ package ingester
 
 import (
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -16,7 +16,7 @@ const seriesMapShards = 128
 // goroutine-safe. A seriesMap is effectively a goroutine-safe version of
 // map[model.Fingerprint]*memorySeries.
 type seriesMap struct {
-	size   int32
+	size   atomic.Int32
 	shards []shard
 }
 
@@ -65,7 +65,7 @@ func (sm *seriesMap) put(fp model.Fingerprint, s *memorySeries) {
 	shard.mtx.Unlock()
 
 	if !ok {
-		atomic.AddInt32(&sm.size, 1)
+		sm.size.Inc()
 	}
 }
 
@@ -77,7 +77,7 @@ func (sm *seriesMap) del(fp model.Fingerprint) {
 	delete(shard.m, fp)
 	shard.mtx.Unlock()
 	if ok {
-		atomic.AddInt32(&sm.size, -1)
+		sm.size.Dec()
 	}
 }
 
@@ -106,5 +106,5 @@ func (sm *seriesMap) iter() <-chan fingerprintSeriesPair {
 }
 
 func (sm *seriesMap) length() int {
-	return int(atomic.LoadInt32(&sm.size))
+	return int(sm.size.Load())
 }

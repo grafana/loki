@@ -2,11 +2,11 @@ package tsdb
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -41,7 +41,7 @@ type refCacheStripe struct {
 type refCacheEntry struct {
 	lbs       labels.Labels
 	ref       uint64
-	touchedAt int64 // Unix nano time.
+	touchedAt atomic.Int64 // Unix nano time.
 }
 
 // NewRefCache makes a new RefCache.
@@ -93,7 +93,7 @@ func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Finge
 	for ix := range entries {
 		if labels.Equal(entries[ix].lbs, series) {
 			// Since we use read-only lock, we need to use atomic update.
-			atomic.StoreInt64(&entries[ix].touchedAt, now.UnixNano())
+			entries[ix].touchedAt.Store(now.UnixNano())
 			return entries[ix].ref, true
 		}
 	}
@@ -112,13 +112,15 @@ func (s *refCacheStripe) setRef(now time.Time, series labels.Labels, fp model.Fi
 		}
 
 		entry.ref = ref
-		entry.touchedAt = now.UnixNano()
+		entry.touchedAt.Store(now.UnixNano())
 		s.refs[fp][ix] = entry
 		return
 	}
 
 	// The entry doesn't exist, so we have to add a new one.
-	s.refs[fp] = append(s.refs[fp], refCacheEntry{lbs: series, ref: ref, touchedAt: now.UnixNano()})
+	refCacheEntry := refCacheEntry{lbs: series, ref: ref}
+	refCacheEntry.touchedAt.Store(now.UnixNano())
+	s.refs[fp] = append(s.refs[fp], refCacheEntry)
 }
 
 func (s *refCacheStripe) purge(keepUntil time.Time) {
@@ -131,7 +133,7 @@ func (s *refCacheStripe) purge(keepUntil time.Time) {
 		// Since we do expect very few fingerprint collisions, we
 		// have an optimized implementation for the common case.
 		if len(entries) == 1 {
-			if entries[0].touchedAt < keepUntilNanos {
+			if entries[0].touchedAt.Load() < keepUntilNanos {
 				delete(s.refs, fp)
 			}
 
@@ -141,7 +143,7 @@ func (s *refCacheStripe) purge(keepUntil time.Time) {
 		// We have more entries, which means there's a collision,
 		// so we have to iterate over the entries.
 		for i := 0; i < len(entries); {
-			if entries[i].touchedAt < keepUntilNanos {
+			if entries[i].touchedAt.Load() < keepUntilNanos {
 				entries = append(entries[:i], entries[i+1:]...)
 			} else {
 				i++

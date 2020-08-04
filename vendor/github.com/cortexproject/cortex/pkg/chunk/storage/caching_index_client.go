@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -46,18 +46,20 @@ type cachingIndexClient struct {
 	cache    cache.Cache
 	validity time.Duration
 	limits   StoreLimits
+	logger   log.Logger
 }
 
-func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits) chunk.IndexClient {
+func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits, logger log.Logger) chunk.IndexClient {
 	if c == nil || cache.IsEmptyTieredCache(c) {
 		return client
 	}
 
 	return &cachingIndexClient{
 		IndexClient: client,
-		cache:       cache.NewSnappy(c),
+		cache:       cache.NewSnappy(c, logger),
 		validity:    validity,
 		limits:      limits,
+		logger:      logger,
 	}
 }
 
@@ -226,7 +228,7 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 		hashed = append(hashed, cache.HashKey(keys[i]))
 		out, err := proto.Marshal(&batches[i])
 		if err != nil {
-			level.Warn(util.Logger).Log("msg", "error marshalling ReadBatch", "err", err)
+			level.Warn(s.logger).Log("msg", "error marshalling ReadBatch", "err", err)
 			cacheEncodeErrs.Inc()
 			return
 		}

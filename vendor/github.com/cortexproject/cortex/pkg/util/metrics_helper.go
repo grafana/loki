@@ -166,6 +166,17 @@ func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Me
 	}
 }
 
+// SendSumOfCountersPerUserWithLabels provides metrics with the provided label names on a per-user basis. This function assumes that `user` is the
+// first label on the provided metric Desc
+func (d MetricFamiliesPerUser) SendSumOfCountersPerUserWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, metric string, labelNames ...string) {
+	for user, userMetrics := range d {
+		result := singleValueWithLabelsMap{}
+		userMetrics.sumOfSingleValuesWithLabels(metric, labelNames, counterValue, result.aggregateFn)
+		result.prependUserLabelValue(user)
+		result.WriteToMetricChannel(out, desc, prometheus.CounterValue)
+	}
+}
+
 func (d MetricFamiliesPerUser) GetSumOfGauges(gauge string) float64 {
 	result := float64(0)
 	for _, userMetrics := range d {
@@ -251,6 +262,13 @@ func (d MetricFamiliesPerUser) SendSumOfSummariesWithLabels(out chan<- prometheu
 
 	for _, sr := range result {
 		out <- sr.data.Metric(desc, sr.labelValues...)
+	}
+}
+
+func (d MetricFamiliesPerUser) SendSumOfSummariesPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
+	for user, userMetrics := range d {
+		data := userMetrics.SumSummaries(summaryName)
+		out <- data.Metric(desc, user)
 	}
 }
 

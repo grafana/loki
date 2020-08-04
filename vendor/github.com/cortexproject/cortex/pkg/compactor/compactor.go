@@ -78,7 +78,7 @@ type Compactor struct {
 	services.Service
 
 	compactorCfg Config
-	storageCfg   cortex_tsdb.Config
+	storageCfg   cortex_tsdb.BlocksStorageConfig
 	logger       log.Logger
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
@@ -118,7 +118,7 @@ type Compactor struct {
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
 	createBucketClientAndTsdbCompactor := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error) {
 		bucketClient, err := cortex_tsdb.NewBucketClient(ctx, storageCfg, "compactor", logger, registerer)
 		if err != nil {
@@ -139,7 +139,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, logger log
 
 func newCompactor(
 	compactorCfg Config,
-	storageCfg cortex_tsdb.Config,
+	storageCfg cortex_tsdb.BlocksStorageConfig,
 	logger log.Logger,
 	registerer prometheus.Registerer,
 	createBucketClientAndTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error),

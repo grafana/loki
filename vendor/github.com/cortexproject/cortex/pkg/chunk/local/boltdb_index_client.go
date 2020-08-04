@@ -271,8 +271,14 @@ func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk
 				break
 			}
 
-			batch.rangeValue = k[len(rowPrefix):]
-			batch.value = v
+			// make a copy since k, v are only valid for the life of the transaction.
+			// See: https://godoc.org/github.com/boltdb/bolt#Cursor.Seek
+			batch.rangeValue = make([]byte, len(k)-len(rowPrefix))
+			copy(batch.rangeValue, k[len(rowPrefix):])
+
+			batch.value = make([]byte, len(v))
+			copy(batch.value, v)
+
 			if !callback(query, &batch) {
 				break
 			}

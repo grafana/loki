@@ -14,6 +14,7 @@ import (
 	"github.com/gogo/protobuf/types"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
@@ -128,8 +129,9 @@ func NewResultsCacheMiddleware(
 	merger Merger,
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
+	reg prometheus.Registerer,
 ) (Middleware, cache.Cache, error) {
-	c, err := cache.New(cfg.CacheConfig)
+	c, err := cache.New(cfg.CacheConfig, reg, logger)
 	if err != nil {
 		return nil, nil, err
 	}

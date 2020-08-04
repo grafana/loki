@@ -12,7 +12,7 @@ import (
 	promgate "github.com/prometheus/prometheus/pkg/gate"
 )
 
-// Gate is an interface that mimics prometheus/pkg/gate behaviour.
+// Gate is an interface that mimics prometheus/pkg/gate behavior.
 type Gate interface {
 	Start(ctx context.Context) error
 	Done()

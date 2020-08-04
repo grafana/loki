@@ -30,6 +30,7 @@ type BucketStoreMetrics struct {
 	seriesMergeDuration   *prometheus.Desc
 	seriesRefetches       *prometheus.Desc
 	resultSeriesCount     *prometheus.Desc
+	queriesDropped        *prometheus.Desc
 
 	cachedPostingsCompressions           *prometheus.Desc
 	cachedPostingsCompressionErrors      *prometheus.Desc
@@ -99,6 +100,10 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_series_result_series",
 			"Number of series observed in the final result of a query.",
 			nil, nil),
+		queriesDropped: prometheus.NewDesc(
+			"cortex_bucket_store_queries_dropped_total",
+			"Number of queries that were dropped due to the max chunks per query limit.",
+			nil, nil),
 
 		cachedPostingsCompressions: prometheus.NewDesc(
 			"cortex_bucket_store_cached_postings_compressions_total",
@@ -156,6 +161,7 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesMergeDuration
 	out <- m.seriesRefetches
 	out <- m.resultSeriesCount
+	out <- m.queriesDropped
 
 	out <- m.cachedPostingsCompressions
 	out <- m.cachedPostingsCompressionErrors
@@ -184,10 +190,11 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
 	data.SendSumOfCounters(out, m.seriesRefetches, "thanos_bucket_store_series_refetches_total")
 	data.SendSumOfSummaries(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
+	data.SendSumOfCounters(out, m.queriesDropped, "thanos_bucket_store_queries_dropped_total")
 
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressions, "thanos_bucket_store_cached_postings_compressions_total", "op")
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressionErrors, "thanos_bucket_store_cached_postings_compression_errors_total", "op")
-	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressionTimeSeconds, "thanos_bucket_store_cached_postings_compression_time_seconds", "op")
+	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressionTimeSeconds, "thanos_bucket_store_cached_postings_compression_time_seconds_total", "op")
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsOriginalSizeBytes, "thanos_bucket_store_cached_postings_original_size_bytes_total")
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressedSizeBytes, "thanos_bucket_store_cached_postings_compressed_size_bytes_total")
 }
