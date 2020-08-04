@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -108,7 +109,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err := cfg.Defaults()(&conf); err != nil {
 		return err
 	}
-	if err := cfg.YAML(&q.LocalConfig)(&conf); err != nil {
+	if q.LocalConfig == "" {
+		return errors.New("no supplied config file")
+	}
+	if err := cfg.YAML(q.LocalConfig)(&conf); err != nil {
 		return err
 	}
 
