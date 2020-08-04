@@ -14,15 +14,20 @@ import (
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 const StatusClientClosedRequest = 499
 
+const (
+	ErrClientCanceled   = "The request was cancelled by the client."
+	ErrDeadlineExceeded = "Request timed out, decrease the duration of the request or add more label matchers (prefer exact match over regex match) to reduce the amount of data processed."
+)
+
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
 	var queryErr chunk.QueryError
 
 	switch {
 	case errors.Is(err, context.Canceled):
-		http.Error(w, err.Error(), StatusClientClosedRequest)
+		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
 	case errors.Is(err, context.DeadlineExceeded):
-		http.Error(w, err.Error(), http.StatusGatewayTimeout)
+		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
 	case errors.As(err, &queryErr):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case logql.IsParseError(err):

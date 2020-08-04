@@ -26,7 +26,7 @@ var _ = time.Kitchen
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // Type specifies how the given name and pattern are matched
 // against a label set.
@@ -155,7 +155,7 @@ type Silence struct {
 	// The time range during which the silence is active.
 	StartsAt time.Time `protobuf:"bytes,3,opt,name=starts_at,json=startsAt,proto3,stdtime" json:"starts_at"`
 	EndsAt   time.Time `protobuf:"bytes,4,opt,name=ends_at,json=endsAt,proto3,stdtime" json:"ends_at"`
-	// The last motification made to the silence.
+	// The last notification made to the silence.
 	UpdatedAt time.Time `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3,stdtime" json:"updated_at"`
 	// DEPRECATED: A set of comments made on the silence.
 	Comments []*Comment `protobuf:"bytes,7,rep,name=comments,proto3" json:"comments,omitempty"`
@@ -1380,6 +1380,7 @@ func (m *MeshSilence) Unmarshal(dAtA []byte) error {
 func skipSilence(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
+	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -1411,10 +1412,8 @@ func skipSilence(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			return iNdEx, nil
 		case 1:
 			iNdEx += 8
-			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -1435,55 +1434,30 @@ func skipSilence(dAtA []byte) (n int, err error) {
 				return 0, ErrInvalidLengthSilence
 			}
 			iNdEx += length
-			if iNdEx < 0 {
-				return 0, ErrInvalidLengthSilence
-			}
-			return iNdEx, nil
 		case 3:
-			for {
-				var innerWire uint64
-				var start int = iNdEx
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return 0, ErrIntOverflowSilence
-					}
-					if iNdEx >= l {
-						return 0, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					innerWire |= (uint64(b) & 0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				innerWireType := int(innerWire & 0x7)
-				if innerWireType == 4 {
-					break
-				}
-				next, err := skipSilence(dAtA[start:])
-				if err != nil {
-					return 0, err
-				}
-				iNdEx = start + next
-				if iNdEx < 0 {
-					return 0, ErrInvalidLengthSilence
-				}
-			}
-			return iNdEx, nil
+			depth++
 		case 4:
-			return iNdEx, nil
+			if depth == 0 {
+				return 0, ErrUnexpectedEndOfGroupSilence
+			}
+			depth--
 		case 5:
 			iNdEx += 4
-			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
+		if iNdEx < 0 {
+			return 0, ErrInvalidLengthSilence
+		}
+		if depth == 0 {
+			return iNdEx, nil
+		}
 	}
-	panic("unreachable")
+	return 0, io.ErrUnexpectedEOF
 }
 
 var (
-	ErrInvalidLengthSilence = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowSilence   = fmt.Errorf("proto: integer overflow")
+	ErrInvalidLengthSilence        = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowSilence          = fmt.Errorf("proto: integer overflow")
+	ErrUnexpectedEndOfGroupSilence = fmt.Errorf("proto: unexpected end of group")
 )

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,7 +29,7 @@ import (
 // Supported storage engines
 const (
 	StorageEngineChunks = "chunks"
-	StorageEngineTSDB   = "tsdb"
+	StorageEngineBlocks = "blocks"
 )
 
 type indexStoreFactories struct {
@@ -91,18 +92,21 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Swift.RegisterFlags(f)
 	cfg.GrpcConfig.RegisterFlags(f)
 
-	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or tsdb. Be aware tsdb is experimental and shouldn't be used in production.")
+	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or blocks. Be aware that blocks storage is experimental and shouldn't be used in production.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 }
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineTSDB {
+	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineBlocks {
 		return errors.New("unsupported storage engine")
 	}
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")
+	}
+	if err := cfg.GCPStorageConfig.Validate(util.Logger); err != nil {
+		return errors.Wrap(err, "invalid GCP Storage Storage config")
 	}
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
@@ -114,22 +118,30 @@ func (cfg *Config) Validate() error {
 }
 
 // NewStore makes the storage clients based on the configuration.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, reg prometheus.Registerer, cacheGenNumLoader chunk.CacheGenNumLoader) (chunk.Store, error) {
+func NewStore(
+	cfg Config,
+	storeCfg chunk.StoreConfig,
+	schemaCfg chunk.SchemaConfig,
+	limits StoreLimits,
+	reg prometheus.Registerer,
+	cacheGenNumLoader chunk.CacheGenNumLoader,
+	logger log.Logger,
+) (chunk.Store, error) {
 	chunkMetrics := newChunkClientMetrics(reg)
 
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, reg, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, reg, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
-	chunksCache, err := cache.New(chunkCacheCfg)
+	chunksCache, err := cache.New(chunkCacheCfg, reg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -153,17 +165,24 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	stores := chunk.NewCompositeStore(cacheGenNumLoader)
 
 	for _, s := range schemaCfg.Configs {
-		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg)
+		indexClientReg := prometheus.WrapRegistererWith(
+			prometheus.Labels{"component": "index-store-" + s.From.String()}, reg)
+
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg, indexClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
-		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits)
+		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits, logger)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {
 			objectStoreType = s.IndexType
 		}
-		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg)
+
+		chunkClientReg := prometheus.WrapRegistererWith(
+			prometheus.Labels{"component": "chunk-store-" + s.From.String()}, reg)
+
+		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, chunkClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating object client")
 		}
@@ -180,7 +199,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
+func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.IndexClient, error) {
 	if indexClientFactory, ok := customIndexStores[name]; ok {
 		if indexClientFactory.indexClientFactoryFunc != nil {
 			return indexClientFactory.indexClientFactoryFunc()
@@ -199,7 +218,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case "gcp":
 		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable":
@@ -208,7 +227,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		cfg.GCPStorageConfig.DistributeKeys = true
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":
-		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
+		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case "boltdb":
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	case "grpc-store":
@@ -219,7 +238,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
+func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.Client, error) {
 	switch name {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
@@ -233,7 +252,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case "azure":
 		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim))
 	case "gcp":
@@ -245,7 +264,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	case "swift":
 		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim))
 	case "cassandra":
-		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg)
+		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case "filesystem":
 		store, err := local.NewFSObjectClient(cfg.FSConfig)
 		if err != nil {
@@ -267,7 +286,7 @@ func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client,
 }
 
 // NewTableClient makes a new table client based on the configuration.
-func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
+func NewTableClient(name string, cfg Config, registerer prometheus.Registerer) (chunk.TableClient, error) {
 	if indexClientFactory, ok := customIndexStores[name]; ok {
 		if indexClientFactory.tableClientFactoryFunc != nil {
 			return indexClientFactory.tableClientFactoryFunc()
@@ -285,11 +304,11 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig)
+		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
 	case "gcp", "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case "cassandra":
-		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig)
+		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
 	case "boltdb":
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case "grpc-store":

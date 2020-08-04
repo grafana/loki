@@ -390,6 +390,10 @@ func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject,
 	return storageObjects, []StorageCommonPrefix{}, nil
 }
 
+func (m *MockStorage) PathSeparator() string {
+	return DirDelim
+}
+
 type mockWriteBatch struct {
 	inserts []struct {
 		tableName, hashValue string

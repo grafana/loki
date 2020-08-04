@@ -1,7 +1,6 @@
 package targets
 
 import (
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -50,8 +49,8 @@ func NewTargetManagers(
 	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
 
 	if targetConfig.Stdin {
-		level.Debug(util.Logger).Log("msg", "configured to read from stdin")
-		stdin, err := stdin.NewStdinTargetManager(app, client, scrapeConfigs)
+		level.Debug(logger).Log("msg", "configured to read from stdin")
+		stdin, err := stdin.NewStdinTargetManager(logger, app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +58,7 @@ func NewTargetManagers(
 		return &TargetManagers{targetManagers: targetManagers}, nil
 	}
 
-	positions, err := positions.New(util.Logger, positionsConfig)
+	positions, err := positions.New(logger, positionsConfig)
 	if err != nil {
 		return nil, err
 	}

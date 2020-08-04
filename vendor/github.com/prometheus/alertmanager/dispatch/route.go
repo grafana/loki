@@ -70,9 +70,12 @@ func NewRoute(cr *config.Route, parent *Route) *Route {
 		for _, ln := range cr.GroupBy {
 			opts.GroupBy[ln] = struct{}{}
 		}
+		opts.GroupByAll = false
+	} else {
+		if cr.GroupByAll {
+			opts.GroupByAll = cr.GroupByAll
+		}
 	}
-
-	opts.GroupByAll = cr.GroupByAll
 
 	if cr.GroupWait != nil {
 		opts.GroupWait = time.Duration(*cr.GroupWait)
@@ -153,6 +156,17 @@ func (r *Route) Key() string {
 	}
 	b.WriteString(r.Matchers.String())
 	return b.String()
+}
+
+// Walk traverses the route tree in depth-first order.
+func (r *Route) Walk(visit func(*Route)) {
+	visit(r)
+	if r.Routes == nil {
+		return
+	}
+	for i := range r.Routes {
+		r.Routes[i].Walk(visit)
+	}
 }
 
 // RouteOpts holds various routing options necessary for processing alerts

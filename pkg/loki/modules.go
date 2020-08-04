@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
-	"sort"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
@@ -22,7 +24,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -34,7 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -100,6 +101,12 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 		t.cfg.RuntimeConfig.LoadPath = t.cfg.LimitsConfig.PerTenantOverrideConfig
 		t.cfg.RuntimeConfig.ReloadPeriod = t.cfg.LimitsConfig.PerTenantOverridePeriod
 	}
+
+	if t.cfg.RuntimeConfig.LoadPath == "" {
+		// no need to initialize module if load path is empty
+		return nil, nil
+	}
+
 	t.cfg.RuntimeConfig.Loader = loadRuntimeConfig
 
 	// make sure to set default limits before we start loading configuration into memory
@@ -178,8 +185,8 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
 
 	// We want ingester to also query the store when using boltdb-shipper
-	pc := activePeriodConfig(t.cfg.SchemaConfig)
-	if pc.IndexType == local.BoltDBShipperType {
+	pc := t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)]
+	if pc.IndexType == shipper.BoltDBShipperType {
 		t.cfg.Ingester.QueryStore = true
 		mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
 		if err != nil {
@@ -223,7 +230,9 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config)
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
+
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +240,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
+	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -240,18 +249,25 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
-	if activePeriodConfig(t.cfg.SchemaConfig).IndexType == local.BoltDBShipperType {
+	if t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)].IndexType == shipper.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
 			// We do not want ingester to unnecessarily keep downloading files
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeWriteOnly
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
 		case Querier:
 			// We do not want query to do any updates to index
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadOnly
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
-			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadWrite
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadWrite
 		}
+	}
+
+	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
+	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
+	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
+		t.cfg.ChunkStoreConfig.DisableIndexDeduplication = true
+		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
 	}
 
 	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
@@ -267,7 +283,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
-	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
+	t.frontend, err = frontend.New(t.cfg.Frontend.Config, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -279,7 +295,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		t.cfg.QueryRange,
 		util.Logger,
 		t.overrides,
-		t.cfg.SchemaConfig,
+		t.cfg.SchemaConfig.SchemaConfig,
 		t.cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
 	)
@@ -297,6 +313,21 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		serverutil.NewPrepopulateMiddleware(),
 	).Wrap(t.frontend.Handler())
 
+	var defaultHandler http.Handler
+	if t.cfg.Frontend.TailProxyUrl != "" {
+		httpMiddleware := middleware.Merge(
+			t.httpAuthMiddleware,
+			queryrange.StatsHTTPMiddleware,
+		)
+		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyUrl)
+		if err != nil {
+			return nil, err
+		}
+		tp := httputil.NewSingleHostReverseProxy(tailURL)
+		defaultHandler = httpMiddleware.Wrap(tp)
+	} else {
+		defaultHandler = frontendHandler
+	}
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
@@ -308,7 +339,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
 	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
 	// fallback route
-	t.server.HTTP.PathPrefix("/").Handler(frontendHandler)
+	t.server.HTTP.PathPrefix("/").Handler(defaultHandler)
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
@@ -329,25 +360,12 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	return t.memberlistKV, nil
 }
 
-// activePeriodConfig type returns index type which would be applicable to logs that would be pushed starting now
-// Note: Another periodic config can be applicable in future which can change index type
-func activePeriodConfig(cfg chunk.SchemaConfig) chunk.PeriodConfig {
-	now := model.Now()
-	i := sort.Search(len(cfg.Configs), func(i int) bool {
-		return cfg.Configs[i].From.Time > now
-	})
-	if i > 0 {
-		i--
-	}
-	return cfg.Configs[i]
-}
-
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge time.Duration) (time.Duration, error) {
-	if pc.ObjectType != local.FilesystemObjectStoreType && maxLookBackConfig.Nanoseconds() != 0 {
+	if pc.ObjectType != shipper.FilesystemObjectStoreType && maxLookBackConfig.Nanoseconds() != 0 {
 		return 0, errors.New("it is an error to specify a non zero `query_store_max_look_back_period` value when using any object store other than `filesystem`")
 	}
 	// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
-	defaultMaxLookBack := maxChunkAge + local.ShipperFileUploadInterval + (15 * time.Minute)
+	defaultMaxLookBack := maxChunkAge + shipper.UploadInterval + (15 * time.Minute)
 
 	if maxLookBackConfig == 0 {
 		// If the QueryStoreMaxLookBackPeriod is still it's default value of 0, set it to the default calculated value.

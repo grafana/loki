@@ -71,9 +71,9 @@ type Config struct {
 
 	RateUpdatePeriod time.Duration `yaml:"rate_update_period"`
 
-	// Use tsdb block storage
-	TSDBEnabled bool        `yaml:"-"`
-	TSDBConfig  tsdb.Config `yaml:"-"`
+	// Use blocks storage.
+	BlocksStorageEnabled bool                     `yaml:"-"`
+	BlocksStorageConfig  tsdb.BlocksStorageConfig `yaml:"-"`
 
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
@@ -158,7 +158,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
-	if cfg.TSDBEnabled {
+	if cfg.BlocksStorageEnabled {
 		return NewV2(cfg, clientConfig, limits, registerer)
 	}
 
@@ -262,19 +262,17 @@ func (i *Ingester) startFlushLoops() {
 // Compared to the 'New' method:
 //   * Always replays the WAL.
 //   * Does not start the lifecycler.
-//   * No ingester v2.
-func NewForFlusher(cfg Config, clientConfig client.Config, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
-	if cfg.ingesterClientFactory == nil {
-		cfg.ingesterClientFactory = client.MakeIngesterClient
+func NewForFlusher(cfg Config, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+	if cfg.BlocksStorageEnabled {
+		return NewV2ForFlusher(cfg, registerer)
 	}
 
 	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true),
-		chunkStore:   chunkStore,
-		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		wal:          &noopWAL{},
+		cfg:         cfg,
+		metrics:     newIngesterMetrics(registerer, true),
+		chunkStore:  chunkStore,
+		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		wal:         &noopWAL{},
 	}
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
@@ -381,7 +379,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 		return nil, err
 	}
 
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2Push(ctx, req)
 	}
 
@@ -621,7 +619,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return nil, err
 	}
 
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2Query(ctx, req)
 	}
 
@@ -688,7 +686,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2QueryStream(req, stream)
 	}
 
@@ -769,7 +767,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 		return nil, err
 	}
 
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2LabelValues(ctx, req)
 	}
 
@@ -794,7 +792,7 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 		return nil, err
 	}
 
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2LabelNames(ctx, req)
 	}
 
@@ -819,7 +817,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 		return nil, err
 	}
 
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2MetricsForLabelMatchers(ctx, req)
 	}
 
@@ -889,7 +887,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return nil, err
 	}
 
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2UserStats(ctx, req)
 	}
 
@@ -918,7 +916,7 @@ func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsReques
 		return nil, err
 	}
 
-	if i.cfg.TSDBEnabled {
+	if i.cfg.BlocksStorageEnabled {
 		return i.v2AllUserStats(ctx, req)
 	}
 

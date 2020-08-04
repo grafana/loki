@@ -46,6 +46,18 @@ message LokiSeriesResponse {
   uint32 version = 3;
 }
 
+message LokiLabelNamesRequest {
+  google.protobuf.Timestamp startTs = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp endTs = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  string path = 3;
+}
+
+message LokiLabelNamesResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
+  uint32 version = 3;
+}
+
 message LokiData {
   string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
   repeated logproto.StreamAdapter Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result", (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.Stream"];

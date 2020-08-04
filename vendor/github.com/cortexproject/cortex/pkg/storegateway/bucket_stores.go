@@ -29,12 +29,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // BucketStores is a multi-tenant wrapper of Thanos BucketStore.
 type BucketStores struct {
 	logger             log.Logger
-	cfg                tsdb.Config
+	cfg                tsdb.BlocksStorageConfig
+	limits             *validation.Overrides
 	bucket             objstore.Bucket
 	logLevel           logging.Level
 	bucketStoreMetrics *BucketStoreMetrics
@@ -57,7 +59,7 @@ type BucketStores struct {
 }
 
 // NewBucketStores makes a new BucketStores.
-func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClient objstore.Bucket, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
+func NewBucketStores(cfg tsdb.BlocksStorageConfig, filters []block.MetadataFilter, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
 	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, bucketClient, logger, reg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create caching bucket")
@@ -74,6 +76,7 @@ func NewBucketStores(cfg tsdb.Config, filters []block.MetadataFilter, bucketClie
 	u := &BucketStores{
 		logger:             logger,
 		cfg:                cfg,
+		limits:             limits,
 		bucket:             cachingBucket,
 		filters:            filters,
 		stores:             map[string]*store.BucketStore{},
@@ -283,7 +286,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.indexCache,
 		u.queryGate,
 		u.cfg.BucketStore.MaxChunkPoolBytes,
-		u.cfg.BucketStore.MaxSampleCount,
+		newChunksLimiterFactory(u.limits, userID),
 		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
@@ -352,4 +355,12 @@ type spanSeriesServer struct {
 
 func (s spanSeriesServer) Context() context.Context {
 	return s.ctx
+}
+
+func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.ChunksLimiterFactory {
+	return func(failedCounter prometheus.Counter) store.ChunksLimiter {
+		// Since limit overrides could be live reloaded, we have to get the current user's limit
+		// each time a new limiter is instantiated.
+		return store.NewLimiter(uint64(limits.MaxChunksPerQuery(userID)), failedCounter)
+	}
 }

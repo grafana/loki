@@ -6,7 +6,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -207,7 +206,7 @@ func (it *blockQuerierSeriesIterator) Err() error {
 
 	err := it.iterators[it.i].Err()
 	if err != nil {
-		return promql.ErrStorage{Err: errors.Wrapf(err, "cannot iterate chunk for series: %v", it.labels)}
+		return errors.Wrapf(err, "cannot iterate chunk for series: %v", it.labels)
 	}
 	return nil
 }

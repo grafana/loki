@@ -67,7 +67,7 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 			http.Error(w, lastErr.Error(), http.StatusBadRequest)
 			return
 		}
-
+		w.Header().Add("Content-Type", "application/x-protobuf")
 		if err := util.SerializeProtoResponse(w, &resp, compressionType); err != nil {
 			level.Error(logger).Log("msg", "error sending remote read response", "err", err)
 		}

@@ -83,8 +83,9 @@ type Shipper struct {
 	allowOutOfOrderUploads bool
 }
 
-// New creates a new shipper that detects new TSDB blocks in dir and uploads them
-// to remote if necessary. It attaches the Thanos metadata section in each meta JSON file.
+// New creates a new shipper that detects new TSDB blocks in dir and uploads them to
+// remote if necessary. It attaches the Thanos metadata section in each meta JSON file.
+// If uploadCompacted is enabled, it also uploads compacted blocks which are already in filesystem.
 func New(
 	logger log.Logger,
 	r prometheus.Registerer,
@@ -92,6 +93,7 @@ func New(
 	bucket objstore.Bucket,
 	lbls func() labels.Labels,
 	source metadata.SourceType,
+	uploadCompacted bool,
 	allowOutOfOrderUploads bool,
 ) *Shipper {
 	if logger == nil {
@@ -106,40 +108,10 @@ func New(
 		dir:                    dir,
 		bucket:                 bucket,
 		labels:                 lbls,
-		metrics:                newMetrics(r, false),
+		metrics:                newMetrics(r, uploadCompacted),
 		source:                 source,
 		allowOutOfOrderUploads: allowOutOfOrderUploads,
-	}
-}
-
-// NewWithCompacted creates a new shipper that detects new TSDB blocks in dir and uploads them
-// to remote if necessary, including compacted blocks which are already in filesystem.
-// It attaches the Thanos metadata section in each meta JSON file.
-func NewWithCompacted(
-	logger log.Logger,
-	r prometheus.Registerer,
-	dir string,
-	bucket objstore.Bucket,
-	lbls func() labels.Labels,
-	source metadata.SourceType,
-	allowOutOfOrderUploads bool,
-) *Shipper {
-	if logger == nil {
-		logger = log.NewNopLogger()
-	}
-	if lbls == nil {
-		lbls = func() labels.Labels { return nil }
-	}
-
-	return &Shipper{
-		logger:                 logger,
-		dir:                    dir,
-		bucket:                 bucket,
-		labels:                 lbls,
-		metrics:                newMetrics(r, true),
-		source:                 source,
-		uploadCompacted:        true,
-		allowOutOfOrderUploads: allowOutOfOrderUploads,
+		uploadCompacted:        uploadCompacted,
 	}
 }
 

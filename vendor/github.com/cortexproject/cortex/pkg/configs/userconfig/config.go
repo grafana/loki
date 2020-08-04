@@ -7,16 +7,16 @@ import (
 
 	"github.com/pkg/errors"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 
 	legacy_promql "github.com/cortexproject/cortex/pkg/configs/legacy_promql"
-	legacy_rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -247,7 +247,7 @@ func (c RulesConfig) Parse() (map[string][]rules.Rule, error) {
 
 // ParseFormatted returns the rulefmt map of a users rules configs. It allows
 // for rules to be mapped to disk and read by the prometheus rules manager.
-func (c RulesConfig) ParseFormatted() (map[string]legacy_rulefmt.RuleGroups, error) {
+func (c RulesConfig) ParseFormatted() (map[string]rulefmt.RuleGroups, error) {
 	switch c.FormatVersion {
 	case RuleFormatV1:
 		return c.parseV1Formatted()
@@ -260,11 +260,11 @@ func (c RulesConfig) ParseFormatted() (map[string]legacy_rulefmt.RuleGroups, err
 
 // parseV2 parses and validates the content of the rule files in a RulesConfig
 // according to the Prometheus 2.x rule format.
-func (c RulesConfig) parseV2Formatted() (map[string]legacy_rulefmt.RuleGroups, error) {
-	ruleMap := map[string]legacy_rulefmt.RuleGroups{}
+func (c RulesConfig) parseV2Formatted() (map[string]rulefmt.RuleGroups, error) {
+	ruleMap := map[string]rulefmt.RuleGroups{}
 
 	for fn, content := range c.Files {
-		rgs, errs := legacy_rulefmt.Parse([]byte(content))
+		rgs, errs := rulefmt.Parse([]byte(content))
 		for _, err := range errs { // return just the first error, if any
 			return nil, err
 		}
@@ -276,17 +276,17 @@ func (c RulesConfig) parseV2Formatted() (map[string]legacy_rulefmt.RuleGroups, e
 
 // parseV1 parses and validates the content of the rule files in a RulesConfig
 // according to the Prometheus 1.x rule format.
-func (c RulesConfig) parseV1Formatted() (map[string]legacy_rulefmt.RuleGroups, error) {
-	result := map[string]legacy_rulefmt.RuleGroups{}
+func (c RulesConfig) parseV1Formatted() (map[string]rulefmt.RuleGroups, error) {
+	result := map[string]rulefmt.RuleGroups{}
 	for fn, content := range c.Files {
 		stmts, err := legacy_promql.ParseStmts(content)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
 		}
 
-		ra := []legacy_rulefmt.Rule{}
+		ra := []rulefmt.RuleNode{}
 		for _, stmt := range stmts {
-			var rule legacy_rulefmt.Rule
+			var rule rulefmt.RuleNode
 			switch r := stmt.(type) {
 			case *legacy_promql.AlertStmt:
 				_, err := parser.ParseExpr(r.Expr.String())
@@ -294,9 +294,9 @@ func (c RulesConfig) parseV1Formatted() (map[string]legacy_rulefmt.RuleGroups, e
 					return nil, err
 				}
 
-				rule = legacy_rulefmt.Rule{
-					Alert:       r.Name,
-					Expr:        r.Expr.String(),
+				rule = rulefmt.RuleNode{
+					Alert:       yaml.Node{Value: r.Name},
+					Expr:        yaml.Node{Value: r.Expr.String()},
 					For:         model.Duration(r.Duration),
 					Labels:      r.Labels.Map(),
 					Annotations: r.Annotations.Map(),
@@ -308,9 +308,9 @@ func (c RulesConfig) parseV1Formatted() (map[string]legacy_rulefmt.RuleGroups, e
 					return nil, err
 				}
 
-				rule = legacy_rulefmt.Rule{
-					Record: r.Name,
-					Expr:   r.Expr.String(),
+				rule = rulefmt.RuleNode{
+					Record: yaml.Node{Value: r.Name},
+					Expr:   yaml.Node{Value: r.Expr.String()},
 					Labels: r.Labels.Map(),
 				}
 
@@ -319,8 +319,8 @@ func (c RulesConfig) parseV1Formatted() (map[string]legacy_rulefmt.RuleGroups, e
 			}
 			ra = append(ra, rule)
 		}
-		result[fn] = legacy_rulefmt.RuleGroups{
-			Groups: []legacy_rulefmt.RuleGroup{
+		result[fn] = rulefmt.RuleGroups{
+			Groups: []rulefmt.RuleGroup{
 				{
 					Name:  "rg:" + fn,
 					Rules: ra,
@@ -348,7 +348,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 	groups := map[string][]rules.Rule{}
 
 	for fn, content := range c.Files {
-		rgs, errs := legacy_rulefmt.Parse([]byte(content))
+		rgs, errs := rulefmt.Parse([]byte(content))
 		if len(errs) > 0 {
 			return nil, fmt.Errorf("error parsing %s: %v", fn, errs[0])
 		}
@@ -356,26 +356,26 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 		for _, rg := range rgs.Groups {
 			rls := make([]rules.Rule, 0, len(rg.Rules))
 			for _, rl := range rg.Rules {
-				expr, err := parser.ParseExpr(rl.Expr)
+				expr, err := parser.ParseExpr(rl.Expr.Value)
 				if err != nil {
 					return nil, err
 				}
 
-				if rl.Alert != "" {
+				if rl.Alert.Value != "" {
 					rls = append(rls, rules.NewAlertingRule(
-						rl.Alert,
+						rl.Alert.Value,
 						expr,
 						time.Duration(rl.For),
 						labels.FromMap(rl.Labels),
 						labels.FromMap(rl.Annotations),
 						nil,
 						true,
-						log.With(util.Logger, "alert", rl.Alert),
+						log.With(util.Logger, "alert", rl.Alert.Value),
 					))
 					continue
 				}
 				rls = append(rls, rules.NewRecordingRule(
-					rl.Record,
+					rl.Record.Value,
 					expr,
 					labels.FromMap(rl.Labels),
 				))

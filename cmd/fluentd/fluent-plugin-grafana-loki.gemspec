@@ -4,7 +4,7 @@ $LOAD_PATH.push File.expand_path('lib', __dir__)
 
 Gem::Specification.new do |spec|
   spec.name    = 'fluent-plugin-grafana-loki'
-  spec.version = '1.2.13'
+  spec.version = '1.2.14'
   spec.authors = %w[woodsaj briangann cyriltovena]
   spec.email   = ['awoods@grafana.com', 'brian@grafana.com', 'cyril.tovena@grafana.com']
 
@@ -25,7 +25,7 @@ Gem::Specification.new do |spec|
   # spec.test_files    = test_files
   # spec.require_paths = ['lib']
 
-  spec.add_dependency 'fluentd', '1.9.3'
+  spec.add_dependency 'fluentd', ['>=1.9.3', '< 2']
 
   spec.add_development_dependency 'bundler'
   spec.add_development_dependency 'rake', '~> 12.0'

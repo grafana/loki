@@ -48,7 +48,7 @@ message Silence {
   google.protobuf.Timestamp starts_at = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp ends_at = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
 
-  // The last motification made to the silence.
+  // The last notification made to the silence.
   google.protobuf.Timestamp updated_at = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
 
   // DEPRECATED: A set of comments made on the silence.

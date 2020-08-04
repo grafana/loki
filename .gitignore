@@ -23,3 +23,5 @@ dlv
 rootfs/
 dist
 coverage.txt
+.DS_Store
+.aws-sam

@@ -187,7 +187,7 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return [][]Chunk{}, []*Fetcher{}, nil
 	}
 
-	return [][]Chunk{chunks}, []*Fetcher{c.baseStore.Fetcher}, nil
+	return [][]Chunk{chunks}, []*Fetcher{c.baseStore.fetcher}, nil
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
@@ -251,7 +251,7 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 	chunksPerQuery.Observe(float64(len(filtered)))
 
 	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	allChunks, err := c.fetcher.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
@@ -424,7 +424,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+	found, _, _ := c.fetcher.cache.Fetch(ctx, []string{chunk.ExternalKey()})
 	if len(found) > 0 {
 		writeChunk = false
 		dedupedChunksTotal.Inc()
@@ -444,7 +444,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 		return err
 	}
 
-	if oic, ok := c.storage.(ObjectAndIndexClient); ok {
+	if oic, ok := c.fetcher.storage.(ObjectAndIndexClient); ok {
 		chunks := chunks
 		if !writeChunk {
 			chunks = []Chunk{}
@@ -455,7 +455,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	} else {
 		// chunk not found, write it.
 		if writeChunk {
-			err := c.storage.PutChunks(ctx, chunks)
+			err := c.fetcher.storage.PutChunks(ctx, chunks)
 			if err != nil {
 				return err
 			}
@@ -467,7 +467,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 
 	// we already have the chunk in the cache so don't write it back to the cache.
 	if writeChunk {
-		if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
+		if cacheErr := c.fetcher.writeBackCache(ctx, chunks); cacheErr != nil {
 			level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 		}
 	}

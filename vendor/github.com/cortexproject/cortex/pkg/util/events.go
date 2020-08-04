@@ -2,9 +2,9 @@ package util
 
 import (
 	"os"
-	"sync/atomic"
 
 	"github.com/go-kit/kit/log"
+	"go.uber.org/atomic"
 )
 
 // Provide an "event" interface for observability
@@ -43,11 +43,11 @@ func newEventLogger(freq int) log.Logger {
 type samplingFilter struct {
 	next  log.Logger
 	freq  int
-	count int64
+	count atomic.Int64
 }
 
 func (e *samplingFilter) Log(keyvals ...interface{}) error {
-	count := atomic.AddInt64(&e.count, 1)
+	count := e.count.Inc()
 	if count%int64(e.freq) == 0 {
 		return e.next.Log(keyvals...)
 	}

@@ -12,8 +12,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gorilla/websocket"
 	json "github.com/json-iterator/go"
 	"github.com/pkg/errors"
@@ -56,6 +58,9 @@ type Reader struct {
 	sValue       string
 	lName        string
 	lVal         string
+	backoff      *util.Backoff
+	nextQuery    time.Time
+	backoffMtx   sync.RWMutex
 	interval     time.Duration
 	conn         *websocket.Conn
 	w            io.Writer
@@ -82,6 +87,14 @@ func NewReader(writer io.Writer,
 		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
 	}
 
+	next := time.Now()
+	bkcfg := util.BackoffConfig{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 10 * time.Minute,
+		MaxRetries: 0,
+	}
+	bkoff := util.NewBackoff(context.Background(), bkcfg)
+
 	rd := Reader{
 		header:       h,
 		tls:          tls,
@@ -93,6 +106,8 @@ func NewReader(writer io.Writer,
 		sValue:       streamValue,
 		lName:        labelName,
 		lVal:         labelVal,
+		nextQuery:    next,
+		backoff:      bkoff,
 		interval:     interval,
 		w:            writer,
 		recv:         receivedChan,
@@ -123,7 +138,20 @@ func (r *Reader) Stop() {
 	}
 }
 
+// QueryCountOverTime will ask Loki for a count of logs over the provided range e.g. 5m
+// QueryCountOverTime blocks if a previous query has failed until the appropriate backoff time has been reached.
 func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
+	r.backoffMtx.RLock()
+	next := r.nextQuery
+	r.backoffMtx.RUnlock()
+	for time.Now().Before(next) {
+		time.Sleep(50 * time.Millisecond)
+		// Update next in case other queries have tried and failed
+		r.backoffMtx.RLock()
+		next = r.nextQuery
+		r.backoffMtx.RUnlock()
+	}
+
 	scheme := "http"
 	if r.tls {
 		scheme = "https"
@@ -159,9 +187,17 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 	}()
 
 	if resp.StatusCode/100 != 2 {
+		r.backoffMtx.Lock()
+		r.nextQuery = nextBackoff(r.w, resp.StatusCode, r.backoff)
+		r.backoffMtx.Unlock()
 		buf, _ := ioutil.ReadAll(resp.Body)
 		return 0, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
+	// No Errors, reset backoff
+	r.backoffMtx.Lock()
+	r.backoff.Reset()
+	r.backoffMtx.Unlock()
+
 	var decoded loghttp.QueryResponse
 	err = json.NewDecoder(resp.Body).Decode(&decoded)
 	if err != nil {
@@ -187,7 +223,20 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 	return ret, nil
 }
 
+// Query will ask Loki for all canary timestamps in the requested timerange.
+// Query blocks if a previous query has failed until the appropriate backoff time has been reached.
 func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
+	r.backoffMtx.RLock()
+	next := r.nextQuery
+	r.backoffMtx.RUnlock()
+	for time.Now().Before(next) {
+		time.Sleep(50 * time.Millisecond)
+		// Update next in case other queries have tried and failed moving it even farther in the future
+		r.backoffMtx.RLock()
+		next = r.nextQuery
+		r.backoffMtx.RUnlock()
+	}
+
 	scheme := "http"
 	if r.tls {
 		scheme = "https"
@@ -224,9 +273,17 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	}()
 
 	if resp.StatusCode/100 != 2 {
+		r.backoffMtx.Lock()
+		r.nextQuery = nextBackoff(r.w, resp.StatusCode, r.backoff)
+		r.backoffMtx.Unlock()
 		buf, _ := ioutil.ReadAll(resp.Body)
 		return nil, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
+	// No Errors, reset backoff
+	r.backoffMtx.Lock()
+	r.backoff.Reset()
+	r.backoffMtx.Unlock()
+
 	var decoded loghttp.QueryResponse
 	err = json.NewDecoder(resp.Body).Decode(&decoded)
 	if err != nil {
@@ -367,4 +424,16 @@ func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	}
 	t := time.Unix(0, ts)
 	return &t, nil
+}
+
+func nextBackoff(w io.Writer, statusCode int, backoff *util.Backoff) time.Time {
+	// Be way more conservative with an http 429 and wait 5 minutes before trying again.
+	var next time.Time
+	if statusCode == http.StatusTooManyRequests {
+		next = time.Now().Add(5 * time.Minute)
+	} else {
+		next = time.Now().Add(backoff.NextDelay())
+	}
+	fmt.Fprintf(w, "Loki returned an error code: %v, waiting %v before next query.", statusCode, next.Sub(time.Now()))
+	return next
 }

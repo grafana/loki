@@ -176,3 +176,7 @@ func (s *SwiftObjectClient) DeleteObject(ctx context.Context, objectKey string) 
 	}
 	return err
 }
+
+func (s *SwiftObjectClient) PathSeparator() string {
+	return string(s.delimiter)
+}

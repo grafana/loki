@@ -184,18 +184,23 @@ func mergeLabels(a []storepb.Label, b labels.Labels) []storepb.Label {
 	return res
 }
 
-type ctxRespSender struct {
+// cancelableRespSender is a response channel that does need to be exhausted on cancel.
+type cancelableRespSender struct {
 	ctx context.Context
 	ch  chan<- *storepb.SeriesResponse
 }
 
-func newRespCh(ctx context.Context, buffer int) (*ctxRespSender, <-chan *storepb.SeriesResponse, func()) {
+func newCancelableRespChannel(ctx context.Context, buffer int) (*cancelableRespSender, chan *storepb.SeriesResponse) {
 	respCh := make(chan *storepb.SeriesResponse, buffer)
-	return &ctxRespSender{ctx: ctx, ch: respCh}, respCh, func() { close(respCh) }
+	return &cancelableRespSender{ctx: ctx, ch: respCh}, respCh
 }
 
-func (s ctxRespSender) send(r *storepb.SeriesResponse) {
-	s.ch <- r
+// send or return on cancel.
+func (s cancelableRespSender) send(r *storepb.SeriesResponse) {
+	select {
+	case <-s.ctx.Done():
+	case s.ch <- r:
+	}
 }
 
 // Series returns all series for a requested time range and label matcher. Requested series are taken from other
@@ -213,15 +218,17 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 		return status.Error(codes.InvalidArgument, errors.New("no matchers specified (excluding external labels)").Error())
 	}
 
-	var (
-		g, gctx = errgroup.WithContext(srv.Context())
+	g, gctx := errgroup.WithContext(srv.Context())
 
-		// Allow to buffer max 10 series response.
-		// Each might be quite large (multi chunk long series given by sidecar).
-		respSender, respRecv, closeFn = newRespCh(gctx, 10)
-	)
+	// Allow to buffer max 10 series response.
+	// Each might be quite large (multi chunk long series given by sidecar).
+	respSender, respCh := newCancelableRespChannel(gctx, 10)
 
 	g.Go(func() error {
+		// This go routine is responsible for calling store's Series concurrently. Merged results
+		// are passed to respCh and sent concurrently to client (if buffer of 10 have room).
+		// When this go routine finishes or is canceled, respCh channel is closed.
+
 		var (
 			seriesSet      []storepb.SeriesSet
 			storeDebugMsgs []string
@@ -239,7 +246,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 
 		defer func() {
 			wg.Wait()
-			closeFn()
+			close(respCh)
 		}()
 
 		for _, st := range s.stores() {
@@ -294,6 +301,10 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 			return nil
 		}
 
+		// TODO(bwplotka): Currently we stream into big frames. Consider ensuring 1MB maximum.
+		// This however does not matter much when used with QueryAPI. Matters for federated Queries a lot.
+		// https://github.com/thanos-io/thanos/issues/2332
+		// Series are not necessarily merged across themselves.
 		mergedSet := storepb.MergeSeriesSets(seriesSet...)
 		for mergedSet.Next() {
 			var series storepb.Series
@@ -302,21 +313,25 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 		}
 		return mergedSet.Err()
 	})
-
-	for resp := range respRecv {
-		if err := srv.Send(resp); err != nil {
-			return status.Error(codes.Unknown, errors.Wrap(err, "send series response").Error())
+	g.Go(func() error {
+		// Go routine for gathering merged responses and sending them over to client. It stops when
+		// respCh channel is closed OR on error from client.
+		for resp := range respCh {
+			if err := srv.Send(resp); err != nil {
+				return status.Error(codes.Unknown, errors.Wrap(err, "send series response").Error())
+			}
 		}
-	}
-
+		return nil
+	})
 	if err := g.Wait(); err != nil {
+		// TODO(bwplotka): Replace with request logger.
 		level.Error(s.logger).Log("err", err)
 		return err
 	}
 	return nil
 }
 
-type warnSender interface {
+type directSender interface {
 	send(*storepb.SeriesResponse)
 }
 
@@ -327,7 +342,7 @@ type streamSeriesSet struct {
 	logger log.Logger
 
 	stream storepb.Store_SeriesClient
-	warnCh warnSender
+	warnCh directSender
 
 	currSeries *storepb.Series
 	recvCh     chan *storepb.Series
@@ -363,7 +378,7 @@ func startStreamSeriesSet(
 	closeSeries context.CancelFunc,
 	wg *sync.WaitGroup,
 	stream storepb.Store_SeriesClient,
-	warnCh warnSender,
+	warnCh directSender,
 	name string,
 	partialResponse bool,
 	responseTimeout time.Duration,

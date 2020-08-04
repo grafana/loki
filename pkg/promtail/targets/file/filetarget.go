@@ -60,10 +60,16 @@ type Config struct {
 	Stdin      bool          `yaml:"stdin"`
 }
 
+// RegisterFlags with prefix registers flags where every name is prefixed by
+// prefix. If prefix is a non-empty string, prefix should end with a period.
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.DurationVar(&cfg.SyncPeriod, prefix+"target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
+	f.BoolVar(&cfg.Stdin, prefix+"stdin", false, "Set to true to pipe logs to promtail.")
+}
+
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
-	flags.DurationVar(&cfg.SyncPeriod, "target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
-	flags.BoolVar(&cfg.Stdin, "stdin", false, "Set to true to pipe logs to promtail.")
+	cfg.RegisterFlagsWithPrefix("", flags)
 }
 
 // FileTarget describes a particular set of logs.

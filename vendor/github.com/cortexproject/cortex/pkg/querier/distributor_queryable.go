@@ -5,9 +5,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
@@ -31,44 +31,46 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streaming bool, iteratorFn chunkIteratorFunc, queryIngesterWithin time.Duration) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streaming bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration) QueryableWithFilter {
 	return distributorQueryable{
-		distributor:         distributor,
-		streaming:           streaming,
-		iteratorFn:          iteratorFn,
-		queryIngesterWithin: queryIngesterWithin,
+		distributor:          distributor,
+		streaming:            streaming,
+		iteratorFn:           iteratorFn,
+		queryIngestersWithin: queryIngestersWithin,
 	}
 }
 
 type distributorQueryable struct {
-	distributor         Distributor
-	streaming           bool
-	iteratorFn          chunkIteratorFunc
-	queryIngesterWithin time.Duration
+	distributor          Distributor
+	streaming            bool
+	iteratorFn           chunkIteratorFunc
+	queryIngestersWithin time.Duration
 }
 
 func (d distributorQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	return &distributorQuerier{
-		distributor: d.distributor,
-		ctx:         ctx,
-		mint:        mint,
-		maxt:        maxt,
-		streaming:   d.streaming,
-		chunkIterFn: d.iteratorFn,
+		distributor:          d.distributor,
+		ctx:                  ctx,
+		mint:                 mint,
+		maxt:                 maxt,
+		streaming:            d.streaming,
+		chunkIterFn:          d.iteratorFn,
+		queryIngestersWithin: d.queryIngestersWithin,
 	}, nil
 }
 
 func (d distributorQueryable) UseQueryable(now time.Time, _, queryMaxT int64) bool {
 	// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
-	return d.queryIngesterWithin == 0 || queryMaxT >= util.TimeToMillis(now.Add(-d.queryIngesterWithin))
+	return d.queryIngestersWithin == 0 || queryMaxT >= util.TimeToMillis(now.Add(-d.queryIngestersWithin))
 }
 
 type distributorQuerier struct {
-	distributor Distributor
-	ctx         context.Context
-	mint, maxt  int64
-	streaming   bool
-	chunkIterFn chunkIteratorFunc
+	distributor          Distributor
+	ctx                  context.Context
+	mint, maxt           int64
+	streaming            bool
+	chunkIterFn          chunkIteratorFunc
+	queryIngestersWithin time.Duration
 }
 
 // Select implements storage.Querier interface.
@@ -77,42 +79,62 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.Select")
 	defer log.Span.Finish()
 
+	minT, maxT := q.mint, q.maxt
+	if sp != nil {
+		minT, maxT = sp.Start, sp.End
+	}
+
+	// If queryIngestersWithin is enabled, we do manipulate the query mint to query samples up until
+	// now - queryIngestersWithin, because older time ranges are covered by the storage. This
+	// optimization is particularly important for the blocks storage where the blocks retention in the
+	// ingesters could be way higher than queryIngestersWithin.
+	if q.queryIngestersWithin > 0 {
+		now := time.Now()
+		origMinT := minT
+		minT = util.Max64(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
+
+		if origMinT != minT {
+			level.Debug(log).Log("msg", "the min time of the query to ingesters has been manipulated", "original", origMinT, "updated", minT)
+		}
+
+		if minT > maxT {
+			level.Debug(log).Log("msg", "empty query time range after min time manipulation")
+			return storage.EmptySeriesSet()
+		}
+	}
+
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata.
 	if sp == nil {
-		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), matchers...)
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
 		return series.MetricsToSeriesSet(ms)
 	}
 
-	mint, maxt := sp.Start, sp.End
-
 	if q.streaming {
-		return q.streamingSelect(*sp, matchers)
+		return q.streamingSelect(minT, maxT, matchers)
 	}
 
-	matrix, err := q.distributor.Query(ctx, model.Time(mint), model.Time(maxt), matchers...)
+	matrix, err := q.distributor.Query(ctx, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
-		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(err)
 	}
 
 	// Using MatrixToSeriesSet (and in turn NewConcreteSeriesSet), sorts the series.
 	return series.MatrixToSeriesSet(matrix)
 }
 
-func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []*labels.Matcher) storage.SeriesSet {
+func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
-		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(err)
 	}
 
-	mint, maxt := sp.Start, sp.End
-
-	results, err := q.distributor.QueryStream(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
+	results, err := q.distributor.QueryStream(q.ctx, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
-		return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+		return storage.ErrSeriesSet(err)
 	}
 
 	if len(results.Timeseries) != 0 {
@@ -131,7 +153,7 @@ func (q *distributorQuerier) streamingSelect(sp storage.SelectHints, matchers []
 
 		chunks, err := chunkcompat.FromChunks(userID, ls, result.Chunks)
 		if err != nil {
-			return storage.ErrSeriesSet(promql.ErrStorage{Err: err})
+			return storage.ErrSeriesSet(err)
 		}
 
 		series := &chunkSeries{

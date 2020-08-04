@@ -44,7 +44,7 @@ type IndexCacheConfig struct {
 }
 
 func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix(f, "experimental.tsdb.bucket-store.index-cache.")
+	cfg.RegisterFlagsWithPrefix(f, "experimental.blocks-storage.bucket-store.index-cache.")
 }
 
 func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {

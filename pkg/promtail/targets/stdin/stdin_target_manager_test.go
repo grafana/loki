@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -90,7 +91,7 @@ func Test_newReaderTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			recorder := &clientRecorder{}
-			got, err := newReaderTarget(tt.in, recorder, tt.cfg)
+			got, err := newReaderTarget(util.Logger, tt.in, recorder, tt.cfg)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("newReaderTarget() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -129,7 +130,7 @@ func Test_Shutdown(t *testing.T) {
 	stdIn = newFakeStin("line")
 	appMock := &mockShutdownable{called: make(chan bool, 1)}
 	recorder := &clientRecorder{}
-	manager, err := NewStdinTargetManager(appMock, recorder, []scrapeconfig.Config{{}})
+	manager, err := NewStdinTargetManager(util.Logger, appMock, recorder, []scrapeconfig.Config{{}})
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 	called := <-appMock.called
@@ -140,12 +141,12 @@ func Test_Shutdown(t *testing.T) {
 func Test_StdinConfigs(t *testing.T) {
 
 	// should take the first config
-	require.Equal(t, scrapeconfig.DefaultScrapeConfig, getStdinConfig([]scrapeconfig.Config{
+	require.Equal(t, scrapeconfig.DefaultScrapeConfig, getStdinConfig(util.Logger, []scrapeconfig.Config{
 		scrapeconfig.DefaultScrapeConfig,
 		{},
 	}))
 	// or use the default if none if provided
-	require.Equal(t, defaultStdInCfg, getStdinConfig([]scrapeconfig.Config{}))
+	require.Equal(t, defaultStdInCfg, getStdinConfig(util.Logger, []scrapeconfig.Config{}))
 }
 
 var stagesConfig = `

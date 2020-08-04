@@ -49,6 +49,15 @@ pipeline_stages:
       replace: '{{ if eq .Value "200" }}{{ Replace .Value "200" "HttpStatusOk" -1 }}{{ else }}{{ .Value | ToUpper }}{{ end }}'
 `
 
+var testReplaceYamlWithEmptyReplace = `
+---
+pipeline_stages:
+  -
+    replace:
+      expression: "11.11.11.11 - (\\S+\\s)"
+      replace: ''
+`
+
 var testReplaceLogLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
 var testReplaceLogJSONLine = `{"time":"2019-01-01T01:00:00.000000001Z", "level": "info", "msg": "11.11.11.11 - \"POST /loki/api/push/ HTTP/1.1\" 200 932 \"-\" \"Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6\""}`
 
@@ -99,6 +108,12 @@ func TestPipeline_Replace(t *testing.T) {
 			map[string]interface{}{},
 			`11.11.11.11 - FRANK [25/JAN/2000:14:00:01 -0500] "GET /1986.JS HTTP/1.1" HttpStatusOk 932 "-" "MOZILLA/5.0 (WINDOWS; U; WINDOWS NT 5.1; DE; RV:1.9.1.7) GECKO/20091221 FIREFOX/3.5.7 GTB6"`,
 		},
+        "successfully run a pipeline with empty replace value": {
+            testReplaceYamlWithEmptyReplace,
+            testReplaceLogLine,
+            map[string]interface{}{},
+            `11.11.11.11 - [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`,
+        },
 	}
 
 	for testName, testData := range tests {
@@ -180,13 +195,6 @@ func TestReplaceConfig_validate(t *testing.T) {
 				"source":     "",
 			},
 			errors.New(ErrEmptyReplaceStageSource),
-		},
-		"empty replace": {
-			map[string]interface{}{
-				"expression": "(?P<ts>[0-9]+).*",
-				"replace":    "",
-			},
-			errors.New(ErrEmptyReplaceStageConfig),
 		},
 		"valid without source": {
 			map[string]interface{}{

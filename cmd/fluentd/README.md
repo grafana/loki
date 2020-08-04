@@ -2,7 +2,7 @@
 
 [Fluentd](https://fluentd.org/) is a data collector for unified logging layer, it can be configured with the Loki output plugin, provided in this folder, to ship logs to Loki.
 
-See [docs/client/fluentd/README.md](../../docs/clients/fluentd/README.md) for detailed information.
+See [docs/client/fluentd/README.md](../../docs/sources/clients/fluentd/_index.md) for detailed information.
 
 ## Development
 
@@ -18,17 +18,21 @@ Useful additions:
 ## Testing
 
 Start Loki using:
-```
+
+```bash
 docker run -it -p 3100:3100 grafana/loki:latest
 ```
 
 Verify that Loki accept and stores logs:
-```
+
+```bash
 curl -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/loki/api/v1/push" --data-raw "{\"streams\": [{\"stream\": {\"job\": \"test\"}, \"values\": [[\"$(date +%s)000000000\", \"fizzbuzz\"]]}]}"
 curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={job="test"}' --data-urlencode 'step=300' | jq .data.result
 ```
+
 The expected output is:
-```
+
+```json
 [
   {
     "stream": {
@@ -44,17 +48,21 @@ The expected output is:
 ]
 ```
 
-Start FluentBit + Fluentd using:
-```
+Start and send test logs with Fluentd using:
+
+```bash
 LOKI_URL=http://{{ IP }}:3100 make fluentd-test
 ```
 
 Verify that syslogs are being feeded into Loki:
-```
+
+```bash
 curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={job="fluentd"}' --data-urlencode 'step=300' | jq .data.result
 ```
+
 The expected output is:
-```
+
+```json
 [
   {
     "stream": {

@@ -21,10 +21,16 @@ type Config struct {
 	TargetConfig    file.Config           `yaml:"target_config,omitempty"`
 }
 
+// RegisterFlags with prefix registers flags where every name is prefixed by
+// prefix. If prefix is a non-empty string, prefix should end with a period.
+func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	c.ServerConfig.RegisterFlagsWithPrefix(prefix, f)
+	c.ClientConfig.RegisterFlagsWithPrefix(prefix, f)
+	c.PositionsConfig.RegisterFlagsWithPrefix(prefix, f)
+	c.TargetConfig.RegisterFlagsWithPrefix(prefix, f)
+}
+
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.ServerConfig.RegisterFlags(f)
-	c.ClientConfig.RegisterFlags(f)
-	c.PositionsConfig.RegisterFlags(f)
-	c.TargetConfig.RegisterFlags(f)
+	c.RegisterFlagsWithPrefix("", f)
 }

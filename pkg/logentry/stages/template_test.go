@@ -19,7 +19,7 @@ pipeline_stages:
 - json:
     expressions:
       app:  app
-      level: level 
+      level: level
 - template:
     source: app
     template: '{{ .Value | ToUpper }} doki'
@@ -232,6 +232,18 @@ func TestTemplateStage_Process(t *testing.T) {
 				"testval": "value",
 			},
 		},
+		"ToLowerParams": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: "{{ ToLower .Value }}",
+			},
+			map[string]interface{}{
+				"testval": "Value",
+			},
+			map[string]interface{}{
+				"testval": "value",
+			},
+		},
 		"ToLowerEmptyValue": {
 			TemplateConfig{
 				Source:   "testval",
@@ -250,6 +262,54 @@ func TestTemplateStage_Process(t *testing.T) {
 			},
 			map[string]interface{}{
 				"testval": "some_silly_value_with_lots_of_spaces",
+			},
+		},
+		"regexReplaceAll": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: `{{ regexReplaceAll "(Silly)" .Value "${1}foo"  }}`,
+			},
+			map[string]interface{}{
+				"testval": "Some Silly Value With Lots Of Spaces",
+			},
+			map[string]interface{}{
+				"testval": "Some Sillyfoo Value With Lots Of Spaces",
+			},
+		},
+		"regexReplaceAllerr": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: `{{ regexReplaceAll "\\K" .Value "${1}foo"  }}`,
+			},
+			map[string]interface{}{
+				"testval": "Some Silly Value With Lots Of Spaces",
+			},
+			map[string]interface{}{
+				"testval": "Some Silly Value With Lots Of Spaces",
+			},
+		},
+		"regexReplaceAllLiteral": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: `{{ regexReplaceAll "( |Of)" .Value "_"  }}`,
+			},
+			map[string]interface{}{
+				"testval": "Some Silly Value With Lots Of Spaces",
+			},
+			map[string]interface{}{
+				"testval": "Some_Silly_Value_With_Lots___Spaces",
+			},
+		},
+		"regexReplaceAllLiteralerr": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: `{{ regexReplaceAll "\\K" .Value "err"  }}`,
+			},
+			map[string]interface{}{
+				"testval": "Some Silly Value With Lots Of Spaces",
+			},
+			map[string]interface{}{
+				"testval": "Some Silly Value With Lots Of Spaces",
 			},
 		},
 		"Trim": {
@@ -281,6 +341,18 @@ func TestTemplateStage_Process(t *testing.T) {
 			},
 			map[string]interface{}{},
 			map[string]interface{}{},
+		},
+		"Sha256": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: "{{ Sha256 .Value \"salt\" }}",
+			},
+			map[string]interface{}{
+				"testval": "this is PII data",
+			},
+			map[string]interface{}{
+				"testval": "5526fd6f8ad457279cf8ff06453c6cb61bf479fa826e3b099caa6c846f9376f2",
+			},
 		},
 	}
 	for name, test := range tests {

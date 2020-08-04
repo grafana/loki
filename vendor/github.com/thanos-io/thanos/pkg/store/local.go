@@ -17,11 +17,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // LocalStore implements the store API against single file with stream of proto-based SeriesResponses in JSON format.
@@ -86,10 +87,10 @@ func NewLocalStoreFromJSONMmappableFile(
 		content = content[:idx+1]
 	}
 
-	scanner := NewNoCopyScanner(content, split)
+	skanner := NewNoCopyScanner(content, split)
 	resp := &storepb.SeriesResponse{}
-	for scanner.Scan() {
-		if err := jsonpb.Unmarshal(bytes.NewReader(scanner.Bytes()), resp); err != nil {
+	for skanner.Scan() {
+		if err := jsonpb.Unmarshal(bytes.NewReader(skanner.Bytes()), resp); err != nil {
 			return nil, errors.Wrapf(err, "unmarshal storepb.SeriesResponse frame for file %s", path)
 		}
 		series := resp.GetSeries()
@@ -116,7 +117,7 @@ func NewLocalStoreFromJSONMmappableFile(
 		s.sortedChunks = append(s.sortedChunks, chks)
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := skanner.Err(); err != nil {
 		return nil, errors.Wrapf(err, "scanning file %s", path)
 	}
 	level.Info(logger).Log("msg", "loading JSON file succeeded", "file", path, "info", s.info.String(), "series", len(s.series))

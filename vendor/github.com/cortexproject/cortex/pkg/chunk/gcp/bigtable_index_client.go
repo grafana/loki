@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigtable"
+	"github.com/go-kit/kit/log"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -52,6 +52,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
+}
+
+func (cfg *Config) Validate(log log.Logger) error {
+	return cfg.GRPCClientConfig.Validate(log)
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.

@@ -1,8 +1,11 @@
 package storage
 
 import (
-	io "io"
+	"io"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -25,10 +28,12 @@ func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, 
 		return nil, nil, nil, chunk.SchemaConfig{}, nil, err
 	}
 	indexClient, chunkClient, tableClient, schemaConfig, closer, err := f.fixture.Clients()
+	reg := prometheus.NewRegistry()
+	logger := log.NewNopLogger()
 	indexClient = newCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
 		MaxSizeItems: 500,
 		Validity:     5 * time.Minute,
-	}), 5*time.Minute, limits)
+	}, reg, logger), 5*time.Minute, limits, logger)
 	return indexClient, chunkClient, tableClient, schemaConfig, closer, err
 }
 

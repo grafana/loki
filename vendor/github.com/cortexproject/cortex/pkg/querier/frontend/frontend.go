@@ -71,7 +71,7 @@ type Frontend struct {
 
 	// Metrics.
 	queueDuration prometheus.Histogram
-	queueLength   prometheus.Gauge
+	queueLength   *prometheus.GaugeVec
 }
 
 type request struct {
@@ -96,11 +96,11 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 			Help:      "Time spend by requests queued.",
 			Buckets:   prometheus.DefBuckets,
 		}),
-		queueLength: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_length",
 			Help:      "Number of queries in the queue.",
-		}),
+		}, []string{"user"}),
 		connectedClients: atomic.NewInt32(0),
 	}
 	f.cond = sync.NewCond(&f.mtx)
@@ -123,6 +123,7 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 			r.URL.Scheme = u.Scheme
 			r.URL.Host = u.Host
 			r.URL.Path = path.Join(u.Path, r.URL.Path)
+			r.Host = ""
 			return http.DefaultTransport.RoundTrip(r)
 		})
 	}
@@ -362,7 +363,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 	select {
 	case queue <- req:
-		f.queueLength.Add(1)
+		f.queueLength.WithLabelValues(userID).Inc()
 		f.cond.Broadcast()
 		return nil
 	default:
@@ -415,7 +416,7 @@ FindQueue:
 			f.cond.Broadcast()
 
 			f.queueDuration.Observe(time.Since(request.enqueueTime).Seconds())
-			f.queueLength.Add(-1)
+			f.queueLength.WithLabelValues(userID).Dec()
 			request.queueSpan.Finish()
 
 			// Ensure the request has not already expired.

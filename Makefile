@@ -39,7 +39,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.9.3
+BUILD_IMAGE_VERSION := 0.10.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -239,6 +239,7 @@ publish: dist
 
 lint:
 	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
+	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
 # Test #
@@ -435,7 +436,7 @@ fluentd-push:
 
 fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
 fluentd-test:
-	LOKI_URL="$(LOKI_URL)" docker-compose -f cmd/fluentd/docker/docker-compose.yml up --build #$(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+	LOKI_URL="$(LOKI_URL)" docker-compose -f cmd/fluentd/docker/docker-compose.yml up --build $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 ##################
 # logstash plugin #

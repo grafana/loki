@@ -24,9 +24,10 @@ import (
 )
 
 const (
-	opSet             = "set"
-	opGetMulti        = "getmulti"
-	reasonMaxItemSize = "max-item-size"
+	opSet                 = "set"
+	opGetMulti            = "getmulti"
+	reasonMaxItemSize     = "max-item-size"
+	reasonAsyncBufferFull = "async-buffer-full"
 )
 
 var (
@@ -233,6 +234,7 @@ func newMemcachedClient(
 	}, []string{"operation", "reason"})
 	c.skipped.WithLabelValues(opGetMulti, reasonMaxItemSize)
 	c.skipped.WithLabelValues(opSet, reasonMaxItemSize)
+	c.skipped.WithLabelValues(opSet, reasonAsyncBufferFull)
 
 	c.duration = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "thanos_memcached_operation_duration_seconds",
@@ -276,7 +278,7 @@ func (c *memcachedClient) SetAsync(_ context.Context, key string, value []byte, 
 		return nil
 	}
 
-	return c.enqueueAsync(func() {
+	err := c.enqueueAsync(func() {
 		start := time.Now()
 		c.operations.WithLabelValues(opSet).Inc()
 
@@ -297,6 +299,13 @@ func (c *memcachedClient) SetAsync(_ context.Context, key string, value []byte, 
 
 		c.duration.WithLabelValues(opSet).Observe(time.Since(start).Seconds())
 	})
+
+	if err == errMemcachedAsyncBufferFull {
+		c.skipped.WithLabelValues(opSet, reasonAsyncBufferFull).Inc()
+		level.Debug(c.logger).Log("msg", "failed to store item to memcached because the async buffer is full", "err", err, "size", len(c.asyncQueue))
+		return nil
+	}
+	return err
 }
 
 func (c *memcachedClient) GetMulti(ctx context.Context, keys []string) map[string][]byte {

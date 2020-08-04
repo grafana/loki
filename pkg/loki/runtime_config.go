@@ -1,7 +1,7 @@
 package loki
 
 import (
-	"os"
+	"io"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -19,15 +19,10 @@ type runtimeConfigValues struct {
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
 
-func loadRuntimeConfig(filename string) (interface{}, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-
+func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	var overrides = &runtimeConfigValues{}
 
-	decoder := yaml.NewDecoder(f)
+	decoder := yaml.NewDecoder(r)
 	decoder.SetStrict(true)
 	if err := decoder.Decode(&overrides); err != nil {
 		return nil, err
@@ -37,6 +32,9 @@ func loadRuntimeConfig(filename string) (interface{}, error) {
 }
 
 func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
+	if c == nil {
+		return nil
+	}
 	return func(userID string) *validation.Limits {
 		cfg, ok := c.GetConfig().(*runtimeConfigValues)
 		if !ok || cfg == nil {
@@ -48,6 +46,9 @@ func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLi
 }
 
 func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {
+	if manager == nil {
+		return nil
+	}
 	// returns function that can be used in MultiConfig.ConfigProvider
 	return func() <-chan kv.MultiRuntimeConfig {
 		outCh := make(chan kv.MultiRuntimeConfig, 1)

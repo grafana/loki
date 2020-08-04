@@ -5,6 +5,7 @@ import (
 	"flag"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gomodule/redigo/redis"
 
@@ -18,6 +19,7 @@ type RedisCache struct {
 	expiration int
 	timeout    time.Duration
 	pool       *redis.Pool
+	logger     log.Logger
 }
 
 // RedisConfig defines how a RedisCache should be constructed.
@@ -49,7 +51,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 }
 
 // NewRedisCache creates a new RedisCache
-func NewRedisCache(cfg RedisConfig, name string, pool *redis.Pool) *RedisCache {
+func NewRedisCache(cfg RedisConfig, name string, pool *redis.Pool, logger log.Logger) *RedisCache {
 	util.WarnExperimentalUse("Redis cache")
 	// pool != nil only in unit tests
 	if pool == nil {
@@ -82,10 +84,11 @@ func NewRedisCache(cfg RedisConfig, name string, pool *redis.Pool) *RedisCache {
 		timeout:    cfg.Timeout,
 		name:       name,
 		pool:       pool,
+		logger:     logger,
 	}
 
 	if err := cache.ping(context.Background()); err != nil {
-		level.Error(util.Logger).Log("msg", "error connecting to redis", "endpoint", cfg.Endpoint, "err", err)
+		level.Error(logger).Log("msg", "error connecting to redis", "endpoint", cfg.Endpoint, "err", err)
 	}
 
 	return cache
@@ -96,7 +99,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 	data, err := c.mget(ctx, keys)
 
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to get from redis", "name", c.name, "err", err)
+		level.Error(c.logger).Log("msg", "failed to get from redis", "name", c.name, "err", err)
 		missed = make([]string, len(keys))
 		copy(missed, keys)
 		return
@@ -116,7 +119,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	err := c.mset(ctx, keys, bufs, c.expiration)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to put to redis", "name", c.name, "err", err)
+		level.Error(c.logger).Log("msg", "failed to put to redis", "name", c.name, "err", err)
 	}
 }
 
@@ -126,7 +129,7 @@ func (c *RedisCache) Stop() {
 }
 
 // mset adds key-value pairs to the cache.
-func (c *RedisCache) mset(ctx context.Context, keys []string, bufs [][]byte, ttl int) error {
+func (c *RedisCache) mset(_ context.Context, keys []string, bufs [][]byte, ttl int) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 
@@ -143,7 +146,7 @@ func (c *RedisCache) mset(ctx context.Context, keys []string, bufs [][]byte, ttl
 }
 
 // mget retrieves values from the cache.
-func (c *RedisCache) mget(ctx context.Context, keys []string) ([][]byte, error) {
+func (c *RedisCache) mget(_ context.Context, keys []string) ([][]byte, error) {
 	intf := make([]interface{}, len(keys))
 	for i, key := range keys {
 		intf[i] = key
@@ -155,7 +158,7 @@ func (c *RedisCache) mget(ctx context.Context, keys []string) ([][]byte, error) 
 	return redis.ByteSlices(redis.DoWithTimeout(conn, c.timeout, "MGET", intf...))
 }
 
-func (c *RedisCache) ping(ctx context.Context) error {
+func (c *RedisCache) ping(_ context.Context) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 

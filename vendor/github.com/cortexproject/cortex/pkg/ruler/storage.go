@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rules/local"
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
 )
 
@@ -27,6 +28,7 @@ type RuleStoreConfig struct {
 	GCS   gcp.GCSConfig           `yaml:"gcs"`
 	S3    aws.S3Config            `yaml:"s3"`
 	Swift openstack.SwiftConfig   `yaml:"swift"`
+	Local local.Config            `yaml:"local"`
 
 	mock rules.RuleStore `yaml:"-"`
 }
@@ -38,7 +40,9 @@ func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.GCS.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("ruler.storage.", f)
 	cfg.Swift.RegisterFlagsWithPrefix("ruler.storage.", f)
-	f.StringVar(&cfg.Type, "ruler.storage.type", "configdb", "Method to use for backend rule storage (configdb, azure, gcs, s3)")
+	cfg.Local.RegisterFlagsWithPrefix("ruler.storage.", f)
+
+	f.StringVar(&cfg.Type, "ruler.storage.type", "configdb", "Method to use for backend rule storage (configdb, azure, gcs, s3, swift, local)")
 }
 
 // Validate config and returns error on failure
@@ -47,6 +51,11 @@ func (cfg *RuleStoreConfig) Validate() error {
 		return errors.Wrap(err, "invalid Swift Storage config")
 	}
 	return nil
+}
+
+// IsDefaults returns true if the storage options have not been set
+func (cfg *RuleStoreConfig) IsDefaults() bool {
+	return cfg.Type == "configdb" && cfg.ConfigDB.ConfigsAPIURL.URL == nil
 }
 
 // NewRuleStorage returns a new rule storage backend poller and store
@@ -72,8 +81,10 @@ func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
 		return newObjRuleStore(aws.NewS3ObjectClient(cfg.S3, ""))
 	case "swift":
 		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift, ""))
+	case "local":
+		return local.NewLocalRulesClient(cfg.Local)
 	default:
-		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure", cfg.Type)
+		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
 	}
 }
 

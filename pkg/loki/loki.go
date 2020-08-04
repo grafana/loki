@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/storage"
@@ -50,11 +51,11 @@ type Config struct {
 	Ingester         ingester.Config             `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config              `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig chunk.StoreConfig           `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     chunk.SchemaConfig          `yaml:"schema_config,omitempty"`
+	SchemaConfig     storage.SchemaConfig        `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits           `yaml:"limits_config,omitempty"`
 	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
 	Worker           frontend.WorkerConfig       `yaml:"frontend_worker,omitempty"`
-	Frontend         frontend.Config             `yaml:"frontend,omitempty"`
+	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
@@ -139,7 +140,7 @@ func New(cfg Config) (*Loki, error) {
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(cfg.StorageConfig, prometheus.DefaultRegisterer)
+	storage.RegisterCustomIndexClients(&loki.cfg.StorageConfig, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }

@@ -133,6 +133,10 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	if len(responses) == 0 {
 		return &PrometheusResponse{
 			Status: StatusSuccess,
+			Data: PrometheusData{
+				ResultType: model.ValMatrix.String(),
+				Result:     []SampleStream{},
+			},
 		}, nil
 	}
 

@@ -8,12 +8,23 @@ import (
 	"github.com/go-kit/kit/log/level"
 )
 
-// NewGoKit creates a new Interface backed by a GoKit logger
-func NewGoKit(l Level) Interface {
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+// NewGoKitFormat creates a new Interface backed by a GoKit logger
+// format can be "json" or defaults to logfmt
+func NewGoKitFormat(l Level, f Format) Interface {
+	var logger log.Logger
+	if f.s == "json" {
+		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
+	} else {
+		logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	}
 	logger = level.NewFilter(logger, l.Gokit)
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
 	return gokit{logger}
+}
+
+// NewGoKit creates a new Interface backed by a GoKit logger
+func NewGoKit(l Level) Interface {
+	return NewGoKitFormat(l, Format{s: "logfmt"})
 }
 
 // GoKit wraps an existing gokit Logger.

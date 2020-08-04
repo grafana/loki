@@ -1,7 +1,7 @@
 package cortex
 
 import (
-	"os"
+	"io"
 
 	"gopkg.in/yaml.v2"
 
@@ -19,15 +19,10 @@ type runtimeConfigValues struct {
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
 
-func loadRuntimeConfig(filename string) (interface{}, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-
+func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	var overrides = &runtimeConfigValues{}
 
-	decoder := yaml.NewDecoder(f)
+	decoder := yaml.NewDecoder(r)
 	decoder.SetStrict(true)
 	if err := decoder.Decode(&overrides); err != nil {
 		return nil, err

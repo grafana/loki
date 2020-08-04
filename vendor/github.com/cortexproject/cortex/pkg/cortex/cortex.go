@@ -13,10 +13,8 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
 
@@ -42,9 +40,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -94,7 +94,7 @@ type Config struct {
 	QueryRange     queryrange.Config        `yaml:"query_range"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	TSDB           tsdb.Config              `yaml:"tsdb"`
+	BlocksStorage  tsdb.BlocksStorageConfig `yaml:"blocks_storage"`
 	Compactor      compactor.Config         `yaml:"compactor"`
 	StoreGateway   storegateway.Config      `yaml:"store_gateway"`
 	PurgerConfig   purger.Config            `yaml:"purger"`
@@ -133,7 +133,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.QueryRange.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
-	c.TSDB.RegisterFlags(f)
+	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
 	c.PurgerConfig.RegisterFlags(f)
@@ -166,7 +166,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Ruler.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
-	if err := c.TSDB.Validate(); err != nil {
+	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
 	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
@@ -178,11 +178,17 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
+	if err := c.IngesterClient.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid ingester_client config")
+	}
+	if err := c.Worker.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid frontend_worker config")
+	}
 	if err := c.QueryRange.Validate(log); err != nil {
-		return errors.Wrap(err, "invalid queryrange config")
+		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid tablemanager config")
+		return errors.Wrap(err, "invalid table_manager config")
 	}
 	return nil
 }
@@ -212,6 +218,7 @@ type Cortex struct {
 	TombstonesLoader *purger.TombstonesLoader
 
 	Ruler        *ruler.Ruler
+	RulerStorage rules.RuleStore
 	ConfigAPI    *configAPI.API
 	ConfigDB     db.DB
 	Alertmanager *alertmanager.MultitenantAlertmanager
@@ -233,11 +240,18 @@ func New(cfg Config) (*Cortex, error) {
 		os.Exit(0)
 	}
 
+	// Don't check auth header on TransferChunks, as we weren't originally
+	// sending it and this could cause transfers to fail on update.
+	//
+	// Also don't check auth /frontend.Frontend/Process, as this handles
+	// queries for multiple users.
+	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
+		[]string{"/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process"})
+
 	cortex := &Cortex{
 		Cfg: cfg,
 	}
 
-	cortex.setupAuthMiddleware()
 	cortex.setupThanosTracing()
 
 	if err := cortex.setupModuleManager(); err != nil {
@@ -245,37 +259,6 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	return cortex, nil
-}
-
-func (t *Cortex) setupAuthMiddleware() {
-	if t.Cfg.AuthEnabled {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
-			middleware.ServerUserHeaderInterceptor,
-		)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				switch info.FullMethod {
-				// Don't check auth header on TransferChunks, as we weren't originally
-				// sending it and this could cause transfers to fail on update.
-				//
-				// Also don't check auth /frontend.Frontend/Process, as this handles
-				// queries for multiple users.
-				case "/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process":
-					return handler(srv, ss)
-				default:
-					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-				}
-			},
-		)
-	} else {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
-			fakeGRPCAuthUniaryMiddleware,
-		)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
-			fakeGRPCAuthStreamMiddleware,
-		)
-		t.Cfg.API.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
-	}
 }
 
 // setupThanosTracing appends a gRPC middleware used to inject our tracer into the custom

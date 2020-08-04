@@ -15,11 +15,11 @@ import (
 	"github.com/pkg/errors"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/weaveworks/common/user"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	rulefmt "github.com/cortexproject/cortex/pkg/ruler/legacy_rulefmt"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -279,10 +279,10 @@ func ValidateRuleGroup(g rulefmt.RuleGroup) []error {
 	for i, r := range g.Rules {
 		for _, err := range r.Validate() {
 			var ruleName string
-			if r.Alert != "" {
-				ruleName = r.Alert
+			if r.Alert.Value != "" {
+				ruleName = r.Alert.Value
 			} else {
-				ruleName = r.Record
+				ruleName = r.Record.Value
 			}
 			errs = append(errs, &rulefmt.Error{
 				Group:    g.Name,
