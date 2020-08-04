@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,6 +15,44 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
 )
+
+func TestLazyChunkIterator(t *testing.T) {
+	for i, tc := range []struct {
+		chunk    *LazyChunk
+		expected []logproto.Stream
+	}{
+		{
+			newLazyChunk(logproto.Stream{
+				Labels: fooLabelsWithName,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: from,
+						Line:      "1",
+					},
+				},
+			}),
+			[]logproto.Stream{
+				{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				},
+			},
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, logql.TrueFilter, nil)
+			require.Nil(t, err)
+			streams, _, err := iter.ReadBatch(it, 1000)
+			require.Nil(t, err)
+			_ = it.Close()
+			require.Equal(t, tc.expected, streams.Streams)
+		})
+	}
+}
 
 func TestIsOverlapping(t *testing.T) {
 	tests := []struct {
