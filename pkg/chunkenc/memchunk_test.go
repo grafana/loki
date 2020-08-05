@@ -37,6 +37,18 @@ var (
 	testTargetSize = 1500 * 1024
 )
 
+func TestBlocksInclusive(t *testing.T) {
+	chk := NewMemChunk(EncNone, testBlockSize, testTargetSize)
+	err := chk.Append(logprotoEntry(1, "1"))
+	require.Nil(t, err)
+	err = chk.cut()
+	require.Nil(t, err)
+
+	blocks := chk.Blocks(time.Unix(0, 1), time.Unix(0, 1))
+	require.Equal(t, 1, len(blocks))
+	require.Equal(t, 1, blocks[0].Entries())
+}
+
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {

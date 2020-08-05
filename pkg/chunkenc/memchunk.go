@@ -532,7 +532,7 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 	blocks := make([]Block, 0, len(c.blocks))
 
 	for _, b := range c.blocks {
-		if maxt > b.mint && b.maxt > mint {
+		if maxt >= b.mint && b.maxt >= mint {
 			blocks = append(blocks, b)
 		}
 	}

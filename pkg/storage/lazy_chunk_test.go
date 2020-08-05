@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,6 +15,74 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
 )
+
+func TestLazyChunkIterator(t *testing.T) {
+	for i, tc := range []struct {
+		chunk    *LazyChunk
+		expected []logproto.Stream
+	}{
+		{
+			newLazyChunk(logproto.Stream{
+				Labels: fooLabelsWithName,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: from,
+						Line:      "1",
+					},
+				},
+			}),
+			[]logproto.Stream{
+				{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				},
+			},
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, logql.TrueFilter, nil)
+			require.Nil(t, err)
+			streams, _, err := iter.ReadBatch(it, 1000)
+			require.Nil(t, err)
+			_ = it.Close()
+			require.Equal(t, tc.expected, streams.Streams)
+		})
+	}
+}
+
+func TestLazyChunksPop(t *testing.T) {
+	for i, tc := range []struct {
+		initial    int
+		n          int
+		expectedLn int
+		rem        int
+	}{
+		{1, 1, 1, 0},
+		{2, 1, 1, 1},
+		{3, 4, 3, 0},
+	} {
+
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			lc := &lazyChunks{}
+			for i := 0; i < tc.initial; i++ {
+				lc.chunks = append(lc.chunks, &LazyChunk{})
+			}
+			out := lc.pop(tc.n)
+
+			for i := 0; i < tc.expectedLn; i++ {
+				require.NotNil(t, out[i])
+			}
+
+			for i := 0; i < tc.rem; i++ {
+				require.NotNil(t, lc.chunks[i])
+			}
+		})
+	}
+}
 
 func TestIsOverlapping(t *testing.T) {
 	tests := []struct {
