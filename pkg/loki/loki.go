@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/signals"
@@ -86,6 +87,14 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.Tracing.RegisterFlags(f)
+}
+
+// Clone takes advantage of pass-by-value semantics to return a distinct *Config.
+// This is primarily used to parse a different flag set without mutating the original *Config.
+func (c *Config) Clone() flagext.Registerer {
+	return func(c Config) *Config {
+		return &c
+	}(*c)
 }
 
 // Validate the config and returns an error if the validation

@@ -50,9 +50,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
 // This is primarily used to parse a different flag set without mutating the original *Config.
 func (c *Config) Clone() flagext.Registerer {
-	return flagext.Registerer(func(c Config) *Config {
+	return func(c Config) *Config {
 		return &c
-	}(*c))
+	}(*c)
 }
 
 func main() {

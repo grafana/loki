@@ -3,6 +3,8 @@ package cfg
 import (
 	"flag"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Data is a test Data structure
@@ -10,6 +12,14 @@ type Data struct {
 	Verbose bool   `yaml:"verbose"`
 	Server  Server `yaml:"server"`
 	TLS     TLS    `yaml:"tls"`
+}
+
+// Clone takes advantage of pass-by-value semantics to return a distinct *Data.
+// This is primarily used to parse a different flag set without mutating the original *Data.
+func (d *Data) Clone() flagext.Registerer {
+	return func(d Data) *Data {
+		return &d
+	}(*d)
 }
 
 type Server struct {
