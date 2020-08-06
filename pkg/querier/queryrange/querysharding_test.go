@@ -143,10 +143,9 @@ func Test_astMapper(t *testing.T) {
 				RowShards: 2,
 			},
 		},
-		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
-	)
+	).Wrap(handler)
 
 	resp, err := mware.Do(context.Background(), defaultReq().WithQuery(`{food="bar"}`))
 	require.Nil(t, err)

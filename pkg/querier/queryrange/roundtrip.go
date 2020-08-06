@@ -231,7 +231,11 @@ func NewLogFilterTripperware(
 				schema.Configs,
 				minShardingLookback,
 				instrumentMetrics, // instrumentation is included in the sharding middleware
-				shardingMetrics,
+				newASTMapperware(
+					schema.Configs,
+					log,
+					shardingMetrics,
+				),
 			),
 		)
 	}
@@ -377,7 +381,11 @@ func NewMetricTripperware(
 				schema.Configs,
 				minShardingLookback,
 				instrumentMetrics, // instrumentation is included in the sharding middleware
-				shardingMetrics,
+				newASTMapperware(
+					schema.Configs,
+					log,
+					shardingMetrics,
+				),
 			),
 		)
 	}

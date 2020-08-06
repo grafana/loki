@@ -23,7 +23,7 @@ func NewQueryShardMiddleware(
 	confs queryrange.ShardingConfigs,
 	minShardingLookback time.Duration,
 	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
-	shardingMetrics *logql.ShardingMetrics,
+	shardingware queryrange.Middleware,
 ) queryrange.Middleware {
 
 	noshards := !hasShards(confs)
@@ -37,16 +37,12 @@ func NewQueryShardMiddleware(
 		return queryrange.PassthroughMiddleware
 	}
 
-	mapperware := queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return newASTMapperware(confs, next, logger, shardingMetrics)
-	})
-
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return &shardSplitter{
 			MinShardingLookback: minShardingLookback,
 			shardingware: queryrange.MergeMiddlewares(
 				queryrange.InstrumentMiddleware("shardingware", middlewareMetrics),
-				mapperware,
+				shardingware,
 			).Wrap(next),
 			now:  time.Now,
 			next: queryrange.InstrumentMiddleware("sharding-bypass", middlewareMetrics).Wrap(next),
@@ -57,17 +53,17 @@ func NewQueryShardMiddleware(
 
 func newASTMapperware(
 	confs queryrange.ShardingConfigs,
-	next queryrange.Handler,
 	logger log.Logger,
 	metrics *logql.ShardingMetrics,
-) *astMapperware {
-
-	return &astMapperware{
-		confs:  confs,
-		logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
-		next:   next,
-		ng:     logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics),
-	}
+) queryrange.Middleware {
+	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+		return &astMapperware{
+			confs:  confs,
+			logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
+			next:   next,
+			ng:     logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics),
+		}
+	})
 }
 
 type astMapperware struct {
