@@ -25,7 +25,6 @@ var (
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
-
 	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
 	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
 
@@ -119,8 +118,9 @@ func main() {
 		}
 
 		outputOptions := &output.LogOutputOptions{
-			Timezone: location,
-			NoLabels: rangeQuery.NoLabels,
+			Timezone:      location,
+			NoLabels:      rangeQuery.NoLabels,
+			ColoredOutput: rangeQuery.ColoredOutput,
 		}
 
 		out, err := output.NewLogOutput(*outputMode, outputOptions)
@@ -140,8 +140,9 @@ func main() {
 		}
 
 		outputOptions := &output.LogOutputOptions{
-			Timezone: location,
-			NoLabels: instantQuery.NoLabels,
+			Timezone:      location,
+			NoLabels:      instantQuery.NoLabels,
+			ColoredOutput: instantQuery.ColoredOutput,
 		}
 
 		out, err := output.NewLogOutput(*outputMode, outputOptions)
@@ -280,6 +281,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
 	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&q.LocalConfig)
+	cmd.Flag("colored-output", "Show ouput with colored labels").Default("false").BoolVar(&q.ColoredOutput)
 
 	return q
 }

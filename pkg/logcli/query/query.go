@@ -50,8 +50,8 @@ type Query struct {
 	IgnoreLabelsKey []string
 	ShowLabelsKey   []string
 	FixedLabelsLen  int
-
-	LocalConfig string
+	ColoredOutput   bool
+	LocalConfig     string
 }
 
 // DoQuery executes the query and prints out the results

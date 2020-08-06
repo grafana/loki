@@ -198,6 +198,7 @@ Flags:
       --store-config=""    Execute the current query using a configured storage from a given Loki configuration file.
   -t, --tail               Tail the logs
       --delay-for=0        Delay in tailing by number of seconds to accumulate logs for re-ordering
+      --colored-output     Show ouput with colored labels
 
 Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
