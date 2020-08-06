@@ -215,12 +215,12 @@ func TestInstanceFor(t *testing.T) {
 	mkIn := func() *instance { return DownstreamHandler{nil}.Downstreamer().(*instance) }
 	in := mkIn()
 
-	queries := make([]logql.DownstreamQuery, in.parallelism+1)
+	queries := make([]interface{}, in.parallelism+1)
 	var mtx sync.Mutex
 	var ct int
 
 	// ensure we can execute queries that number more than the parallelism parameter
-	_, err := in.For(queries, func(_ logql.DownstreamQuery) (logql.Result, error) {
+	_, err := in.For(queries, func(_ interface{}) (interface{}, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
@@ -233,7 +233,7 @@ func TestInstanceFor(t *testing.T) {
 	// ensure an early error abandons the other queues queries
 	in = mkIn()
 	ct = 0
-	_, err = in.For(queries, func(_ logql.DownstreamQuery) (logql.Result, error) {
+	_, err = in.For(queries, func(_ interface{}) (interface{}, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
@@ -250,23 +250,23 @@ func TestInstanceFor(t *testing.T) {
 
 	in = mkIn()
 	results, err := in.For(
-		[]logql.DownstreamQuery{
-			{
+		[]interface{}{
+			logql.DownstreamQuery{
 				Shards: logql.Shards{
 					{Shard: 0, Of: 2},
 				},
 			},
-			{
+			logql.DownstreamQuery{
 				Shards: logql.Shards{
 					{Shard: 1, Of: 2},
 				},
 			},
 		},
-		func(qry logql.DownstreamQuery) (logql.Result, error) {
+		func(qry interface{}) (interface{}, error) {
 
 			return logql.Result{
 				Data: logql.Streams{{
-					Labels: qry.Shards[0].String(),
+					Labels: qry.(logql.DownstreamQuery).Shards[0].String(),
 				}},
 			}, nil
 		},
@@ -274,11 +274,11 @@ func TestInstanceFor(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(
 		t,
-		[]logql.Result{
-			{
+		[]interface{}{
+			logql.Result{
 				Data: logql.Streams{{Labels: "0_of_2"}},
 			},
-			{
+			logql.Result{
 				Data: logql.Streams{{Labels: "1_of_2"}},
 			},
 		},
@@ -330,7 +330,7 @@ func TestInstanceDownstream(t *testing.T) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(params).WithShards(logql.Shards{{Shard: 0, Of: 2}}).WithQuery(expr.String())
+			want = ParamsToLokiRequest(params).WithShards(logql.Shards{{Shard: 0, Of: 2}}...).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},

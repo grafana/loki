@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -48,6 +49,79 @@ func NewQueryShardMiddleware(
 			next: queryrange.InstrumentMiddleware("sharding-bypass", middlewareMetrics).Wrap(next),
 		}
 	})
+
+}
+
+func simpleShardingware(
+	confs queryrange.ShardingConfigs,
+	logger log.Logger,
+	metrics *logql.ShardingMetrics,
+	codec queryrange.Codec,
+) queryrange.Middleware {
+	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+		return &simpleShardingWare{
+			confs:  confs,
+			logger: log.With(logger, "middleware", "QueryShard.simpleShardingWare"),
+			next:   next,
+			codec:  codec,
+		}
+	})
+}
+
+// simpleShardingWare does not do any special AST mapping, it just fans out sharded requests downstream.
+// This is used for /series queries.
+type simpleShardingWare struct {
+	confs  queryrange.ShardingConfigs
+	logger log.Logger
+	next   queryrange.Handler
+	codec  queryrange.Codec
+}
+
+func (m *simpleShardingWare) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+	conf, err := m.confs.GetConf(r)
+	// cannot shard with this timerange
+	if err != nil {
+		level.Warn(m.logger).Log("err", err.Error(), "msg", "skipped simpleShardingWare for request")
+		return m.next.Do(ctx, r)
+	}
+
+	shardedLog, ctx := spanlogger.New(ctx, "simpleShardingWare")
+	defer shardedLog.Finish()
+
+	req, ok := r.(*LokiRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected *LokiRequest, got (%T)", r)
+	}
+
+	concurrency := DefaultDownstreamConcurrency
+	nShards := int(conf.RowShards)
+	if nShards < concurrency {
+		concurrency = nShards
+	}
+	instance := newInstance(concurrency, nil)
+	queries := make([]interface{}, 0, nShards)
+
+	for i := 0; i < nShards; i++ {
+		queries = append(queries, req.WithShards(astmapper.ShardAnnotation{
+			Shard: i,
+			Of:    nShards,
+		}))
+	}
+
+	out, err := instance.For(queries, func(x interface{}) (interface{}, error) {
+		qry := x.(*LokiRequest)
+		return m.next.Do(ctx, qry)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]queryrange.Response, 0, len(out))
+	for _, res := range out {
+		results = append(results, res.(queryrange.Response))
+	}
+	return m.codec.MergeResponse(results...)
 
 }
 

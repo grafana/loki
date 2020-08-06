@@ -36,15 +36,18 @@ func ParamsToLokiRequest(params logql.Params) *LokiRequest {
 }
 
 func (h DownstreamHandler) Downstreamer() logql.Downstreamer {
-	p := DefaultDownstreamConcurrency
-	locks := make(chan struct{}, p)
-	for i := 0; i < p; i++ {
+	return newInstance(DefaultDownstreamConcurrency, h.next)
+}
+
+func newInstance(parallelism int, handler queryrange.Handler) *instance {
+	locks := make(chan struct{}, parallelism)
+	for i := 0; i < parallelism; i++ {
 		locks <- struct{}{}
 	}
 	return &instance{
-		parallelism: p,
+		parallelism: parallelism,
 		locks:       locks,
-		handler:     h.next,
+		handler:     handler,
 	}
 }
 
@@ -56,8 +59,18 @@ type instance struct {
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logql.Result, error) {
-	return in.For(queries, func(qry logql.DownstreamQuery) (logql.Result, error) {
-		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards).WithQuery(qry.Expr.String()).(*LokiRequest)
+	input := make([]interface{}, 0, len(queries))
+	for _, q := range queries {
+		input = append(input, interface{}(q))
+	}
+
+	res, err := in.For(input, func(x interface{}) (interface{}, error) {
+		qry, ok := x.(logql.DownstreamQuery)
+		if !ok {
+			return nil, fmt.Errorf("unexpected (%T) when trying to process DownstreamQuery", x)
+		}
+
+		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards...).WithQuery(qry.Expr.String()).(*LokiRequest)
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
 		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", req.Shards), "query", req.Query)
@@ -68,16 +81,26 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		}
 		return ResponseToResult(res)
 	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]logql.Result, 0, len(res))
+	for _, x := range res {
+		results = append(results, x.(logql.Result))
+	}
+	return results, nil
 }
 
 // For runs a function against a list of queries, collecting the results or returning an error. The indices are preserved such that input[i] maps to output[i].
 func (in instance) For(
-	queries []logql.DownstreamQuery,
-	fn func(logql.DownstreamQuery) (logql.Result, error),
-) ([]logql.Result, error) {
+	queries []interface{},
+	fn func(interface{}) (interface{}, error),
+) ([]interface{}, error) {
 	type resp struct {
 		i   int
-		res logql.Result
+		res interface{}
 		err error
 	}
 
@@ -116,7 +139,7 @@ func (in instance) For(
 		}
 	}()
 
-	results := make([]logql.Result, len(queries))
+	results := make([]interface{}, len(queries))
 	for i := 0; i < len(queries); i++ {
 		resp := <-ch
 		if resp.err != nil {
