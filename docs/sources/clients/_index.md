@@ -11,7 +11,7 @@ Loki supports the following official clients for sending logs:
 - [Fluentd](fluentd/)
 - [Fluent Bit](fluentbit/)
 - [Logstash](logstash/)
-- [Lambda Promtail](/lambda-promtail/)
+- [Lambda Promtail](lambda-promtail/)
 
 ## Picking a client
 
