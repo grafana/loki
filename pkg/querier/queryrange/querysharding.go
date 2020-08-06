@@ -52,7 +52,7 @@ func NewQueryShardMiddleware(
 
 }
 
-func simpleShardingware(
+func newSimpleShardingware(
 	confs queryrange.ShardingConfigs,
 	logger log.Logger,
 	metrics *logql.ShardingMetrics,

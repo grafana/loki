@@ -65,7 +65,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -257,9 +257,12 @@ func NewSeriesTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
+	schema chunk.SchemaConfig,
+	minShardingLookback time.Duration,
 	codec queryrange.Codec,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
+	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{}
@@ -270,6 +273,27 @@ func NewSeriesTripperware(
 			SplitByIntervalMiddleware(WithSplitByLimits(limits, cfg.SplitQueriesByInterval), codec, splitByMetrics),
 		)
 	}
+
+	if cfg.ShardedQueries {
+		if minShardingLookback == 0 {
+			return nil, errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
+		}
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQueryShardMiddleware(
+				log,
+				schema.Configs,
+				minShardingLookback,
+				instrumentMetrics, // instrumentation is included in the sharding middleware
+				newSimpleShardingware(
+					schema.Configs,
+					log,
+					shardingMetrics,
+					codec,
+				),
+			),
+		)
+	}
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}

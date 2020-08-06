@@ -158,6 +158,77 @@ func Test_astMapper(t *testing.T) {
 
 }
 
+func Test_simpleSharding(t *testing.T) {
+	resps := []queryrange.Response{
+		&LokiSeriesResponse{
+			Status:  "success",
+			Version: 1,
+			Data: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+				},
+				{
+					Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+				},
+			},
+		},
+		&LokiSeriesResponse{
+			Status:  "success",
+			Version: 1,
+			Data: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+				},
+				{
+					Labels: map[string]string{"filename": "/var/hostlog/other.log", "job": "varlogs"},
+				},
+			},
+		},
+	}
+
+	merged := &LokiSeriesResponse{
+		Status:  "success",
+		Version: 1,
+		Data: []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+			},
+			{
+				Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+			},
+			{
+				Labels: map[string]string{"filename": "/var/hostlog/other.log", "job": "varlogs"},
+			},
+		},
+	}
+
+	var lock sync.Mutex
+	called := 0
+
+	handler := queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+		lock.Lock()
+		defer lock.Unlock()
+		resp := resps[called]
+		called++
+		return resp, nil
+	})
+
+	mware := newSimpleShardingware(
+		queryrange.ShardingConfigs{
+			chunk.PeriodConfig{
+				RowShards: 2,
+			},
+		},
+		log.NewNopLogger(),
+		nilShardingMetrics,
+		lokiCodec,
+	).Wrap(handler)
+
+	resp, err := mware.Do(context.Background(), defaultReq().WithQuery(`{food="bar"}`))
+	require.Nil(t, err)
+	require.ElementsMatch(t, merged.Data, resp.(*LokiSeriesResponse).Data)
+}
+
 func Test_hasShards(t *testing.T) {
 	for i, tc := range []struct {
 		input    queryrange.ShardingConfigs
