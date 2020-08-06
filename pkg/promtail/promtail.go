@@ -55,6 +55,7 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 	for i := range cfg.ScrapeConfig {
 		if cfg.ScrapeConfig[i].PushConfig != nil {
 			cfg.ScrapeConfig[i].PushConfig.Server.LogLevel = cfg.ServerConfig.LogLevel
+			cfg.ScrapeConfig[i].PushConfig.Server.LogFormat = cfg.ServerConfig.LogFormat
 		}
 	}
 
