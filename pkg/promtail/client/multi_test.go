@@ -61,9 +61,9 @@ func TestNewMulti(t *testing.T) {
 	actualCfg2 := clients.(MultiClient)[1].(*client).cfg
 	// No overlapping label keys so both should be in the output
 	expectedCfg2 := Config{
-		BatchSize: 20,
+		BatchSize: 10,
 		BatchWait: 1 * time.Second,
-		URL:       flagext.URLValue{URL: host1},
+		URL:       flagext.URLValue{URL: host2},
 		ExternalLabels: lokiflag.LabelSet{
 			LabelSet: model.LabelSet{
 				"order": "command",
