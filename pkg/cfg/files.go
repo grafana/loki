@@ -7,14 +7,13 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 )
 
 // JSON returns a Source that opens the supplied `.json` file and loads it.
 func JSON(f *string) Source {
-	return func(dst interface{}) error {
+	return func(dst Cloneable) error {
 		if f == nil {
 			return nil
 		}
@@ -31,14 +30,14 @@ func JSON(f *string) Source {
 
 // dJSON returns a JSON source and allows dependency injection
 func dJSON(y []byte) Source {
-	return func(dst interface{}) error {
+	return func(dst Cloneable) error {
 		return json.Unmarshal(y, dst)
 	}
 }
 
 // YAML returns a Source that opens the supplied `.yaml` file and loads it.
 func YAML(f string) Source {
-	return func(dst interface{}) error {
+	return func(dst Cloneable) error {
 		y, err := ioutil.ReadFile(f)
 		if err != nil {
 			return err
@@ -51,27 +50,19 @@ func YAML(f string) Source {
 
 // dYAML returns a YAML source and allows dependency injection
 func dYAML(y []byte) Source {
-	return func(dst interface{}) error {
+	return func(dst Cloneable) error {
 		return yaml.UnmarshalStrict(y, dst)
 	}
 }
 
 func YAMLFlag(args []string, name string) Source {
-	type cloneable interface {
-		Clone() flagext.Registerer
-	}
 
-	return func(dst interface{}) error {
+	return func(dst Cloneable) error {
 		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
-
-		c, ok := dst.(cloneable)
-		if !ok {
-			return errors.New("dst does not satisfy cloneable")
-		}
 
 		// Ensure we register flags on a copy of the config so as to not mutate it while
 		// parsing out the config file location.
-		c.Clone().RegisterFlags(freshFlags)
+		dst.Clone().RegisterFlags(freshFlags)
 
 		usage := freshFlags.Usage
 		freshFlags.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }

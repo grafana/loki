@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -106,9 +107,7 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput) {
 func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string) error {
 
 	var conf loki.Config
-	if err := cfg.Defaults()(&conf); err != nil {
-		return err
-	}
+	conf.RegisterFlags(flag.CommandLine)
 	if q.LocalConfig == "" {
 		return errors.New("no supplied config file")
 	}
