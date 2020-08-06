@@ -12,6 +12,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
+
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
 var (
@@ -32,9 +34,9 @@ type logger struct {
 }
 
 // NewLogger creates a new client logger that logs entries instead of sending them.
-func NewLogger(log log.Logger, cfgs ...Config) (Client, error) {
+func NewLogger(log log.Logger, externalLabels lokiflag.LabelSet, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
-	c, err := NewMulti(log, cfgs...)
+	c, err := NewMulti(log, externalLabels, cfgs...)
 	if err != nil {
 		return nil, err
 	}
