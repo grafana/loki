@@ -216,7 +216,7 @@ func TestSeriesTripperware(t *testing.T) {
 
 	lreq := &LokiSeriesRequest{
 		Match:   []string{`{job="varlogs"}`},
-		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
+		StartTs: testTime.Add(-5 * time.Hour), // bigger than the limit
 		EndTs:   testTime,
 		Path:    "/loki/api/v1/series",
 	}
