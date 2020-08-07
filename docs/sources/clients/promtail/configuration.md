@@ -258,6 +258,14 @@ backoff_config:
 # Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with
 # value bar.
+# These can also be specified from command line:
+# -client.external-labels=k1=v1,k2=v2 
+# (or --client.external-labels depending on your OS)
+# labels supplied by the command line are applied 
+# to all clients configured in the `clients` section.
+# NOTE: values defined in the config file will replace values
+# defined on the command line for a given client if the 
+# label keys are the same.
 external_labels:
   [ <labelname>: <labelvalue> ... ]
 

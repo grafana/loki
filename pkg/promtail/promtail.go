@@ -52,13 +52,13 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 
 	var err error
 	if dryRun {
-		promtail.client, err = client.NewLogger(promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewLogger(promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(promtail.logger, cfg.ClientConfigs...)
+		promtail.client, err = client.NewMulti(promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
