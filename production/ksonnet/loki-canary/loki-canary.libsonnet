@@ -16,8 +16,8 @@ k + config {
     container.withPorts($.core.v1.containerPort.new(name='http-metrics', port=80)) +
     container.withArgsMixin($.util.mapToFlags($.loki_canary_args)) +
     container.withEnv([
-      container.envType.fromFieldPath('HOSTNAME', 'spec.nodeName'),
-      container.envType.fromFieldPath('POD_NAME', 'metadata.name'),
+      $.core.v1.envVar.fromFieldPath('HOSTNAME', 'spec.nodeName'),
+      $.core.v1.envVar.fromFieldPath('POD_NAME', 'metadata.name'),
     ]),
 
   local daemonSet = $.apps.v1.daemonSet,
