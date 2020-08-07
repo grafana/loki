@@ -68,7 +68,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // New makes a new Server
 func New(cfg Config, log log.Logger, tms *targets.TargetManagers) (Server, error) {
 	if cfg.Disable {
-		return noopServer{log: log}, nil
+		return newNoopServer(log), nil
 	}
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
@@ -243,13 +243,24 @@ func computeExternalURL(u string, port int) (*url.URL, error) {
 	return eu, nil
 }
 
-type noopServer struct{ log log.Logger }
+type noopServer struct {
+	log  log.Logger
+	sigs chan os.Signal
+}
 
-func (s noopServer) Run() error {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-sigs
+func newNoopServer(log log.Logger) *noopServer {
+	return &noopServer{
+		log:  log,
+		sigs: make(chan os.Signal, 1),
+	}
+}
+
+func (s *noopServer) Run() error {
+	signal.Notify(s.sigs, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-s.sigs
 	level.Info(s.log).Log("msg", "received shutdown signal", "sig", sig)
 	return nil
 }
-func (noopServer) Shutdown() {}
+func (s *noopServer) Shutdown() {
+	s.sigs <- syscall.SIGTERM
+}
