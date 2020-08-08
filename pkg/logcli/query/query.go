@@ -79,7 +79,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 		if statistics {
 			q.printStats(resp.Data.Statistics)
 		}
-		_, _ = q.printResult(resp.Data.Result, out)
+		_, _ = q.printResult(resp.Data.Result, out, nil)
 	} else {
 		if q.Limit < q.BatchSize {
 			q.BatchSize = q.Limit
@@ -197,7 +197,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	q.printResult(value, out)
+	q.printResult(value, out, nil)
 	return nil
 }
 
