@@ -140,6 +140,11 @@ func Test_subtract(t *testing.T) {
 	}
 }
 
+
+func Test_batch(t *testing.T) {
+
+}
+
 func mustParseLabels(s string) loghttp.LabelSet {
 	l, err := marshal.NewLabelSet(s)
 

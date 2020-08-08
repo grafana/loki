@@ -87,10 +87,17 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 		resultLength := q.BatchSize
 		total := 0
 		start := q.Start
+		end := q.End
 		var lastEntry *loghttp.Entry
 		// Make the assumption if the result size == batch size there will be more rows to query
-		for resultLength == q.BatchSize && total < q.Limit {
-			resp, err = c.QueryRange(q.QueryString, q.BatchSize, start, q.End, d, q.Step, q.Interval, q.Quiet)
+		for resultLength == q.BatchSize || total < q.Limit {
+			bs := q.BatchSize
+			if q.Limit - total < q.BatchSize {
+				// Have to add one because of the timestamp overlap described below, the first result
+				// will always be the last result of the last batch.
+				bs = q.Limit - total + 1
+			}
+			resp, err = c.QueryRange(q.QueryString, bs, start, end, d, q.Step, q.Interval, q.Quiet)
 			if err != nil {
 				log.Fatalf("Query failed: %+v", err)
 			}
@@ -100,11 +107,29 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 			}
 
 			resultLength, lastEntry = q.printResult(resp.Data.Result, out, lastEntry)
-			// Was not a log stream query, there is no batching.
-			if resultLength == -1 {
+			// Was not a log stream query, or no results, no more batching
+			if resultLength <= 0 {
 				break
 			}
+			// Happens when there were no logs returned for the query.
+			if lastEntry == nil {
+				break
+			}
+			// Batching works by taking the timestamp of the last query and using it in the next query,
+			// because Loki supports multiple entries with the same timestamp it's possible for a batch to have
+			// fallen in the middle of a list of entries for the same time, so to make sure we get all entries
+			// we start the query on the same time as the last entry from the last batch, and then we keep this last
+			// entry and remove the duplicate when printing the results.
+			// Because of this duplicate entry, we have to subtract it here from the total for each batch
+			// to get the desired limit.
 			total += resultLength
+			// Based on the query direction we either set the start or end for the next query.
+			if q.Forward{
+				start = lastEntry.Timestamp
+			} else {
+				end = lastEntry.Timestamp
+			}
+
 		}
 	}
 
@@ -267,15 +292,17 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.After(allEntries[j].entry.Timestamp) })
 	}
 
+	printed := 0
 	for _, e := range allEntries {
 		// Skip the last entry if it overlaps, this happens because batching includes the last entry from the last batch
 		if lastEntry != nil && e.entry.Timestamp == lastEntry.Timestamp && e.entry.Line == lastEntry.Line {
 			continue
 		}
 		fmt.Println(out.Format(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line))
+		printed++
 	}
 
-	return len(allEntries), allEntries[len(allEntries)-1].entry
+	return printed, allEntries[len(allEntries)-1].entry
 }
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {
