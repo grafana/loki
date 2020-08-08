@@ -56,6 +56,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20200625145055-4b1847531bc9
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	go.uber.org/atomic v1.6.0
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381
 	google.golang.org/grpc v1.30.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6

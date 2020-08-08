@@ -128,25 +128,25 @@ The log line would become
 
 ### With `replace` value in `template` format with hashing for obfuscating data
 
-To obfuscate sensitive data, you can combine the `replace` stage with the `Sha256` template method
+To obfuscate sensitive data, you can combine the `replace` stage with the `Sha2` or `Sha3` template method
 
 ```yaml
 - replace:
     # SSN
     expression: '([0-9]{3}-[0-9]{2}-[0-9]{4})'
-    replace: '*SSN*{{ .Value | Sha256 "salt" }}*'
+    replace: '*SSN*{{ .Value | Sha3 "salt" }}*'
 - replace:
     # IP4
     expression: '(\d{1,3}[.]\d{1,3}[.]\d{1,3}[.]\d{1,3})'
-    replace: '*IP4*{{ .Value | Sha256 "salt" }}*'    
+    replace: '*IP4*{{ .Value | Sha3 "salt" }}*'    
 - replace:
     # email
     expression: '([\w\.=-]+@[\w\.-]+\.[\w]{2,64})'
-    replace: '*email*{{ .Value | Sha256 "salt" }}*'  
+    replace: '*email*{{ .Value | Sha3 "salt" }}*'  
 - replace:
     # creditcard
     expression: '((?:\d[ -]*?){13,16})'
-    replace: '*creditcard*{{ .Value | Sha256 "salt" }}*'  
+    replace: '*creditcard*{{ .Value | Sha3 "salt" }}*'  
 ```
 
 ### `replace` with named captured group
