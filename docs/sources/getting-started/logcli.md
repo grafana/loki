@@ -80,10 +80,10 @@ A command-line for loki.
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata
-      --stats            Show query statistics
+  -q, --quiet            Suppress query metadata.
+      --stats            Show query statistics.
   -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
@@ -164,10 +164,10 @@ instead.
 Flags:
       --help               Show context-sensitive help (also try --help-long and --help-man).
       --version            Show application version.
-  -q, --quiet              Suppress query metadata
-      --stats              Show query statistics
+  -q, --quiet              Suppress query metadata.
+      --stats              Show query statistics.
   -o, --output=default     Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local     Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local     Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""      Specify the location for writing a CPU profile.
       --memprofile=""      Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
@@ -182,23 +182,23 @@ Flags:
                            bypassing an auth gateway.
       --limit=30           Limit on number of entries to print.
       --since=1h           Lookback window.
-      --from=FROM          Start looking for logs at this absolute time (inclusive)
-      --to=TO              Stop looking for logs at this absolute time (exclusive)
+      --from=FROM          Start looking for logs at this absolute time (inclusive).
+      --to=TO              Stop looking for logs at this absolute time (exclusive).
       --step=STEP          Query resolution step width, for metric queries. Evaluate the query at the specified step over the time
                            range.
       --interval=INTERVAL  Query interval, for log queries. Return entries at the specified interval, ignoring those between.
-                           **This parameter is experimental, please see Issue 1779**
+                           **This parameter is experimental, please see Issue 1779**.
       --forward            Scan forwards through logs.
-      --no-labels          Do not print any labels
+      --no-labels          Do not print any labels.
       --exclude-label=EXCLUDE-LABEL ...
                            Exclude labels given the provided key during output.
       --include-label=INCLUDE-LABEL ...
                            Include labels given the provided key during output.
-      --labels-length=0    Set a fixed padding to labels
+      --labels-length=0    Set a fixed padding to labels.
       --store-config=""    Execute the current query using a configured storage from a given Loki configuration file.
-  -t, --tail               Tail the logs
-      --delay-for=0        Delay in tailing by number of seconds to accumulate logs for re-ordering
-      --colored-output     Show ouput with colored labels
+  -t, --tail               Tail the logs.
+      --delay-for=0        Delay in tailing by number of seconds to accumulate logs for re-ordering.
+      --colored-output     Show ouput with colored labels.
 
 Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
@@ -211,10 +211,10 @@ Find values for a given label.
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata
-      --stats            Show query statistics
+  -q, --quiet            Suppress query metadata.
+      --stats            Show query statistics.
   -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
@@ -228,8 +228,8 @@ Flags:
       --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
       --since=1h         Lookback window.
-      --from=FROM        Start looking for labels at this absolute time (inclusive)
-      --to=TO            Stop looking for labels at this absolute time (exclusive)
+      --from=FROM        Start looking for labels at this absolute time (inclusive).
+      --to=TO            Stop looking for labels at this absolute time (exclusive).
 
 Args:
   [<label>]  The name of the label.
@@ -242,10 +242,10 @@ Run series query.
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata
-      --stats            Show query statistics
+  -q, --quiet            Suppress query metadata.
+      --stats            Show query statistics.
   -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
@@ -259,8 +259,8 @@ Flags:
       --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
       --since=1h         Lookback window.
-      --from=FROM        Start looking for logs at this absolute time (inclusive)
-      --to=TO            Stop looking for logs at this absolute time (exclusive)
+      --from=FROM        Start looking for logs at this absolute time (inclusive).
+      --to=TO            Stop looking for logs at this absolute time (exclusive).
       --match=MATCH ...  eg '{foo="bar",baz=~".*blip"}'
 
 ```
