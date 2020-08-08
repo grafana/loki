@@ -34,8 +34,19 @@ var (
 	userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
 )
 
+// Client contains all the methods to query a Loki instance, it's an interface to allow multiple implementations.
+type Client interface {
+	Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error)
+	QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error)
+	ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error)
+	ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error)
+	Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error)
+	LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error)
+	GetOrgID() string
+}
+
 // Client contains fields necessary to query a Loki instance
-type Client struct {
+type DefaultClient struct {
 	TLSConfig config.TLSConfig
 	Username  string
 	Password  string
@@ -46,7 +57,7 @@ type Client struct {
 // Query uses the /api/v1/query endpoint to execute an instant query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *Client) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
 	qsb := util.NewQueryStringBuilder()
 	qsb.SetString("query", queryStr)
 	qsb.SetInt("limit", int64(limit))
@@ -59,7 +70,7 @@ func (c *Client) Query(queryStr string, limit int, time time.Time, direction log
 // QueryRange uses the /api/v1/query_range endpoint to execute a range query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetString("query", queryStr)
 	params.SetInt32("limit", limit)
@@ -81,7 +92,7 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
-func (c *Client) ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (c *DefaultClient) ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
 	var labelResponse loghttp.LabelResponse
 	params := util.NewQueryStringBuilder()
 	params.SetInt("start", from.UnixNano())
@@ -94,7 +105,7 @@ func (c *Client) ListLabelNames(quiet bool, from, through time.Time) (*loghttp.L
 }
 
 // ListLabelValues uses the /api/v1/label endpoint to list label values
-func (c *Client) ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (c *DefaultClient) ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
 	var labelResponse loghttp.LabelResponse
 	params := util.NewQueryStringBuilder()
@@ -106,7 +117,7 @@ func (c *Client) ListLabelValues(name string, quiet bool, from, through time.Tim
 	return &labelResponse, nil
 }
 
-func (c *Client) Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (c *DefaultClient) Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetInt("start", from.UnixNano())
 	params.SetInt("end", through.UnixNano())
@@ -119,7 +130,22 @@ func (c *Client) Series(matchers []string, from, through time.Time, quiet bool) 
 	return &seriesResponse, nil
 }
 
-func (c *Client) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
+// LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
+func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error) {
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("query", queryStr)
+	qsb.SetInt("delay_for", int64(delayFor))
+	qsb.SetInt("limit", int64(limit))
+	qsb.SetInt("from", from)
+
+	return c.wsConnect(tailPath, qsb.Encode(), quiet)
+}
+
+func (c *DefaultClient) GetOrgID() string {
+	return c.OrgID
+}
+
+func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
 
@@ -130,7 +156,7 @@ func (c *Client) doQuery(path string, query string, quiet bool) (*loghttp.QueryR
 	return &r, nil
 }
 
-func (c *Client) doRequest(path, query string, quiet bool, out interface{}) error {
+func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{}) error {
 
 	us, err := buildURL(c.Address, path, query)
 	if err != nil {
@@ -180,18 +206,7 @@ func (c *Client) doRequest(path, query string, quiet bool, out interface{}) erro
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
-func (c *Client) LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error) {
-	qsb := util.NewQueryStringBuilder()
-	qsb.SetString("query", queryStr)
-	qsb.SetInt("delay_for", int64(delayFor))
-	qsb.SetInt("limit", int64(limit))
-	qsb.SetInt("from", from)
-
-	return c.wsConnect(tailPath, qsb.Encode(), quiet)
-}
-
-func (c *Client) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
+func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
 	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return nil, err

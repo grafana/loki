@@ -57,10 +57,10 @@ type Query struct {
 }
 
 // DoQuery executes the query and prints out the results
-func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool) {
+func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) {
 
 	if q.LocalConfig != "" {
-		if err := q.DoLocalQuery(out, statistics, c.OrgID); err != nil {
+		if err := q.DoLocalQuery(out, statistics, c.GetOrgID()); err != nil {
 			log.Fatalf("Query failed: %+v", err)
 		}
 		return
@@ -137,7 +137,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 
 func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, lastEntry *loghttp.Entry) (int, *loghttp.Entry) {
 	length := -1
-	var entry loghttp.Entry
+	var entry *loghttp.Entry
 	switch value.Type() {
 	case logql.ValueTypeStreams:
 		length, entry = q.printStream(value.(loghttp.Streams), out, lastEntry)
@@ -150,7 +150,7 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, las
 	default:
 		log.Fatalf("Unable to print unsupported type: %v", value.Type())
 	}
-	return length, &entry
+	return length, entry
 }
 
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
@@ -236,7 +236,7 @@ func (q *Query) isInstant() bool {
 	return q.Start == q.End
 }
 
-func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry *loghttp.Entry) (int, loghttp.Entry) {
+func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry *loghttp.Entry) (int, *loghttp.Entry) {
 	common := commonLabels(streams)
 
 	// Remove the labels we want to show from common
@@ -286,6 +286,10 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		}
 	}
 
+	if len(allEntries) == 0 {
+		return 0, nil
+	}
+
 	if q.Forward {
 		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.Before(allEntries[j].entry.Timestamp) })
 	} else {
@@ -302,7 +306,7 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		printed++
 	}
 
-	return printed, allEntries[len(allEntries)-1].entry
+	return printed, &allEntries[len(allEntries)-1].entry
 }
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {

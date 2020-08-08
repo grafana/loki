@@ -158,8 +158,9 @@ func main() {
 	}
 }
 
-func newQueryClient(app *kingpin.Application) *client.Client {
-	client := &client.Client{
+func newQueryClient(app *kingpin.Application) client.Client {
+
+	client := &client.DefaultClient{
 		TLSConfig: config.TLSConfig{},
 	}
 

@@ -17,7 +17,7 @@ import (
 )
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
-func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) {
+func (q *Query) TailQuery(delayFor int, c client.Client, out output.LogOutput) {
 	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start.UnixNano(), q.Quiet)
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
