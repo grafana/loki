@@ -132,6 +132,49 @@ func TestDefaultOutput_FormatLabelsPadding(t *testing.T) {
 	}
 }
 
+func TestColorForLabels(t *testing.T) {
+	tests := map[string]struct {
+		labels      loghttp.LabelSet
+		otherLabels loghttp.LabelSet
+		expected    bool
+	}{
+
+		"different labels": {
+			loghttp.LabelSet(map[string]string{
+				"type": "test",
+				"app":  "loki",
+			}),
+			loghttp.LabelSet(map[string]string{
+				"type": "test",
+				"app":  "grafana-loki",
+			}),
+			false,
+		},
+		"same labels": {
+			loghttp.LabelSet(map[string]string{
+				"type": "test",
+				"app":  "loki",
+			}),
+			loghttp.LabelSet(map[string]string{
+				"type": "test",
+				"app":  "loki",
+			}),
+			true,
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+			labelsColor := getColor(testData.labels.String())
+			otherLablesColor := getColor(testData.otherLabels.String())
+			assert.Equal(t, testData.expected, labelsColor.Equals(otherLablesColor))
+		})
+	}
+}
+
 func findMaxLabelsLength(labelsList []loghttp.LabelSet) int {
 	maxLabelsLen := 0
 

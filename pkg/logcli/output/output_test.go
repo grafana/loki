@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewLogOutput(t *testing.T) {
-	options := &LogOutputOptions{time.UTC, false}
+	options := &LogOutputOptions{time.UTC, false, false}
 
 	out, err := NewLogOutput("default", options)
 	assert.NoError(t, err)

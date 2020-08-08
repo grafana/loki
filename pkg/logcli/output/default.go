@@ -24,6 +24,11 @@ func (o *DefaultOutput) Format(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen
 		return fmt.Sprintf("%s %s", color.BlueString(timestamp), line)
 	}
 
+	if o.options.ColoredOutput {
+		labelsColor := getColor(lbls.String()).SprintFunc()
+		return fmt.Sprintf("%s %s %s", color.BlueString(timestamp), labelsColor(padLabel(lbls, maxLabelsLen)), line)
+	}
+
 	return fmt.Sprintf("%s %s %s", color.BlueString(timestamp), color.RedString(padLabel(lbls, maxLabelsLen)), line)
 }
 
