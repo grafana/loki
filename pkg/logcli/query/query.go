@@ -43,6 +43,7 @@ type Query struct {
 	Start           time.Time
 	End             time.Time
 	Limit           int
+	BatchSize       int
 	Forward         bool
 	Step            time.Duration
 	Interval        time.Duration
@@ -72,26 +73,49 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
+		if err != nil {
+			log.Fatalf("Query failed: %+v", err)
+		}
+		if statistics {
+			q.printStats(resp.Data.Statistics)
+		}
+		_, _ = q.printResult(resp.Data.Result, out)
 	} else {
-		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Step, q.Interval, q.Quiet)
-	}
+		if q.Limit < q.BatchSize {
+			q.BatchSize = q.Limit
+		}
+		resultLength := q.BatchSize
+		total := 0
+		start := q.Start
+		var lastEntry *loghttp.Entry
+		// Make the assumption if the result size == batch size there will be more rows to query
+		for resultLength == q.BatchSize && total < q.Limit {
+			resp, err = c.QueryRange(q.QueryString, q.BatchSize, start, q.End, d, q.Step, q.Interval, q.Quiet)
+			if err != nil {
+				log.Fatalf("Query failed: %+v", err)
+			}
 
-	if err != nil {
-		log.Fatalf("Query failed: %+v", err)
-	}
+			if statistics {
+				q.printStats(resp.Data.Statistics)
+			}
 
-	if statistics {
-		q.printStats(resp.Data.Statistics)
+			resultLength, lastEntry = q.printResult(resp.Data.Result, out, lastEntry)
+			// Was not a log stream query, there is no batching.
+			if resultLength == -1 {
+				break
+			}
+			total += resultLength
+		}
 	}
-
-	q.printResult(resp.Data.Result, out)
 
 }
 
-func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput) {
+func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, lastEntry *loghttp.Entry) (int, *loghttp.Entry) {
+	length := -1
+	var entry loghttp.Entry
 	switch value.Type() {
 	case logql.ValueTypeStreams:
-		q.printStream(value.(loghttp.Streams), out)
+		length, entry = q.printStream(value.(loghttp.Streams), out, lastEntry)
 	case parser.ValueTypeScalar:
 		q.printScalar(value.(loghttp.Scalar))
 	case parser.ValueTypeMatrix:
@@ -101,6 +125,7 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput) {
 	default:
 		log.Fatalf("Unable to print unsupported type: %v", value.Type())
 	}
+	return length, &entry
 }
 
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
@@ -186,7 +211,7 @@ func (q *Query) isInstant() bool {
 	return q.Start == q.End
 }
 
-func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput) {
+func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry *loghttp.Entry) (int, loghttp.Entry) {
 	common := commonLabels(streams)
 
 	// Remove the labels we want to show from common
@@ -243,8 +268,14 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput) {
 	}
 
 	for _, e := range allEntries {
+		// Skip the last entry if it overlaps, this happens because batching includes the last entry from the last batch
+		if lastEntry != nil && e.entry.Timestamp == lastEntry.Timestamp && e.entry.Line == lastEntry.Line {
+			continue
+		}
 		fmt.Println(out.Format(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line))
 	}
+
+	return len(allEntries), allEntries[len(allEntries)-1].entry
 }
 
 func (q *Query) printMatrix(matrix loghttp.Matrix) {
