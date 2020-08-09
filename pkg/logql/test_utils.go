@@ -91,11 +91,23 @@ outer:
 
 	}
 
-	return iter.NewTimeRangedIterator(
-		iter.NewStreamsIterator(ctx, filtered, req.Direction),
-		req.Start,
-		req.End,
-	), nil
+	streamIters := make([]iter.EntryIterator, 0, len(filtered))
+	for i := range filtered {
+		// This is the same as how LazyChunk or MemChunk build their iterators,
+		// they return a TimeRangedIterator which is wrapped in a EntryReversedIter if the direction is BACKWARD
+		iterForward := iter.NewTimeRangedIterator(iter.NewStreamIterator(filtered[i]), req.Start, req.End)
+		if req.Direction == logproto.FORWARD {
+			streamIters = append(streamIters, iterForward)
+		} else {
+			reversed, err := iter.NewEntryReversedIter(iterForward)
+			if err != nil {
+				return nil, err
+			}
+			streamIters = append(streamIters, reversed)
+		}
+	}
+
+	return iter.NewHeapIterator(ctx, streamIters, req.Direction), nil
 }
 
 func (q MockQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
