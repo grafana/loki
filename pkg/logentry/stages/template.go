@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
+
 	"golang.org/x/crypto/sha3"
 )
 
