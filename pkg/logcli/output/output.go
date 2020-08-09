@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"hash/fnv"
+	"io"
 	"time"
 
 	"github.com/fatih/color"
@@ -27,7 +28,7 @@ var colorList = []*color.Color{
 
 // LogOutput is the interface any output mode must implement
 type LogOutput interface {
-	Format(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) string
+	FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string)
 }
 
 // LogOutputOptions defines options supported by LogOutput
@@ -38,7 +39,7 @@ type LogOutputOptions struct {
 }
 
 // NewLogOutput creates a log output based on the input mode and options
-func NewLogOutput(mode string, options *LogOutputOptions) (LogOutput, error) {
+func NewLogOutput(w io.Writer, mode string, options *LogOutputOptions) (LogOutput, error) {
 	if options.Timezone == nil {
 		options.Timezone = time.Local
 	}
@@ -46,14 +47,17 @@ func NewLogOutput(mode string, options *LogOutputOptions) (LogOutput, error) {
 	switch mode {
 	case "default":
 		return &DefaultOutput{
+			w:       w,
 			options: options,
 		}, nil
 	case "jsonl":
 		return &JSONLOutput{
+			w:       w,
 			options: options,
 		}, nil
 	case "raw":
 		return &RawOutput{
+			w:       w,
 			options: options,
 		}, nil
 	default:

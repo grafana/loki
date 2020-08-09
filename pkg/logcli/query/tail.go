@@ -1,7 +1,6 @@
 package query
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -75,7 +74,7 @@ func (q *Query) TailQuery(delayFor int, c client.Client, out output.LogOutput) {
 			}
 
 			for _, entry := range stream.Entries {
-				fmt.Println(out.Format(entry.Timestamp, labels, 0, entry.Line))
+				out.FormatAndPrintln(entry.Timestamp, labels, 0, entry.Line)
 			}
 
 		}

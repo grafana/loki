@@ -123,7 +123,7 @@ func main() {
 			ColoredOutput: rangeQuery.ColoredOutput,
 		}
 
-		out, err := output.NewLogOutput(*outputMode, outputOptions)
+		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
 		if err != nil {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
@@ -145,7 +145,7 @@ func main() {
 			ColoredOutput: instantQuery.ColoredOutput,
 		}
 
-		out, err := output.NewLogOutput(*outputMode, outputOptions)
+		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
 		if err != nil {
 			log.Fatalf("Unable to create log output: %s", err)
 		}

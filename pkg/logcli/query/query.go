@@ -307,7 +307,7 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		if lastEntry != nil && e.entry.Timestamp == lastEntry.Timestamp && e.entry.Line == lastEntry.Line {
 			continue
 		}
-		fmt.Println(out.Format(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line))
+		out.FormatAndPrintln(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line)
 		printed++
 	}
 
