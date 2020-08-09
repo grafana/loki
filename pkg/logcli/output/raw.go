@@ -14,6 +14,13 @@ type RawOutput struct {
 	options *LogOutputOptions
 }
 
+func NewRaw (writer io.Writer, options *LogOutputOptions) LogOutput {
+	return &RawOutput{
+		w: writer,
+		options: options,
+	}
+}
+
 // Format a log entry as is
 func (o *RawOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) {
 	if len(line) > 0 && line[len(line)-1] == '\n' {
