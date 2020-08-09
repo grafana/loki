@@ -89,10 +89,9 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		start := q.Start
 		end := q.End
 		var lastEntry *loghttp.Entry
-		// Make the assumption if the result size == batch size there will be more rows to query
-		for resultLength == q.BatchSize || total < q.Limit {
+		for total < q.Limit {
 			bs := q.BatchSize
-			if q.Limit - total < q.BatchSize {
+			if q.Limit-total < q.BatchSize {
 				// Have to add one because of the timestamp overlap described below, the first result
 				// will always be the last result of the last batch.
 				bs = q.Limit - total + 1
@@ -111,8 +110,12 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			if resultLength <= 0 {
 				break
 			}
-			// Happens when there were no logs returned for the query.
+			// Also no result, wouldn't expect to hit this.
 			if lastEntry == nil {
+				break
+			}
+			// Can only happen if all the results return in one request
+			if resultLength == q.Limit {
 				break
 			}
 			// Batching works by taking the timestamp of the last query and using it in the next query,
@@ -124,10 +127,12 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			// to get the desired limit.
 			total += resultLength
 			// Based on the query direction we either set the start or end for the next query.
-			if q.Forward{
+			if q.Forward {
 				start = lastEntry.Timestamp
 			} else {
-				end = lastEntry.Timestamp
+				// The end timestamp is exclusive on a backward query, so to make sure we get back an overlapping result
+				// fudge the timestamp forward in time to make sure to get the last entry from this batch in the next query
+				end = lastEntry.Timestamp.Add(1 * time.Nanosecond)
 			}
 
 		}
