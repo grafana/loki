@@ -415,7 +415,6 @@ github.com/golang/protobuf/ptypes/wrappers
 # github.com/golang/snappy v0.0.1
 ## explicit
 github.com/golang/snappy
-github.com/golang/x/crypto
 # github.com/gomodule/redigo v2.0.0+incompatible
 github.com/gomodule/redigo/internal
 github.com/gomodule/redigo/redis
@@ -1014,6 +1013,7 @@ golang.org/x/lint/golint
 # golang.org/x/mod v0.3.0
 golang.org/x/mod/module
 golang.org/x/mod/semver
+golang.org/x/crypto
 # golang.org/x/net v0.0.0-20200707034311-ab3426394381
 ## explicit
 golang.org/x/net/bpf
