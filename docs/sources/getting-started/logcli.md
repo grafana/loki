@@ -75,7 +75,7 @@ Loki has a server-side limit for the maximum lines returned in a query (default 
 
 Batching allows you to make larger requests than the server-side limit as long as the `--batch` size is less than the server limit.
 
-Please note that the query metadata is printed for each batch (it is printed on `stderr`), this can be removed with the `--quiet` flag.
+Please note that the query metadata is printed for each batch on `stderr`. Set the `--quiet` flag to stop this behavior.
 
 ### Configuration
 
