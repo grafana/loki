@@ -50,6 +50,15 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 		cfg.ClientConfigs = append(cfg.ClientConfigs, cfg.ClientConfig)
 	}
 
+	// This is a bit crude but if the Loki Push API target is specified,
+	// force the log level to match the promtail log level
+	for i := range cfg.ScrapeConfig {
+		if cfg.ScrapeConfig[i].PushConfig != nil {
+			cfg.ScrapeConfig[i].PushConfig.Server.LogLevel = cfg.ServerConfig.LogLevel
+			cfg.ScrapeConfig[i].PushConfig.Server.LogFormat = cfg.ServerConfig.LogFormat
+		}
+	}
+
 	var err error
 	if dryRun {
 		promtail.client, err = client.NewLogger(promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
