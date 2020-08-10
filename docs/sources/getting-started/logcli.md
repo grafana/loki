@@ -62,6 +62,21 @@ $ logcli series -q --match='{namespace="loki",container_name="loki"}'
 {app="loki", container_name="loki", controller_revision_hash="loki-57c9df47f4", filename="/var/log/pods/loki_loki-0_8ed03ded-bacb-4b13-a6fe-53a445a15887/loki/0.log", instance="loki-0", job="loki/loki", name="loki", namespace="loki", release="loki", statefulset_kubernetes_io_pod_name="loki-0", stream="stderr"}
 ```
 
+#### Batched Queries
+
+Starting with Loki 1.6.0, `logcli` batches log queries to Loki.
+
+If you set a `--limit` on a query (default is 30) to a large number, say `--limit=10000`, then logcli automatically
+sends this request to Loki in batches.
+
+The default batch size is `1000`.
+
+Loki has a server-side limit for the maximum lines returned in a query (default is 5000).
+
+Batching allows you to make larger requests than the server-side limit as long as the `--batch` size is less than the server limit.
+
+Please note that the query metadata is printed for each batch on `stderr`. Set the `--quiet` flag to stop this behavior.
+
 ### Configuration
 
 Configuration values are considered in the following order (lowest to highest):
@@ -188,6 +203,7 @@ Flags:
                            range.
       --interval=INTERVAL  Query interval, for log queries. Return entries at the specified interval, ignoring those between.
                            **This parameter is experimental, please see Issue 1779**.
+      --batch=1000         Query batch size to use until 'limit' is reached.
       --forward            Scan forwards through logs.
       --no-labels          Do not print any labels.
       --exclude-label=EXCLUDE-LABEL ...

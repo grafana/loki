@@ -123,7 +123,7 @@ func main() {
 			ColoredOutput: rangeQuery.ColoredOutput,
 		}
 
-		out, err := output.NewLogOutput(*outputMode, outputOptions)
+		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
 		if err != nil {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
@@ -145,7 +145,7 @@ func main() {
 			ColoredOutput: instantQuery.ColoredOutput,
 		}
 
-		out, err := output.NewLogOutput(*outputMode, outputOptions)
+		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
 		if err != nil {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
@@ -158,8 +158,9 @@ func main() {
 	}
 }
 
-func newQueryClient(app *kingpin.Application) *client.Client {
-	client := &client.Client{
+func newQueryClient(app *kingpin.Application) client.Client {
+
+	client := &client.DefaultClient{
 		TLSConfig: config.TLSConfig{},
 	}
 
@@ -273,6 +274,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
+		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)

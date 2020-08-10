@@ -18,7 +18,7 @@ type SeriesQuery struct {
 }
 
 // DoSeries prints out series results
-func (q *SeriesQuery) DoSeries(c *client.Client) {
+func (q *SeriesQuery) DoSeries(c client.Client) {
 	values := q.GetSeries(c)
 
 	for _, value := range values {
@@ -27,7 +27,7 @@ func (q *SeriesQuery) DoSeries(c *client.Client) {
 }
 
 // GetSeries returns an array of label sets
-func (q *SeriesQuery) GetSeries(c *client.Client) []loghttp.LabelSet {
+func (q *SeriesQuery) GetSeries(c client.Client) []loghttp.LabelSet {
 	seriesResponse, err := c.Series(q.Matchers, q.Start, q.End, q.Quiet)
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
