@@ -73,7 +73,7 @@ The default batch size is `1000`.
 
 Loki has a server-side limit for the maximum lines returned in a query (default is 5000).
 
-Batching allows for making larger requests than the server side limit so long as the `--batch` size is less than the server limit.
+Batching allows you to make larger requests than the server-side limit as long as the `--batch` size is less than the server limit.
 
 Please note that the query metadata is printed for each batch (it is printed on `stderr`), this can be removed with the `--quiet` flag.
 
