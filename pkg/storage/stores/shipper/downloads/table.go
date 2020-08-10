@@ -121,15 +121,15 @@ func (t *Table) init(ctx context.Context) (err error) {
 
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, objects))
 
-	// download the dbs parallelly
-	err = t.doParallelDownload(ctx, objects)
-	if err != nil {
-		return err
-	}
-
 	folderPath, err := t.folderPathForTable(true)
 	if err != nil {
 		return
+	}
+
+	// download the dbs parallelly
+	err = t.doParallelDownload(ctx, objects, folderPath)
+	if err != nil {
+		return err
 	}
 
 	// open all the downloaded dbs
@@ -420,18 +420,13 @@ func getDBNameFromObjectKey(objectKey string) (string, error) {
 }
 
 // doParallelDownload downloads objects(dbs) parallelly. It is upto the caller to open the dbs after the download finishes successfully.
-func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageObject) error {
+func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageObject, folderPathForTable string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	folderPath, err := t.folderPathForTable(true)
-	if err != nil {
-		return err
-	}
-
 	queue := make(chan chunk.StorageObject)
 	n := util.Min(len(objects), downloadParallelism)
-	incomingErrors := make(chan error, n)
+	incomingErrors := make(chan error)
 
 	// Run n parallel goroutines fetching objects to download from the queue
 	for i := 0; i < n; i++ {
@@ -450,7 +445,7 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 					break
 				}
 
-				filePath := path.Join(folderPath, dbName)
+				filePath := path.Join(folderPathForTable, dbName)
 				err = t.getFileFromStorage(ctx, object.Key, filePath)
 				if err != nil {
 					break
