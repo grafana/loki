@@ -71,7 +71,7 @@ sends this request to Loki in batches.
 
 The default batch size is `1000`.
 
-Loki has a server side limit for the maximum lines returned in a query (default is 5000),
+Loki has a server-side limit for the maximum lines returned in a query (default is 5000).
 
 Batching allows for making larger requests than the server side limit so long as the `--batch` size is less than the server limit.
 
