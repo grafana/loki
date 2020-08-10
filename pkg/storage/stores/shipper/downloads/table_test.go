@@ -2,6 +2,7 @@ package downloads
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -35,11 +36,11 @@ func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, *local
 	return boltDBIndexClient, fsObjectClient
 }
 
-func buildTestTable(t *testing.T, path string) (*Table, *local.BoltIndexClient, stopFunc) {
+func buildTestTable(t *testing.T, tableName, path string) (*Table, *local.BoltIndexClient, stopFunc) {
 	boltDBIndexClient, fsObjectClient := buildTestClients(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
-	table := NewTable("test", cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	table := NewTable(tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
 
 	// wait for either table to get ready or a timeout hits
 	select {
@@ -84,7 +85,7 @@ func TestTable_Query(t *testing.T) {
 
 	testutil.SetupDBTablesAtPath(t, "test", objectStoragePath, testDBs)
 
-	table, _, stopFunc := buildTestTable(t, tempDir)
+	table, _, stopFunc := buildTestTable(t, "test", tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -129,7 +130,7 @@ func TestTable_Sync(t *testing.T) {
 	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, testDBs)
 
 	// create table instance
-	table, boltdbClient, stopFunc := buildTestTable(t, tempDir)
+	table, boltdbClient, stopFunc := buildTestTable(t, "test", tempDir)
 	defer func() {
 		stopFunc()
 	}()
@@ -172,7 +173,7 @@ func TestTable_LastUsedAt(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "table-writes")
 	require.NoError(t, err)
 
-	table, _, stopFunc := buildTestTable(t, tempDir)
+	table, _, stopFunc := buildTestTable(t, "test", tempDir)
 	defer func() {
 		stopFunc()
 		require.NoError(t, os.RemoveAll(tempDir))
@@ -193,4 +194,39 @@ func TestTable_LastUsedAt(t *testing.T) {
 
 	// check whether last used at got update to now.
 	require.InDelta(t, time.Now().Unix(), table.LastUsedAt().Unix(), 1)
+}
+
+func TestTable_doParallelDownload(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "table-parallel-download")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(tempDir))
+	}()
+
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+
+	for _, tc := range []int{0, 10, downloadParallelism, downloadParallelism * 2} {
+		t.Run(fmt.Sprintf("%d dbs", tc), func(t *testing.T) {
+			testDBs := map[string]testutil.DBRecords{}
+
+			for i := 0; i < tc; i++ {
+				testDBs[fmt.Sprint(i)] = testutil.DBRecords{
+					Start:      i * 10,
+					NumRecords: 10,
+				}
+			}
+
+			testutil.SetupDBTablesAtPath(t, fmt.Sprint(tc), objectStoragePath, testDBs)
+
+			table, _, stopFunc := buildTestTable(t, fmt.Sprint(tc), tempDir)
+			defer func() {
+				stopFunc()
+			}()
+
+			// ensure that we have `tc` number of files downloaded and opened.
+			require.Len(t, table.dbs, tc)
+			testutil.TestSingleQuery(t, chunk.IndexQuery{}, table, 0, tc*10)
+		})
+	}
 }
