@@ -166,7 +166,7 @@ func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 			batch = append(batch, it.lastOverlapping...)
 		}
 
-		//includesOverlap = true
+		includesOverlap = true
 
 		if it.chunks.Len() > 0 {
 			nextChunk = it.chunks.Peek()
