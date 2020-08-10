@@ -236,6 +236,17 @@ func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 		}
 	}
 
+	// If every chunk overlaps and we exhaust fetching chunks before ever finding a non overlapping chunk
+	// in this case it will be possible to have a through value which is older or equal to our from value
+	// If that happens we reset the bounds according to the iteration direction
+	if through.Sub(from) <= 0 {
+		if it.direction == logproto.BACKWARD {
+			from = it.start
+		} else {
+			through = it.end
+		}
+	}
+
 	if it.chunks.Len() > 0 {
 		it.lastOverlapping = it.lastOverlapping[:0]
 		for _, c := range batch {

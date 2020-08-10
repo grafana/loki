@@ -38,7 +38,7 @@ func assertStream(t *testing.T, expected, actual []logproto.Stream) {
 	for i := range expected {
 		assert.Equal(t, expected[i].Labels, actual[i].Labels)
 		if len(expected[i].Entries) != len(actual[i].Entries) {
-			t.Fatalf("error entries length are different expected %d actual%d\n%s", len(expected[i].Entries), len(actual[i].Entries), spew.Sdump(expected[i].Entries, actual[i].Entries))
+			t.Fatalf("error entries length are different expected %d actual %d\n%s", len(expected[i].Entries), len(actual[i].Entries), spew.Sdump(expected[i].Entries, actual[i].Entries))
 
 			return
 		}

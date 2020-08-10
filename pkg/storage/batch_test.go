@@ -183,6 +183,135 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 			logproto.FORWARD,
 			2,
 		},
+		"forward all overlap and all chunks have a from time less than query from time": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				}),
+			},
+			[]logproto.Stream{
+				{
+					Labels: fooLabels,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			from.Add(1 * time.Millisecond), from.Add(5 * time.Millisecond),
+			logproto.FORWARD,
+			2,
+		},
 		"forward with overlapping non-continuous entries": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
@@ -330,6 +459,135 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
 							Line:      "4",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				}),
+			},
+			[]logproto.Stream{
+				{
+					Labels: fooLabels,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			from, from.Add(4 * time.Millisecond),
+			logproto.BACKWARD,
+			2,
+		},
+		"backward all overlap and all chunks have a through time greater than query through time": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
 						},
 					},
 				}),
