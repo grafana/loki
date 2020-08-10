@@ -69,7 +69,7 @@ Starting with Loki 1.6.0, `logcli` batches log queries to Loki.
 If you set a `--limit` on a query (default is 30) to a large number, say `--limit=10000`, then logcli automatically
 sends this request to Loki in batches.
 
-The default batch size is `1000`
+The default batch size is `1000`.
 
 Loki has a server side limit for the maximum lines returned in a query (default is 5000),
 
