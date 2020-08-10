@@ -67,7 +67,7 @@ $ logcli series -q --match='{namespace="loki",container_name="loki"}'
 Starting with Loki 1.6.0, `logcli` batches log queries to Loki.
 
 If you set a `--limit` on a query (default is 30) to a large number, say `--limit=10000`, then logcli automatically
-send this request to Loki in batches.
+sends this request to Loki in batches.
 
 The default batch size is `1000`
 
