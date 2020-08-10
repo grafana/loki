@@ -203,7 +203,7 @@ Flags:
                            range.
       --interval=INTERVAL  Query interval, for log queries. Return entries at the specified interval, ignoring those between.
                            **This parameter is experimental, please see Issue 1779**.
-      --batch=1000         Query batch size to use until 'limit' is reached
+      --batch=1000         Query batch size to use until 'limit' is reached.
       --forward            Scan forwards through logs.
       --no-labels          Do not print any labels.
       --exclude-label=EXCLUDE-LABEL ...
