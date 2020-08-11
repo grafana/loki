@@ -35,9 +35,15 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ template "fluent-bit-loki.serviceAccountName" . }}
-    {{- if .Values.priorityClassName }}
+      {{- if .Values.priorityClassName }}
       priorityClassName: {{ .Values.priorityClassName }}
-    {{- end }}
+      {{- end }}
+      {{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.image.pullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+      {{- end }}
       containers:
         - name: fluent-bit-loki
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
