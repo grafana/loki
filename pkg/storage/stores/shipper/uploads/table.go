@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +56,7 @@ type Table struct {
 
 	uploadedDBsMtime    map[string]time.Time
 	uploadedDBsMtimeMtx sync.RWMutex
+	modifyShardsSince   int64
 }
 
 // NewTable create a new Table without looking for any existing local dbs belonging to the table.
@@ -90,6 +92,7 @@ func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageCli
 		boltdbIndexClient: boltdbIndexClient,
 		dbs:               dbs,
 		uploadedDBsMtime:  map[string]time.Time{},
+		modifyShardsSince: time.Now().Unix(),
 	}, nil
 }
 
@@ -140,9 +143,13 @@ func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
 // db files are named after the time shard i.e epoch of the truncated time.
 // If a db file does not exist for a shard it gets created.
 func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrites) error {
-	shard := fmt.Sprint(tm.Truncate(shardDBsByDuration).Unix())
+	// do not write to files older than init time otherwise we might endup modifying file which was already created and uploaded before last shutdown.
+	shard := tm.Truncate(shardDBsByDuration).Unix()
+	if shard < lt.modifyShardsSince {
+		shard = lt.modifyShardsSince
+	}
 
-	db, err := lt.getOrAddDB(shard)
+	db, err := lt.getOrAddDB(fmt.Sprint(shard))
 	if err != nil {
 		return err
 	}
@@ -185,13 +192,28 @@ func (lt *Table) RemoveDB(name string) error {
 }
 
 // Upload uploads all the dbs which are never uploaded or have been modified since the last batch was uploaded.
-func (lt *Table) Upload(ctx context.Context) error {
+func (lt *Table) Upload(ctx context.Context, force bool) error {
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
+
+	// upload files excluding active shard. It could so happen that we just started a new shard but the file for last shard is still being updated due to pending writes or pending flush to disk.
+	// To avoid uploading it, excluding previous active shard as well if it has been not more than a minute since it became inactive.
+	uploadShardsBefore := fmt.Sprint(time.Now().Add(-time.Minute).Truncate(shardDBsByDuration).Unix())
+
+	// Adding check for considering only files which are shared and have just an epoch in their name.
+	// We can remove this check after a release or two when we will have only files with epoch in their name.
+	filenameWithEpochRe, err := regexp.Compile(`^[0-9]{10}$`)
+	if err != nil {
+		return err
+	}
 
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("uploading table %s", lt.name))
 
 	for name, db := range lt.dbs {
+		// doing string comparison between unix timestamps in string form since they are anyways of same length
+		if !force && filenameWithEpochRe.MatchString(name) && name >= uploadShardsBefore {
+			continue
+		}
 		stat, err := os.Stat(db.Path())
 		if err != nil {
 			return err
