@@ -26,6 +26,10 @@ spec:
   loadBalancerSourceRanges:
 {{ toYaml .Values.syslogService.loadBalancerSourceRanges | indent 4 }}
   {{- end -}}
+  {{- if .Values.syslogService.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.syslogService.externalIPs | indent 4 }}
+  {{- end }}
   {{- if .Values.syslogService.externalTrafficPolicy }}
   externalTrafficPolicy: {{ .Values.syslogService.externalTrafficPolicy }}
   {{- end }}
