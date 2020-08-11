@@ -128,7 +128,7 @@ The log line would become
 
 ### With `replace` value in `template` format with hashing for obfuscating data
 
-To obfuscate sensitive data, you can combine the `replace` stage with the `Sha2` or `Sha3` template method
+To obfuscate sensitive data, you can combine the `replace` stage with the `Sha2` or `Sha3` template method.
 
 ```yaml
 - replace:

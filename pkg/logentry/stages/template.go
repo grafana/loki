@@ -36,12 +36,12 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
-		"Sha2Hash": func(salt string, input string) string {
-			hash := sha256.Sum256([]byte(salt + input))
+		"Hash": func(salt string, input string) string {
+			hash := sha3.Sum256([]byte(salt + input))
 			return hex.EncodeToString(hash[:])
 		},
-		"Sha3Hash": func(salt string, input string) string {
-			hash := sha3.Sum256([]byte(salt + input))
+		"Sha2Hash": func(salt string, input string) string {
+			hash := sha256.Sum256([]byte(salt + input))
 			return hex.EncodeToString(hash[:])
 		},
 		"regexReplaceAll": func(regex string, s string, repl string) string {

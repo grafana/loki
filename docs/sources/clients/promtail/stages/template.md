@@ -179,14 +179,20 @@ and trailing white space removed, as defined by Unicode.
     template: '{{ regexReplaceAllLiteral "(ts=)" .Value "timestamp=" }}'
 ```
 
-### Sha2 and Sha3
+### Hash and Sha2Hash
 
-`Sha2` returns a Sha2_256 hash of the string, represented as a hexadecimal number of 64 digits. It can be used to obfuscate sensitive data / PII in the logs. It requires a (fixed) salt value, to add complexity to low input domains (e.g. all possible Social Security Numbers).
-
-Alternatively, you can use `Sha3` for calculating the Sha3_256 of the string.
+`Hash` returns a Sha3_256 hash of the string, represented as a hexadecimal number of 64 digits. You can use it to obfuscate sensitive data / PII in the logs. It requires a (fixed) salt value, to add complexity to low input domains (e.g. all possible Social Security Numbers).
 
 ```yaml
 - template:
     source: output
-    template: '{{ Sha2 .Value "salt" }}'
+    template: '{{ Hash .Value "salt" }}'
+```
+
+Alternatively, you can use `Sha2Hash` for calculating the Sha2_256 of the string.
+
+```yaml
+- template:
+    source: output
+    template: '{{ Sha2Hash .Value "salt" }}'
 ```
