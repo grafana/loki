@@ -50,6 +50,11 @@ image:
   repository: grafana/fluent-bit-plugin-loki
   tag: 1.5.0-amd64
   pullPolicy: IfNotPresent
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be present in the namespace.
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  # pullSecrets:
+  #   - myRegistrKeySecretName
 
 nameOverride: fluent-bit-loki
 
