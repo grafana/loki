@@ -8,11 +8,11 @@ The `drop` stage is a filtering stage that lets you drop logs based on several o
 It's important to note that if you provide multiple options they will be treated like an AND clause,
 where each option has to be true to drop the log.
 
-If you wish to drop with an OR clause, specify multiple drop stages.
+If you wish to drop with an OR clause, then specify multiple drop stages.
 
 There are examples below to help explain. 
 
-## Schema
+## Drop stage schema
 
 ```yaml
 drop:
@@ -20,7 +20,7 @@ drop:
   [source: <string>]
   
   # RE2 regular expression, if source is provided the regex will attempt to match the source
-  # If no source is provided, the regex will attempt to match the log line
+  # If no source is provided, then the regex attempts to match the log line
   # If the provided regex matches the log line or a provided source, the line will be dropped. 
   [expression: <string>]
 
@@ -38,9 +38,11 @@ drop:
 
 ## Examples
 
+The following are examples showing the use of the `drop` stage.
+
 ### Simple Drops
 
-Simple `drop` stage configurations only specify one of the options, or 2 options when using the `source` option.
+Simple `drop` stage configurations only specify one of the options, or two options when using the `source` option.
 
 #### Regex match a line
 
@@ -94,9 +96,9 @@ Would drop this log line:
 {"time":"2019-01-01T01:00:00.000000001Z", "level": "error", "msg":"11.11.11.11 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"}
 ```
 
-#### Dropping old log lines
+#### Drop old log lines
 
-*NOTE* For `older_than` to work, you must be using the [timestamp](timestamp.md) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
+**NOTE** For `older_than` to work, you must be using the [timestamp](timestamp.md) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
 
 Given the pipeline:
 
@@ -124,8 +126,7 @@ However it would _not_ drop this log line:
 {"time":"2020-08-11T13:00:00Z", "level": "error", "msg":"11.11.11.11 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"}
 ```
 
-In this example the current time is 2020-08-12T12:00:00Z and `older_than` is 24h, any log read from a file in which the timestamp is extracted from the log, 
-and that timestamp is older than 2020-08-11T12:00:00Z will be dropped.
+In this example the current time is 2020-08-12T12:00:00Z and `older_than` is 24h. All log lines which have a timestamp older than 2020-08-11T12:00:00Z will be dropped.
 
 #### Dropping long log lines
 
@@ -139,7 +140,7 @@ Given the pipeline:
 Would drop any log line longer than 8192 bytes, this is useful when Loki would reject a line for being too long.
 
 
-### Complex Drops
+### Complex drops
 
 Complex `drop` stage configurations specify multiple options in one stage or specify multiple drop stages
 
