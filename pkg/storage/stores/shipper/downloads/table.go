@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -56,7 +58,7 @@ type Table struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
+func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	table := Table{
@@ -76,6 +78,9 @@ func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBInd
 	go func() {
 		defer table.dbsMtx.Unlock()
 		defer close(table.ready)
+
+		log, _ := spanlogger.New(spanCtx, "Shipper.DownloadTable")
+		defer log.Span.Finish()
 
 		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 		defer cancel()

@@ -40,7 +40,7 @@ func buildTestTable(t *testing.T, tableName, path string) (*Table, *local.BoltIn
 	boltDBIndexClient, fsObjectClient := buildTestClients(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
-	table := NewTable(tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	table := NewTable(context.Background(), tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
 
 	// wait for either table to get ready or a timeout hits
 	select {
