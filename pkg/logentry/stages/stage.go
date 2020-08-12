@@ -23,6 +23,7 @@ const (
 	StageTypeTemplate  = "template"
 	StageTypePipeline  = "pipeline"
 	StageTypeTenant    = "tenant"
+	StageTypeDrop      = "drop"
 )
 
 // Stage takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
