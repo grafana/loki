@@ -40,7 +40,7 @@ drop:
 
 The following are examples showing the use of the `drop` stage.
 
-### Simple Drops
+### Simple drops
 
 Simple `drop` stage configurations only specify one of the options, or two options when using the `source` option.
 
