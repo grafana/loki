@@ -11,13 +11,13 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 type observableVecCollector struct {
@@ -146,19 +146,20 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	err := instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
-		sp := opentracing.SpanFromContext(innerCtx)
-		sp.LogFields(otlog.Int("keys requested", len(keys)))
+	const method = "Memcache.GetMulti"
+	err := instr.CollectedRequest(ctx, method, c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
+		log, _ := spanlogger.New(innerCtx, method)
+		log.LogFields(otlog.Int("keys requested", len(keys)))
 
 		var err error
 		items, err = c.memcache.GetMulti(keys)
 
-		sp.LogFields(otlog.Int("keys found", len(items)))
+		log.LogFields(otlog.Int("keys found", len(items)))
 
 		// Memcached returns partial results even on error.
 		if err != nil {
-			sp.LogFields(otlog.Error(err))
-			level.Error(c.logger).Log("msg", "Failed to get keys from memcached", "err", err)
+			log.Error(err)
+			level.Error(log).Log("msg", "Failed to get keys from memcached", "err", err)
 		}
 		return err
 	})
