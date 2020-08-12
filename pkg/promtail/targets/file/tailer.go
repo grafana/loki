@@ -49,6 +49,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.
 		Follow: true,
 		Poll:   true,
 		ReOpen: true,
+		MustExist: true,
 		Location: &tail.SeekInfo{
 			Offset: pos,
 			Whence: 0,
