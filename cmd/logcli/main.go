@@ -76,7 +76,16 @@ https://github.com/grafana/loki/blob/master/docs/logql.md`)
 	labelsCmd   = app.Command("labels", "Find values for a given label.")
 	labelsQuery = newLabelQuery(labelsCmd)
 
-	seriesCmd   = app.Command("series", "Run series query.")
+	seriesCmd = app.Command("series", `Run series query.
+
+The "series" command will take the provided label matcher 
+and return all the log streams found in the time window.
+
+It is possible to send an empty label matcher '{}' to return all streams.
+
+Use the --analyze-labels flag to get a summary of the labels found in all streams.
+This is helpful to find high cardinality labels. 
+`)
 	seriesQuery = newSeriesQuery(seriesCmd)
 )
 
@@ -232,10 +241,11 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 		return nil
 	})
 
+	cmd.Arg("matcher", "eg '{foo=\"bar\",baz=~\".*blip\"}'").Required().StringVar(&q.Matcher)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
-	cmd.Flag("match", "eg '{foo=\"bar\",baz=~\".*blip\"}'").Required().StringsVar(&q.Matchers)
+	cmd.Flag("analyze-labels", "Printout a summary of labels including count of label value combinations, useful for debugging high cardinality series").BoolVar(&q.AnalyzeLabels)
 
 	return q
 }

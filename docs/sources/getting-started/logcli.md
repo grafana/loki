@@ -152,7 +152,7 @@ Commands:
   labels [<flags>] [<label>]
     Find values for a given label.
 
-  series --match=MATCH [<flags>]
+  series [<flags>] <matcher>
     Run series query.
 
 $ logcli help query
