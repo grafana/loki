@@ -30,8 +30,16 @@ Download and install the Loki and Promtail module using `jb`:
 
 ```bash
 go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
+jb init
 jb install github.com/grafana/loki/production/ksonnet/loki
 jb install github.com/grafana/loki/production/ksonnet/promtail
+```
+
+Since we use some as of yet non GA features, please override the `lib/k.libsonnet` with the following. This step won't be necessary in a future tanka release.
+
+```jsonnet
+(import 'github.com/jsonnet-libs/k8s-alpha/1.14/main.libsonnet')
++ (import 'github.com/jsonnet-libs/k8s-alpha/1.14/extensions/kausal-shim.libsonnet')
 ```
 
 Be sure to replace the username, password and the relevant `htpasswd` contents.
