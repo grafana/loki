@@ -1101,11 +1101,16 @@ redis:
   [enable_tls: <boolean> | default = false]
 
 fifocache:
-  # Number of entries to cache in-memory.
-  # CLI flag: -<prefix>.fifocache.size
-  [size: <int> | default = 0]
+  # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
+  # applied.
+  # CLI flag: -<prefix>.fifocache.max-size-bytes
+  [max_size_bytes: <string> | default = ""]
 
-  # The expiry duration for the in-memory cache.
+  # Maximum number of entries in the cache.
+  # CLI flag: -<prefix>.fifocache.max-size-items
+  [max_size_items: <int> | default = 0]
+
+  # The expiry duration for the cache.
   # CLI flag: -<prefix>.fifocache.duration
   [validity: <duration> | default = 0s]
 ```

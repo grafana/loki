@@ -91,7 +91,7 @@ Next we'll download, install and give executable right to [Promtail](../../promt
 
 ```bash
 mkdir /opt/promtail && cd /opt/promtail
-curl -O -L "https://github.com/grafana/loki/releases/download/v1.5.0/promtail-linux-amd64.zip"
+curl -O -L "https://github.com/grafana/loki/releases/download/v1.6.0/promtail-linux-amd64.zip"
 unzip "promtail-linux-amd64.zip"
 chmod a+x "promtail-linux-amd64"
 ```
@@ -231,7 +231,7 @@ Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal systemd[1]: Started P
 Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal systemd[1]: Starting Promtail...
 Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[2732]: level=warn ts=2020-07-08T15:48:57.559085451Z caller=filetargetmanager.go:98 msg="WARNING!!! entry_parser config is deprecated, please change to pipeline_stages"
 Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[2732]: level=info ts=2020-07-08T15:48:57.559869071Z caller=server.go:179 http=[::]:3100 grpc=[::]:35127 msg="server listening on addresses"
-Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[2732]: level=info ts=2020-07-08T15:48:57.56029474Z caller=main.go:67 msg="Starting Promtail" version="(version=1.5.0, branch=HEAD, revision=12c7eab8)"
+Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[2732]: level=info ts=2020-07-08T15:48:57.56029474Z caller=main.go:67 msg="Starting Promtail" version="(version=1.6.0, branch=HEAD, revision=12c7eab8)"
 ```
 
 You can now verify in Grafana that Loki has correctly received your instance logs by using the [LogQL](../../../logql/) query `{zone="us-east-2"}`.

@@ -15,7 +15,7 @@ Every release includes binaries for Promtail which can be found on the
 
 ```bash
 # modify tag to most recent version
-docker pull grafana/promtail:1.5.0
+docker pull grafana/promtail:1.6.0
 ```
 
 ## Helm
