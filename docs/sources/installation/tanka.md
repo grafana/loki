@@ -40,6 +40,8 @@ Note: As of 2020-08-13 we use some as of yet non GA features, please override th
 ```jsonnet
 (import 'github.com/jsonnet-libs/k8s-alpha/1.14/main.libsonnet')
 + (import 'github.com/jsonnet-libs/k8s-alpha/1.14/extensions/kausal-shim.libsonnet')
+```
+
 Be sure to replace the username, password and the relevant `htpasswd` contents.
 Making sure to set the value for username, password, and `htpasswd` properly,
 replace the contents of `environments/loki/main.jsonnet` with:
