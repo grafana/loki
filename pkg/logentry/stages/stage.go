@@ -107,6 +107,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		if err != nil {
 			return nil, err
 		}
+	case StageTypeDrop:
+		s, err = newDropStage(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, errors.Errorf("Unknown stage type: %s", stageType)
 	}
