@@ -1,0 +1,33 @@
+{
+  local d = (import 'doc-util/main.libsonnet'),
+  '#':: d.pkg(name='podPresetSpec', url='', help='PodPresetSpec is a description of a pod preset.'),
+  '#selector':: d.obj(help='A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects.'),
+  selector: {
+    '#withMatchExpressions':: d.fn(help='matchExpressions is a list of label selector requirements. The requirements are ANDed.', args=[d.arg(name='matchExpressions', type=d.T.array)]),
+    withMatchExpressions(matchExpressions): { selector+: { matchExpressions: if std.isArray(v=matchExpressions) then matchExpressions else [matchExpressions] } },
+    '#withMatchExpressionsMixin':: d.fn(help='matchExpressions is a list of label selector requirements. The requirements are ANDed.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='matchExpressions', type=d.T.array)]),
+    withMatchExpressionsMixin(matchExpressions): { selector+: { matchExpressions+: if std.isArray(v=matchExpressions) then matchExpressions else [matchExpressions] } },
+    '#withMatchLabels':: d.fn(help='matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.', args=[d.arg(name='matchLabels', type=d.T.object)]),
+    withMatchLabels(matchLabels): { selector+: { matchLabels: matchLabels } },
+    '#withMatchLabelsMixin':: d.fn(help='matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='matchLabels', type=d.T.object)]),
+    withMatchLabelsMixin(matchLabels): { selector+: { matchLabels+: matchLabels } }
+  },
+  '#withEnv':: d.fn(help='Env defines the collection of EnvVar to inject into containers.', args=[d.arg(name='env', type=d.T.array)]),
+  withEnv(env): { env: if std.isArray(v=env) then env else [env] },
+  '#withEnvFrom':: d.fn(help='EnvFrom defines the collection of EnvFromSource to inject into containers.', args=[d.arg(name='envFrom', type=d.T.array)]),
+  withEnvFrom(envFrom): { envFrom: if std.isArray(v=envFrom) then envFrom else [envFrom] },
+  '#withEnvFromMixin':: d.fn(help='EnvFrom defines the collection of EnvFromSource to inject into containers.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='envFrom', type=d.T.array)]),
+  withEnvFromMixin(envFrom): { envFrom+: if std.isArray(v=envFrom) then envFrom else [envFrom] },
+  '#withEnvMixin':: d.fn(help='Env defines the collection of EnvVar to inject into containers.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='env', type=d.T.array)]),
+  withEnvMixin(env): { env+: if std.isArray(v=env) then env else [env] },
+  '#withVolumeMounts':: d.fn(help='VolumeMounts defines the collection of VolumeMount to inject into containers.', args=[d.arg(name='volumeMounts', type=d.T.array)]),
+  withVolumeMounts(volumeMounts): { volumeMounts: if std.isArray(v=volumeMounts) then volumeMounts else [volumeMounts] },
+  '#withVolumeMountsMixin':: d.fn(help='VolumeMounts defines the collection of VolumeMount to inject into containers.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='volumeMounts', type=d.T.array)]),
+  withVolumeMountsMixin(volumeMounts): { volumeMounts+: if std.isArray(v=volumeMounts) then volumeMounts else [volumeMounts] },
+  '#withVolumes':: d.fn(help='Volumes defines the collection of Volume to inject into the pod.', args=[d.arg(name='volumes', type=d.T.array)]),
+  withVolumes(volumes): { volumes: if std.isArray(v=volumes) then volumes else [volumes] },
+  '#withVolumesMixin':: d.fn(help='Volumes defines the collection of Volume to inject into the pod.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='volumes', type=d.T.array)]),
+  withVolumesMixin(volumes): { volumes+: if std.isArray(v=volumes) then volumes else [volumes] },
+  '#mixin': 'ignore',
+  mixin: self
+}

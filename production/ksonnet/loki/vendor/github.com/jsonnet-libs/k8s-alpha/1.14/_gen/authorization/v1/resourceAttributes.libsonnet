@@ -1,0 +1,20 @@
+{
+  local d = (import 'doc-util/main.libsonnet'),
+  '#':: d.pkg(name='resourceAttributes', url='', help='ResourceAttributes includes the authorization attributes available for resource requests to the Authorizer interface'),
+  '#withGroup':: d.fn(help='Group is the API Group of the Resource.  "*" means all.', args=[d.arg(name='group', type=d.T.string)]),
+  withGroup(group): { group: group },
+  '#withName':: d.fn(help='Name is the name of the resource being requested for a "get" or deleted for a "delete". "" (empty) means all.', args=[d.arg(name='name', type=d.T.string)]),
+  withName(name): { name: name },
+  '#withNamespace':: d.fn(help='Namespace is the namespace of the action being requested.  Currently, there is no distinction between no namespace and all namespaces "" (empty) is defaulted for LocalSubjectAccessReviews "" (empty) is empty for cluster-scoped resources "" (empty) means "all" for namespace scoped resources from a SubjectAccessReview or SelfSubjectAccessReview', args=[d.arg(name='namespace', type=d.T.string)]),
+  withNamespace(namespace): { namespace: namespace },
+  '#withResource':: d.fn(help='Resource is one of the existing resource types.  "*" means all.', args=[d.arg(name='resource', type=d.T.string)]),
+  withResource(resource): { resource: resource },
+  '#withSubresource':: d.fn(help='Subresource is one of the existing resource types.  "" means none.', args=[d.arg(name='subresource', type=d.T.string)]),
+  withSubresource(subresource): { subresource: subresource },
+  '#withVerb':: d.fn(help='Verb is a kubernetes resource API verb, like: get, list, watch, create, update, delete, proxy.  "*" means all.', args=[d.arg(name='verb', type=d.T.string)]),
+  withVerb(verb): { verb: verb },
+  '#withVersion':: d.fn(help='Version is the API Version of the Resource.  "*" means all.', args=[d.arg(name='version', type=d.T.string)]),
+  withVersion(version): { version: version },
+  '#mixin': 'ignore',
+  mixin: self
+}

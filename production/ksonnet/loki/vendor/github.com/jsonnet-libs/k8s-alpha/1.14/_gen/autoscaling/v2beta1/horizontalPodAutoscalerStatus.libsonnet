@@ -1,0 +1,22 @@
+{
+  local d = (import 'doc-util/main.libsonnet'),
+  '#':: d.pkg(name='horizontalPodAutoscalerStatus', url='', help='HorizontalPodAutoscalerStatus describes the current status of a horizontal pod autoscaler.'),
+  '#withConditions':: d.fn(help='conditions is the set of conditions required for this autoscaler to scale its target, and indicates whether or not those conditions are met.', args=[d.arg(name='conditions', type=d.T.array)]),
+  withConditions(conditions): { conditions: if std.isArray(v=conditions) then conditions else [conditions] },
+  '#withConditionsMixin':: d.fn(help='conditions is the set of conditions required for this autoscaler to scale its target, and indicates whether or not those conditions are met.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='conditions', type=d.T.array)]),
+  withConditionsMixin(conditions): { conditions+: if std.isArray(v=conditions) then conditions else [conditions] },
+  '#withCurrentMetrics':: d.fn(help='currentMetrics is the last read state of the metrics used by this autoscaler.', args=[d.arg(name='currentMetrics', type=d.T.array)]),
+  withCurrentMetrics(currentMetrics): { currentMetrics: if std.isArray(v=currentMetrics) then currentMetrics else [currentMetrics] },
+  '#withCurrentMetricsMixin':: d.fn(help='currentMetrics is the last read state of the metrics used by this autoscaler.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='currentMetrics', type=d.T.array)]),
+  withCurrentMetricsMixin(currentMetrics): { currentMetrics+: if std.isArray(v=currentMetrics) then currentMetrics else [currentMetrics] },
+  '#withCurrentReplicas':: d.fn(help='currentReplicas is current number of replicas of pods managed by this autoscaler, as last seen by the autoscaler.', args=[d.arg(name='currentReplicas', type=d.T.integer)]),
+  withCurrentReplicas(currentReplicas): { currentReplicas: currentReplicas },
+  '#withDesiredReplicas':: d.fn(help='desiredReplicas is the desired number of replicas of pods managed by this autoscaler, as last calculated by the autoscaler.', args=[d.arg(name='desiredReplicas', type=d.T.integer)]),
+  withDesiredReplicas(desiredReplicas): { desiredReplicas: desiredReplicas },
+  '#withLastScaleTime':: d.fn(help='Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.', args=[d.arg(name='lastScaleTime', type=d.T.string)]),
+  withLastScaleTime(lastScaleTime): { lastScaleTime: lastScaleTime },
+  '#withObservedGeneration':: d.fn(help='observedGeneration is the most recent generation observed by this autoscaler.', args=[d.arg(name='observedGeneration', type=d.T.integer)]),
+  withObservedGeneration(observedGeneration): { observedGeneration: observedGeneration },
+  '#mixin': 'ignore',
+  mixin: self
+}

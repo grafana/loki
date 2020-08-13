@@ -1,0 +1,20 @@
+{
+  local d = (import 'doc-util/main.libsonnet'),
+  '#':: d.pkg(name='containerStateTerminated', url='', help='ContainerStateTerminated is a terminated state of a container.'),
+  '#withContainerID':: d.fn(help="Container's ID in the format 'docker://<container_id>'", args=[d.arg(name='containerID', type=d.T.string)]),
+  withContainerID(containerID): { containerID: containerID },
+  '#withExitCode':: d.fn(help='Exit status from the last termination of the container', args=[d.arg(name='exitCode', type=d.T.integer)]),
+  withExitCode(exitCode): { exitCode: exitCode },
+  '#withFinishedAt':: d.fn(help='Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.', args=[d.arg(name='finishedAt', type=d.T.string)]),
+  withFinishedAt(finishedAt): { finishedAt: finishedAt },
+  '#withMessage':: d.fn(help='Message regarding the last termination of the container', args=[d.arg(name='message', type=d.T.string)]),
+  withMessage(message): { message: message },
+  '#withReason':: d.fn(help='(brief) reason from the last termination of the container', args=[d.arg(name='reason', type=d.T.string)]),
+  withReason(reason): { reason: reason },
+  '#withSignal':: d.fn(help='Signal from the last termination of the container', args=[d.arg(name='signal', type=d.T.integer)]),
+  withSignal(signal): { signal: signal },
+  '#withStartedAt':: d.fn(help='Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.', args=[d.arg(name='startedAt', type=d.T.string)]),
+  withStartedAt(startedAt): { startedAt: startedAt },
+  '#mixin': 'ignore',
+  mixin: self
+}

@@ -1,0 +1,20 @@
+{
+  local d = (import 'doc-util/main.libsonnet'),
+  '#':: d.pkg(name='persistentVolumeClaimStatus', url='', help='PersistentVolumeClaimStatus is the current status of a persistent volume claim.'),
+  '#withAccessModes':: d.fn(help='AccessModes contains the actual access modes the volume backing the PVC has. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#access-modes-1', args=[d.arg(name='accessModes', type=d.T.array)]),
+  withAccessModes(accessModes): { accessModes: if std.isArray(v=accessModes) then accessModes else [accessModes] },
+  '#withAccessModesMixin':: d.fn(help='AccessModes contains the actual access modes the volume backing the PVC has. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#access-modes-1\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='accessModes', type=d.T.array)]),
+  withAccessModesMixin(accessModes): { accessModes+: if std.isArray(v=accessModes) then accessModes else [accessModes] },
+  '#withCapacity':: d.fn(help='Represents the actual resources of the underlying volume.', args=[d.arg(name='capacity', type=d.T.object)]),
+  withCapacity(capacity): { capacity: capacity },
+  '#withCapacityMixin':: d.fn(help='Represents the actual resources of the underlying volume.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='capacity', type=d.T.object)]),
+  withCapacityMixin(capacity): { capacity+: capacity },
+  '#withConditions':: d.fn(help="Current Condition of persistent volume claim. If underlying persistent volume is being resized then the Condition will be set to 'ResizeStarted'.", args=[d.arg(name='conditions', type=d.T.array)]),
+  withConditions(conditions): { conditions: if std.isArray(v=conditions) then conditions else [conditions] },
+  '#withConditionsMixin':: d.fn(help="Current Condition of persistent volume claim. If underlying persistent volume is being resized then the Condition will be set to 'ResizeStarted'.\n\n**Note:** This function appends passed data to existing values", args=[d.arg(name='conditions', type=d.T.array)]),
+  withConditionsMixin(conditions): { conditions+: if std.isArray(v=conditions) then conditions else [conditions] },
+  '#withPhase':: d.fn(help='Phase represents the current phase of PersistentVolumeClaim.', args=[d.arg(name='phase', type=d.T.string)]),
+  withPhase(phase): { phase: phase },
+  '#mixin': 'ignore',
+  mixin: self
+}

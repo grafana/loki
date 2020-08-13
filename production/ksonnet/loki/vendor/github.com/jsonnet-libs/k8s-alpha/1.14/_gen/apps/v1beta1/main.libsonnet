@@ -1,0 +1,22 @@
+{
+  local d = (import 'doc-util/main.libsonnet'),
+  '#':: d.pkg(name='v1beta1', url='', help=''),
+  controllerRevision: (import 'controllerRevision.libsonnet'),
+  deployment: (import 'deployment.libsonnet'),
+  deploymentCondition: (import 'deploymentCondition.libsonnet'),
+  deploymentRollback: (import 'deploymentRollback.libsonnet'),
+  deploymentSpec: (import 'deploymentSpec.libsonnet'),
+  deploymentStatus: (import 'deploymentStatus.libsonnet'),
+  deploymentStrategy: (import 'deploymentStrategy.libsonnet'),
+  rollbackConfig: (import 'rollbackConfig.libsonnet'),
+  rollingUpdateDeployment: (import 'rollingUpdateDeployment.libsonnet'),
+  rollingUpdateStatefulSetStrategy: (import 'rollingUpdateStatefulSetStrategy.libsonnet'),
+  scale: (import 'scale.libsonnet'),
+  scaleSpec: (import 'scaleSpec.libsonnet'),
+  scaleStatus: (import 'scaleStatus.libsonnet'),
+  statefulSet: (import 'statefulSet.libsonnet'),
+  statefulSetCondition: (import 'statefulSetCondition.libsonnet'),
+  statefulSetSpec: (import 'statefulSetSpec.libsonnet'),
+  statefulSetStatus: (import 'statefulSetStatus.libsonnet'),
+  statefulSetUpdateStrategy: (import 'statefulSetUpdateStrategy.libsonnet')
+}

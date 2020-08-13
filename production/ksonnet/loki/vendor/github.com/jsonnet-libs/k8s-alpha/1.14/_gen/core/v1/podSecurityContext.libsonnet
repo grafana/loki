@@ -1,0 +1,33 @@
+{
+  local d = (import 'doc-util/main.libsonnet'),
+  '#':: d.pkg(name='podSecurityContext', url='', help='PodSecurityContext holds pod-level security attributes and common container settings. Some fields are also present in container.securityContext.  Field values of container.securityContext take precedence over field values of PodSecurityContext.'),
+  '#seLinuxOptions':: d.obj(help='SELinuxOptions are the labels to be applied to the container'),
+  seLinuxOptions: {
+    '#withLevel':: d.fn(help='Level is SELinux level label that applies to the container.', args=[d.arg(name='level', type=d.T.string)]),
+    withLevel(level): { seLinuxOptions+: { level: level } },
+    '#withRole':: d.fn(help='Role is a SELinux role label that applies to the container.', args=[d.arg(name='role', type=d.T.string)]),
+    withRole(role): { seLinuxOptions+: { role: role } },
+    '#withType':: d.fn(help='Type is a SELinux type label that applies to the container.', args=[d.arg(name='type', type=d.T.string)]),
+    withType(type): { seLinuxOptions+: { type: type } },
+    '#withUser':: d.fn(help='User is a SELinux user label that applies to the container.', args=[d.arg(name='user', type=d.T.string)]),
+    withUser(user): { seLinuxOptions+: { user: user } }
+  },
+  '#withFsGroup':: d.fn(help="A special supplemental group that applies to all containers in a pod. Some volume types allow the Kubelet to change the ownership of that volume to be owned by the pod:\n\n1. The owning GID will be the FSGroup 2. The setgid bit is set (new files created in the volume will be owned by FSGroup) 3. The permission bits are OR'd with rw-rw----\n\nIf unset, the Kubelet will not modify the ownership and permissions of any volume.", args=[d.arg(name='fsGroup', type=d.T.integer)]),
+  withFsGroup(fsGroup): { fsGroup: fsGroup },
+  '#withRunAsGroup':: d.fn(help='The GID to run the entrypoint of the container process. Uses runtime default if unset. May also be set in SecurityContext.  If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence for that container.', args=[d.arg(name='runAsGroup', type=d.T.integer)]),
+  withRunAsGroup(runAsGroup): { runAsGroup: runAsGroup },
+  '#withRunAsNonRoot':: d.fn(help='Indicates that the container must run as a non-root user. If true, the Kubelet will validate the image at runtime to ensure that it does not run as UID 0 (root) and fail to start the container if it does. If unset or false, no such validation will be performed. May also be set in SecurityContext.  If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.', args=[d.arg(name='runAsNonRoot', type=d.T.boolean)]),
+  withRunAsNonRoot(runAsNonRoot): { runAsNonRoot: runAsNonRoot },
+  '#withRunAsUser':: d.fn(help='The UID to run the entrypoint of the container process. Defaults to user specified in image metadata if unspecified. May also be set in SecurityContext.  If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence for that container.', args=[d.arg(name='runAsUser', type=d.T.integer)]),
+  withRunAsUser(runAsUser): { runAsUser: runAsUser },
+  '#withSupplementalGroups':: d.fn(help="A list of groups applied to the first process run in each container, in addition to the container's primary GID.  If unspecified, no groups will be added to any container.", args=[d.arg(name='supplementalGroups', type=d.T.array)]),
+  withSupplementalGroups(supplementalGroups): { supplementalGroups: if std.isArray(v=supplementalGroups) then supplementalGroups else [supplementalGroups] },
+  '#withSupplementalGroupsMixin':: d.fn(help="A list of groups applied to the first process run in each container, in addition to the container's primary GID.  If unspecified, no groups will be added to any container.\n\n**Note:** This function appends passed data to existing values", args=[d.arg(name='supplementalGroups', type=d.T.array)]),
+  withSupplementalGroupsMixin(supplementalGroups): { supplementalGroups+: if std.isArray(v=supplementalGroups) then supplementalGroups else [supplementalGroups] },
+  '#withSysctls':: d.fn(help='Sysctls hold a list of namespaced sysctls used for the pod. Pods with unsupported sysctls (by the container runtime) might fail to launch.', args=[d.arg(name='sysctls', type=d.T.array)]),
+  withSysctls(sysctls): { sysctls: if std.isArray(v=sysctls) then sysctls else [sysctls] },
+  '#withSysctlsMixin':: d.fn(help='Sysctls hold a list of namespaced sysctls used for the pod. Pods with unsupported sysctls (by the container runtime) might fail to launch.\n\n**Note:** This function appends passed data to existing values', args=[d.arg(name='sysctls', type=d.T.array)]),
+  withSysctlsMixin(sysctls): { sysctls+: if std.isArray(v=sysctls) then sysctls else [sysctls] },
+  '#mixin': 'ignore',
+  mixin: self
+}
