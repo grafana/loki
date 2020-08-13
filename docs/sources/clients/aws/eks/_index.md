@@ -66,10 +66,10 @@ helm repo add loki https://grafana.github.io/loki/charts
 helm search repo
 
 NAME                   CHART VERSION   APP VERSION     DESCRIPTION
-loki/fluent-bit 0.1.4           v1.5.0          Uses fluent-bit Loki go plugin for gathering lo...
-loki/loki       0.30.1          v1.5.0          Loki: like Prometheus, but for logs.
-loki/loki-stack 0.38.1          v1.5.0          Loki: like Prometheus, but for logs.
-loki/promtail   0.23.2          v1.5.0          Responsible for gathering logs and sending them...
+loki/fluent-bit 0.3.0           v1.6.0          Uses fluent-bit Loki go plugin for gathering lo...
+loki/loki       0.31.0          v1.6.0          Loki: like Prometheus, but for logs.
+loki/loki-stack 0.40.0          v1.6.0          Loki: like Prometheus, but for logs.
+loki/promtail   0.24.0          v1.6.0          Responsible for gathering logs and sending them...
 ```
 
 If you want to install Loki, Grafana, Prometheus and Promtail all together you can use the `loki-stack` chart, for now we'll focus on Promtail. Let's create a new helm value file, we'll fetch the [default][default value file] one and work from there:
