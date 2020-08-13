@@ -86,7 +86,7 @@ func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient
 
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
-		if err := table.init(ctx); err != nil {
+		if err := table.init(ctx, log); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to download table", "name", table.name)
 		}
 	}()
@@ -96,7 +96,7 @@ func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient
 
 // init downloads all the db files for the table from object storage.
 // it assumes the locking of mutex is taken care of by the caller.
-func (t *Table) init(ctx context.Context) (err error) {
+func (t *Table) init(ctx context.Context, spanLogger *spanlogger.SpanLogger) (err error) {
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -136,6 +136,8 @@ func (t *Table) init(ctx context.Context) (err error) {
 		return err
 	}
 
+	level.Debug(spanLogger).Log("total-files-downloaded", len(objects))
+
 	// open all the downloaded dbs
 	for _, object := range objects {
 		dbName, err := getDBNameFromObjectKey(object.Key)
@@ -166,6 +168,7 @@ func (t *Table) init(ctx context.Context) (err error) {
 	duration := time.Since(startTime).Seconds()
 	t.metrics.filesDownloadDurationSeconds.add(t.name, duration)
 	t.metrics.filesDownloadSizeBytes.add(t.name, totalFilesSize)
+	level.Debug(spanLogger).Log("total-files-size", totalFilesSize)
 
 	return
 }
