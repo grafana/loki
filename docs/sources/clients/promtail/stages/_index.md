@@ -29,4 +29,5 @@ Action stages:
 Filtering stages:
 
   * [match](match/): Conditionally run stages based on the label set.
+  * [drop](drop/): Conditionally drop log lines based on several options.
 

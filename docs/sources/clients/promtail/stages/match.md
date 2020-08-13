@@ -24,6 +24,12 @@ match:
   # and no later metrics will be recorded.
   # Stages must be not defined when dropping entries.
   [action: <string> | default = "keep"]
+  
+  # If you specify `action: drop` the metric `logentry_dropped_lines_total` 
+  # will be incremented for every line dropped.  By default the reason
+  # label will be `match_stage` however you can optionally specify a custom value 
+  # to be used in the `reason` label of that metric here.
+  [drop_counter_reason: <string> | default = "match_stage"]
 
   # Nested set of pipeline stages only if the selector
   # matches the labels of the log entries:
@@ -72,6 +78,7 @@ pipeline_stages:
 - match:
     selector: '{app="promtail"} |~ ".*noisy error.*"'
     action: drop
+    drop_counter_reason: promtail_noisy_error
 - output:
     source: msg
 ```
@@ -97,7 +104,8 @@ label of `app` whose value is `pokey`. This does **not** match in our case, so
 the nested `json` stage is not ran.
 
 The fifth stage will drop any entries from the application `promtail` that matches
-the regex `.*noisy error`.
+the regex `.*noisy error`. and will also increment the `logentry_drop_lines_total` 
+metric with a label `reason="promtail_noisy_error"`
 
 The final `output` stage changes the contents of the log line to be the value of
 `msg` from the extracted map. In this case, the log line is changed to `app1 log
