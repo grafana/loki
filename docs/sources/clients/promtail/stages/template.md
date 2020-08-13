@@ -189,7 +189,9 @@ and trailing white space removed, as defined by Unicode.
     template: '{{ Hash .Value "salt" }}'
 ```
 
-Alternatively, you can use `Sha2Hash` for calculating the Sha2_256 of the string.
+Alternatively, you can use `Sha2Hash` for calculating the Sha2_256 of the string. Sha2_256 is faster and requires less CPU than Sha3_256, however it is less secure. 
+
+We recommend using `Hash` as it has a stronger hashing algorithm which we plan to keep strong over time without requiring client config changes.
 
 ```yaml
 - template:
