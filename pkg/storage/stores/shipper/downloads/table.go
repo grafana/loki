@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 )
@@ -56,7 +57,7 @@ type Table struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
+func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	table := Table{
@@ -77,12 +78,15 @@ func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBInd
 		defer table.dbsMtx.Unlock()
 		defer close(table.ready)
 
+		log, _ := spanlogger.New(spanCtx, "Shipper.DownloadTable")
+		defer log.Span.Finish()
+
 		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 		defer cancel()
 
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
-		if err := table.init(ctx); err != nil {
+		if err := table.init(ctx, log); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to download table", "name", table.name)
 		}
 	}()
@@ -92,7 +96,7 @@ func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBInd
 
 // init downloads all the db files for the table from object storage.
 // it assumes the locking of mutex is taken care of by the caller.
-func (t *Table) init(ctx context.Context) (err error) {
+func (t *Table) init(ctx context.Context, spanLogger *spanlogger.SpanLogger) (err error) {
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -132,6 +136,8 @@ func (t *Table) init(ctx context.Context) (err error) {
 		return err
 	}
 
+	level.Debug(spanLogger).Log("total-files-downloaded", len(objects))
+
 	// open all the downloaded dbs
 	for _, object := range objects {
 		dbName, err := getDBNameFromObjectKey(object.Key)
@@ -162,6 +168,7 @@ func (t *Table) init(ctx context.Context) (err error) {
 	duration := time.Since(startTime).Seconds()
 	t.metrics.filesDownloadDurationSeconds.add(t.name, duration)
 	t.metrics.filesDownloadSizeBytes.add(t.name, totalFilesSize)
+	level.Debug(spanLogger).Log("total-files-size", totalFilesSize)
 
 	return
 }
