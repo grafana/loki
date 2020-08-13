@@ -33,7 +33,15 @@ drop:
   [older_than: <duration>]
 
   # longer_than is a value in bytes, any log line longer than this value will be dropped.
-  [longer_than: <int>]
+  # Can be specified as an exact number of bytes in integer format: 8192
+  # Or can be expressed with a suffix such as 8kb
+  [longer_than: <string>|<int>]
+
+  # Every time a log line is dropped the metric `logentry_dropped_lines_total` 
+  # will be incremented.  By default the reason label will be `drop_stage` 
+  # however you can optionally specify a custom value to be used in the `reason` 
+  # label of that metric here.
+  [drop_counter_reason: <string> | default = "drop_stage"]
 ```
 
 ## Examples
@@ -112,6 +120,7 @@ Given the pipeline:
     format: RFC3339
 - drop:
     older_than: 24h
+    drop_counter_reason: "line_too_old"
 ```
 
 With a current ingestion time of 2020-08-12T12:00:00Z would drop this log line when read from a file:
@@ -128,17 +137,21 @@ However it would _not_ drop this log line:
 
 In this example the current time is 2020-08-12T12:00:00Z and `older_than` is 24h. All log lines which have a timestamp older than 2020-08-11T12:00:00Z will be dropped.
 
+All lines dropped by this drop stage would also increment the `logentry_drop_lines_total` metric with a label `reason="line_too_old"`
+
 #### Dropping long log lines
 
 Given the pipeline:
 
 ```yaml
 - drop:
-    longer_than: 8192
+    longer_than: 8kb
+    drop_counter_reason: "line_too_long"
 ```
 
-Would drop any log line longer than 8192 bytes, this is useful when Loki would reject a line for being too long.
+Would drop any log line longer than 8kb bytes, this is useful when Loki would reject a line for being too long.
 
+All lines dropped by this drop stage would also increment the `logentry_drop_lines_total` metric with a label `reason="line_too_long"`
 
 ### Complex drops
 
@@ -151,10 +164,10 @@ Given the pipeline:
 ```yaml
 - drop:
     expression: ".*debug.*"
-    longer_than: 1024
+    longer_than: 1kb
 ```
 
-Would drop all logs that contain the word _debug_ *AND* are longer than 1024 bytes
+Would drop all logs that contain the word _debug_ *AND* are longer than 1kb bytes
 
 #### Drop logs by time OR length OR regex
 
@@ -171,10 +184,10 @@ Given the pipeline:
 - drop:
     older_than: 24h
 - drop:
-    longer_than: 8192
+    longer_than: 8kb
 - drop:
     source: msg
     regex: ".*trace.*"
 ```
 
-Would drop all logs older than 24h OR longer than 8192 bytes OR have a json `msg` field containing the word _trace_
+Would drop all logs older than 24h OR longer than 8kb bytes OR have a json `msg` field containing the word _trace_

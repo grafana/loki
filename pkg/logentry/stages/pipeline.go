@@ -26,6 +26,7 @@ type Pipeline struct {
 	stages     []Stage
 	jobName    *string
 	plDuration *prometheus.HistogramVec
+	dropCount  *prometheus.CounterVec
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
@@ -40,6 +41,20 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 	if err != nil {
 		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
 			hist = existing.ExistingCollector.(*prometheus.HistogramVec)
+		} else {
+			// Same behavior as MustRegister if the error is not for AlreadyRegistered
+			panic(err)
+		}
+	}
+	dropCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "logentry",
+		Name:      "dropped_lines_total",
+		Help:      "A count of all log lines dropped as a result of a pipeline stage",
+	}, []string{"reason"})
+	err = registerer.Register(dropCount)
+	if err != nil {
+		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			dropCount = existing.ExistingCollector.(*prometheus.CounterVec)
 		} else {
 			// Same behavior as MustRegister if the error is not for AlreadyRegistered
 			panic(err)
@@ -73,6 +88,7 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 		stages:     st,
 		jobName:    jobName,
 		plDuration: hist,
+		dropCount:  dropCount,
 	}, nil
 }
 
@@ -112,7 +128,11 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 		extracted := map[string]interface{}{}
 		p.Process(labels, extracted, &timestamp, &line)
 		// if the labels set contains the __drop__ label we don't send this entry to the next EntryHandler
-		if _, ok := labels[dropLabel]; ok {
+		if reason, ok := labels[dropLabel]; ok {
+			if reason == "" {
+				reason = "undefined"
+			}
+			p.dropCount.WithLabelValues(string(reason)).Inc()
 			return nil
 		}
 		return next.Handle(labels, timestamp, line)

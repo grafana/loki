@@ -23,8 +23,13 @@ const (
 	ErrDropStageInvalidByteSize = "drop stage failed to parse longer_than to bytes: %v"
 )
 
+var (
+	defaultDropReason = "drop_stage"
+)
+
 // DropConfig contains the configuration for a dropStage
 type DropConfig struct {
+	DropReason *string `mapstructure:"drop_counter_reason"`
 	Source     *string `mapstructure:"source"`
 	Value      *string `mapstructure:"value"`
 	Expression *string `mapstructure:"expression"`
@@ -40,6 +45,9 @@ func validateDropConfig(cfg *DropConfig) error {
 	if cfg == nil ||
 		(cfg.Source == nil && cfg.Expression == nil && cfg.OlderThan == nil && cfg.LongerThan == nil) {
 		return errors.New(ErrDropStageEmptyConfig)
+	}
+	if cfg.DropReason == nil || *cfg.DropReason == "" {
+		cfg.DropReason = &defaultDropReason
 	}
 	if cfg.OlderThan != nil {
 		dur, err := time.ParseDuration(*cfg.OlderThan)
@@ -211,12 +219,12 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 		}
 	}
 
-	// Not a match to the regex, don't drop
+	// Everything matched, drop the line
 	if Debug {
 		level.Debug(m.logger).Log("msg", "all critera met, line will be dropped")
 	}
 	// Adds the drop label to not be sent by the api.EntryHandler
-	labels[dropLabel] = ""
+	labels[dropLabel] = model.LabelValue(*m.cfg.DropReason)
 }
 
 // Name implements Stage

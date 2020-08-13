@@ -32,6 +32,7 @@ type MatcherConfig struct {
 	Selector     string         `mapstructure:"selector"`
 	Stages       PipelineStages `mapstructure:"stages"`
 	Action       string         `mapstructure:"action"`
+	DropReason   *string        `mapstructure:"drop_counter_reason"`
 }
 
 // validateMatcherConfig validates the MatcherConfig for the matcherStage
@@ -99,20 +100,27 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 		return nil, errors.Wrap(err, "error parsing filter")
 	}
 
+	dropReason := "match_stage"
+	if cfg.DropReason != nil && *cfg.DropReason != "" {
+		dropReason = *cfg.DropReason
+	}
+
 	return &matcherStage{
-		matchers: selector.Matchers(),
-		pipeline: pl,
-		action:   cfg.Action,
-		filter:   filter,
+		dropReason: dropReason,
+		matchers:   selector.Matchers(),
+		pipeline:   pl,
+		action:     cfg.Action,
+		filter:     filter,
 	}, nil
 }
 
 // matcherStage applies Label matchers to determine if the include stages should be run
 type matcherStage struct {
-	matchers []*labels.Matcher
-	filter   logql.LineFilter
-	pipeline Stage
-	action   string
+	dropReason string
+	matchers   []*labels.Matcher
+	filter     logql.LineFilter
+	pipeline   Stage
+	action     string
 }
 
 // Process implements Stage
@@ -126,7 +134,7 @@ func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]inter
 		switch m.action {
 		case MatchActionDrop:
 			// Adds the drop label to not be sent by the api.EntryHandler
-			labels[dropLabel] = ""
+			labels[dropLabel] = model.LabelValue(m.dropReason)
 		case MatchActionKeep:
 			m.pipeline.Process(labels, extracted, t, entry)
 		}
