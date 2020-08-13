@@ -35,7 +35,32 @@ Try to keep values bounded to as small a set as possible. We don't have perfect 
 
 Loki has several client options: [Promtail](https://github.com/grafana/loki/tree/master/docs/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-grafana-loki), [Fluent Bit](https://github.com/grafana/loki/tree/master/cmd/fluent-bit), a [Docker plugin](https://grafana.com/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
 
-Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied. Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality. Details of the Series API can be found [here](https://grafana.com/docs/loki/latest/api/#series), or you can use [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) to query Loki for series information.
+Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied. 
+Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality. 
+Details of the Series API can be found [here](https://grafana.com/docs/loki/latest/api/#series), or you can use [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) to query Loki for series information.
+
+In Loki 1.6.0 and newer the logcli series command added the `--analyze-labels` flag specifically for debugging high cardinality labels:
+
+```
+Total Streams:  25017
+Unique Labels:  8
+
+Label Name  Unique Values  Found In Streams
+requestId   24653          24979
+logStream   1194           25016
+logGroup    140            25016
+accountId   13             25016
+logger      1              25017
+source      1              25016
+transport   1              25017
+format      1              25017
+``` 
+
+In this example you can see the `requestId` label had a 24653 different values out of 24979 streams it was found in, this is bad!!
+
+This is a perfect example of something which should not be a label, `requestId` should be removed as a label and instead 
+filter expressions should be used to query logs for a specific `requestId`. For example if `requestId` is found in
+the log line as a key=value pair you could write a query like this: `{logGroup="group1"} |= "requestId=32422355"`
 
 ## 5. Configure caching
 
