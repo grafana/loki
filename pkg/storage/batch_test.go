@@ -22,6 +22,8 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
+var NilMetrics = NewChunkMetrics(nil, 0)
+
 func Test_batchIterSafeStart(t *testing.T) {
 	stream := logproto.Stream{
 		Labels: fooLabelsWithName,
@@ -955,7 +957,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newLogBatchIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, tt.direction, tt.start, tt.end)
+			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, tt.direction, tt.start, tt.end)
 			require.NoError(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
@@ -1240,7 +1242,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newSampleBatchIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, logql.ExtractCount, tt.start, tt.end)
+			it, err := newSampleBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, logql.ExtractCount, tt.start, tt.end)
 			require.NoError(t, err)
 			series, _, err := iter.ReadSampleBatch(it, 1000)
 			_ = it.Close()

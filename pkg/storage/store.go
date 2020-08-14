@@ -76,7 +76,8 @@ type Store interface {
 
 type store struct {
 	chunk.Store
-	cfg Config
+	cfg          Config
+	chunkMetrics *ChunkMetrics
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -86,8 +87,9 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg SchemaConfig, li
 		return nil, err
 	}
 	return &store{
-		Store: s,
-		cfg:   cfg,
+		Store:        s,
+		cfg:          cfg,
+		chunkMetrics: NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
 	}, nil
 }
 
@@ -162,14 +164,19 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 		return nil, err
 	}
 
-	var totalChunks int
+	var prefilter int
+	var filtered int
 	for i := range chks {
+		prefilter += len(chks[i])
 		storeStats.TotalChunksRef += int64(len(chks[i]))
 		chks[i] = filterChunksByTime(from, through, chks[i])
-		totalChunks += len(chks[i])
+		filtered += len(chks[i])
 	}
+	s.chunkMetrics.refs.Add(float64(prefilter))
+	s.chunkMetrics.filteredRefs.Add(float64(filtered))
+
 	// creates lazychunks with chunks ref.
-	lazyChunks := make([]*LazyChunk, 0, totalChunks)
+	lazyChunks := make([]*LazyChunk, 0, filtered)
 	for i := range chks {
 		for _, c := range chks[i] {
 			lazyChunks = append(lazyChunks, &LazyChunk{Chunk: c, Fetcher: fetchers[i]})
@@ -275,7 +282,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return iter.NoopIterator, nil
 	}
 
-	return newLogBatchIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.Direction, req.Start, req.End)
+	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.Direction, req.Start, req.End)
 
 }
 
@@ -303,7 +310,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
-	return newSampleBatchIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
+	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
