@@ -96,4 +96,4 @@ Images are sourced in this repo alonside content. They will sync to the website 
 
 When a PR is merged to master with changes in the `docs/sources` directory, those changes are automatically synched to the grafana/website repo and published to the staging site.
 
-Generally, someone from marketing will publish to production each day, so as long as the sync is successful your docs edits will be published. Alternatively, you can refer to [publishing to production](https://github.com/grafana/website#publishing-to-production-grafanacom) if you'd like to do it yourself.
+Generally, someone from marketing will publish to production each day, so as long as the sync is successful your docs edits will be published.
