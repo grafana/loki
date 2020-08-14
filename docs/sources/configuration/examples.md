@@ -189,7 +189,8 @@ server:
 
 distributor:
   ring:
-    store: memberlist
+    kvstore:
+      store: memberlist
 
 ingester:
   lifecycler:
