@@ -3,17 +3,19 @@ package uploads
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 const (
@@ -74,7 +76,7 @@ func TestLoadTable(t *testing.T) {
 			Start:      10,
 			NumRecords: 10,
 		},
-	})
+	}, false)
 
 	// try loading the table.
 	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient)
@@ -176,13 +178,44 @@ func TestTable_Upload(t *testing.T) {
 }
 
 func compareTableWithStorage(t *testing.T, table *Table, storageDir string) {
+	// use a temp dir for decompressing the files before comparison.
+	tempDir, err := ioutil.TempDir("", "compare-table")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(tempDir))
+	}()
+
 	for name, db := range table.dbs {
 		objectKey := table.buildObjectKey(name)
-		storageDB, err := local.OpenBoltdbFile(filepath.Join(storageDir, objectKey))
+
+		// open compressed file from storage
+		compressedFile, err := os.Open(filepath.Join(storageDir, objectKey))
+		require.NoError(t, err)
+
+		// get a compressed reader
+		compressedReader, err := gzip.NewReader(compressedFile)
+		require.NoError(t, err)
+
+		// create a temp file for writing decompressed file
+		decompressedFilePath := filepath.Join(tempDir, filepath.Base(objectKey))
+		decompressedFile, err := os.Create(decompressedFilePath)
+		require.NoError(t, err)
+
+		// do the decompression
+		_, err = io.Copy(decompressedFile, compressedReader)
+		require.NoError(t, err)
+
+		// close the references
+		require.NoError(t, compressedFile.Close())
+		require.NoError(t, decompressedFile.Close())
+
+		storageDB, err := local.OpenBoltdbFile(decompressedFilePath)
 		require.NoError(t, err)
 
 		testutil.CompareDBs(t, db, storageDB)
 		require.NoError(t, storageDB.Close())
+		require.NoError(t, os.Remove(decompressedFilePath))
 	}
 }
 

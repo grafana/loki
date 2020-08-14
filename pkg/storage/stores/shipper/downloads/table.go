@@ -17,6 +17,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
@@ -391,7 +393,15 @@ func (t *Table) getFileFromStorage(ctx context.Context, objectKey, destination s
 		return err
 	}
 
-	_, err = io.Copy(f, readCloser)
+	var objectReader io.Reader = readCloser
+	if strings.HasSuffix(objectKey, ".gz") {
+		decompressedReader := chunkenc.Gzip.GetReader(readCloser)
+		defer chunkenc.Gzip.PutReader(decompressedReader)
+
+		objectReader = decompressedReader
+	}
+
+	_, err = io.Copy(f, objectReader)
 	if err != nil {
 		return err
 	}

@@ -83,7 +83,7 @@ func TestTable_Query(t *testing.T) {
 		},
 	}
 
-	testutil.SetupDBTablesAtPath(t, "test", objectStoragePath, testDBs)
+	testutil.SetupDBTablesAtPath(t, "test", objectStoragePath, testDBs, true)
 
 	table, _, stopFunc := buildTestTable(t, "test", tempDir)
 	defer func() {
@@ -127,7 +127,7 @@ func TestTable_Sync(t *testing.T) {
 	}
 
 	// setup the table in storage with some records
-	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, testDBs)
+	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, testDBs, false)
 
 	// create table instance
 	table, boltdbClient, stopFunc := buildTestTable(t, "test", tempDir)
@@ -217,7 +217,7 @@ func TestTable_doParallelDownload(t *testing.T) {
 				}
 			}
 
-			testutil.SetupDBTablesAtPath(t, fmt.Sprint(tc), objectStoragePath, testDBs)
+			testutil.SetupDBTablesAtPath(t, fmt.Sprint(tc), objectStoragePath, testDBs, true)
 
 			table, _, stopFunc := buildTestTable(t, fmt.Sprint(tc), tempDir)
 			defer func() {

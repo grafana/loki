@@ -2,6 +2,10 @@ package testutil
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"math/rand"
+	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -10,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 )
@@ -131,7 +136,7 @@ type DBRecords struct {
 	Start, NumRecords int
 }
 
-func SetupDBTablesAtPath(t *testing.T, tableName, path string, dbs map[string]DBRecords) string {
+func SetupDBTablesAtPath(t *testing.T, tableName, path string, dbs map[string]DBRecords, compressRandomFiles bool) string {
 	boltIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: path})
 	require.NoError(t, err)
 
@@ -142,7 +147,28 @@ func SetupDBTablesAtPath(t *testing.T, tableName, path string, dbs map[string]DB
 
 	for name, dbRecords := range dbs {
 		AddRecordsToDB(t, filepath.Join(tablePath, name), boltIndexClient, dbRecords.Start, dbRecords.NumRecords)
+		if compressRandomFiles && rand.Intn(2) == 0 {
+			compressFile(t, filepath.Join(tablePath, name))
+		}
 	}
 
 	return tablePath
+}
+
+func compressFile(t *testing.T, filepath string) {
+	uncompressedFile, err := os.Open(filepath)
+	require.NoError(t, err)
+
+	compressedFile, err := os.Create(fmt.Sprintf("%s.gz", filepath))
+	require.NoError(t, err)
+
+	compressedWriter := gzip.NewWriter(compressedFile)
+
+	_, err = io.Copy(compressedWriter, uncompressedFile)
+	require.NoError(t, err)
+
+	require.NoError(t, compressedWriter.Close())
+	require.NoError(t, uncompressedFile.Close())
+	require.NoError(t, compressedFile.Close())
+	require.NoError(t, os.Remove(filepath))
 }

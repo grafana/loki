@@ -2,7 +2,6 @@ package uploads
 
 import (
 	"context"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +27,7 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, *local.
 		IndexDir:       indexPath,
 		UploadInterval: time.Hour,
 	}
-	tm, err := NewTableManager(cfg, boltDBIndexClient, storageClient,  nil)
+	tm, err := NewTableManager(cfg, boltDBIndexClient, storageClient, nil)
 	require.NoError(t, err)
 
 	return tm, boltDBIndexClient, func() {
@@ -64,7 +64,7 @@ func TestLoadTables(t *testing.T) {
 			Start:      20,
 			NumRecords: 10,
 		},
-	})
+	}, false)
 
 	// table2 with 2 dbs
 	testutil.SetupDBTablesAtPath(t, "table2", indexPath, map[string]testutil.DBRecords{
@@ -76,7 +76,7 @@ func TestLoadTables(t *testing.T) {
 			Start:      40,
 			NumRecords: 10,
 		},
-	})
+	}, false)
 
 	expectedTables := map[string]struct {
 		start, numRecords int
