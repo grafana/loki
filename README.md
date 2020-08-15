@@ -29,9 +29,9 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 ## Getting started
 
-* [Installing Loki](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/installation/README.md)
+* [Installing Loki](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/installation/_index.md)
 * [Installing Promtail](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/clients/promtail/installation.md)
-* [Getting Started Guide](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/getting-started/README.md)
+* [Getting Started Guide](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/getting-started/_index.md)
 
 ## Upgrading
 
