@@ -3,6 +3,7 @@ package cache_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -43,26 +44,26 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 
 	// Insert 1000 keys skipping all multiples of 5.
 	for i := 0; i < numKeys; i++ {
-		keysIncMissing = append(keysIncMissing, string(i))
+		keysIncMissing = append(keysIncMissing, fmt.Sprint(i))
 		if i%5 == 0 {
 			continue
 		}
 
-		keys = append(keys, string(i))
-		bufs = append(bufs, []byte(string(i)))
+		keys = append(keys, fmt.Sprint(i))
+		bufs = append(bufs, []byte(fmt.Sprint(i)))
 	}
 	memcache.Store(ctx, keys, bufs)
 
 	found, bufs, missing := memcache.Fetch(ctx, keysIncMissing)
 	for i := 0; i < numKeys; i++ {
 		if i%5 == 0 {
-			require.Equal(t, string(i), missing[0])
+			require.Equal(t, fmt.Sprint(i), missing[0])
 			missing = missing[1:]
 			continue
 		}
 
-		require.Equal(t, string(i), found[0])
-		require.Equal(t, string(i), string(bufs[0]))
+		require.Equal(t, fmt.Sprint(i), found[0])
+		require.Equal(t, fmt.Sprint(i), string(bufs[0]))
 		found = found[1:]
 		bufs = bufs[1:]
 	}
@@ -118,12 +119,12 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 	bufs := make([][]byte, 0, numKeys)
 	// Insert 1000 keys skipping all multiples of 5.
 	for i := 0; i < numKeys; i++ {
-		keysIncMissing = append(keysIncMissing, string(i))
+		keysIncMissing = append(keysIncMissing, fmt.Sprint(i))
 		if i%5 == 0 {
 			continue
 		}
-		keys = append(keys, string(i))
-		bufs = append(bufs, []byte(string(i)))
+		keys = append(keys, fmt.Sprint(i))
+		bufs = append(bufs, []byte(fmt.Sprint(i)))
 	}
 	memcache.Store(ctx, keys, bufs)
 

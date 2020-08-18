@@ -409,8 +409,8 @@ func TestV10IndexQueries(t *testing.T) {
 			res = append(res, IndexQuery{
 				TableName:       "tbl",
 				HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, "hash", "metric", "label"),
-				RangeValueStart: []byte(string(i)),
-				ValueEqual:      []byte(string(i)),
+				RangeValueStart: []byte(fmt.Sprint(i)),
+				ValueEqual:      []byte(fmt.Sprint(i)),
 			})
 		}
 		return res
