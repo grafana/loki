@@ -45,14 +45,14 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 	return &ChunkMetrics{
 		refs: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
-			Subsystem: "store",
-			Name:      "chunk_refs_downloaded_total",
+			Subsystem: "index",
+			Name:      "chunk_refs_pre_filtering_total",
 			Help:      "Number of chunks refs downloaded.",
 		}),
 		filteredRefs: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
-			Subsystem: "store",
-			Name:      "chunk_refs_filtered_downloaded_total",
+			Subsystem: "index",
+			Name:      "chunk_refs_post_filtering_total",
 			Help:      "Number of chunks refs downloaded whose bounds intersect the query bounds.",
 		}),
 		chunks: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
@@ -64,7 +64,7 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 		batches: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
 			Subsystem: "store",
-			Name:      "effective_batch_size",
+			Name:      "chunks_per_batch_post_filtering",
 			Help:      "The post-matching chunk batch size.",
 
 			// split buckets evenly across 0->maxBatchSize
