@@ -189,10 +189,15 @@ type memStoreQuerier struct {
 	*MemStore
 }
 
+// Select implements storage.Querier but takes advantage of the fact that it's only called when restoring for state
+// in order to lookup & cache previous rule evaluations. This results in a sort of synthetic metric store.
 func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	b := labels.NewBuilder(nil)
 	var ruleKey string
 	for _, matcher := range matchers {
+		// Since Select is only called to restore the for state of an alert, we can deduce two things:
+		// 1) The matchers will all be in the form {foo="bar"}. This means we can construct the cache entry from these matchers.
+		// 2) The alertname label value can be used to discover the rule this query is associated with.
 		b.Set(matcher.Name, matcher.Value)
 		if matcher.Name == labels.AlertName && matcher.Type == labels.MatchEqual {
 			ruleKey = matcher.Value
