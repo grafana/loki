@@ -77,7 +77,7 @@ Most of these metrics are counters and should continuously increase during norma
 
 If Promtail uses any pipelines with metrics stages, those metrics will also be
 exposed by Promtail at its `/metrics` endpoint. See Promtail's documentation on
-[Pipelines](../../clients/promtail/pipelines/) for more information.
+[Pipelines](../clients/promtail/pipelines.md) for more information.
 
 An example Grafana dashboard was built by the community and is available as
 dashboard [10004](https://grafana.com/dashboards/10004).

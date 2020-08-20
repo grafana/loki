@@ -18,7 +18,7 @@ horizontally-scalable mode data is stored in a cloud storage system such as S3,
 GCS, or Cassandra. Logs are stored in plaintext form tagged with a set of label
 names and values, where only the label pairs are indexed. This tradeoff makes it
 cheaper to operate than a full index and allows developers to aggressively log
-from their applications. Logs in Loki are queried using [LogQL](../../logql).
+from their applications. Logs in Loki are queried using [LogQL](../logql).
 However, because of this design tradeoff, LogQL queries that filter based on
 content (i.e., text within the log lines) require loading all chunks within the
 search window that match the labels defined in the query.

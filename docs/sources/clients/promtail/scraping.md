@@ -274,5 +274,5 @@ clients:
   - [ <client_option> ]
 ```
 
-Refer to [`client_config`](../configuration#client_config) from the Promtail
+Refer to [`client_config`](./configuration.md#client_config) from the Promtail
 Configuration reference for all available options.

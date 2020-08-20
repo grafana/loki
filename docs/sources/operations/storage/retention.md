@@ -3,10 +3,10 @@ title: Retention
 ---
 # Loki Storage Retention
 
-Retention in Loki is achieved through the [Table Manager](../table-manager/).
+Retention in Loki is achieved through the [Table Manager](./table-manager.md).
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
-[`table_manager_config`](../../../configuration#table_manager_config)
+[`table_manager_config`](../../configuration/_index.md#table_manager_config)
 section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The
@@ -14,12 +14,12 @@ provided retention period needs to be a duration represented as a string that
 can be parsed using Go's [time.Duration](https://golang.org/pkg/time/#ParseDuration).
 
 > **WARNING**: The retention period must be a multiple of the index and chunks table
-`period`, configured in the [`period_config`](../../../configuration#period_config)
-block. See the [Table Manager](../table-manager#retention) documentation for
+`period`, configured in the [`period_config`](../../configuration/_index.md#period_config)
+block. See the [Table Manager](./table-manager#retention) documentation for
 more information.
 
 > **NOTE**: To avoid querying of data beyond the retention period,
-`max_look_back_period` config in [`chunk_store_config`](../../../configuration#chunk_store_config) must be set to a value less than or equal to
+`max_look_back_period` config in [`chunk_store_config`](../../configuration/_index.md#chunk_store_config) must be set to a value less than or equal to
 what is set in `table_manager.retention_period`.
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
@@ -39,7 +39,7 @@ intact; you will still be able to see related labels but will be unable to
 retrieve the deleted log content.
 
 For further details on the Table Manager internals, refer to the
-[Table Manager](../table-manager/) documentation.
+[Table Manager](./table-manager.md) documentation.
 
 
 ## Example Configuration

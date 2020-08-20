@@ -33,11 +33,11 @@ Kubernetes API server while `static` usually covers all other use cases.
 Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 `relabel_configs` allows for fine-grained control of what to ingest, what to
 drop, and the final metadata to attach to the log line. Refer to the docs for
-[configuring Promtail](configuration/) for more details.
+[configuring Promtail](./configuration.md) for more details.
 
 ## Loki Push API
 
-Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](../../api#post-lokiapiv1push) with the [loki_push_api](configuration#loki_push_api_config) scrape config.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](../api#post-lokiapiv1push) with the [loki_push_api](configuration.md#loki_push_api_config) scrape config.
 
 There are a few instances where this might be helpful:
 
@@ -47,7 +47,7 @@ There are a few instances where this might be helpful:
 
 ## Receiving logs From Syslog
 
-When the [Syslog Target](configuration#syslog_config) is being used, logs
+When the [Syslog Target](configuration.md#syslog_config) is being used, logs
 can be written with the syslog protocol to the configured port.
 
 ## AWS
@@ -65,7 +65,7 @@ To allow more sophisticated filtering afterwards, Promtail allows to set labels
 not only from service discovery, but also based on the contents of each log
 line. The `pipeline_stages` can be used to add or update labels, correct the
 timestamp, or re-write log lines entirely. Refer to the documentation for
-[pipelines](pipelines/) for more details.
+[pipelines](pipelines.md) for more details.
 
 ## Shipping
 
@@ -91,7 +91,7 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 ### `GET /metrics`
 
 This endpoint returns Promtail metrics for Prometheus. See
-"[Operations > Observability](../../operations/observability/)" to get a list
+"[Operations > Observability](../../operations/observability.md)" to get a list
 of exported metrics.
 
 ### Promtail web server config

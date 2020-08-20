@@ -11,7 +11,7 @@ adopted trade-offs.
 Promtail can be configured to print log stream entries instead of sending them to Loki.
 This can be used in combination with [piping data](#pipe-data-to-promtail) to debug or troubleshoot promtail log parsing.
 
-In dry run mode, Promtail still support reading from a [positions](../configuration#position_config) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
+In dry run mode, Promtail still support reading from a [positions](./configuration.md#position_config) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
 
 To start Promtail in dry run mode use the flag `--dry-run` as shown in the example below:
 
@@ -39,9 +39,9 @@ This will add labels `k1` and `k2` with respective values `v1` and `v2`.
 In pipe mode Promtail also support file configuration using `--config.file`, however do note that positions config is not used and
 only **the first scrape config is used**.
 
-[`static_configs:`](../configuration) can be used to provide static labels, although the targets property is ignored.
+[`static_configs:`](./configuration.md) can be used to provide static labels, although the targets property is ignored.
 
-If you don't provide any [`scrape_config:`](../configuration#scrape_config) a default one is used which will automatically adds the following default labels: `{job="stdin",hostname="<detected_hostname>"}`.
+If you don't provide any [`scrape_config:`](./configuration.md#scrape_config) a default one is used which will automatically adds the following default labels: `{job="stdin",hostname="<detected_hostname>"}`.
 
 For example you could use this config below to parse and add the label `level` on all your piped logs:
 
@@ -163,7 +163,7 @@ sent again to the ingester on `promtail` restart.
 
 However, it's important to note that Loki will reject all log lines received in
 what it perceives is [out of
-order](../../../overview#timestamp-ordering). If `promtail` happens to
+order](../../overview/_index.md#timestamp-ordering). If `promtail` happens to
 crash, it may re-send log lines that were sent prior to the crash. The default
 behavior of Promtail is to assign a timestamp to logs at the time it read the
 entry from the tailed file. This would result in duplicate log lines being sent

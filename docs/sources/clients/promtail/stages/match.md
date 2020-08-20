@@ -4,7 +4,7 @@ title: match
 # `match` stage
 
 The match stage is a filtering stage that conditionally applies a set of stages
-or drop entries when a log entry matches a configurable [LogQL](../../../../logql/)
+or drop entries when a log entry matches a configurable [LogQL](../../../logql/)
 stream selector and filter expressions.
 
 ## Schema
@@ -47,7 +47,7 @@ match:
       ]
 ```
 
-Refer to the [Promtail Configuration Reference](../../configuration/) for the
+Refer to the [Promtail Configuration Reference](../configuration.md) for the
 schema on the various other stages referenced here.
 
 ### Example

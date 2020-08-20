@@ -17,7 +17,7 @@ A folder is created for every tenant all the chunks for one tenant are stored in
 
 If loki is run in single-tenant mode, all the chunks are put in a folder named `fake` which is the synthesized tenant name used for single tenant mode.
 
-See [multi-tenancy](../../multi-tenancy/) for more information.
+See [multi-tenancy](../multi-tenancy.md) for more information.
 
 ## Pros
 
@@ -47,7 +47,7 @@ Running Loki clustered is not possible with the filesystem store unless the file
 
 **WARNING** as the title suggests, this is very new and potentially buggy, and it is also very likely configs around this feature will change over time.
 
-With that warning out of the way, the addition of the [boltdb-shipper](../boltdb-shipper/) index store has added capabilities making it possible to overcome many of the limitations listed above using the filesystem store, specifically running Loki with the filesystem store on separate machines but still operate as a cluster supporting replication, and write distribution via the hash ring.
+With that warning out of the way, the addition of the [boltdb-shipper](../boltdb-shipper.md) index store has added capabilities making it possible to overcome many of the limitations listed above using the filesystem store, specifically running Loki with the filesystem store on separate machines but still operate as a cluster supporting replication, and write distribution via the hash ring.
 
 As mentioned in the title, this is very alpha at this point but we would love for people to try this and help us flush out bugs.
 

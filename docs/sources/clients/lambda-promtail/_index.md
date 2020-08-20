@@ -1,6 +1,6 @@
 # Lambda Promtail
 
-Loki includes an [AWS SAM](https://aws.amazon.com/serverless/sam/) package template for shipping Cloudwatch logs to Loki via a set of promtails [here](../../../tools/lambda-promtail/). This is done via an intermediary [lambda function](https://aws.amazon.com/lambda/) which processes cloudwatch events and propagates them to a promtail instance (or set of instances behind a load balancer) via the push-api [scrape config](docs/clients/promtail/configuration#loki_push_api_config).
+Loki includes an [AWS SAM](https://aws.amazon.com/serverless/sam/) package template for shipping Cloudwatch logs to Loki via a set of promtails [here](../../../../tools/lambda-promtail/). This is done via an intermediary [lambda function](https://aws.amazon.com/lambda/) which processes cloudwatch events and propagates them to a promtail instance (or set of instances behind a load balancer) via the push-api [scrape config](docs/clients/promtail/configuration#loki_push_api_config).
 
 ## Uses
 
@@ -25,7 +25,7 @@ Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ 
 
 ## Propagated Labels
 
-Incoming logs will have three special labels assigned to them which can be used in [relabeling](../promtail#relabel_config) or later stages in a promtail [pipeline](../promtail/pipelines):
+Incoming logs will have three special labels assigned to them which can be used in [relabeling](../promtail/configuration.md#relabel_config) or later stages in a promtail [pipeline](../promtail/pipelines.md):
 
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.
 - `__aws_cloudwatch_log_stream`: The associated Cloudwatch Log Stream for this log.

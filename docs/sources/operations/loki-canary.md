@@ -3,14 +3,14 @@ title: Loki Canary
 ---
 # Loki Canary
 
-![canary](../canary.png)
+![canary](./canary.png)
 
 Loki Canary is a standalone app that audits the log capturing performance of
 Loki.
 
 ## How it works
 
-![block_diagram](../loki-canary-block.png)
+![block_diagram](./loki-canary-block.png)
 
 Loki Canary writes a log to a file and stores the timestamp in an internal
 array. The contents look something like this:

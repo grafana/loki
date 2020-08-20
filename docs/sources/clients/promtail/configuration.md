@@ -77,8 +77,8 @@ defined by the schema below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
 For more detailed information on configuring how to discover and scrape logs from
-targets, see [Scraping](../scraping/). For more information on transforming logs
-from scraped targets, see [Pipelines](../pipelines/).
+targets, see [Scraping](./scraping.md). For more information on transforming logs
+from scraped targets, see [Pipelines](./pipelines.md).
 
 Generic placeholders are defined as follows:
 
@@ -336,10 +336,10 @@ kubernetes_sd_configs:
 
 ### pipeline_stages
 
-The [pipeline](../pipelines/) stages (`pipeline_stages`) is used to transform
+The [pipeline](./pipelines.md) stages (`pipeline_stages`) is used to transform
 log entries and their labels after discovery and consists of a list of any of the items listed below.
 
-Stages serve several purposes, more detail can be found [here](../pipelines/), however generally you extract data with `regex` or `json` stages into a temporary map which can then be use as `labels` or `output` or any of the other stages aside from `docker` and `cri` which are explained in more detail below.
+Stages serve several purposes, more detail can be found [here](./pipelines.md), however generally you extract data with `regex` or `json` stages into a temporary map which can then be use as `labels` or `output` or any of the other stages aside from `docker` and `cri` which are explained in more detail below.
 
 ```yaml
 - [
@@ -481,7 +481,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL](../../../logql/) stream selector.
+a configurable [LogQL](../../logql) stream selector.
 
 ```yaml
 match:
@@ -725,8 +725,8 @@ promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
 See recommended output configurations for
-[syslog-ng](../scraping#syslog-ng-output-configuration) and
-[rsyslog](../scraping#rsyslog-output-configuration). Both configurations enable
+[syslog-ng](./scraping.md#syslog-ng-output-configuration) and
+[rsyslog](./scraping.md#rsyslog-output-configuration). Both configurations enable
 IETF Syslog with octet-counting.
 
 You may need to increase the open files limit for the promtail process
@@ -763,7 +763,7 @@ labels:
 
 ### loki_push_api_config
 
-The `loki_push_api_config` block configures Promtail to expose a [Loki push API](../../../api#post-lokiapiv1push) server.
+The `loki_push_api_config` block configures Promtail to expose a [Loki push API](../../api#post-lokiapiv1push) server.
 
 Each job configured with a `loki_push_api_config` will expose this API and will require a separate port.
 
@@ -1121,7 +1121,7 @@ sync_period: "10s"
 
 ## Example Docker Config
 
-It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../docker-driver/) for local Docker installs or Docker Compose.
+It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../docker-driver/) for local Docker installs or Docker Compose.
 
 If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/loki/tree/master/production/helm/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 

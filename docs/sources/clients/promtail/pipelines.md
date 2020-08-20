@@ -25,13 +25,13 @@ stages:
    condition.
 
 Typical pipelines will start with a parsing stage (such as a
-[regex](../stages/regex/) or [json](../stages/json/) stage) to extract data
+[regex](./stages/regex.md/) or [json](./stages/json.md/) stage) to extract data
 from the log line. Then, a series of action stages will be present to do
 something with that extracted data. The most common action stage will be a
-[labels](../stages/labels/) stage to turn extracted data into a label.
+[labels](./stages/labels.md/) stage to turn extracted data into a label.
 
-A common stage will also be the [match](../stages/match/) stage to selectively
-apply stages or drop entries based on a [LogQL stream selector and filter expressions](../../../logql/).
+A common stage will also be the [match](./stages/match.md/) stage to selectively
+apply stages or drop entries based on a [LogQL stream selector and filter expressions](../../logql/).
 
 Note that pipelines can not currently be used to deduplicate logs; Loki will
 receive the same log line multiple times if, for example:
@@ -199,24 +199,24 @@ given log entry.
 
 Parsing stages:
 
-  * [docker](../stages/docker/): Extract data by parsing the log line using the standard Docker format.
-  * [cri](../stages/cri/): Extract data by parsing the log line using the standard CRI format.
-  * [regex](../stages/regex/): Extract data using a regular expression.
-  * [json](../stages/json/): Extract data by parsing the log line as JSON.
+  * [docker](./stages/docker.md): Extract data by parsing the log line using the standard Docker format.
+  * [cri](./stages/cri.md): Extract data by parsing the log line using the standard CRI format.
+  * [regex](./stages/regex.md): Extract data using a regular expression.
+  * [json](./stages/json.md): Extract data by parsing the log line as JSON.
 
 Transform stages:
 
-  * [template](../stages/template/): Use Go templates to modify extracted data.
+  * [template](./stages/template.md): Use Go templates to modify extracted data.
 
 Action stages:
 
-  * [timestamp](../stages/timestamp/): Set the timestamp value for the log entry.
-  * [output](../stages/output/): Set the log line text.
-  * [labels](../stages/labels/): Update the label set for the log entry.
-  * [metrics](../stages/metrics/): Calculate metrics based on extracted data.
-  * [tenant](../stages/tenant/): Set the tenant ID value to use for the log entry.
+  * [timestamp](./stages/timestamp.md): Set the timestamp value for the log entry.
+  * [output](./stages/output.md): Set the log line text.
+  * [labels](./stages/labels.md): Update the label set for the log entry.
+  * [metrics](./stages/metrics.md): Calculate metrics based on extracted data.
+  * [tenant](./stages/tenant.md): Set the tenant ID value to use for the log entry.
 
 Filtering stages:
 
-  * [match](../stages/match/): Conditionally run stages based on the label set.
-  * [drop](../stages/drop/): Conditionally drop log lines based on several options.
+  * [match](./stages/match.md): Conditionally run stages based on the label set.
+  * [drop](./stages/drop.md): Conditionally drop log lines based on several options.

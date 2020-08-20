@@ -301,7 +301,7 @@ Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config ch
 
 One such config change which will affect Loki users:
 
-In the [cache_config](../../configuration#cache_config):
+In the [cache_config](../configuration/_index.md#cache_config):
 
 `defaul_validity` has changed to `default_validity`
 

@@ -139,7 +139,7 @@ scrape_configs:
         target_label: __host__
 ```
 
-The **server** section indicates promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting](../../promtail/troubleshooting) service discovery and targets.
+The **server** section indicates promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting](../../promtail/troubleshooting.md) service discovery and targets.
 
 The **clients** section allow you to target your loki instance, if you're using GrafanaCloud simply replace `<user id>` and `<api secret>` with your credentials. Otherwise just replace the whole URL with your custom Loki instance.(e.g `http://my-loki-instance.my-org.com/loki/api/v1/push`)
 

@@ -4,8 +4,8 @@ weight: 300
 ---
 # Getting started with Loki
 
-1. [Grafana](grafana/)
-2. [LogCLI](logcli/)
-3. [Labels](labels/)
-4. [Troubleshooting](troubleshooting/)
+1. [Grafana](grafana.md)
+2. [LogCLI](logcli.md)
+3. [Labels](labels.md)
+4. [Troubleshooting](troubleshooting.md)
 
