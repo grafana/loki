@@ -2,6 +2,9 @@ local scrape_config = import './scrape_config.libsonnet';
 local config = import 'config.libsonnet';
 local k = import 'ksonnet-util/kausal.libsonnet';
 
+// backwards compatibility with ksonnet
+local envVar = if std.objectHasAll(k.core.v1, 'envVar') then k.core.v1.envVar else k.core.v1.container.envType;
+
 k + config + scrape_config {
   namespace:
     $.core.v1.namespace.new($._config.namespace),
@@ -49,7 +52,7 @@ k + config + scrape_config {
     container.withPorts($.core.v1.containerPort.new(name='http-metrics', port=80)) +
     container.withArgsMixin($.util.mapToFlags($.promtail_args)) +
     container.withEnv([
-      $.core.v1.envVar.fromFieldPath('HOSTNAME', 'spec.nodeName'),
+      envVar.fromFieldPath('HOSTNAME', 'spec.nodeName'),
     ]) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort(80) +
