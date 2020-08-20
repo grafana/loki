@@ -200,8 +200,11 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 	// To avoid uploading it, excluding previous active shard as well if it has been not more than a minute since it became inactive.
 	uploadShardsBefore := fmt.Sprint(time.Now().Add(-time.Minute).Truncate(shardDBsByDuration).Unix())
 
-	// Adding check for considering only files which are shared and have just an epoch in their name.
-	// We can remove this check after a release or two when we will have only files with epoch in their name.
+	// Adding check for considering only files which are sharded and have just an epoch in their name.
+	// Before introducing sharding we had a single file per table which were were moved inside the folder per table as part of migration.
+	// The files were named with <table_prefix><period>.
+	// Since sharding was introduced we have a new file every 15 mins and their names just include an epoch timestamp, for e.g `1597927538`.
+	// We can remove this check after we no longer support upgrading from 1.5.0.
 	filenameWithEpochRe, err := regexp.Compile(`^[0-9]{10}$`)
 	if err != nil {
 		return err
