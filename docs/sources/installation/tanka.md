@@ -35,7 +35,20 @@ jb install github.com/grafana/loki/production/ksonnet/loki
 jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
-Be sure to replace the username, password and the relevant `htpasswd` contents.
+> **Note:** As of 2020-08-13, we use some features that are not yet generally available. This step will be unnecessary in future Tanka releases. For now, install this library, which we'll use as an override:
+
+```bash
+jb install github.com/jsonnet-libs/k8s-alpha/1.14
+```
+
+Next, override the `lib/k.libsonnet` with the following
+
+```jsonnet
+(import 'github.com/jsonnet-libs/k8s-alpha/1.14/main.libsonnet')
++ (import 'github.com/jsonnet-libs/k8s-alpha/1.14/extensions/kausal-shim.libsonnet')
+```
+
+Be sure to replace the username, password, and the relevant `htpasswd` contents.
 Making sure to set the value for username, password, and `htpasswd` properly,
 replace the contents of `environments/loki/main.jsonnet` with:
 
