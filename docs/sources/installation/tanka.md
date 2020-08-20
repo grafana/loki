@@ -30,16 +30,9 @@ Download and install the Loki and Promtail module using `jb`:
 
 ```bash
 go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
-jb init
+jb init  # not required if you already ran `tk init`
 jb install github.com/grafana/loki/production/ksonnet/loki
 jb install github.com/grafana/loki/production/ksonnet/promtail
-```
-
-Note: As of 2020-08-13 we use some as of yet non GA features, please override the `lib/k.libsonnet` with the following. This step will likely not be necessary in future tanka releases.
-
-```jsonnet
-(import 'github.com/jsonnet-libs/k8s-alpha/1.14/main.libsonnet')
-+ (import 'github.com/jsonnet-libs/k8s-alpha/1.14/extensions/kausal-shim.libsonnet')
 ```
 
 Be sure to replace the username, password and the relevant `htpasswd` contents.
@@ -89,4 +82,5 @@ loki + promtail + gateway {
 Notice that `container_root_path` is your own data root for the Docker Daemon.
 Run `docker info | grep "Root Dir"` to get the root path.
 
-Run `tk show environments/loki` to see the manifests that will be deployed to the cluster. Run `tk apply environments/loki` to deploy the manifests.
+Run `tk show environments/loki` to see the manifests that will be deployed to
+the cluster. Run `tk apply environments/loki` to deploy the manifests.
