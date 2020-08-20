@@ -40,16 +40,6 @@
       },
       "version": "8629e32d04a0eefdce41224540f0d31de7d40deb",
       "sum": "AIspZ151p0qkxVc9tuoAEYNrkazV6QncWWsIsarK9GE="
-    },
-    {
-      "source": {
-        "git": {
-          "remote": "https://github.com/jsonnet-libs/k8s-alpha.git",
-          "subdir": "1.14"
-        }
-      },
-      "version": "4423ca26d1762943b9975fd4f5cc229e814fe8b6",
-      "sum": "00qOXX9Ddf0r2AR3NX7d9A/9MFaAesdGxCs6sXUobok="
     }
   ],
   "legacyImports": false
