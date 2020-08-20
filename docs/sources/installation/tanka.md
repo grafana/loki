@@ -35,7 +35,7 @@ jb install github.com/grafana/loki/production/ksonnet/loki
 jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
-Note: As of 2020-08-13 we use some as of yet non GA features. This step will likely not be necessary in future tanka releases. Simply install this library which we'll use as an override:
+> **Note:** As of 2020-08-13, we use some features that are not yet generally available. This step will be unnecessary in future Tanka releases. For now, install this library, which we'll use as an override:
 
 ```bash
 jb install github.com/jsonnet-libs/k8s-alpha/1.14
