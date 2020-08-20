@@ -38,7 +38,7 @@ const (
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
 
-	storageKeyPrefix = "index/"
+	StorageKeyPrefix = "index/"
 
 	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
 	UploadInterval = 15 * time.Minute
@@ -112,7 +112,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 		return err
 	}
 
-	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, storageKeyPrefix)
+	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, StorageKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
 		cfg := uploads.Config{

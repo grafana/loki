@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,6 +63,7 @@ type Config struct {
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
 	Tracing          tracing.Config              `yaml:"tracing"`
+	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -135,6 +138,7 @@ type Loki struct {
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
 	memberlistKV  *memberlist.KVInitService
+	compactor     *compactor.Compactor
 
 	httpAuthMiddleware middleware.Interface
 }
@@ -305,6 +309,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
+	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -317,6 +322,7 @@ func (t *Loki) setupModuleManager() error {
 		Querier:       {Store, Ring, Server},
 		QueryFrontend: {Server, Overrides},
 		TableManager:  {Server},
+		Compactor:     {Server},
 		All:           {Querier, Ingester, Distributor, TableManager},
 	}
 
