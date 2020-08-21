@@ -164,16 +164,17 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 		return nil, err
 	}
 
-	var prefilter int
+	var prefiltered int
 	var filtered int
 	for i := range chks {
-		prefilter += len(chks[i])
+		prefiltered += len(chks[i])
 		storeStats.TotalChunksRef += int64(len(chks[i]))
 		chks[i] = filterChunksByTime(from, through, chks[i])
 		filtered += len(chks[i])
 	}
-	s.chunkMetrics.refs.Add(float64(prefilter))
-	s.chunkMetrics.filteredRefs.Add(float64(filtered))
+
+	s.chunkMetrics.refs.WithLabelValues(statusDiscarded).Add(float64(prefiltered - filtered))
+	s.chunkMetrics.refs.WithLabelValues(statusMatched).Add(float64(filtered))
 
 	// creates lazychunks with chunks ref.
 	lazyChunks := make([]*LazyChunk, 0, filtered)
