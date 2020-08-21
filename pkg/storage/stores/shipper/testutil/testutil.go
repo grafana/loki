@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -145,11 +144,13 @@ func SetupDBTablesAtPath(t *testing.T, tableName, path string, dbs map[string]DB
 	tablePath := filepath.Join(path, tableName)
 	require.NoError(t, chunk_util.EnsureDirectory(tablePath))
 
+	var i int
 	for name, dbRecords := range dbs {
 		AddRecordsToDB(t, filepath.Join(tablePath, name), boltIndexClient, dbRecords.Start, dbRecords.NumRecords)
-		if compressRandomFiles && rand.Intn(2) == 0 {
+		if compressRandomFiles && i%2 == 0 {
 			compressFile(t, filepath.Join(tablePath, name))
 		}
+		i++
 	}
 
 	return tablePath
