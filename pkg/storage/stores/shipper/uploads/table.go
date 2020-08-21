@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,9 @@ const (
 	// retain dbs for specified duration after they are modified to avoid keeping them locally forever.
 	// this period should be big enough than shardDBsByDuration to avoid any conflicts
 	dbRetainPeriod = time.Hour
+
+	// a snapshot file is created during uploads with name of the db + snapshotFileSuffix
+	snapshotFileSuffix = ".temp"
 )
 
 type BoltDBIndexClient interface {
@@ -219,7 +223,7 @@ func (lt *Table) Upload(ctx context.Context) error {
 func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
 
-	filePath := path.Join(lt.path, fmt.Sprintf("%s.%s", name, "temp"))
+	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, snapshotFileSuffix))
 	f, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -316,6 +320,15 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 
 	for _, fileInfo := range filesInfo {
 		if fileInfo.IsDir() {
+			continue
+		}
+
+		if strings.HasSuffix(fileInfo.Name(), snapshotFileSuffix) {
+			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
+			// Cleaning up those temp files to avoid problems.
+			if err := os.Remove(filepath.Join(dir, fileInfo.Name())); err != nil {
+				level.Error(util.Logger).Log("msg", "failed to remove temp file", "name", fileInfo.Name(), "err", err)
+			}
 			continue
 		}
 
