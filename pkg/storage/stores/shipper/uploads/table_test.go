@@ -266,3 +266,42 @@ func TestTable_Cleanup(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func Test_LoadBoltDBsFromDir(t *testing.T) {
+	indexPath, err := ioutil.TempDir("", "load-dbs-from-dir")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(indexPath))
+	}()
+
+	// setup some dbs with a snapshot file.
+	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, map[string]testutil.DBRecords{
+		"db1": {
+			Start:      0,
+			NumRecords: 10,
+		},
+		"db1" + snapshotFileSuffix: { // a snapshot file which should be ignored.
+			Start:      0,
+			NumRecords: 10,
+		},
+		"db2": {
+			Start:      10,
+			NumRecords: 10,
+		},
+	})
+
+	// try loading the dbs
+	dbs, err := loadBoltDBsFromDir(tablePath)
+	require.NoError(t, err)
+
+	// check that we have just 2 dbs
+	require.Len(t, dbs, 2)
+	require.NotNil(t, dbs["db1"])
+	require.NotNil(t, dbs["db2"])
+
+	// close all the open dbs
+	for _, boltdb := range dbs {
+		require.NoError(t, boltdb.Close())
+	}
+}
