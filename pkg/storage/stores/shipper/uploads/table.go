@@ -19,6 +19,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 const (
@@ -264,9 +266,19 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 		}
 	}()
 
-	err = db.View(func(tx *bbolt.Tx) error {
-		_, err := tx.WriteTo(f)
-		return err
+	err = db.View(func(tx *bbolt.Tx) (err error) {
+		compressedWriter := chunkenc.Gzip.GetWriter(f)
+		defer chunkenc.Gzip.PutWriter(compressedWriter)
+
+		defer func() {
+			cerr := compressedWriter.Close()
+			if err == nil {
+				err = cerr
+			}
+		}()
+
+		_, err = tx.WriteTo(compressedWriter)
+		return
 	})
 	if err != nil {
 		return err
@@ -333,7 +345,7 @@ func (lt *Table) buildObjectKey(dbName string) string {
 		objectKey = fmt.Sprintf("%s/%s", lt.name, lt.uploader)
 	}
 
-	return objectKey
+	return fmt.Sprintf("%s.gz", objectKey)
 }
 
 func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {

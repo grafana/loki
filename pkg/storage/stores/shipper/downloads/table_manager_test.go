@@ -76,7 +76,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 	var queries []chunk.IndexQuery
 	for name, dbs := range tables {
 		queries = append(queries, chunk.IndexQuery{TableName: name})
-		testutil.SetupDBTablesAtPath(t, name, objectStoragePath, dbs)
+		testutil.SetupDBTablesAtPath(t, name, objectStoragePath, dbs, true)
 	}
 
 	tableManager, _, stopFunc := buildTestTableManager(t, tempDir)
