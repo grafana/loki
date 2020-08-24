@@ -15,16 +15,25 @@ import (
 type Log struct {
 	Log               logging.Interface
 	LogRequestHeaders bool // LogRequestHeaders true -> dump http headers at debug log level
+	SourceIPs         *SourceIPExtractor
 }
 
 // logWithRequest information from the request and context as fields.
 func (l Log) logWithRequest(r *http.Request) logging.Interface {
+	localLog := l.Log
 	traceID, ok := ExtractTraceID(r.Context())
 	if ok {
-		l.Log = l.Log.WithField("traceID", traceID)
+		localLog = localLog.WithField("traceID", traceID)
 	}
 
-	return user.LogWith(r.Context(), l.Log)
+	if l.SourceIPs != nil {
+		ips := l.SourceIPs.Get(r)
+		if ips != "" {
+			localLog = localLog.WithField("sourceIPs", ips)
+		}
+	}
+
+	return user.LogWith(r.Context(), localLog)
 }
 
 // Wrap implements Middleware

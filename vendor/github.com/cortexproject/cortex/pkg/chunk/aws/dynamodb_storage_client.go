@@ -58,7 +58,7 @@ type DynamoDBConfig struct {
 	Metrics                MetricsAutoScalingConfig `yaml:"metrics"`
 	ChunkGangSize          int                      `yaml:"chunk_gang_size"`
 	ChunkGetMaxParallelism int                      `yaml:"chunk_get_max_parallelism"`
-	backoffConfig          util.BackoffConfig
+	BackoffConfig          util.BackoffConfig       `yaml:"backoff_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -69,9 +69,9 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.ThrottleLimit, "dynamodb.throttle-limit", 10.0, "DynamoDB rate cap to back off when throttled.")
 	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk-gang-size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
 	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get-max-parallelism", 32, "Max number of chunk-get operations to start in parallel")
-	f.DurationVar(&cfg.backoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
-	f.DurationVar(&cfg.backoffConfig.MaxBackoff, "dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
-	f.IntVar(&cfg.backoffConfig.MaxRetries, "dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
+	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
+	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, "dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
 	cfg.Metrics.RegisterFlags(f)
 }
 
@@ -167,7 +167,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
-	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
+	backoff := util.NewBackoff(ctx, a.cfg.BackoffConfig)
 
 	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBWriteBatch{}
@@ -286,7 +286,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 		a.metrics.dynamoQueryPagesCount.Observe(float64(pageCount))
 	}()
 
-	retryer := newRetryer(ctx, a.cfg.backoffConfig)
+	retryer := newRetryer(ctx, a.cfg.BackoffConfig)
 	err := instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(innerCtx context.Context) error {
 		if sp := ot.SpanFromContext(innerCtx); sp != nil {
 			sp.SetTag("tableName", query.TableName)
@@ -423,7 +423,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 
 	result := []chunk.Chunk{}
 	unprocessed := dynamoDBReadRequest{}
-	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
+	backoff := util.NewBackoff(ctx, a.cfg.BackoffConfig)
 
 	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBReadRequest{}

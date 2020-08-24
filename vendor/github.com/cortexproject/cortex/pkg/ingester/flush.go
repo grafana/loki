@@ -111,6 +111,7 @@ const (
 	noSeries
 	noChunks
 	flushError
+	reasonDropped
 	maxFlushReason // Used for testing String() method. Should be last.
 )
 
@@ -138,6 +139,8 @@ func (f flushReason) String() string {
 		return "NoChunksToFlush"
 	case flushError:
 		return "FlushError"
+	case reasonDropped:
+		return "Dropped"
 	default:
 		panic("unrecognised flushReason")
 	}
@@ -307,11 +310,16 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 					"queue", flushQueueIndex,
 				)
 				chunks = nil
+				reason = reasonDropped
 			}
 		}
 	}
 
 	userState.fpLocker.Unlock(fp)
+
+	if reason == reasonDropped {
+		return reason, nil
+	}
 
 	// No need to flush these chunks again.
 	for len(chunks) > 0 && chunks[0].flushed {

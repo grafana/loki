@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 
 	gklog "github.com/go-kit/kit/log"
@@ -75,10 +76,11 @@ func (rn *rulerNotifier) stop() {
 // Builds a Prometheus config.Config from a ruler.Config with just the required
 // options to configure notifications to Alertmanager.
 func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
-	validURLs := make([]*url.URL, 0, len(rulerConfig.AlertmanagerURL))
+	amURLs := strings.Split(rulerConfig.AlertmanagerURL, ",")
+	validURLs := make([]*url.URL, 0, len(amURLs))
 
 	srvDNSregexp := regexp.MustCompile(`^_.+._.+`)
-	for _, h := range rulerConfig.AlertmanagerURL {
+	for _, h := range amURLs {
 		url, err := url.Parse(h)
 		if err != nil {
 			return nil, err

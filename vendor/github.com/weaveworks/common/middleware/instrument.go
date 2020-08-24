@@ -1,18 +1,21 @@
 package middleware
 
 import (
-	"bufio"
-	"fmt"
-	"net"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/felixge/httpsnoop"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+const mb = 1024 * 1024
+
+// BodySizeBuckets defines buckets for request/response body sizes.
+var BodySizeBuckets = []float64{1 * mb, 2.5 * mb, 5 * mb, 10 * mb, 25 * mb, 50 * mb, 100 * mb, 250 * mb}
 
 // RouteMatcher matches routes
 type RouteMatcher interface {
@@ -21,8 +24,11 @@ type RouteMatcher interface {
 
 // Instrument is a Middleware which records timings for every HTTP request
 type Instrument struct {
-	RouteMatcher RouteMatcher
-	Duration     *prometheus.HistogramVec
+	RouteMatcher     RouteMatcher
+	Duration         *prometheus.HistogramVec
+	RequestBodySize  *prometheus.HistogramVec
+	ResponseBodySize *prometheus.HistogramVec
+	InflightRequests *prometheus.GaugeVec
 }
 
 // IsWSHandshakeRequest returns true if the given request is a websocket handshake request.
@@ -42,16 +48,29 @@ func IsWSHandshakeRequest(req *http.Request) bool {
 // Wrap implements middleware.Interface
 func (i Instrument) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		begin := time.Now()
-		isWS := strconv.FormatBool(IsWSHandshakeRequest(r))
-		interceptor := &interceptor{ResponseWriter: w, statusCode: http.StatusOK}
 		route := i.getRouteName(r)
-		next.ServeHTTP(interceptor, r)
-		var (
-			status = strconv.Itoa(interceptor.statusCode)
-			took   = time.Since(begin)
-		)
-		i.Duration.WithLabelValues(r.Method, route, status, isWS).Observe(took.Seconds())
+		inflight := i.InflightRequests.WithLabelValues(r.Method, route)
+		inflight.Inc()
+		defer inflight.Dec()
+
+		origBody := r.Body
+		defer func() {
+			// No need to leak our Body wrapper beyond the scope of this handler.
+			r.Body = origBody
+		}()
+
+		rBody := &reqBody{b: origBody}
+		r.Body = rBody
+
+		isWS := strconv.FormatBool(IsWSHandshakeRequest(r))
+
+		respMetrics := httpsnoop.CaptureMetricsFn(w, func(ww http.ResponseWriter) {
+			next.ServeHTTP(ww, r)
+		})
+
+		i.Duration.WithLabelValues(r.Method, route, strconv.Itoa(respMetrics.Code), isWS).Observe(respMetrics.Duration.Seconds())
+		i.RequestBodySize.WithLabelValues(r.Method, route).Observe(float64(rBody.read))
+		i.ResponseBodySize.WithLabelValues(r.Method, route).Observe(float64(respMetrics.Written))
 	})
 }
 
@@ -107,30 +126,19 @@ func MakeLabelValue(path string) string {
 	return result
 }
 
-// interceptor implements WriteHeader to intercept status codes. WriteHeader
-// may not be called on success, so initialize statusCode with the status you
-// want to report on success, i.e. http.StatusOK.
-//
-// interceptor also implements net.Hijacker, to let the downstream Handler
-// hijack the connection. This is needed, for example, for working with websockets.
-type interceptor struct {
-	http.ResponseWriter
-	statusCode int
-	recorded   bool
+type reqBody struct {
+	b    io.ReadCloser
+	read int64
 }
 
-func (i *interceptor) WriteHeader(code int) {
-	if !i.recorded {
-		i.statusCode = code
-		i.recorded = true
+func (w *reqBody) Read(p []byte) (int, error) {
+	n, err := w.b.Read(p)
+	if n > 0 {
+		w.read += int64(n)
 	}
-	i.ResponseWriter.WriteHeader(code)
+	return n, err
 }
 
-func (i *interceptor) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hj, ok := i.ResponseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, fmt.Errorf("interceptor: can't cast parent ResponseWriter to Hijacker")
-	}
-	return hj.Hijack()
+func (w *reqBody) Close() error {
+	return w.b.Close()
 }

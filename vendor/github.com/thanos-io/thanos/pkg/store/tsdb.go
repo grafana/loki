@@ -214,10 +214,10 @@ func (s *TSDBStore) translateAndExtendLabels(m, extend labels.Labels) []storepb.
 }
 
 // LabelNames returns all known label names.
-func (s *TSDBStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest) (
+func (s *TSDBStore) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (
 	*storepb.LabelNamesResponse, error,
 ) {
-	q, err := s.db.Querier(ctx, math.MinInt64, math.MaxInt64)
+	q, err := s.db.Querier(ctx, r.Start, r.End)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -234,7 +234,7 @@ func (s *TSDBStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest
 func (s *TSDBStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequest) (
 	*storepb.LabelValuesResponse, error,
 ) {
-	q, err := s.db.Querier(ctx, math.MinInt64, math.MaxInt64)
+	q, err := s.db.Querier(ctx, r.Start, r.End)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

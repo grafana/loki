@@ -44,7 +44,7 @@ func main() {
 	}
 
 	// Run the proxy.
-	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util.Logger, lokiReadRoutes(), registry)
+	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util.Logger, lokiReadRoutes(cfg), registry)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
@@ -58,8 +58,8 @@ func main() {
 	proxy.Await()
 }
 
-func lokiReadRoutes() []querytee.Route {
-	samplesComparator := querytee.NewSamplesComparator()
+func lokiReadRoutes(cfg Config) []querytee.Route {
+	samplesComparator := querytee.NewSamplesComparator(cfg.ProxyConfig.ValueComparisonTolerance)
 	samplesComparator.RegisterSamplesType(loghttp.ResultTypeStream, compareStreams)
 
 	return []querytee.Route{

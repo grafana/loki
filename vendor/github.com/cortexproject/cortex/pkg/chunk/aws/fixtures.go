@@ -76,7 +76,7 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 				cfg: DynamoDBConfig{
 					ChunkGangSize:          gangsize,
 					ChunkGetMaxParallelism: maxParallelism,
-					backoffConfig: util.BackoffConfig{
+					BackoffConfig: util.BackoffConfig{
 						MinBackoff: 1 * time.Millisecond,
 						MaxBackoff: 5 * time.Millisecond,
 						MaxRetries: 20,

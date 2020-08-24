@@ -113,6 +113,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests
@@ -177,5 +178,5 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }

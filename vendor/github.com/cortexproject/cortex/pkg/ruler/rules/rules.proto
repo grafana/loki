@@ -7,12 +7,13 @@ option go_package = "rules";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/any.proto";
 import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
-// RuleGroupDesc is a proto representation of a cortex rule group
+// RuleGroupDesc is a proto representation of a cortex rule group.
 message RuleGroupDesc {
   reserved 5, 7, 8;
   string name = 1;
@@ -21,6 +22,11 @@ message RuleGroupDesc {
       [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   repeated RuleDesc rules = 4;
   string user = 6;
+  // The options field can be used to extend Cortex Ruler functionality without
+  // having to repeatedly redefine the proto description. It can also be leveraged
+  // to create custom `ManagerOpts` based on rule configs which can then be passed
+  // to the Prometheus Manager.
+  repeated google.protobuf.Any options = 9;
 }
 
 // RuleDesc is a proto representation of a Prometheus Rule

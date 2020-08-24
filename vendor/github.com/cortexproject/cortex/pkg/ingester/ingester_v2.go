@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -127,13 +126,6 @@ type TSDBState struct {
 	// Value used by shipper as external label.
 	shipperIngesterID string
 
-	// Keeps count of in-flight requests
-	inflightWriteReqs sync.WaitGroup
-
-	// Used to run only once operations at shutdown, during the blocks/wal
-	// transferring to a joining ingester
-	transferOnce sync.Once
-
 	subservices *services.Manager
 
 	tsdbMetrics *tsdbMetrics
@@ -193,7 +185,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig, "ingester", util.Logger, registerer)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -240,7 +232,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 // on Flush method and flush all openened TSDBs when called.
 func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, error) {
 	util.WarnExperimentalUse("Blocks storage engine")
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig, "ingester", util.Logger, registerer)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -392,21 +384,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 
 	// Ensure the ingester shutdown procedure hasn't started
 	i.userStatesMtx.RLock()
-
 	if i.stopped {
 		i.userStatesMtx.RUnlock()
 		return nil, fmt.Errorf("ingester stopping")
 	}
-
-	// Keep track of in-flight requests, in order to safely start blocks transfer
-	// (at shutdown) only once all in-flight write requests have completed.
-	// It's important to increase the number of in-flight requests within the lock
-	// (even if sync.WaitGroup is thread-safe), otherwise there's a race condition
-	// with the TSDB transfer, which - after the stopped flag is set to true - waits
-	// until all in-flight requests to reach zero.
-	i.TSDBState.inflightWriteReqs.Add(1)
 	i.userStatesMtx.RUnlock()
-	defer i.TSDBState.inflightWriteReqs.Done()
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
@@ -419,7 +401,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	startAppend := time.Now()
 
 	// Walk the samples, appending them to the users database
-	app := db.Appender()
+	app := db.Appender(ctx)
 	for _, ts := range req.Timeseries {
 		// Check if we already have a cached reference for this series. Be aware
 		// that even if we have a reference it's not guaranteed to be still valid.
@@ -608,9 +590,10 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 		return &client.LabelValuesResponse{}, nil
 	}
 
-	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
-	// label values without any time range bound.
-	q, err := db.Querier(ctx, 0, math.MaxInt64)
+	// Since ingester may run with a variable TSDB retention which could be few days long,
+	// we only query the TSDB head time range in order to avoid heavy queries (which could
+	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
+	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
 	if err != nil {
 		return nil, err
 	}
@@ -637,9 +620,10 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 		return &client.LabelNamesResponse{}, nil
 	}
 
-	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
-	// label names without any time range bound.
-	q, err := db.Querier(ctx, 0, math.MaxInt64)
+	// Since ingester may run with a variable TSDB retention which could be few days long,
+	// we only query the TSDB head time range in order to avoid heavy queries (which could
+	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
+	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
 	if err != nil {
 		return nil, err
 	}
@@ -672,54 +656,43 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 		return nil, err
 	}
 
-	// Since ingester runs with a very limited TSDB retention, we can (and should) query
-	// metrics without any time range bound, otherwise when we receive a request with a time
-	// range older then the ingester's data we return an empty response instead of returning
-	// the currently known series.
-	q, err := db.Querier(ctx, 0, math.MaxInt64)
+	// Since ingester may run with a variable TSDB retention which could be few days long,
+	// we only query the TSDB head time range in order to avoid heavy queries (which could
+	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
+	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
 	if err != nil {
 		return nil, err
 	}
 	defer q.Close()
 
-	// Run a query for each matchers set and collect all the results
-	added := map[string]struct{}{}
+	// Run a query for each matchers set and collect all the results.
+	var sets []storage.SeriesSet
+
+	for _, matchers := range matchersSet {
+		// Interrupt if the context has been canceled.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		seriesSet := q.Select(true, nil, matchers...)
+		sets = append(sets, seriesSet)
+	}
+
+	// Generate the response merging all series sets.
 	result := &client.MetricsForLabelMatchersResponse{
 		Metric: make([]*client.Metric, 0),
 	}
 
-	for _, matchers := range matchersSet {
-		seriesSet := q.Select(false, nil, matchers...)
-		if seriesSet.Err() != nil {
-			return nil, seriesSet.Err()
+	mergedSet := storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+	for mergedSet.Next() {
+		// Interrupt if the context has been canceled.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
-		for seriesSet.Next() {
-			if seriesSet.Err() != nil {
-				break
-			}
-
-			// Given the same series can be matched by multiple matchers and we want to
-			// return the unique set of matching series, we do check if the series has
-			// already been added to the result
-			ls := seriesSet.At().Labels()
-			key := ls.String()
-			if _, ok := added[key]; ok {
-				continue
-			}
-
-			result.Metric = append(result.Metric, &client.Metric{
-				Labels: client.FromLabelsToLabelAdapters(ls),
-			})
-
-			added[key] = struct{}{}
-		}
-
-		// In case of any error while iterating the series, we break
-		// the execution and return it
-		if err := seriesSet.Err(); err != nil {
-			return nil, err
-		}
+		result.Metric = append(result.Metric, &client.Metric{
+			Labels: client.FromLabelsToLabelAdapters(mergedSet.At().Labels()),
+		})
 	}
 
 	return result, nil
@@ -768,6 +741,8 @@ func createUserStats(db *userTSDB) *client.UserStatsResponse {
 	}
 }
 
+const queryStreamBatchMessageSize = 1 * 1024 * 1024
+
 // v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
 	log, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
@@ -803,7 +778,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 
 	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
-	batchSize := 0
+	batchSizeBytes := 0
 	numSamples := 0
 	numSeries := 0
 	for ss.Next() {
@@ -820,11 +795,12 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
 		}
 		numSamples += len(ts.Samples)
-
-		timeseries = append(timeseries, ts)
 		numSeries++
-		batchSize++
-		if batchSize >= queryStreamBatchSize {
+		tsSize := ts.Size()
+
+		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(timeseries) >= queryStreamBatchSize {
+			// Adding this series to the batch would make it too big,
+			// flush the data and add it to new batch instead.
 			err = client.SendQueryStream(stream, &client.QueryStreamResponse{
 				Timeseries: timeseries,
 			})
@@ -832,9 +808,12 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 				return err
 			}
 
-			batchSize = 0
+			batchSizeBytes = 0
 			timeseries = timeseries[:0]
 		}
+
+		timeseries = append(timeseries, ts)
+		batchSizeBytes += tsSize
 	}
 
 	// Ensure no error occurred while iterating the series set.
@@ -843,7 +822,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 
 	// Final flush any existing metrics
-	if batchSize != 0 {
+	if batchSizeBytes != 0 {
 		err = client.SendQueryStream(stream, &client.QueryStreamResponse{
 			Timeseries: timeseries,
 		})

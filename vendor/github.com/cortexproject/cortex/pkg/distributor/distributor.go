@@ -513,10 +513,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	// Obtain a subring if required
 	if size := d.limits.SubringSize(userID); size > 0 {
 		h := client.HashAdd32a(client.HashNew32a(), userID)
-		subRing, err = d.ingestersRing.Subring(h, size)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unable to create subring: %v", err)
-		}
+		subRing = d.ingestersRing.Subring(h, size)
 	}
 
 	keys := append(seriesKeys, metadataKeys...)

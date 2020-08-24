@@ -17,7 +17,18 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/thanos-io/thanos/pkg/runutil"
+)
+
+const (
+	OpIter       = "iter"
+	OpGet        = "get"
+	OpGetRange   = "get_range"
+	OpExists     = "exists"
+	OpUpload     = "upload"
+	OpDelete     = "delete"
+	OpAttributes = "attributes"
 )
 
 // Bucket provides read and write access to an object storage bucket.
@@ -218,16 +229,6 @@ func DownloadDir(ctx context.Context, logger log.Logger, bkt BucketReader, src, 
 	return nil
 }
 
-const (
-	iterOp       = "iter"
-	getOp        = "get"
-	getRangeOp   = "get_range"
-	existsOp     = "exists"
-	uploadOp     = "upload"
-	deleteOp     = "delete"
-	attributesOp = "attributes"
-)
-
 // IsOpFailureExpectedFunc allows to mark certain errors as expected, so they will not increment thanos_objstore_bucket_operation_failures_total metric.
 type IsOpFailureExpectedFunc func(error) bool
 
@@ -263,13 +264,13 @@ func BucketWithMetrics(name string, b Bucket, reg prometheus.Registerer) *metric
 		}, []string{"bucket"}),
 	}
 	for _, op := range []string{
-		iterOp,
-		getOp,
-		getRangeOp,
-		existsOp,
-		uploadOp,
-		deleteOp,
-		attributesOp,
+		OpIter,
+		OpGet,
+		OpGetRange,
+		OpExists,
+		OpUpload,
+		OpDelete,
+		OpAttributes,
 	} {
 		bkt.ops.WithLabelValues(op)
 		bkt.opsFailures.WithLabelValues(op)
@@ -306,7 +307,7 @@ func (b *metricBucket) ReaderWithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket
 }
 
 func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string) error) error {
-	const op = iterOp
+	const op = OpIter
 	b.ops.WithLabelValues(op).Inc()
 
 	err := b.bkt.Iter(ctx, dir, f)
@@ -317,7 +318,7 @@ func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string)
 }
 
 func (b *metricBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
-	const op = attributesOp
+	const op = OpAttributes
 	b.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
@@ -333,7 +334,7 @@ func (b *metricBucket) Attributes(ctx context.Context, name string) (ObjectAttri
 }
 
 func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	const op = getOp
+	const op = OpGet
 	b.ops.WithLabelValues(op).Inc()
 
 	rc, err := b.bkt.Get(ctx, name)
@@ -353,7 +354,7 @@ func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 }
 
 func (b *metricBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	const op = getRangeOp
+	const op = OpGetRange
 	b.ops.WithLabelValues(op).Inc()
 
 	rc, err := b.bkt.GetRange(ctx, name, off, length)
@@ -373,7 +374,7 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 }
 
 func (b *metricBucket) Exists(ctx context.Context, name string) (bool, error) {
-	const op = existsOp
+	const op = OpExists
 	b.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
@@ -389,7 +390,7 @@ func (b *metricBucket) Exists(ctx context.Context, name string) (bool, error) {
 }
 
 func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	const op = uploadOp
+	const op = OpUpload
 	b.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
@@ -405,7 +406,7 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 }
 
 func (b *metricBucket) Delete(ctx context.Context, name string) error {
-	const op = deleteOp
+	const op = OpDelete
 	b.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()

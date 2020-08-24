@@ -450,14 +450,14 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	}
 
 	var resp CachedResponse
-	sp, _ := opentracing.StartSpanFromContext(ctx, "unmarshal-extent")
-	defer sp.Finish()
+	log, ctx := spanlogger.New(ctx, "unmarshal-extent") //nolint:ineffassign,staticcheck
+	defer log.Finish()
 
-	sp.LogFields(otlog.Int("bytes", len(bufs[0])))
+	log.LogFields(otlog.Int("bytes", len(bufs[0])))
 
 	if err := proto.Unmarshal(bufs[0], &resp); err != nil {
-		level.Error(s.logger).Log("msg", "error unmarshalling cached value", "err", err)
-		sp.LogFields(otlog.Error(err))
+		level.Error(log).Log("msg", "error unmarshalling cached value", "err", err)
+		log.Error(err)
 		return nil, false
 	}
 
