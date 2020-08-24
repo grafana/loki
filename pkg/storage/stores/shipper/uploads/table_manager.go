@@ -71,7 +71,7 @@ func (tm *TableManager) loop() {
 	for {
 		select {
 		case <-syncTicker.C:
-			tm.uploadTables(context.Background())
+			tm.uploadTables(context.Background(), false)
 		case <-tm.ctx.Done():
 			return
 		}
@@ -84,7 +84,7 @@ func (tm *TableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
 
-	tm.uploadTables(context.Background())
+	tm.uploadTables(context.Background(), true)
 }
 
 func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
@@ -151,7 +151,7 @@ func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 	return table, nil
 }
 
-func (tm *TableManager) uploadTables(ctx context.Context) {
+func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
@@ -159,7 +159,7 @@ func (tm *TableManager) uploadTables(ctx context.Context) {
 
 	status := statusSuccess
 	for _, table := range tm.tables {
-		err := table.Upload(ctx)
+		err := table.Upload(ctx, force)
 		if err != nil {
 			// continue uploading other tables while skipping cleanup for a failed one.
 			status = statusFailure
