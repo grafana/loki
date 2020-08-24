@@ -400,4 +400,18 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	for _, expectedDB := range expectedDBsToUpload {
 		require.FileExists(t, filepath.Join(objectStorageDir, table.buildObjectKey(fmt.Sprint(expectedDB))))
 	}
+
+	// delete everything uploaded
+	dir, err := ioutil.ReadDir(filepath.Join(objectStorageDir, table.name))
+	for _, d := range dir {
+		os.RemoveAll(filepath.Join(objectStorageDir, table.name, d.Name()))
+	}
+
+	// force upload of dbs
+	require.NoError(t, table.Upload(context.Background(), true))
+
+	// make sure nothing was re-uploaded
+	for _, expectedDB := range expectedDBsToUpload {
+		require.NoFileExists(t, filepath.Join(objectStorageDir, table.buildObjectKey(fmt.Sprint(expectedDB))))
+	}
 }
