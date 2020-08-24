@@ -36,7 +36,7 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 	}
 
 	// we need to use prefixed object client while creating files/folder
-	prefixedObjectClient := util.NewPrefixedObjectClient(objectClient, storageKeyPrefix)
+	prefixedObjectClient := util.NewPrefixedObjectClient(objectClient, StorageKeyPrefix)
 
 	for folder, files := range foldersWithFiles {
 		for _, fileName := range files {

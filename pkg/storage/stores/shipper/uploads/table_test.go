@@ -346,7 +346,7 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 			Start:      10,
 			NumRecords: 10,
 		},
-	})
+	}, false)
 
 	// try loading the dbs
 	dbs, err := loadBoltDBsFromDir(tablePath)
@@ -395,7 +395,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	}
 
 	// setup some dbs for a table at a path.
-	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, dbs)
+	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, dbs, false)
 
 	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient)
 	require.NoError(t, err)

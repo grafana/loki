@@ -173,3 +173,24 @@ func compressFile(t *testing.T, filepath string) {
 	require.NoError(t, compressedFile.Close())
 	require.NoError(t, os.Remove(filepath))
 }
+
+func DecompressFile(t *testing.T, src, dest string) {
+	// open compressed file from storage
+	compressedFile, err := os.Open(src)
+	require.NoError(t, err)
+
+	// get a compressed reader
+	compressedReader, err := gzip.NewReader(compressedFile)
+	require.NoError(t, err)
+
+	decompressedFile, err := os.Create(dest)
+	require.NoError(t, err)
+
+	// do the decompression
+	_, err = io.Copy(decompressedFile, compressedReader)
+	require.NoError(t, err)
+
+	// close the references
+	require.NoError(t, compressedFile.Close())
+	require.NoError(t, decompressedFile.Close())
+}

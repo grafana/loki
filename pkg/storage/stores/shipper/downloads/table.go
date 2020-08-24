@@ -18,7 +18,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/chunkenc"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
@@ -341,7 +341,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	// download the file temporarily with some other name to allow boltdb client to close the existing file first if it exists
 	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", dbName, "temp"))
 
-	err = t.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
+	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, tempFilePath)
 	if err != nil {
 		return err
 	}
@@ -373,42 +373,6 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	t.dbs[dbName] = df
 
 	return nil
-}
-
-// getFileFromStorage downloads a file from storage to given location.
-func (t *Table) getFileFromStorage(ctx context.Context, objectKey, destination string) error {
-	readCloser, err := t.storageClient.GetObject(ctx, objectKey)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := readCloser.Close(); err != nil {
-			level.Error(util.Logger)
-		}
-	}()
-
-	f, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-
-	var objectReader io.Reader = readCloser
-	if strings.HasSuffix(objectKey, ".gz") {
-		decompressedReader := chunkenc.Gzip.GetReader(readCloser)
-		defer chunkenc.Gzip.PutReader(decompressedReader)
-
-		objectReader = decompressedReader
-	}
-
-	_, err = io.Copy(f, objectReader)
-	if err != nil {
-		return err
-	}
-
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
-
-	return f.Sync()
 }
 
 func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
@@ -463,7 +427,7 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 				}
 
 				filePath := path.Join(folderPathForTable, dbName)
-				err = t.getFileFromStorage(ctx, object.Key, filePath)
+				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath)
 				if err != nil {
 					break
 				}
