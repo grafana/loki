@@ -266,6 +266,9 @@ func (a *API) RegisterQuerier(
 	registerRoutesExternally bool,
 	tombstonesLoader *purger.TombstonesLoader,
 	querierRequestDuration *prometheus.HistogramVec,
+	receivedMessageSize *prometheus.HistogramVec,
+	sentMessageSize *prometheus.HistogramVec,
+	inflightRequests *prometheus.GaugeVec,
 ) http.Handler {
 	api := v1.NewAPI(
 		engine,
@@ -305,8 +308,11 @@ func (a *API) RegisterQuerier(
 	// Use a separate metric for the querier in order to differentiate requests from the query-frontend when
 	// running Cortex as a single binary.
 	inst := middleware.Instrument{
-		Duration:     querierRequestDuration,
-		RouteMatcher: router,
+		RouteMatcher:     router,
+		Duration:         querierRequestDuration,
+		RequestBodySize:  receivedMessageSize,
+		ResponseBodySize: sentMessageSize,
+		InflightRequests: inflightRequests,
 	}
 
 	promRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.PrometheusHTTPPrefix + "/api/v1")

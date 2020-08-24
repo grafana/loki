@@ -48,7 +48,7 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig, reg prometheus.Registerer) (chun
 
 	callManager := callManager{
 		limiter:       rate.NewLimiter(rate.Limit(cfg.APILimit), 1),
-		backoffConfig: cfg.backoffConfig,
+		backoffConfig: cfg.BackoffConfig,
 	}
 
 	var autoscale autoscale

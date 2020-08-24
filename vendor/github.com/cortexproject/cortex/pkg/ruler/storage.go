@@ -50,6 +50,9 @@ func (cfg *RuleStoreConfig) Validate() error {
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
 	}
+	if err := cfg.Azure.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Azure Storage config")
+	}
 	return nil
 }
 

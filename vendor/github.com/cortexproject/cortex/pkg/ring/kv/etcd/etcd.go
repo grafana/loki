@@ -31,7 +31,7 @@ type Client struct {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.Endpoints = []string{}
-	f.Var((*flagext.Strings)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
+	f.Var((*flagext.StringSlice)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
 }

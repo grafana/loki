@@ -31,6 +31,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type ctxKey int
+
+// StoreMatcherKey is the context key for the store's allow list.
+const StoreMatcherKey = ctxKey(0)
+
 // Client holds meta information about a store.
 type Client interface {
 	// Client to access the store.
@@ -255,8 +260,14 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 			// NOTE: all matchers are validated in matchesExternalLabels method so we explicitly ignore error.
 			var ok bool
 			tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
+				storeMatcher := [][]storepb.LabelMatcher{}
+				if ctxVal := srv.Context().Value(StoreMatcherKey); ctxVal != nil {
+					if value, ok := ctxVal.([][]storepb.LabelMatcher); ok {
+						storeMatcher = value
+					}
+				}
 				// We can skip error, we already translated matchers once.
-				ok, _ = storeMatches(st, r.MinTime, r.MaxTime, r.Matchers...)
+				ok, _ = storeMatches(st, r.MinTime, r.MaxTime, storeMatcher, r.Matchers...)
 			})
 			if !ok {
 				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s filtered out", st))
@@ -498,12 +509,38 @@ func (s *streamSeriesSet) Err() error {
 
 // matchStore returns true if the given store may hold data for the given label
 // matchers.
-func storeMatches(s Client, mint, maxt int64, matchers ...storepb.LabelMatcher) (bool, error) {
+func storeMatches(s Client, mint, maxt int64, storeMatcher [][]storepb.LabelMatcher, matchers ...storepb.LabelMatcher) (bool, error) {
 	storeMinTime, storeMaxTime := s.TimeRange()
 	if mint > storeMaxTime || maxt < storeMinTime {
 		return false, nil
 	}
+	match, err := storeMatchMetadata(s, storeMatcher)
+	if err != nil || !match {
+		return match, err
+	}
 	return labelSetsMatch(s.LabelSets(), matchers)
+}
+
+// storeMatch return true if the store's metadata labels match the storeMatcher.
+func storeMatchMetadata(s Client, storeMatcher [][]storepb.LabelMatcher) (bool, error) {
+	clientLabels := generateMetadataClientLabels(s)
+	if len(storeMatcher) == 0 {
+		return true, nil
+	}
+	res := false
+	for _, stm := range storeMatcher {
+		stmMatch, err := labelSetMatches(clientLabels, stm)
+		if err != nil {
+			return false, err
+		}
+		res = res || stmMatch
+	}
+	return res, nil
+}
+
+func generateMetadataClientLabels(s Client) storepb.LabelSet {
+	l := storepb.Label{Name: "__address__", Value: s.Addr()}
+	return storepb.LabelSet{Labels: []storepb.Label{l}}
 }
 
 // labelSetsMatch returns false if all label-set do not match the matchers.
@@ -561,6 +598,8 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 		g.Go(func() error {
 			resp, err := st.LabelNames(gctx, &storepb.LabelNamesRequest{
 				PartialResponseDisabled: r.PartialResponseDisabled,
+				Start:                   r.Start,
+				End:                     r.End,
 			})
 			if err != nil {
 				err = errors.Wrapf(err, "fetch label names from store %s", st)
@@ -610,6 +649,8 @@ func (s *ProxyStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequ
 			resp, err := store.LabelValues(gctx, &storepb.LabelValuesRequest{
 				Label:                   r.Label,
 				PartialResponseDisabled: r.PartialResponseDisabled,
+				Start:                   r.Start,
+				End:                     r.End,
 			})
 			if err != nil {
 				err = errors.Wrapf(err, "fetch label values from store %s", store)

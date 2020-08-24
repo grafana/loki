@@ -1,15 +1,13 @@
 package flagext
 
-import (
-	"strings"
-)
+import "fmt"
 
 // StringSlice is a slice of strings that implements flag.Value
 type StringSlice []string
 
 // String implements flag.Value
 func (v StringSlice) String() string {
-	return strings.Join(v, " ")
+	return fmt.Sprintf("%s", []string(v))
 }
 
 // Set implements flag.Value

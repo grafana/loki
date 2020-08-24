@@ -146,7 +146,12 @@ func (d *BlocksScanner) GetBlocks(userID string, minT, maxT int64) ([]*BlockMeta
 func (d *BlocksScanner) starting(ctx context.Context) error {
 	// Before the service is in the running state it must have successfully
 	// complete the initial scan.
-	return d.scanBucket(ctx)
+	if err := d.scanBucket(ctx); err != nil {
+		level.Error(d.logger).Log("msg", "unable to run the initial blocks scan", "err", err)
+		return err
+	}
+
+	return nil
 }
 
 func (d *BlocksScanner) scan(ctx context.Context) error {

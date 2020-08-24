@@ -12,6 +12,7 @@ import (
 	prom_storage "github.com/prometheus/prometheus/storage"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
@@ -181,9 +182,29 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		Buckets:   instrument.DefBuckets,
 	}, []string{"method", "route", "status_code", "ws"})
 
+	receivedMessageSize := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "querier_request_message_bytes",
+		Help:      "Size (in bytes) of messages received in the request to the querier.",
+		Buckets:   middleware.BodySizeBuckets,
+	}, []string{"method", "route"})
+
+	sentMessageSize := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "querier_response_message_bytes",
+		Help:      "Size (in bytes) of messages sent in response by the querier.",
+		Buckets:   middleware.BodySizeBuckets,
+	}, []string{"method", "route"})
+
+	inflightRequests := promauto.With(prometheus.DefaultRegisterer).NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "querier_inflight_requests",
+		Help:      "Current number of inflight requests to the querier.",
+	}, []string{"method", "route"})
+
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
 	registerExternally := t.Cfg.Target != All
-	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration)
+	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration, receivedMessageSize, sentMessageSize, inflightRequests)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
@@ -487,14 +508,15 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
+	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine)
+	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util.Logger)
+	if err != nil {
+		return nil, err
+	}
+
 	t.Ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
-		ruler.DefaultTenantManagerFactory(
-			t.Cfg.Ruler,
-			t.Distributor,
-			queryable,
-			engine,
-		),
+		manager,
 		prometheus.DefaultRegisterer,
 		util.Logger,
 		t.RulerStorage,

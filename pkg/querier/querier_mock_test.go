@@ -315,8 +315,8 @@ func (r *readRingMock) IngesterCount() int {
 	return len(r.replicationSet.Ingesters)
 }
 
-func (r *readRingMock) Subring(key uint32, n int) (ring.ReadRing, error) {
-	return r, nil
+func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
+	return r
 }
 
 func mockReadRingWithOneActiveIngester() *readRingMock {

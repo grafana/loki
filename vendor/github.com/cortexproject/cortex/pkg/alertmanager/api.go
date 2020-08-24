@@ -4,17 +4,22 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/alertmanager/config"
+	"github.com/prometheus/alertmanager/template"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 )
 
 const (
 	errMarshallingYAML       = "error marshalling YAML Alertmanager config"
+	errValidatingConfig      = "error validating Alertmanager config"
 	errReadingConfiguration  = "unable to read the Alertmanager config"
 	errStoringConfiguration  = "unable to store the Alertmanager config"
 	errDeletingConfiguration = "unable to delete the Alertmanager config"
@@ -89,7 +94,13 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 		return
 	}
 
-	cfgDesc, _ := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
+	cfgDesc := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
+	if err := validateUserConfig(cfgDesc); err != nil {
+		level.Warn(logger).Log("msg", errValidatingConfig, "err", err.Error())
+		http.Error(w, fmt.Sprintf("%s: %s", errValidatingConfig, err.Error()), http.StatusBadRequest)
+		return
+	}
+
 	err = am.store.SetAlertConfig(r.Context(), cfgDesc)
 	if err != nil {
 		level.Error(logger).Log("msg", errStoringConfiguration, "err", err.Error())
@@ -117,4 +128,47 @@ func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *ht
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func validateUserConfig(cfg alerts.AlertConfigDesc) error {
+	// Validation copied from: https://github.com/prometheus/alertmanager/blob/8e861c646bf67599a1704fc843c6a94d519ce312/cli/check_config.go#L65-L96
+	amCfg, err := config.Load(cfg.RawConfig)
+	if err != nil {
+		return err
+	}
+
+	// Create templates on disk in a temporary directory.
+	// Note: This means the validation will succeed if we can write to tmp but
+	// not to configured data dir, and on the flipside, it'll fail if we can't write
+	// to tmpDir. Ignoring both cases for now as they're ultra rare but will revisit if
+	// we see this in the wild.
+	tmpDir, err := ioutil.TempDir("", "validate-config")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	for _, tmpl := range cfg.Templates {
+		_, err := createTemplateFile(tmpDir, cfg.User, tmpl.Filename, tmpl.Body)
+		if err != nil {
+			return err
+		}
+	}
+
+	templateFiles := make([]string, len(amCfg.Templates))
+	for i, t := range amCfg.Templates {
+		templateFiles[i] = filepath.Join(tmpDir, "templates", cfg.User, t)
+	}
+
+	_, err = template.FromGlobs(templateFiles...)
+	if err != nil {
+		return err
+	}
+
+	// Note: Not validating the MultitenantAlertmanager.transformConfig function as that
+	// that function shouldn't break configuration. Only way it can fail is if the base
+	// autoWebhookURL itself is broken. In that case, I would argue, we should accept the config
+	// not reject it.
+
+	return nil
 }

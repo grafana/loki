@@ -307,7 +307,7 @@ func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.
 }
 
 func createBucketClient(cfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg, "store-gateway", logger, reg)
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.Bucket, "store-gateway", logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket client")
 	}
