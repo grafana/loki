@@ -287,7 +287,8 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	// cache the result of the evaluation at this timestamp
 	cache.Set(m.ts, forStateVec)
 
-	// Finally return the series if it exists
+	// Finally return the series if it exists.
+	// Calling cache.Get leverages the existing code to return only single sample.
 	smpl, ok = cache.Get(m.ts, ls)
 	if !ok || smpl == nil {
 		return storage.NoopSeriesSet()
