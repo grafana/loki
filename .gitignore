@@ -4,6 +4,7 @@
 .cache
 *.output
 *.tgz
+*.exe
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
