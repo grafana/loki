@@ -117,7 +117,6 @@ func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.GCS.RegisterFlags(f)
 	cfg.Azure.RegisterFlags(f)
 	cfg.Filesystem.RegisterFlags(f)
-	cfg.TSDB.RegisterFlags(f)
 
 	f.StringVar(&cfg.Backend, "experimental.blocks-storage.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
 }

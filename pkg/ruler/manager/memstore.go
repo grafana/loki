@@ -27,7 +27,7 @@ const (
 
 type NoopAppender struct{}
 
-func (a NoopAppender) Appender() storage.Appender                              { return a }
+func (a NoopAppender) Appender(_ context.Context) storage.Appender             { return a }
 func (a NoopAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) { return 0, nil }
 func (a NoopAppender) AddFast(ref uint64, t int64, v float64) error {
 	return errors.New("unimplemented")
