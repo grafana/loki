@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func TestRawOutput_Format(t *testing.T) {
 			someLabels,
 			0,
 			"",
-			"",
+			"\n",
 		},
 		"non empty line": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
@@ -39,7 +40,7 @@ func TestRawOutput_Format(t *testing.T) {
 			someLabels,
 			0,
 			"Hello world",
-			"Hello world",
+			"Hello world\n",
 		},
 		"line with single newline at the end": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
@@ -47,7 +48,7 @@ func TestRawOutput_Format(t *testing.T) {
 			someLabels,
 			0,
 			"Hello world\n",
-			"Hello world",
+			"Hello world\n",
 		},
 		"line with multiple newlines at the end": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
@@ -55,7 +56,7 @@ func TestRawOutput_Format(t *testing.T) {
 			someLabels,
 			0,
 			"Hello world\n\n\n",
-			"Hello world\n\n",
+			"Hello world\n\n\n",
 		},
 	}
 
@@ -65,10 +66,11 @@ func TestRawOutput_Format(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			out := &RawOutput{testData.options}
-			actual := out.Format(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
+			writer := &bytes.Buffer{}
+			out := &RawOutput{writer,testData.options}
+			out.FormatAndPrintln(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
 
-			assert.Equal(t, testData.expected, actual)
+			assert.Equal(t, testData.expected, writer.String())
 		})
 	}
 }

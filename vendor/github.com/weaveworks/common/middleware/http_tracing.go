@@ -17,20 +17,28 @@ var _ = nethttp.MWURLTagFunc
 // Tracer is a middleware which traces incoming requests.
 type Tracer struct {
 	RouteMatcher RouteMatcher
+	SourceIPs    *SourceIPExtractor
 }
 
 // Wrap implements Interface
 func (t Tracer) Wrap(next http.Handler) http.Handler {
-	opMatcher := nethttp.OperationNameFunc(func(r *http.Request) string {
-		op := getRouteName(t.RouteMatcher, r)
-		if op == "" {
-			return "HTTP " + r.Method
-		}
+	options := []nethttp.MWOption{
+		nethttp.OperationNameFunc(func(r *http.Request) string {
+			op := getRouteName(t.RouteMatcher, r)
+			if op == "" {
+				return "HTTP " + r.Method
+			}
 
-		return fmt.Sprintf("HTTP %s - %s", r.Method, op)
-	})
+			return fmt.Sprintf("HTTP %s - %s", r.Method, op)
+		}),
+	}
+	if t.SourceIPs != nil {
+		options = append(options, nethttp.MWSpanObserver(func(sp opentracing.Span, r *http.Request) {
+			sp.SetTag("sourceIPs", t.SourceIPs.Get(r))
+		}))
+	}
 
-	return nethttp.Middleware(opentracing.GlobalTracer(), next, opMatcher)
+	return nethttp.Middleware(opentracing.GlobalTracer(), next, options...)
 }
 
 // ExtractTraceID extracts the trace id, if any from the context.

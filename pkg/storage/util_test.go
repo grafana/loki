@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	pkg_util "github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -21,7 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-var fooLabelsWithName = "{foo=\"bar\", __name__=\"log\"}"
+var fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
 var fooLabels = "{foo=\"bar\"}"
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
@@ -36,7 +38,7 @@ func assertStream(t *testing.T, expected, actual []logproto.Stream) {
 	for i := range expected {
 		assert.Equal(t, expected[i].Labels, actual[i].Labels)
 		if len(expected[i].Entries) != len(actual[i].Entries) {
-			t.Fatalf("error entries length are different expected %d actual%d\n%s", len(expected[i].Entries), len(actual[i].Entries), spew.Sdump(expected[i].Entries, actual[i].Entries))
+			t.Fatalf("error entries length are different expected %d actual %d\n%s", len(expected[i].Entries), len(actual[i].Entries), spew.Sdump(expected[i].Entries, actual[i].Entries))
 
 			return
 		}
@@ -199,7 +201,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		refs = append(refs, r)
 	}
 
-	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, nil)
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, pkg_util.Logger)
 	if err != nil {
 		panic(err)
 	}

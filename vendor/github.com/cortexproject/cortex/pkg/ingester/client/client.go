@@ -3,10 +3,10 @@ package client
 import (
 	"flag"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
-	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
@@ -61,4 +61,8 @@ type Config struct {
 // RegisterFlags registers configuration settings used by the ingester client config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
+}
+
+func (cfg *Config) Validate(log log.Logger) error {
+	return cfg.GRPCClientConfig.Validate(log)
 }

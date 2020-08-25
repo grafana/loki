@@ -9,21 +9,19 @@ import (
 	"path"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/local"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	pkg_util "github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
-
-	"github.com/grafana/loki/pkg/storage/stores/util"
+	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
-
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	pkg_util "github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
-	"go.etcd.io/bbolt"
+	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
 const (
@@ -40,7 +38,7 @@ const (
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
 
-	storageKeyPrefix = "index/"
+	StorageKeyPrefix = "index/"
 
 	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
 	UploadInterval = 15 * time.Minute
@@ -114,7 +112,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 		return err
 	}
 
-	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, storageKeyPrefix)
+	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, StorageKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
 		cfg := uploads.Config{
@@ -199,11 +197,15 @@ func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error 
 
 func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	return instrument.CollectedRequest(ctx, "QUERY", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		spanLogger := spanlogger.FromContext(ctx)
+
 		if s.uploadsManager != nil {
 			err := s.uploadsManager.QueryPages(ctx, queries, callback)
 			if err != nil {
 				return err
 			}
+
+			level.Debug(spanLogger).Log("queried", "uploads-manager")
 		}
 
 		if s.downloadsManager != nil {
@@ -211,6 +213,8 @@ func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, ca
 			if err != nil {
 				return err
 			}
+
+			level.Debug(spanLogger).Log("queried", "downloads-manager")
 		}
 
 		return nil

@@ -105,11 +105,17 @@ func (cfg *Config) Validate() error {
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")
 	}
+	if err := cfg.GCPStorageConfig.Validate(util.Logger); err != nil {
+		return errors.Wrap(err, "invalid GCP Storage Storage config")
+	}
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
 	}
 	if err := cfg.IndexQueriesCacheConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Index Queries Cache config")
+	}
+	if err := cfg.AzureStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Azure Storage config")
 	}
 	return nil
 }

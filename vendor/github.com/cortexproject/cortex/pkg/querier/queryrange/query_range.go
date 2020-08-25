@@ -21,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 // StatusSuccess Prometheus success result.
@@ -102,7 +103,7 @@ func (q *PrometheusRequest) WithQuery(query string) Request {
 	return &new
 }
 
-// WithQuery clones the current `PrometheusRequest` with a new query.
+// LogToSpan logs the current `PrometheusRequest` parameters to the specified span.
 func (q *PrometheusRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", q.GetQuery()),
@@ -133,6 +134,10 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	if len(responses) == 0 {
 		return &PrometheusResponse{
 			Status: StatusSuccess,
+			Data: PrometheusData{
+				ResultType: model.ValMatrix.String(),
+				Result:     []SampleStream{},
+			},
 		}, nil
 	}
 
@@ -234,17 +239,16 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
-
-	sp, _ := opentracing.StartSpanFromContext(ctx, "ParseQueryRangeResponse")
-	defer sp.Finish()
+	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
+	defer log.Finish()
 
 	buf, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		sp.LogFields(otlog.Error(err))
+		log.Error(err)
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 
-	sp.LogFields(otlog.Int("bytes", len(buf)))
+	log.LogFields(otlog.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
 	if err := json.Unmarshal(buf, &resp); err != nil {

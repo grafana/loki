@@ -144,6 +144,10 @@ message LabelNamesRequest {
 
   // TODO(bwplotka): Move Thanos components to use strategy instead. Including QueryAPI.
   PartialResponseStrategy partial_response_strategy = 2;
+
+  int64 start = 3;
+
+  int64 end = 4;
 }
 
 message LabelNamesResponse {
@@ -158,6 +162,10 @@ message LabelValuesRequest {
 
   // TODO(bwplotka): Move Thanos components to use strategy instead. Including QueryAPI.
   PartialResponseStrategy partial_response_strategy = 3;
+
+  int64 start = 4;
+
+  int64 end = 5;
 }
 
 message LabelValuesResponse {

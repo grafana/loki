@@ -2,6 +2,8 @@ package output
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -10,11 +12,12 @@ import (
 
 // JSONLOutput prints logs and metadata as JSON Lines, suitable for scripts
 type JSONLOutput struct {
+	w       io.Writer
 	options *LogOutputOptions
 }
 
 // Format a log entry as json line
-func (o *JSONLOutput) Format(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) string {
+func (o *JSONLOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) {
 	entry := map[string]interface{}{
 		"timestamp": ts.In(o.options.Timezone),
 		"line":      line,
@@ -30,5 +33,5 @@ func (o *JSONLOutput) Format(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen i
 		log.Fatalf("error marshalling entry: %s", err)
 	}
 
-	return string(out)
+	fmt.Fprintln(o.w, string(out))
 }

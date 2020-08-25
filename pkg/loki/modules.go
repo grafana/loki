@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
@@ -60,6 +62,7 @@ const (
 	Store         string = "store"
 	TableManager  string = "table-manager"
 	MemberlistKV  string = "memberlist-kv"
+	Compactor     string = "compactor"
 	All           string = "all"
 )
 
@@ -429,6 +432,16 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 
 	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV)
 	return t.memberlistKV, nil
+}
+
+func (t *Loki) initCompactor() (services.Service, error) {
+	var err error
+	t.compactor, err = compactor.NewCompactor(t.cfg.CompactorConfig, t.cfg.StorageConfig.Config)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.compactor, nil
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge time.Duration) (time.Duration, error) {

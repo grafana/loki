@@ -62,6 +62,21 @@ $ logcli series -q --match='{namespace="loki",container_name="loki"}'
 {app="loki", container_name="loki", controller_revision_hash="loki-57c9df47f4", filename="/var/log/pods/loki_loki-0_8ed03ded-bacb-4b13-a6fe-53a445a15887/loki/0.log", instance="loki-0", job="loki/loki", name="loki", namespace="loki", release="loki", statefulset_kubernetes_io_pod_name="loki-0", stream="stderr"}
 ```
 
+#### Batched Queries
+
+Starting with Loki 1.6.0, `logcli` batches log queries to Loki.
+
+If you set a `--limit` on a query (default is 30) to a large number, say `--limit=10000`, then logcli automatically
+sends this request to Loki in batches.
+
+The default batch size is `1000`.
+
+Loki has a server-side limit for the maximum lines returned in a query (default is 5000).
+
+Batching allows you to make larger requests than the server-side limit as long as the `--batch` size is less than the server limit.
+
+Please note that the query metadata is printed for each batch on `stderr`. Set the `--quiet` flag to stop this behavior.
+
 ### Configuration
 
 Configuration values are considered in the following order (lowest to highest):
@@ -80,10 +95,10 @@ A command-line for loki.
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata
-      --stats            Show query statistics
+  -q, --quiet            Suppress query metadata.
+      --stats            Show query statistics.
   -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
@@ -137,7 +152,7 @@ Commands:
   labels [<flags>] [<label>]
     Find values for a given label.
 
-  series --match=MATCH [<flags>]
+  series [<flags>] <matcher>
     Run series query.
 
 $ logcli help query
@@ -164,10 +179,10 @@ instead.
 Flags:
       --help               Show context-sensitive help (also try --help-long and --help-man).
       --version            Show application version.
-  -q, --quiet              Suppress query metadata
-      --stats              Show query statistics
+  -q, --quiet              Suppress query metadata.
+      --stats              Show query statistics.
   -o, --output=default     Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local     Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local     Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""      Specify the location for writing a CPU profile.
       --memprofile=""      Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
@@ -182,22 +197,24 @@ Flags:
                            bypassing an auth gateway.
       --limit=30           Limit on number of entries to print.
       --since=1h           Lookback window.
-      --from=FROM          Start looking for logs at this absolute time (inclusive)
-      --to=TO              Stop looking for logs at this absolute time (exclusive)
+      --from=FROM          Start looking for logs at this absolute time (inclusive).
+      --to=TO              Stop looking for logs at this absolute time (exclusive).
       --step=STEP          Query resolution step width, for metric queries. Evaluate the query at the specified step over the time
                            range.
       --interval=INTERVAL  Query interval, for log queries. Return entries at the specified interval, ignoring those between.
-                           **This parameter is experimental, please see Issue 1779**
+                           **This parameter is experimental, please see Issue 1779**.
+      --batch=1000         Query batch size to use until 'limit' is reached.
       --forward            Scan forwards through logs.
-      --no-labels          Do not print any labels
+      --no-labels          Do not print any labels.
       --exclude-label=EXCLUDE-LABEL ...
                            Exclude labels given the provided key during output.
       --include-label=INCLUDE-LABEL ...
                            Include labels given the provided key during output.
-      --labels-length=0    Set a fixed padding to labels
+      --labels-length=0    Set a fixed padding to labels.
       --store-config=""    Execute the current query using a configured storage from a given Loki configuration file.
-  -t, --tail               Tail the logs
-      --delay-for=0        Delay in tailing by number of seconds to accumulate logs for re-ordering
+  -t, --tail               Tail the logs.
+      --delay-for=0        Delay in tailing by number of seconds to accumulate logs for re-ordering.
+      --colored-output     Show ouput with colored labels.
 
 Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
@@ -210,10 +227,10 @@ Find values for a given label.
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata
-      --stats            Show query statistics
+  -q, --quiet            Suppress query metadata.
+      --stats            Show query statistics.
   -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
@@ -227,8 +244,8 @@ Flags:
       --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
       --since=1h         Lookback window.
-      --from=FROM        Start looking for labels at this absolute time (inclusive)
-      --to=TO            Stop looking for labels at this absolute time (exclusive)
+      --from=FROM        Start looking for labels at this absolute time (inclusive).
+      --to=TO            Stop looking for labels at this absolute time (exclusive).
 
 Args:
   [<label>]  The name of the label.
@@ -241,10 +258,10 @@ Run series query.
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata
-      --stats            Show query statistics
+  -q, --quiet            Suppress query metadata.
+      --stats            Show query statistics.
   -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
@@ -258,8 +275,8 @@ Flags:
       --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
       --since=1h         Lookback window.
-      --from=FROM        Start looking for logs at this absolute time (inclusive)
-      --to=TO            Stop looking for logs at this absolute time (exclusive)
+      --from=FROM        Start looking for logs at this absolute time (inclusive).
+      --to=TO            Stop looking for logs at this absolute time (exclusive).
       --match=MATCH ...  eg '{foo="bar",baz=~".*blip"}'
 
 ```

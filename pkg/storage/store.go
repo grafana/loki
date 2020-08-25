@@ -11,6 +11,7 @@ import (
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -75,18 +76,20 @@ type Store interface {
 
 type store struct {
 	chunk.Store
-	cfg Config
+	cfg          Config
+	chunkMetrics *ChunkMetrics
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg.SchemaConfig, limits, registerer, nil, nil)
+	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg.SchemaConfig, limits, registerer, nil, pkg_util.Logger)
 	if err != nil {
 		return nil, err
 	}
 	return &store{
-		Store: s,
-		cfg:   cfg,
+		Store:        s,
+		cfg:          cfg,
+		chunkMetrics: NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
 	}, nil
 }
 
@@ -161,14 +164,20 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 		return nil, err
 	}
 
-	var totalChunks int
+	var prefiltered int
+	var filtered int
 	for i := range chks {
+		prefiltered += len(chks[i])
 		storeStats.TotalChunksRef += int64(len(chks[i]))
 		chks[i] = filterChunksByTime(from, through, chks[i])
-		totalChunks += len(chks[i])
+		filtered += len(chks[i])
 	}
+
+	s.chunkMetrics.refs.WithLabelValues(statusDiscarded).Add(float64(prefiltered - filtered))
+	s.chunkMetrics.refs.WithLabelValues(statusMatched).Add(float64(filtered))
+
 	// creates lazychunks with chunks ref.
-	lazyChunks := make([]*LazyChunk, 0, totalChunks)
+	lazyChunks := make([]*LazyChunk, 0, filtered)
 	for i := range chks {
 		for _, c := range chks[i] {
 			lazyChunks = append(lazyChunks, &LazyChunk{Chunk: c, Fetcher: fetchers[i]})
@@ -274,7 +283,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return iter.NoopIterator, nil
 	}
 
-	return newLogBatchIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.Direction, req.Start, req.End)
+	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.Direction, req.Start, req.End)
 
 }
 
@@ -302,7 +311,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
-	return newSampleBatchIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
+	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {

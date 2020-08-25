@@ -337,6 +337,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	totalSize := 0
 	ticker := time.NewTicker(perSeriesDuration)
 	defer ticker.Stop()
+	start := time.Now()
 	for userID, state := range us {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
@@ -361,6 +362,15 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 			}
 
 			if !immediate {
+				if time.Since(start) > 2*w.cfg.CheckpointDuration {
+					// This could indicate a surge in number of series and continuing with
+					// the old estimation of ticker can make checkpointing run indefinitely in worst case
+					// and disk running out of space. Re-adjust the ticker might not solve the problem
+					// as there can be another surge again. Hence let's checkpoint this one immediately.
+					immediate = true
+					continue
+				}
+
 				select {
 				case <-ticker.C:
 				case <-w.quit: // When we're trying to shutdown, finish the checkpoint as fast as possible.

@@ -55,7 +55,8 @@ func NewTripperware(
 	shardingMetrics := logql.NewShardingMetrics(registerer)
 	splitByMetrics := NewSplitByMetrics(registerer)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec,
+		PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -261,8 +262,8 @@ func NewSeriesTripperware(
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-			// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
-			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByMetrics),
+			// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
+			SplitByIntervalMiddleware(WithSplitByLimits(limits, cfg.SplitQueriesByInterval), codec, splitByMetrics),
 		)
 	}
 	if cfg.MaxRetries > 0 {
@@ -287,8 +288,25 @@ func NewLabelsTripperware(
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (frontend.Tripperware, error) {
-	// for now we'll use the same config as for the Series API.
-	return NewSeriesTripperware(cfg, log, limits, codec, instrumentMetrics, retryMiddlewareMetrics, splitByMetrics)
+	queryRangeMiddleware := []queryrange.Middleware{}
+	if cfg.SplitQueriesByInterval != 0 {
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
+			// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
+			// This is because the labels API is an index-only operation.
+			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByMetrics),
+		)
+	}
+	if cfg.MaxRetries > 0 {
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
+	}
+
+	return func(next http.RoundTripper) http.RoundTripper {
+		if len(queryRangeMiddleware) > 0 {
+			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
+		}
+		return next
+	}, nil
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
@@ -304,6 +322,7 @@ func NewMetricTripperware(
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
+	registerer prometheus.Registerer,
 ) (frontend.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
@@ -335,7 +354,7 @@ func NewMetricTripperware(
 			codec,
 			extractor,
 			nil,
-			nil,
+			registerer,
 		)
 		if err != nil {
 			return nil, nil, err

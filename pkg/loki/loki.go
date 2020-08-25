@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/signals"
@@ -64,6 +67,7 @@ type Config struct {
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
 	Tracing          tracing.Config              `yaml:"tracing"`
+	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -91,6 +95,14 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.Tracing.RegisterFlags(f)
+}
+
+// Clone takes advantage of pass-by-value semantics to return a distinct *Config.
+// This is primarily used to parse a different flag set without mutating the original *Config.
+func (c *Config) Clone() flagext.Registerer {
+	return func(c Config) *Config {
+		return &c
+	}(*c)
 }
 
 // Validate the config and returns an error if the validation
@@ -136,6 +148,7 @@ type Loki struct {
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
 	memberlistKV  *memberlist.KVInitService
+	compactor     *compactor.Compactor
 
 	httpAuthMiddleware middleware.Interface
 }
@@ -308,6 +321,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(TableManager, t.initTableManager)
+	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -321,7 +335,8 @@ func (t *Loki) setupModuleManager() error {
 		QueryFrontend: {Server, Overrides},
 		Ruler:         {Ring, Server, Store, RulerStorage},
 		TableManager:  {Server},
-		All:           {Querier, Ingester, Distributor, TableManager, Ruler},
+		Compactor:     {Server},
+		All:           {Querier, Ingester, Distributor, TableManager},
 	}
 
 	for mod, targets := range deps {

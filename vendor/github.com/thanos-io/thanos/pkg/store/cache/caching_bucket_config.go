@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/thanos-io/thanos/pkg/cache"
+	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
 // Codec for encoding and decoding results of Iter call.
@@ -145,19 +146,19 @@ func (cfg *CachingBucketConfig) CacheAttributes(configName string, cache cache.C
 func (cfg *CachingBucketConfig) allConfigNames() map[string][]string {
 	result := map[string][]string{}
 	for n := range cfg.get {
-		result[opGet] = append(result[opGet], n)
+		result[objstore.OpGet] = append(result[objstore.OpGet], n)
 	}
 	for n := range cfg.iter {
-		result[opIter] = append(result[opIter], n)
+		result[objstore.OpIter] = append(result[objstore.OpIter], n)
 	}
 	for n := range cfg.exists {
-		result[opExists] = append(result[opExists], n)
+		result[objstore.OpExists] = append(result[objstore.OpExists], n)
 	}
 	for n := range cfg.getRange {
-		result[opGetRange] = append(result[opGetRange], n)
+		result[objstore.OpGetRange] = append(result[objstore.OpGetRange], n)
 	}
 	for n := range cfg.attributes {
-		result[opAttributes] = append(result[opAttributes], n)
+		result[objstore.OpAttributes] = append(result[objstore.OpAttributes], n)
 	}
 	return result
 }

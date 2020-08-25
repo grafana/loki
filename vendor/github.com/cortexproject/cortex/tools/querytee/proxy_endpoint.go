@@ -178,7 +178,7 @@ func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backe
 	}
 
 	if actualResponse.status != 200 {
-		return fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", expectedResponse.status)
+		return fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
 	}
 
 	if expectedResponse.status != actualResponse.status {

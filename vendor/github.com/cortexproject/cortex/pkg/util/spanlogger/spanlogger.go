@@ -59,7 +59,7 @@ func (s *SpanLogger) Log(kvps ...interface{}) error {
 	return nil
 }
 
-// Error sets error flag and logs the error, if non-nil.  Returns the err passed in.
+// Error sets error flag and logs the error on the span, if non-nil.  Returns the err passed in.
 func (s *SpanLogger) Error(err error) error {
 	if err == nil {
 		return nil

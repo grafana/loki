@@ -304,6 +304,6 @@ func (r mockRing) IngesterCount() int {
 	return len(r.ingesters)
 }
 
-func (r mockRing) Subring(key uint32, n int) (ring.ReadRing, error) {
-	return r, nil
+func (r mockRing) Subring(key uint32, n int) ring.ReadRing {
+	return r
 }

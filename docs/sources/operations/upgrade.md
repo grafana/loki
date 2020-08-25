@@ -12,22 +12,101 @@ On this page we will document any upgrade issues/gotchas/considerations we are a
 
 ## Master / Unreleased
 
-#### Documentation changes:
+## 1.6.0
 
-Configuration document has been re-orderd a bit and for all the config, corresponding `CLI` flag is provided.
+### IMPORTANT: Ksonnet Port Change and Removal of NET_BIND_SERVICE Capability from docker image
 
-S3 config now supports exapnded config. Example can be found here [s3_expanded_config](../configuration/examples.md#s3-expanded-config)
+In 1.5.0 we changed the Loki user to not run as root which created problems binding to port 80.
+To address this we updated the docker image to add the NET_BIND_SERVICE capability to the loki process
+which allowed Loki to bind to port 80 as a non root user, so long as the underlying system allowed that 
+linux capability.
 
-### New Ingester GRPC API special rollout procedure in microservices mode
+This has proved to be a problem for many reasons and in PR [2294](https://github.com/grafana/loki/pull/2294/files)
+the capability was removed.
 
-A new ingester GRPC API has been added allowing to speed up metric queries, to ensure a rollout without query errors make sure you upgrade all ingesters first.
+It is now no longer possible for the Loki to be started with a port less than 1024 with the published docker image.
+
+The default for Helm has always been port 3100, and Helm users should be unaffect unless they changed the default.
+
+**Ksonnet users however should closely check their configuration, in PR 2294 the loki port was changed from 80 to 3100**
+
+
+### IMPORTANT: If you run Loki in microservices mode, special rollout instructions
+
+A new ingester GRPC API has been added allowing to speed up metric queries, to ensure a rollout without query errors **make sure you upgrade all ingesters first.**
 Once this is done you can then proceed with the rest of the deployment, this is to ensure that queriers won't look for an API not yet available.
 
 If you roll out everything at once, queriers with this new code will attempt to query ingesters which may not have the new method on the API and queries will fail.
 
 This will only affect reads(queries) and not writes and only for the duration of the rollout.
 
+### IMPORTANT: Scrape config changes to both Helm and Ksonnet will affect labels created by Promtail
+
+PR [2091](https://github.com/grafana/loki/pull/2091) Makes several changes to the promtail scrape config:
+
+````
+This is triggered by https://github.com/grafana/jsonnet-libs/pull/261
+
+The above PR changes the instance label to be actually unique within
+a scrape config. It also adds a pod and a container target label
+so that metrics can easily be joined with metrics from cAdvisor, KSM,
+and the Kubelet.
+
+This commit adds the same to the Loki scrape config. It also removes
+the container_name label. It is the same as the container label
+and was already added to Loki previously. However, the
+container_name label is deprecated and has disappeared in K8s 1.16,
+so that it will soon become useless for direct joining.
+````
+
+TL;DR
+
+The following label have been changed in both the Helm and Ksonnet Promtail scrape configs:
+
+`instance` -> `pod`  
+`container_name` -> `container`
+
+
+### Experimental boltdb-shipper changes
+
+PR [2166](https://github.com/grafana/loki/pull/2166) now forces the index to have a period of exactly `24h`:
+
+Loki will fail to start with an error if the active schema or upcoming schema are not set to a period of `24h`
+
+You can add a new schema config like this:
+
+```yaml
+schema_config:
+  configs:
+    - from: 2020-01-01      <----- This is your current entry, date will be different
+      store: boltdb-shipper
+      object_store: aws
+      schema: v11
+      index:
+        prefix: index_
+        period: 168h
+    - from: [INSERT FUTURE DATE HERE]   <----- Add another entry, set a future date
+      store: boltdb-shipper
+      object_store: aws
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h   <--- This must be 24h
+```
+If you are not on `schema: v11` this would be a good oportunity to make that change _in the new schema config_ also.
+
+**NOTE** If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
+
+There was also a significant overhaul to how boltdb-shipper internals, this should not be visible to a user but as this 
+feature is experimental and under development bug are possible!
+
+The most noticeable change if you look in the storage, Loki no longer updates an existing file and instead creates a
+new index file every 15mins, this is an important move to make sure objects in the object store are immutable and
+will simplify future operations like compaction and deletion.
+
 ### Breaking CLI flags changes
+
+The following CLI flags where changed to improve consistency, they are not expected to be widely used
 
 ```diff
 - querier.query_timeout

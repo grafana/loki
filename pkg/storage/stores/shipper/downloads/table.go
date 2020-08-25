@@ -14,12 +14,18 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
+
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
-const downloadTimeout = 5 * time.Minute
+const (
+	downloadTimeout     = 5 * time.Minute
+	downloadParallelism = 50
+)
 
 type BoltDBIndexClient interface {
 	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
@@ -53,7 +59,7 @@ type Table struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
+func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) *Table {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	table := Table{
@@ -74,12 +80,15 @@ func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBInd
 		defer table.dbsMtx.Unlock()
 		defer close(table.ready)
 
+		log, _ := spanlogger.New(spanCtx, "Shipper.DownloadTable")
+		defer log.Span.Finish()
+
 		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 		defer cancel()
 
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
-		if err := table.init(ctx); err != nil {
+		if err := table.init(ctx, log); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to download table", "name", table.name)
 		}
 	}()
@@ -89,7 +98,7 @@ func NewTable(name, cacheLocation string, storageClient StorageClient, boltDBInd
 
 // init downloads all the db files for the table from object storage.
 // it assumes the locking of mutex is taken care of by the caller.
-func (t *Table) init(ctx context.Context) (err error) {
+func (t *Table) init(ctx context.Context, spanLogger *spanlogger.SpanLogger) (err error) {
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -123,6 +132,15 @@ func (t *Table) init(ctx context.Context) (err error) {
 		return
 	}
 
+	// download the dbs parallelly
+	err = t.doParallelDownload(ctx, objects, folderPath)
+	if err != nil {
+		return err
+	}
+
+	level.Debug(spanLogger).Log("total-files-downloaded", len(objects))
+
+	// open all the downloaded dbs
 	for _, object := range objects {
 		dbName, err := getDBNameFromObjectKey(object.Key)
 		if err != nil {
@@ -131,11 +149,6 @@ func (t *Table) init(ctx context.Context) (err error) {
 
 		filePath := path.Join(folderPath, dbName)
 		df := downloadedFile{}
-
-		err = t.getFileFromStorage(ctx, object.Key, filePath)
-		if err != nil {
-			return err
-		}
 
 		df.mtime = object.ModifiedAt
 		df.boltdb, err = local.OpenBoltdbFile(filePath)
@@ -157,6 +170,7 @@ func (t *Table) init(ctx context.Context) (err error) {
 	duration := time.Since(startTime).Seconds()
 	t.metrics.filesDownloadDurationSeconds.add(t.name, duration)
 	t.metrics.filesDownloadSizeBytes.add(t.name, totalFilesSize)
+	level.Debug(spanLogger).Log("total-files-size", totalFilesSize)
 
 	return
 }
@@ -327,7 +341,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	// download the file temporarily with some other name to allow boltdb client to close the existing file first if it exists
 	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", dbName, "temp"))
 
-	err = t.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
+	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, tempFilePath)
 	if err != nil {
 		return err
 	}
@@ -361,34 +375,6 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	return nil
 }
 
-// getFileFromStorage downloads a file from storage to given location.
-func (t *Table) getFileFromStorage(ctx context.Context, objectKey, destination string) error {
-	readCloser, err := t.storageClient.GetObject(ctx, objectKey)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := readCloser.Close(); err != nil {
-			level.Error(util.Logger)
-		}
-	}()
-
-	f, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-
-	_, err = io.Copy(f, readCloser)
-	if err != nil {
-		return err
-	}
-
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
-
-	return f.Sync()
-}
-
 func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
 	folderPath := path.Join(t.cacheLocation, t.name)
 
@@ -412,4 +398,69 @@ func getDBNameFromObjectKey(objectKey string) (string, error) {
 		return "", fmt.Errorf("empty db name, object key: %v", objectKey)
 	}
 	return ss[1], nil
+}
+
+// doParallelDownload downloads objects(dbs) parallelly. It is upto the caller to open the dbs after the download finishes successfully.
+func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageObject, folderPathForTable string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	queue := make(chan chunk.StorageObject)
+	n := util.Min(len(objects), downloadParallelism)
+	incomingErrors := make(chan error)
+
+	// Run n parallel goroutines fetching objects to download from the queue
+	for i := 0; i < n; i++ {
+		go func() {
+			// when there is an error, break the loop and send the error to the channel to stop the operation.
+			var err error
+			for {
+				object, ok := <-queue
+				if !ok {
+					break
+				}
+
+				var dbName string
+				dbName, err = getDBNameFromObjectKey(object.Key)
+				if err != nil {
+					break
+				}
+
+				filePath := path.Join(folderPathForTable, dbName)
+				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath)
+				if err != nil {
+					break
+				}
+			}
+
+			incomingErrors <- err
+			return
+		}()
+	}
+
+	// Send all the objects to download into the queue
+	go func() {
+		for _, object := range objects {
+			select {
+			case queue <- object:
+			case <-ctx.Done():
+				break
+			}
+
+		}
+		close(queue)
+	}()
+
+	// receive all the errors which also lets us make sure all the goroutines have stopped.
+	var firstErr error
+	for i := 0; i < n; i++ {
+		err := <-incomingErrors
+		if err != nil && firstErr == nil {
+			// cancel the download operation in case of error.
+			cancel()
+			firstErr = err
+		}
+	}
+
+	return firstErr
 }

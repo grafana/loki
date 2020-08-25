@@ -8,6 +8,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +19,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 const (
@@ -26,6 +30,9 @@ const (
 	// retain dbs for specified duration after they are modified to avoid keeping them locally forever.
 	// this period should be big enough than shardDBsByDuration to avoid any conflicts
 	dbRetainPeriod = time.Hour
+
+	// a snapshot file is created during uploads with name of the db + snapshotFileSuffix
+	snapshotFileSuffix = ".temp"
 )
 
 type BoltDBIndexClient interface {
@@ -51,6 +58,7 @@ type Table struct {
 
 	uploadedDBsMtime    map[string]time.Time
 	uploadedDBsMtimeMtx sync.RWMutex
+	modifyShardsSince   int64
 }
 
 // NewTable create a new Table without looking for any existing local dbs belonging to the table.
@@ -86,6 +94,7 @@ func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageCli
 		boltdbIndexClient: boltdbIndexClient,
 		dbs:               dbs,
 		uploadedDBsMtime:  map[string]time.Time{},
+		modifyShardsSince: time.Now().Unix(),
 	}, nil
 }
 
@@ -136,9 +145,13 @@ func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
 // db files are named after the time shard i.e epoch of the truncated time.
 // If a db file does not exist for a shard it gets created.
 func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrites) error {
-	shard := fmt.Sprint(tm.Truncate(shardDBsByDuration).Unix())
+	// do not write to files older than init time otherwise we might endup modifying file which was already created and uploaded before last shutdown.
+	shard := tm.Truncate(shardDBsByDuration).Unix()
+	if shard < lt.modifyShardsSince {
+		shard = lt.modifyShardsSince
+	}
 
-	db, err := lt.getOrAddDB(shard)
+	db, err := lt.getOrAddDB(fmt.Sprint(shard))
 	if err != nil {
 		return err
 	}
@@ -181,13 +194,29 @@ func (lt *Table) RemoveDB(name string) error {
 }
 
 // Upload uploads all the dbs which are never uploaded or have been modified since the last batch was uploaded.
-func (lt *Table) Upload(ctx context.Context) error {
+func (lt *Table) Upload(ctx context.Context, force bool) error {
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
+
+	uploadShardsBefore := fmt.Sprint(getOldestActiveShardTime().Unix())
+
+	// Adding check for considering only files which are sharded and have just an epoch in their name.
+	// Before introducing sharding we had a single file per table which were were moved inside the folder per table as part of migration.
+	// The files were named with <table_prefix><period>.
+	// Since sharding was introduced we have a new file every 15 mins and their names just include an epoch timestamp, for e.g `1597927538`.
+	// We can remove this check after we no longer support upgrading from 1.5.0.
+	filenameWithEpochRe, err := regexp.Compile(`^[0-9]{10}$`)
+	if err != nil {
+		return err
+	}
 
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("uploading table %s", lt.name))
 
 	for name, db := range lt.dbs {
+		// doing string comparison between unix timestamps in string form since they are anyways of same length
+		if !force && filenameWithEpochRe.MatchString(name) && name >= uploadShardsBefore {
+			continue
+		}
 		stat, err := os.Stat(db.Path())
 		if err != nil {
 			return err
@@ -219,7 +248,7 @@ func (lt *Table) Upload(ctx context.Context) error {
 func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
 
-	filePath := path.Join(lt.path, fmt.Sprintf("%s.%s", name, "temp"))
+	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, snapshotFileSuffix))
 	f, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -235,9 +264,19 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 		}
 	}()
 
-	err = db.View(func(tx *bbolt.Tx) error {
-		_, err := tx.WriteTo(f)
-		return err
+	err = db.View(func(tx *bbolt.Tx) (err error) {
+		compressedWriter := chunkenc.Gzip.GetWriter(f)
+		defer chunkenc.Gzip.PutWriter(compressedWriter)
+
+		defer func() {
+			cerr := compressedWriter.Close()
+			if err == nil {
+				err = cerr
+			}
+		}()
+
+		_, err = tx.WriteTo(compressedWriter)
+		return
 	})
 	if err != nil {
 		return err
@@ -304,7 +343,7 @@ func (lt *Table) buildObjectKey(dbName string) string {
 		objectKey = fmt.Sprintf("%s/%s", lt.name, lt.uploader)
 	}
 
-	return objectKey
+	return fmt.Sprintf("%s.gz", objectKey)
 }
 
 func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
@@ -319,6 +358,15 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 			continue
 		}
 
+		if strings.HasSuffix(fileInfo.Name(), snapshotFileSuffix) {
+			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
+			// Cleaning up those temp files to avoid problems.
+			if err := os.Remove(filepath.Join(dir, fileInfo.Name())); err != nil {
+				level.Error(util.Logger).Log("msg", "failed to remove temp file", "name", fileInfo.Name(), "err", err)
+			}
+			continue
+		}
+
 		db, err := local.OpenBoltdbFile(filepath.Join(dir, fileInfo.Name()))
 		if err != nil {
 			return nil, err
@@ -328,4 +376,11 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 	}
 
 	return dbs, nil
+}
+
+// getOldestActiveShardTime returns the time of oldest active shard with a buffer of 1 minute.
+func getOldestActiveShardTime() time.Time {
+	// upload files excluding active shard. It could so happen that we just started a new shard but the file for last shard is still being updated due to pending writes or pending flush to disk.
+	// To avoid uploading it, excluding previous active shard as well if it has been not more than a minute since it became inactive.
+	return time.Now().Add(-time.Minute).Truncate(shardDBsByDuration)
 }

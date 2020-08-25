@@ -5,10 +5,10 @@ package store
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 )
 
 type ChunksLimiter interface {
@@ -25,7 +25,7 @@ type ChunksLimiterFactory func(failedCounter prometheus.Counter) ChunksLimiter
 // Limiter is a simple mechanism for checking if something has passed a certain threshold.
 type Limiter struct {
 	limit    uint64
-	reserved uint64
+	reserved atomic.Uint64
 
 	// Counter metric which we will increase if limit is exceeded.
 	failedCounter prometheus.Counter
@@ -42,7 +42,7 @@ func (l *Limiter) Reserve(num uint64) error {
 	if l.limit == 0 {
 		return nil
 	}
-	if reserved := atomic.AddUint64(&l.reserved, num); reserved > l.limit {
+	if reserved := l.reserved.Add(num); reserved > l.limit {
 		// We need to protect from the counter being incremented twice due to concurrency
 		// while calling Reserve().
 		l.failedOnce.Do(l.failedCounter.Inc)

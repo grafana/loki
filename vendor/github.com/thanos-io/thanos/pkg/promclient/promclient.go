@@ -409,11 +409,11 @@ func (c *Client) QueryInstant(ctx context.Context, base *url.URL, query string, 
 	// Decode the Result depending on the ResultType
 	// Currently only `vector` and `scalar` types are supported.
 	switch m.Data.ResultType {
-	case parser.ValueTypeVector:
+	case string(parser.ValueTypeVector):
 		if err = json.Unmarshal(m.Data.Result, &vectorResult); err != nil {
 			return nil, nil, errors.Wrap(err, "decode result into ValueTypeVector")
 		}
-	case parser.ValueTypeScalar:
+	case string(parser.ValueTypeScalar):
 		vectorResult, err = convertScalarJSONToVector(m.Data.Result)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "decode result into ValueTypeScalar")
@@ -458,6 +458,73 @@ func (c *Client) PromqlQueryInstant(ctx context.Context, base *url.URL, query st
 	}
 
 	return vec, warnings, nil
+}
+
+// QueryRange performs a range query using a default HTTP client and returns results in model.Matrix type.
+func (c *Client) QueryRange(ctx context.Context, base *url.URL, query string, startTime, endTime, step int64, opts QueryOptions) (model.Matrix, []string, error) {
+	params, err := url.ParseQuery(base.RawQuery)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "parse raw query %s", base.RawQuery)
+	}
+	params.Add("query", query)
+	params.Add("start", formatTime(timestamp.Time(startTime)))
+	params.Add("end", formatTime(timestamp.Time(endTime)))
+	params.Add("step", strconv.FormatInt(step, 10))
+	if err := opts.AddTo(params); err != nil {
+		return nil, nil, errors.Wrap(err, "add thanos opts query params")
+	}
+
+	u := *base
+	u.Path = path.Join(u.Path, "/api/v1/query_range")
+	u.RawQuery = params.Encode()
+
+	level.Debug(c.logger).Log("msg", "range query", "url", u.String())
+
+	span, ctx := tracing.StartSpan(ctx, "/prom_query_range HTTP[client]")
+	defer span.Finish()
+
+	body, _, err := c.get2xx(ctx, &u)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "read query range response")
+	}
+
+	// Decode only ResultType and load Result only as RawJson since we don't know
+	// structure of the Result yet.
+	var m struct {
+		Data struct {
+			ResultType string          `json:"resultType"`
+			Result     json.RawMessage `json:"result"`
+		} `json:"data"`
+
+		Error     string `json:"error,omitempty"`
+		ErrorType string `json:"errorType,omitempty"`
+		// Extra field supported by Thanos Querier.
+		Warnings []string `json:"warnings"`
+	}
+
+	if err = json.Unmarshal(body, &m); err != nil {
+		return nil, nil, errors.Wrap(err, "unmarshal query range response")
+	}
+
+	var matrixResult model.Matrix
+
+	// Decode the Result depending on the ResultType
+	switch m.Data.ResultType {
+	case string(parser.ValueTypeMatrix):
+		if err = json.Unmarshal(m.Data.Result, &matrixResult); err != nil {
+			return nil, nil, errors.Wrap(err, "decode result into ValueTypeMatrix")
+		}
+	default:
+		if m.Warnings != nil {
+			return nil, nil, errors.Errorf("error: %s, type: %s, warning: %s", m.Error, m.ErrorType, strings.Join(m.Warnings, ", "))
+		}
+		if m.Error != "" {
+			return nil, nil, errors.Errorf("error: %s, type: %s", m.Error, m.ErrorType)
+		}
+
+		return nil, nil, errors.Errorf("received status code: 200, unknown response type: '%q'", m.Data.ResultType)
+	}
+	return matrixResult, m.Warnings, nil
 }
 
 // Scalar response consists of array with mixed types so it needs to be
@@ -587,9 +654,14 @@ func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []sto
 
 // LabelNames returns all known label names. It uses gRPC errors.
 // NOTE: This method is tested in pkg/store/prometheus_test.go against Prometheus.
-func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL) ([]string, error) {
+func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL, startTime, endTime int64) ([]string, error) {
 	u := *base
 	u.Path = path.Join(u.Path, "/api/v1/labels")
+	q := u.Query()
+
+	q.Add("start", formatTime(timestamp.Time(startTime)))
+	q.Add("end", formatTime(timestamp.Time(endTime)))
+	u.RawQuery = q.Encode()
 
 	var m struct {
 		Data []string `json:"data"`
@@ -599,9 +671,14 @@ func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL) ([]string,
 
 // LabelValuesInGRPC returns all known label values for a given label name. It uses gRPC errors.
 // NOTE: This method is tested in pkg/store/prometheus_test.go against Prometheus.
-func (c *Client) LabelValuesInGRPC(ctx context.Context, base *url.URL, label string) ([]string, error) {
+func (c *Client) LabelValuesInGRPC(ctx context.Context, base *url.URL, label string, startTime, endTime int64) ([]string, error) {
 	u := *base
 	u.Path = path.Join(u.Path, "/api/v1/label/", label, "/values")
+	q := u.Query()
+
+	q.Add("start", formatTime(timestamp.Time(startTime)))
+	q.Add("end", formatTime(timestamp.Time(endTime)))
+	u.RawQuery = q.Encode()
 
 	var m struct {
 		Data []string `json:"data"`

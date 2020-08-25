@@ -18,7 +18,7 @@ type LabelQuery struct {
 }
 
 // DoLabels prints out label results
-func (q *LabelQuery) DoLabels(c *client.Client) {
+func (q *LabelQuery) DoLabels(c client.Client) {
 	values := q.ListLabels(c)
 
 	for _, value := range values {
@@ -27,7 +27,7 @@ func (q *LabelQuery) DoLabels(c *client.Client) {
 }
 
 // ListLabels returns an array of label strings
-func (q *LabelQuery) ListLabels(c *client.Client) []string {
+func (q *LabelQuery) ListLabels(c client.Client) []string {
 	var labelResponse *loghttp.LabelResponse
 	var err error
 	if len(q.LabelName) > 0 {

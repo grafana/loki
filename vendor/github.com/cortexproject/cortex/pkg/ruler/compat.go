@@ -22,6 +22,7 @@ type Pusher interface {
 }
 
 type pusherAppender struct {
+	ctx     context.Context
 	pusher  Pusher
 	labels  []labels.Labels
 	samples []client.Sample
@@ -44,7 +45,7 @@ func (a *pusherAppender) AddFast(_ uint64, _ int64, _ float64) error {
 func (a *pusherAppender) Commit() error {
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
+	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
 	a.labels = nil
 	a.samples = nil
 	return err
@@ -63,8 +64,9 @@ type PusherAppendable struct {
 }
 
 // Appender returns a storage.Appender
-func (t *PusherAppendable) Appender() storage.Appender {
+func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	return &pusherAppender{
+		ctx:    ctx,
 		pusher: t.pusher,
 		userID: t.userID,
 	}

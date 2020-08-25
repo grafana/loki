@@ -39,7 +39,7 @@ simplifies the operation and significantly lowers the cost of Loki.
         5. [Troubleshooting](sources/clients/promtail/troubleshooting.md)
     2. [Docker Driver](sources/clients/docker-driver/_index.md)
         1. [Configuration](sources/clients/docker-driver/configuration.md)
-    4. [Fluent Bit](sources/../cmd/fluent-bit/_index.md)
+    4. [Fluent Bit](sources/clients/fluentbit/_index.md)
     3. [Fluentd](sources/clients/fluentd/_index.md)
 7. [LogQL](sources/logql/_index.md)
 8. [Operations](sources/operations/_index.md)
@@ -96,4 +96,4 @@ Images are sourced in this repo alonside content. They will sync to the website 
 
 When a PR is merged to master with changes in the `docs/sources` directory, those changes are automatically synched to the grafana/website repo and published to the staging site.
 
-Generally, someone from marketing will publish to production each day, so as long as the sync is successful your docs edits will be published. Alternatively, you can refer to [publishing to production](https://github.com/grafana/website#publishing-to-production-grafanacom) if you'd like to do it yourself.
+Generally, someone from marketing will publish to production each day, so as long as the sync is successful your docs edits will be published.

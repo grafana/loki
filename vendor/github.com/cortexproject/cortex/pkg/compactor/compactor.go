@@ -120,7 +120,7 @@ type Compactor struct {
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
 	createBucketClientAndTsdbCompactor := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error) {
-		bucketClient, err := cortex_tsdb.NewBucketClient(ctx, storageCfg, "compactor", logger, registerer)
+		bucketClient, err := cortex_tsdb.NewBucketClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "failed to create the bucket client")
 		}

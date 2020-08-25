@@ -104,13 +104,37 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	}
 
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
-	// which needs only metadata.
+	// which needs only metadata. For this specific case we shouldn't apply the queryIngestersWithin
+	// time range manipulation, otherwise we'll end up returning no series at all for
+	// older time ranges (while in Cortex we do ignore the start/end and always return
+	// series in ingesters).
 	if sp == nil {
 		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), matchers...)
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
 		return series.MetricsToSeriesSet(ms)
+	}
+
+	minT, maxT := sp.Start, sp.End
+
+	// If queryIngestersWithin is enabled, we do manipulate the query mint to query samples up until
+	// now - queryIngestersWithin, because older time ranges are covered by the storage. This
+	// optimization is particularly important for the blocks storage where the blocks retention in the
+	// ingesters could be way higher than queryIngestersWithin.
+	if q.queryIngestersWithin > 0 {
+		now := time.Now()
+		origMinT := minT
+		minT = util.Max64(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
+
+		if origMinT != minT {
+			level.Debug(log).Log("msg", "the min time of the query to ingesters has been manipulated", "original", origMinT, "updated", minT)
+		}
+
+		if minT > maxT {
+			level.Debug(log).Log("msg", "empty query time range after min time manipulation")
+			return storage.EmptySeriesSet()
+		}
 	}
 
 	if q.streaming {

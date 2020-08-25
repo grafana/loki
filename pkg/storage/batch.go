@@ -11,6 +11,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -21,6 +23,55 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
+
+type ChunkMetrics struct {
+	refs    *prometheus.CounterVec
+	series  *prometheus.CounterVec
+	chunks  *prometheus.CounterVec
+	batches *prometheus.HistogramVec
+}
+
+const (
+	statusDiscarded = "discarded"
+	statusMatched   = "matched"
+)
+
+func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
+	buckets := 5
+	if maxBatchSize < buckets {
+		maxBatchSize = buckets
+	}
+
+	return &ChunkMetrics{
+		refs: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "index",
+			Name:      "chunk_refs_total",
+			Help:      "Number of chunks refs downloaded, partitioned by whether they intersect the query bounds.",
+		}, []string{"status"}),
+		series: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "store",
+			Name:      "series_total",
+			Help:      "Number of series referenced by a query, partitioned by whether they satisfy matchers.",
+		}, []string{"status"}),
+		chunks: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "store",
+			Name:      "chunks_downloaded_total",
+			Help:      "Number of chunks referenced or downloaded, partitioned by if they satisfy matchers.",
+		}, []string{"status"}),
+		batches: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "store",
+			Name:      "chunks_per_batch",
+			Help:      "The chunk batch size, partitioned by if they satisfy matchers.",
+
+			// split buckets evenly across 0->maxBatchSize
+			Buckets: prometheus.LinearBuckets(0, float64(maxBatchSize/buckets), buckets+1), // increment buckets by one to ensure upper bound bucket exists.
+		}, []string{"status"}),
+	}
+}
 
 type genericIterator interface {
 	Next() bool
@@ -43,6 +94,8 @@ type batchChunkIterator struct {
 	lastOverlapping []*LazyChunk
 	iterFactory     chunksIteratorFactory
 
+	begun      bool
+	ctx        context.Context
 	cancel     context.CancelFunc
 	start, end time.Time
 	direction  logproto.Direction
@@ -69,6 +122,7 @@ func newBatchChunkIterator(
 		start:       start,
 		end:         end,
 		direction:   direction,
+		ctx:         ctx,
 		cancel:      cancel,
 		iterFactory: iterFactory,
 		chunks:      lazyChunks{direction: direction, chunks: chunks},
@@ -78,8 +132,15 @@ func newBatchChunkIterator(
 		}),
 	}
 	sort.Sort(res.chunks)
-	go res.loop(ctx)
 	return res
+}
+
+// Start is idempotent and will begin the processing thread which seeds the iterator data.
+func (it *batchChunkIterator) Start() {
+	if !it.begun {
+		it.begun = true
+		go it.loop(it.ctx)
+	}
 }
 
 func (it *batchChunkIterator) loop(ctx context.Context) {
@@ -111,6 +172,8 @@ func (it *batchChunkIterator) loop(ctx context.Context) {
 }
 
 func (it *batchChunkIterator) Next() bool {
+	it.Start() // Ensure the iterator has started.
+
 	var err error
 	// for loop to avoid recursion
 	for {
@@ -140,17 +203,21 @@ func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 	batch := make([]*LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
 	var nextChunk *LazyChunk
 
+	var includesOverlap bool
+
 	for it.chunks.Len() > 0 {
 
 		// pop the next batch of chunks and append/prepend previous overlapping chunks
 		// so we can merge/de-dupe overlapping entries.
-		if it.direction == logproto.FORWARD {
+		if !includesOverlap && it.direction == logproto.FORWARD {
 			batch = append(batch, it.lastOverlapping...)
 		}
 		batch = append(batch, it.chunks.pop(it.batchSize)...)
-		if it.direction == logproto.BACKWARD {
+		if !includesOverlap && it.direction == logproto.BACKWARD {
 			batch = append(batch, it.lastOverlapping...)
 		}
+
+		includesOverlap = true
 
 		if it.chunks.Len() > 0 {
 			nextChunk = it.chunks.Peek()
@@ -220,6 +287,17 @@ func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 		}
 	}
 
+	// If every chunk overlaps and we exhaust fetching chunks before ever finding a non overlapping chunk
+	// in this case it will be possible to have a through value which is older or equal to our from value
+	// If that happens we reset the bounds according to the iteration direction
+	if through.Sub(from) <= 0 {
+		if it.direction == logproto.BACKWARD {
+			from = it.start
+		} else {
+			through = it.end
+		}
+	}
+
 	if it.chunks.Len() > 0 {
 		it.lastOverlapping = it.lastOverlapping[:0]
 		for _, c := range batch {
@@ -270,6 +348,7 @@ type logBatchIterator struct {
 	*batchChunkIterator
 
 	ctx      context.Context
+	metrics  *ChunkMetrics
 	matchers []*labels.Matcher
 	filter   logql.LineFilter
 	labels   labelCache
@@ -277,6 +356,7 @@ type logBatchIterator struct {
 
 func newLogBatchIterator(
 	ctx context.Context,
+	metrics *ChunkMetrics,
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
@@ -292,10 +372,15 @@ func newLogBatchIterator(
 		labels:   map[model.Fingerprint]string{},
 		matchers: matchers,
 		filter:   filter,
+		metrics:  metrics,
 		ctx:      ctx,
 	}
+
 	batch := newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, logbatch.newChunksIterator)
+	// Important: since the batchChunkIterator is bound to the LogBatchIterator,
+	// ensure embedded fields are present before it's started.
 	logbatch.batchChunkIterator = batch
+	batch.Start()
 	return logbatch, nil
 }
 
@@ -305,7 +390,7 @@ func (it *logBatchIterator) Entry() logproto.Entry {
 
 // newChunksIterator creates an iterator over a set of lazychunks.
 func (it *logBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
-	chksBySeries, err := fetchChunkBySeries(it.ctx, chunks, it.matchers)
+	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, chunks, it.matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -321,10 +406,12 @@ func (it *logBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through
 func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
+
 		iterator, err := it.buildHeapIterator(chunks, from, through, nextChunk)
 		if err != nil {
 			return nil, err
 		}
+
 		result = append(result, iterator)
 	}
 
@@ -363,6 +450,7 @@ type sampleBatchIterator struct {
 	*batchChunkIterator
 
 	ctx       context.Context
+	metrics   *ChunkMetrics
 	matchers  []*labels.Matcher
 	filter    logql.LineFilter
 	extractor logql.SampleExtractor
@@ -371,6 +459,7 @@ type sampleBatchIterator struct {
 
 func newSampleBatchIterator(
 	ctx context.Context,
+	metrics *ChunkMetrics,
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
@@ -388,10 +477,15 @@ func newSampleBatchIterator(
 		matchers:  matchers,
 		filter:    filter,
 		extractor: extractor,
+		metrics:   metrics,
 		ctx:       ctx,
 	}
 	batch := newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, samplebatch.newChunksIterator)
+
+	// Important: since the batchChunkIterator is bound to the SampleBatchIterator,
+	// ensure embedded fields are present before it's started.
 	samplebatch.batchChunkIterator = batch
+	batch.Start()
 	return samplebatch, nil
 }
 
@@ -401,7 +495,7 @@ func (it *sampleBatchIterator) Sample() logproto.Sample {
 
 // newChunksIterator creates an iterator over a set of lazychunks.
 func (it *sampleBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
-	chksBySeries, err := fetchChunkBySeries(it.ctx, chunks, it.matchers)
+	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, chunks, it.matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +556,7 @@ func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels
 	return matchers
 }
 
-func fetchChunkBySeries(ctx context.Context, chunks []*LazyChunk, matchers []*labels.Matcher) (map[model.Fingerprint][][]*LazyChunk, error) {
+func fetchChunkBySeries(ctx context.Context, metrics *ChunkMetrics, chunks []*LazyChunk, matchers []*labels.Matcher) (map[model.Fingerprint][][]*LazyChunk, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
 	// Make sure the initial chunks are loaded. This is not one chunk
@@ -473,7 +567,7 @@ func fetchChunkBySeries(ctx context.Context, chunks []*LazyChunk, matchers []*la
 
 	// Now that we have the first chunk for each series loaded,
 	// we can proceed to filter the series that don't match.
-	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
+	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers, metrics)
 
 	var allChunks []*LazyChunk
 	for _, series := range chksBySeries {
@@ -486,19 +580,38 @@ func fetchChunkBySeries(ctx context.Context, chunks []*LazyChunk, matchers []*la
 	if err := fetchLazyChunks(ctx, allChunks); err != nil {
 		return nil, err
 	}
+	metrics.chunks.WithLabelValues(statusMatched).Add(float64(len(allChunks)))
+	metrics.series.WithLabelValues(statusMatched).Add(float64(len(chksBySeries)))
+	metrics.batches.WithLabelValues(statusMatched).Observe(float64(len(allChunks)))
+	metrics.batches.WithLabelValues(statusDiscarded).Observe(float64(len(chunks) - len(allChunks)))
+
 	return chksBySeries, nil
 }
 
-func filterSeriesByMatchers(chks map[model.Fingerprint][][]*LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]*LazyChunk {
+func filterSeriesByMatchers(
+	chks map[model.Fingerprint][][]*LazyChunk,
+	matchers []*labels.Matcher,
+	metrics *ChunkMetrics,
+) map[model.Fingerprint][][]*LazyChunk {
+	var filteredSeries, filteredChks int
 outer:
 	for fp, chunks := range chks {
 		for _, matcher := range matchers {
 			if !matcher.Matches(chunks[0][0].Chunk.Metric.Get(matcher.Name)) {
+
 				delete(chks, fp)
+				filteredSeries++
+
+				for _, grp := range chunks {
+					filteredChks += len(grp)
+				}
+
 				continue outer
 			}
 		}
 	}
+	metrics.chunks.WithLabelValues(statusDiscarded).Add(float64(filteredChks))
+	metrics.series.WithLabelValues(statusDiscarded).Add(float64(filteredSeries))
 	return chks
 }
 

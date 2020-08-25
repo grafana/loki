@@ -178,11 +178,17 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
+	if err := c.IngesterClient.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid ingester_client config")
+	}
+	if err := c.Worker.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid frontend_worker config")
+	}
 	if err := c.QueryRange.Validate(log); err != nil {
-		return errors.Wrap(err, "invalid queryrange config")
+		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid tablemanager config")
+		return errors.Wrap(err, "invalid table_manager config")
 	}
 	return nil
 }

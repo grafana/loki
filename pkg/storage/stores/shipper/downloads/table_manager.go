@@ -9,6 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	pkg_util "github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -95,7 +96,12 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 }
 
 func (tm *TableManager) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
-	table := tm.getOrCreateTable(query.TableName)
+	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Query")
+	defer log.Span.Finish()
+
+	level.Debug(log).Log("table-name", query.TableName)
+
+	table := tm.getOrCreateTable(ctx, query.TableName)
 
 	err := table.Query(ctx, query, callback)
 	if err != nil {
@@ -114,7 +120,7 @@ func (tm *TableManager) query(ctx context.Context, query chunk.IndexQuery, callb
 	return err
 }
 
-func (tm *TableManager) getOrCreateTable(tableName string) *Table {
+func (tm *TableManager) getOrCreateTable(spanCtx context.Context, tableName string) *Table {
 	// if table is already there, use it.
 	tm.tablesMtx.RLock()
 	table, ok := tm.tables[tableName]
@@ -128,7 +134,7 @@ func (tm *TableManager) getOrCreateTable(tableName string) *Table {
 			// table not found, creating one.
 			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
 
-			table = NewTable(tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
+			table = NewTable(spanCtx, tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
 			tm.tables[tableName] = table
 		}
 		tm.tablesMtx.Unlock()

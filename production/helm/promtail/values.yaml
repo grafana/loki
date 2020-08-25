@@ -17,7 +17,7 @@ initContainer:
 
 image:
   repository: grafana/promtail
-  tag: 1.5.0
+  tag: 1.6.0
   pullPolicy: IfNotPresent
   ## Optionally specify an array of imagePullSecrets.
   ## Secrets must be manually created in the namespace.
@@ -174,6 +174,7 @@ syslogService:
   enabled: false
   type: ClusterIP
   port: 1514
+  # externalIPs: []
   ## Specify the nodePort value for the LoadBalancer and NodePort service types.
   ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
   ##

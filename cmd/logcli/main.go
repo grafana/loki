@@ -25,7 +25,6 @@ var (
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
-
 	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
 	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
 
@@ -77,7 +76,16 @@ https://github.com/grafana/loki/blob/master/docs/logql.md`)
 	labelsCmd   = app.Command("labels", "Find values for a given label.")
 	labelsQuery = newLabelQuery(labelsCmd)
 
-	seriesCmd   = app.Command("series", "Run series query.")
+	seriesCmd = app.Command("series", `Run series query.
+
+The "series" command will take the provided label matcher 
+and return all the log streams found in the time window.
+
+It is possible to send an empty label matcher '{}' to return all streams.
+
+Use the --analyze-labels flag to get a summary of the labels found in all streams.
+This is helpful to find high cardinality labels. 
+`)
 	seriesQuery = newSeriesQuery(seriesCmd)
 )
 
@@ -119,11 +127,12 @@ func main() {
 		}
 
 		outputOptions := &output.LogOutputOptions{
-			Timezone: location,
-			NoLabels: rangeQuery.NoLabels,
+			Timezone:      location,
+			NoLabels:      rangeQuery.NoLabels,
+			ColoredOutput: rangeQuery.ColoredOutput,
 		}
 
-		out, err := output.NewLogOutput(*outputMode, outputOptions)
+		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
 		if err != nil {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
@@ -140,11 +149,12 @@ func main() {
 		}
 
 		outputOptions := &output.LogOutputOptions{
-			Timezone: location,
-			NoLabels: instantQuery.NoLabels,
+			Timezone:      location,
+			NoLabels:      instantQuery.NoLabels,
+			ColoredOutput: instantQuery.ColoredOutput,
 		}
 
-		out, err := output.NewLogOutput(*outputMode, outputOptions)
+		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
 		if err != nil {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
@@ -157,8 +167,9 @@ func main() {
 	}
 }
 
-func newQueryClient(app *kingpin.Application) *client.Client {
-	client := &client.Client{
+func newQueryClient(app *kingpin.Application) client.Client {
+
+	client := &client.DefaultClient{
 		TLSConfig: config.TLSConfig{},
 	}
 
@@ -230,10 +241,11 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 		return nil
 	})
 
+	cmd.Arg("matcher", "eg '{foo=\"bar\",baz=~\".*blip\"}'").Required().StringVar(&q.Matcher)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
-	cmd.Flag("match", "eg '{foo=\"bar\",baz=~\".*blip\"}'").Required().StringsVar(&q.Matchers)
+	cmd.Flag("analyze-labels", "Printout a summary of labels including count of label value combinations, useful for debugging high cardinality series").BoolVar(&q.AnalyzeLabels)
 
 	return q
 }
@@ -272,6 +284,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
+		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)
@@ -280,6 +293,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
 	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&q.LocalConfig)
+	cmd.Flag("colored-output", "Show ouput with colored labels").Default("false").BoolVar(&q.ColoredOutput)
 
 	return q
 }

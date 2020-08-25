@@ -151,6 +151,7 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
+	defer log.Finish()
 	chunks := []Chunk{chunk}
 
 	err := c.fetcher.storage.PutChunks(ctx, chunks)

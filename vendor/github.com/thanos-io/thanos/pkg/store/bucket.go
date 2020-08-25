@@ -82,6 +82,10 @@ const (
 	DefaultPostingOffsetInMemorySampling = 32
 
 	partitionerMaxGapSize = 512 * 1024
+
+	// Labels for metrics.
+	labelEncode = "encode"
+	labelDecode = "decode"
 )
 
 type bucketStoreMetrics struct {
@@ -191,14 +195,23 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 		Name: "thanos_bucket_store_cached_postings_compressions_total",
 		Help: "Number of postings compressions before storing to index cache.",
 	}, []string{"op"})
+	m.cachedPostingsCompressions.WithLabelValues(labelEncode)
+	m.cachedPostingsCompressions.WithLabelValues(labelDecode)
+
 	m.cachedPostingsCompressionErrors = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_cached_postings_compression_errors_total",
 		Help: "Number of postings compression errors.",
 	}, []string{"op"})
+	m.cachedPostingsCompressionErrors.WithLabelValues(labelEncode)
+	m.cachedPostingsCompressionErrors.WithLabelValues(labelDecode)
+
 	m.cachedPostingsCompressionTimeSeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "thanos_bucket_store_cached_postings_compression_time_seconds",
+		Name: "thanos_bucket_store_cached_postings_compression_time_seconds_total",
 		Help: "Time spent compressing postings before storing them into postings cache.",
 	}, []string{"op"})
+	m.cachedPostingsCompressionTimeSeconds.WithLabelValues(labelEncode)
+	m.cachedPostingsCompressionTimeSeconds.WithLabelValues(labelDecode)
+
 	m.cachedPostingsOriginalSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_cached_postings_original_size_bytes_total",
 		Help: "Original size of postings stored into cache.",
@@ -945,12 +958,12 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		s.metrics.seriesDataSizeTouched.WithLabelValues("chunks").Observe(float64(stats.chunksTouchedSizeSum))
 		s.metrics.seriesDataSizeFetched.WithLabelValues("chunks").Observe(float64(stats.chunksFetchedSizeSum))
 		s.metrics.resultSeriesCount.Observe(float64(stats.mergedSeriesCount))
-		s.metrics.cachedPostingsCompressions.WithLabelValues("encode").Add(float64(stats.cachedPostingsCompressions))
-		s.metrics.cachedPostingsCompressions.WithLabelValues("decode").Add(float64(stats.cachedPostingsDecompressions))
-		s.metrics.cachedPostingsCompressionErrors.WithLabelValues("encode").Add(float64(stats.cachedPostingsCompressionErrors))
-		s.metrics.cachedPostingsCompressionErrors.WithLabelValues("decode").Add(float64(stats.cachedPostingsDecompressionErrors))
-		s.metrics.cachedPostingsCompressionTimeSeconds.WithLabelValues("encode").Add(stats.cachedPostingsCompressionTimeSum.Seconds())
-		s.metrics.cachedPostingsCompressionTimeSeconds.WithLabelValues("decode").Add(stats.cachedPostingsDecompressionTimeSum.Seconds())
+		s.metrics.cachedPostingsCompressions.WithLabelValues(labelEncode).Add(float64(stats.cachedPostingsCompressions))
+		s.metrics.cachedPostingsCompressions.WithLabelValues(labelDecode).Add(float64(stats.cachedPostingsDecompressions))
+		s.metrics.cachedPostingsCompressionErrors.WithLabelValues(labelEncode).Add(float64(stats.cachedPostingsCompressionErrors))
+		s.metrics.cachedPostingsCompressionErrors.WithLabelValues(labelDecode).Add(float64(stats.cachedPostingsDecompressionErrors))
+		s.metrics.cachedPostingsCompressionTimeSeconds.WithLabelValues(labelEncode).Add(stats.cachedPostingsCompressionTimeSum.Seconds())
+		s.metrics.cachedPostingsCompressionTimeSeconds.WithLabelValues(labelDecode).Add(stats.cachedPostingsDecompressionTimeSum.Seconds())
 		s.metrics.cachedPostingsOriginalSizeBytes.Add(float64(stats.cachedPostingsOriginalSizeSum))
 		s.metrics.cachedPostingsCompressedSizeBytes.Add(float64(stats.cachedPostingsCompressedSizeSum))
 
@@ -1033,7 +1046,7 @@ func chunksSize(chks []storepb.AggrChunk) (size int) {
 }
 
 // LabelNames implements the storepb.StoreServer interface.
-func (s *BucketStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+func (s *BucketStore) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	g, gctx := errgroup.WithContext(ctx)
 
 	s.mtx.RLock()
@@ -1042,6 +1055,9 @@ func (s *BucketStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesReque
 	var sets [][]string
 
 	for _, b := range s.blocks {
+		if b.meta.MinTime > r.End || b.meta.MaxTime < r.Start {
+			continue
+		}
 		indexr := b.indexReader(gctx)
 		g.Go(func() error {
 			defer runutil.CloseWithLogOnErr(s.logger, indexr, "label names")
@@ -1078,6 +1094,9 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 	var sets [][]string
 
 	for _, b := range s.blocks {
+		if b.meta.MinTime > req.End || b.meta.MaxTime < req.Start {
+			continue
+		}
 		indexr := b.indexReader(gctx)
 		g.Go(func() error {
 			defer runutil.CloseWithLogOnErr(s.logger, indexr, "label values")
@@ -1953,14 +1972,15 @@ func (r *bucketIndexReader) Close() error {
 type bucketChunkReader struct {
 	ctx   context.Context
 	block *bucketBlock
-	stats *queryStats
 
 	preloads [][]uint32
-	mtx      sync.Mutex
-	chunks   map[uint64]chunkenc.Chunk
 
-	// Byte slice to return to the chunk pool on close.
-	chunkBytes []*[]byte
+	// Mutex protects access to following fields, when updated from chunks-loading goroutines.
+	// After chunks are loaded, mutex is no longer used.
+	mtx        sync.Mutex
+	chunks     map[uint64]chunkenc.Chunk
+	stats      *queryStats
+	chunkBytes []*[]byte // Byte slice to return to the chunk pool on close.
 }
 
 func newBucketChunkReader(ctx context.Context, block *bucketBlock) *bucketChunkReader {
@@ -2013,21 +2033,29 @@ func (r *bucketChunkReader) preload() error {
 	return g.Wait()
 }
 
+// loadChunks will read range [start, end] from the segment file with sequence number seq.
+// This data range covers chunks starting at supplied offsets.
 func (r *bucketChunkReader) loadChunks(ctx context.Context, offs []uint32, seq int, start, end uint32) error {
-	begin := time.Now()
+	fetchBegin := time.Now()
 
 	b, err := r.block.readChunkRange(ctx, seq, int64(start), int64(end-start))
 	if err != nil {
 		return errors.Wrapf(err, "read range for %d", seq)
 	}
 
+	locked := true
 	r.mtx.Lock()
-	defer r.mtx.Unlock()
+
+	defer func() {
+		if locked {
+			r.mtx.Unlock()
+		}
+	}()
 
 	r.chunkBytes = append(r.chunkBytes, b)
 	r.stats.chunksFetchCount++
 	r.stats.chunksFetched += len(offs)
-	r.stats.chunksFetchDurationSum += time.Since(begin)
+	r.stats.chunksFetchDurationSum += time.Since(fetchBegin)
 	r.stats.chunksFetchedSizeSum += int(end - start)
 
 	for _, o := range offs {
@@ -2037,11 +2065,44 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, offs []uint32, seq i
 		if n < 1 {
 			return errors.New("reading chunk length failed")
 		}
-		if len(cb) < n+int(l)+1 {
-			return errors.Errorf("preloaded chunk too small, expecting %d", n+int(l)+1)
+
+		chunkRef := uint64(seq<<32) | uint64(o)
+
+		// Chunk length is n (number of bytes used to encode chunk data), 1 for chunk encoding and l for actual chunk data.
+		// There is also crc32 after the chunk, but we ignore that.
+		chLen := n + 1 + int(l)
+		if len(cb) >= chLen {
+			r.chunks[chunkRef] = rawChunk(cb[n:chLen])
+			continue
 		}
-		cid := uint64(seq<<32) | uint64(o)
-		r.chunks[cid] = rawChunk(cb[n : n+int(l)+1])
+
+		// If we didn't fetch enough data for the chunk, fetch more. This can only really happen for last
+		// chunk in the list of fetched chunks, otherwise partitioner would merge fetch ranges together.
+		r.mtx.Unlock()
+		locked = false
+
+		fetchBegin = time.Now()
+
+		// Read entire chunk into new buffer.
+		nb, err := r.block.readChunkRange(ctx, seq, int64(o), int64(chLen))
+		if err != nil {
+			return errors.Wrapf(err, "preloaded chunk too small, expecting %d, and failed to fetch full chunk", chLen)
+		}
+
+		cb = *nb
+		if len(cb) != chLen {
+			return errors.Errorf("preloaded chunk too small, expecting %d", chLen)
+		}
+
+		r.mtx.Lock()
+		locked = true
+
+		r.chunkBytes = append(r.chunkBytes, nb)
+		r.stats.chunksFetchCount++
+		r.stats.chunksFetchDurationSum += time.Since(fetchBegin)
+		r.stats.chunksFetchedSizeSum += len(cb)
+
+		r.chunks[chunkRef] = rawChunk(cb[n:])
 	}
 	return nil
 }

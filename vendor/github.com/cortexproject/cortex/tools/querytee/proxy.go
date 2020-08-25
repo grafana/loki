@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -24,11 +25,13 @@ var (
 )
 
 type ProxyConfig struct {
-	ServerServicePort  int
-	BackendEndpoints   string
-	PreferredBackend   string
-	BackendReadTimeout time.Duration
-	CompareResponses   bool
+	ServerServicePort              int
+	BackendEndpoints               string
+	PreferredBackend               string
+	BackendReadTimeout             time.Duration
+	CompareResponses               bool
+	ValueComparisonTolerance       float64
+	PassThroughNonRegisteredRoutes bool
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
@@ -37,6 +40,8 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "The hostname of the preferred backend when selecting the response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
+	f.Float64Var(&cfg.ValueComparisonTolerance, "proxy.value-comparison-tolerance", 0.000001, "The tolerance to apply when comparing floating point values in the responses. 0 to disable tolerance and require exact match (not recommended).")
+	f.BoolVar(&cfg.PassThroughNonRegisteredRoutes, "proxy.passthrough-non-registered-routes", false, "Passthrough requests for non-registered routes to preferred backend.")
 }
 
 type Route struct {
@@ -64,6 +69,10 @@ type Proxy struct {
 func NewProxy(cfg ProxyConfig, logger log.Logger, routes []Route, registerer prometheus.Registerer) (*Proxy, error) {
 	if cfg.CompareResponses && cfg.PreferredBackend == "" {
 		return nil, fmt.Errorf("when enabling comparison of results -backend.preferred flag must be set to hostname of preferred backend")
+	}
+
+	if cfg.PassThroughNonRegisteredRoutes && cfg.PreferredBackend == "" {
+		return nil, fmt.Errorf("when enabling passthrough for non-registered routes -backend.preferred flag must be set to hostname of backend where those requests needs to be passed")
 	}
 
 	p := &Proxy{
@@ -155,6 +164,15 @@ func (p *Proxy) Start() error {
 			comparator = route.ResponseComparator
 		}
 		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, comparator))
+	}
+
+	if p.cfg.PassThroughNonRegisteredRoutes {
+		for _, backend := range p.backends {
+			if backend.preferred {
+				router.PathPrefix("/").Handler(httputil.NewSingleHostReverseProxy(backend.endpoint))
+				break
+			}
+		}
 	}
 
 	p.srvListener = listener

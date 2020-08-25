@@ -163,6 +163,7 @@ func TestMatcher(t *testing.T) {
 				tt.selector,
 				stages,
 				tt.action,
+				nil,
 			}
 			s, err := newMatcherStage(util.Logger, nil, matchConfig, prometheus.DefaultRegisterer)
 			if (err != nil) != tt.wantErr {

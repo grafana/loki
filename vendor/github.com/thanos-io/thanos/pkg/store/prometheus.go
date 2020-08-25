@@ -419,6 +419,7 @@ func (p *PrometheusStore) startPromRemoteRead(ctx context.Context, q *prompb.Que
 	}
 	preq.Header.Add("Content-Encoding", "snappy")
 	preq.Header.Set("Content-Type", "application/x-stream-protobuf")
+	preq.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
 
 	preq.Header.Set("User-Agent", thanoshttp.ThanosUserAgent)
 	tracing.DoInSpan(ctx, "query_prometheus_request", func(ctx context.Context) {
@@ -518,8 +519,8 @@ Outer:
 }
 
 // LabelNames returns all known label names.
-func (p *PrometheusStore) LabelNames(ctx context.Context, _ *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
-	lbls, err := p.client.LabelNamesInGRPC(ctx, p.base)
+func (p *PrometheusStore) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	lbls, err := p.client.LabelNamesInGRPC(ctx, p.base, r.Start, r.End)
 	if err != nil {
 		return nil, err
 	}
@@ -535,7 +536,7 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 		return &storepb.LabelValuesResponse{Values: []string{l}}, nil
 	}
 
-	vals, err := p.client.LabelValuesInGRPC(ctx, p.base, r.Label)
+	vals, err := p.client.LabelValuesInGRPC(ctx, p.base, r.Label, r.Start, r.End)
 	if err != nil {
 		return nil, err
 	}
