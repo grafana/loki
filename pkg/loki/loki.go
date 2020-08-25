@@ -18,6 +18,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
+	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -35,6 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/tracing"
 	serverutil "github.com/grafana/loki/pkg/util/server"
@@ -59,6 +62,7 @@ type Config struct {
 	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
 	Worker           frontend.WorkerConfig       `yaml:"frontend_worker,omitempty"`
 	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
+	Ruler            ruler.Config                `yaml:"ruler,omitempty"`
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
@@ -85,6 +89,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.LimitsConfig.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
+	c.Ruler.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
@@ -115,6 +120,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.TableManager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tablemanager config")
 	}
+	if err := c.Ruler.Validate(); err != nil {
+		return errors.Wrap(err, "invalid ruler config")
+	}
 	return nil
 }
 
@@ -135,6 +143,8 @@ type Loki struct {
 	store         storage.Store
 	tableManager  *chunk.TableManager
 	frontend      *frontend.Frontend
+	ruler         *cortex_ruler.Ruler
+	RulerStorage  rules.RuleStore
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
 	memberlistKV  *memberlist.KVInitService
@@ -308,6 +318,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
+	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
+	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(All, nil)
@@ -321,6 +333,7 @@ func (t *Loki) setupModuleManager() error {
 		Ingester:      {Store, Server, MemberlistKV},
 		Querier:       {Store, Ring, Server},
 		QueryFrontend: {Server, Overrides},
+		Ruler:         {Ring, Server, Store, RulerStorage},
 		TableManager:  {Server},
 		Compactor:     {Server},
 		All:           {Querier, Ingester, Distributor, TableManager},

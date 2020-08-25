@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
+	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -34,8 +35,10 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/ruler"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	serverutil "github.com/grafana/loki/pkg/util/server"
@@ -54,6 +57,8 @@ const (
 	Ingester      string = "ingester"
 	Querier       string = "querier"
 	QueryFrontend string = "query-frontend"
+	RulerStorage  string = "ruler-storage"
+	Ruler         string = "ruler"
 	Store         string = "store"
 	TableManager  string = "table-manager"
 	MemberlistKV  string = "memberlist-kv"
@@ -351,6 +356,72 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		}
 		return nil
 	}), nil
+}
+
+func (t *Loki) initRulerStorage() (_ services.Service, err error) {
+	// if the ruler is not configured and we're in single binary then let's just log an error and continue.
+	// unfortunately there is no way to generate a "default" config and compare default against actual
+	// to determine if it's unconfigured.  the following check, however, correctly tests this.
+	// Single binary integration tests will break if this ever drifts
+	if t.cfg.Target == All && t.cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Info(util.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+		return
+	}
+
+	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig)
+
+	return
+}
+
+func (t *Loki) initRuler() (_ services.Service, err error) {
+	if t.RulerStorage == nil {
+		level.Info(util.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
+		return nil, nil
+	}
+
+	t.cfg.Ruler.Ring.ListenPort = t.cfg.Server.GRPCListenPort
+	t.cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	q, err := querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
+	if err != nil {
+		return nil, err
+	}
+
+	engine := logql.NewEngine(t.cfg.Querier.Engine, q)
+
+	t.ruler, err = ruler.NewRuler(
+		t.cfg.Ruler,
+		engine,
+		prometheus.DefaultRegisterer,
+		util.Logger,
+		t.RulerStorage,
+	)
+
+	if err != nil {
+		return
+	}
+
+	// Expose HTTP endpoints.
+	if t.cfg.Ruler.EnableAPI {
+
+		t.server.HTTP.Handle("/ruler/ring", t.ruler)
+		cortex_ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
+
+		// Ruler Legacy API Routes
+		t.server.HTTP.Path("/api/prom/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.GetRuleGroup)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.CreateRuleGroup)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.DeleteRuleGroup)))
+
+		// Ruler API Routes
+		t.server.HTTP.Path("/loki/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.GetRuleGroup)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.CreateRuleGroup)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.DeleteRuleGroup)))
+	}
+
+	return t.ruler, nil
 }
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
