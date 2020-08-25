@@ -198,9 +198,7 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
 
-	// upload files excluding active shard. It could so happen that we just started a new shard but the file for last shard is still being updated due to pending writes or pending flush to disk.
-	// To avoid uploading it, excluding previous active shard as well if it has been not more than a minute since it became inactive.
-	uploadShardsBefore := fmt.Sprint(time.Now().Add(-time.Minute).Truncate(shardDBsByDuration).Unix())
+	uploadShardsBefore := fmt.Sprint(getOldestActiveShardTime().Unix())
 
 	// Adding check for considering only files which are sharded and have just an epoch in their name.
 	// Before introducing sharding we had a single file per table which were were moved inside the folder per table as part of migration.
@@ -378,4 +376,11 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 	}
 
 	return dbs, nil
+}
+
+// getOldestActiveShardTime returns the time of oldest active shard with a buffer of 1 minute.
+func getOldestActiveShardTime() time.Time {
+	// upload files excluding active shard. It could so happen that we just started a new shard but the file for last shard is still being updated due to pending writes or pending flush to disk.
+	// To avoid uploading it, excluding previous active shard as well if it has been not more than a minute since it became inactive.
+	return time.Now().Add(-time.Minute).Truncate(shardDBsByDuration)
 }
