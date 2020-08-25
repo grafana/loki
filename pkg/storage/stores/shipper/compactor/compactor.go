@@ -13,6 +13,7 @@ import (
 	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/util"
@@ -34,9 +35,11 @@ type Compactor struct {
 
 	cfg          Config
 	objectClient chunk.ObjectClient
+
+	metrics *metrics
 }
 
-func NewCompactor(cfg Config, storageConfig storage.Config) (*Compactor, error) {
+func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registerer) (*Compactor, error) {
 	objectClient, err := storage.NewObjectClient(cfg.SharedStoreType, storageConfig)
 	if err != nil {
 		return nil, err
@@ -50,6 +53,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config) (*Compactor, error) 
 	compactor := Compactor{
 		cfg:          cfg,
 		objectClient: util.NewPrefixedObjectClient(objectClient, shipper.StorageKeyPrefix),
+		metrics:      newMetrics(r),
 	}
 
 	compactor.Service = services.NewTimerService(4*time.Hour, nil, compactor.Run, nil)
@@ -57,8 +61,19 @@ func NewCompactor(cfg Config, storageConfig storage.Config) (*Compactor, error) 
 }
 
 func (c *Compactor) Run(ctx context.Context) error {
+	status := statusSuccess
+	start := time.Now()
+
+	defer func() {
+		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+		if status == statusSuccess {
+			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
+		}
+	}()
+
 	_, dirs, err := c.objectClient.List(ctx, "")
 	if err != nil {
+		status = statusFailure
 		return err
 	}
 
@@ -70,13 +85,15 @@ func (c *Compactor) Run(ctx context.Context) error {
 	for _, tableName := range tables {
 		table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient)
 		if err != nil {
-			level.Error(pkg_util.Logger).Log("msg", "failed to initialize table for compaction", "err", err)
+			status = statusFailure
+			level.Error(pkg_util.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 			continue
 		}
 
 		err = table.compact()
 		if err != nil {
-			level.Error(pkg_util.Logger).Log("msg", "failed to compact files", "err", err)
+			status = statusFailure
+			level.Error(pkg_util.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		}
 
 		// check if context was cancelled before going for next table.
