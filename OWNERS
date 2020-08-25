@@ -6,6 +6,15 @@ reviewers:
 - paulfantom
 - s-urbaniak
 - squat
+- blockloop
+- ewolinetz
+- jcantrill
+- lukas-vlcek
+- alanconway
+- igor-karpukhin
+- vimalk78
+- syedriko
+- periklis
 
 approvers:
 - brancz
@@ -15,3 +24,7 @@ approvers:
 - paulfantom
 - s-urbaniak
 - squat
+- periklis
+- ewolinetz
+- lukas-vlcek
+- blockloop
