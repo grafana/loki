@@ -59,7 +59,7 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 			Namespace: "loki",
 			Subsystem: "store",
 			Name:      "chunks_downloaded_total",
-			Help:      "Number of chunks downloaded, partitioned by if they satisfy matchers.",
+			Help:      "Number of chunks referenced or downloaded, partitioned by if they satisfy matchers.",
 		}, []string{"status"}),
 		batches: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki",
@@ -68,7 +68,7 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 			Help:      "The chunk batch size, partitioned by if they satisfy matchers.",
 
 			// split buckets evenly across 0->maxBatchSize
-			Buckets: prometheus.LinearBuckets(0, float64(maxBatchSize/buckets), buckets),
+			Buckets: prometheus.LinearBuckets(0, float64(maxBatchSize/buckets), buckets+1), // increment buckets by one to ensure upper bound bucket exists.
 		}, []string{"status"}),
 	}
 }
