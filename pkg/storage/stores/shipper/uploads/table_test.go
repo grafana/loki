@@ -378,13 +378,14 @@ func TestTable_ImmutableUploads(t *testing.T) {
 		boltDBIndexClient.Stop()
 	}()
 
-	activeShard := time.Now().Truncate(shardDBsByDuration)
+	// shardCutoff is calulated based on when shards are considered to not be active anymore and are safe to be uploaded.
+	shardCutoff := getOldestActiveShardTime()
 
 	// some dbs to setup
 	dbNames := []int64{
-		activeShard.Add(-shardDBsByDuration).Unix(), // inactive shard, should upload
-		activeShard.Add(-2 * time.Minute).Unix(),    // 2 minutes before active shard, should upload
-		activeShard.Unix(),                          // active shard, should not upload
+		shardCutoff.Add(-shardDBsByDuration).Unix(),    // inactive shard, should upload
+		shardCutoff.Add(-1 * time.Minute).Unix(),       // 1 minute before shard cutoff, should upload
+		time.Now().Truncate(shardDBsByDuration).Unix(), // active shard, should not upload
 	}
 
 	dbs := map[string]testutil.DBRecords{}
