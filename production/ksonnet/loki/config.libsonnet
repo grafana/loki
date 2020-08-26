@@ -311,18 +311,17 @@
         },
       },
 
-      ruler: {
+      ruler: if $._config.ruler_enabled then {
         rule_path: '/tmp/rules',
         enable_api: true,
-        alertmanager_url: ['http://alertmanager.%s.svc.cluster.local/alertmanager' % $._config.namespace,],
-        enable_alertmanager_discovery: true,
+        alertmanager_url: 'http://alertmanager.%s.svc.cluster.local/alertmanager' % $._config.namespace,
         enable_sharding: true,
         enable_alertmanager_v2: true,
         ring: {
           kvstore: {
             store: 'consul',
             consul: {
-              host: 'consul.%ss.svc.cluster.local:8500' % $._config.namespace,
+              host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
             },
           },
         },
@@ -332,7 +331,7 @@
             bucket_name: '%(cluster)s-%(namespace)s-ruler' % $._config,
           },
         },
-      },
+      } else {},
 
     },
   },

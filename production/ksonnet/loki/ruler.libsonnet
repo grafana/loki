@@ -1,7 +1,7 @@
 {
   local container = $.core.v1.container,
 
-  ruler_args:: {
+  ruler_args:: $._config.commonArgs {
     target: 'ruler',
   },
 
@@ -24,8 +24,8 @@
       deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(600) +
       $.config_hash_mixin +
       $.util.configVolumeMount('loki', '/etc/loki/config') +
-      $.util.configVolumeMount('overrides', '/etc/cortex') +
-      $.util.antiAffinity +
+      $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
+      $.util.antiAffinity
     else {},
 
   local service = $.core.v1.service,
