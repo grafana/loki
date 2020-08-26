@@ -83,9 +83,9 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
 	f.BoolVar(&cfg.ConsistentHash, prefix+"memcached.consistent-hash", true, description+"Use consistent hashing to distribute to memcache servers.")
-	f.UintVar(&cfg.CBFailures, prefix+"memcached.cb.failures", 0, description+"Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).")
-	f.DurationVar(&cfg.CBTimeout, prefix+"memcached.cb.timeout", 10*time.Second, description+"Duration circuit-breaker remains open after tripping (if zero then 60 seconds is used).")
-	f.DurationVar(&cfg.CBInterval, prefix+"memcached.cb.interval", 10*time.Second, description+"Reset circuit-breaker counts after this long (if zero then never reset).")
+	f.UintVar(&cfg.CBFailures, prefix+"memcached.circuit-breaker-consecutive-failures", 0, description+"Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).")
+	f.DurationVar(&cfg.CBTimeout, prefix+"memcached.circuit-breaker-timeout", 10*time.Second, description+"Duration circuit-breaker remains open after tripping (if zero then 60 seconds is used).")
+	f.DurationVar(&cfg.CBInterval, prefix+"memcached.circuit-breaker-interval", 10*time.Second, description+"Reset circuit-breaker counts after this long (if zero then never reset).")
 }
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
