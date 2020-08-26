@@ -12,6 +12,7 @@
 (import 'querier.libsonnet') +
 (import 'table-manager.libsonnet') +
 (import 'query-frontend.libsonnet') +
+(import 'ruler.libsonnet') +
 
 // Supporting services
 (import 'memcached.libsonnet')

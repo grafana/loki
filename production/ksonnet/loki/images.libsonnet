@@ -11,5 +11,6 @@
     querier: self.loki,
     tableManager: self.loki,
     query_frontend: self.loki,
+    ruler: self.loki,
   },
 }
