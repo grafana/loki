@@ -919,6 +919,11 @@ func TestSchemaConfig_Validate(t *testing.T) {
 		err     error
 	}{
 		{
+			name:    "empty",
+			configs: []chunk.PeriodConfig{},
+			err:     zeroLengthConfigError,
+		},
+		{
 			name: "NOT using boltdb-shipper",
 			configs: []chunk.PeriodConfig{{
 				From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},

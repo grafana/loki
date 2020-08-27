@@ -28,6 +28,7 @@ import (
 var (
 	currentBoltdbShipperNon24HoursErr  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
 	upcomingBoltdbShipperNon24HoursErr = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
+	zeroLengthConfigError              = errors.New("Must specify at least one schema configuration.")
 )
 
 // Config is the loki storage configuration
@@ -51,6 +52,9 @@ type SchemaConfig struct {
 
 // Validate the schema config and returns an error if the validation doesn't pass
 func (cfg *SchemaConfig) Validate() error {
+	if len(cfg.Configs) == 0 {
+		return zeroLengthConfigError
+	}
 	activePCIndex := ActivePeriodConfig(*cfg)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
