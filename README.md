@@ -29,18 +29,17 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 ## Getting started
 
-* [Installing Loki](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/installation/_index.md)
-* [Installing Promtail](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/clients/promtail/installation.md)
-* [Getting Started Guide](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/getting-started/_index.md)
+* [Installing Loki](https://grafana.com/docs/loki/latest/installation/)
+* [Installing Promtail](https://grafana.com/docs/loki/latest/clients/promtail/installation/)
+* [Getting Started Guide](https://grafana.com/docs/loki/latest/getting-started/)
 
 ## Upgrading
 
-* [Upgrading Loki](https://github.com/grafana/loki/blob/master/docs/sources/operations/upgrade.md)
+* [Upgrading Loki](https://grafana.com/docs/loki/latest/operations/upgrade/)
 
 ### Documentation
 
-* [master](./docs/README.md)
-* [v1.6.0](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/_index.md)
+* [master](https://grafana.com/docs/loki/latest/)
 * [v1.5.0](https://github.com/grafana/loki/tree/v1.5.0/docs/README.md)
 * [v1.4.1](https://github.com/grafana/loki/tree/v1.4.1/docs/README.md)
 * [v1.4.0](https://github.com/grafana/loki/tree/v1.4.0/docs/README.md)
@@ -49,18 +48,18 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 * [v1.1.0](https://github.com/grafana/loki/tree/v1.1.0/docs/README.md)
 * [v1.0.0](https://github.com/grafana/loki/tree/v1.0.0/docs/README.md)
 
-Commonly used sections (from the latest release v1.6.0):
+Commonly used sections:
 
-- [API documentation](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/api/_index.md) for alternative ways of getting logs into Loki.
-- [Labels](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/getting-started/labels.md)
-- [Operations](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/operations/_index.md) for important aspects of running Loki.
-- [Promtail](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/clients/promtail/_index.md) is an agent which can tail your log files and push them to Loki.
-- [Pipelines](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/clients/promtail/pipelines.md) for detailed log processing pipeline documentation
-- [Docker Logging Driver](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/clients/docker-driver/_index.md) is a docker plugin to send logs directly to Loki from Docker containers.
-- [LogCLI](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/getting-started/logcli.md) on how to query your logs without Grafana.
-- [Loki Canary](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/operations/loki-canary.md) for monitoring your Loki installation for missing logs.
-- [Troubleshooting](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/getting-started/troubleshooting.md) for help around frequent error messages.
-- [Loki in Grafana](https://github.com/grafana/loki/tree/v1.6.0/docs/sources/getting-started/grafana.md) for how to set up a Loki datasource in Grafana and query your logs.
+- [API documentation](https://grafana.com/docs/loki/latest/api/) for alternative ways of getting logs into Loki.
+- [Labels](https://grafana.com/docs/loki/latest/getting-started/labels/)
+- [Operations](https://grafana.com/docs/loki/latest/operations/) for important aspects of running Loki.
+- [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) is an agent which can tail your log files and push them to Loki.
+- [Pipelines](https://grafana.com/docs/loki/latest/clients/promtail/pipelines/) for detailed log processing pipeline documentation
+- [Docker Logging Driver](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a docker plugin to send logs directly to Loki from Docker containers.
+- [LogCLI](https://grafana.com/docs/loki/latest/getting-started/logcli/) on how to query your logs without Grafana.
+- [Loki Canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) for monitoring your Loki installation for missing logs.
+- [Troubleshooting](https://grafana.com/docs/loki/latest/getting-started/troubleshooting/) for help around frequent error messages.
+- [Loki in Grafana](https://grafana.com/docs/loki/latest/getting-started/grafana/) for how to set up a Loki datasource in Grafana and query your logs.
 
 ## Getting Help
 
