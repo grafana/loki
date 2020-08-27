@@ -184,8 +184,14 @@ func (t *Table) Close() {
 	defer t.dbsMtx.Unlock()
 
 	for name, db := range t.dbs {
+		dbPath := db.boltdb.Path()
+
 		if err := db.boltdb.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", fmt.Errorf("failed to close file %s for table %s", name, t.name))
+			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to close file %s for table %s", name, t.name), "err", err)
+		}
+
+		if err := os.Remove(dbPath); err != nil {
+			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to remove file %s for table %s", name, t.name), "err", err)
 		}
 	}
 

@@ -81,17 +81,12 @@ type Shipper struct {
 
 // NewShipper creates a shipper for syncing local objects with a store
 func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (chunk.IndexClient, error) {
-	err := chunk_util.EnsureDirectory(cfg.CacheLocation)
-	if err != nil {
-		return nil, err
-	}
-
 	shipper := Shipper{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
 	}
 
-	err = shipper.init(storageClient, registerer)
+	err := shipper.init(storageClient, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -102,12 +97,15 @@ func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometh
 }
 
 func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.Registerer) error {
-	uploader, err := s.getUploaderName()
-	if err != nil {
-		return err
+	// When we run with target querier we don't have ActiveIndexDirectory set so using CacheLocation instead.
+	// Also it doesn't matter which directory we use since BoltDBIndexClient doesn't do anything with it but it is good to have a valid path.
+	boltdbIndexClientDir := s.cfg.ActiveIndexDirectory
+	if boltdbIndexClientDir == "" {
+		boltdbIndexClientDir = s.cfg.CacheLocation
 	}
 
-	s.boltDBIndexClient, err = local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: s.cfg.ActiveIndexDirectory})
+	var err error
+	s.boltDBIndexClient, err = local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: boltdbIndexClientDir})
 	if err != nil {
 		return err
 	}
@@ -115,6 +113,11 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, StorageKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
+		uploader, err := s.getUploaderName()
+		if err != nil {
+			return err
+		}
+
 		cfg := uploads.Config{
 			Uploader:       uploader,
 			IndexDir:       s.cfg.ActiveIndexDirectory,
