@@ -3,6 +3,7 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -37,6 +38,15 @@ type TableManager struct {
 }
 
 func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
+	// cleanup existing directory and re-create it since we do not use existing files in it.
+	if err := os.RemoveAll(cfg.CacheDir); err != nil {
+		return nil, err
+	}
+
+	if err := chunk_util.EnsureDirectory(cfg.CacheDir); err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &TableManager{
 		cfg:             cfg,
