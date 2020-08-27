@@ -11,7 +11,7 @@ to a private Loki instance or [Grafana Cloud](https://grafana.com/oss/loki).
 > [Docker docs](https://docs.docker.com/engine/extend) for more information.
 
 Documentation on configuring the Loki Docker Driver can be found on the
-[configuration page](./configuration.md).
+[configuration page](./configuration).
 
 If you have any questions or issues using the Docker plugin feel free to open an issue in this [repository](https://github.com/grafana/loki/issues).
 

@@ -265,7 +265,7 @@ That's it, save the config and you can `reboot` the machine (or simply restart t
 
 Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL](../../../logql/) query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
 
-[promtail]: ../../promtail/README.md
+[promtail]: ../../promtail/README
 [aws cli]: https://aws.amazon.com/cli/
 [create an vpc]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-subnets-commands-example.html
 [create an ssh key]: https://confluence.atlassian.com/bitbucketserver/creating-ssh-keys-776639788.html
@@ -276,18 +276,18 @@ Let's head back to Grafana and verify that your Promtail logs are available in G
 [chef]: https://www.chef.io/
 [security group]: https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html
 [Amazon Linux 2]: https://aws.amazon.com/amazon-linux-2/
-[promtail configuration]: ../../promtail/configuration.md
+[promtail configuration]: ../../promtail/configuration
 [prometheus scrape config]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config
 [ec2_sd_config]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#ec2_sd_config
 [role]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html
 [discovery page]: ./promtail-ec2-discovery.png "Service discovery"
 [relabel]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
 [systemd]: https://www.freedesktop.org/software/systemd/man/systemd.service.html
-[logql]: ../../../logql.md
+[logql]: ../../../logql
 [ec2 logs]: ./promtail-ec2-logs.png "Grafana Loki logs"
 [config gist]: https://gist.github.com/cyriltovena/d0881cc717757db951b642be48c01445
 [labels]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
-[troubleshooting loki]: ../../../getting-started/troubleshooting.md#troubleshooting-targets
+[troubleshooting loki]: ../../../getting-started/troubleshooting#troubleshooting-targets
 [live tailing]: https://grafana.com/docs/grafana/latest/features/datasources/loki/#live-tailing
 [systemd]: https://github.com/grafana/loki/tree/master/production/helm/promtail#run-promtail-with-systemd-journal-support
 [journald]: https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html

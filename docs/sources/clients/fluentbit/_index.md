@@ -21,7 +21,7 @@ docker run -v /var/log:/var/log \
 
 You can run Fluent Bit as a [Daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
 
-To do so you can use our [Fluent Bit helm chart](../../production/helm/fluent-bit/README.md):
+To do so you can use our [Fluent Bit helm chart](../../production/helm/fluent-bit/README):
 
 > Make sure [tiller](https://helm.sh/docs/install/) is installed correctly in your cluster
 
@@ -44,11 +44,11 @@ helm upgrade --install loki-stack loki/loki-stack \
 ### AWS Elastic Container Service (ECS)
 
 You can use fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
-For more information about this see our [AWS documentation](../aws/ecs/_index.md)
+For more information about this see our [AWS documentation](../aws/ecs)
 
 ### Local
 
-First you need to follow those [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md) to build the plugin dynamic library.
+First you need to follow those [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README) to build the plugin dynamic library.
 
 The assuming you have Fluent Bit installed in your `$PATH` you can run the plugin using:
 
@@ -92,7 +92,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
 
 ### Labels
 
-Labels are used to [query logs](../../logql/_index.md) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
+Labels are used to [query logs](../../logql) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
 
@@ -103,7 +103,7 @@ If set to true, it will add all Kubernetes labels to Loki labels automatically a
 ### LabelMapPath
 
 When using the `Parser` and `Filter` plugins Fluent Bit can extract and add data to the current record/log data. While Loki labels are key value pair, record data can be nested structures.
-You can pass a json file that defines how to extract [labels](../../docs/sources/overview/_index.md#overview-of-loki) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
+You can pass a json file that defines how to extract [labels](../../docs/sources/overview#overview-of-loki) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
 
 Considering the record below :
 

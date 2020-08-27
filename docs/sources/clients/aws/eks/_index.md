@@ -261,7 +261,7 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [blog annotations]: https://grafana.com/blog/2019/12/09/how-to-do-automatic-annotations-with-grafana-and-loki/
 [kubectl]: https://kubernetes.io/docs/tasks/tools/install-kubectl/
 [eksctl]: https://docs.aws.amazon.com/eks/latest/userguide/getting-started-eksctl.html
-[Promtail]: ./../../promtail/README.md
+[Promtail]: ./../../promtail/README
 [prometheus conf]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/
 [eventrouter]: https://github.com/heptiolabs/eventrouter
 [explore]: https://grafana.com/docs/grafana/latest/features/explore/
