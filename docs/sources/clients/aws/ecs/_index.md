@@ -239,4 +239,4 @@ That's it ! Make sure to checkout the [LogQL][logql] to learn more about Loki po
 [routing]: https://fluentbit.io/documentation/0.13/getting_started/routing.html
 [grafanacloud account]: https://grafana.com/login
 [grafana logs firelens]: ./ecs-grafana.png
-[logql]: ../../../logql.md
+[logql]: ../../../logql

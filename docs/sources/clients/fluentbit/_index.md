@@ -21,7 +21,7 @@ docker run -v /var/log:/var/log \
 
 You can run Fluent Bit as a [Daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
 
-To do so you can use our [Fluent Bit helm chart](../../production/helm/fluent-bit/README.md):
+To do so you can use our [Fluent Bit helm chart](../../production/helm/fluent-bit/README):
 
 > Make sure [tiller](https://helm.sh/docs/install/) is installed correctly in your cluster
 
@@ -48,7 +48,7 @@ For more information about this see our [AWS documentation](../aws/ecs)
 
 ### Local
 
-First you need to follow those [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md) to build the plugin dynamic library.
+First you need to follow those [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README) to build the plugin dynamic library.
 
 The assuming you have Fluent Bit installed in your `$PATH` you can run the plugin using:
 
