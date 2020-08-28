@@ -33,4 +33,4 @@ log message\n
 ```
 
 The first stage would append the value of the`kubernetes_pod_name` label into the beginning of the log line. 
-The labeldrop stage would drop the label from being sent to Loki, the and it would now be part of the log line instead.
+The labeldrop stage would drop the label from being sent to Loki, and it would now be part of the log line instead.
