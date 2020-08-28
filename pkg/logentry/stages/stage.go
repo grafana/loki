@@ -15,6 +15,7 @@ const (
 	StageTypeReplace   = "replace"
 	StageTypeMetric    = "metrics"
 	StageTypeLabel     = "labels"
+	StageTypeLabelDrop = "labeldrop"
 	StageTypeTimestamp = "timestamp"
 	StageTypeOutput    = "output"
 	StageTypeDocker    = "docker"
@@ -74,6 +75,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeLabel:
 		s, err = newLabelStage(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeLabelDrop:
+		s, err = newLabelDropStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}

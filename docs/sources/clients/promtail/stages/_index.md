@@ -22,6 +22,7 @@ Action stages:
 
   * [timestamp](timestamp/): Set the timestamp value for the log entry.
   * [output](output/): Set the log line text.
+  * [labeldrop](labeldrop/): Drop labels set for the log entry.
   * [labels](labels/): Update the label set for the log entry.
   * [metrics](metrics/): Calculate metrics based on extracted data.
   * [tenant](tenant/): Set the tenant ID value to use for the log entry.
