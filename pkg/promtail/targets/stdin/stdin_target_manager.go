@@ -146,7 +146,7 @@ func (t *readerTarget) read() {
 			}
 			continue
 		}
-		if err := t.out.Handle(t.lbs, time.Now(), line); err != nil {
+		if err := t.out.Handle(t.lbs.Clone(), time.Now(), line); err != nil {
 			level.Error(t.logger).Log("msg", "error sending line", "err", err)
 		}
 		if err == io.EOF {
