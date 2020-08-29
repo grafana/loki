@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"net/http"
 	"time"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/multitenancy"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -51,6 +53,8 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
 )
+
+var errUserIDNotPopulated = errors.New("context didnt posess value for either orgID or label + undefined")
 
 // Config for a Distributor.
 type Config struct {
@@ -179,21 +183,12 @@ type pushTracker struct {
 // Push a set of streams.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
+	label, undefined := multitenancy.GetLabelFromContext(ctx)
+	if err != nil && (label == "" || undefined == "") {
 		return nil, err
+	} else if err == nil && (label == "" || undefined == "") {
+		return nil, errUserIDNotPopulated
 	}
-
-	// Track metrics.
-	bytesCount := 0
-	lineCount := 0
-	for _, stream := range req.Streams {
-		for _, entry := range stream.Entries {
-			bytesCount += len(entry.Line)
-			lineCount++
-		}
-	}
-	bytesIngested.WithLabelValues(userID).Add(float64(bytesCount))
-	linesIngested.WithLabelValues(userID).Add(float64(lineCount))
 
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
@@ -205,6 +200,27 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
+		// Try get the associated label from the stream, otherwise we can use undefined
+		if label != "" {
+			var streamLabels map[string]string
+			json.Unmarshal([]byte(stream.Labels), &streamLabels)
+			if streamLabels[label] != "" {
+				userID = streamLabels[label]
+			} else {
+				userID = undefined
+			}
+		}
+
+		// Track metrics moved to inside
+		bytesCount := 0
+		lineCount := 0
+		for _, entry := range stream.Entries {
+			bytesCount += len(entry.Line)
+			lineCount++
+		}
+		bytesIngested.WithLabelValues(userID).Add(float64(bytesCount))
+		linesIngested.WithLabelValues(userID).Add(float64(lineCount))
+
 		if err := d.validator.ValidateLabels(userID, stream); err != nil {
 			validationErr = err
 			continue
@@ -263,8 +279,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	tracker := pushTracker{
-		done:           make(chan struct{}),
-		err:            make(chan error),
+		done: make(chan struct{}),
+		err:  make(chan error),
 	}
 	tracker.samplesPending.Store(int32(len(streams)))
 	for ingester, samples := range samplesByIngester {

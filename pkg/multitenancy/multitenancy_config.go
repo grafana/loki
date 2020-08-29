@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	errTypeMissingUndefinedOrName = errors.New("multi-tenancy using label must provide both name and undefined")
-	errTypeNotDefined             = errors.New("multi-tenancy type must be of either label or auth")
+	errTypeMissingLabelName = errors.New("multi-tenancy using label must provide both name and undefined")
+	errTypeNotDefined       = errors.New("multi-tenancy type must be of either label or auth")
 )
 
 // Config for the multi-tenancy side of loki
@@ -26,8 +26,12 @@ func (c *Config) Validate() error {
 	if c.Type != "label" && c.Type != "auth" {
 		return errTypeNotDefined
 	}
-	if c.Type == "label" && c.Label == "" && c.Undefined == "" {
-		return errTypeMissingUndefinedOrName
+	if c.Type == "label" && c.Label == "" {
+		return errTypeMissingLabelName
+	}
+	if c.Undefined == "" {
+		// Setup defult
+		c.Undefined = "undefined"
 	}
 	return nil
 }

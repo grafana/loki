@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	multitenancy "github.com/grafana/loki/pkg/multitenancy"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -46,9 +47,8 @@ import (
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      string `yaml:"target,omitempty"`
-	AuthEnabled bool   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string `yaml:"http_prefix"`
+	Target     string `yaml:"target,omitempty"`
+	HTTPPrefix string `yaml:"http_prefix"`
 
 	Server           server.Config               `yaml:"server,omitempty"`
 	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
@@ -68,6 +68,7 @@ type Config struct {
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
 	Tracing          tracing.Config              `yaml:"tracing"`
 	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
+	MultiTenancy     multitenancy.Config         `yaml:"multi_tenancy,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -76,7 +77,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.ExcludeRequestInLog = true
 
 	f.StringVar(&c.Target, "target", All, "target module (default All)")
-	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.Server.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
@@ -96,6 +96,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
+	c.MultiTenancy.RegisterFlags(f)
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -123,6 +124,9 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.Ruler.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
+	}
+	if err := c.MultiTenancy.Validate(); err != nil {
+		return errors.Wrap(err, "invalid multi-tenancy config")
 	}
 	return nil
 }
@@ -172,10 +176,12 @@ func New(cfg Config) (*Loki, error) {
 func (t *Loki) setupAuthMiddleware() {
 	t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
 	t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
-	if t.cfg.AuthEnabled {
+	if t.cfg.MultiTenancy.Enabled && t.cfg.MultiTenancy.Type == "auth" {
 		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
 		t.httpAuthMiddleware = middleware.AuthenticateUser
+	} else if t.cfg.MultiTenancy.Enabled && t.cfg.MultiTenancy.Type == "label" {
+		t.httpAuthMiddleware = multitenancy.HTTPAuthMiddleware(t.cfg.MultiTenancy.Label, t.cfg.MultiTenancy.Undefined)
 	} else {
 		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
