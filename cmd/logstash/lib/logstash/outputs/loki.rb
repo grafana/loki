@@ -129,9 +129,9 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   end
 
   def run()
-    # minimum wait frequency is 1 millisecond
-	  min_wait_checkfrequency = 1/100 
-	  max_wait_checkfrequency = @batch_wait / 10
+    # minimum wait frequency is 10 millisecond
+	  min_wait_checkfrequency = 1/100
+	  max_wait_checkfrequency = @batch_wait
 	  if max_wait_checkfrequency < min_wait_checkfrequency
 		  max_wait_checkfrequency = min_wait_checkfrequency
     end
