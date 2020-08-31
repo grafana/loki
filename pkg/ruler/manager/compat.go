@@ -138,10 +138,9 @@ func (groupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
 	)
 
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
-	err := decoder.Decode(&groups)
+	decoder.KnownFields(true)
 
-	// err := yaml.Unmarshal(content, &groups)
-	if err != nil {
+	if err := decoder.Decode(&groups); err != nil {
 		errs = append(errs, err)
 	}
 
