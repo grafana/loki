@@ -1,19 +1,27 @@
 package manager
 
 import (
+	"bytes"
 	"context"
+	"io/ioutil"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
+	yaml "gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -100,9 +108,7 @@ func MemstoreTenantManager(
 	}
 }
 
-type groupLoader struct {
-	rules.FileLoader // embed the default and override the parse method for logql queries
-}
+type groupLoader struct{}
 
 func (groupLoader) Parse(query string) (parser.Expr, error) {
 	expr, err := logql.ParseExpr(query)
@@ -111,6 +117,167 @@ func (groupLoader) Parse(query string) (parser.Expr, error) {
 	}
 
 	return exprAdapter{expr}, nil
+}
+
+func (g groupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
+	b, err := ioutil.ReadFile(identifier)
+	if err != nil {
+		return nil, []error{errors.Wrap(err, identifier)}
+	}
+	rgs, errs := g.parseRules(b)
+	for i := range errs {
+		errs[i] = errors.Wrap(errs[i], identifier)
+	}
+	return rgs, errs
+}
+
+func (groupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
+	var (
+		groups rulefmt.RuleGroups
+		errs   []error
+	)
+
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	err := decoder.Decode(&groups)
+
+	// err := yaml.Unmarshal(content, &groups)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		return nil, errs
+	}
+
+	return &groups, validateGroup(&groups)
+}
+
+func validateGroup(grps *rulefmt.RuleGroups) (errs []error) {
+	set := map[string]struct{}{}
+
+	for i, g := range grps.Groups {
+		if g.Name == "" {
+			errs = append(errs, errors.Errorf("group %d: Groupname must not be empty", i))
+		}
+
+		if _, ok := set[g.Name]; ok {
+			errs = append(
+				errs,
+				errors.Errorf("groupname: \"%s\" is repeated in the same file", g.Name),
+			)
+		}
+
+		set[g.Name] = struct{}{}
+
+		for _, r := range g.Rules {
+			if err := validateRuleNode(&r); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+
+	return errs
+}
+
+func validateRuleNode(r *rulefmt.RuleNode) error {
+	if r.Record.Value != "" && r.Alert.Value != "" {
+		return errors.Errorf("only one of 'record' and 'alert' must be set")
+	}
+
+	if r.Record.Value == "" && r.Alert.Value == "" {
+		return errors.Errorf("one of 'record' or 'alert' must be set")
+	}
+
+	if r.Record.Value != "" && r.Alert.Value != "" {
+		return errors.Errorf("only one of 'record' or 'alert' must be set")
+	}
+
+	if r.Expr.Value == "" {
+		return errors.Errorf("field 'expr' must be set in rule")
+	} else if _, err := logql.ParseExpr(r.Expr.Value); err != nil {
+		return errors.Wrapf(err, "could not parse expression")
+	}
+
+	if r.Record.Value != "" {
+		if len(r.Annotations) > 0 {
+			return errors.Errorf("invalid field 'annotations' in recording rule")
+		}
+		if r.For != 0 {
+			return errors.Errorf("invalid field 'for' in recording rule")
+		}
+		if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
+			return errors.Errorf("invalid recording rule name: %s", r.Record.Value)
+		}
+	}
+
+	for k, v := range r.Labels {
+		if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+			return errors.Errorf("invalid label name: %s", k)
+		}
+
+		if !model.LabelValue(v).IsValid() {
+			return errors.Errorf("invalid label value: %s", v)
+		}
+	}
+
+	for k := range r.Annotations {
+		if !model.LabelName(k).IsValid() {
+			return errors.Errorf("invalid annotation name: %s", k)
+		}
+	}
+
+	for _, err := range testTemplateParsing(r) {
+		return err
+	}
+
+	return nil
+}
+
+// testTemplateParsing checks if the templates used in labels and annotations
+// of the alerting rules are parsed correctly.
+func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
+	if rl.Alert.Value == "" {
+		// Not an alerting rule.
+		return errs
+	}
+
+	// Trying to parse templates.
+	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, 0)
+	defs := []string{
+		"{{$labels := .Labels}}",
+		"{{$externalLabels := .ExternalLabels}}",
+		"{{$value := .Value}}",
+	}
+	parseTest := func(text string) error {
+		tmpl := template.NewTemplateExpander(
+			context.TODO(),
+			strings.Join(append(defs, text), ""),
+			"__alert_"+rl.Alert.Value,
+			tmplData,
+			model.Time(timestamp.FromTime(time.Now())),
+			nil,
+			nil,
+		)
+		return tmpl.ParseTest()
+	}
+
+	// Parsing Labels.
+	for k, val := range rl.Labels {
+		err := parseTest(val)
+		if err != nil {
+			errs = append(errs, errors.Wrapf(err, "label %q", k))
+		}
+	}
+
+	// Parsing Annotations.
+	for k, val := range rl.Annotations {
+		err := parseTest(val)
+		if err != nil {
+			errs = append(errs, errors.Wrapf(err, "annotation %q", k))
+		}
+	}
+
+	return errs
 }
 
 // Allows logql expressions to be treated as promql expressions by the prometheus rules pkg.
