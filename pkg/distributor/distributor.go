@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -196,6 +197,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return nil, err
 		}
 
+		fmt.Println(userID)
+
 		// Track metrics moved to inside
 		bytesCount := 0
 		lineCount := 0
@@ -250,8 +253,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.IngesterDesc
 
-	samplesByIngester := map[string]map[string][]*streamTracker{}
-	ingesterDescs := map[string]ring.IngesterDesc{}
+	samplesByIngester := make(map[string]map[string][]*streamTracker)
+	ingesterDescs := make(map[string]ring.IngesterDesc)
 	for uID, keyArr := range keys {
 		for i, key := range keyArr {
 			replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0])
@@ -262,6 +265,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			streams[uID][i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
 			streams[uID][i].maxFailures = replicationSet.MaxErrors
 			for _, ingester := range replicationSet.Ingesters {
+				if samplesByIngester[ingester.Addr] == nil {
+					samplesByIngester[ingester.Addr] = make(map[string][]*streamTracker)
+				}
 				samplesByIngester[ingester.Addr][uID] = append(samplesByIngester[ingester.Addr][uID], &streams[uID][i])
 				ingesterDescs[ingester.Addr] = ingester
 			}
@@ -331,6 +337,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.IngesterDesc, streams []*streamTracker) error {
+	fmt.Println(user.ExtractOrgID(ctx))
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -348,6 +355,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 	if err != nil {
 		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
+	fmt.Println(err)
 	return err
 }
 
