@@ -220,6 +220,24 @@ groups:
             's.ummary': High request latency
 `,
 		},
+		{
+			desc:  "unknown fields",
+			match: "field unknown not found",
+			data: `
+unknown: true
+groups:
+  - name: grp1
+    interval: 0s
+    rules:
+      - alert: HighThroughputLogStreams
+        expr: sum by (cluster, job, pod) (rate({namespace=~"%s"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)
+        for: 2m
+        labels:
+            severity: page
+        annotations:
+            's.ummary': High request latency
+`,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			var loader groupLoader
