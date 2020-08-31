@@ -2,10 +2,11 @@ package distributor
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"net/http"
 	"time"
+
+	"github.com/grafana/loki/pkg/multitenancy"
 
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -25,7 +26,6 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/multitenancy"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -53,8 +53,6 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
 )
-
-var errUserIDNotPopulated = errors.New("context didnt posess value for either orgID or label + undefined")
 
 // Config for a Distributor.
 type Config struct {
@@ -182,33 +180,20 @@ type pushTracker struct {
 
 // Push a set of streams.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	label, undefined := multitenancy.GetLabelFromContext(ctx)
-	if err != nil && (label == "" || undefined == "") {
-		return nil, err
-	} else if err == nil && (label == "" || undefined == "") {
-		return nil, errUserIDNotPopulated
-	}
-
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
-	streams := make([]streamTracker, 0, len(req.Streams))
-	keys := make([]uint32, 0, len(req.Streams))
+	streams := make(map[string][]streamTracker)
+	keys := make(map[string][]uint32)
 	var validationErr error
-	validatedSamplesSize := 0
-	validatedSamplesCount := 0
+	validatedSamplesSize := make(map[string]int)
+	validatedSamplesCount := make(map[string]int)
+	streamCounter := 0
 
 	for _, stream := range req.Streams {
-		// Try get the associated label from the stream, otherwise we can use undefined
-		if label != "" {
-			var streamLabels map[string]string
-			json.Unmarshal([]byte(stream.Labels), &streamLabels)
-			if streamLabels[label] != "" {
-				userID = streamLabels[label]
-			} else {
-				userID = undefined
-			}
+		userID, err := multitenancy.GetUserIDFromContextAndStringLabels(ctx, stream.Labels)
+		if err != nil {
+			return nil, err
 		}
 
 		// Track metrics moved to inside
@@ -233,18 +218,19 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 			entries = append(entries, entry)
-			validatedSamplesSize += len(entry.Line)
-			validatedSamplesCount++
+			validatedSamplesSize[userID] += len(entry.Line)
+			validatedSamplesCount[userID]++
 		}
 
 		if len(entries) == 0 {
 			continue
 		}
 		stream.Entries = entries
-		keys = append(keys, util.TokenFor(userID, stream.Labels))
-		streams = append(streams, streamTracker{
+		keys[userID] = append(keys[userID], util.TokenFor(userID, stream.Labels))
+		streams[userID] = append(streams[userID], streamTracker{
 			stream: stream,
 		})
+		streamCounter++
 	}
 
 	if len(streams) == 0 {
@@ -252,29 +238,33 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
-		// Return a 429 to indicate to the client they are being rate limited
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
-		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize))
+	for k := range validatedSamplesSize {
+		if !d.ingestionRateLimiter.AllowN(now, k, validatedSamplesSize[k]) {
+			// Return a 429 to indicate to the client they are being rate limited
+			validation.DiscardedSamples.WithLabelValues(validation.RateLimited, k).Add(float64(validatedSamplesCount[k]))
+			validation.DiscardedBytes.WithLabelValues(validation.RateLimited, k).Add(float64(validatedSamplesSize[k]))
+			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(int(d.ingestionRateLimiter.Limit(now, k)), validatedSamplesCount[k], validatedSamplesSize[k]))
+		}
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.IngesterDesc
 
-	samplesByIngester := map[string][]*streamTracker{}
+	samplesByIngester := map[string]map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.IngesterDesc{}
-	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0])
-		if err != nil {
-			return nil, err
-		}
+	for uID, keyArr := range keys {
+		for i, key := range keyArr {
+			replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0])
+			if err != nil {
+				return nil, err
+			}
 
-		streams[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
-		streams[i].maxFailures = replicationSet.MaxErrors
-		for _, ingester := range replicationSet.Ingesters {
-			samplesByIngester[ingester.Addr] = append(samplesByIngester[ingester.Addr], &streams[i])
-			ingesterDescs[ingester.Addr] = ingester
+			streams[uID][i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
+			streams[uID][i].maxFailures = replicationSet.MaxErrors
+			for _, ingester := range replicationSet.Ingesters {
+				samplesByIngester[ingester.Addr][uID] = append(samplesByIngester[ingester.Addr][uID], &streams[uID][i])
+				ingesterDescs[ingester.Addr] = ingester
+			}
 		}
 	}
 
@@ -282,17 +272,19 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		done: make(chan struct{}),
 		err:  make(chan error),
 	}
-	tracker.samplesPending.Store(int32(len(streams)))
+	tracker.samplesPending.Store(int32(streamCounter))
 	for ingester, samples := range samplesByIngester {
-		go func(ingester ring.IngesterDesc, samples []*streamTracker) {
-			// Use a background context to make sure all ingesters get samples even if we return early
-			localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
-			defer cancel()
-			localCtx = user.InjectOrgID(localCtx, userID)
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				localCtx = opentracing.ContextWithSpan(localCtx, sp)
+		go func(ingester ring.IngesterDesc, samples map[string][]*streamTracker) {
+			for uID, streams := range samples {
+				// Use a background context to make sure all ingesters get samples even if we return early
+				localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
+				defer cancel()
+				localCtx = user.InjectOrgID(localCtx, uID)
+				if sp := opentracing.SpanFromContext(ctx); sp != nil {
+					localCtx = opentracing.ContextWithSpan(localCtx, sp)
+				}
+				d.sendSamples(localCtx, ingester, streams, &tracker)
 			}
-			d.sendSamples(localCtx, ingester, samples, &tracker)
 		}(ingesterDescs[ingester], samples)
 	}
 	select {
