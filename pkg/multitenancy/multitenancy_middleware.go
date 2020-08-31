@@ -87,11 +87,10 @@ func GetUserIDFromContextAndLabels(ctx context.Context, labels []labels.Label) (
 	return userID, nil
 }
 
-// HTTPAuthMiddleware middleware use for injecting value specificying using labels
-func HTTPAuthMiddleware(label string, undefined string) middleware.Func {
+// HTTPAuthMiddlewarePush middleware for injecting value specificying using labels into the push api
+func HTTPAuthMiddlewarePush(label string, undefined string) middleware.Func {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// ctx := user.InjectOrgID(r.Context(), nil)
 			ctx := InjectLabelForID(r.Context(), label, undefined)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

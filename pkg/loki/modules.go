@@ -164,11 +164,22 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	httpMiddleware := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-		t.httpAuthMiddleware,
-		serverutil.NewPrepopulateMiddleware(),
-	)
+	// Alteration based on if we are running multitenancy in label mode, we require different handler for queries
+	// as client has to specify the orgID for searching
+	var httpMiddleware middleware.Interface
+	if t.cfg.MultiTenancy.Enabled && t.cfg.MultiTenancy.Type == "label" {
+		httpMiddleware = middleware.Merge(
+			serverutil.RecoveryHTTPMiddleware,
+			t.httpAuthMiddlewareQuery,
+			serverutil.NewPrepopulateMiddleware(),
+		)
+	} else {
+		httpMiddleware = middleware.Merge(
+			serverutil.RecoveryHTTPMiddleware,
+			t.httpAuthMiddleware,
+			serverutil.NewPrepopulateMiddleware(),
+		)
+	}
 	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
 	// Prometheus compatibility requires `loki/api/v1/labels` however we already released `loki/api/v1/label`

@@ -155,7 +155,8 @@ type Loki struct {
 	memberlistKV  *memberlist.KVInitService
 	compactor     *compactor.Compactor
 
-	httpAuthMiddleware middleware.Interface
+	httpAuthMiddleware      middleware.Interface
+	httpAuthMiddlewareQuery middleware.Interface
 }
 
 // New makes a new Loki.
@@ -183,7 +184,8 @@ func (t *Loki) setupAuthMiddleware() {
 	} else if t.cfg.MultiTenancy.Enabled && t.cfg.MultiTenancy.Type == "label" {
 		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, multitenancy.GRPCAuthUnaryMiddleware(t.cfg.MultiTenancy.Label, t.cfg.MultiTenancy.Undefined))
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, multitenancy.GRPCAuthStreamMiddleware(t.cfg.MultiTenancy.Label, t.cfg.MultiTenancy.Undefined))
-		t.httpAuthMiddleware = multitenancy.HTTPAuthMiddleware(t.cfg.MultiTenancy.Label, t.cfg.MultiTenancy.Undefined)
+		t.httpAuthMiddleware = multitenancy.HTTPAuthMiddlewarePush(t.cfg.MultiTenancy.Label, t.cfg.MultiTenancy.Undefined)
+		t.httpAuthMiddlewareQuery = middleware.AuthenticateUser
 	} else {
 		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
