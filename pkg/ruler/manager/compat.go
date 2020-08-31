@@ -98,7 +98,7 @@ func MemstoreTenantManager(
 			OutageTolerance: cfg.OutageTolerance,
 			ForGracePeriod:  cfg.ForGracePeriod,
 			ResendDelay:     cfg.ResendDelay,
-			GroupLoader:     groupLoader{},
+			GroupLoader:     GroupLoader{},
 		})
 
 		// initialize memStore, bound to the manager's alerting rules
@@ -108,9 +108,9 @@ func MemstoreTenantManager(
 	}
 }
 
-type groupLoader struct{}
+type GroupLoader struct{}
 
-func (groupLoader) Parse(query string) (parser.Expr, error) {
+func (GroupLoader) Parse(query string) (parser.Expr, error) {
 	expr, err := logql.ParseExpr(query)
 	if err != nil {
 		return nil, err
@@ -119,7 +119,7 @@ func (groupLoader) Parse(query string) (parser.Expr, error) {
 	return exprAdapter{expr}, nil
 }
 
-func (g groupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
+func (g GroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
 	b, err := ioutil.ReadFile(identifier)
 	if err != nil {
 		return nil, []error{errors.Wrap(err, identifier)}
@@ -131,7 +131,7 @@ func (g groupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
 	return rgs, errs
 }
 
-func (groupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
+func (GroupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
 	var (
 		groups rulefmt.RuleGroups
 		errs   []error

@@ -222,7 +222,7 @@ groups:
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			var loader groupLoader
+			var loader GroupLoader
 			f, err := ioutil.TempFile(os.TempDir(), "rules")
 			require.Nil(t, err)
 			defer os.Remove(f.Name())
