@@ -52,7 +52,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		Evaluations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
-			Name:      "ruler_memory_for_state_evaluations",
+			Name:      "ruler_memory_for_state_evaluations_total",
 		}, []string{"status", "tenant"}),
 		Samples: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
@@ -60,7 +60,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		}),
 		CacheHits: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
-			Name:      "ruler_memory_for_state_cache_hits",
+			Name:      "ruler_memory_for_state_cache_hits_total",
 		}, []string{"tenant"}),
 	}
 }
