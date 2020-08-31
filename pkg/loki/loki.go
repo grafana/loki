@@ -182,8 +182,8 @@ func (t *Loki) setupAuthMiddleware() {
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
 		t.httpAuthMiddleware = middleware.AuthenticateUser
 	} else if t.cfg.MultiTenancy.Enabled && t.cfg.MultiTenancy.Type == "label" {
-		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, multitenancy.GRPCAuthUnaryMiddleware(t.cfg.MultiTenancy.Label, t.cfg.MultiTenancy.Undefined))
-		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, multitenancy.GRPCAuthStreamMiddleware(t.cfg.MultiTenancy.Label, t.cfg.MultiTenancy.Undefined))
+		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
+		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
 		t.httpAuthMiddleware = multitenancy.HTTPAuthMiddlewarePush(t.cfg.MultiTenancy.Label, t.cfg.MultiTenancy.Undefined)
 		t.httpAuthMiddlewareQuery = middleware.AuthenticateUser
 	} else {
