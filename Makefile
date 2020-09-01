@@ -150,6 +150,9 @@ touch-protobuf-sources:
 
 logcli: yacc cmd/logcli/logcli
 
+logcli-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
+
 cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
