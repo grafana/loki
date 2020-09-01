@@ -63,6 +63,21 @@ func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc 
 
 }
 
+// MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
+func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) *MultiTenantManager {
+	return &MultiTenantManager{mgr}
+}
+
+// MultiTenantManager wraps a cortex MultiTenantManager but validates loki rules
+type MultiTenantManager struct {
+	ruler.MultiTenantManager
+}
+
+// ValidateRuleGroup validates a rulegroup
+func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
+	return validateGroups(grp)
+}
+
 func MemstoreTenantManager(
 	cfg ruler.Config,
 	engine *logql.Engine,
@@ -148,13 +163,13 @@ func (GroupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
 		return nil, errs
 	}
 
-	return &groups, validateGroup(&groups)
+	return &groups, validateGroups(groups.Groups...)
 }
 
-func validateGroup(grps *rulefmt.RuleGroups) (errs []error) {
+func validateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 	set := map[string]struct{}{}
 
-	for i, g := range grps.Groups {
+	for i, g := range grps {
 		if g.Name == "" {
 			errs = append(errs, errors.Errorf("group %d: Groupname must not be empty", i))
 		}
