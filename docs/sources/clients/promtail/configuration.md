@@ -336,10 +336,11 @@ kubernetes_sd_configs:
 
 ### pipeline_stages
 
-The [pipeline](../pipelines/) stages (`pipeline_stages`) is used to transform
-log entries and their labels after discovery and consists of a list of any of the items listed below.
+[Pipeline](../pipelines/) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
-Stages serve several purposes, more detail can be found [here](../pipelines/), however generally you extract data with `regex` or `json` stages into a temporary map which can then be use as `labels` or `output` or any of the other stages aside from `docker` and `cri` which are explained in more detail below.
+Stages serve several purposes, more detail can be found [here](../pipelines/).
+
+In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
 ```yaml
 - [
