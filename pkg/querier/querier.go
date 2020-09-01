@@ -281,6 +281,15 @@ func (q *Querier) queryIngestersForSample(ctx context.Context, params logql.Sele
 
 // Label does the heavy lifting for a Label query.
 func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = q.validateQueryTimeRange(userID, *req.Start, *req.End); err != nil {
+		return nil, err
+	}
+
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -288,11 +297,6 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Label(ctx, req)
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
 	}
