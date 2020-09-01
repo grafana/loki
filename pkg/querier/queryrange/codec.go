@@ -72,6 +72,8 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
+func (*LokiRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
+
 func (r *LokiSeriesRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
@@ -108,6 +110,8 @@ func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
+func (*LokiSeriesRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
+
 func (r *LokiLabelNamesRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
@@ -142,6 +146,8 @@ func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
 	)
 }
+
+func (*LokiLabelNamesRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
 
 func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
 	if err := r.ParseForm(); err != nil {
