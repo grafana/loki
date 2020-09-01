@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
@@ -38,16 +39,6 @@ var (
 		Name:      "ruler_ring_check_errors_total",
 		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
-	configUpdatesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "ruler_config_updates_total",
-		Help:      "Total number of config updates triggered by a user",
-	}, []string{"user"})
-	configUpdateFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "ruler_config_update_failures_total",
-		Help:      "Total number of config update failures triggered by a user",
-	}, []string{"user", "reason"})
 )
 
 // Config is the configuration for the recording rules server.
@@ -147,6 +138,8 @@ type MultiTenantManager interface {
 	GetRules(userID string) []*promRules.Group
 	// Stop stops all Manager components.
 	Stop()
+	// ValidateRuleGroup validates a rulegroup
+	ValidateRuleGroup(rulefmt.RuleGroup) []error
 }
 
 // Ruler evaluates rules.
@@ -212,6 +205,10 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		if err = enableSharding(ruler, ringStore); err != nil {
 			return nil, errors.Wrap(err, "setup ruler sharding ring")
 		}
+
+		if reg != nil {
+			reg.MustRegister(ruler.ring)
+		}
 	}
 
 	ruler.Service = services.NewBasicService(ruler.starting, ruler.run, ruler.stopping)
@@ -230,12 +227,13 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, r.logger)
 	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
-	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ring.RulerRingKey, ring.RulerRingKey, ringStore, delegate, r.logger, r.registry)
+	rulerRingName := "ruler"
+	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ring.RulerRingKey, ringStore, delegate, r.logger, r.registry)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), ring.RulerRingKey, ring.RulerRingKey, ringStore, &ring.DefaultReplicationStrategy{})
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, &ring.DefaultReplicationStrategy{})
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}

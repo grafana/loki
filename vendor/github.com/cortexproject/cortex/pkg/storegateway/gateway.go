@@ -3,6 +3,8 @@ package storegateway
 import (
 	"context"
 	"flag"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -10,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -37,12 +38,25 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
+
+	// Supported sharding strategies.
+	ShardingStrategyDefault = "default"
+	ShardingStrategyShuffle = "shuffle-sharding"
+)
+
+var (
+	supportedShardingStrategies = []string{ShardingStrategyDefault, ShardingStrategyShuffle}
+
+	// Validation errors.
+	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
+	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
 )
 
 // Config holds the store gateway config.
 type Config struct {
-	ShardingEnabled bool       `yaml:"sharding_enabled"`
-	ShardingRing    RingConfig `yaml:"sharding_ring" doc:"description=The hash ring configuration. This option is required only if blocks sharding is enabled."`
+	ShardingEnabled  bool       `yaml:"sharding_enabled"`
+	ShardingRing     RingConfig `yaml:"sharding_ring" doc:"description=The hash ring configuration. This option is required only if blocks sharding is enabled."`
+	ShardingStrategy string     `yaml:"sharding_strategy"`
 }
 
 // RegisterFlags registers the Config flags.
@@ -50,6 +64,22 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ShardingRing.RegisterFlags(f)
 
 	f.BoolVar(&cfg.ShardingEnabled, "experimental.store-gateway.sharding-enabled", false, "Shard blocks across multiple store gateway instances."+sharedOptionWithQuerier)
+	f.StringVar(&cfg.ShardingStrategy, "experimental.store-gateway.sharding-strategy", ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
+}
+
+// Validate the Config.
+func (cfg *Config) Validate(limits validation.Limits) error {
+	if cfg.ShardingEnabled {
+		if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+			return errInvalidShardingStrategy
+		}
+
+		if cfg.ShardingStrategy == ShardingStrategyShuffle && limits.StoreGatewayTenantShardSize <= 0 {
+			return errInvalidTenantShardSize
+		}
+	}
+
+	return nil
 }
 
 // StoreGateway is the Cortex service responsible to expose an API over the bucket
@@ -98,7 +128,6 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 
 func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, bucketClient objstore.Bucket, ringStore kv.Client, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*StoreGateway, error) {
 	var err error
-	var filters []block.MetadataFilter
 
 	g := &StoreGateway{
 		gatewayCfg: gatewayCfg,
@@ -114,6 +143,9 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 	g.bucketSync.WithLabelValues(syncReasonInitial)
 	g.bucketSync.WithLabelValues(syncReasonPeriodic)
 	g.bucketSync.WithLabelValues(syncReasonRingChange)
+
+	// Init sharding strategy.
+	var shardingStrategy ShardingStrategy
 
 	if gatewayCfg.ShardingEnabled {
 		lifecyclerCfg, err := gatewayCfg.ShardingRing.ToLifecyclerConfig()
@@ -143,12 +175,20 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 			reg.MustRegister(g.ring)
 		}
 
-		// Filter blocks by the shard of this store-gateway instance if the
-		// sharding is enabled.
-		filters = append(filters, NewShardingMetadataFilter(g.ring, lifecyclerCfg.Addr, logger))
+		// Instance the right strategy.
+		switch gatewayCfg.ShardingStrategy {
+		case ShardingStrategyDefault:
+			shardingStrategy = NewDefaultShardingStrategy(g.ring, lifecyclerCfg.Addr, logger)
+		case ShardingStrategyShuffle:
+			shardingStrategy = NewShuffleShardingStrategy(g.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger)
+		default:
+			return nil, errInvalidShardingStrategy
+		}
+	} else {
+		shardingStrategy = NewNoShardingStrategy()
 	}
 
-	g.stores, err = NewBucketStores(storageCfg, filters, bucketClient, limits, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg))
+	g.stores, err = NewBucketStores(storageCfg, shardingStrategy, bucketClient, limits, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket stores")
 	}

@@ -319,6 +319,15 @@ func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
 	return r
 }
 
+func (r *readRingMock) HasInstance(instanceID string) bool {
+	for _, ing := range r.replicationSet.Ingesters {
+		if ing.Addr != instanceID {
+			return true
+		}
+	}
+	return false
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.IngesterDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},

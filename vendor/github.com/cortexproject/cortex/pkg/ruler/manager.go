@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
@@ -37,9 +38,12 @@ type DefaultMultiTenantManager struct {
 	notifiersMtx sync.Mutex
 	notifiers    map[string]*rulerNotifier
 
-	managersTotal prometheus.Gauge
-	registry      prometheus.Registerer
-	logger        log.Logger
+	managersTotal                 prometheus.Gauge
+	lastReloadSuccessful          *prometheus.GaugeVec
+	lastReloadSuccessfulTimestamp *prometheus.GaugeVec
+	configUpdatesTotal            *prometheus.CounterVec
+	registry                      prometheus.Registerer
+	logger                        log.Logger
 }
 
 func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
@@ -66,6 +70,21 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 			Name:      "ruler_managers_total",
 			Help:      "Total number of managers registered and running in the ruler",
 		}),
+		lastReloadSuccessful: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "cortex",
+			Name:      "ruler_config_last_reload_successful",
+			Help:      "Boolean set to 1 whenever the last configuration reload attempt was successful.",
+		}, []string{"user"}),
+		lastReloadSuccessfulTimestamp: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "cortex",
+			Name:      "ruler_config_last_reload_successful_seconds",
+			Help:      "Timestamp of the last successful configuration reload.",
+		}, []string{"user"}),
+		configUpdatesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "ruler_config_updates_total",
+			Help:      "Total number of config updates triggered by a user",
+		}, []string{"user"}),
 		registry: reg,
 		logger:   logger,
 	}, nil
@@ -86,6 +105,9 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 		if _, exists := ruleGroups[userID]; !exists {
 			go mngr.Stop()
 			delete(r.userManagers, userID)
+			r.lastReloadSuccessful.DeleteLabelValues(userID)
+			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
+			r.configUpdatesTotal.DeleteLabelValues(userID)
 			level.Info(r.logger).Log("msg", "deleting rule manager", "user", userID)
 		}
 	}
@@ -100,18 +122,19 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 	// have been updated
 	update, files, err := r.mapper.MapRules(user, groups.Formatted())
 	if err != nil {
+		r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 		level.Error(r.logger).Log("msg", "unable to map rule files", "user", user, "err", err)
 		return
 	}
 
 	if update {
 		level.Debug(r.logger).Log("msg", "updating rules", "user", "user")
-		configUpdatesTotal.WithLabelValues(user).Inc()
+		r.configUpdatesTotal.WithLabelValues(user).Inc()
 		manager, exists := r.userManagers[user]
 		if !exists {
 			manager, err = r.newManager(ctx, user)
 			if err != nil {
-				configUpdateFailuresTotal.WithLabelValues(user, "rule-manager-creation-failure").Inc()
+				r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
 				return
 			}
@@ -122,10 +145,13 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
 		if err != nil {
-			configUpdateFailuresTotal.WithLabelValues(user, "rules-update-failure").Inc()
+			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
 			return
 		}
+
+		r.lastReloadSuccessful.WithLabelValues(user).Set(1)
+		r.lastReloadSuccessfulTimestamp.WithLabelValues(user).SetToCurrentTime()
 	}
 }
 
@@ -220,4 +246,26 @@ func (r *DefaultMultiTenantManager) Stop() {
 	wg.Wait()
 	r.userManagerMtx.Unlock()
 	level.Info(r.logger).Log("msg", "all user managers stopped")
+}
+
+func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {
+	var errs []error
+	for i, r := range g.Rules {
+		for _, err := range r.Validate() {
+			var ruleName string
+			if r.Alert.Value != "" {
+				ruleName = r.Alert.Value
+			} else {
+				ruleName = r.Record.Value
+			}
+			errs = append(errs, &rulefmt.Error{
+				Group:    g.Name,
+				Rule:     i,
+				RuleName: ruleName,
+				Err:      err,
+			})
+		}
+	}
+
+	return errs
 }

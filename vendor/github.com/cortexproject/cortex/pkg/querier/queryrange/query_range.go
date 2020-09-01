@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -38,7 +39,7 @@ var (
 	PrometheusCodec Codec = &prometheusCodec{}
 
 	// Name of the cache control header.
-	cachecontrolHeader = "Cache-Control"
+	cacheControlHeader = "Cache-Control"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -72,6 +73,8 @@ type Request interface {
 	GetStep() int64
 	// GetQuery returns the query of the request.
 	GetQuery() string
+	// GetCachingOptions returns the caching options.
+	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(int64, int64) Request
 	// WithQuery clone the current request with a different query.
@@ -205,6 +208,14 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 
 	result.Query = r.FormValue("query")
 	result.Path = r.URL.Path
+
+	for _, value := range r.Header.Values(cacheControlHeader) {
+		if strings.Contains(value, noStoreValue) {
+			result.CachingOptions.Disabled = true
+			break
+		}
+	}
+
 	return &result, nil
 }
 

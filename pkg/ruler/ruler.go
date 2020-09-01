@@ -15,7 +15,7 @@ type Config struct {
 
 func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logger log.Logger, ruleStore cRules.RuleStore) (*ruler.Ruler, error) {
 
-	manager, err := ruler.NewDefaultMultiTenantManager(
+	mgr, err := ruler.NewDefaultMultiTenantManager(
 		cfg.Config,
 		manager.MemstoreTenantManager(
 			cfg.Config,
@@ -30,7 +30,7 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 	}
 	return ruler.NewRuler(
 		cfg.Config,
-		manager,
+		manager.MultiTenantManagerAdapter(mgr),
 		reg,
 		logger,
 		ruleStore,

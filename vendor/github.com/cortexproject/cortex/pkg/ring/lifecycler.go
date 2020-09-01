@@ -227,9 +227,10 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 	}
 
 	if err := ringDesc.Ready(time.Now(), i.cfg.RingConfig.HeartbeatTimeout); err != nil {
-		level.Warn(util.Logger).Log("msg", "found an existing ingester(s) with a problem in the ring, "+
-			"this ingester cannot complete joining and become ready until this problem is resolved. "+
-			"The /ring http endpoint on the distributor (or single binary) provides visibility into the ring.", "err", err)
+		level.Warn(util.Logger).Log("msg", "found an existing instance(s) with a problem in the ring, "+
+			"this instance cannot complete joining and become ready until this problem is resolved. "+
+			"The /ring http endpoint on the distributor (or single binary) provides visibility into the ring.",
+			"ring", i.RingName, "err", err)
 		return err
 	}
 

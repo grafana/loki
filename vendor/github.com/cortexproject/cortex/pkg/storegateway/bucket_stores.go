@@ -41,7 +41,7 @@ type BucketStores struct {
 	logLevel           logging.Level
 	bucketStoreMetrics *BucketStoreMetrics
 	metaFetcherMetrics *MetadataFetcherMetrics
-	filters            []block.MetadataFilter
+	shardingStrategy   ShardingStrategy
 
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
@@ -54,12 +54,14 @@ type BucketStores struct {
 	stores   map[string]*store.BucketStore
 
 	// Metrics.
-	syncTimes       prometheus.Histogram
-	syncLastSuccess prometheus.Gauge
+	syncTimes         prometheus.Histogram
+	syncLastSuccess   prometheus.Gauge
+	tenantsDiscovered prometheus.Gauge
+	tenantsSynced     prometheus.Gauge
 }
 
 // NewBucketStores makes a new BucketStores.
-func NewBucketStores(cfg tsdb.BlocksStorageConfig, filters []block.MetadataFilter, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
+func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
 	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, bucketClient, logger, reg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create caching bucket")
@@ -78,7 +80,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, filters []block.MetadataFilte
 		cfg:                cfg,
 		limits:             limits,
 		bucket:             cachingBucket,
-		filters:            filters,
+		shardingStrategy:   shardingStrategy,
 		stores:             map[string]*store.BucketStore{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
@@ -92,6 +94,14 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, filters []block.MetadataFilte
 		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds",
 			Help: "Unix timestamp of the last successful blocks sync.",
+		}),
+		tenantsDiscovered: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_bucket_stores_tenants_discovered",
+			Help: "Number of tenants discovered in the bucket.",
+		}),
+		tenantsSynced: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_bucket_stores_tenants_synced",
+			Help: "Number of tenants synced.",
 		}),
 	}
 
@@ -147,6 +157,22 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 	errs := tsdb_errors.MultiError{}
 	errsMx := sync.Mutex{}
 
+	// Scan users in the bucket. In case of error, it may return a subset of users. If we sync a subset of users
+	// during a periodic sync, we may end up unloading blocks for users that still belong to this store-gateway
+	// so we do prefer to not run the sync at all.
+	userIDs, err := u.scanUsers(ctx)
+	if err != nil {
+		return err
+	}
+
+	includeUserIDs := make(map[string]struct{})
+	for _, userID := range u.shardingStrategy.FilterUsers(ctx, userIDs) {
+		includeUserIDs[userID] = struct{}{}
+	}
+
+	u.tenantsDiscovered.Set(float64(len(userIDs)))
+	u.tenantsSynced.Set(float64(len(includeUserIDs)))
+
 	// Create a pool of workers which will synchronize blocks. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in
 	// a large cluster.
@@ -165,28 +191,32 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 		}()
 	}
 
-	// Iterate the bucket, lazily create a bucket store for each new user found
+	// Lazily create a bucket store for each new user found
 	// and submit a sync job for each user.
-	err := u.bucket.Iter(ctx, "", func(s string) error {
-		user := strings.TrimSuffix(s, "/")
+	for _, userID := range userIDs {
+		// If we don't have a store for the tenant yet, then we should skip it if it's not
+		// included in the store-gateway shard. If we already have it, we need to sync it
+		// anyway to make sure all its blocks are unloaded and metrics updated correctly
+		// (but bucket API calls are skipped thanks to the objstore client adapter).
+		if _, included := includeUserIDs[userID]; !included && u.getStore(userID) == nil {
+			continue
+		}
 
-		bs, err := u.getOrCreateStore(user)
+		bs, err := u.getOrCreateStore(userID)
 		if err != nil {
-			return err
+			errsMx.Lock()
+			errs.Add(err)
+			errsMx.Unlock()
+
+			continue
 		}
 
 		select {
-		case jobs <- job{userID: user, store: bs}:
-			return nil
+		case jobs <- job{userID: userID, store: bs}:
+			// Nothing to do. Will loop to push more jobs.
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	})
-
-	if err != nil {
-		errsMx.Lock()
-		errs.Add(err)
-		errsMx.Unlock()
 	}
 
 	// Wait until all workers completed.
@@ -215,6 +245,22 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
 	})
+}
+
+// scanUsers in the bucket and return the list of found users. If an error occurs while
+// iterating the bucket, it may return both an error and a subset of the users in the bucket.
+func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
+	var users []string
+
+	// Iterate the bucket to find all users in the bucket. Due to how the bucket listing
+	// caching works, it's more likely to have a cache hit if there's no delay while
+	// iterating the bucket, so we do load all users in memory and later process them.
+	err := u.bucket.Iter(ctx, "", func(s string) error {
+		users = append(users, strings.TrimSuffix(s, "/"))
+		return nil
+	})
+
+	return users, err
 }
 
 func (u *BucketStores) getStore(userID string) *store.BucketStore {
@@ -247,15 +293,22 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 
 	userBkt := tsdb.NewUserBucketClient(userID, u.bucket)
 
+	// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
+	// belong to the store-gateway shard. We need to run the BucketStore synching anyway
+	// in order to unload previous tenants in case of a resharding leading to tenants
+	// moving out from the store-gateway shard and also make sure both MetaFetcher and
+	// BucketStore metrics are correctly updated.
+	fetcherBkt := NewShardingBucketReaderAdapter(userID, u.shardingStrategy, userBkt)
+
 	fetcherReg := prometheus.NewRegistry()
 	fetcher, err := block.NewMetaFetcher(
 		userLogger,
 		u.cfg.BucketStore.MetaSyncConcurrency,
-		userBkt,
+		fetcherBkt,
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 		fetcherReg,
-		// The input filters MUST be before the ones we create here (order matters).
-		append(u.filters, []block.MetadataFilter{
+		// The sharding strategy filter MUST be before the ones we create here (order matters).
+		append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
 			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay),
 			// The duplicate filter has been intentionally omitted because it could cause troubles with

@@ -10,7 +10,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.3.1-0.20200824064113-84c06a83898e
+	github.com/cortexproject/cortex v1.3.1-0.20200901164804-97d13c1ef16f
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v17.12.0-ce-rc1.0.20200706150819-a40b877fbb9e+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
@@ -80,3 +80,7 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 
 // Same as Cortex, we can't upgrade to grpc 1.30.0 until go.etcd.io/etcd will support it.
 replace google.golang.org/grpc => google.golang.org/grpc v1.29.1
+
+// Same as Cortex
+// Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
+replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
