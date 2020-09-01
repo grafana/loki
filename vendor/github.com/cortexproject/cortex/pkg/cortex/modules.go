@@ -72,7 +72,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
 
-	a, err := api.New(t.Cfg.API, t.Server, util.Logger)
+	a, err := api.New(t.Cfg.API, t.Cfg.Server, t.Server, util.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,6 @@ func (t *Cortex) initServer() (services.Service, error) {
 
 func (t *Cortex) initRing() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
-	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
@@ -153,7 +152,6 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 
 func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -297,7 +295,6 @@ func (t *Cortex) tsdbIngesterConfig() {
 
 func (t *Cortex) initIngester() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
-	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ingester.ShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
 	t.tsdbIngesterConfig()
@@ -504,7 +501,6 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	}
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
@@ -557,7 +553,6 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -575,7 +570,6 @@ func (t *Cortex) initStoreGateway() (serv services.Service, err error) {
 	}
 
 	t.Cfg.StoreGateway.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.StoreGateway, err = storegateway.NewStoreGateway(t.Cfg.StoreGateway, t.Cfg.BlocksStorage, t.Overrides, t.Cfg.Server.LogLevel, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -594,6 +588,14 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 		ring.GetCodec(),
 	}
 	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV)
+
+	// Update the config.
+	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+
 	return t.MemberlistKV, nil
 }
 
@@ -655,15 +657,15 @@ func (t *Cortex) setupModuleManager() error {
 		Store:          {Overrides, DeleteRequestsStore},
 		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
 		Flusher:        {Store, API},
-		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable},
+		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable, MemberlistKV},
 		StoreQueryable: {Overrides, Store},
 		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
 		TableManager:   {API},
 		Ruler:          {Overrides, Distributor, Store, StoreQueryable, RulerStorage},
 		Configs:        {API},
 		AlertManager:   {API},
-		Compactor:      {API},
-		StoreGateway:   {API, Overrides},
+		Compactor:      {API, MemberlistKV},
+		StoreGateway:   {API, Overrides, MemberlistKV},
 		Purger:         {Store, DeleteRequestsStore, API},
 		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}

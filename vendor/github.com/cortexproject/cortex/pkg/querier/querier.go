@@ -370,31 +370,23 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	chunks := []chunk.Chunk(nil)
 
 	for _, set := range sets {
-		if !set.Next() {
-			// nothing in this set. If it has no error, we can ignore it completely.
-			// If there is error, we have to report it.
-			err := set.Err()
-			if err != nil {
-				otherSets = append(otherSets, storage.ErrSeriesSet(err))
+		nonChunkSeries := []storage.Series(nil)
+
+		// SeriesSet may have some series backed up by chunks, and some not.
+		for set.Next() {
+			s := set.At()
+
+			if sc, ok := s.(SeriesWithChunks); ok {
+				chunks = append(chunks, sc.Chunks()...)
+			} else {
+				nonChunkSeries = append(nonChunkSeries, s)
 			}
-			continue
 		}
 
-		s := set.At()
-		if sc, ok := s.(SeriesWithChunks); ok {
-			chunks = append(chunks, sc.Chunks()...)
-
-			// iterate over remaining series in this set, and store chunks
-			// Here we assume that all remaining series in the set are also backed-up by chunks.
-			// If not, there will be panics.
-			for set.Next() {
-				s = set.At()
-				chunks = append(chunks, s.(SeriesWithChunks).Chunks()...)
-			}
-		} else {
-			// We already called set.Next() once, but we want to return same result from At() also
-			// to the query engine.
-			otherSets = append(otherSets, &seriesSetWithFirstSeries{set: set, firstSeries: s})
+		if err := set.Err(); err != nil {
+			otherSets = append(otherSets, storage.ErrSeriesSet(err))
+		} else if len(nonChunkSeries) > 0 {
+			otherSets = append(otherSets, &sliceSeriesSet{series: nonChunkSeries, ix: -1})
 		}
 	}
 
@@ -413,42 +405,29 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	return storage.NewMergeSeriesSet(otherSets, storage.ChainedSeriesMerge)
 }
 
-// This series set ignores first 'Next' call and simply returns cached result
-// to avoid doing the work required to compute it twice.
-type seriesSetWithFirstSeries struct {
-	firstNextCalled bool
-	firstSeries     storage.Series
-	set             storage.SeriesSet
+type sliceSeriesSet struct {
+	series []storage.Series
+	ix     int
 }
 
-func (pss *seriesSetWithFirstSeries) Next() bool {
-	if pss.firstNextCalled {
-		pss.firstSeries = nil
-		return pss.set.Next()
-	}
-	pss.firstNextCalled = true
-	return true
+func (s *sliceSeriesSet) Next() bool {
+	s.ix++
+	return s.ix < len(s.series)
 }
 
-func (pss *seriesSetWithFirstSeries) At() storage.Series {
-	if pss.firstSeries != nil {
-		return pss.firstSeries
-	}
-	return pss.set.At()
-}
-
-func (pss *seriesSetWithFirstSeries) Err() error {
-	if pss.firstSeries != nil {
+func (s *sliceSeriesSet) At() storage.Series {
+	if s.ix < 0 || s.ix >= len(s.series) {
 		return nil
 	}
-	return pss.set.Err()
+	return s.series[s.ix]
 }
 
-func (pss *seriesSetWithFirstSeries) Warnings() storage.Warnings {
-	if pss.firstSeries != nil {
-		return nil
-	}
-	return pss.set.Warnings()
+func (s *sliceSeriesSet) Err() error {
+	return nil
+}
+
+func (s *sliceSeriesSet) Warnings() storage.Warnings {
+	return nil
 }
 
 type storeQueryable struct {

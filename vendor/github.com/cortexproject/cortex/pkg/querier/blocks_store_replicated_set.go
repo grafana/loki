@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/tls"
@@ -22,18 +23,29 @@ import (
 type blocksStoreReplicationSet struct {
 	services.Service
 
-	storesRing  *ring.Ring
-	clientsPool *client.Pool
+	storesRing       *ring.Ring
+	clientsPool      *client.Pool
+	shardingStrategy string
+	limits           BlocksStoreLimits
 
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 }
 
-func newBlocksStoreReplicationSet(storesRing *ring.Ring, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer) (*blocksStoreReplicationSet, error) {
+func newBlocksStoreReplicationSet(
+	storesRing *ring.Ring,
+	shardingStrategy string,
+	limits BlocksStoreLimits,
+	tlsCfg tls.ClientConfig,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
-		storesRing:  storesRing,
-		clientsPool: newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), tlsCfg, logger, reg),
+		storesRing:       storesRing,
+		clientsPool:      newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), tlsCfg, logger, reg),
+		shardingStrategy: shardingStrategy,
+		limits:           limits,
 	}
 
 	var err error
@@ -72,17 +84,26 @@ func (s *blocksStoreReplicationSet) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
-func (s *blocksStoreReplicationSet) GetClientsFor(blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
 	shards := map[string][]ulid.ULID{}
+
+	// If shuffle sharding is enabled, we should build a subring for the user,
+	// otherwise we just use the full ring.
+	var userRing ring.ReadRing
+	if s.shardingStrategy == storegateway.ShardingStrategyShuffle {
+		userRing = storegateway.GetShuffleShardingSubring(s.storesRing, userID, s.limits)
+	} else {
+		userRing = s.storesRing
+	}
 
 	// Find the replication set of each block we need to query.
 	for _, blockID := range blockIDs {
 		// Buffer internally used by the ring (give extra room for a JOINING + LEAVING instance).
 		// Do not reuse the same buffer across multiple Get() calls because we do retain the
 		// returned replication set.
-		buf := make([]ring.IngesterDesc, 0, s.storesRing.ReplicationFactor()+2)
+		buf := make([]ring.IngesterDesc, 0, userRing.ReplicationFactor()+2)
 
-		set, err := s.storesRing.Get(cortex_tsdb.HashBlockID(blockID), ring.BlocksRead, buf)
+		set, err := userRing.Get(cortex_tsdb.HashBlockID(blockID), ring.BlocksRead, buf)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", blockID.String())
 		}

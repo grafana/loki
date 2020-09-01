@@ -179,7 +179,7 @@ func (w *walWrapper) Stop() {
 }
 
 func (w *walWrapper) Log(record *WALRecord) error {
-	if record == nil {
+	if record == nil || (len(record.Series) == 0 && len(record.Samples) == 0) {
 		return nil
 	}
 	select {

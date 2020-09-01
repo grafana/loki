@@ -364,6 +364,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	if err != nil {
 		return nil, err
 	}
+	source := util.GetSourceIPsFromOutgoingCtx(ctx)
 
 	var firstPartialErr error
 	removeReplica := false
@@ -538,6 +539,10 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
+
+		// Get clientIP(s) from Context and add it to localCtx
+		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
+
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { client.ReuseSlice(req.Timeseries) })
 	if err != nil {

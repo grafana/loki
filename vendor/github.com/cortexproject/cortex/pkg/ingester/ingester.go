@@ -432,17 +432,17 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 		}
 	}
 
-	if firstPartialErr != nil {
-		// grpcForwardableError turns the error into a string so it no longer references `req`
-		return &client.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
-	}
-
 	if record != nil {
 		// Log the record only if there was no error in ingestion.
 		if err := i.wal.Log(record); err != nil {
 			return nil, err
 		}
 		recordPool.Put(record)
+	}
+
+	if firstPartialErr != nil {
+		// grpcForwardableError turns the error into a string so it no longer references `req`
+		return &client.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
 	}
 
 	return &client.WriteResponse{}, nil

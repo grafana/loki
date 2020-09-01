@@ -48,6 +48,9 @@ type ReadRing interface {
 	ReplicationFactor() int
 	IngesterCount() int
 	Subring(key uint32, n int) ReadRing
+
+	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
+	HasInstance(instanceID string) bool
 }
 
 // Operation can be Read or Write
@@ -474,4 +477,14 @@ func (r *Ring) GetInstanceState(instanceID string) (IngesterState, error) {
 	}
 
 	return instance.GetState(), nil
+}
+
+// HasInstance returns whether the ring contains an instance matching the provided instanceID.
+func (r *Ring) HasInstance(instanceID string) bool {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	instances := r.ringDesc.GetIngesters()
+	_, ok := instances[instanceID]
+	return ok
 }

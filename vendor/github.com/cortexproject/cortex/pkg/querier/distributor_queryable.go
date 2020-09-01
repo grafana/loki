@@ -137,8 +137,9 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 		return storage.ErrSeriesSet(err)
 	}
 
-	if len(results.Timeseries) != 0 {
-		return newTimeSeriesSeriesSet(results.Timeseries)
+	sets := []storage.SeriesSet(nil)
+	if len(results.Timeseries) > 0 {
+		sets = append(sets, newTimeSeriesSeriesSet(results.Timeseries))
 	}
 
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
@@ -156,15 +157,27 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 			return storage.ErrSeriesSet(err)
 		}
 
-		series := &chunkSeries{
+		serieses = append(serieses, &chunkSeries{
 			labels:            ls,
 			chunks:            chunks,
 			chunkIteratorFunc: q.chunkIterFn,
-		}
-		serieses = append(serieses, series)
+			mint:              minT,
+			maxt:              maxT,
+		})
 	}
 
-	return series.NewConcreteSeriesSet(serieses)
+	if len(serieses) > 0 {
+		sets = append(sets, series.NewConcreteSeriesSet(serieses))
+	}
+
+	if len(sets) == 0 {
+		return storage.EmptySeriesSet()
+	}
+	if len(sets) == 1 {
+		return sets[0]
+	}
+	// Sets need to be sorted. Both series.NewConcreteSeriesSet and newTimeSeriesSeriesSet take care of that.
+	return storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
