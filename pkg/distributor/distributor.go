@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -197,8 +196,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return nil, err
 		}
 
-		fmt.Println(userID)
-
 		// Track metrics moved to inside
 		bytesCount := 0
 		lineCount := 0
@@ -337,7 +334,6 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.IngesterDesc, streams []*streamTracker) error {
-	fmt.Println(user.ExtractOrgID(ctx))
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -355,7 +351,6 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 	if err != nil {
 		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
-	fmt.Println(err)
 	return err
 }
 

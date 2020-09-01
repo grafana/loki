@@ -31,7 +31,7 @@ func (c *Config) Validate() error {
 	}
 	if c.Undefined == "" {
 		// Setup defult
-		c.Undefined = "undefined"
+		c.Undefined = "unlabeled"
 	}
 	return nil
 }
@@ -41,5 +41,5 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, "multitenancy.enabled", false, "Enable multi-tenancy mode")
 	f.StringVar(&c.Type, "multitenancy.type", "auth", "Where to get the Org ID for multi-tenancy ")
 	f.StringVar(&c.Label, "multitenancy.label", "", "Specifies the label to use for Org ID (in label mode)")
-	f.StringVar(&c.Undefined, "multitenancy.undefined", "undefined", "Sepcifies the name to use when log doesnt contain the label (in label mode)")
+	f.StringVar(&c.Undefined, "multitenancy.undefined", "unlabeled", "Sepcifies the name to use when log doesnt contain the label (in label mode)")
 }
