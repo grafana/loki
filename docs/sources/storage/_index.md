@@ -138,7 +138,7 @@ Note, there are a few other DynamoDB provisioning options including DynamoDB aut
 
 When a new schema is released and you want to gain the advantages it provides, you can! Loki can transparently query & merge data from across schema boundaries so there is no disruption of service and upgrading is easy.
 
-First, you'll want to create a new [period_config](../configuration#period_config) entry in your [schema_config](../configuration#schema_config). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and will ensure that existing data isn't queried as if it adheres to the new schema.
+First, you'll want to create a new [period_config](../configuration#period_config) entry in your [schema_config](../configuration.md#schema_config). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
 As an example, let's say it's 2020-07-14 and we want to start using the `v11` schema on the 20th:
 ```yaml
