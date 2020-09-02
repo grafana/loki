@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/logentry/metric"
 	"github.com/grafana/loki/pkg/promtail/api"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -67,6 +70,7 @@ var (
 		Name:      "request_duration_seconds",
 		Help:      "Duration of send requests.",
 	}, []string{"status_code", "host"})
+	streamLag *metric.Gauges
 
 	countersWithHost = []*prometheus.CounterVec{
 		encodedBytes, sentBytes, droppedBytes, sentEntries, droppedEntries,
@@ -82,6 +86,15 @@ func init() {
 	prometheus.MustRegister(sentEntries)
 	prometheus.MustRegister(droppedEntries)
 	prometheus.MustRegister(requestDuration)
+	var err error
+	streamLag, err = metric.NewGauges("promtail_stream_lag_seconds",
+		"Difference between current time and last batch timestamp for successful sends",
+		metric.GaugeConfig{Action: "set"},
+		int64(5*time.Minute.Seconds()),
+	)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Client pushes entries to Loki and can be stopped
@@ -250,6 +263,19 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
 		droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 		droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+	} else {
+		for _, s := range batch.streams {
+			lbls, err := parser.ParseMetric(s.Labels)
+			if err != nil {
+				// is this possible?
+				level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
+			}
+			lblSet := make(model.LabelSet, len(lbls))
+			for i := range lbls {
+				lblSet[model.LabelName(lbls[i].Name)] = model.LabelValue(lbls[i].Value)
+			}
+			streamLag.With(lblSet).Set(time.Now().Sub(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
+		}
 	}
 }
 
