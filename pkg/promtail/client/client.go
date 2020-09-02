@@ -95,6 +95,7 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+	prometheus.MustRegister(streamLag)
 }
 
 // Client pushes entries to Loki and can be stopped
