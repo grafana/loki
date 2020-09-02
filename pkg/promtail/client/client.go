@@ -255,11 +255,15 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
 					return
 				}
-				lblSet := make(model.LabelSet, len(lbls))
+				var lblSet model.LabelSet
 				for i := range lbls {
-					lblSet[model.LabelName(lbls[i].Name)] = model.LabelValue(lbls[i].Value)
+					if lbls[i].Name == "filename" {
+						lblSet = model.LabelSet{model.LabelName(lbls[i].Name): model.LabelValue(lbls[i].Value)}
+					}
 				}
-				streamLag.With(lblSet).Set(time.Now().Sub(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
+				if lblSet != nil {
+					streamLag.With(lblSet).Set(time.Now().Sub(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
+				}
 			}
 			return
 		}
