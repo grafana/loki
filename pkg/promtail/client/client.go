@@ -248,6 +248,19 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		if err == nil {
 			sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 			sentEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+			for _, s := range batch.streams {
+				lbls, err := parser.ParseMetric(s.Labels)
+				if err != nil {
+					// is this possible?
+					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
+					return
+				}
+				lblSet := make(model.LabelSet, len(lbls))
+				for i := range lbls {
+					lblSet[model.LabelName(lbls[i].Name)] = model.LabelValue(lbls[i].Value)
+				}
+				streamLag.With(lblSet).Set(time.Now().Sub(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
+			}
 			return
 		}
 
@@ -264,19 +277,6 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
 		droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 		droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
-	} else {
-		for _, s := range batch.streams {
-			lbls, err := parser.ParseMetric(s.Labels)
-			if err != nil {
-				// is this possible?
-				level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
-			}
-			lblSet := make(model.LabelSet, len(lbls))
-			for i := range lbls {
-				lblSet[model.LabelName(lbls[i].Name)] = model.LabelValue(lbls[i].Value)
-			}
-			streamLag.With(lblSet).Set(time.Now().Sub(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
-		}
 	}
 }
 
