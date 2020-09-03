@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -440,6 +441,79 @@ func TestPurger_Metrics(t *testing.T) {
 	// there must be 0 pending delete requests so the age for oldest pending must be 0
 	require.InDelta(t, float64(0), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
 	require.Equal(t, float64(0), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
+}
+
+func TestPurger_retryFailedRequests(t *testing.T) {
+	// setup chunks store
+	indexMockStorage := chunk.NewMockStorage()
+	chunksMockStorage := chunk.NewMockStorage()
+
+	deleteStore := setupTestDeleteStore(t)
+	chunkStore, err := testutils.SetupTestChunkStoreWithClients(indexMockStorage, chunksMockStorage, indexMockStorage)
+	require.NoError(t, err)
+
+	// create a purger instance
+	purgerMockStorage := chunk.NewMockStorage()
+	purger, _ := setupPurger(t, deleteStore, chunkStore, purgerMockStorage)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger))
+
+	defer func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), purger))
+	}()
+
+	// add some chunks
+	chunks, err := buildChunks(0, model.Time(0).Add(3*24*time.Hour), 1)
+	require.NoError(t, err)
+
+	require.NoError(t, chunkStore.Put(context.Background(), chunks))
+
+	// add a request to delete some chunks
+	err = deleteStore.addDeleteRequest(context.Background(), userID, model.Now().Add(-25*time.Hour), model.Time(0).Add(24*time.Hour),
+		model.Time(0).Add(2*24*time.Hour), []string{"foo"})
+	require.NoError(t, err)
+
+	// change purgerMockStorage to allow only reads. This would fail putting plans to the storage and hence fail build plans operation.
+	purgerMockStorage.SetMode(chunk.MockStorageModeReadOnly)
+
+	// pull requests to process and ensure that it has failed.
+	err = purger.pullDeleteRequestsToPlanDeletes()
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "permission denied"))
+
+	// there must be 1 delete request in process and the userID must be in failed requests list.
+	require.NotNil(t, purger.inProcessRequests.get(userID))
+	require.Len(t, purger.inProcessRequests.listUsersWithFailedRequest(), 1)
+
+	// now allow writes to purgerMockStorage to allow building plans to succeed.
+	purgerMockStorage.SetMode(chunk.MockStorageModeReadWrite)
+
+	// but change mode of chunksMockStorage to read only which would deny permission to delete any chunks and in turn
+	// fail to execute delete plans.
+	chunksMockStorage.SetMode(chunk.MockStorageModeReadOnly)
+
+	// retry processing of failed requests
+	purger.retryFailedRequests()
+
+	// the delete request status should now change to StatusDeleting since the building of plan should have succeeded.
+	test.Poll(t, time.Second, StatusDeleting, func() interface{} {
+		return purger.inProcessRequests.get(userID).Status
+	})
+	// the request should have failed again since we did not give permission to delete chunks.
+	test.Poll(t, time.Second, 1, func() interface{} {
+		return len(purger.inProcessRequests.listUsersWithFailedRequest())
+	})
+
+	// now allow writes to chunksMockStorage so the requests do not fail anymore.
+	chunksMockStorage.SetMode(chunk.MockStorageModeReadWrite)
+
+	// retry processing of failed requests.
+	purger.retryFailedRequests()
+	// there must be no in process requests anymore.
+	test.Poll(t, time.Second, true, func() interface{} {
+		return purger.inProcessRequests.get(userID) == nil
+	})
+	// there must be no users having failed requests.
+	require.Len(t, purger.inProcessRequests.listUsersWithFailedRequest(), 0)
 }
 
 func getNonDeletedIntervals(originalInterval, deletedInterval model.Interval) []model.Interval {
