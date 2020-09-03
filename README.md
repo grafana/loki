@@ -99,7 +99,7 @@ Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-You need `go` [v1.10+](https://golang.org/dl/) installed locally.
+You need `go` [v1.14+](https://golang.org/dl/) installed locally.
 
 ```bash
 
