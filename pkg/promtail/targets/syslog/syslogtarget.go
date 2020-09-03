@@ -38,6 +38,11 @@ var (
 		Name:      "syslog_target_parsing_errors_total",
 		Help:      "Total number of parsing errors while receiving syslog messages",
 	})
+	syslogEmptyMessages = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "syslog_empty_messages_total",
+		Help:      "Total number of empty messages receiving from syslog",
+	})
 
 	defaultIdleTimeout = 120 * time.Second
 )
@@ -181,6 +186,7 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 	rfc5424Msg := msg.(*rfc5424.SyslogMessage)
 
 	if rfc5424Msg.Message == nil {
+		syslogEmptyMessages.Inc()
 		return
 	}
 
