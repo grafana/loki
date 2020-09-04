@@ -1,5 +1,5 @@
 ---
-title: promtail eks
+title: EKS
 ---
 # Sending logs from EKS with Promtail
 

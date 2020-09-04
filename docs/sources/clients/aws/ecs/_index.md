@@ -1,5 +1,5 @@
 ---
-title: ecs
+title: ECS
 ---
 # Sending Logs From AWS Elastic Container Service (ECS)
 
