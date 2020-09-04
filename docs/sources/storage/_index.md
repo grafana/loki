@@ -57,7 +57,7 @@ You may use any subsitutable services, such as those that implement the S3 API l
 
 ### Cassandra
 
-Cassandra can also be utilized for the index store and asides from the experimental [boltdb-shipper](./storage/boltdb-shipper), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
+Cassandra can also be utilized for the index store and aside from the experimental [boltdb-shipper](../operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
 
 ### BigTable
 
@@ -69,11 +69,11 @@ DynamoDB is a cloud database offered by AWS. It is a good candidate for a manage
 
 #### Rate Limiting
 
-DynamoDB is susceptible to rate limiting, particularly due to overconsuming what is called [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html). This can be controlled via the [provisioning](#Provisioning) configs in the table manager.
+DynamoDB is susceptible to rate limiting, particularly due to overconsuming what is called [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html). This can be controlled via the [provisioning](#provisioning) configs in the table manager.
 
 ### BoltDB
 
-BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. There is also an experimental mode, the [boltdb-shipper](./operations/storage/boltdb-shipper), which aims to support clustered deployments using `boltdb` as an index.
+BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. There is also an experimental mode, the [boltdb-shipper](../operations/storage/boltdb-shipper/), which aims to support clustered deployments using `boltdb` as an index.
 
 ## Period Configs
 
@@ -113,7 +113,7 @@ table_manager:
   retention_period: 2520h
 ```
 
-For more information, see the table manager [doc](./operations/storage/table-manager).
+For more information, see the table manager [doc](../operations/storage/table-manager/).
 
 ### Provisioning
 
@@ -132,7 +132,7 @@ table_manager:
     inactive_read_throughput: <int> | Default = 300
 ```
 
-Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [docs](./configuration/README#provision_config) for more information.
+Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [docs](../configuration/#provision_config) for more information.
 
 ## Upgrading Schemas
 
@@ -168,7 +168,7 @@ With the exception of the `filesystem` chunk store, Loki will not delete old chu
 
 We're interested in adding targeted deletion in future Loki releases (think tenant or stream level granularity) and may include other strategies as well.
 
-For more information, see the configuration [docs](./operations/storage/retention).
+For more information, see the configuration [docs](../operations/storage/retention/).
 
 
 ## Examples

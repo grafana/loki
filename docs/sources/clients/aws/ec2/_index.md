@@ -1,5 +1,5 @@
 ---
-title: ec2
+title: EC2
 ---
 # Running Promtail on AWS EC2
 
