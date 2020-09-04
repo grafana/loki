@@ -62,7 +62,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addPanel(
           g.panel('Latency') +
           g.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{cluster=~"$cluster", job=~"($namespace)/ingester", operation="WRITE"}')
-        ),
+        )
+      ),
 
     local http_routes = 'loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values',
     local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series',
