@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -124,6 +125,7 @@ type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
 }
 
 // New makes a new Ingester.
@@ -352,6 +354,36 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
+}
+
+func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// parse the request
+	start, end := listutil.RoundToMilliseconds(req.Start, req.End)
+	matchers, err := logql.ParseMatchers(req.Matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	// get chunk references
+	chunksGroups, _, err := i.store.GetChunkRefs(ctx, orgID, start, end, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// build the response
+	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
+	for _, chunks := range chunksGroups {
+		for _, chk := range chunks {
+			resp.ChunkIDs = append(resp.ChunkIDs, chk.ExternalKey())
+		}
+	}
+
+	return &resp, nil
 }
 
 // Label returns the set of labels for the stream this ingester knows about.
