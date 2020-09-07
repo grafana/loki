@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -269,6 +272,10 @@ func (s *mockStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 
 func (s *mockStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, nil
+}
+
+func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	return nil, nil, nil
 }
 
 type mockQuerierServer struct {
