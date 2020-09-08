@@ -21,8 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -72,7 +72,7 @@ var (
 		encodedBytes, sentBytes, droppedBytes, sentEntries, droppedEntries,
 	}
 
-	userAgent = fmt.Sprintf("promtail/%s", build.Version)
+	userAgent = fmt.Sprintf("promtail/%s", version.Version)
 )
 
 func init() {
