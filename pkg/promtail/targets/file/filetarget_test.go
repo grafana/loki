@@ -53,7 +53,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 
 	target, err := NewFileTarget(logger, client, ps, logFile, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 
 	target, err := NewFileTarget(logger, client, ps, logFileDir+"*", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestFileRolls(t *testing.T) {
 
 	target, err := NewFileTarget(logger, client, positions, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 
 	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	// Create a new target, keep the same client so we can track what was sent through the handler.
 	target2, err := NewFileTarget(logger, client, ps2, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 
 	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,6 +506,77 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 
 }
 
+func TestEncodingConversion(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
+	positionsFileName := dirName + "/positions.yml"
+	logFile := dirName + "/test.log"
+
+	err := os.MkdirAll(dirName, 0750)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(dirName) }()
+
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Second,
+		PositionsFile: positionsFileName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := &testutils.TestClient{
+		Log:      logger,
+		Messages: make([]*testutils.Entry, 0),
+	}
+
+	f, err := os.Create(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, nil, &Config{
+		SyncPeriod: 10 * time.Second,
+	}, "utf-16")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	utf16TestString := []byte{
+		0xff, 0xfe, 0x6f, 0x01, 0x0a,
+	}
+	utf8TestString := []byte{
+		0xc5, 0xaf,
+	}
+	for i := 0; i < 10; i++ {
+		_, err = f.Write(utf16TestString)
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	countdown := 10000
+	for len(client.Messages) != 10 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
+	}
+
+	target.Stop()
+	ps.Stop()
+
+	// Spot check one of the messages.
+	if client.Messages[0].Log != string(utf8TestString){
+		t.Error("Expected the log message to be", string(utf8TestString), "but was", client.Messages[0].Log)
+	}
+}
+
 func TestFileTargetSync(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
@@ -540,7 +611,7 @@ func TestFileTargetSync(t *testing.T) {
 
 	target, err := NewFileTarget(logger, client, ps, logDir1+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -145,6 +145,7 @@ func NewFileTargetManager(
 			hostname:       hostname,
 			entryHandler:   pipeline.Wrap(client),
 			targetConfig:   targetConfig,
+			encoding:       cfg.Encoding,
 		}
 		tm.syncers[cfg.JobName] = s
 		config[cfg.JobName] = cfg.ServiceDiscoveryConfig
@@ -216,6 +217,7 @@ type targetSyncer struct {
 
 	relabelConfig []*relabel.Config
 	targetConfig  *Config
+	encoding      string
 }
 
 // sync synchronize target based on received target groups received by service discovery
@@ -308,7 +310,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 }
 
 func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet) (*FileTarget, error) {
-	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig)
+	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, s.encoding)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

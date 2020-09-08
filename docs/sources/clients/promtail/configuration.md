@@ -315,6 +315,9 @@ job_name: <string>
 # Describes how to receive logs via the Loki push API, (e.g. from other Promtails or the Docker Logging Driver)
 [loki_push_api: <loki_push_api_config>]
 
+# Describes from which encoding a scraped file should be converted.
+[encoding: <iana_encoding_name>]
+
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:

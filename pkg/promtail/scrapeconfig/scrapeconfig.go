@@ -25,6 +25,7 @@ type Config struct {
 	PushConfig             *PushTargetConfig                `yaml:"loki_push_api,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+	Encoding               string                           `yaml:"encoding,omitempty"`
 }
 
 // JournalTargetConfig describes systemd journal records to scrape.

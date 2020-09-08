@@ -90,10 +90,12 @@ type FileTarget struct {
 	tails map[string]*tailer
 
 	targetConfig *Config
+
+	encoding string
 }
 
 // NewFileTarget create a new FileTarget.
-func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
+func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config, encoding string) (*FileTarget, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -112,6 +114,7 @@ func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions positi
 		done:             make(chan struct{}),
 		tails:            map[string]*tailer{},
 		targetConfig:     targetConfig,
+		encoding:         encoding,
 	}
 
 	err = t.sync()
@@ -298,7 +301,7 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-		tailer, err := newTailer(t.logger, t.handler, t.positions, p)
+		tailer, err := newTailer(t.logger, t.handler, t.positions, p, t.encoding)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
 			continue

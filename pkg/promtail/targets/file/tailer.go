@@ -4,12 +4,16 @@ import (
 	"os"
 	"sync"
 	"time"
+	"strings"
+	"io/ioutil"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/hpcloud/tail"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -29,9 +33,11 @@ type tailer struct {
 	running *atomic.Bool
 	quit    chan struct{}
 	done    chan struct{}
+
+	encoding string
 }
 
-func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
+func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, encoding string) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
@@ -71,12 +77,31 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.
 		running:   atomic.NewBool(false),
 		quit:      make(chan struct{}),
 		done:      make(chan struct{}),
+		encoding:  encoding,
 	}
 	tail.Logger = util.NewLogAdapter(logger)
 
 	go tailer.run()
 	filesActive.Add(1.)
 	return tailer, nil
+}
+
+func (t *tailer) convertToUTF8(text string) (string, error) {
+	level.Info(t.logger).Log("msg", "Converting log encoding", "from", t.encoding, "to", "UTF8")
+
+	encoding, err := ianaindex.IANA.Encoding(t.encoding)
+	if err != nil {
+		return "", err
+	}
+
+	utf8Reader := transform.NewReader(strings.NewReader(text), encoding.NewDecoder())
+	utf8Bytes, err := ioutil.ReadAll(utf8Reader)
+
+	if err != nil {
+		return "", err
+	}
+
+	return string(utf8Bytes), nil
 }
 
 func (t *tailer) run() {
@@ -120,9 +145,20 @@ func (t *tailer) run() {
 				continue
 			}
 
+			var text string
+			if t.encoding != "" {
+				var err error
+				text, err = t.convertToUTF8(line.Text)
+				if err != nil {
+					level.Error(t.logger).Log("msg", "failed to convert encoding", "error", err)
+				}
+			} else {
+				text = line.Text
+			}
+
 			readLines.WithLabelValues(t.path).Inc()
-			logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(line.Text)))
-			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
+			logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(text)))
+			if err := t.handler.Handle(model.LabelSet{}, line.Time, text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "path", t.path, "error", err)
 			}
 		case <-t.quit:
