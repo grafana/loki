@@ -4,7 +4,6 @@ require "logstash/outputs/loki/entry"
 require "logstash/outputs/loki/batch"
 require "logstash/namespace"
 require 'net/http'
-require 'agent'
 require 'time'
 require 'uri'
 require 'json'
