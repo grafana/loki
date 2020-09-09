@@ -88,13 +88,13 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
 
   def max_batch_size
     loop do
-      if @stop
-        return
+      @mutex.synchronize do
+        return if @stop
       end
+  
       e = @entries.deq
-      if e.nil?
-        return
-      end
+      return if e.nil?
+
       @mutex.synchronize do
         if !add_entry_to_batch(e)
           @logger.debug("Max batch_size is reached. Sending batch to loki")
@@ -112,10 +112,12 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
 	  if max_wait_checkfrequency < min_wait_checkfrequency
 		  max_wait_checkfrequency = min_wait_checkfrequency
     end
+
     loop do
-      if @stop
-        return
+      @mutex.synchronize do
+        return if @stop
       end
+
       sleep(max_wait_checkfrequency)
       if is_batch_expired
         @mutex.synchronize do
@@ -201,7 +203,9 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
 
   def close
     @entries.close
-    @stop = true 
+    @mutex.synchronize do 
+      @stop = true 
+    end
     @batch_wait_thread.join
     @batch_size_thread.join
 
