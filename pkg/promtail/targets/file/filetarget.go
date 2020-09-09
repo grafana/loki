@@ -304,6 +304,9 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 		t.tails[p] = tailer
+		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
+			h.RegisterLatencyMetric(nil)
+		}
 	}
 }
 
@@ -315,6 +318,9 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 			tailer.stop()
 			t.positions.Remove(tailer.path)
 			delete(t.tails, p)
+		}
+		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
+			h.UnregisterLatencyMetric(nil)
 		}
 	}
 }
