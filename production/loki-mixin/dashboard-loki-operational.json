@@ -5777,7 +5777,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "intervalFactor": 1,
               "legendFormat": ".99-{{operation}}",
               "refId": "A"
@@ -5984,7 +5984,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(cortex_s3_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.99, sum(rate(cortex_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "intervalFactor": 1,
               "legendFormat": ".99-{{operation}}",
               "refId": "A"
@@ -6191,7 +6191,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(cortex_cassandra_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.99, sum(rate(cortex_cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "intervalFactor": 1,
               "legendFormat": ".99-{{operation}}",
               "refId": "A"
@@ -6398,7 +6398,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(loki_boltdb_shipper_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+              "expr": "histogram_quantile(.99, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
               "intervalFactor": 1,
               "legendFormat": ".99-{{operation}}",
               "refId": "A"
