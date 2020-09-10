@@ -58,7 +58,7 @@ func Test_dropLabelStage_Process(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			st, err := newLabelDropStage(util.Logger, test.config)
+			st, err := newLabelDropStage(test.config)
 			if err != nil {
 				t.Fatal(err)
 			}

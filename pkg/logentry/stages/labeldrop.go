@@ -3,7 +3,6 @@ package stages
 import (
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -11,7 +10,7 @@ import (
 
 const (
 	// ErrEmptyLabelDropStageConfig error returned if config is empty
-	ErrEmptyLabelDropStageConfig = "drop_label stage config cannot be empty"
+	ErrEmptyLabelDropStageConfig = "labeldrop stage config cannot be empty"
 )
 
 // LabelDropConfig is a slice of labels to be dropped
@@ -25,7 +24,7 @@ func validateLabelDropConfig(c LabelDropConfig) error {
 	return nil
 }
 
-func newLabelDropStage(logger log.Logger, configs interface{}) (*labelDropStage, error) {
+func newLabelDropStage(configs interface{}) (*labelDropStage, error) {
 	cfgs := &LabelDropConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -38,14 +37,12 @@ func newLabelDropStage(logger log.Logger, configs interface{}) (*labelDropStage,
 	}
 
 	return &labelDropStage{
-		cfgs:   *cfgs,
-		logger: logger,
+		cfgs: *cfgs,
 	}, nil
 }
 
 type labelDropStage struct {
-	cfgs   LabelDropConfig
-	logger log.Logger
+	cfgs LabelDropConfig
 }
 
 // Process implements Stage

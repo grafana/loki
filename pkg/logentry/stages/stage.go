@@ -79,7 +79,7 @@ func New(logger log.Logger, jobName *string, stageType string,
 			return nil, err
 		}
 	case StageTypeLabelDrop:
-		s, err = newLabelDropStage(logger, cfg)
+		s, err = newLabelDropStage(cfg)
 		if err != nil {
 			return nil, err
 		}
