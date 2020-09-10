@@ -37,6 +37,8 @@ const (
 	// Label reserved to override the tenant ID while processing
 	// pipeline stages
 	ReservedLabelTenantID = "__tenant_id__"
+
+	LatencyLabel = "filename"
 )
 
 var (
@@ -257,7 +259,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 				}
 				var lblSet model.LabelSet
 				for i := range lbls {
-					if lbls[i].Name == "filename" {
+					if lbls[i].Name == LatencyLabel {
 						lblSet = model.LabelSet{model.LabelName(lbls[i].Name): model.LabelValue(lbls[i].Value)}
 					}
 				}

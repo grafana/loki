@@ -8,7 +8,6 @@ import (
 
 type InstrumentedEntryHandler interface {
 	EntryHandler
-	RegisterLatencyMetric(labels model.LabelSet)
 	UnregisterLatencyMetric(labels model.LabelSet)
 }
 
