@@ -782,6 +782,8 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	}}, limits, nil)
 	require.NoError(t, err)
 
+	defer store.Stop()
+
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
 	chunksToBuildForTimeRanges := []timeRange{
 		{

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -76,7 +77,8 @@ type Shipper struct {
 	uploadsManager    *uploads.TableManager
 	downloadsManager  *downloads.TableManager
 
-	metrics *metrics
+	metrics  *metrics
+	stopOnce sync.Once
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
@@ -179,6 +181,10 @@ func (s *Shipper) getUploaderName() (string, error) {
 }
 
 func (s *Shipper) Stop() {
+	s.stopOnce.Do(s.stop)
+}
+
+func (s *Shipper) stop() {
 	if s.uploadsManager != nil {
 		s.uploadsManager.Stop()
 	}
