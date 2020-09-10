@@ -4,13 +4,12 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 type InstrumentedEntryHandler interface {
 	EntryHandler
-	RegisterLatencyMetric(labels labels.Labels)
-	UnregisterLatencyMetric(labels labels.Labels)
+	RegisterLatencyMetric(labels model.LabelSet)
+	UnregisterLatencyMetric(labels model.LabelSet)
 }
 
 // EntryHandler is something that can "handle" entries.

@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logentry/metric"
@@ -363,10 +362,10 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 	return nil
 }
 
-func (c *client) RegisterLatencyMetric(labels labels.Labels) {
+func (c *client) RegisterLatencyMetric(labels model.LabelSet) {
 
 }
 
-func (c *client) UnregisterLatencyMetric(labels labels.Labels) {
-
+func (c *client) UnregisterLatencyMetric(labels model.LabelSet) {
+	streamLag.Delete(labels)
 }
