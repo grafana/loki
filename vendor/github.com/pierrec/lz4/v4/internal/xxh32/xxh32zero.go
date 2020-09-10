@@ -51,7 +51,7 @@ func (xxh *XXHZero) Size() int {
 	return 4
 }
 
-// BlockSize gives the minimum number of bytes accepted by Write().
+// BlockSizeIndex gives the minimum number of bytes accepted by Write().
 func (xxh *XXHZero) BlockSize() int {
 	return 1
 }
@@ -79,8 +79,7 @@ func (xxh *XXHZero) Write(input []byte) (int, error) {
 	v1, v2, v3, v4 := xxh.v1, xxh.v2, xxh.v3, xxh.v4
 	if m > 0 {
 		// some data left from previous update
-		copy(xxh.buf[xxh.bufused:], input[:r])
-		xxh.bufused += len(input) - r
+		copy(xxh.buf[m:], input)
 
 		// fast rotl(13)
 		buf := xxh.buf[:16] // BCE hint.
@@ -89,7 +88,6 @@ func (xxh *XXHZero) Write(input []byte) (int, error) {
 		v3 = rol13(v3+binary.LittleEndian.Uint32(buf[8:])*prime2) * prime1
 		v4 = rol13(v4+binary.LittleEndian.Uint32(buf[12:])*prime2) * prime1
 		p = r
-		xxh.bufused = 0
 	}
 
 	for n := n - 16; p <= n; p += 16 {
@@ -101,8 +99,8 @@ func (xxh *XXHZero) Write(input []byte) (int, error) {
 	}
 	xxh.v1, xxh.v2, xxh.v3, xxh.v4 = v1, v2, v3, v4
 
-	copy(xxh.buf[xxh.bufused:], input[p:])
-	xxh.bufused += len(input) - p
+	copy(xxh.buf[:], input[p:])
+	xxh.bufused = len(input) - p
 
 	return n, nil
 }
@@ -180,18 +178,6 @@ func ChecksumZero(input []byte) uint32 {
 	h32 ^= h32 >> 16
 
 	return h32
-}
-
-// Uint32Zero hashes x with seed 0.
-func Uint32Zero(x uint32) uint32 {
-	h := prime5 + 4 + x*prime3
-	h = rol17(h) * prime4
-	h ^= h >> 15
-	h *= prime2
-	h ^= h >> 13
-	h *= prime3
-	h ^= h >> 16
-	return h
 }
 
 func rol1(u uint32) uint32 {
