@@ -135,21 +135,22 @@ type Loki struct {
 	moduleManager *modules.Manager
 	serviceMap    map[string]services.Service
 
-	server        *server.Server
-	ring          *ring.Ring
-	overrides     *validation.Overrides
-	distributor   *distributor.Distributor
-	ingester      *ingester.Ingester
-	querier       *querier.Querier
-	store         storage.Store
-	tableManager  *chunk.TableManager
-	frontend      *frontend.Frontend
-	ruler         *cortex_ruler.Ruler
-	RulerStorage  rules.RuleStore
-	stopper       queryrange.Stopper
-	runtimeConfig *runtimeconfig.Manager
-	memberlistKV  *memberlist.KVInitService
-	compactor     *compactor.Compactor
+	server          *server.Server
+	ring            *ring.Ring
+	overrides       *validation.Overrides
+	distributor     *distributor.Distributor
+	ingester        *ingester.Ingester
+	querier         *querier.Querier
+	ingesterQuerier *querier.IngesterQuerier
+	store           storage.Store
+	tableManager    *chunk.TableManager
+	frontend        *frontend.Frontend
+	ruler           *cortex_ruler.Ruler
+	RulerStorage    rules.RuleStore
+	stopper         queryrange.Stopper
+	runtimeConfig   *runtimeconfig.Manager
+	memberlistKV    *memberlist.KVInitService
+	compactor       *compactor.Compactor
 
 	httpAuthMiddleware middleware.Interface
 }
@@ -327,6 +328,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Store, t.initStore)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
+	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
@@ -336,17 +338,18 @@ func (t *Loki) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		Ring:          {RuntimeConfig, Server, MemberlistKV},
-		Overrides:     {RuntimeConfig},
-		Distributor:   {Ring, Server, Overrides},
-		Store:         {Overrides},
-		Ingester:      {Store, Server, MemberlistKV},
-		Querier:       {Store, Ring, Server},
-		QueryFrontend: {Server, Overrides},
-		Ruler:         {Ring, Server, Store, RulerStorage},
-		TableManager:  {Server},
-		Compactor:     {Server},
-		All:           {Querier, Ingester, Distributor, TableManager},
+		Ring:            {RuntimeConfig, Server, MemberlistKV},
+		Overrides:       {RuntimeConfig},
+		Distributor:     {Ring, Server, Overrides},
+		Store:           {Overrides},
+		Ingester:        {Store, Server, MemberlistKV},
+		Querier:         {Store, Ring, Server, IngesterQuerier},
+		QueryFrontend:   {Server, Overrides},
+		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier},
+		TableManager:    {Server},
+		Compactor:       {Server},
+		IngesterQuerier: {Ring},
+		All:             {Querier, Ingester, Distributor, TableManager},
 	}
 
 	for mod, targets := range deps {

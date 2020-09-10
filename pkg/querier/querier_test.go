@@ -8,6 +8,12 @@ import (
 	"testing"
 	"time"
 
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+
+	"github.com/grafana/loki/pkg/ingester/client"
+
+	"github.com/grafana/loki/pkg/storage"
+
 	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/prometheus/common/model"
@@ -28,6 +34,14 @@ const (
 	// Custom query timeout used in tests
 	queryTimeout = 12 * time.Second
 )
+
+func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
+	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory)
+	if err != nil {
+		return nil, err
+	}
+	return New(cfg, store, iq, limits)
+}
 
 func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	startTime := time.Now().Add(-1 * time.Minute)
@@ -210,7 +224,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 				newStoreMock(), limits)
 			require.NoError(t, err)
 
-			actualClients, err := q.tailDisconnectedIngesters(context.Background(), &req, testData.connectedIngestersAddr)
+			actualClients, err := q.ingesterQuerier.TailDisconnectedIngesters(context.Background(), &req, testData.connectedIngestersAddr)
 			require.NoError(t, err)
 
 			actualClientsAddr := make([]string, 0, len(actualClients))

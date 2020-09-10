@@ -49,21 +49,22 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring          string = "ring"
-	RuntimeConfig string = "runtime-config"
-	Overrides     string = "overrides"
-	Server        string = "server"
-	Distributor   string = "distributor"
-	Ingester      string = "ingester"
-	Querier       string = "querier"
-	QueryFrontend string = "query-frontend"
-	RulerStorage  string = "ruler-storage"
-	Ruler         string = "ruler"
-	Store         string = "store"
-	TableManager  string = "table-manager"
-	MemberlistKV  string = "memberlist-kv"
-	Compactor     string = "compactor"
-	All           string = "all"
+	Ring            string = "ring"
+	RuntimeConfig   string = "runtime-config"
+	Overrides       string = "overrides"
+	Server          string = "server"
+	Distributor     string = "distributor"
+	Ingester        string = "ingester"
+	Querier         string = "querier"
+	IngesterQuerier string = "ingester-querier"
+	QueryFrontend   string = "query-frontend"
+	RulerStorage    string = "ruler-storage"
+	Ruler           string = "ruler"
+	Store           string = "store"
+	TableManager    string = "table-manager"
+	MemberlistKV    string = "memberlist-kv"
+	Compactor       string = "compactor"
+	All             string = "all"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -159,7 +160,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.cfg.Querier.IngesterQueryStoreMaxLookback = t.cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
-	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
+	t.querier, err = querier.New(t.cfg.Querier, t.store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -289,6 +290,15 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}), nil
 }
 
+func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
+	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.cfg.IngesterClient, t.ring, t.cfg.Querier.ExtraQueryDelay)
+	if err != nil {
+		return nil, err
+	}
+
+	return services.NewIdleService(nil, nil), nil
+}
+
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
 	t.frontend, err = frontend.New(t.cfg.Frontend.Config, util.Logger, prometheus.DefaultRegisterer)
@@ -383,7 +393,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	t.cfg.Ruler.Ring.ListenPort = t.cfg.Server.GRPCListenPort
 	t.cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	q, err := querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
+	q, err := querier.New(t.cfg.Querier, t.store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
 	}
