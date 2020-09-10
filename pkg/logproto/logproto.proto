@@ -159,7 +159,6 @@ message GetChunkIDsRequest {
   string matchers = 1;
   google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
 }
 
 message GetChunkIDsResponse {

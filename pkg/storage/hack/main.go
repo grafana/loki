@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -42,33 +43,36 @@ func main() {
 }
 
 func getStore() (lstore.Store, error) {
-	store, err := lstore.NewStore(
-		lstore.Config{
-			Config: storage.Config{
-				BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-				FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
-			},
+	storeConfig := lstore.Config{
+		Config: storage.Config{
+			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+			FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},
+	}
+
+	chunkStore, err := storage.NewStore(
+		storeConfig.Config,
 		chunk.StoreConfig{},
-		lstore.SchemaConfig{
-			SchemaConfig: chunk.SchemaConfig{
-				Configs: []chunk.PeriodConfig{
-					{
-						From:       chunk.DayTime{Time: start},
-						IndexType:  "boltdb",
-						ObjectType: "filesystem",
-						Schema:     "v9",
-						IndexTables: chunk.PeriodicTableConfig{
-							Prefix: "index_",
-							Period: time.Hour * 168,
-						},
+		chunk.SchemaConfig{
+			Configs: []chunk.PeriodConfig{
+				{
+					From:       chunk.DayTime{Time: start},
+					IndexType:  "boltdb",
+					ObjectType: "filesystem",
+					Schema:     "v9",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
 					},
 				},
 			},
 		},
 		&validation.Overrides{},
 		prometheus.DefaultRegisterer,
+		nil,
+		cortex_util.Logger,
 	)
+	store, err := lstore.NewStore(storeConfig, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

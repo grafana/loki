@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -193,17 +194,6 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
 
-	// We want ingester to also query the store when using boltdb-shipper
-	pc := t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)]
-	if pc.IndexType == shipper.BoltDBShipperType {
-		t.cfg.Ingester.QueryStore = true
-		mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
-		if err != nil {
-			return nil, err
-		}
-		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
-	}
-
 	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
@@ -258,6 +248,18 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
+	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
+	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
+	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
+		t.cfg.ChunkStoreConfig.DisableIndexDeduplication = true
+		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
+	}
+
+	chunkStore, err := cortex_storage.NewStore(t.cfg.StorageConfig.Config, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util.Logger)
+	if err != nil {
+		return
+	}
+
 	if t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)].IndexType == shipper.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
@@ -267,19 +269,26 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		case Querier:
 			// We do not want query to do any updates to index
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
+			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
+			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier)
 		default:
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadWrite
+			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
+			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
+			// ToDo: See if we can avoid doing this when not running loki in clustered mode.
+			pc := t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)]
+			if pc.IndexType == shipper.BoltDBShipperType {
+				t.cfg.Ingester.QueryStore = true
+				mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
+				if err != nil {
+					return nil, err
+				}
+				t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
+			}
 		}
 	}
 
-	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
-	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
-	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
-		t.cfg.ChunkStoreConfig.DisableIndexDeduplication = true
-		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
-	}
-
-	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
+	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}

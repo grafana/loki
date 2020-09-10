@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
@@ -238,7 +240,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 	}
 
 	if len(ingesters) == 0 {
-		return nil, errors.New("no active ingester found")
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found")
 	}
 
 	responses, err := q.forGivenIngesters(ctx, replicationSet, func(querierClient logproto.QuerierClient) (interface{}, error) {

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cespare/xxhash/v2"
@@ -188,26 +190,38 @@ func getLocalStore() Store {
 	if err != nil {
 		panic(err)
 	}
-	store, err := NewStore(Config{
+
+	storeConfig := Config{
 		Config: storage.Config{
 			BoltDBConfig: cortex_local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
 			FSConfig:     cortex_local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},
 		MaxChunkBatchSize: 10,
-	}, chunk.StoreConfig{}, SchemaConfig{chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
-			{
-				From:       chunk.DayTime{Time: start},
-				IndexType:  "boltdb",
-				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: chunk.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+	}
+
+	chunkStore, err := storage.NewStore(
+		storeConfig.Config,
+		chunk.StoreConfig{},
+		chunk.SchemaConfig{
+			Configs: []chunk.PeriodConfig{
+				{
+					From:       chunk.DayTime{Time: start},
+					IndexType:  "boltdb",
+					ObjectType: "filesystem",
+					Schema:     "v9",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					},
 				},
 			},
-		},
-	}}, limits, nil)
+		}, limits, nil, nil, cortex_util.Logger)
+
+	if err != nil {
+		panic(err)
+	}
+
+	store, err := NewStore(storeConfig, chunkStore, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -755,31 +769,41 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 	RegisterCustomIndexClients(&config, nil)
 
-	store, err := NewStore(config, chunk.StoreConfig{}, SchemaConfig{chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
-			{
-				From:       chunk.DayTime{Time: timeToModelTime(firstStoreDate)},
-				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: chunk.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+	chunkStore, err := storage.NewStore(
+		config.Config,
+		chunk.StoreConfig{},
+		chunk.SchemaConfig{
+			Configs: []chunk.PeriodConfig{
+				{
+					From:       chunk.DayTime{Time: timeToModelTime(firstStoreDate)},
+					IndexType:  "boltdb-shipper",
+					ObjectType: "filesystem",
+					Schema:     "v9",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					},
 				},
-			},
-			{
-				From:       chunk.DayTime{Time: timeToModelTime(secondStoreDate)},
-				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
-				Schema:     "v11",
-				IndexTables: chunk.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+				{
+					From:       chunk.DayTime{Time: timeToModelTime(secondStoreDate)},
+					IndexType:  "boltdb-shipper",
+					ObjectType: "filesystem",
+					Schema:     "v11",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					},
+					RowShards: 2,
 				},
-				RowShards: 2,
 			},
 		},
-	}}, limits, nil)
+		limits,
+		nil,
+		nil,
+		cortex_util.Logger,
+	)
+
+	store, err := NewStore(config, chunkStore, nil)
 	require.NoError(t, err)
 
 	defer store.Stop()
