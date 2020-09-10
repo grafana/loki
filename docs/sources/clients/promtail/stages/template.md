@@ -99,6 +99,18 @@ function](https://golang.org/pkg/strings/#Replace). When the template executes,
 the entire contents of the `app` key from the extracted map will have at most
 `1` instance of `loki` changed to `blokey`.
 
+A special key named `Entry` can be used to reference the current line, this can be useful when you need to append/prepend the log line.
+
+```yaml
+- template:
+    source: message
+    template: '{{.app }}: {{ .Entry }}'
+- output:
+    source: message
+```
+
+The snippet above will for instance prepend the log line with the application name.
+
 ## Supported Functions
 
 ### ToLower & ToUpper
