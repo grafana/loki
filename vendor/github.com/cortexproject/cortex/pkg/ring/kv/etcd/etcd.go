@@ -2,12 +2,15 @@ package etcd
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/pkg/transport"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -16,9 +19,14 @@ import (
 
 // Config for a new etcd.Client.
 type Config struct {
-	Endpoints   []string      `yaml:"endpoints"`
-	DialTimeout time.Duration `yaml:"dial_timeout"`
-	MaxRetries  int           `yaml:"max_retries"`
+	Endpoints          []string      `yaml:"endpoints"`
+	DialTimeout        time.Duration `yaml:"dial_timeout"`
+	MaxRetries         int           `yaml:"max_retries"`
+	EnableTLS          bool          `yaml:"tls_enabled"`
+	CertFile           string        `yaml:"tls_cert_path"`
+	KeyFile            string        `yaml:"tls_key_path"`
+	TrustedCAFile      string        `yaml:"tls_ca_path"`
+	InsecureSkipVerify bool          `yaml:"tls_insecure_skip_verify"`
 }
 
 // Client implements ring.KVClient for etcd.
@@ -31,13 +39,36 @@ type Client struct {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.Endpoints = []string{}
-	f.Var((*flagext.Strings)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
+	f.Var((*flagext.StringSlice)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
+	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS.")
+	f.StringVar(&cfg.CertFile, prefix+"etcd.tls-cert-path", "", "The TLS certificate file path.")
+	f.StringVar(&cfg.KeyFile, prefix+"etcd.tls-key-path", "", "The TLS private key file path.")
+	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.tls-ca-path", "", "The trusted CA file path.")
+	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.tls-insecure-skip-verify", false, "Skip validating server certificate.")
+}
+
+// GetTLS sets the TLS config field with certs
+func (cfg *Config) GetTLS() (*tls.Config, error) {
+	if !cfg.EnableTLS {
+		return nil, nil
+	}
+	tlsInfo := &transport.TLSInfo{
+		CertFile:           cfg.CertFile,
+		KeyFile:            cfg.KeyFile,
+		TrustedCAFile:      cfg.TrustedCAFile,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+	}
+	return tlsInfo.ClientConfig()
 }
 
 // New makes a new Client.
 func New(cfg Config, codec codec.Codec) (*Client, error) {
+	tlsConfig, err := cfg.GetTLS()
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to initialise TLS configuration for etcd")
+	}
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
@@ -58,6 +89,7 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 		DialKeepAliveTime:    10 * time.Second,
 		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
 		PermitWithoutStream:  true,
+		TLS:                  tlsConfig,
 	})
 	if err != nil {
 		return nil, err

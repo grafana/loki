@@ -36,7 +36,7 @@ var (
 		Namespace: "cortex",
 		Name:      "chunk_store_index_lookups_per_query",
 		Help:      "Distribution of #index lookups per query.",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
 	preIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
@@ -421,6 +421,7 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
+	defer log.Finish()
 	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again

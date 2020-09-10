@@ -162,8 +162,7 @@ func (t *FileTarget) run() {
 	defer func() {
 		helpers.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
-			helpers.LogError("updating tailer last position", v.markPositionAndSize)
-			helpers.LogError("stopping tailer", v.stop)
+			v.stop()
 		}
 		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
 		close(t.done)
@@ -245,12 +244,16 @@ func (t *FileTarget) sync() error {
 	// fsnotify.Watcher doesn't allow us to see what is currently being watched so we have to track it ourselves.
 	t.watches = dirs
 
+	// Check if any running tailers have stopped because of errors and remove them from the running list
+	// (They will be restarted in startTailing)
+	t.pruneStoppedTailers()
+
 	// Start tailing all of the matched files if not already doing so.
 	t.startTailing(matches)
 
 	// Stop tailing any files which no longer exist
 	toStopTailing := toStopTailing(matches, t.tails)
-	t.stopTailing(toStopTailing)
+	t.stopTailingAndRemovePosition(toStopTailing)
 
 	return nil
 }
@@ -304,13 +307,29 @@ func (t *FileTarget) startTailing(ps []string) {
 	}
 }
 
-func (t *FileTarget) stopTailing(ps []string) {
+// stopTailingAndRemovePositions will stop the tailer and remove the positions entry.
+// Call this when a file no longer exists and you want to remove all traces of it.
+func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 	for _, p := range ps {
 		if tailer, ok := t.tails[p]; ok {
-			helpers.LogError("stopping tailer", tailer.stop)
-			tailer.cleanup()
+			tailer.stop()
+			t.positions.Remove(tailer.path)
 			delete(t.tails, p)
 		}
+	}
+}
+
+// pruneStoppedTailers removes any tailers which have stopped running from
+// the list of active tailers. This allows them to be restarted if there were errors.
+func (t *FileTarget) pruneStoppedTailers() {
+	toRemove := make([]string, 0, len(t.tails))
+	for k, t := range t.tails {
+		if !t.isRunning() {
+			toRemove = append(toRemove, k)
+		}
+	}
+	for _, tr := range toRemove {
+		delete(t.tails, tr)
 	}
 }
 

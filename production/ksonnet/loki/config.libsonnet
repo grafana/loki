@@ -41,6 +41,8 @@
     table_prefix: $._config.namespace,
     index_period_hours: 168,  // 1 week
 
+    ruler_enabled: false,
+
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
     bigtable_project: error 'must specify bigtable project',
@@ -308,6 +310,29 @@
           },
         },
       },
+
+      ruler: if $._config.ruler_enabled then {
+        rule_path: '/tmp/rules',
+        enable_api: true,
+        alertmanager_url: 'http://alertmanager.%s.svc.cluster.local/alertmanager' % $._config.namespace,
+        enable_sharding: true,
+        enable_alertmanager_v2: true,
+        ring: {
+          kvstore: {
+            store: 'consul',
+            consul: {
+              host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
+            },
+          },
+        },
+        storage+: {
+          type: 'gcs',
+          gcs+: {
+            bucket_name: '%(cluster)s-%(namespace)s-ruler' % $._config,
+          },
+        },
+      } else {},
+
     },
   },
 

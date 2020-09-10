@@ -29,12 +29,6 @@ import (
 const (
 	originCache  = "cache"
 	originBucket = "bucket"
-
-	opGet        = "get"
-	opGetRange   = "getrange"
-	opIter       = "iter"
-	opExists     = "exists"
-	opAttributes = "attributes"
 )
 
 var errObjNotFound = errors.Errorf("object not found")
@@ -97,7 +91,7 @@ func NewCachingBucket(b objstore.Bucket, cfg *CachingBucketConfig, logger log.Lo
 			cb.operationRequests.WithLabelValues(op, n)
 			cb.operationHits.WithLabelValues(op, n)
 
-			if op == opGetRange {
+			if op == objstore.OpGetRange {
 				cb.requestedGetRangeBytes.WithLabelValues(n)
 				cb.fetchedGetRangeBytes.WithLabelValues(originCache, n)
 				cb.fetchedGetRangeBytes.WithLabelValues(originBucket, n)
@@ -135,14 +129,14 @@ func (cb *CachingBucket) Iter(ctx context.Context, dir string, f func(string) er
 		return cb.Bucket.Iter(ctx, dir, f)
 	}
 
-	cb.operationRequests.WithLabelValues(opIter, cfgName).Inc()
+	cb.operationRequests.WithLabelValues(objstore.OpIter, cfgName).Inc()
 
 	key := cachingKeyIter(dir)
 	data := cfg.cache.Fetch(ctx, []string{key})
 	if data[key] != nil {
 		list, err := cfg.codec.Decode(data[key])
 		if err == nil {
-			cb.operationHits.WithLabelValues(opIter, cfgName).Inc()
+			cb.operationHits.WithLabelValues(objstore.OpIter, cfgName).Inc()
 			for _, n := range list {
 				if err := f(n); err != nil {
 					return err
@@ -180,7 +174,7 @@ func (cb *CachingBucket) Exists(ctx context.Context, name string) (bool, error) 
 		return cb.Bucket.Exists(ctx, name)
 	}
 
-	cb.operationRequests.WithLabelValues(opExists, cfgName).Inc()
+	cb.operationRequests.WithLabelValues(objstore.OpExists, cfgName).Inc()
 
 	key := cachingKeyExists(name)
 	hits := cfg.cache.Fetch(ctx, []string{key})
@@ -188,7 +182,7 @@ func (cb *CachingBucket) Exists(ctx context.Context, name string) (bool, error) 
 	if ex := hits[key]; ex != nil {
 		exists, err := strconv.ParseBool(string(ex))
 		if err == nil {
-			cb.operationHits.WithLabelValues(opExists, cfgName).Inc()
+			cb.operationHits.WithLabelValues(objstore.OpExists, cfgName).Inc()
 			return exists, nil
 		}
 		level.Warn(cb.logger).Log("msg", "unexpected cached 'exists' value", "key", key, "val", string(ex))
@@ -222,21 +216,21 @@ func (cb *CachingBucket) Get(ctx context.Context, name string) (io.ReadCloser, e
 		return cb.Bucket.Get(ctx, name)
 	}
 
-	cb.operationRequests.WithLabelValues(opGet, cfgName).Inc()
+	cb.operationRequests.WithLabelValues(objstore.OpGet, cfgName).Inc()
 
 	contentKey := cachingKeyContent(name)
 	existsKey := cachingKeyExists(name)
 
 	hits := cfg.cache.Fetch(ctx, []string{contentKey, existsKey})
 	if hits[contentKey] != nil {
-		cb.operationHits.WithLabelValues(opGet, cfgName).Inc()
+		cb.operationHits.WithLabelValues(objstore.OpGet, cfgName).Inc()
 		return ioutil.NopCloser(bytes.NewReader(hits[contentKey])), nil
 	}
 
 	// If we know that file doesn't exist, we can return that. Useful for deletion marks.
 	if ex := hits[existsKey]; ex != nil {
 		if exists, err := strconv.ParseBool(string(ex)); err == nil && !exists {
-			cb.operationHits.WithLabelValues(opGet, cfgName).Inc()
+			cb.operationHits.WithLabelValues(objstore.OpGet, cfgName).Inc()
 			return nil, errObjNotFound
 		}
 	}
@@ -294,14 +288,14 @@ func (cb *CachingBucket) Attributes(ctx context.Context, name string) (objstore.
 func (cb *CachingBucket) cachedAttributes(ctx context.Context, name string, cfgName string, cache cache.Cache, ttl time.Duration) (objstore.ObjectAttributes, error) {
 	key := cachingKeyAttributes(name)
 
-	cb.operationRequests.WithLabelValues(opAttributes, cfgName).Inc()
+	cb.operationRequests.WithLabelValues(objstore.OpAttributes, cfgName).Inc()
 
 	hits := cache.Fetch(ctx, []string{key})
 	if raw, ok := hits[key]; ok {
 		var attrs objstore.ObjectAttributes
 		err := json.Unmarshal(raw, &attrs)
 		if err == nil {
-			cb.operationHits.WithLabelValues(opAttributes, cfgName).Inc()
+			cb.operationHits.WithLabelValues(objstore.OpAttributes, cfgName).Inc()
 			return attrs, nil
 		}
 
@@ -323,7 +317,7 @@ func (cb *CachingBucket) cachedAttributes(ctx context.Context, name string, cfgN
 }
 
 func (cb *CachingBucket) cachedGetRange(ctx context.Context, name string, offset, length int64, cfgName string, cfg *getRangeConfig) (io.ReadCloser, error) {
-	cb.operationRequests.WithLabelValues(opGetRange, cfgName).Inc()
+	cb.operationRequests.WithLabelValues(objstore.OpGetRange, cfgName).Inc()
 	cb.requestedGetRangeBytes.WithLabelValues(cfgName).Add(float64(length))
 
 	attrs, err := cb.cachedAttributes(ctx, name, cfgName, cfg.cache, cfg.attributesTTL)
@@ -376,7 +370,7 @@ func (cb *CachingBucket) cachedGetRange(ctx context.Context, name string, offset
 		totalCachedBytes += int64(len(b))
 	}
 	cb.fetchedGetRangeBytes.WithLabelValues(originCache, cfgName).Add(float64(totalCachedBytes))
-	cb.operationHits.WithLabelValues(opGetRange, cfgName).Add(float64(len(hits)) / float64(len(keys)))
+	cb.operationHits.WithLabelValues(objstore.OpGetRange, cfgName).Add(float64(len(hits)) / float64(len(keys)))
 
 	if len(hits) < len(keys) {
 		if hits == nil {

@@ -41,6 +41,28 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.panel('Latency') +
           utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.re('job', '($namespace)/ingester'), utils.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[utils.selector.re('cluster', '$cluster')])
         )
+      )
+      .addRow(
+        g.row('BigTable')
+        .addPanel(
+          g.panel('QPS') +
+          g.qpsPanel('cortex_bigtable_request_duration_seconds_count{cluster=~"$cluster", job=~"($namespace)/ingester", operation="/google.bigtable.v2.Bigtable/MutateRows"}')
+        )
+        .addPanel(
+          g.panel('Latency') +
+          utils.latencyRecordingRulePanel('cortex_bigtable_request_duration_seconds', [utils.selector.re('cluster', '$cluster'), utils.selector.re('job', '($namespace)/ingester')] + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')])
+        )
+      )
+      .addRow(
+        g.row('BoltDB Shipper')
+        .addPanel(
+          g.panel('QPS') +
+          g.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{cluster=~"$cluster", job=~"($namespace)/ingester", operation="WRITE"}')
+        )
+        .addPanel(
+          g.panel('Latency') +
+          g.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{cluster=~"$cluster", job=~"($namespace)/ingester", operation="WRITE"}')
+        )
       ),
 
     local http_routes = 'loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values',
@@ -92,6 +114,28 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addPanel(
           g.panel('Latency') +
           utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/ingester'), utils.selector.re('route', grpc_routes)], extra_selectors=[utils.selector.eq('cluster', '$cluster')], sum_by=['route'])
+        )
+      )
+      .addRow(
+        g.row('BigTable')
+        .addPanel(
+          g.panel('QPS') +
+          g.qpsPanel('cortex_bigtable_request_duration_seconds_count{cluster=~"$cluster", job=~"($namespace)/querier", operation="/google.bigtable.v2.Bigtable/ReadRows"}')
+        )
+        .addPanel(
+          g.panel('Latency') +
+          utils.latencyRecordingRulePanel('cortex_bigtable_request_duration_seconds', [utils.selector.re('cluster', '$cluster'), utils.selector.re('job', '($namespace)/querier')] + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')])
+        )
+      )
+      .addRow(
+        g.row('BoltDB Shipper')
+        .addPanel(
+          g.panel('QPS') +
+          g.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{cluster=~"$cluster", job=~"($namespace)/querier", operation="QUERY"}')
+        )
+        .addPanel(
+          g.panel('Latency') +
+          g.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{cluster=~"$cluster", job=~"($namespace)/querier", operation="QUERY"}')
         )
       ),
 

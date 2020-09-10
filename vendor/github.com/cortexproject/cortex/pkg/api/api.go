@@ -65,17 +65,29 @@ type API struct {
 	authMiddleware middleware.Interface
 	server         *server.Server
 	logger         log.Logger
+	sourceIPs      *middleware.SourceIPExtractor
 }
 
-func New(cfg Config, s *server.Server, logger log.Logger) (*API, error) {
+func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
 	// Ensure the encoded path is used. Required for the rules API
 	s.HTTP.UseEncodedPath()
+
+	var sourceIPs *middleware.SourceIPExtractor
+	if serverCfg.LogSourceIPs {
+		var err error
+		sourceIPs, err = middleware.NewSourceIPs(serverCfg.LogSourceIPsHeader, serverCfg.LogSourceIPsRegex)
+		if err != nil {
+			// This should have already been caught in the Server creation
+			return nil, err
+		}
+	}
 
 	api := &API{
 		cfg:            cfg,
 		authMiddleware: cfg.HTTPAuthMiddleware,
 		server:         s,
 		logger:         logger,
+		sourceIPs:      sourceIPs,
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
@@ -161,12 +173,12 @@ func (a *API) RegisterAPI(cfg interface{}) {
 
 // RegisterDistributor registers the endpoints associated with the distributor.
 func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config) {
-	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, d.Push), true)
+	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true)
 	a.RegisterRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false)
 
 	// Legacy Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig, d.Push), true)
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true)
 	a.RegisterRoute("/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
 	a.RegisterRoute("/ha-tracker", d.HATracker, false)
 }
@@ -177,12 +189,12 @@ func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Conf
 
 	a.RegisterRoute("/ingester/flush", http.HandlerFunc(i.FlushHandler), false)
 	a.RegisterRoute("/ingester/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
-	a.RegisterRoute("/ingester/push", push.Handler(pushConfig, i.Push), true) // For testing and debugging.
+	a.RegisterRoute("/ingester/push", push.Handler(pushConfig, a.sourceIPs, i.Push), true) // For testing and debugging.
 
 	// Legacy Routes
 	a.RegisterRoute("/flush", http.HandlerFunc(i.FlushHandler), false)
 	a.RegisterRoute("/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
-	a.RegisterRoute("/push", push.Handler(pushConfig, i.Push), true) // For testing and debugging.
+	a.RegisterRoute("/push", push.Handler(pushConfig, a.sourceIPs, i.Push), true) // For testing and debugging.
 }
 
 // RegisterPurger registers the endpoints associated with the Purger/DeleteStore. They do not exactly
@@ -266,6 +278,9 @@ func (a *API) RegisterQuerier(
 	registerRoutesExternally bool,
 	tombstonesLoader *purger.TombstonesLoader,
 	querierRequestDuration *prometheus.HistogramVec,
+	receivedMessageSize *prometheus.HistogramVec,
+	sentMessageSize *prometheus.HistogramVec,
+	inflightRequests *prometheus.GaugeVec,
 ) http.Handler {
 	api := v1.NewAPI(
 		engine,
@@ -305,8 +320,11 @@ func (a *API) RegisterQuerier(
 	// Use a separate metric for the querier in order to differentiate requests from the query-frontend when
 	// running Cortex as a single binary.
 	inst := middleware.Instrument{
-		Duration:     querierRequestDuration,
-		RouteMatcher: router,
+		RouteMatcher:     router,
+		Duration:         querierRequestDuration,
+		RequestBodySize:  receivedMessageSize,
+		ResponseBodySize: sentMessageSize,
+		InflightRequests: inflightRequests,
 	}
 
 	promRouter := route.New().WithPrefix(a.cfg.ServerPrefix + a.cfg.PrometheusHTTPPrefix + "/api/v1")

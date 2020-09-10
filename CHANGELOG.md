@@ -1,3 +1,19 @@
+## 1.6.1 (2020-08-24)
+
+This is a small release and only contains two fixes for Promtail:
+
+* [2542](https://github.com/grafana/loki/pull/2542) **slim-bean**: Promtail: implement shutdown for the no-op server
+* [2532](https://github.com/grafana/loki/pull/2532) **slim-bean**: Promtail: Restart the tailer if we fail to read and upate current position
+
+The first only applies if you are running Promtail with both `--stdin` and `--server.disabled=true` flags.
+
+The second is a minor rework to how Promtail handles a very specific error when attempting to read the size of a file and failing to do so.
+
+Upgrading Promtail from 1.6.0 to 1.6.1 is only necessary if you have logs full of `msg="error getting tail position and/or size"`, 
+the code changed in this release has been unchanged for a long time and we suspect very few people are seeing this issue.
+
+No changes to any other components (Loki, Logcli, etc) are included in this release. 
+
 ## 1.6.0 (2020-08-13)
 
 It's the second thursday of the eighth month of the year which means it's time for another Loki Release!!

@@ -21,7 +21,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -207,7 +206,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 	value := decoded.Data.Result
 	ret := 0.0
 	switch value.Type() {
-	case parser.ValueTypeVector:
+	case loghttp.ResultTypeVector:
 		samples := value.(loghttp.Vector)
 		if len(samples) > 1 {
 			return 0, fmt.Errorf("expected only a single result in the metric test query vector, instead received %v", len(samples))

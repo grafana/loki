@@ -36,15 +36,6 @@
         }
       },
       "version": "master"
-    },
-    {
-      "source": {
-        "git": {
-          "remote": "https://github.com/jsonnet-libs/k8s-alpha.git",
-          "subdir": "1.14"
-        }
-      },
-      "version": "master"
     }
   ],
   "legacyImports": true

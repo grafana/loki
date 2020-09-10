@@ -28,6 +28,11 @@ type QueryParams interface {
 	GetShards() []string
 }
 
+// implicit holds default implementations
+type implicit struct{}
+
+func (implicit) logQLExpr() {}
+
 // SelectParams specifies parameters passed to data selections.
 type SelectLogParams struct {
 	*logproto.QueryRequest
@@ -75,6 +80,7 @@ type LogSelectorExpr interface {
 
 type matchersExpr struct {
 	matchers []*labels.Matcher
+	implicit
 }
 
 func newMatcherExpr(matchers []*labels.Matcher) LogSelectorExpr {
@@ -102,13 +108,11 @@ func (e *matchersExpr) Filter() (LineFilter, error) {
 	return nil, nil
 }
 
-// impl Expr
-func (e *matchersExpr) logQLExpr() {}
-
 type filterExpr struct {
 	left  LogSelectorExpr
 	ty    labels.MatchType
 	match string
+	implicit
 }
 
 // NewFilterExpr wraps an existing Expr with a next filter expression.
@@ -162,9 +166,6 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 
 	return f, nil
 }
-
-// impl Expr
-func (e *filterExpr) logQLExpr() {}
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
@@ -275,6 +276,7 @@ type SampleExpr interface {
 type rangeAggregationExpr struct {
 	left      *logRange
 	operation string
+	implicit
 }
 
 func newRangeAggregationExpr(left *logRange, operation string) SampleExpr {
@@ -287,9 +289,6 @@ func newRangeAggregationExpr(left *logRange, operation string) SampleExpr {
 func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.left
 }
-
-// impl Expr
-func (e *rangeAggregationExpr) logQLExpr() {}
 
 // impls Stringer
 func (e *rangeAggregationExpr) String() string {
@@ -330,6 +329,7 @@ type vectorAggregationExpr struct {
 	grouping  *grouping
 	params    int
 	operation string
+	implicit
 }
 
 func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *grouping, params *string) SampleExpr {
@@ -367,9 +367,6 @@ func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 func (e *vectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	return e.left.Extractor()
 }
-
-// impl Expr
-func (e *vectorAggregationExpr) logQLExpr() {}
 
 func (e *vectorAggregationExpr) String() string {
 	var params []string
@@ -479,6 +476,7 @@ func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
 
 type literalExpr struct {
 	value float64
+	implicit
 }
 
 func mustNewLiteralExpr(s string, invert bool) *literalExpr {
@@ -495,8 +493,6 @@ func mustNewLiteralExpr(s string, invert bool) *literalExpr {
 		value: n,
 	}
 }
-
-func (e *literalExpr) logQLExpr() {}
 
 func (e *literalExpr) String() string {
 	return fmt.Sprintf("%f", e.value)

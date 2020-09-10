@@ -17,6 +17,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
+
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
@@ -182,8 +184,14 @@ func (t *Table) Close() {
 	defer t.dbsMtx.Unlock()
 
 	for name, db := range t.dbs {
+		dbPath := db.boltdb.Path()
+
 		if err := db.boltdb.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", fmt.Errorf("failed to close file %s for table %s", name, t.name))
+			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to close file %s for table %s", name, t.name), "err", err)
+		}
+
+		if err := os.Remove(dbPath); err != nil {
+			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to remove file %s for table %s", name, t.name), "err", err)
 		}
 	}
 
@@ -339,7 +347,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	// download the file temporarily with some other name to allow boltdb client to close the existing file first if it exists
 	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", dbName, "temp"))
 
-	err = t.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
+	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, tempFilePath)
 	if err != nil {
 		return err
 	}
@@ -371,34 +379,6 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	t.dbs[dbName] = df
 
 	return nil
-}
-
-// getFileFromStorage downloads a file from storage to given location.
-func (t *Table) getFileFromStorage(ctx context.Context, objectKey, destination string) error {
-	readCloser, err := t.storageClient.GetObject(ctx, objectKey)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := readCloser.Close(); err != nil {
-			level.Error(util.Logger)
-		}
-	}()
-
-	f, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-
-	_, err = io.Copy(f, readCloser)
-	if err != nil {
-		return err
-	}
-
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
-
-	return f.Sync()
 }
 
 func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
@@ -453,7 +433,7 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 				}
 
 				filePath := path.Join(folderPathForTable, dbName)
-				err = t.getFileFromStorage(ctx, object.Key, filePath)
+				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath)
 				if err != nil {
 					break
 				}

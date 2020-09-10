@@ -56,18 +56,22 @@ var (
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
 )
 
-// BlocksStorageConfig holds the config information for the blocks storage.
-//nolint:golint
-type BlocksStorageConfig struct {
-	Backend     string            `yaml:"backend"`
-	BucketStore BucketStoreConfig `yaml:"bucket_store" doc:"description=This configures how the store-gateway synchronizes blocks stored in the bucket."`
-	TSDB        TSDBConfig        `yaml:"tsdb"`
-
+// BucketConfig holds configuration for accessing long-term storage.
+type BucketConfig struct {
+	Backend string `yaml:"backend"`
 	// Backends
 	S3         s3.Config         `yaml:"s3"`
 	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
+}
+
+// BlocksStorageConfig holds the config information for the blocks storage.
+//nolint:golint
+type BlocksStorageConfig struct {
+	Bucket      BucketConfig      `yaml:",inline"`
+	BucketStore BucketStoreConfig `yaml:"bucket_store" doc:"description=This configures how the store-gateway synchronizes blocks stored in the bucket."`
+	TSDB        TSDBConfig        `yaml:"tsdb"`
 }
 
 // DurationList is the block ranges for a tsdb
@@ -107,22 +111,35 @@ func (d *DurationList) ToMilliseconds() []int64 {
 	return values
 }
 
-// RegisterFlags registers the TSDB flags
-func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
+// RegisterFlags registers the TSDB Backend
+func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 	cfg.GCS.RegisterFlags(f)
 	cfg.Azure.RegisterFlags(f)
-	cfg.BucketStore.RegisterFlags(f)
 	cfg.Filesystem.RegisterFlags(f)
-	cfg.TSDB.RegisterFlags(f)
 
 	f.StringVar(&cfg.Backend, "experimental.blocks-storage.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
 }
 
-// Validate the config.
-func (cfg *BlocksStorageConfig) Validate() error {
+// RegisterFlags registers the TSDB flags
+func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.Bucket.RegisterFlags(f)
+	cfg.BucketStore.RegisterFlags(f)
+	cfg.TSDB.RegisterFlags(f)
+}
+
+func (cfg *BucketConfig) Validate() error {
 	if !util.StringsContain(supportedBackends, cfg.Backend) {
 		return errUnsupportedStorageBackend
+	}
+
+	return nil
+}
+
+// Validate the config.
+func (cfg *BlocksStorageConfig) Validate() error {
+	if err := cfg.Bucket.Validate(); err != nil {
+		return err
 	}
 
 	if err := cfg.TSDB.Validate(); err != nil {
@@ -172,7 +189,7 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeadCompactionIdleTimeout, "experimental.blocks-storage.tsdb.head-compaction-idle-timeout", 1*time.Hour, "If TSDB head is idle for this duration, it is compacted. 0 means disabled.")
 	f.IntVar(&cfg.StripeSize, "experimental.blocks-storage.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
 	f.BoolVar(&cfg.WALCompressionEnabled, "experimental.blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
-	f.BoolVar(&cfg.FlushBlocksOnShutdown, "experimental.blocks-storage.tsdb.flush-blocks-on-shutdown", false, "If true, and transfer of blocks on shutdown fails or is disabled, incomplete blocks are flushed to storage instead. If false, incomplete blocks will be reused after restart, and uploaded when finished.")
+	f.BoolVar(&cfg.FlushBlocksOnShutdown, "experimental.blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
 }
 
 // Validate the config.

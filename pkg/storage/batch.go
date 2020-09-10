@@ -11,6 +11,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -21,6 +23,55 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
+
+type ChunkMetrics struct {
+	refs    *prometheus.CounterVec
+	series  *prometheus.CounterVec
+	chunks  *prometheus.CounterVec
+	batches *prometheus.HistogramVec
+}
+
+const (
+	statusDiscarded = "discarded"
+	statusMatched   = "matched"
+)
+
+func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
+	buckets := 5
+	if maxBatchSize < buckets {
+		maxBatchSize = buckets
+	}
+
+	return &ChunkMetrics{
+		refs: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "index",
+			Name:      "chunk_refs_total",
+			Help:      "Number of chunks refs downloaded, partitioned by whether they intersect the query bounds.",
+		}, []string{"status"}),
+		series: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "store",
+			Name:      "series_total",
+			Help:      "Number of series referenced by a query, partitioned by whether they satisfy matchers.",
+		}, []string{"status"}),
+		chunks: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "store",
+			Name:      "chunks_downloaded_total",
+			Help:      "Number of chunks referenced or downloaded, partitioned by if they satisfy matchers.",
+		}, []string{"status"}),
+		batches: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "store",
+			Name:      "chunks_per_batch",
+			Help:      "The chunk batch size, partitioned by if they satisfy matchers.",
+
+			// split buckets evenly across 0->maxBatchSize
+			Buckets: prometheus.LinearBuckets(0, float64(maxBatchSize/buckets), buckets+1), // increment buckets by one to ensure upper bound bucket exists.
+		}, []string{"status"}),
+	}
+}
 
 type genericIterator interface {
 	Next() bool
@@ -297,6 +348,7 @@ type logBatchIterator struct {
 	*batchChunkIterator
 
 	ctx      context.Context
+	metrics  *ChunkMetrics
 	matchers []*labels.Matcher
 	filter   logql.LineFilter
 	labels   labelCache
@@ -304,6 +356,7 @@ type logBatchIterator struct {
 
 func newLogBatchIterator(
 	ctx context.Context,
+	metrics *ChunkMetrics,
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
@@ -319,6 +372,7 @@ func newLogBatchIterator(
 		labels:   map[model.Fingerprint]string{},
 		matchers: matchers,
 		filter:   filter,
+		metrics:  metrics,
 		ctx:      ctx,
 	}
 
@@ -336,7 +390,7 @@ func (it *logBatchIterator) Entry() logproto.Entry {
 
 // newChunksIterator creates an iterator over a set of lazychunks.
 func (it *logBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
-	chksBySeries, err := fetchChunkBySeries(it.ctx, chunks, it.matchers)
+	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, chunks, it.matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -396,6 +450,7 @@ type sampleBatchIterator struct {
 	*batchChunkIterator
 
 	ctx       context.Context
+	metrics   *ChunkMetrics
 	matchers  []*labels.Matcher
 	filter    logql.LineFilter
 	extractor logql.SampleExtractor
@@ -404,6 +459,7 @@ type sampleBatchIterator struct {
 
 func newSampleBatchIterator(
 	ctx context.Context,
+	metrics *ChunkMetrics,
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
@@ -421,6 +477,7 @@ func newSampleBatchIterator(
 		matchers:  matchers,
 		filter:    filter,
 		extractor: extractor,
+		metrics:   metrics,
 		ctx:       ctx,
 	}
 	batch := newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, samplebatch.newChunksIterator)
@@ -438,7 +495,7 @@ func (it *sampleBatchIterator) Sample() logproto.Sample {
 
 // newChunksIterator creates an iterator over a set of lazychunks.
 func (it *sampleBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
-	chksBySeries, err := fetchChunkBySeries(it.ctx, chunks, it.matchers)
+	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, chunks, it.matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +556,7 @@ func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels
 	return matchers
 }
 
-func fetchChunkBySeries(ctx context.Context, chunks []*LazyChunk, matchers []*labels.Matcher) (map[model.Fingerprint][][]*LazyChunk, error) {
+func fetchChunkBySeries(ctx context.Context, metrics *ChunkMetrics, chunks []*LazyChunk, matchers []*labels.Matcher) (map[model.Fingerprint][][]*LazyChunk, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
 	// Make sure the initial chunks are loaded. This is not one chunk
@@ -510,7 +567,7 @@ func fetchChunkBySeries(ctx context.Context, chunks []*LazyChunk, matchers []*la
 
 	// Now that we have the first chunk for each series loaded,
 	// we can proceed to filter the series that don't match.
-	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
+	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers, metrics)
 
 	var allChunks []*LazyChunk
 	for _, series := range chksBySeries {
@@ -523,19 +580,38 @@ func fetchChunkBySeries(ctx context.Context, chunks []*LazyChunk, matchers []*la
 	if err := fetchLazyChunks(ctx, allChunks); err != nil {
 		return nil, err
 	}
+	metrics.chunks.WithLabelValues(statusMatched).Add(float64(len(allChunks)))
+	metrics.series.WithLabelValues(statusMatched).Add(float64(len(chksBySeries)))
+	metrics.batches.WithLabelValues(statusMatched).Observe(float64(len(allChunks)))
+	metrics.batches.WithLabelValues(statusDiscarded).Observe(float64(len(chunks) - len(allChunks)))
+
 	return chksBySeries, nil
 }
 
-func filterSeriesByMatchers(chks map[model.Fingerprint][][]*LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]*LazyChunk {
+func filterSeriesByMatchers(
+	chks map[model.Fingerprint][][]*LazyChunk,
+	matchers []*labels.Matcher,
+	metrics *ChunkMetrics,
+) map[model.Fingerprint][][]*LazyChunk {
+	var filteredSeries, filteredChks int
 outer:
 	for fp, chunks := range chks {
 		for _, matcher := range matchers {
 			if !matcher.Matches(chunks[0][0].Chunk.Metric.Get(matcher.Name)) {
+
 				delete(chks, fp)
+				filteredSeries++
+
+				for _, grp := range chunks {
+					filteredChks += len(grp)
+				}
+
 				continue outer
 			}
 		}
 	}
+	metrics.chunks.WithLabelValues(statusDiscarded).Add(float64(filteredChks))
+	metrics.series.WithLabelValues(statusDiscarded).Add(float64(filteredSeries))
 	return chks
 }
 

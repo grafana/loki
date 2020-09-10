@@ -71,10 +71,7 @@ func (tm *TableManager) loop() {
 	for {
 		select {
 		case <-syncTicker.C:
-			err := tm.uploadTables(context.Background())
-			if err != nil {
-				level.Error(pkg_util.Logger).Log("msg", "error uploading local boltdb files to the storage", "err", err)
-			}
+			tm.uploadTables(context.Background(), false)
 		case <-tm.ctx.Done():
 			return
 		}
@@ -87,10 +84,7 @@ func (tm *TableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
 
-	err := tm.uploadTables(context.Background())
-	if err != nil {
-		level.Error(pkg_util.Logger).Log("msg", "error uploading local boltdb files to the storage before stopping", "err", err)
-	}
+	tm.uploadTables(context.Background(), true)
 }
 
 func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
@@ -157,24 +151,20 @@ func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 	return table, nil
 }
 
-func (tm *TableManager) uploadTables(ctx context.Context) (err error) {
+func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
 	level.Info(pkg_util.Logger).Log("msg", "uploading tables")
 
-	defer func() {
-		status := statusSuccess
-		if err != nil {
-			status = statusFailure
-		}
-		tm.metrics.tablesUploadOperationTotal.WithLabelValues(status).Inc()
-	}()
-
+	status := statusSuccess
 	for _, table := range tm.tables {
-		err := table.Upload(ctx)
+		err := table.Upload(ctx, force)
 		if err != nil {
-			return err
+			// continue uploading other tables while skipping cleanup for a failed one.
+			status = statusFailure
+			level.Error(pkg_util.Logger).Log("msg", "failed to upload dbs", "table", table.name, "err", err)
+			continue
 		}
 
 		// cleanup unwanted dbs from the table
@@ -185,7 +175,7 @@ func (tm *TableManager) uploadTables(ctx context.Context) (err error) {
 		}
 	}
 
-	return
+	tm.metrics.tablesUploadOperationTotal.WithLabelValues(status).Inc()
 }
 
 func (tm *TableManager) loadTables() (map[string]*Table, error) {
@@ -236,6 +226,11 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		}
 
 		if table == nil {
+			// if table is nil it means it has no files in it so remove the folder for that table.
+			err := os.Remove(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()))
+			if err != nil {
+				level.Error(pkg_util.Logger).Log("msg", "failed to remove empty table folder", "table", fileInfo.Name(), "err", err)
+			}
 			continue
 		}
 

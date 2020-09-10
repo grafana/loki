@@ -120,6 +120,27 @@ steps:
   depends_on:
   - image-tag
 
+- name: build-logcli-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: cmd/logcli/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/logcli
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/heads/k??
+      - refs/tags/v*
+  depends_on:
+  - image-tag
+
 - name: publish-loki-image
   image: plugins/docker
   settings:
@@ -167,6 +188,25 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/promtail
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+    - refs/heads/master
+    - refs/heads/k??
+    - refs/tags/v*
+  depends_on:
+  - image-tag
+
+- name: publish-logcli-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: cmd/logcli/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: grafana/logcli
     username:
       from_secret: docker_username
   when:
@@ -259,6 +299,27 @@ steps:
   depends_on:
   - image-tag
 
+- name: build-logcli-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: cmd/logcli/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/logcli
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/heads/k??
+      - refs/tags/v*
+  depends_on:
+  - image-tag
+
 - name: publish-loki-image
   image: plugins/docker
   settings:
@@ -306,6 +367,25 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/promtail
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+    - refs/heads/master
+    - refs/heads/k??
+    - refs/tags/v*
+  depends_on:
+  - image-tag
+
+- name: publish-logcli-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: cmd/logcli/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: grafana/logcli
     username:
       from_secret: docker_username
   when:
@@ -398,6 +478,27 @@ steps:
   depends_on:
   - image-tag
 
+- name: build-logcli-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: cmd/logcli/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/logcli
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/heads/k??
+      - refs/tags/v*
+  depends_on:
+  - image-tag
+
 - name: publish-loki-image
   image: plugins/docker
   settings:
@@ -445,6 +546,25 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/promtail
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+    - refs/heads/master
+    - refs/heads/k??
+    - refs/tags/v*
+  depends_on:
+  - image-tag
+
+- name: publish-logcli-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: cmd/logcli/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: grafana/logcli
     username:
       from_secret: docker_username
   when:

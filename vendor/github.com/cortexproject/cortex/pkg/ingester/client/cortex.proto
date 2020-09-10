@@ -23,9 +23,6 @@ service Ingester {
 
   // TransferChunks allows leaving ingester (client) to stream chunks directly to joining ingesters (server).
   rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
-
-  // TransferTSDB transfers all files of a tsdb to a joining ingester
-  rpc TransferTSDB(stream TimeSeriesFile) returns (TransferTSDBResponse) {};
 }
 
 message WriteRequest {
@@ -192,5 +189,3 @@ message TimeSeriesFile {
   string filename = 3;
   bytes data = 4;
 }
-
-message TransferTSDBResponse {}

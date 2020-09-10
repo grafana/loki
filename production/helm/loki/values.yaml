@@ -122,6 +122,9 @@ persistence:
   - ReadWriteOnce
   size: 10Gi
   annotations: {}
+  # selector:
+  #   matchLabels:
+  #     app.kubernetes.io/name: loki
   # subPath: ""
   # existingClaim:
 

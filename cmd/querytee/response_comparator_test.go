@@ -90,7 +90,7 @@ func TestCompareStreams(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareStreams(tc.expected, tc.actual)
+			err := compareStreams(tc.expected, tc.actual, 0)
 			if tc.err == nil {
 				require.NoError(t, err)
 				return

@@ -34,7 +34,7 @@ wget https://raw.githubusercontent.com/grafana/loki/master/cmd/promtail/promtail
 
 Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
 
-Congratulations, Loki is installed and running! Next, you might want edit the Promtail config file to [get logs into Loki](../getting-started/get-logs-into-loki/).
+Congratulations, Loki is installed and running! Next, you might want edit the Promtail config file to [get logs into Loki](../../getting-started/get-logs-into-loki/).
 
 ## Release binaries - openSUSE Linux only
 

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -38,7 +39,7 @@ const (
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
 
-	storageKeyPrefix = "index/"
+	StorageKeyPrefix = "index/"
 
 	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
 	UploadInterval = 15 * time.Minute
@@ -76,22 +77,18 @@ type Shipper struct {
 	uploadsManager    *uploads.TableManager
 	downloadsManager  *downloads.TableManager
 
-	metrics *metrics
+	metrics  *metrics
+	stopOnce sync.Once
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
 func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (chunk.IndexClient, error) {
-	err := chunk_util.EnsureDirectory(cfg.CacheLocation)
-	if err != nil {
-		return nil, err
-	}
-
 	shipper := Shipper{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
 	}
 
-	err = shipper.init(storageClient, registerer)
+	err := shipper.init(storageClient, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -102,19 +99,27 @@ func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometh
 }
 
 func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.Registerer) error {
-	uploader, err := s.getUploaderName()
+	// When we run with target querier we don't have ActiveIndexDirectory set so using CacheLocation instead.
+	// Also it doesn't matter which directory we use since BoltDBIndexClient doesn't do anything with it but it is good to have a valid path.
+	boltdbIndexClientDir := s.cfg.ActiveIndexDirectory
+	if boltdbIndexClientDir == "" {
+		boltdbIndexClientDir = s.cfg.CacheLocation
+	}
+
+	var err error
+	s.boltDBIndexClient, err = local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: boltdbIndexClientDir})
 	if err != nil {
 		return err
 	}
 
-	s.boltDBIndexClient, err = local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: s.cfg.ActiveIndexDirectory})
-	if err != nil {
-		return err
-	}
-
-	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, storageKeyPrefix)
+	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, StorageKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
+		uploader, err := s.getUploaderName()
+		if err != nil {
+			return err
+		}
+
 		cfg := uploads.Config{
 			Uploader:       uploader,
 			IndexDir:       s.cfg.ActiveIndexDirectory,
@@ -176,6 +181,10 @@ func (s *Shipper) getUploaderName() (string, error) {
 }
 
 func (s *Shipper) Stop() {
+	s.stopOnce.Do(s.stop)
+}
+
+func (s *Shipper) stop() {
 	if s.uploadsManager != nil {
 		s.uploadsManager.Stop()
 	}
@@ -192,7 +201,9 @@ func (s *Shipper) NewWriteBatch() chunk.WriteBatch {
 }
 
 func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-	return s.uploadsManager.BatchWrite(ctx, batch)
+	return instrument.CollectedRequest(ctx, "WRITE", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		return s.uploadsManager.BatchWrite(ctx, batch)
+	})
 }
 
 func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {

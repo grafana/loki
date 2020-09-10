@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 )
 
-func compareStreams(expectedRaw, actualRaw json.RawMessage) error {
+func compareStreams(expectedRaw, actualRaw json.RawMessage, tolerance float64) error {
 	var expected, actual loghttp.Streams
 
 	err := json.Unmarshal(expectedRaw, &expected)

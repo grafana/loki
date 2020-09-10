@@ -1,0 +1,15 @@
+language: go
+go:
+  - 1.10.x
+  - 1.11.x
+  - 1.12.x
+sudo: false
+before_install:
+  - go get -u golang.org/x/lint/golint
+  - go get github.com/axw/gocov/gocov
+  - go get github.com/mattn/goveralls
+script:
+  - test -z "`gofmt -l .`"
+  - test -z "`golint ./...`"
+  - $GOPATH/bin/goveralls -service=travis-ci
+  - cd example && go build -o http_breaker && ./http_breaker

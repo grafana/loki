@@ -18,7 +18,7 @@ type boltDBShipperTableClient struct {
 }
 
 func NewBoltDBShipperTableClient(objectClient chunk.ObjectClient) chunk.TableClient {
-	return &boltDBShipperTableClient{util.NewPrefixedObjectClient(objectClient, storageKeyPrefix)}
+	return &boltDBShipperTableClient{util.NewPrefixedObjectClient(objectClient, StorageKeyPrefix)}
 }
 
 func (b *boltDBShipperTableClient) ListTables(ctx context.Context) ([]string, error) {

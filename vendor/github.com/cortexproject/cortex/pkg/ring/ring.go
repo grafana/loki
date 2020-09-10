@@ -47,7 +47,10 @@ type ReadRing interface {
 	GetAll(op Operation) (ReplicationSet, error)
 	ReplicationFactor() int
 	IngesterCount() int
-	Subring(key uint32, n int) (ReadRing, error)
+	Subring(key uint32, n int) ReadRing
+
+	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
+	HasInstance(instanceID string) bool
 }
 
 // Operation can be Read or Write
@@ -395,13 +398,14 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	)
 }
 
-// Subring returns a ring of n ingesters from the given ring
-// Subrings are meant only for ingestor lookup and should have their data externalized.
-func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
+// Subring returns a ring of n ingesters from the given ring. If the subring can't be built
+// (ie. because there are not enough instances) then it returns the full ring.
+func (r *Ring) Subring(key uint32, n int) ReadRing {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
+
 	if r.ringDesc == nil || len(r.ringTokens) == 0 || n <= 0 {
-		return nil, ErrEmptyRing
+		return r
 	}
 
 	var (
@@ -433,7 +437,7 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 	}
 
 	if n > len(ingesters) {
-		return nil, fmt.Errorf("too few ingesters found")
+		return r
 	}
 
 	numTokens := 0
@@ -457,7 +461,7 @@ func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
 		}
 	}
 
-	return sub, nil
+	return sub
 }
 
 // GetInstanceState returns the current state of an instance or an error if the
@@ -473,4 +477,14 @@ func (r *Ring) GetInstanceState(instanceID string) (IngesterState, error) {
 	}
 
 	return instance.GetState(), nil
+}
+
+// HasInstance returns whether the ring contains an instance matching the provided instanceID.
+func (r *Ring) HasInstance(instanceID string) bool {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	instances := r.ringDesc.GetIngesters()
+	_, ok := instances[instanceID]
+	return ok
 }

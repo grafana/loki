@@ -150,6 +150,9 @@ touch-protobuf-sources:
 
 logcli: yacc cmd/logcli/logcli
 
+logcli-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
+
 cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
@@ -177,6 +180,14 @@ loki-canary: protos yacc cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+#################
+# Loki-QueryTee #
+#################
+
+loki-querytee: $(APP_GO_FILES) cmd/querytee/main.go
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o ./cmd/querytee/$@ ./cmd/querytee/
 	$(NETGO_CHECK)
 
 ############
@@ -257,6 +268,7 @@ clean:
 	rm -rf cmd/loki/loki
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/loki-canary/loki-canary
+	rm -rf cmd/querytee/querytee
 	rm -rf .cache
 	rm -rf cmd/docker-driver/rootfs
 	rm -rf dist/
@@ -531,6 +543,14 @@ loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+
+# loki-querytee
+loki-querytee-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
+loki-querytee-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
+loki-querytee-push: loki-querytee-image-cross
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG)
 
 # build-image (only amd64)
 build-image: OCI_PLATFORMS=

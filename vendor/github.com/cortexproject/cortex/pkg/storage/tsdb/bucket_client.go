@@ -14,7 +14,7 @@ import (
 )
 
 // NewBucketClient creates a new bucket client based on the configured backend
-func NewBucketClient(ctx context.Context, cfg BlocksStorageConfig, name string, logger log.Logger, reg prometheus.Registerer) (client objstore.Bucket, err error) {
+func NewBucketClient(ctx context.Context, cfg BucketConfig, name string, logger log.Logger, reg prometheus.Registerer) (client objstore.Bucket, err error) {
 	switch cfg.Backend {
 	case BackendS3:
 		client, err = s3.NewBucketClient(cfg.S3, name, logger)

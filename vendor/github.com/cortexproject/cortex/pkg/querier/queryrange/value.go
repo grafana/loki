@@ -89,7 +89,7 @@ func ResponseToSamples(resp Response) ([]SampleStream, error) {
 		return nil, errors.New(promRes.Error)
 	}
 	switch promRes.Data.ResultType {
-	case parser.ValueTypeVector, parser.ValueTypeMatrix:
+	case string(parser.ValueTypeVector), string(parser.ValueTypeMatrix):
 		return promRes.Data.Result, nil
 	}
 

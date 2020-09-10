@@ -304,6 +304,15 @@ func (r mockRing) IngesterCount() int {
 	return len(r.ingesters)
 }
 
-func (r mockRing) Subring(key uint32, n int) (ring.ReadRing, error) {
-	return r, nil
+func (r mockRing) Subring(key uint32, n int) ring.ReadRing {
+	return r
+}
+
+func (r mockRing) HasInstance(instanceID string) bool {
+	for _, ing := range r.ingesters {
+		if ing.Addr != instanceID {
+			return true
+		}
+	}
+	return false
 }
