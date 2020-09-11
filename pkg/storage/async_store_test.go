@@ -193,7 +193,10 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedChunks, chunks)
-			require.Equal(t, tc.expectedFetchers, fetchers)
+			require.Len(t, fetchers, len(tc.expectedFetchers))
+			for i := range tc.expectedFetchers {
+				require.Same(t, tc.expectedFetchers[i], fetchers[i])
+			}
 		})
 	}
 
