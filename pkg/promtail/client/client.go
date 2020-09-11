@@ -92,7 +92,7 @@ func init() {
 	streamLag, err = metric.NewGauges("promtail_stream_lag_seconds",
 		"Difference between current time and last batch timestamp for successful sends",
 		metric.GaugeConfig{Action: "set"},
-		int64(5*time.Minute.Seconds()),
+		int64(1*time.Minute.Seconds()), // This strips out files which update slowly and reduces noise in this metric.
 	)
 	if err != nil {
 		panic(err)
