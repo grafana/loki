@@ -14,6 +14,8 @@ type IngesterQuerier interface {
 
 // AsyncStore does querying to both ingesters and chunk store and combines the results after deduping them.
 // This should be used when using an async store like boltdb-shipper.
+// AsyncStore is meant to be used only in queriers or any other service other than ingesters.
+// It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
 	chunk.Store
 	ingesterQuerier IngesterQuerier
@@ -27,28 +29,32 @@ func NewAsyncStore(store chunk.Store, querier IngesterQuerier) *AsyncStore {
 }
 
 func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
-	chks, fetchers, err := a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
+	storeChunks, fetchers, err := a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	unindexedChks, err := a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
+	ingesterChunks, err := a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return a.mergeIndexedAndUnindexedChunks(userID, chks, fetchers, unindexedChks)
+	if len(ingesterChunks) == 0 {
+		return storeChunks, fetchers, nil
+	}
+
+	return a.mergeIngesterAndStoreChunks(userID, storeChunks, fetchers, ingesterChunks)
 }
 
-func (a *AsyncStore) mergeIndexedAndUnindexedChunks(userID string, indexedChunks [][]chunk.Chunk, fetchers []*chunk.Fetcher, unindexedChunkIDs []string) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
-	unindexedChunkIDs = filterDuplicateUnindexedChunks(indexedChunks, unindexedChunkIDs)
+func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*chunk.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	ingesterChunkIDs = filterDuplicateChunks(storeChunks, ingesterChunkIDs)
 	fetcherToChunksGroupIdx := make(map[*chunk.Fetcher]int, len(fetchers))
 
 	for i, fetcher := range fetchers {
 		fetcherToChunksGroupIdx[fetcher] = i
 	}
 
-	for _, chunkID := range unindexedChunkIDs {
+	for _, chunkID := range ingesterChunkIDs {
 		chk, err := chunk.ParseExternalKey(userID, chunkID)
 		if err != nil {
 			return nil, nil, err
@@ -58,30 +64,31 @@ func (a *AsyncStore) mergeIndexedAndUnindexedChunks(userID string, indexedChunks
 
 		if _, ok := fetcherToChunksGroupIdx[fetcher]; !ok {
 			fetchers = append(fetchers, fetcher)
+			storeChunks = append(storeChunks, []chunk.Chunk{})
 			fetcherToChunksGroupIdx[fetcher] = len(fetchers) - 1
 		}
 		chunksGroupIdx := fetcherToChunksGroupIdx[fetcher]
 
-		indexedChunks[chunksGroupIdx] = append(indexedChunks[chunksGroupIdx], chk)
+		storeChunks[chunksGroupIdx] = append(storeChunks[chunksGroupIdx], chk)
 	}
 
-	return indexedChunks, fetchers, nil
+	return storeChunks, fetchers, nil
 }
 
-func filterDuplicateUnindexedChunks(indexedChunks [][]chunk.Chunk, unindexedChunkIDs []string) []string {
-	filteredChunkIDs := make([]string, 0, len(unindexedChunkIDs))
-	seen := make(map[string]struct{}, len(indexedChunks))
+func filterDuplicateChunks(storeChunks [][]chunk.Chunk, ingesterChunkIDs []string) []string {
+	filteredChunkIDs := make([]string, 0, len(ingesterChunkIDs))
+	seen := make(map[string]struct{}, len(storeChunks))
 
-	for i := range indexedChunks {
-		for j := range indexedChunks[i] {
-			seen[indexedChunks[i][j].ExternalKey()] = struct{}{}
+	for i := range storeChunks {
+		for j := range storeChunks[i] {
+			seen[storeChunks[i][j].ExternalKey()] = struct{}{}
 		}
 	}
 
-	for _, unindexedChunkID := range unindexedChunkIDs {
-		if _, ok := seen[unindexedChunkID]; !ok {
-			filteredChunkIDs = append(filteredChunkIDs, unindexedChunkID)
-			seen[unindexedChunkID] = struct{}{}
+	for _, chunkID := range ingesterChunkIDs {
+		if _, ok := seen[chunkID]; !ok {
+			filteredChunkIDs = append(filteredChunkIDs, chunkID)
+			seen[chunkID] = struct{}{}
 		}
 	}
 
