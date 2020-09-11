@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 
 	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -74,6 +75,9 @@ func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]
 		}
 
 		fetcher := a.Store.GetChunkFetcher(chk)
+		if fetcher == nil {
+			return nil, nil, fmt.Errorf("got a nil fetcher for chunk %s", chk.ExternalKey())
+		}
 
 		if _, ok := fetcherToChunksGroupIdx[fetcher]; !ok {
 			fetchers = append(fetchers, fetcher)
