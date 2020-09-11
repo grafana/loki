@@ -3,6 +3,10 @@ package storage
 import (
 	"context"
 
+	pkg_util "github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -29,15 +33,22 @@ func NewAsyncStore(store chunk.Store, querier IngesterQuerier) *AsyncStore {
 }
 
 func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	spanLogger := spanlogger.FromContext(ctx)
+
 	storeChunks, fetchers, err := a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	level.Debug(spanLogger).Log("msg", "got chunk-refs from store")
+
 	ingesterChunks, err := a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
+	level.Debug(pkg_util.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 
 	if len(ingesterChunks) == 0 {
 		return storeChunks, fetchers, nil
@@ -48,6 +59,8 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*chunk.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
 	ingesterChunkIDs = filterDuplicateChunks(storeChunks, ingesterChunkIDs)
+	level.Debug(pkg_util.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
+
 	fetcherToChunksGroupIdx := make(map[*chunk.Fetcher]int, len(fetchers))
 
 	for i, fetcher := range fetchers {
