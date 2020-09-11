@@ -2,14 +2,15 @@ package storage
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 // storeMock is a mockable version of Loki's storage, used in querier unit tests
@@ -163,6 +164,19 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 				testChunks[5:],
 			},
 			expectedFetchers: fetchers[0:3],
+		},
+		{
+			name: "duplicate chunks from ingesters",
+			storeChunks: [][]chunk.Chunk{
+				testChunks[0:5],
+			},
+			storeFetcher:     fetchers[0:1],
+			ingesterChunkIDs: convertChunksToChunkIDs(append(testChunks[5:], testChunks[5:]...)),
+			ingesterFetcher:  fetchers[0],
+			expectedChunks: [][]chunk.Chunk{
+				testChunks,
+			},
+			expectedFetchers: fetchers[0:1],
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
