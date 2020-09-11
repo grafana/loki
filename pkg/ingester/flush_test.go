@@ -241,6 +241,10 @@ func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, throu
 	return nil, nil, nil
 }
 
+func (s *testStore) ActiveIndexType() string {
+	return ""
+}
+
 func (s *testStore) Stop() {}
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {

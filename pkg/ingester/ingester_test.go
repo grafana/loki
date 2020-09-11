@@ -278,6 +278,10 @@ func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, throu
 	return nil, nil, nil
 }
 
+func (s *mockStore) ActiveIndexType() string {
+	return ""
+}
+
 type mockQuerierServer struct {
 	ctx   context.Context
 	resps []*logproto.QueryResponse

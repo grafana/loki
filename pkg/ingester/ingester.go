@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -126,6 +127,7 @@ type ChunkStore interface {
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
+	ActiveIndexType() string
 }
 
 // New makes a new Ingester.
@@ -399,8 +401,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	// Only continue if we should query the store for labels
-	if !i.cfg.QueryStore {
+	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.
+	if i.store.ActiveIndexType() != shipper.BoltDBShipperType && !i.cfg.QueryStore {
 		return resp, nil
 	}
 

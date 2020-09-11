@@ -270,6 +270,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// We do not want query to do any updates to index
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
+			// Only queriers should use the AsyncStore, it should never be used in ingesters.
 			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier)
 		default:
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadWrite
@@ -288,7 +289,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, chunkStore, prometheus.DefaultRegisterer)
+	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}

@@ -196,7 +196,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	querier, err := storage.NewStore(conf.StorageConfig, chunkStore, prometheus.DefaultRegisterer)
+	querier, err := storage.NewStore(conf.StorageConfig, conf.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}

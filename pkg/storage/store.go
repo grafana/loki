@@ -75,20 +75,24 @@ type Store interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	ActiveIndexType() string
 }
 
 type store struct {
 	chunk.Store
 	cfg          Config
 	chunkMetrics *ChunkMetrics
+
+	activeIndexType string
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, chunkStore chunk.Store, registerer prometheus.Registerer) (Store, error) {
+func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, registerer prometheus.Registerer) (Store, error) {
 	return &store{
-		Store:        chunkStore,
-		cfg:          cfg,
-		chunkMetrics: NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
+		Store:           chunkStore,
+		cfg:             cfg,
+		chunkMetrics:    NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
+		activeIndexType: schemaCfg.Configs[ActivePeriodConfig(schemaCfg)].IndexType,
 	}, nil
 }
 
@@ -311,6 +315,10 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return iter.NoopIterator, nil
 	}
 	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
+}
+
+func (s *store) ActiveIndexType() string {
+	return s.activeIndexType
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {

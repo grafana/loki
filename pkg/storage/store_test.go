@@ -199,9 +199,7 @@ func getLocalStore() Store {
 		MaxChunkBatchSize: 10,
 	}
 
-	chunkStore, err := storage.NewStore(
-		storeConfig.Config,
-		chunk.StoreConfig{},
+	schemaConfig := SchemaConfig{
 		chunk.SchemaConfig{
 			Configs: []chunk.PeriodConfig{
 				{
@@ -215,13 +213,19 @@ func getLocalStore() Store {
 					},
 				},
 			},
-		}, limits, nil, nil, cortex_util.Logger)
+		},
+	}
+
+	chunkStore, err := storage.NewStore(
+		storeConfig.Config,
+		chunk.StoreConfig{},
+		schemaConfig.SchemaConfig, limits, nil, nil, cortex_util.Logger)
 
 	if err != nil {
 		panic(err)
 	}
 
-	store, err := NewStore(storeConfig, chunkStore, nil)
+	store, err := NewStore(storeConfig, schemaConfig, chunkStore, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -767,11 +771,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
 
-	RegisterCustomIndexClients(&config, nil)
-
-	chunkStore, err := storage.NewStore(
-		config.Config,
-		chunk.StoreConfig{},
+	schemaConfig := SchemaConfig{
 		chunk.SchemaConfig{
 			Configs: []chunk.PeriodConfig{
 				{
@@ -797,13 +797,21 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	RegisterCustomIndexClients(&config, nil)
+
+	chunkStore, err := storage.NewStore(
+		config.Config,
+		chunk.StoreConfig{},
+		schemaConfig.SchemaConfig,
 		limits,
 		nil,
 		nil,
 		cortex_util.Logger,
 	)
 
-	store, err := NewStore(config, chunkStore, nil)
+	store, err := NewStore(config, schemaConfig, chunkStore, nil)
 	require.NoError(t, err)
 
 	defer store.Stop()

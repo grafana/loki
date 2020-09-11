@@ -50,9 +50,7 @@ func getStore() (lstore.Store, error) {
 		},
 	}
 
-	chunkStore, err := storage.NewStore(
-		storeConfig.Config,
-		chunk.StoreConfig{},
+	schemaCfg := lstore.SchemaConfig{
 		chunk.SchemaConfig{
 			Configs: []chunk.PeriodConfig{
 				{
@@ -67,12 +65,18 @@ func getStore() (lstore.Store, error) {
 				},
 			},
 		},
+	}
+
+	chunkStore, err := storage.NewStore(
+		storeConfig.Config,
+		chunk.StoreConfig{},
+		schemaCfg.SchemaConfig,
 		&validation.Overrides{},
 		prometheus.DefaultRegisterer,
 		nil,
 		cortex_util.Logger,
 	)
-	store, err := lstore.NewStore(storeConfig, chunkStore, prometheus.DefaultRegisterer)
+	store, err := lstore.NewStore(storeConfig, schemaCfg, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
