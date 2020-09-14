@@ -90,15 +90,9 @@ func (cfg *Config) Validate() error {
 }
 
 func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, error) {
-	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace
-	cluster.Consistency = consistency
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
 	cluster.Timeout = cfg.Timeout
@@ -118,7 +112,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	if !cfg.ConvictHosts {
 		cluster.ConvictionPolicy = noopConvictionPolicy{}
 	}
-	if err = cfg.setClusterConfig(cluster); err != nil {
+	if err := cfg.setClusterConfig(cluster); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -141,6 +135,12 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 
 // apply config settings to a cassandra ClusterConfig
 func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
+	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
+	if err != nil {
+		return errors.Wrap(err, "unable to parse the configured consistency")
+	}
+
+	cluster.Consistency = consistency
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
 	if cfg.SSL {
