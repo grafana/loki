@@ -1,28 +1,20 @@
-package cache_test
+package cache
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis"
 	"github.com/go-kit/kit/log"
-	"github.com/gomodule/redigo/redis"
-	"github.com/rafaeljusto/redigomock"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 func TestRedisCache(t *testing.T) {
-	cfg := cache.RedisConfig{
-		Timeout: 10 * time.Millisecond,
-	}
-
-	conn := redigomock.NewConn()
-	conn.Clear()
-	pool := &redis.Pool{Dial: func() (redis.Conn, error) {
-		return conn, nil
-	}, MaxIdle: 10}
+	c, err := mockRedisCache()
+	require.Nil(t, err)
+	defer c.redis.Close()
 
 	keys := []string{"key1", "key2", "key3"}
 	bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}
@@ -32,29 +24,8 @@ func TestRedisCache(t *testing.T) {
 	nHit := len(keys)
 	require.Len(t, bufs, nHit)
 
-	// mock Redis Store
-	mockRedisStore(conn, keys, bufs)
-
-	//mock cache hit
-	keyIntf := make([]interface{}, nHit)
-	bufIntf := make([]interface{}, nHit)
-
-	for i := 0; i < nHit; i++ {
-		keyIntf[i] = keys[i]
-		bufIntf[i] = bufs[i]
-	}
-	conn.Command("MGET", keyIntf...).Expect(bufIntf)
-
-	// mock cache miss
 	nMiss := len(miss)
-	missIntf := make([]interface{}, nMiss)
-	for i, s := range miss {
-		missIntf[i] = s
-	}
-	conn.Command("MGET", missIntf...).ExpectError(nil)
 
-	// mock the cache
-	c := cache.NewRedisCache(cfg, "mock", pool, log.NewNopLogger())
 	ctx := context.Background()
 
 	c.Store(ctx, keys, bufs)
@@ -79,12 +50,18 @@ func TestRedisCache(t *testing.T) {
 	}
 }
 
-func mockRedisStore(conn *redigomock.Conn, keys []string, bufs [][]byte) {
-	conn.Command("MULTI")
-	ret := []interface{}{}
-	for i := range keys {
-		conn.Command("SETEX", keys[i], 0, bufs[i])
-		ret = append(ret, "OK")
+func mockRedisCache() (*RedisCache, error) {
+	redisServer, err := miniredis.Run()
+	if err != nil {
+		return nil, err
+
 	}
-	conn.Command("EXEC").Expect(ret)
+	redisClient := &RedisClient{
+		expiration: time.Minute,
+		timeout:    100 * time.Millisecond,
+		rdb: redis.NewUniversalClient(&redis.UniversalOptions{
+			Addrs: []string{redisServer.Addr()},
+		}),
+	}
+	return NewRedisCache("mock", redisClient, log.NewNopLogger()), nil
 }
