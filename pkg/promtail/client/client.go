@@ -39,6 +39,7 @@ const (
 	ReservedLabelTenantID = "__tenant_id__"
 
 	LatencyLabel = "filename"
+	HostLabel    = "host"
 )
 
 var (
@@ -46,32 +47,32 @@ var (
 		Namespace: "promtail",
 		Name:      "encoded_bytes_total",
 		Help:      "Number of bytes encoded and ready to send.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	sentBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_bytes_total",
 		Help:      "Number of bytes sent.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	droppedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "dropped_bytes_total",
 		Help:      "Number of bytes dropped because failed to be sent to the ingester after all retries.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	sentEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_entries_total",
 		Help:      "Number of log entries sent to the ingester.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	droppedEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "dropped_entries_total",
 		Help:      "Number of log entries dropped because failed to be sent to the ingester after all retries.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
 		Help:      "Duration of send requests.",
-	}, []string{"status_code", "host"})
+	}, []string{"status_code", HostLabel})
 	streamLag *metric.Gauges
 
 	countersWithHost = []*prometheus.CounterVec{
@@ -260,7 +261,10 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 				var lblSet model.LabelSet
 				for i := range lbls {
 					if lbls[i].Name == LatencyLabel {
-						lblSet = model.LabelSet{model.LabelName(lbls[i].Name): model.LabelValue(lbls[i].Value)}
+						lblSet = model.LabelSet{
+							model.LabelName(HostLabel):    model.LabelValue(c.cfg.URL.Host),
+							model.LabelName(LatencyLabel): model.LabelValue(lbls[i].Value),
+						}
 					}
 				}
 				if lblSet != nil {
