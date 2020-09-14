@@ -553,6 +553,50 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			},
 			err: errConfigChunkPrefixNotSet,
 		},
+		"invalid schema with same from time configs": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   MustParseDayTime("1970-01-01"),
+						Schema: "v9",
+					},
+					{
+						From:   MustParseDayTime("1970-01-01"),
+						Schema: "v10",
+					},
+				},
+			},
+			err: errSchemaIncreasingFromTime,
+		},
+		"invalid schema with from time not in increasing order": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   MustParseDayTime("1970-01-02"),
+						Schema: "v9",
+					},
+					{
+						From:   MustParseDayTime("1970-01-01"),
+						Schema: "v10",
+					},
+				},
+			},
+			err: errSchemaIncreasingFromTime,
+		},
+		"valid schema with different from time configs": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   MustParseDayTime("1970-01-01"),
+						Schema: "v9",
+					},
+					{
+						From:   MustParseDayTime("1970-01-02"),
+						Schema: "v10",
+					},
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {

@@ -45,6 +45,10 @@ func (m mockStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time
 	return nil
 }
 
+func (m mockStore) GetChunkFetcher(tm model.Time) *Fetcher {
+	return nil
+}
+
 func (m mockStore) Stop() {}
 
 func TestCompositeStore(t *testing.T) {
@@ -121,22 +125,6 @@ func TestCompositeStore(t *testing.T) {
 			[]result{
 				{model.TimeFromUnix(34), model.TimeFromUnix(100) - 1, mockStore(1)},
 				{model.TimeFromUnix(100), model.TimeFromUnix(165), mockStore(2)},
-			},
-		},
-
-		// Test we get only one result when two schema start at same time
-		{
-			compositeStore{
-				stores: []compositeStoreEntry{
-					{model.TimeFromUnix(0), mockStore(1)},
-					{model.TimeFromUnix(10), mockStore(2)},
-					{model.TimeFromUnix(10), mockStore(3)},
-				},
-			},
-			0, 165,
-			[]result{
-				{model.TimeFromUnix(0), model.TimeFromUnix(10) - 1, mockStore(1)},
-				{model.TimeFromUnix(10), model.TimeFromUnix(165), mockStore(3)},
 			},
 		},
 
@@ -243,6 +231,60 @@ func TestCompositeStoreLabels(t *testing.T) {
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong label values - %s", test.Diff(tc.want, have))
 			}
+		})
+	}
+
+}
+
+type mockStoreGetChunkFetcher struct {
+	mockStore
+	chunkFetcher *Fetcher
+}
+
+func (m mockStoreGetChunkFetcher) GetChunkFetcher(tm model.Time) *Fetcher {
+	return m.chunkFetcher
+}
+
+func TestCompositeStore_GetChunkFetcher(t *testing.T) {
+	cs := compositeStore{
+		stores: []compositeStoreEntry{
+			{model.TimeFromUnix(10), mockStoreGetChunkFetcher{mockStore(0), &Fetcher{}}},
+			{model.TimeFromUnix(20), mockStoreGetChunkFetcher{mockStore(1), &Fetcher{}}},
+		},
+	}
+
+	for _, tc := range []struct {
+		name            string
+		tm              model.Time
+		expectedFetcher *Fetcher
+	}{
+		{
+			name: "no matching store",
+			tm:   model.TimeFromUnix(0),
+		},
+		{
+			name:            "first store",
+			tm:              model.TimeFromUnix(10),
+			expectedFetcher: cs.stores[0].Store.(mockStoreGetChunkFetcher).chunkFetcher,
+		},
+		{
+			name:            "still first store",
+			tm:              model.TimeFromUnix(11),
+			expectedFetcher: cs.stores[0].Store.(mockStoreGetChunkFetcher).chunkFetcher,
+		},
+		{
+			name:            "second store",
+			tm:              model.TimeFromUnix(20),
+			expectedFetcher: cs.stores[1].Store.(mockStoreGetChunkFetcher).chunkFetcher,
+		},
+		{
+			name:            "still second store",
+			tm:              model.TimeFromUnix(21),
+			expectedFetcher: cs.stores[1].Store.(mockStoreGetChunkFetcher).chunkFetcher,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Same(t, tc.expectedFetcher, cs.GetChunkFetcher(tc.tm))
 		})
 	}
 
