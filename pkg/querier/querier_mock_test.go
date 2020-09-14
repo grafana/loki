@@ -265,7 +265,7 @@ func (s *storeMock) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
 	panic("don't call me please")
 }
 
-func (s *storeMock) ActiveIndexType() string {
+func (s *storeMock) ActivePeriodConfig() chunk.PeriodConfig {
 	panic("don't call me please")
 }
 

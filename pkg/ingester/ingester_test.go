@@ -278,8 +278,8 @@ func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, throu
 	return nil, nil, nil
 }
 
-func (s *mockStore) ActiveIndexType() string {
-	return ""
+func (s *mockStore) ActivePeriodConfig() chunk.PeriodConfig {
+	return chunk.PeriodConfig{}
 }
 
 type mockQuerierServer struct {

@@ -75,7 +75,7 @@ type Store interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
-	ActiveIndexType() string
+	ActivePeriodConfig() chunk.PeriodConfig
 }
 
 type store struct {
@@ -83,7 +83,7 @@ type store struct {
 	cfg          Config
 	chunkMetrics *ChunkMetrics
 
-	activeIndexType string
+	activeIndexType chunk.PeriodConfig
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -92,7 +92,7 @@ func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, regist
 		Store:           chunkStore,
 		cfg:             cfg,
 		chunkMetrics:    NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
-		activeIndexType: schemaCfg.Configs[ActivePeriodConfig(schemaCfg)].IndexType,
+		activeIndexType: schemaCfg.Configs[ActivePeriodConfig(schemaCfg)],
 	}, nil
 }
 
@@ -317,7 +317,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
 }
 
-func (s *store) ActiveIndexType() string {
+func (s *store) ActivePeriodConfig() chunk.PeriodConfig {
 	return s.activeIndexType
 }
 

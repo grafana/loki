@@ -127,7 +127,7 @@ type ChunkStore interface {
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
-	ActiveIndexType() string
+	ActivePeriodConfig() chunk.PeriodConfig
 }
 
 // New makes a new Ingester.
@@ -364,8 +364,15 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
+	// when using boltdb-shipper, limit the request start time to the start of current schema config otherwise
+	// if query covers non boltdb-shipper stores too then we would un-necessarily be querying them as well which would anyways be done by queriers.
+	reqStart := req.Start
+	if i.store.ActivePeriodConfig().IndexType == shipper.BoltDBShipperType {
+		reqStart = adjustQueryStartTime(time.Since(i.store.ActivePeriodConfig().From.Time.Time()), reqStart, time.Now())
+	}
+
 	// parse the request
-	start, end := listutil.RoundToMilliseconds(req.Start, req.End)
+	start, end := listutil.RoundToMilliseconds(reqStart, req.End)
 	matchers, err := logql.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
@@ -402,7 +409,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.
-	if i.store.ActiveIndexType() != shipper.BoltDBShipperType && !i.cfg.QueryStore {
+	if i.store.ActivePeriodConfig().IndexType != shipper.BoltDBShipperType && !i.cfg.QueryStore {
 		return resp, nil
 	}
 
@@ -417,8 +424,13 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
+
+	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
+	if i.store.ActivePeriodConfig().IndexType == shipper.BoltDBShipperType {
+		maxLookBackPeriod = time.Since(time.Now())
+	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-	start := adjustQueryStartTime(i.cfg, *req.Start, time.Now())
+	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
 	if start.After(*req.End) {
 		// The request is older than we are allowed to query the store, just return what we have.
 		return resp, nil
@@ -540,7 +552,7 @@ func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.T
 	if !cfg.QueryStore {
 		return time.Time{}, time.Time{}, false
 	}
-	start = adjustQueryStartTime(cfg, start, now)
+	start = adjustQueryStartTime(cfg.QueryStoreMaxLookBackPeriod, start, now)
 
 	if start.After(end) {
 		return time.Time{}, time.Time{}, false
@@ -548,9 +560,9 @@ func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.T
 	return start, end, true
 }
 
-func adjustQueryStartTime(cfg Config, start, now time.Time) time.Time {
-	if cfg.QueryStoreMaxLookBackPeriod > 0 {
-		oldestStartTime := now.Add(-cfg.QueryStoreMaxLookBackPeriod)
+func adjustQueryStartTime(maxLookBackPeriod time.Duration, start, now time.Time) time.Time {
+	if maxLookBackPeriod > 0 {
+		oldestStartTime := now.Add(-maxLookBackPeriod)
 		if oldestStartTime.After(start) {
 			return oldestStartTime
 		}

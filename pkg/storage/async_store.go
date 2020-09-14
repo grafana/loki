@@ -36,20 +36,35 @@ func NewAsyncStore(store chunk.Store, querier IngesterQuerier) *AsyncStore {
 func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
 	spanLogger := spanlogger.FromContext(ctx)
 
-	storeChunks, fetchers, err := a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
-	if err != nil {
-		return nil, nil, err
+	errs := make(chan error)
+
+	var storeChunks [][]chunk.Chunk
+	var fetchers []*chunk.Fetcher
+	go func() {
+		var err error
+		storeChunks, fetchers, err = a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
+		errs <- err
+	}()
+
+	var ingesterChunks []string
+
+	go func() {
+		var err error
+		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
+
+		if err != nil {
+			level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
+			level.Debug(pkg_util.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
+		}
+		errs <- err
+	}()
+
+	for i := 0; i < 2; i++ {
+		err := <-errs
+		if err != nil {
+			return nil, nil, err
+		}
 	}
-
-	level.Debug(spanLogger).Log("msg", "got chunk-refs from store")
-
-	ingesterChunks, err := a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
-	level.Debug(pkg_util.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 
 	if len(ingesterChunks) == 0 {
 		return storeChunks, fetchers, nil
@@ -74,6 +89,7 @@ func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]
 			return nil, nil, err
 		}
 
+		// ToDo(Sandeep) possible optimization: Keep the chunk fetcher reference handy after first call since it is expected to stay the same.
 		fetcher := a.Store.GetChunkFetcher(chk)
 		if fetcher == nil {
 			return nil, nil, fmt.Errorf("got a nil fetcher for chunk %s", chk.ExternalKey())
