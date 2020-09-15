@@ -352,6 +352,11 @@ func (t *Loki) setupModuleManager() error {
 		All:             {Querier, Ingester, Distributor, TableManager},
 	}
 
+	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
+	if t.cfg.Target == Querier || t.cfg.Target == Ruler {
+		deps[Store] = append(deps[Store], IngesterQuerier)
+	}
+
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {
 			return err
