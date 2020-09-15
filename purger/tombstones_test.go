@@ -2,6 +2,7 @@ package purger
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -130,4 +131,28 @@ func TestTombstonesLoader(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTombstonesReloadDoesntDeadlockOnFailure(t *testing.T) {
+	s := &store{}
+	tombstonesLoader := NewTombstonesLoader(s, nil)
+	tombstonesLoader.getCacheGenNumbers("test")
+
+	s.err = errors.New("error")
+	require.NotNil(t, tombstonesLoader.reloadTombstones())
+
+	s.err = nil
+	require.NotNil(t, tombstonesLoader.getCacheGenNumbers("test2"))
+}
+
+type store struct {
+	err error
+}
+
+func (f *store) getCacheGenerationNumbers(ctx context.Context, user string) (*cacheGenNumbers, error) {
+	return &cacheGenNumbers{}, f.err
+}
+
+func (f *store) GetPendingDeleteRequestsForUser(ctx context.Context, id string) ([]DeleteRequest, error) {
+	return nil, nil
 }
