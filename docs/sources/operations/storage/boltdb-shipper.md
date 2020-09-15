@@ -48,12 +48,12 @@ Loki can be configured to run as just a single vertically scaled instance or as 
 When it comes to reads and writes, Ingesters are the ones which writes the index and chunks to stores and Queriers are the ones which reads index and chunks from the store for serving requests.
 
 Before we get into more details, it is important to understand how Loki manages index in stores. Loki shards index as per configured period which defaults to 7 days i.e when it comes to table based stores like Bigtable/Cassandra/DynamoDB there would be separate table per week containing index for that week.
-In case of BolDB Shipper a table is defined by a collection of many smaller BoltDB files, each file storing just 15 mins worth of index. Tables created per day are identified by a configured `prefix_` + `<period-number-since-epoch>`.
+In the case of BolDB Shipper, a table is defined by a collection of many smaller BoltDB files, each file storing just 15 mins worth of index. Tables created per day are identified by a configured `prefix_` + `<period-number-since-epoch>`.
 Here `<period-number-since-epoch>` in case of boltdb-shipper would be day number since epoch.
-For example, if you have prefix set to `loki_index_` and a write request comes in on 20th April 2020, it would be stored in table named `loki_index_18372` because it has been `18371` days since epoch, and we are in `18372`th day.
+For example, if you have a prefix set to `loki_index_` and a write request comes in on 20th April 2020, it would be stored in a table named loki_index_18372 because it has been `18371` days since the epoch, and we are in `18372`th day.
 Since sharding of index creates multiple files when using BoltDB, BoltDB Shipper would create a folder per day and add files for that day in that folder and names those files after ingesters which created them.
 
-To reduce the size of files which helps with faster transfer speeds and reduced storage costs, they are stored after compressing them with gzip.
+To reduce the size of files which help with faster transfer speeds and reduced storage costs, they are stored after compressing them with gzip.
 
 To show how BoltDB files in shared object store would look like, let us consider 2 ingesters named `ingester-0` and `ingester-1` running in a Loki cluster, and
 they both having shipped files for day `18371` and `18372` with prefix `loki_index_`, here is how the files would look like:
@@ -82,19 +82,19 @@ When running Loki in clustered mode there could be multiple ingesters serving wr
 
 Another important detail to note is when chunks are flushed they are available for reads in object store instantly while index is not since we only upload them every 15 Minutes with BoltDB shipper.
 Ingesters expose a new RPC for letting Queriers query the Ingester's local index for chunks which were recently flushed but its index might not be available yet with Queriers.
-For all the queries which requires chunks to be read from the store, Queriers also query Ingesters over RPC for IDs of chunks which were recently flushed which is to avoid missing any logs from queries.
+For all the queries which require chunks to be read from the store, Queriers also query Ingesters over RPC for IDs of chunks which were recently flushed which is to avoid missing any logs from queries.
 
 ### Queriers
 
 Queriers lazily loads BoltDB files from shared object store to configured `cache_location`.
-When a querier receives a read request, query range from request is resolved to period numbers and all the files for those period numbers are downloaded to `cache_location`, if not already.
+When a querier receives a read request, the query range from the request is resolved to period numbers and all the files for those period numbers are downloaded to `cache_location`, if not already.
 Once we have downloaded files for a period we keep looking for updates in shared object store and download them every 15 Minutes by default.
 Frequency for checking updates can be configured with `resync_interval` config.
 
 To avoid keeping downloaded index files forever there is a ttl for them which defaults to 24 hours, which means if index files for a period are not used for 24 hours they would be removed from cache location.
 ttl can be configured using `cache_ttl` config.
 
-*NOTE: For better read performance and to avoid using node disk it is recommended to run Queriers as statefulset(when using k8s) with a persistent storage for downloading and querying index files.*
+*NOTE: For better read performance and to avoid using node disk it is recommended to run Queriers as statefulset(when using k8s) with persistent storage for downloading and querying index files.*
 
 ### Write Deduplication disabled
 
@@ -108,10 +108,10 @@ While using `boltdb-shipper` please avoid configuring WriteDedupe cache since it
 
 ### Compactor
 
-Compactor is a BoltDB Shipper specific service which reduces the index size by deduping the index and merging all the files to a single file per table.
-It is highly recommended running a Compactor since a single Ingester creates 96 files per day which includes a lot of duplicate index entries and querying multiple files per table adds up the overall query latency.
+Compactor is a BoltDB Shipper specific service that reduces the index size by deduping the index and merging all the files to a single file per table.
+We recommend running a Compactor since a single Ingester creates 96 files per day which include a lot of duplicate index entries and querying multiple files per table adds up the overall query latency.
 
-*NOTE: There should be only 1 compactor instance running at a time which otherwise could create problems and may lead to data loss. *
+*NOTE: There should be only 1 compactor instance running at a time that otherwise could create problems and may lead to data loss. *
 
 Example compactor configuration with GCS:
 
