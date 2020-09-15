@@ -52,7 +52,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 		var err error
 		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
 
-		if err != nil {
+		if err == nil {
 			level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
 			level.Debug(pkg_util.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}

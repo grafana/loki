@@ -427,7 +427,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
 	if i.store.ActivePeriodConfig().IndexType == shipper.BoltDBShipperType {
-		maxLookBackPeriod = time.Since(time.Now())
+		maxLookBackPeriod = time.Since(i.store.ActivePeriodConfig().From.Time.Time())
 	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
 	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
