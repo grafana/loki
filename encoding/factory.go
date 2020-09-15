@@ -22,7 +22,7 @@ var (
 // RegisterFlags registers configuration settings.
 func (Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&DefaultEncoding, "ingester.chunk-encoding", "Encoding version to use for chunks.")
-	flag.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
+	f.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
 }
 
 // Validate errors out if the encoding is set to Delta.
