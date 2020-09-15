@@ -223,8 +223,6 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*StorageClient, error) {
-	pkgutil.WarnExperimentalUse("Cassandra Backend")
-
 	readSession, err := cfg.session("index-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -408,8 +406,6 @@ type ObjectClient struct {
 
 // NewObjectClient returns a new ObjectClient.
 func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*ObjectClient, error) {
-	pkgutil.WarnExperimentalUse("Cassandra Backend")
-
 	readSession, err := cfg.session("chunks-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
