@@ -106,7 +106,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			expectedFetchers: fetchers[0:1],
 		},
 		{
-			name: "nothing common",
+			name: "nothing duplicate",
 			storeChunks: [][]chunk.Chunk{
 				testChunks[0:5],
 			},
@@ -120,7 +120,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			expectedFetchers: fetchers[0:2],
 		},
 		{
-			name: "common chunks, different fetchers",
+			name: "duplicate chunks, different fetchers",
 			storeChunks: [][]chunk.Chunk{
 				testChunks[0:5],
 				testChunks[5:],
@@ -135,7 +135,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			expectedFetchers: fetchers[0:2],
 		},
 		{
-			name: "different chunks, common fetchers",
+			name: "different chunks, duplicate fetchers",
 			storeChunks: [][]chunk.Chunk{
 				testChunks[0:2],
 				testChunks[2:5],
