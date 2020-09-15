@@ -49,8 +49,8 @@ type Config struct {
 	ClientTLSConfig tls.ClientConfig `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
-	// Delay the evaluation of all rules by a set interval to give a buffer
-	// to metric that haven't been forwarded to cortex yet.
+	// Deprecated. Replaced with pkg/util/validation/Limits.RulerEvaluationDelay field.
+	// TODO: To be removed in Cortex 1.6.
 	EvaluationDelay time.Duration `yaml:"evaluation_delay_duration"`
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
@@ -110,7 +110,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
-	f.DurationVar(&cfg.EvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure they underlying metrics have been pushed to cortex.")
+	f.DurationVar(&cfg.EvaluationDelay, "ruler.evaluation-delay-duration-deprecated", 0, "Deprecated. Please use -ruler.evaluation-delay-duration instead.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
 
 	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of URL(s) of the Alertmanager(s) to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via -ruler.alertmanager-discovery.")

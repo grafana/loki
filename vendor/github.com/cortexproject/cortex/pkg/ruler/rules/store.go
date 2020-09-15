@@ -26,6 +26,7 @@ type RuleStore interface {
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
+	DeleteNamespace(ctx context.Context, userID, namespace string) error
 }
 
 // RuleGroupList contains a set of rule groups
@@ -127,5 +128,10 @@ func (c *ConfigRuleStore) SetRuleGroup(ctx context.Context, userID, namespace st
 
 // DeleteRuleGroup is not implemented
 func (c *ConfigRuleStore) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
+	return errors.New("not implemented by the config service rule store")
+}
+
+// DeleteNamespace is not implemented
+func (c *ConfigRuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
 	return errors.New("not implemented by the config service rule store")
 }

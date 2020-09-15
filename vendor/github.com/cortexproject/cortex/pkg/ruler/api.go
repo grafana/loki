@@ -463,6 +463,28 @@ func (r *Ruler) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	respondAccepted(w, logger)
 }
 
+func (r *Ruler) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
+	logger := util.WithContext(req.Context(), util.Logger)
+
+	userID, namespace, _, err := parseRequest(req, true, false)
+	if err != nil {
+		respondError(logger, w, err.Error())
+		return
+	}
+
+	err = r.store.DeleteNamespace(req.Context(), userID, namespace)
+	if err != nil {
+		if err == rules.ErrGroupNamespaceNotFound {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		respondError(logger, w, err.Error())
+		return
+	}
+
+	respondAccepted(w, logger)
+}
+
 func (r *Ruler) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
 

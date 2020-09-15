@@ -48,13 +48,15 @@ data:
       cache_results: true
 
       results_cache:
-        max_freshness: 10m
         cache:
           # We're going to use the in-process "FIFO" cache
           enable_fifocache: true
           fifocache:
             size: 1024
             validity: 24h
+
+    limits_config:
+      max_cache_freshness_per_query: '10m'
 
     frontend:
       log_queries_longer_than: 5s

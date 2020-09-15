@@ -72,12 +72,21 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 }
 
+// RulesLimits is the one function we need from limits.Overrides, and
+// is here to limit coupling.
+type RulesLimits interface {
+	EvaluationDelay(usedID string) time.Duration
+}
+
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *promql.Engine, q storage.Queryable, delay time.Duration) rules.QueryFunc {
-	orig := rules.EngineQueryFunc(engine, q)
+func engineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		return orig(ctx, qs, t.Add(-delay))
+		orig := rules.EngineQueryFunc(engine, q)
+		// Delay the evaluation of all rules by a set interval to give a buffer
+		// to metric that haven't been forwarded to cortex yet.
+		evaluationDelay := overrides.EvaluationDelay(userID)
+		return orig(ctx, qs, t.Add(-evaluationDelay))
 	}
 }
 
@@ -94,6 +103,7 @@ func DefaultTenantManagerFactory(
 	p Pusher,
 	q storage.Queryable,
 	engine *promql.Engine,
+	overrides RulesLimits,
 ) ManagerFactory {
 	return func(
 		ctx context.Context,
@@ -105,7 +115,7 @@ func DefaultTenantManagerFactory(
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      &PusherAppendable{pusher: p, userID: userID},
 			Queryable:       q,
-			QueryFunc:       engineQueryFunc(engine, q, cfg.EvaluationDelay),
+			QueryFunc:       engineQueryFunc(engine, q, overrides, userID),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

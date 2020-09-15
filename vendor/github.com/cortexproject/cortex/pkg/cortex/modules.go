@@ -35,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -49,7 +50,9 @@ const (
 	Overrides           string = "overrides"
 	Server              string = "server"
 	Distributor         string = "distributor"
+	DistributorService  string = "distributor-service"
 	Ingester            string = "ingester"
+	IngesterService     string = "ingester-service"
 	Flusher             string = "flusher"
 	Querier             string = "querier"
 	StoreQueryable      string = "store-queryable"
@@ -79,7 +82,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 
 	t.API = a
 
-	t.API.RegisterAPI(t.Cfg)
+	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg)
 
 	return nil, nil
 }
@@ -124,6 +127,19 @@ func (t *Cortex) initRing() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initRuntimeConfig() (services.Service, error) {
+	// We need to modify LimitsConfig before calling SetDefaultLimitsForYAMLUnmarshalling later in this method
+	// but also if runtime-config is not used, for setting limits used by initOverrides.
+	// TODO: Remove this in Cortex 1.6.
+	if t.Cfg.Ruler.EvaluationDelay != 0 && t.Cfg.LimitsConfig.RulerEvaluationDelay == 0 {
+		t.Cfg.LimitsConfig.RulerEvaluationDelay = t.Cfg.Ruler.EvaluationDelay
+
+		// No need to report if this field isn't going to be used.
+		if t.Cfg.Target == All || t.Cfg.Target == Ruler {
+			flagext.DeprecatedFlagsUsed.Inc()
+			level.Warn(util.Logger).Log("msg", "Using DEPRECATED YAML config field ruler.evaluation_delay_duration, please use limits.ruler_evaluation_delay_duration instead.")
+		}
+	}
+
 	if t.Cfg.RuntimeConfig.LoadPath == "" {
 		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
 		t.Cfg.RuntimeConfig.ReloadPeriod = t.Cfg.LimitsConfig.PerTenantOverridePeriod
@@ -150,7 +166,7 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 	return nil, err
 }
 
-func (t *Cortex) initDistributor() (serv services.Service, err error) {
+func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// Check whether the distributor can join the distributors ring, which is
@@ -163,9 +179,13 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 		return
 	}
 
+	return t.Distributor, nil
+}
+
+func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor)
 
-	return t.Distributor, nil
+	return nil, nil
 }
 
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
@@ -293,7 +313,7 @@ func (t *Cortex) tsdbIngesterConfig() {
 	t.Cfg.Ingester.BlocksStorageConfig = t.Cfg.BlocksStorage
 }
 
-func (t *Cortex) initIngester() (serv services.Service, err error) {
+func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ingester.ShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
@@ -304,9 +324,13 @@ func (t *Cortex) initIngester() (serv services.Service, err error) {
 		return
 	}
 
+	return t.Ingester, nil
+}
+
+func (t *Cortex) initIngester() (serv services.Service, err error) {
 	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor)
 
-	return t.Ingester, nil
+	return nil, nil
 }
 
 func (t *Cortex) initFlusher() (serv services.Service, err error) {
@@ -316,6 +340,7 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 		t.Cfg.Flusher,
 		t.Cfg.Ingester,
 		t.Store,
+		t.Overrides,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -504,7 +529,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
-	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine)
+	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides)
 	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {
 		return nil, err
@@ -587,7 +612,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
-	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV)
+	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util.Logger)
 
 	// Update the config.
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
@@ -631,9 +656,11 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
+	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
 	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
+	mm.RegisterModule(IngesterService, t.initIngesterService, modules.UserInvisibleModule)
 	mm.RegisterModule(Flusher, t.initFlusher)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
@@ -650,24 +677,26 @@ func (t *Cortex) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		API:            {Server},
-		Ring:           {API, RuntimeConfig, MemberlistKV},
-		Overrides:      {RuntimeConfig},
-		Distributor:    {Ring, API, Overrides},
-		Store:          {Overrides, DeleteRequestsStore},
-		Ingester:       {Overrides, Store, API, RuntimeConfig, MemberlistKV},
-		Flusher:        {Store, API},
-		Querier:        {Overrides, Distributor, Store, Ring, API, StoreQueryable, MemberlistKV},
-		StoreQueryable: {Overrides, Store},
-		QueryFrontend:  {API, Overrides, DeleteRequestsStore},
-		TableManager:   {API},
-		Ruler:          {Overrides, Distributor, Store, StoreQueryable, RulerStorage},
-		Configs:        {API},
-		AlertManager:   {API},
-		Compactor:      {API, MemberlistKV},
-		StoreGateway:   {API, Overrides, MemberlistKV},
-		Purger:         {Store, DeleteRequestsStore, API},
-		All:            {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
+		API:                {Server},
+		Ring:               {API, RuntimeConfig, MemberlistKV},
+		Overrides:          {RuntimeConfig},
+		Distributor:        {DistributorService, API},
+		DistributorService: {Ring, Overrides},
+		Store:              {Overrides, DeleteRequestsStore},
+		Ingester:           {IngesterService, API},
+		IngesterService:    {Overrides, Store, RuntimeConfig, MemberlistKV},
+		Flusher:            {Store, API},
+		Querier:            {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
+		StoreQueryable:     {Overrides, Store, MemberlistKV},
+		QueryFrontend:      {API, Overrides, DeleteRequestsStore},
+		TableManager:       {API},
+		Ruler:              {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
+		Configs:            {API},
+		AlertManager:       {API},
+		Compactor:          {API, MemberlistKV},
+		StoreGateway:       {API, Overrides, MemberlistKV},
+		Purger:             {Store, DeleteRequestsStore, API},
+		All:                {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

@@ -18,6 +18,13 @@ const (
 	GlobalIngestionRateStrategy = "global"
 )
 
+//LimitError are errors that do not comply with the limits specified.
+type LimitError string
+
+func (e LimitError) Error() string {
+	return string(e)
+}
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
@@ -61,6 +68,9 @@ type Limits struct {
 	MaxQueryParallelism int           `yaml:"max_query_parallelism"`
 	CardinalityLimit    int           `yaml:"cardinality_limit"`
 	MaxCacheFreshness   time.Duration `yaml:"max_cache_freshness"`
+
+	// Ruler defaults and limits.
+	RulerEvaluationDelay time.Duration `yaml:"ruler_evaluation_delay_duration"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size"`
@@ -109,11 +119,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
+	f.DurationVar(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
+
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
 
 	// Store-gateway.
-	f.IntVar(&l.StoreGatewayTenantShardSize, "experimental.store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.IntVar(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 }
 
 // Validate the limits config and returns an error if the validation
@@ -344,6 +356,11 @@ func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
 // SubringSize returns the size of the subring for a given user.
 func (o *Overrides) SubringSize(userID string) int {
 	return o.getOverridesForUser(userID).SubringSize
+}
+
+// EvaluationDelay returns the rules evaluation delay for a given user.
+func (o *Overrides) EvaluationDelay(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerEvaluationDelay
 }
 
 // StoreGatewayTenantShardSize returns the size of the store-gateway shard size for a given user.

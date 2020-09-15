@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -74,6 +73,7 @@ func (cfg *TCPTransportConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 // It uses a new TCP connections for each operation. There is no connection reuse.
 type TCPTransport struct {
 	cfg          TCPTransportConfig
+	logger       log.Logger
 	packetCh     chan *memberlist.Packet
 	connCh       chan net.Conn
 	wg           sync.WaitGroup
@@ -95,13 +95,12 @@ type TCPTransport struct {
 	sentPackets           prometheus.Counter
 	sentPacketsBytes      prometheus.Counter
 	sentPacketsErrors     prometheus.Counter
-
-	unknownConnections prometheus.Counter
+	unknownConnections    prometheus.Counter
 }
 
 // NewTCPTransport returns a new tcp-based transport with the given configuration. On
 // success all the network listeners will be created and listening.
-func NewTCPTransport(config TCPTransportConfig) (*TCPTransport, error) {
+func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTransport, error) {
 	if len(config.BindAddrs) == 0 {
 		config.BindAddrs = []string{zeroZeroZeroZero}
 	}
@@ -110,6 +109,7 @@ func NewTCPTransport(config TCPTransportConfig) (*TCPTransport, error) {
 	var ok bool
 	t := TCPTransport{
 		cfg:      config,
+		logger:   logger,
 		packetCh: make(chan *memberlist.Packet),
 		connCh:   make(chan net.Conn),
 	}
@@ -186,7 +186,7 @@ func (t *TCPTransport) tcpListen(tcpLn *net.TCPListener) {
 				loopDelay = maxDelay
 			}
 
-			level.Error(util.Logger).Log("msg", "TCPTransport: Error accepting TCP connection", "err", err)
+			level.Error(t.logger).Log("msg", "TCPTransport: Error accepting TCP connection", "err", err)
 			time.Sleep(loopDelay)
 			continue
 		}
@@ -201,7 +201,7 @@ var noopLogger = log.NewNopLogger()
 
 func (t *TCPTransport) debugLog() log.Logger {
 	if t.cfg.TransportDebug {
-		return level.Debug(util.Logger)
+		return level.Debug(t.logger)
 	}
 	return noopLogger
 }
@@ -220,7 +220,7 @@ func (t *TCPTransport) handleConnection(conn *net.TCPConn) {
 	msgType := []byte{0}
 	_, err := io.ReadFull(conn, msgType)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "TCPTransport: failed to read message type", "err", err)
+		level.Error(t.logger).Log("msg", "TCPTransport: failed to read message type", "err", err)
 		return
 	}
 
@@ -239,7 +239,7 @@ func (t *TCPTransport) handleConnection(conn *net.TCPConn) {
 		_, err := io.ReadFull(conn, b)
 		if err != nil {
 			t.receivedPacketsErrors.Inc()
-			level.Error(util.Logger).Log("msg", "TCPTransport: error while reading address:", "err", err)
+			level.Error(t.logger).Log("msg", "TCPTransport: error while reading address:", "err", err)
 			return
 		}
 
@@ -247,7 +247,7 @@ func (t *TCPTransport) handleConnection(conn *net.TCPConn) {
 		_, err = io.ReadFull(conn, addrBuf)
 		if err != nil {
 			t.receivedPacketsErrors.Inc()
-			level.Error(util.Logger).Log("msg", "TCPTransport: error while reading address:", "err", err)
+			level.Error(t.logger).Log("msg", "TCPTransport: error while reading address:", "err", err)
 			return
 		}
 
@@ -255,13 +255,13 @@ func (t *TCPTransport) handleConnection(conn *net.TCPConn) {
 		buf, err := ioutil.ReadAll(conn)
 		if err != nil {
 			t.receivedPacketsErrors.Inc()
-			level.Error(util.Logger).Log("msg", "TCPTransport: error while reading packet data:", "err", err)
+			level.Error(t.logger).Log("msg", "TCPTransport: error while reading packet data:", "err", err)
 			return
 		}
 
 		if len(buf) < md5.Size {
 			t.receivedPacketsErrors.Inc()
-			level.Error(util.Logger).Log("msg", "TCPTransport: not enough data received", "length", len(buf))
+			level.Error(t.logger).Log("msg", "TCPTransport: not enough data received", "length", len(buf))
 			return
 		}
 
@@ -272,7 +272,7 @@ func (t *TCPTransport) handleConnection(conn *net.TCPConn) {
 
 		if !bytes.Equal(receivedDigest, expectedDigest[:]) {
 			t.receivedPacketsErrors.Inc()
-			level.Warn(util.Logger).Log("msg", "TCPTransport: packet digest mismatch", "expected", fmt.Sprintf("%x", expectedDigest), "received", fmt.Sprintf("%x", receivedDigest))
+			level.Warn(t.logger).Log("msg", "TCPTransport: packet digest mismatch", "expected", fmt.Sprintf("%x", expectedDigest), "received", fmt.Sprintf("%x", receivedDigest))
 		}
 
 		t.debugLog().Log("msg", "TCPTransport: Received packet", "addr", addr(addrBuf), "size", len(buf), "hash", fmt.Sprintf("%x", receivedDigest))
@@ -286,7 +286,7 @@ func (t *TCPTransport) handleConnection(conn *net.TCPConn) {
 		}
 	} else {
 		t.unknownConnections.Inc()
-		level.Error(util.Logger).Log("msg", "TCPTransport: unknown message type", "msgType", msgType)
+		level.Error(t.logger).Log("msg", "TCPTransport: unknown message type", "msgType", msgType)
 	}
 }
 
@@ -354,7 +354,7 @@ func (t *TCPTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 		advertisePort = t.GetAutoBindPort()
 	}
 
-	level.Debug(util.Logger).Log("msg", "FinalAdvertiseAddr", "advertiseAddr", advertiseAddr.String(), "advertisePort", advertisePort)
+	level.Debug(t.logger).Log("msg", "FinalAdvertiseAddr", "advertiseAddr", advertiseAddr.String(), "advertisePort", advertisePort)
 
 	t.setAdvertisedAddr(advertiseAddr, advertisePort)
 	return advertiseAddr, advertisePort, nil
@@ -387,7 +387,7 @@ func (t *TCPTransport) WriteTo(b []byte, addr string) (time.Time, error) {
 			return time.Time{}, fmt.Errorf("WriteTo %s: %w", addr, err)
 		}
 
-		level.Warn(util.Logger).Log("msg", "TCPTransport: WriteTo failed", "addr", addr, "err", err)
+		level.Warn(t.logger).Log("msg", "TCPTransport: WriteTo failed", "addr", addr, "err", err)
 		return time.Now(), nil
 	}
 

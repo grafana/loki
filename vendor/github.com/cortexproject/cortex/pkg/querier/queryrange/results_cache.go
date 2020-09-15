@@ -40,8 +40,7 @@ type CacheGenNumberLoader interface {
 
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
-	CacheConfig             cache.Config  `yaml:"cache"`
-	LegacyMaxCacheFreshness time.Duration `yaml:"max_freshness" doc:"hidden"` // TODO: (deprecated) remove in Cortex v1.4.0
+	CacheConfig cache.Config `yaml:"cache"`
 }
 
 // RegisterFlags registers flags.
@@ -182,11 +181,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
-	// check if cache freshness value is provided in legacy config
-	maxCacheFreshness := s.cfg.LegacyMaxCacheFreshness
-	if maxCacheFreshness == time.Duration(0) {
-		maxCacheFreshness = s.limits.MaxCacheFreshness(userID)
-	}
+	maxCacheFreshness := s.limits.MaxCacheFreshness(userID)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)

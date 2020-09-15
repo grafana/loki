@@ -192,3 +192,18 @@ func (m *Manager) findInverseDependencies(mod string, mods []string) []string {
 
 	return result
 }
+
+// DependenciesForModule returns transitive dependencies for given module, sorted by name.
+func (m *Manager) DependenciesForModule(module string) []string {
+	dedup := map[string]bool{}
+	for _, d := range m.listDeps(module) {
+		dedup[d] = true
+	}
+
+	result := make([]string, 0, len(dedup))
+	for d := range dedup {
+		result = append(result, d)
+	}
+	sort.Strings(result)
+	return result
+}
