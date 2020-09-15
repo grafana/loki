@@ -440,6 +440,8 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
 		}
+		// TODO(cyriltovena): Setting labels here is wrong now as labels can be different within the same chunk due to
+		// label extraction feature.
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
 	}
 
@@ -537,7 +539,8 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			}
 			iterators = append(iterators, iterator)
 		}
-
+		// TODO(cyriltovena): Setting labels here is wrong now as labels can be different within the same chunk due to
+		// label extraction feature.
 		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, labels))
 	}
 
