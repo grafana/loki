@@ -261,6 +261,8 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		case Ingester:
 			// We do not want ingester to unnecessarily keep downloading files
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
+			// Do not cache index from Ingester.
+			t.cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{}
 		case Querier:
 			// We do not want query to do any updates to index
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
