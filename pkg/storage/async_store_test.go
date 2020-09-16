@@ -29,8 +29,8 @@ func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, throu
 	return args.Get(0).([][]chunk.Chunk), args.Get(1).([]*chunk.Fetcher), args.Error(2)
 }
 
-func (s *storeMock) GetChunkFetcher(chk chunk.Chunk) *chunk.Fetcher {
-	args := s.Called(chk)
+func (s *storeMock) GetChunkFetcher(tm model.Time) *chunk.Fetcher {
+	args := s.Called(tm)
 	return args.Get(0).(*chunk.Fetcher)
 }
 
