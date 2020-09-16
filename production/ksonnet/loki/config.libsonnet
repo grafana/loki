@@ -150,7 +150,6 @@
         cache_results: true,
         max_retries: 5,
         results_cache: {
-          max_freshness: '10m',
           cache: {
             memcached_client: {
               timeout: '500ms',
@@ -180,6 +179,7 @@
         ingestion_rate_strategy: 'global',
         ingestion_rate_mb: 10,
         ingestion_burst_size_mb: 20,
+        max_cache_freshness_per_query: '10m',
       },
 
       ingester: {

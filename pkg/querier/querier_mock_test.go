@@ -261,6 +261,10 @@ func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Tim
 	panic("don't call me please")
 }
 
+func (s *storeMock) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
+	panic("don't call me please")
+}
+
 func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)

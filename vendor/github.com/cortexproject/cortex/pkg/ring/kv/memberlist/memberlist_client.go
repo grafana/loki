@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
@@ -201,7 +202,8 @@ func generateRandomSuffix() string {
 type KV struct {
 	services.Service
 
-	cfg KVConfig
+	cfg    KVConfig
+	logger log.Logger
 
 	// dns discovery provider
 	provider *dns.Provider
@@ -276,7 +278,7 @@ var (
 // gossiping part. Only after service is in Running state, it is really gossiping. Starting the service will also
 // trigger connecting to the existing memberlist cluster. If that fails and AbortIfJoinFails is true, error is returned
 // and service enters Failed state.
-func NewKV(cfg KVConfig) *KV {
+func NewKV(cfg KVConfig, logger log.Logger) *KV {
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
 
@@ -289,7 +291,8 @@ func NewKV(cfg KVConfig) *KV {
 
 	mlkv := &KV{
 		cfg:            cfg,
-		provider:       dns.NewProvider(util.Logger, mr, dns.GolangResolverType),
+		logger:         logger,
+		provider:       dns.NewProvider(logger, mr, dns.GolangResolverType),
 		store:          make(map[string]valueDesc),
 		codecs:         make(map[string]codec.Codec),
 		watchers:       make(map[string][]chan string),
@@ -309,7 +312,7 @@ func NewKV(cfg KVConfig) *KV {
 }
 
 func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
-	tr, err := NewTCPTransport(m.cfg.TCPTransport)
+	tr, err := NewTCPTransport(m.cfg.TCPTransport, m.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transport: %v", err)
 	}
@@ -343,10 +346,10 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	}
 	if m.cfg.RandomizeNodeName {
 		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix()
-		level.Info(util.Logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
+		level.Info(m.logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
 	}
 
-	mlCfg.LogOutput = newMemberlistLoggerAdapter(util.Logger, false)
+	mlCfg.LogOutput = newMemberlistLoggerAdapter(m.logger, false)
 	mlCfg.Transport = tr
 
 	// Memberlist uses UDPBufferSize to figure out how many messages it can put into single "packet".
@@ -398,7 +401,7 @@ func (m *KV) running(ctx context.Context) error {
 
 		err := m.joinMembersOnStartup(ctx, members)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to join memberlist cluster", "err", err)
+			level.Error(m.logger).Log("msg", "failed to join memberlist cluster", "err", err)
 
 			if m.cfg.AbortIfJoinFails {
 				return errFailedToJoinCluster
@@ -421,10 +424,10 @@ func (m *KV) running(ctx context.Context) error {
 
 			reached, err := m.memberlist.Join(members)
 			if err == nil {
-				level.Info(util.Logger).Log("msg", "re-joined memberlist cluster", "reached_nodes", reached)
+				level.Info(m.logger).Log("msg", "re-joined memberlist cluster", "reached_nodes", reached)
 			} else {
 				// Don't report error from rejoin, otherwise KV service would be stopped completely.
-				level.Warn(util.Logger).Log("msg", "re-joining memberlist cluster failed", "err", err)
+				level.Warn(m.logger).Log("msg", "re-joining memberlist cluster failed", "err", err)
 			}
 
 		case <-ctx.Done():
@@ -457,7 +460,7 @@ func (m *KV) JoinMembers(members []string) (int, error) {
 func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
 	reached, err := m.memberlist.Join(m.cfg.JoinMembers)
 	if err == nil {
-		level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
+		level.Info(m.logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
 		return nil
 	}
 
@@ -465,7 +468,7 @@ func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
 		return err
 	}
 
-	level.Debug(util.Logger).Log("msg", "attempt to join memberlist cluster failed", "retries", 0, "err", err)
+	level.Debug(m.logger).Log("msg", "attempt to join memberlist cluster failed", "retries", 0, "err", err)
 	lastErr := err
 
 	cfg := util.BackoffConfig{
@@ -482,11 +485,11 @@ func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
 		reached, err := m.memberlist.Join(members)
 		if err != nil {
 			lastErr = err
-			level.Debug(util.Logger).Log("msg", "attempt to join memberlist cluster failed", "retries", backoff.NumRetries(), "err", err)
+			level.Debug(m.logger).Log("msg", "attempt to join memberlist cluster failed", "retries", backoff.NumRetries(), "err", err)
 			continue
 		}
 
-		level.Info(util.Logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
+		level.Info(m.logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
 		return nil
 	}
 
@@ -512,7 +515,7 @@ func (m *KV) discoverMembers(ctx context.Context, members []string) []string {
 
 	err := m.provider.Resolve(ctx, resolve)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to resolve members", "addrs", strings.Join(resolve, ","))
+		level.Error(m.logger).Log("msg", "failed to resolve members", "addrs", strings.Join(resolve, ","))
 	}
 
 	ms = append(ms, m.provider.Addresses()...)
@@ -523,7 +526,7 @@ func (m *KV) discoverMembers(ctx context.Context, members []string) []string {
 // While Stopping, we try to leave memberlist cluster and then shutdown memberlist client.
 // We do this in order to send out last messages, typically that ingester has LEFT the ring.
 func (m *KV) stopping(_ error) error {
-	level.Info(util.Logger).Log("msg", "leaving memberlist cluster")
+	level.Info(m.logger).Log("msg", "leaving memberlist cluster")
 
 	// Wait until broadcast queue is empty, but don't wait for too long.
 	// Also don't wait if there is just one node left.
@@ -538,19 +541,19 @@ func (m *KV) stopping(_ error) error {
 	}
 
 	if cnt := m.broadcasts.NumQueued(); cnt > 0 {
-		level.Warn(util.Logger).Log("msg", "broadcast messages left in queue", "count", cnt, "nodes", m.memberlist.NumMembers())
+		level.Warn(m.logger).Log("msg", "broadcast messages left in queue", "count", cnt, "nodes", m.memberlist.NumMembers())
 	}
 
 	err := m.memberlist.Leave(m.cfg.LeaveTimeout)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error when leaving memberlist cluster", "err", err)
+		level.Error(m.logger).Log("msg", "error when leaving memberlist cluster", "err", err)
 	}
 
 	close(m.shutdown)
 
 	err = m.memberlist.Shutdown()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error when shutting down memberlist client", "err", err)
+		level.Error(m.logger).Log("msg", "error when shutting down memberlist client", "err", err)
 	}
 	return nil
 }
@@ -627,7 +630,7 @@ func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func
 			// value changed
 			val, _, err := m.get(key, codec)
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
+				level.Warn(m.logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
 				continue
 			}
 
@@ -673,7 +676,7 @@ func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, 
 		case key := <-w:
 			val, _, err := m.get(key, codec)
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
+				level.Warn(m.logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
 				continue
 			}
 
@@ -734,7 +737,7 @@ func (m *KV) notifyWatchers(key string) {
 						c.Inc()
 					}
 
-					level.Warn(util.Logger).Log("msg", "failed to send notification to prefix watcher", "prefix", p)
+					level.Warn(m.logger).Log("msg", "failed to send notification to prefix watcher", "prefix", p)
 				}
 			}
 		}
@@ -773,7 +776,7 @@ outer:
 
 		change, newver, retry, err := m.trySingleCas(key, codec, f)
 		if err != nil {
-			level.Debug(util.Logger).Log("msg", "CAS attempt failed", "err", err, "retry", retry)
+			level.Debug(m.logger).Log("msg", "CAS attempt failed", "err", err, "retry", retry)
 
 			lastError = err
 			if !retry {
@@ -789,7 +792,7 @@ outer:
 			if m.State() == services.Running {
 				m.broadcastNewValue(key, change, newver, codec)
 			} else {
-				level.Warn(util.Logger).Log("msg", "skipped broadcasting CAS update because memberlist KV is shutting down", "key", key)
+				level.Warn(m.logger).Log("msg", "skipped broadcasting CAS update because memberlist KV is shutting down", "key", key)
 			}
 		}
 
@@ -851,14 +854,14 @@ func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in interface{}) 
 func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec codec.Codec) {
 	data, err := codec.Encode(change)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to encode change", "err", err)
+		level.Error(m.logger).Log("msg", "failed to encode change", "err", err)
 		return
 	}
 
 	kvPair := KeyValuePair{Key: key, Value: data, Codec: codec.CodecID()}
 	pairData, err := kvPair.Marshal()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to serialize KV pair", "err", err)
+		level.Error(m.logger).Log("msg", "failed to serialize KV pair", "err", err)
 	}
 
 	if len(pairData) > 65535 {
@@ -868,7 +871,7 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		//
 		// Typically messages are smaller (when dealing with couple of updates only), but can get bigger
 		// when broadcasting result of push/pull update.
-		level.Debug(util.Logger).Log("msg", "broadcast message too big, not broadcasting", "len", len(pairData))
+		level.Debug(m.logger).Log("msg", "broadcast message too big, not broadcasting", "len", len(pairData))
 		return
 	}
 
@@ -893,13 +896,13 @@ func (m *KV) NotifyMsg(msg []byte) {
 	kvPair := KeyValuePair{}
 	err := kvPair.Unmarshal(msg)
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "failed to unmarshal received KV Pair", "err", err)
+		level.Warn(m.logger).Log("msg", "failed to unmarshal received KV Pair", "err", err)
 		m.numberOfInvalidReceivedMessages.Inc()
 		return
 	}
 
 	if len(kvPair.Key) == 0 {
-		level.Warn(util.Logger).Log("msg", "received an invalid KV Pair (empty key)")
+		level.Warn(m.logger).Log("msg", "received an invalid KV Pair (empty key)")
 		m.numberOfInvalidReceivedMessages.Inc()
 		return
 	}
@@ -907,14 +910,14 @@ func (m *KV) NotifyMsg(msg []byte) {
 	codec := m.GetCodec(kvPair.GetCodec())
 	if codec == nil {
 		m.numberOfInvalidReceivedMessages.Inc()
-		level.Error(util.Logger).Log("msg", "failed to decode received value, unknown codec", "codec", kvPair.GetCodec())
+		level.Error(m.logger).Log("msg", "failed to decode received value, unknown codec", "codec", kvPair.GetCodec())
 		return
 	}
 
 	// we have a ring update! Let's merge it with our version of the ring for given key
 	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
+		level.Error(m.logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
 	} else if version > 0 {
 		m.notifyWatchers(kvPair.Key)
 
@@ -983,18 +986,18 @@ func (m *KV) LocalState(join bool) []byte {
 
 		ser, err := kvPair.Marshal()
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to serialize KV Pair", "err", err)
+			level.Error(m.logger).Log("msg", "failed to serialize KV Pair", "err", err)
 			continue
 		}
 
 		if uint(len(ser)) > math.MaxUint32 {
-			level.Error(util.Logger).Log("msg", "value too long", "key", key, "value_length", len(val.value))
+			level.Error(m.logger).Log("msg", "value too long", "key", key, "value_length", len(val.value))
 			continue
 		}
 
 		err = binary.Write(&buf, binary.BigEndian, uint32(len(ser)))
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to write uint32 to buffer?", "err", err)
+			level.Error(m.logger).Log("msg", "failed to write uint32 to buffer?", "err", err)
 			continue
 		}
 		buf.Write(ser)
@@ -1046,14 +1049,14 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 
 		codec := m.GetCodec(kvPair.GetCodec())
 		if codec == nil {
-			level.Error(util.Logger).Log("msg", "failed to parse remote state: unknown codec for key", "codec", kvPair.GetCodec(), "key", kvPair.GetKey())
+			level.Error(m.logger).Log("msg", "failed to parse remote state: unknown codec for key", "codec", kvPair.GetCodec(), "key", kvPair.GetKey())
 			continue
 		}
 
 		// we have both key and value, try to merge it with our state
 		change, newver, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
+			level.Error(m.logger).Log("msg", "failed to store received value", "key", kvPair.Key, "err", err)
 		} else if newver > 0 {
 			m.notifyWatchers(kvPair.Key)
 			m.broadcastNewValue(kvPair.Key, change, newver, codec)
@@ -1061,7 +1064,7 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 	}
 
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to parse remote state", "err", err)
+		level.Error(m.logger).Log("msg", "failed to parse remote state", "err", err)
 	}
 }
 

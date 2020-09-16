@@ -126,8 +126,6 @@ type BlocksStoreQueryable struct {
 }
 
 func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consistency *BlocksConsistencyChecker, limits BlocksStoreLimits, queryStoreAfter time.Duration, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
-	util.WarnExperimentalUse("Blocks storage engine")
-
 	manager, err := services.NewManager(stores, finder)
 	if err != nil {
 		return nil, errors.Wrap(err, "register blocks storage queryable subservices")
