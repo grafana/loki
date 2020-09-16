@@ -4,10 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 func Test_logSelectorExpr_String(t *testing.T) {
@@ -25,6 +24,9 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} |= "" |= ""`, false},
 		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
+		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 	}
 
 	for _, tt := range tests {
@@ -54,6 +56,9 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
+		`sum(count_over_time({job="mysql"} | json [5m]))`,
+		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
+		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m]))`,
@@ -247,5 +252,38 @@ func BenchmarkContainsFilter(b *testing.B) {
 		if !f.Filter(line) {
 			b.Fatal("doesn't match")
 		}
+	}
+}
+
+func Test_parserExpr_Parser(t *testing.T) {
+	tests := []struct {
+		name    string
+		op      string
+		param   string
+		want    LabelParser
+		wantErr bool
+	}{
+		{"json", OpParserTypeJSON, "", NewJSONParser(), false},
+		{"logfmt", OpParserTypeLogfmt, "", NewLogfmtParser(), false},
+		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
+		{"regexp err ", OpParserTypeRegexp, "foo", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &parserExpr{
+				op:    tt.op,
+				param: tt.param,
+			}
+			got, err := e.Parser()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parserExpr.Parser() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				require.Nil(t, got)
+			} else {
+				require.Equal(t, tt.want, got)
+			}
+		})
 	}
 }

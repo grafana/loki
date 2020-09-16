@@ -23,10 +23,17 @@ const (
 
 var (
 	errMissingCapture = errors.New("at least one named capture must be supplied")
+	NoopLabelParser   = noopParser{}
 )
 
 type LabelParser interface {
 	Parse(line []byte, lbs labels.Labels) labels.Labels
+}
+
+type noopParser struct{}
+
+func (noopParser) Parse(_ []byte, lbs labels.Labels) labels.Labels {
+	return lbs
 }
 
 type jsonParser struct {
@@ -109,6 +116,14 @@ func NewRegexpParser(re string) (*regexpParser, error) {
 		builder:   labels.NewBuilder(nil),
 		nameIndex: nameIndex,
 	}, nil
+}
+
+func mustNewRegexParser(re string) *regexpParser {
+	r, err := NewRegexpParser(re)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 func (r *regexpParser) Parse(line []byte, lbs labels.Labels) labels.Labels {

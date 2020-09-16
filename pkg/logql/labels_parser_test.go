@@ -169,14 +169,6 @@ func Test_regexpParser_Parse(t *testing.T) {
 	}
 }
 
-func mustNewRegexParser(re string) *regexpParser {
-	r, err := NewRegexpParser(re)
-	if err != nil {
-		panic(err)
-	}
-	return r
-}
-
 func Test_logfmtParser_Parse(t *testing.T) {
 	tests := []struct {
 		name string

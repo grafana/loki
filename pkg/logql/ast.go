@@ -75,6 +75,7 @@ type Querier interface {
 type LogSelectorExpr interface {
 	Filter() (LineFilter, error)
 	Matchers() []*labels.Matcher
+	Parser() (LabelParser, error)
 	Expr
 }
 
@@ -106,6 +107,10 @@ func (e *matchersExpr) String() string {
 
 func (e *matchersExpr) Filter() (LineFilter, error) {
 	return nil, nil
+}
+
+func (e *matchersExpr) Parser() (LabelParser, error) {
+	return NoopLabelParser, nil
 }
 
 type filterExpr struct {
@@ -165,6 +170,58 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 	}
 
 	return f, nil
+}
+
+func (e *filterExpr) Parser() (LabelParser, error) {
+	return NoopLabelParser, nil
+}
+
+type parserExpr struct {
+	left  LogSelectorExpr
+	op    string
+	param string
+	implicit
+}
+
+func newParserExpr(left LogSelectorExpr, op, param string) LogSelectorExpr {
+	// todo(cyriltovena): we might want to pre-validate param here to fail fast.
+	return &parserExpr{
+		left:  left,
+		op:    op,
+		param: param,
+	}
+}
+
+func (e *parserExpr) Matchers() []*labels.Matcher {
+	return e.left.Matchers()
+}
+
+func (e *parserExpr) Filter() (LineFilter, error) {
+	return e.left.Filter()
+}
+
+func (e *parserExpr) Parser() (LabelParser, error) {
+	switch e.op {
+	case OpParserTypeJSON:
+		return NewJSONParser(), nil
+	case OpParserTypeLogfmt:
+		return NewLogfmtParser(), nil
+	case OpParserTypeRegexp:
+		return NewRegexpParser(e.param)
+	default:
+		return nil, fmt.Errorf("unknown parser operator: %s", e.op)
+	}
+}
+
+func (e *parserExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(e.left.String())
+	sb.WriteString("|")
+	sb.WriteString(e.op)
+	if e.param != "" {
+		sb.WriteString(strconv.Quote(e.param))
+	}
+	return sb.String()
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
@@ -242,6 +299,11 @@ const (
 	OpTypeGTE   = ">="
 	OpTypeLT    = "<"
 	OpTypeLTE   = "<="
+
+	// parsers
+	OpParserTypeJSON   = "json"
+	OpParserTypeLogfmt = "logfmt"
+	OpParserTypeRegexp = "regexp"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -505,6 +567,7 @@ func (e *literalExpr) Selector() LogSelectorExpr           { return e }
 func (e *literalExpr) Operations() []string                { return nil }
 func (e *literalExpr) Filter() (LineFilter, error)         { return nil, nil }
 func (e *literalExpr) Matchers() []*labels.Matcher         { return nil }
+func (e *literalExpr) Parser() (LabelParser, error)        { return NoopLabelParser, nil }
 func (e *literalExpr) Extractor() (SampleExtractor, error) { return nil, nil }
 
 // helper used to impl Stringer for vector and range aggregations

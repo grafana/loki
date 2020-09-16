@@ -19,6 +19,7 @@ var tokens = map[string]int{
 	"!~":                 NRE,
 	"|=":                 PIPE_EXACT,
 	"|~":                 PIPE_MATCH,
+	"|":                  PIPE,
 	"(":                  OPEN_PARENTHESIS,
 	")":                  CLOSE_PARENTHESIS,
 	"by":                 BY,
@@ -56,6 +57,11 @@ var tokens = map[string]int{
 	OpTypeGTE:   GTE,
 	OpTypeLT:    LT,
 	OpTypeLTE:   LTE,
+
+	// parsers
+	OpParserTypeJSON:   JSON,
+	OpParserTypeRegexp: REGEXP,
+	OpParserTypeLogfmt: LOGFMT,
 }
 
 type lexer struct {

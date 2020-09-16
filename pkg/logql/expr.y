@@ -28,6 +28,7 @@ import (
   duration                time.Duration
   LiteralExpr             *literalExpr
   BinOpModifier           BinOpOptions
+  LabelParser             struct{ op, param string}
 }
 
 %start root
@@ -49,12 +50,13 @@ import (
 %type <BinOpExpr>             binOpExpr
 %type <LiteralExpr>           literalExpr
 %type <BinOpModifier>         binOpModifier
+%type <LabelParser>           labelparser
 
 %token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
-                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT
+                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -84,6 +86,7 @@ metricExpr:
 logExpr:
       selector                                    { $$ = newMatcherExpr($1)}
     | logExpr filter STRING                       { $$ = NewFilterExpr( $1, $2, $3 ) }
+    | logExpr labelparser                         { $$ = newParserExpr($1, $2.op, $2.param) }
     | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
     | logExpr filter error
     | logExpr error
@@ -194,4 +197,10 @@ grouping:
       BY OPEN_PARENTHESIS labels CLOSE_PARENTHESIS        { $$ = &grouping{ without: false , groups: $3 } }
     | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &grouping{ without: true , groups: $3 } }
     ;
+
+labelparser:
+    PIPE JSON           { $$ = struct{ op, param string}{ op: OpParserTypeJSON} }
+  | PIPE LOGFMT         { $$ = struct{ op, param string}{ op: OpParserTypeLogfmt} }
+  | PIPE REGEXP STRING  { $$ = struct{ op, param string}{ op: OpParserTypeRegexp, param: $3} }
+  ;
 %%
