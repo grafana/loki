@@ -368,10 +368,7 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 	return nil
 }
 
-func (c *client) RegisterLatencyMetric(labels model.LabelSet) {
-
-}
-
 func (c *client) UnregisterLatencyMetric(labels model.LabelSet) {
+	labels[HostLabel] = model.LabelValue(c.cfg.URL.Host)
 	streamLag.Delete(labels)
 }
