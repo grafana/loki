@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const (
@@ -68,7 +69,7 @@ func (c *dumbChunk) Utilization() float64 {
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
-func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, direction logproto.Direction, _ logql.LineFilter) (iter.EntryIterator, error) {
+func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, direction logproto.Direction, _ labels.Labels, _ logql.LineFilter, _ logql.LabelParser) (iter.EntryIterator, error) {
 	i := sort.Search(len(c.entries), func(i int) bool {
 		return !from.After(c.entries[i].Timestamp)
 	})
@@ -93,7 +94,7 @@ func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, directi
 	}, nil
 }
 
-func (c *dumbChunk) SampleIterator(_ context.Context, from, through time.Time, _ logql.LineFilter, _ logql.SampleExtractor) iter.SampleIterator {
+func (c *dumbChunk) SampleIterator(_ context.Context, from, through time.Time, _ labels.Labels, _ logql.LineFilter, _ logql.SampleExtractor, _ logql.LabelParser) iter.SampleIterator {
 	return nil
 }
 
