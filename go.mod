@@ -36,6 +36,7 @@ require (
 	github.com/jmespath/go-jmespath v0.3.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.10
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/klauspost/compress v1.9.5
 	github.com/mitchellh/mapstructure v1.2.2
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
