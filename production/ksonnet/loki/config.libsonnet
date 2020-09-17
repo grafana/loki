@@ -9,6 +9,15 @@
 
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
+    // flag for tuning things when boltdb-shipper is current or upcoming index type.
+    using_boltdb_shipper: false,
+
+    // flags for running ingesters/queriers as a statefulset instead of deployment type.
+    stateful_ingesters: false,
+    ingester_pvc_size: '5Gi',
+
+    stateful_queriers: false,
+    querier_pvc_size: '10Gi',
 
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
