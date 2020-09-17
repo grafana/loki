@@ -9,6 +9,7 @@
 
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
+    annotations: {},
 
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
@@ -354,4 +355,8 @@
     deployment.mixin.spec.template.metadata.withAnnotationsMixin({
       config_hash: std.md5(std.toString($._config.loki)),
     }),
+  
+  extra_annotations::
+    deployment.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations),
+
 }

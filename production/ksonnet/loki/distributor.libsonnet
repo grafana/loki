@@ -23,6 +23,7 @@
   distributor_deployment:
     deployment.new('distributor', 3, [$.distributor_container]) +
     $.config_hash_mixin +
+    $.extra_annotations +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity,

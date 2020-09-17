@@ -23,6 +23,7 @@
       deployment.new('ruler', 2, [$.ruler_container]) +
       deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(600) +
       $.config_hash_mixin +
+      $.extra_annotations +
       $.util.configVolumeMount('loki', '/etc/loki/config') +
       $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
       $.util.antiAffinity

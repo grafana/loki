@@ -31,6 +31,7 @@
   table_manager_deployment:
     deployment.new('table-manager', 1, [$.table_manager_container]) +
     $.config_hash_mixin +
+    $.extra_annotations +
     $.util.configVolumeMount('loki', '/etc/loki/config'),
 
   table_manager_service:

@@ -30,6 +30,7 @@
   query_frontend_deployment:
     deployment.new('query-frontend', $._config.queryFrontend.replicas, [$.query_frontend_container]) +
     $.config_hash_mixin +
+    $.extra_annotations +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity,
