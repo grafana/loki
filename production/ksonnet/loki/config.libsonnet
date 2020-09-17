@@ -15,6 +15,8 @@
       // A higher value will lead to a querier trying to process more requests than there are available
       // cores and will result in scheduling delays.
       concurrency: 4,
+      CPURequests: '4',
+      memoryRequests: '2Gi',
     },
 
     queryFrontend: {
@@ -42,6 +44,8 @@
     index_period_hours: 168,  // 1 week
 
     ruler_enabled: false,
+    schema_store: 'bigtable',
+    schema_object_store: 'gcs',
 
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
@@ -277,9 +281,9 @@
       // Default schema config is bigtable/gcs, this will need to be overridden for other stores
       schema_config: {
         configs: [{
-          from: '2018-04-15',
-          store: 'bigtable',
-          object_store: 'gcs',
+          from: '%s' % $._config.schema_start_date,
+          store: '%s' % $._config.schema_store,
+          object_store: '%s' % $._config.schema_object_store,
           schema: 'v11',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
