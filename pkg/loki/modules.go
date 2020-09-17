@@ -325,10 +325,18 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.frontend.Wrap(tripperware)
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
+	var frontendMiddleware middleware.Interface
+
+	if t.cfg.MultiTenancy.Enabled && t.cfg.MultiTenancy.Type == "label" {
+		frontendMiddleware = t.httpAuthMiddlewareQuery
+	} else {
+		frontendMiddleware = t.httpAuthMiddleware
+	}
+
 	frontendHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		queryrange.StatsHTTPMiddleware,
-		t.httpAuthMiddleware,
+		frontendMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 	).Wrap(t.frontend.Handler())
 
