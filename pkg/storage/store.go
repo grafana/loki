@@ -107,28 +107,29 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 
 // decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
 // and adds the "__cortex_shard__" label if this is a sharded query.
-func decodeReq(req logql.QueryParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
+// todo(cyriltovena) refactor this.
+func decodeReq(req logql.QueryParams) ([]*labels.Matcher, logql.LineFilter, logql.LabelParser, model.Time, model.Time, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
-		return nil, nil, 0, 0, err
+		return nil, nil, nil, 0, 0, err
 	}
 
 	filter, err := expr.Filter()
 	if err != nil {
-		return nil, nil, 0, 0, err
+		return nil, nil, nil, 0, 0, err
 	}
 
 	matchers := expr.Matchers()
 	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
 	if err != nil {
-		return nil, nil, 0, 0, err
+		return nil, nil, nil, 0, 0, err
 	}
 	matchers = append(matchers, nameLabelMatcher)
 
 	if shards := req.GetShards(); shards != nil {
 		parsed, err := logql.ParseShards(shards)
 		if err != nil {
-			return nil, nil, 0, 0, err
+			return nil, nil, nil, 0, 0, err
 		}
 		for _, s := range parsed {
 			shardMatcher, err := labels.NewMatcher(
@@ -137,7 +138,7 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, logql.LineFilter, mode
 				s.String(),
 			)
 			if err != nil {
-				return nil, nil, 0, 0, err
+				return nil, nil, nil, 0, 0, err
 			}
 			matchers = append(matchers, shardMatcher)
 
@@ -147,9 +148,13 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, logql.LineFilter, mode
 			break // nolint:staticcheck
 		}
 	}
+	p, err := expr.Parser()
+	if err != nil {
+		return nil, nil, nil, 0, 0, err
+	}
 
 	from, through := util.RoundToMilliseconds(req.GetStart(), req.GetEnd())
-	return matchers, filter, from, through, nil
+	return matchers, filter, p, from, through, nil
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
@@ -203,7 +208,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 		matchers = []*labels.Matcher{nameLabelMatcher}
 	} else {
 		var err error
-		matchers, _, from, through, err = decodeReq(req)
+		matchers, _, _, from, through, err = decodeReq(req)
 		if err != nil {
 			return nil, err
 		}
@@ -271,7 +276,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	matchers, filter, from, through, err := decodeReq(req)
+	matchers, filter, parser, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
 	}
@@ -285,12 +290,12 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return iter.NoopIterator, nil
 	}
 
-	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.Direction, req.Start, req.End)
+	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, parser, req.Direction, req.Start, req.End)
 
 }
 
 func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
-	matchers, filter, from, through, err := decodeReq(req)
+	matchers, filter, parser, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +318,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
-	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
+	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, parser, extractor, req.Start, req.End)
 }
 
 func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {

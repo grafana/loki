@@ -351,7 +351,7 @@ type logBatchIterator struct {
 	metrics  *ChunkMetrics
 	matchers []*labels.Matcher
 	filter   logql.LineFilter
-	labels   labelCache
+	parser   logql.LabelParser
 }
 
 func newLogBatchIterator(
@@ -361,6 +361,7 @@ func newLogBatchIterator(
 	batchSize int,
 	matchers []*labels.Matcher,
 	filter logql.LineFilter,
+	parser logql.LabelParser,
 	direction logproto.Direction,
 	start, end time.Time,
 ) (iter.EntryIterator, error) {
@@ -369,9 +370,9 @@ func newLogBatchIterator(
 	// The same applies to the sharding label which is injected by the cortex storage code.
 	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
 	logbatch := &logBatchIterator{
-		labels:   map[model.Fingerprint]string{},
 		matchers: matchers,
 		filter:   filter,
+		parser:   parser,
 		metrics:  metrics,
 		ctx:      ctx,
 	}
@@ -421,15 +422,13 @@ func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyC
 func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 
-	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
-	labels := it.labels.computeLabels(chks[0][0])
 	for i := range chks {
 		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
 		for j := range chks[i] {
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, it.filter, nextChunk)
+			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, it.filter, it.parser, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -440,9 +439,7 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
 		}
-		// TODO(cyriltovena): Setting labels here is wrong now as labels can be different within the same chunk due to
-		// label extraction feature.
-		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
+		result = append(result, iter.NewNonOverlappingIterator(iterators, ""))
 	}
 
 	return iter.NewHeapIterator(it.ctx, result, it.direction), nil
@@ -455,8 +452,8 @@ type sampleBatchIterator struct {
 	metrics   *ChunkMetrics
 	matchers  []*labels.Matcher
 	filter    logql.LineFilter
+	parser    logql.LabelParser
 	extractor logql.SampleExtractor
-	labels    labelCache
 }
 
 func newSampleBatchIterator(
@@ -466,6 +463,7 @@ func newSampleBatchIterator(
 	batchSize int,
 	matchers []*labels.Matcher,
 	filter logql.LineFilter,
+	parser logql.LabelParser,
 	extractor logql.SampleExtractor,
 	start, end time.Time,
 ) (iter.SampleIterator, error) {
@@ -475,9 +473,9 @@ func newSampleBatchIterator(
 	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
 
 	samplebatch := &sampleBatchIterator{
-		labels:    map[model.Fingerprint]string{},
 		matchers:  matchers,
 		filter:    filter,
+		parser:    parser,
 		extractor: extractor,
 		metrics:   metrics,
 		ctx:       ctx,
@@ -525,23 +523,19 @@ func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*La
 func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.SampleIterator, error) {
 	result := make([]iter.SampleIterator, 0, len(chks))
 
-	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
-	labels := it.labels.computeLabels(chks[0][0])
 	for i := range chks {
 		iterators := make([]iter.SampleIterator, 0, len(chks[i]))
 		for j := range chks[i] {
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, it.filter, it.extractor, nextChunk)
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, it.filter, it.extractor, it.parser, nextChunk)
 			if err != nil {
 				return nil, err
 			}
 			iterators = append(iterators, iterator)
 		}
-		// TODO(cyriltovena): Setting labels here is wrong now as labels can be different within the same chunk due to
-		// label extraction feature.
-		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, labels))
+		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, ""))
 	}
 
 	return iter.NewHeapSampleIterator(it.ctx, result), nil

@@ -138,7 +138,7 @@ func (i *dumbChunkIterator) Entry() logproto.Entry {
 }
 
 func (i *dumbChunkIterator) Labels() string {
-	panic("Labels() called on chunk iterator")
+	return ""
 }
 
 func (i *dumbChunkIterator) Error() error {
