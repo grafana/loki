@@ -22,6 +22,7 @@
     if $._config.ruler_enabled then
       deployment.new('ruler', $._config.ruler.replicas, [$.ruler_container]) +
       deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(600) +
+      $.extra_tolerations +
       $.config_hash_mixin +
       $.extra_annotations +
       $.util.configVolumeMount('loki', '/etc/loki/config') +

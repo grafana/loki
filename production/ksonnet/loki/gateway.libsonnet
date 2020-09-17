@@ -91,6 +91,7 @@
     deployment.new('gateway', 3, [
       $.gateway_container,
     ]) +
+    $.extra_tolerations +
     $.util.configVolumeMount('gateway-config', '/etc/nginx') +
     $.util.secretVolumeMount('gateway-secret', '/etc/nginx/secrets', defaultMode=420) +
     $.util.antiAffinity,

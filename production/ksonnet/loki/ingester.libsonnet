@@ -23,6 +23,7 @@
 
   ingester_deployment:
     deployment.new(name, 3, [$.ingester_container]) +
+    $.extra_tolerations +
     $.config_hash_mixin +
     $.extra_annotations +
     $.util.configVolumeMount('loki', '/etc/loki/config') +

@@ -11,6 +11,8 @@
 
     annotations: {},
 
+    tolerations: [{},],
+
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
       // A higher value will lead to a querier trying to process more requests than there are available
@@ -389,5 +391,8 @@
   
   extra_annotations::
     deployment.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations),
+
+  extra_tolerations::
+    deployment.spec.template.spec.withTolerations($._config.tolerations),
 
 }

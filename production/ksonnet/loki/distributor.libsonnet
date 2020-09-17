@@ -22,6 +22,7 @@
 
   distributor_deployment:
     deployment.new('distributor', $._config.distributor.replicas, [$.distributor_container]) +
+    $.extra_tolerations +
     $.config_hash_mixin +
     $.extra_annotations +
     $.util.configVolumeMount('loki', '/etc/loki/config') +

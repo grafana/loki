@@ -20,6 +20,7 @@
 
   querier_deployment:
     deployment.new('querier', $._config.querier.replicas, [$.querier_container]) +
+    $.extra_tolerations +
     $.config_hash_mixin +
     $.extra_annotations +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
