@@ -255,7 +255,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
 	}
 
-	if t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)].IndexType == shipper.BoltDBShipperType {
+	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
@@ -276,8 +276,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		return
 	}
 
-	if t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)].IndexType == shipper.BoltDBShipperType {
-		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
+	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
 		switch t.cfg.Target {
 		case Querier:
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
@@ -287,15 +286,16 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
 			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
 			// ToDo: See if we can avoid doing this when not running loki in clustered mode.
-			pc := t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)]
-			if pc.IndexType == shipper.BoltDBShipperType {
-				t.cfg.Ingester.QueryStore = true
-				mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
-				if err != nil {
-					return nil, err
-				}
-				t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
+			t.cfg.Ingester.QueryStore = true
+			boltdbShipperConfigIdx := loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)
+			if t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx].IndexType != shipper.BoltDBShipperType {
+				boltdbShipperConfigIdx++
 			}
+			mlb, err := calculateMaxLookBack(t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx], t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
+			if err != nil {
+				return nil, err
+			}
+			t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
 		}
 	}
 

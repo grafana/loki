@@ -358,18 +358,20 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
 }
 
+// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// when using boltdb-shipper, limit the request start time to the start of current schema config otherwise
-	// if query covers non boltdb-shipper stores too then we would un-necessarily be querying them as well which would anyways be done by queriers.
-	reqStart := req.Start
-	if i.store.ActivePeriodConfig().IndexType == shipper.BoltDBShipperType {
-		reqStart = adjustQueryStartTime(time.Since(i.store.ActivePeriodConfig().From.Time.Time()), reqStart, time.Now())
+	activePeriodicConfig := i.store.ActivePeriodConfig()
+	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType {
+		return nil, nil
 	}
+
+	reqStart := req.Start
+	reqStart = adjustQueryStartTime(time.Since(activePeriodicConfig.From.Time.Time()), reqStart, time.Now())
 
 	// parse the request
 	start, end := listutil.RoundToMilliseconds(reqStart, req.End)
@@ -409,7 +411,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.
-	if i.store.ActivePeriodConfig().IndexType != shipper.BoltDBShipperType && !i.cfg.QueryStore {
+	activePeriodicConfig := i.store.ActivePeriodConfig()
+	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType && !i.cfg.QueryStore {
 		return resp, nil
 	}
 
@@ -426,8 +429,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
-	if i.store.ActivePeriodConfig().IndexType == shipper.BoltDBShipperType {
-		maxLookBackPeriod = time.Since(i.store.ActivePeriodConfig().From.Time.Time())
+	if activePeriodicConfig.IndexType == shipper.BoltDBShipperType {
+		maxLookBackPeriod = time.Since(activePeriodicConfig.From.Time.Time())
 	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
 	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())

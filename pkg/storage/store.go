@@ -82,17 +82,16 @@ type store struct {
 	chunk.Store
 	cfg          Config
 	chunkMetrics *ChunkMetrics
-
-	activeIndexType chunk.PeriodConfig
+	schemaCfg    SchemaConfig
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, registerer prometheus.Registerer) (Store, error) {
 	return &store{
-		Store:           chunkStore,
-		cfg:             cfg,
-		chunkMetrics:    NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
-		activeIndexType: schemaCfg.Configs[ActivePeriodConfig(schemaCfg)],
+		Store:        chunkStore,
+		cfg:          cfg,
+		chunkMetrics: NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
+		schemaCfg:    schemaCfg,
 	}, nil
 }
 
@@ -318,7 +317,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 }
 
 func (s *store) ActivePeriodConfig() chunk.PeriodConfig {
-	return s.activeIndexType
+	return s.schemaCfg.Configs[ActivePeriodConfig(s.schemaCfg)]
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
