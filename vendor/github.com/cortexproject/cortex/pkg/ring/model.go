@@ -102,15 +102,15 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 	numTokens := 0
 	for id, ingester := range d.Ingesters {
 		if now.Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
-			return fmt.Errorf("ingester %s past heartbeat timeout", id)
+			return fmt.Errorf("instance %s past heartbeat timeout", id)
 		} else if ingester.State != ACTIVE {
-			return fmt.Errorf("ingester %s in state %v", id, ingester.State)
+			return fmt.Errorf("instance %s in state %v", id, ingester.State)
 		}
 		numTokens += len(ingester.Tokens)
 	}
 
 	if numTokens == 0 {
-		return fmt.Errorf("Not ready: no tokens in ring")
+		return fmt.Errorf("no tokens in ring")
 	}
 	return nil
 }

@@ -62,10 +62,12 @@ type Config struct {
 	HTTPServerWriteTimeout        time.Duration `yaml:"http_server_write_timeout"`
 	HTTPServerIdleTimeout         time.Duration `yaml:"http_server_idle_timeout"`
 
-	GRPCOptions          []grpc.ServerOption            `yaml:"-"`
-	GRPCMiddleware       []grpc.UnaryServerInterceptor  `yaml:"-"`
-	GRPCStreamMiddleware []grpc.StreamServerInterceptor `yaml:"-"`
-	HTTPMiddleware       []middleware.Interface         `yaml:"-"`
+	GRPCOptions                   []grpc.ServerOption            `yaml:"-"`
+	GRPCMiddleware                []grpc.UnaryServerInterceptor  `yaml:"-"`
+	GRPCStreamMiddleware          []grpc.StreamServerInterceptor `yaml:"-"`
+	HTTPMiddleware                []middleware.Interface         `yaml:"-"`
+	Router                        *mux.Router                    `yaml:"-"`
+	DoNotAddDefaultHTTPMiddleware bool                           `yaml:"-"`
 
 	GPRCServerMaxRecvMsgSize        int           `yaml:"grpc_server_max_recv_msg_size"`
 	GRPCServerMaxSendMsgSize        int           `yaml:"grpc_server_max_send_msg_size"`
@@ -270,7 +272,12 @@ func New(cfg Config) (*Server, error) {
 	grpcServer := grpc.NewServer(grpcOptions...)
 
 	// Setup HTTP server
-	router := mux.NewRouter()
+	var router *mux.Router
+	if cfg.Router != nil {
+		router = cfg.Router
+	} else {
+		router = mux.NewRouter()
+	}
 	if cfg.PathPrefix != "" {
 		// Expect metrics and pprof handlers to be prefixed with server's path prefix.
 		// e.g. /loki/metrics or /loki/debug/pprof
@@ -279,6 +286,7 @@ func New(cfg Config) (*Server, error) {
 	if cfg.RegisterInstrumentation {
 		RegisterInstrumentation(router)
 	}
+
 	var sourceIPs *middleware.SourceIPExtractor
 	if cfg.LogSourceIPs {
 		sourceIPs, err = middleware.NewSourceIPs(cfg.LogSourceIPsHeader, cfg.LogSourceIPsRegex)
@@ -286,7 +294,8 @@ func New(cfg Config) (*Server, error) {
 			return nil, fmt.Errorf("error setting up source IP extraction: %v", err)
 		}
 	}
-	httpMiddleware := []middleware.Interface{
+
+	defaultHTTPMiddleware := []middleware.Interface{
 		middleware.Tracer{
 			RouteMatcher: router,
 			SourceIPs:    sourceIPs,
@@ -303,8 +312,13 @@ func New(cfg Config) (*Server, error) {
 			InflightRequests: inflightRequests,
 		},
 	}
+	httpMiddleware := []middleware.Interface{}
+	if cfg.DoNotAddDefaultHTTPMiddleware {
+		httpMiddleware = cfg.HTTPMiddleware
+	} else {
+		httpMiddleware = append(defaultHTTPMiddleware, cfg.HTTPMiddleware...)
+	}
 
-	httpMiddleware = append(httpMiddleware, cfg.HTTPMiddleware...)
 	httpServer := &http.Server{
 		ReadTimeout:  cfg.HTTPServerReadTimeout,
 		WriteTimeout: cfg.HTTPServerWriteTimeout,

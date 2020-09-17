@@ -19,6 +19,7 @@ message PrometheusRequest {
   int64 step = 4;
   google.protobuf.Duration timeout = 5 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
   string query = 6;
+  CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
 }
 
 message PrometheusResponseHeader {
@@ -58,4 +59,8 @@ message Extent  {
   reserved 3;
   string trace_id = 4 [(gogoproto.jsontag) = "-"];
   google.protobuf.Any response = 5 [(gogoproto.jsontag) = "response"];
+}
+
+message CachingOptions {
+  bool disabled = 1;
 }

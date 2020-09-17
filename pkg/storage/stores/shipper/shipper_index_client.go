@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -76,7 +77,8 @@ type Shipper struct {
 	uploadsManager    *uploads.TableManager
 	downloadsManager  *downloads.TableManager
 
-	metrics *metrics
+	metrics  *metrics
+	stopOnce sync.Once
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
@@ -179,6 +181,10 @@ func (s *Shipper) getUploaderName() (string, error) {
 }
 
 func (s *Shipper) Stop() {
+	s.stopOnce.Do(s.stop)
+}
+
+func (s *Shipper) stop() {
 	if s.uploadsManager != nil {
 		s.uploadsManager.Stop()
 	}
@@ -195,7 +201,9 @@ func (s *Shipper) NewWriteBatch() chunk.WriteBatch {
 }
 
 func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-	return s.uploadsManager.BatchWrite(ctx, batch)
+	return instrument.CollectedRequest(ctx, "WRITE", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		return s.uploadsManager.BatchWrite(ctx, batch)
+	})
 }
 
 func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {

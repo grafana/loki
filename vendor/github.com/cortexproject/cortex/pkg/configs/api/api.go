@@ -18,6 +18,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
+	amtemplate "github.com/prometheus/alertmanager/template"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/configs/db"
@@ -247,7 +248,7 @@ func validateRulesFiles(c userconfig.Config) error {
 
 func validateTemplateFiles(c userconfig.Config) error {
 	for fn, content := range c.TemplateFiles {
-		if _, err := template.New(fn).Parse(content); err != nil {
+		if _, err := template.New(fn).Funcs(template.FuncMap(amtemplate.DefaultFuncs)).Parse(content); err != nil {
 			return err
 		}
 	}

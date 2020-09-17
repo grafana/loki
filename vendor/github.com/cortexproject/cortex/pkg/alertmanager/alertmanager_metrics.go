@@ -62,11 +62,11 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		numNotifications: prometheus.NewDesc(
 			"cortex_alertmanager_notifications_total",
 			"The total number of attempted notifications.",
-			[]string{"user"}, nil),
+			[]string{"user", "integration"}, nil),
 		numFailedNotifications: prometheus.NewDesc(
 			"cortex_alertmanager_notifications_failed_total",
 			"The total number of failed notifications.",
-			[]string{"user"}, nil),
+			[]string{"user", "integration"}, nil),
 		notificationLatencySeconds: prometheus.NewDesc(
 			"cortex_alertmanager_notification_latency_seconds",
 			"The latency of notifications in seconds.",
@@ -186,8 +186,8 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUser(out, m.alertsReceived, "alertmanager_alerts_received_total")
 	data.SendSumOfCountersPerUser(out, m.alertsInvalid, "alertmanager_alerts_invalid_total")
 
-	data.SendSumOfCountersPerUser(out, m.numNotifications, "alertmanager_notifications_total")
-	data.SendSumOfCountersPerUser(out, m.numFailedNotifications, "alertmanager_notifications_failed_total")
+	data.SendSumOfCountersPerUserWithLabels(out, m.numNotifications, "alertmanager_notifications_total", "integration")
+	data.SendSumOfCountersPerUserWithLabels(out, m.numFailedNotifications, "alertmanager_notifications_failed_total", "integration")
 	data.SendSumOfHistograms(out, m.notificationLatencySeconds, "alertmanager_notification_latency_seconds")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.markerAlerts, "alertmanager_alerts", "state")
 

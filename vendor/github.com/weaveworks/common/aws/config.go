@@ -40,9 +40,13 @@ func ConfigFromURL(awsURL *url.URL) (*aws.Config, error) {
 		})
 
 	if awsURL.User != nil {
+		username := awsURL.User.Username()
 		password, _ := awsURL.User.Password()
-		creds := credentials.NewStaticCredentials(awsURL.User.Username(), password, "")
-		config = config.WithCredentials(creds)
+
+		// We request at least the username or password being set to enable the static credentials.
+		if username != "" || password != "" {
+			config = config.WithCredentials(credentials.NewStaticCredentials(username, password, ""))
+		}
 	}
 
 	if strings.Contains(awsURL.Host, ".") {

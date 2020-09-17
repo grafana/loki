@@ -365,8 +365,10 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.server.HTTP.Handle("/api/prom/label", frontendHandler)
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
 	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
-	// fallback route
-	t.server.HTTP.PathPrefix("/").Handler(defaultHandler)
+
+	// defer tail endpoints to the default handler
+	t.server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
+	t.server.HTTP.Handle("/api/prom/tail", defaultHandler)
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
@@ -449,7 +451,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 		ring.GetCodec(),
 	}
 
-	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV)
+	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV, util.Logger)
 	return t.memberlistKV, nil
 }
 

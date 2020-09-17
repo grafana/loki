@@ -1,5 +1,5 @@
 ---
-title: ec2
+title: EC2
 ---
 # Running Promtail on AWS EC2
 
@@ -100,7 +100,7 @@ Now we're going to download the [promtail configuration](../../promtail/) file b
 The file is also available on [github][config gist].
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/docs/clients/aws/ec2/promtail-ec2.yaml > ec2-promtail.yaml
+curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ec2/promtail-ec2.yaml > ec2-promtail.yaml
 vi ec2-promtail.yaml
 ```
 

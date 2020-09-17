@@ -261,6 +261,10 @@ func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Tim
 	panic("don't call me please")
 }
 
+func (s *storeMock) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
+	panic("don't call me please")
+}
+
 func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
@@ -317,6 +321,15 @@ func (r *readRingMock) IngesterCount() int {
 
 func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
 	return r
+}
+
+func (r *readRingMock) HasInstance(instanceID string) bool {
+	for _, ing := range r.replicationSet.Ingesters {
+		if ing.Addr != instanceID {
+			return true
+		}
+	}
+	return false
 }
 
 func mockReadRingWithOneActiveIngester() *readRingMock {

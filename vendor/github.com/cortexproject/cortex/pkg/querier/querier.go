@@ -57,8 +57,6 @@ type Config struct {
 	// LookbackDelta determines the time since the last sample after which a time
 	// series is considered stale.
 	LookbackDelta time.Duration `yaml:"lookback_delta"`
-	// This is used for the deprecated flag -promql.lookback-delta.
-	legacyLookbackDelta time.Duration
 
 	// Blocks storage only.
 	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
@@ -72,13 +70,9 @@ var (
 	errBadLookbackConfigs = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
 )
 
-const (
-	defaultLookbackDelta = 5 * time.Minute
-)
-
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("experimental.querier.store-gateway-client", f)
+	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
@@ -88,12 +82,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
-	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the experimental blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
+	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
-	f.StringVar(&cfg.StoreGatewayAddresses, "experimental.querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the experimental blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
-	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", defaultLookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
-	// TODO: Remove this flag in v1.4.0.
-	f.DurationVar(&cfg.legacyLookbackDelta, "promql.lookback-delta", defaultLookbackDelta, "[DEPRECATED] Time since the last sample after which a time series is considered stale and ignored by expression evaluations. Please use -querier.lookback-delta instead.")
+	f.StringVar(&cfg.StoreGatewayAddresses, "querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
+	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	f.StringVar(&cfg.SecondStoreEngine, "querier.second-store-engine", "", "Second store engine to use for querying. Empty = disabled.")
 	f.Var(&cfg.UseSecondStoreBeforeTime, "querier.use-second-store-before-time", "If specified, second store is only used for queries before this timestamp. Default value 0 means secondary store is always queried.")
 }
@@ -157,23 +149,13 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		return lazyquery.NewLazyQuerier(querier), nil
 	})
 
-	lookbackDelta := cfg.LookbackDelta
-	if cfg.LookbackDelta == defaultLookbackDelta && cfg.legacyLookbackDelta != defaultLookbackDelta {
-		// If the old flag was set to some other value than the default, it means
-		// the old flag was used and not the new flag.
-		lookbackDelta = cfg.legacyLookbackDelta
-
-		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(util.Logger).Log("msg", "Using deprecated flag -promql.lookback-delta, use -querier.lookback-delta instead")
-	}
-
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util.Logger,
 		Reg:                reg,
 		ActiveQueryTracker: createActiveQueryTracker(cfg),
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
-		LookbackDelta:      lookbackDelta,
+		LookbackDelta:      cfg.LookbackDelta,
 		NoStepSubqueryIntervalFn: func(int64) int64 {
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
@@ -303,7 +285,9 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	startTime := model.Time(sp.Start)
 	endTime := model.Time(sp.End)
 	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
-		return storage.ErrSeriesSet(fmt.Errorf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+		return storage.ErrSeriesSet(limitErr)
+
 	}
 
 	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, startTime, endTime)
@@ -370,31 +354,23 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	chunks := []chunk.Chunk(nil)
 
 	for _, set := range sets {
-		if !set.Next() {
-			// nothing in this set. If it has no error, we can ignore it completely.
-			// If there is error, we have to report it.
-			err := set.Err()
-			if err != nil {
-				otherSets = append(otherSets, storage.ErrSeriesSet(err))
+		nonChunkSeries := []storage.Series(nil)
+
+		// SeriesSet may have some series backed up by chunks, and some not.
+		for set.Next() {
+			s := set.At()
+
+			if sc, ok := s.(SeriesWithChunks); ok {
+				chunks = append(chunks, sc.Chunks()...)
+			} else {
+				nonChunkSeries = append(nonChunkSeries, s)
 			}
-			continue
 		}
 
-		s := set.At()
-		if sc, ok := s.(SeriesWithChunks); ok {
-			chunks = append(chunks, sc.Chunks()...)
-
-			// iterate over remaining series in this set, and store chunks
-			// Here we assume that all remaining series in the set are also backed-up by chunks.
-			// If not, there will be panics.
-			for set.Next() {
-				s = set.At()
-				chunks = append(chunks, s.(SeriesWithChunks).Chunks()...)
-			}
-		} else {
-			// We already called set.Next() once, but we want to return same result from At() also
-			// to the query engine.
-			otherSets = append(otherSets, &seriesSetWithFirstSeries{set: set, firstSeries: s})
+		if err := set.Err(); err != nil {
+			otherSets = append(otherSets, storage.ErrSeriesSet(err))
+		} else if len(nonChunkSeries) > 0 {
+			otherSets = append(otherSets, &sliceSeriesSet{series: nonChunkSeries, ix: -1})
 		}
 	}
 
@@ -413,42 +389,29 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 	return storage.NewMergeSeriesSet(otherSets, storage.ChainedSeriesMerge)
 }
 
-// This series set ignores first 'Next' call and simply returns cached result
-// to avoid doing the work required to compute it twice.
-type seriesSetWithFirstSeries struct {
-	firstNextCalled bool
-	firstSeries     storage.Series
-	set             storage.SeriesSet
+type sliceSeriesSet struct {
+	series []storage.Series
+	ix     int
 }
 
-func (pss *seriesSetWithFirstSeries) Next() bool {
-	if pss.firstNextCalled {
-		pss.firstSeries = nil
-		return pss.set.Next()
-	}
-	pss.firstNextCalled = true
-	return true
+func (s *sliceSeriesSet) Next() bool {
+	s.ix++
+	return s.ix < len(s.series)
 }
 
-func (pss *seriesSetWithFirstSeries) At() storage.Series {
-	if pss.firstSeries != nil {
-		return pss.firstSeries
-	}
-	return pss.set.At()
-}
-
-func (pss *seriesSetWithFirstSeries) Err() error {
-	if pss.firstSeries != nil {
+func (s *sliceSeriesSet) At() storage.Series {
+	if s.ix < 0 || s.ix >= len(s.series) {
 		return nil
 	}
-	return pss.set.Err()
+	return s.series[s.ix]
 }
 
-func (pss *seriesSetWithFirstSeries) Warnings() storage.Warnings {
-	if pss.firstSeries != nil {
-		return nil
-	}
-	return pss.set.Warnings()
+func (s *sliceSeriesSet) Err() error {
+	return nil
+}
+
+func (s *sliceSeriesSet) Warnings() storage.Warnings {
+	return nil
 }
 
 type storeQueryable struct {

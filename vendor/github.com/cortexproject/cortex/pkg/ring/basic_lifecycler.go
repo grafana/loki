@@ -381,9 +381,16 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(*Desc,
 			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState())
 		}
 
+		prevTimestamp := instanceDesc.Timestamp
 		changed := update(ringDesc, &instanceDesc)
 		if ok && !changed {
 			return nil, false, nil
+		}
+
+		// Memberlist requires that the timestamp always change, so we do update it unless
+		// was updated in the callback function.
+		if instanceDesc.Timestamp == prevTimestamp {
+			instanceDesc.Timestamp = time.Now().Unix()
 		}
 
 		ringDesc.Ingesters[l.cfg.ID] = instanceDesc

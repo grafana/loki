@@ -21,8 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -72,7 +72,7 @@ var (
 		encodedBytes, sentBytes, droppedBytes, sentEntries, droppedEntries,
 	}
 
-	userAgent = fmt.Sprintf("promtail/%s", build.Version)
+	UserAgent = fmt.Sprintf("promtail/%s", version.Version)
 )
 
 func init() {
@@ -262,7 +262,7 @@ func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, er
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", UserAgent)
 
 	// If the tenant ID is not empty promtail is running in multi-tenant mode, so
 	// we should send it to Loki

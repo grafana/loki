@@ -96,7 +96,7 @@ func CompressFile(src, dest string) error {
 	}
 
 	defer func() {
-		if err := uncompressedFile.Close(); err != nil {
+		if err := compressedFile.Close(); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to close compressed file", "path", dest, "err", err)
 		}
 	}()

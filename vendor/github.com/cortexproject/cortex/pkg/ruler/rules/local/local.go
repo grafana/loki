@@ -87,6 +87,11 @@ func (l *Client) DeleteRuleGroup(ctx context.Context, userID, namespace string, 
 	return errors.New("DeleteRuleGroup unsupported in rule local store")
 }
 
+// DeleteNamespace implements RulerStore
+func (l *Client) DeleteNamespace(ctx context.Context, userID, namespace string) error {
+	return errors.New("DeleteNamespace unsupported in rule local store")
+}
+
 func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
 	var allLists rules.RuleGroupList
 

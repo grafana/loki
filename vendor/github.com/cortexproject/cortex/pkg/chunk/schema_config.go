@@ -25,10 +25,11 @@ const (
 )
 
 var (
-	errInvalidSchemaVersion    = errors.New("invalid schema version")
-	errInvalidTablePeriod      = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
-	errConfigFileNotSet        = errors.New("schema config file needs to be set")
-	errConfigChunkPrefixNotSet = errors.New("schema config for chunks is missing the 'prefix' setting")
+	errInvalidSchemaVersion     = errors.New("invalid schema version")
+	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
+	errConfigFileNotSet         = errors.New("schema config file needs to be set")
+	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
+	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
 )
 
 // PeriodConfig defines the schema and tables to use for a period of time
@@ -119,6 +120,12 @@ func (cfg *SchemaConfig) Validate() error {
 		periodCfg.applyDefaults()
 		if err := periodCfg.validate(); err != nil {
 			return err
+		}
+
+		if i+1 < len(cfg.Configs) {
+			if cfg.Configs[i].From.Time.Unix() >= cfg.Configs[i+1].From.Time.Unix() {
+				return errSchemaIncreasingFromTime
+			}
 		}
 	}
 	return nil

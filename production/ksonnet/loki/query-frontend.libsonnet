@@ -11,15 +11,19 @@
     container.new('query-frontend', $._images.query_frontend) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.query_frontend_args)) +
+    container.mixin.readinessProbe.httpGet.withPath('/ready') +
+    container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
+    container.mixin.readinessProbe.withInitialDelaySeconds(15) +
+    container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.jaeger_mixin +
     if $._config.queryFrontend.sharded_queries_enabled then
-    $.util.resourcesRequests('2', '2Gi') +
-    $.util.resourcesLimits(null, '6Gi') +
-    container.withEnvMap({
-      JAEGER_REPORTER_MAX_QUEUE_SIZE: '5000',
-    })
+      $.util.resourcesRequests('2', '2Gi') +
+      $.util.resourcesLimits(null, '6Gi') +
+      container.withEnvMap({
+        JAEGER_REPORTER_MAX_QUEUE_SIZE: '5000',
+      })
     else $.util.resourcesRequests('2', '600Mi') +
-    $.util.resourcesLimits(null, '1200Mi'),
+         $.util.resourcesLimits(null, '1200Mi'),
 
   local deployment = $.apps.v1.deployment,
 
@@ -38,6 +42,10 @@
     // each query-frontend pod IP and NOT the service IP. To make it, we do NOT
     // use the service cluster IP so that when the service DNS is resolved it
     // returns the set of query-frontend IPs.
-    service.mixin.spec.withClusterIp('None'),
+    service.mixin.spec.withClusterIp('None') +
+    // Query frontend will not become ready until at least one querier connects
+    // which creates a chicken and egg scenario if we don't publish the
+    // query-frontend address before it's ready.
+    service.mixin.spec.withPublishNotReadyAddresses(true),
 
 }

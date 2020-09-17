@@ -354,6 +354,9 @@ func NewMetricTripperware(
 			codec,
 			extractor,
 			nil,
+			func(r queryrange.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
 			registerer,
 		)
 		if err != nil {

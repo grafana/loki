@@ -10,9 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	"github.com/thanos-io/thanos/pkg/tracing"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -110,7 +108,7 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
-	f.StringVar(&c.Target, "target", All, "The Cortex service to run. Use \"-modules\" command line flag to get a list of available options.")
+	f.StringVar(&c.Target, "target", All, "The Cortex module to run. Use \"-modules\" command line flag to get a list of available modules, and to see which modules are included in \"All\".")
 	f.BoolVar(&c.ListModules, "modules", false, "List available values to be use as target. Cannot be used in YAML config.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
@@ -188,8 +186,16 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid table_manager config")
+		return errors.Wrap(err, "invalid table-manager config")
 	}
+	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
+		return errors.Wrap(err, "invalid store-gateway config")
+	}
+
+	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
+		level.Warn(log).Log("schema configuration is not used by the blocks storage engine, and will have no effect")
+	}
+
 	return nil
 }
 
@@ -264,13 +270,8 @@ func New(cfg Config) (*Cortex, error) {
 // setupThanosTracing appends a gRPC middleware used to inject our tracer into the custom
 // context used by Thanos, in order to get Thanos spans correctly attached to our traces.
 func (t *Cortex) setupThanosTracing() {
-	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware,
-		tracing.UnaryServerInterceptor(opentracing.GlobalTracer()),
-	)
-
-	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware,
-		tracing.StreamServerInterceptor(opentracing.GlobalTracer()),
-	)
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, ThanosTracerUnaryInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ThanosTracerStreamInterceptor)
 }
 
 // Run starts Cortex running, and blocks until a Cortex stops.

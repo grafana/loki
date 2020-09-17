@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func translateError(err error) error {
@@ -30,7 +31,7 @@ func translateError(err error) error {
 	case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
 		// Don't translate those, just in case we use them internally.
 		return err
-	case chunk.QueryError:
+	case chunk.QueryError, validation.LimitError:
 		// This will be returned with status code 422 by Prometheus API.
 		return err
 	default:

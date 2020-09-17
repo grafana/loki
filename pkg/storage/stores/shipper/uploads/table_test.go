@@ -437,6 +437,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 
 	// delete everything uploaded
 	dir, err := ioutil.ReadDir(filepath.Join(objectStorageDir, table.name))
+	require.NoError(t, err)
 	for _, d := range dir {
 		os.RemoveAll(filepath.Join(objectStorageDir, table.name, d.Name()))
 	}

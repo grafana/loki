@@ -12,6 +12,11 @@ On this page we will document any upgrade issues/gotchas/considerations we are a
 
 ## Master / Unreleased
 
+### IMPORTANT: `results_cache.max_freshness` removed from YAML config
+
+The `max_freshness` config from `results_cache` has been removed in favour of another flag called `max_cache_freshness_per_query` in `limits_config` which has the same effect.
+If you happen to have `results_cache.max_freshness` set please use `limits_config.max_cache_freshness_per_query` YAML config instead.
+
 ## 1.6.0
 
 ### IMPORTANT: Ksonnet Port Change and Removal of NET_BIND_SERVICE Capability from docker image

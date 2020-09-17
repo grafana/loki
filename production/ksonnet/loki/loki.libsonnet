@@ -14,5 +14,8 @@
 (import 'query-frontend.libsonnet') +
 (import 'ruler.libsonnet') +
 
+// BoltDB Shipper support
+(import 'boltdb_shipper.libsonnet') +
+
 // Supporting services
 (import 'memcached.libsonnet')
