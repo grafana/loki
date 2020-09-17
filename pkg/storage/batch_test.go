@@ -1448,7 +1448,8 @@ func TestBuildHeapIterator(t *testing.T) {
 				batchChunkIterator: &batchChunkIterator{
 					direction: logproto.FORWARD,
 				},
-				ctx: ctx,
+				ctx:    ctx,
+				parser: logql.NoopLabelParser,
 			}
 			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), nil)
 			if err != nil {

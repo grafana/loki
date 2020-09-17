@@ -34,6 +34,7 @@ func TestLazyChunkIterator(t *testing.T) {
 			}),
 			[]logproto.Stream{
 				{
+					Labels: fooLabels,
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,

@@ -554,18 +554,18 @@ func (i *reverseIterator) Close() error {
 var entryBufferPool = sync.Pool{
 	New: func() interface{} {
 		return &entryBuffer{
-			entries: make([]logproto.Entry, 0, 1024),
+			entries: make([]entryWithLabels, 0, 1024),
 		}
 	},
 }
 
 type entryBuffer struct {
-	entries []logproto.Entry
+	entries []entryWithLabels
 }
 
 type reverseEntryIterator struct {
 	iter EntryIterator
-	cur  logproto.Entry
+	cur  entryWithLabels
 	buf  *entryBuffer
 
 	loaded bool
@@ -590,7 +590,7 @@ func (i *reverseEntryIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.iter.Next() {
-			i.buf.entries = append(i.buf.entries, i.iter.Entry())
+			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels()})
 		}
 		i.iter.Close()
 	}
@@ -608,11 +608,11 @@ func (i *reverseEntryIterator) Next() bool {
 }
 
 func (i *reverseEntryIterator) Entry() logproto.Entry {
-	return i.cur
+	return i.cur.entry
 }
 
 func (i *reverseEntryIterator) Labels() string {
-	return ""
+	return i.cur.labels
 }
 
 func (i *reverseEntryIterator) Error() error { return nil }
