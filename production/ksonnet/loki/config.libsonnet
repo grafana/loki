@@ -15,6 +15,7 @@
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
       // A higher value will lead to a querier trying to process more requests than there are available
       // cores and will result in scheduling delays.
+      replicas: 3,
       concurrency: 4,
       CPURequests: '4',
       memoryRequests: '2Gi',
@@ -24,6 +25,12 @@
       replicas: 2,
       shard_factor: 16,  // v10 schema shard factor
       sharded_queries_enabled: false,
+      CPURequests: '2',
+      memoryRequests: '2Gi',
+      memoryLimits: '6Gi',
+      // only when sharded_queries_enabled was false
+      memoryRequestsSharded: '600Mi',
+      memoryLimitsSharded: '1200Mi',
       // Queries can technically be sharded an arbitrary number of times. Thus query_split_factor is used
       // as a coefficient to multiply the frontend tenant queues by. The idea is that this
       // yields a bit of headroom so tenant queues aren't underprovisioned. Therefore the split factor
@@ -32,6 +39,30 @@
       // (day_splits * shard_factor * split_factor) or 30 * 16 * 5 = 2400 sharded queries, which may be
       // more than the max queue size and thus would always error.
       query_split_factor:: 3,
+    },
+
+    distributor: {
+      replicas: 3,
+      CPURequests: '500m',
+      memoryRequests: '500Mi',
+      CPULimits: '1',
+      memoryLimits: '1Gi',
+    },
+
+    ruler: {
+      replicas: 2,
+      CPURequests: '1',
+      memoryRequests: '6Gi',
+      CPULimits: '16',
+      memoryLimits: '16Gi',
+    },
+
+    tableManager: {
+      replicas: 1,
+      CPURequests: '100m',
+      memoryRequests: '100Mi',
+      CPULimits: '200m',
+      memoryLimits: '200Mi',
     },
 
     storage_backend: error 'must define storage_backend as a comma separated list of backends in use,\n    valid entries: dynamodb,s3,gcs,bigtable,cassandra. Typically this would be two entries, e.g. `gcs,bigtable`',

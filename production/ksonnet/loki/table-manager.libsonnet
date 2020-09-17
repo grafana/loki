@@ -23,13 +23,13 @@
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests('100m', '100Mi') +
-    $.util.resourcesLimits('200m', '200Mi'),
+    $.util.resourcesRequests($._config.tableManager.CPURequests, $._config.tableManager.memoryRequests) +
+    $.util.resourcesLimits($._config.tableManager.CPULimits, $._config.tableManager.memoryLimits),
 
   local deployment = $.apps.v1.deployment,
 
   table_manager_deployment:
-    deployment.new('table-manager', 1, [$.table_manager_container]) +
+    deployment.new('table-manager', $._config.tableManager.replicas, [$.table_manager_container]) +
     $.config_hash_mixin +
     $.extra_annotations +
     $.util.configVolumeMount('loki', '/etc/loki/config'),
