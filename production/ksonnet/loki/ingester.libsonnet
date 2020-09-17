@@ -14,15 +14,15 @@
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests('1', '5Gi') +
-    $.util.resourcesLimits('2', '10Gi'),
+    $.util.resourcesRequests($._config.ingester.CPURequests, $._config.ingester.memoryRequests) +
+    $.util.resourcesLimits($._config.ingester.CPULimits, $._config.ingester.memoryLimits),
 
   local deployment = $.apps.v1.deployment,
 
   local name = 'ingester',
 
   ingester_deployment:
-    deployment.new(name, 3, [$.ingester_container]) +
+    deployment.new(name, $._config.ingester.replicas, [$.ingester_container]) +
     $.extra_tolerations +
     $.config_hash_mixin +
     $.extra_annotations +

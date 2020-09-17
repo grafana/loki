@@ -51,6 +51,14 @@
       memoryLimits: '1Gi',
     },
 
+    ingester: {
+      replicas: 3,
+      CPURequests: '1',
+      memoryRequests: '5Gi',
+      CPULimits: '2',
+      memoryLimits: '10Gi',
+    },
+
     ruler: {
       replicas: 2,
       CPURequests: '1',
