@@ -145,30 +145,117 @@ Note: to really take advantage of this, we'll need some features from the upcomi
 
 ## Interacting with the Ruler
 
-- interaction with cortextool (https://grafana.com/docs/grafana-cloud/alerts/alerts-rules/)
-- github action for CI
+Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortex-tool`](https://github.com/grafana/cortex-tools#rules). I know, I know, this should probably be rebranded, but the cutting edge requires sacrifices ;). The CLI is in early development, but works alongside both loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with loki.
+
+NOTE: not all commands in cortextool currently support loki.
+
+An example workflow is included below:
+
+```sh
+# diff rules against the currently managed ruleset in Loki
+cortextool rules diff --rule-dirs=./output --backend=loki
+
+# ensure the remote ruleset matches your local ruleset, creating/updating/deleting remote rules which differ from your local specification.
+cortextool rules sync --rule-dirs=./output --backend=loki
+
+# print the remote ruleset
+cortextool rules print --backend=loki
+```
+
+There is also a [github action](https://github.com/grafana/cortex-rules-action) available for `cortex-tool`, so you can add it into your CI/CD pipelines!
+
+For instance, you can sync rules on master builds via
+```yaml
+name: sync-cortex-rules-and-alerts
+on:
+  push:
+    branches:
+      - master
+env:
+  CORTEX_ADDRESS: '<fill me in>'
+  CORTEX_TENANT_ID: '<fill me in>'
+  CORTEX_API_KEY: ${{ secrets.API_KEY }}
+  RULES_DIR: 'output/'
+jobs:
+  sync-loki-alerts:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Diff rules
+        id: diff-rules
+        uses: grafana/cortex-rules-action@v0.3.0
+        env:
+          ACTION: 'diff'
+        with:
+          args: --backend=loki
+      - name: Sync rules
+        if: ${{ !contains(steps.diff-rules.outputs.detailed, 'no changes detected') }}
+        uses: grafana/cortex-rules-action@v0.3.0
+        env:
+          ACTION: 'sync'
+        with:
+          args: --backend=loki
+      - name: Print rules
+        uses: grafana/cortex-rules-action@v0.3.0
+        env:
+          ACTION: 'print'
+```
 
 ## Scheduling & Best Practices
 
-## Scaling
+One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-- (https://cortexmetrics.io/docs/guides/ruler-sharding/)
+The possible configurations are listed fully in the configuration [docs](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.ruler.enable-api`) or config file parameter. Secondly, the ruler requires it's own ring be configured. From there the rulers will shard and handle the division of rules automatically. Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.
+
+A full ruler config example is:
+
+```yaml
+ruler:
+    alertmanager_url: <alertmanager_endpoint>
+    enable_alertmanager_v2: true
+    enable_api: true
+    enable_sharding: true
+    ring:
+        kvstore:
+            consul:
+                host: consul.loki-dev.svc.cluster.local:8500
+            store: consul
+    rule_path: /tmp/rules
+    storage:
+        gcs:
+            bucket_name: <loki-rules-bucket>
+```
+
+### Storage
+
+## Ruler Storage
+
+The ruler supports six kinds of storage (configdb, azure, gcs, s3, swift, local).  Most kinds of storage work with the sharded ruler configuration in an obvious way, i.e. configure all rulers to use the same backend.
+
+The local implementation reads the rule files off of the local filesystem.  This is a read only backend that does not support the creation and deletion of rules through [the API](https://grafana.com/docs/loki/latest/api/#ruler).  Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler.  For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every ruler pod.
+
+A typical local config may look something like:
+```
+  -ruler.storage.type=local
+  -ruler.storage.local.directory=/tmp/loki/rules
+```
+
+With the above configuration the ruler would expect the following layout:
+```
+/tmp/loki/rules/<tenant id>/rules1.yaml
+                             /rules2.yaml
+```
+Yaml files are expected to be in the [Prometheus format](#Prometheus_Compatible) but include LogQL expressions as specified in the beginning of this doc.
 
 ## Future Improvements
 
-### Metrics backends vs in-memory
+There are a few things coming to increase the robustness of this service. In no particular order,
 
+- recording rules
+- backend metric stores adapters for generated alert & recording rule data
+  - The first will likely be Cortex, as Loki is built atop it.
+- LogQL v2 introduction
 
-- prometheus compatiblle
-- in memory series
-- horizontally scalable, highly available
- 
-- changelog
-- config docs
-- future improvements
-  - logqlv2!
-  - metric backends: cortex
-  - recording rules
+### Minutiae: Metrics backends vs in-memory
 
-
+Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing & performance benefits.
 
