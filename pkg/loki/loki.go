@@ -346,7 +346,7 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:         {Ring, Server, Store, RulerStorage},
 		TableManager:  {Server},
 		Compactor:     {Server},
-		All:           {Querier, Ingester, Distributor, TableManager},
+		All:           {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
 
 	for mod, targets := range deps {
