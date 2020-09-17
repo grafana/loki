@@ -67,6 +67,12 @@
       memoryLimits: '200Mi',
     },
 
+    gateway: {
+      replicas: 3, 
+      CPURequests: '50m',
+      memoryRequests: '100Mi',
+    },
+
     storage_backend: error 'must define storage_backend as a comma separated list of backends in use,\n    valid entries: dynamodb,s3,gcs,bigtable,cassandra. Typically this would be two entries, e.g. `gcs,bigtable`',
 
     enabledBackends: [
