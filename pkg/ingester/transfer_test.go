@@ -96,6 +96,7 @@ func TestTransferOut(t *testing.T) {
 				time.Unix(10, 0),
 				logproto.FORWARD,
 				logql.LineFilterFunc(func([]byte) bool { return true }),
+				logql.NoopLabelParser,
 			)
 			if !assert.NoError(t, err) {
 				continue

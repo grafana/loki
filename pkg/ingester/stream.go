@@ -256,10 +256,10 @@ func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp t
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error) {
+func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.LineFilter, parser logql.LabelParser) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
-		itr, err := c.chunk.Iterator(ctx, from, through, direction, filter)
+		itr, err := c.chunk.Iterator(ctx, from, through, direction, s.labels, filter, parser)
 		if err != nil {
 			return nil, err
 		}
@@ -274,19 +274,19 @@ func (s *stream) Iterator(ctx context.Context, from, through time.Time, directio
 		}
 	}
 
-	return iter.NewNonOverlappingIterator(iterators, s.labelsString), nil
+	return iter.NewNonOverlappingIterator(iterators, ""), nil
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, filter logql.LineFilter, extractor logql.SampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, filter logql.LineFilter, extractor logql.SampleExtractor, parser logql.LabelParser) (iter.SampleIterator, error) {
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
-		if itr := c.chunk.SampleIterator(ctx, from, through, filter, extractor); itr != nil {
+		if itr := c.chunk.SampleIterator(ctx, from, through, s.labels, filter, extractor, parser); itr != nil {
 			iterators = append(iterators, itr)
 		}
 	}
 
-	return iter.NewNonOverlappingSampleIterator(iterators, s.labelsString), nil
+	return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
 }
 
 func (s *stream) addTailer(t *tailer) {
