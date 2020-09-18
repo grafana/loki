@@ -70,11 +70,11 @@
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests($._config.ingester.cpuRequests, $._config.ingester.memoryLimits)
+    $.util.resourcesRequests($._config.compactor.cpuRequests, $._config.compactor.memoryLimits)
     else {},
 
   compactor_statefulset: if $._config.using_boltdb_shipper then
-    statefulSet.new('compactor', $._config.ingester.replicas, [$.compactor_container], $.compactor_data_pvc) +
+    statefulSet.new('compactor', $._config.compactor.replicas, [$.compactor_container], $.compactor_data_pvc) +
     statefulSet.mixin.spec.withServiceName('compactor') +
     statefulSet.spec.template.spec.withTolerations($._config.tolerations) +
     $.config_hash_mixin +
