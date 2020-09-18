@@ -359,7 +359,7 @@ func (t *Loki) setupModuleManager() error {
 
 	// If we are running Loki with boltdb-shipper as a single binary, without clustered mode(which should always be the case when using inmemory ring),
 	// we should start compactor as well for better user experience.
-	if storage.UsingBoltdbShipper(t.cfg.SchemaConfig) && t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
+	if storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) && t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
 		deps[All] = append(deps[All], Compactor)
 	}
 
