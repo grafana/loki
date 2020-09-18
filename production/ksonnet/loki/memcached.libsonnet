@@ -17,7 +17,6 @@ memcached {
   // Dedicated memcached instance used to dedupe writes to the index.
   memcached_index_writes: $.memcached {
     name: 'memcached-index-writes',
-    max_item_size: '1m',
   },
 
   // Dedicated memcached instance used to cache query results.
