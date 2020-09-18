@@ -54,7 +54,7 @@ func (cfg *SchemaConfig) Validate() error {
 	if len(cfg.Configs) == 0 {
 		return zeroLengthConfigError
 	}
-	activePCIndex := ActivePeriodConfig(*cfg)
+	activePCIndex := ActivePeriodConfig((*cfg).Configs)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
 	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
@@ -75,7 +75,7 @@ type Store interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
-	ActivePeriodConfig() chunk.PeriodConfig
+	GetSchemaConfigs() []chunk.PeriodConfig
 }
 
 type store struct {
@@ -316,8 +316,8 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
 }
 
-func (s *store) ActivePeriodConfig() chunk.PeriodConfig {
-	return s.schemaCfg.Configs[ActivePeriodConfig(s.schemaCfg)]
+func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {
+	return s.schemaCfg.Configs
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
@@ -362,10 +362,10 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 
 // ActivePeriodConfig returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
 // Note: Another PeriodicConfig might be applicable for future logs which can change index type.
-func ActivePeriodConfig(cfg SchemaConfig) int {
+func ActivePeriodConfig(configs []chunk.PeriodConfig) int {
 	now := model.Now()
-	i := sort.Search(len(cfg.Configs), func(i int) bool {
-		return cfg.Configs[i].From.Time > now
+	i := sort.Search(len(configs), func(i int) bool {
+		return configs[i].From.Time > now
 	})
 	if i > 0 {
 		i--
@@ -374,10 +374,10 @@ func ActivePeriodConfig(cfg SchemaConfig) int {
 }
 
 // UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(cfg SchemaConfig) bool {
-	activePCIndex := ActivePeriodConfig(cfg)
-	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
-		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
+func UsingBoltdbShipper(configs []chunk.PeriodConfig) bool {
+	activePCIndex := ActivePeriodConfig(configs)
+	if configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
+		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
 		return true
 	}
 

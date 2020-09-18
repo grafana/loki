@@ -278,8 +278,8 @@ func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, throu
 	return nil, nil, nil
 }
 
-func (s *mockStore) ActivePeriodConfig() chunk.PeriodConfig {
-	return chunk.PeriodConfig{}
+func (s *mockStore) GetSchemaConfigs() []chunk.PeriodConfig {
+	return nil
 }
 
 type mockQuerierServer struct {
@@ -364,6 +364,83 @@ func TestIngester_buildStoreRequest(t *testing.T) {
 			}
 			require.Equal(t, tc.expectedEnd, end, "end")
 			require.Equal(t, tc.expectedStart, start, "start")
+		})
+	}
+}
+
+func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
+	now := model.Now()
+
+	for _, tc := range []struct {
+		name                string
+		periodicConfigs     []chunk.PeriodConfig
+		expectedMaxLookBack time.Duration
+	}{
+		{
+			name: "not using boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "bigtable",
+				},
+			},
+		},
+		{
+			name: "just one periodic config with boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+			},
+			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
+		},
+		{
+			name: "active config boltdb-shipper, previous config non boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					IndexType: "bigtable",
+				},
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+			},
+			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
+		},
+		{
+			name: "current and previous config both using boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+			},
+			expectedMaxLookBack: time.Since(now.Add(-48 * time.Hour).Time()),
+		},
+		{
+			name: "active config non boltdb-shipper, previous config boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "bigtable",
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ingester := Ingester{periodicConfigs: tc.periodicConfigs}
+			mlb := ingester.boltdbShipperMaxLookBack()
+			require.InDelta(t, tc.expectedMaxLookBack, mlb, float64(time.Second))
 		})
 	}
 }

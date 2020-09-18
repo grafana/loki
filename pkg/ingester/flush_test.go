@@ -241,8 +241,8 @@ func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, throu
 	return nil, nil, nil
 }
 
-func (s *testStore) ActivePeriodConfig() chunk.PeriodConfig {
-	return chunk.PeriodConfig{}
+func (s *testStore) GetSchemaConfigs() []chunk.PeriodConfig {
+	return nil
 }
 
 func (s *testStore) Stop() {}

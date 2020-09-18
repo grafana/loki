@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -106,7 +108,8 @@ type Ingester struct {
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	store ChunkStore
+	store           ChunkStore
+	periodicConfigs []chunk.PeriodConfig
 
 	loopDone    sync.WaitGroup
 	loopQuit    chan struct{}
@@ -127,7 +130,7 @@ type ChunkStore interface {
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
-	ActivePeriodConfig() chunk.PeriodConfig
+	GetSchemaConfigs() []chunk.PeriodConfig
 }
 
 // New makes a new Ingester.
@@ -141,13 +144,14 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	}
 
 	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-		instances:    map[string]*instance{},
-		store:        store,
-		loopQuit:     make(chan struct{}),
-		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		tailersQuit:  make(chan struct{}),
+		cfg:             cfg,
+		clientConfig:    clientConfig,
+		instances:       map[string]*instance{},
+		store:           store,
+		periodicConfigs: store.GetSchemaConfigs(),
+		loopQuit:        make(chan struct{}),
+		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		tailersQuit:     make(chan struct{}),
 		factory: func() chunkenc.Chunk {
 			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
@@ -358,6 +362,25 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
 }
 
+// boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.
+// max look back is limited to from time of boltdb-shipper config.
+// It considers previous periodic config's from time if that also has index type set to boltdb-shipper.
+func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
+	activePeriodicConfigIndex := storage.ActivePeriodConfig(i.periodicConfigs)
+	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
+	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType {
+		return 0
+	}
+
+	startTime := activePeriodicConfig.From
+	if activePeriodicConfigIndex != 0 && i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == shipper.BoltDBShipperType {
+		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
+	}
+
+	maxLookBack := time.Since(startTime.Time.Time())
+	return maxLookBack
+}
+
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := user.ExtractOrgID(ctx)
@@ -365,13 +388,13 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
-	activePeriodicConfig := i.store.ActivePeriodConfig()
-	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType {
+	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
+	if boltdbShipperMaxLookBack == 0 {
 		return nil, nil
 	}
 
 	reqStart := req.Start
-	reqStart = adjustQueryStartTime(time.Since(activePeriodicConfig.From.Time.Time()), reqStart, time.Now())
+	reqStart = adjustQueryStartTime(boltdbShipperMaxLookBack, reqStart, time.Now())
 
 	// parse the request
 	start, end := listutil.RoundToMilliseconds(reqStart, req.End)
@@ -411,8 +434,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.
-	activePeriodicConfig := i.store.ActivePeriodConfig()
-	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType && !i.cfg.QueryStore {
+	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
+	if boltdbShipperMaxLookBack == 0 && !i.cfg.QueryStore {
 		return resp, nil
 	}
 
@@ -429,8 +452,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
-	if activePeriodicConfig.IndexType == shipper.BoltDBShipperType {
-		maxLookBackPeriod = time.Since(activePeriodicConfig.From.Time.Time())
+	if boltdbShipperMaxLookBack != 0 {
+		maxLookBackPeriod = boltdbShipperMaxLookBack
 	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
 	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())

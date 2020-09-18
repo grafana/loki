@@ -907,21 +907,21 @@ func TestActiveIndexType(t *testing.T) {
 		IndexType: "first",
 	}}
 
-	assert.Equal(t, 0, ActivePeriodConfig(cfg))
+	assert.Equal(t, 0, ActivePeriodConfig(cfg.Configs))
 
 	// add a newer PeriodConfig in the past which should be considered
 	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
 		From:      chunk.DayTime{Time: model.Now().Add(-12 * time.Hour)},
 		IndexType: "second",
 	})
-	assert.Equal(t, 1, ActivePeriodConfig(cfg))
+	assert.Equal(t, 1, ActivePeriodConfig(cfg.Configs))
 
 	// add a newer PeriodConfig in the future which should not be considered
 	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
 		From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
 		IndexType: "third",
 	})
-	assert.Equal(t, 1, ActivePeriodConfig(cfg))
+	assert.Equal(t, 1, ActivePeriodConfig(cfg.Configs))
 }
 
 func TestUsingBoltdbShipper(t *testing.T) {
@@ -932,18 +932,18 @@ func TestUsingBoltdbShipper(t *testing.T) {
 		From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
 		IndexType: "boltdb-shipper",
 	}}
-	assert.Equal(t, true, UsingBoltdbShipper(cfg))
+	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
 
 	// just one PeriodConfig in the past not using boltdb-shipper
 	cfg.Configs[0].IndexType = "boltdb"
-	assert.Equal(t, false, UsingBoltdbShipper(cfg))
+	assert.Equal(t, false, UsingBoltdbShipper(cfg.Configs))
 
 	// add a newer PeriodConfig in the future using boltdb-shipper
 	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
 		From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
 		IndexType: "boltdb-shipper",
 	})
-	assert.Equal(t, true, UsingBoltdbShipper(cfg))
+	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
 }
 
 func TestSchemaConfig_Validate(t *testing.T) {

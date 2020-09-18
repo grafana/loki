@@ -250,12 +250,12 @@ func (t *Loki) initTableManager() (services.Service, error) {
 func (t *Loki) initStore() (_ services.Service, err error) {
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
-	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
+	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
 		t.cfg.ChunkStoreConfig.DisableIndexDeduplication = true
 		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
 	}
 
-	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
+	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
@@ -276,7 +276,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		return
 	}
 
-	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
+	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
 		switch t.cfg.Target {
 		case Querier:
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
@@ -287,7 +287,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
 			// ToDo: See if we can avoid doing this when not running loki in clustered mode.
 			t.cfg.Ingester.QueryStore = true
-			boltdbShipperConfigIdx := loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)
+			boltdbShipperConfigIdx := loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig.Configs)
 			if t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx].IndexType != shipper.BoltDBShipperType {
 				boltdbShipperConfigIdx++
 			}
