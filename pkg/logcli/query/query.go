@@ -12,6 +12,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
@@ -190,7 +191,12 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
+	chunkStore, err := cortex_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util.Logger)
+	if err != nil {
+		return err
+	}
+
+	querier, err := storage.NewStore(conf.StorageConfig, conf.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}

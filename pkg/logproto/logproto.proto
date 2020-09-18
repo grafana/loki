@@ -18,6 +18,7 @@ service Querier {
   rpc Tail(TailRequest) returns (stream TailResponse) {};
   rpc Series(SeriesRequest) returns (SeriesResponse) {};
   rpc TailersCount(TailersCountRequest) returns (TailersCountResponse) {};
+  rpc GetChunkIDs(GetChunkIDsRequest) returns (GetChunkIDsResponse) {}; // GetChunkIDs returns ChunkIDs from the index store holding logs for given selectors and time-range.
 }
 
 service Ingester {
@@ -152,4 +153,14 @@ message TailersCountRequest {
 
 message TailersCountResponse {
   uint32 count = 1;
+}
+
+message GetChunkIDsRequest {
+  string matchers = 1;
+  google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+}
+
+message GetChunkIDsResponse {
+  repeated string chunkIDs = 1;
 }

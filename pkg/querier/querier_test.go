@@ -8,6 +8,12 @@ import (
 	"testing"
 	"time"
 
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+
+	"github.com/grafana/loki/pkg/ingester/client"
+
+	"github.com/grafana/loki/pkg/storage"
+
 	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/prometheus/common/model"
@@ -28,6 +34,14 @@ const (
 	// Custom query timeout used in tests
 	queryTimeout = 12 * time.Second
 )
+
+func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
+	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory)
+	if err != nil {
+		return nil, err
+	}
+	return New(cfg, store, iq, limits)
+}
 
 func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	startTime := time.Now().Add(-1 * time.Minute)
@@ -131,99 +145,6 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	assert.WithinDuration(t, deadline, time.Now().Add(queryTimeout), 1*time.Second)
 
 	store.AssertExpectations(t)
-}
-
-func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		connectedIngestersAddr []string
-		ringIngesters          []ring.IngesterDesc
-		expectedClientsAddr    []string
-	}{
-		"no connected ingesters and empty ring": {
-			connectedIngestersAddr: []string{},
-			ringIngesters:          []ring.IngesterDesc{},
-			expectedClientsAddr:    []string{},
-		},
-		"no connected ingesters and ring containing new ingesters": {
-			connectedIngestersAddr: []string{},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
-			expectedClientsAddr:    []string{"1.1.1.1"},
-		},
-		"connected ingesters and ring contain the same ingesters": {
-			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("2.2.2.2", ring.ACTIVE), mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
-			expectedClientsAddr:    []string{},
-		},
-		"ring contains new ingesters compared to the connected one": {
-			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE)},
-			expectedClientsAddr:    []string{"2.2.2.2", "3.3.3.3"},
-		},
-		"connected ingesters contain ingesters not in the ring anymore": {
-			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE)},
-			expectedClientsAddr:    []string{},
-		},
-		"connected ingesters contain ingesters not in the ring anymore and the ring contains new ingesters too": {
-			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE), mockIngesterDesc("4.4.4.4", ring.ACTIVE)},
-			expectedClientsAddr:    []string{"4.4.4.4"},
-		},
-		"ring contains ingester in LEAVING state not listed in the connected ingesters": {
-			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.LEAVING)},
-			expectedClientsAddr:    []string{},
-		},
-		"ring contains ingester in PENDING state not listed in the connected ingesters": {
-			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.PENDING)},
-			expectedClientsAddr:    []string{},
-		},
-	}
-
-	for testName, testData := range tests {
-		testData := testData
-
-		t.Run(testName, func(t *testing.T) {
-			req := logproto.TailRequest{
-				Query:    "{type=\"test\"}",
-				DelayFor: 0,
-				Limit:    10,
-				Start:    time.Now(),
-			}
-
-			// For this test's purpose, whenever a new ingester client needs to
-			// be created, the factory will always return the same mock instance
-			ingesterClient := newQuerierClientMock()
-			ingesterClient.On("Tail", mock.Anything, &req, mock.Anything).Return(newTailClientMock(), nil)
-
-			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-			require.NoError(t, err)
-
-			q, err := newQuerier(
-				mockQuerierConfig(),
-				mockIngesterClientConfig(),
-				newIngesterClientMockFactory(ingesterClient),
-				newReadRingMock(testData.ringIngesters),
-				newStoreMock(), limits)
-			require.NoError(t, err)
-
-			actualClients, err := q.tailDisconnectedIngesters(context.Background(), &req, testData.connectedIngestersAddr)
-			require.NoError(t, err)
-
-			actualClientsAddr := make([]string, 0, len(actualClients))
-			for addr, client := range actualClients {
-				actualClientsAddr = append(actualClientsAddr, addr)
-
-				// The returned map of clients should never contain nil values
-				assert.NotNil(t, client)
-			}
-
-			assert.ElementsMatch(t, testData.expectedClientsAddr, actualClientsAddr)
-		})
-	}
 }
 
 func mockQuerierConfig() Config {
