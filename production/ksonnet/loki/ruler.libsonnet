@@ -10,8 +10,8 @@
       container.new('ruler', $._images.ruler) +
       container.withPorts($.util.defaultPorts) +
       container.withArgsMixin($.util.mapToFlags($.ruler_args)) +
-      $.util.resourcesRequests($._config.ruler.CPURequests, $._config.ruler.memoryRequests) +
-      $.util.resourcesLimits($._config.ruler.CPULimits, $._config.ruler.memoryLimits) +
+      $.util.resourcesRequests($._config.ruler.cpuRequests, $._config.ruler.memoryRequests) +
+      $.util.resourcesLimits($._config.ruler.cpuLimits, $._config.ruler.memoryLimits) +
       $.util.readinessProbe +
       $.jaeger_mixin
     else {},
@@ -22,9 +22,10 @@
     if $._config.ruler_enabled then
       deployment.new('ruler', $._config.ruler.replicas, [$.ruler_container]) +
       deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(600) +
-      $.extra_tolerations +
+      deployment.spec.template.spec.withTolerations($._config.tolerations) +
       $.config_hash_mixin +
-      $.extra_annotations +
+      deployment.mixin.spec.template.metadata.withLabelsMixin($._config.labels) +
+      deployment.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations) +
       $.util.configVolumeMount('loki', '/etc/loki/config') +
       $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
       $.util.antiAffinity

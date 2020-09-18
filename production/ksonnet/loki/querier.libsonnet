@@ -17,7 +17,7 @@
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests($._config.querier.CPURequests, $._config.querier.memoryRequests) +
+    $.util.resourcesRequests($._config.querier.cpuRequests, $._config.querier.memoryRequests) +
     if $._config.stateful_queriers then
       container.withVolumeMountsMixin([
         volumeMount.new('querier-data', '/data'),
@@ -27,9 +27,10 @@
 
   querier_deployment: if !$._config.stateful_queriers then
     deployment.new('querier', $._config.querier.replicas, [$.querier_container]) +
-    $.extra_tolerations +
+    deployment.spec.template.spec.withTolerations($._config.tolerations) +
     $.config_hash_mixin +
-    $.extra_annotations +
+    deployment.mixin.spec.template.metadata.withLabelsMixin($._config.labels) +
+    deployment.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations) +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity
@@ -44,9 +45,12 @@
     else {},
 
   querier_statefulset: if $._config.stateful_queriers then
-    statefulSet.new('querier', 3, [$.querier_container], $.querier_data_pvc) +
+    statefulSet.new('querier', $._config.querier.replicas, [$.querier_container], $.querier_data_pvc) +
     statefulSet.mixin.spec.withServiceName('querier') +
+    statefulSet.spec.template.spec.withTolerations($._config.tolerations) +
     $.config_hash_mixin +
+    statefulSet.mixin.spec.template.metadata.withLabelsMixin($._config.labels) +
+    statefulSet.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations) +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity +

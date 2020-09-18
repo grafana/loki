@@ -70,13 +70,16 @@
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests('4', '2Gi')
+    $.util.resourcesRequests($._config.ingester.cpuRequests, $._config.ingester.memoryLimits)
     else {},
 
   compactor_statefulset: if $._config.using_boltdb_shipper then
-    statefulSet.new('compactor', 1, [$.compactor_container], $.compactor_data_pvc) +
+    statefulSet.new('compactor', $._config.ingester.replicas, [$.compactor_container], $.compactor_data_pvc) +
     statefulSet.mixin.spec.withServiceName('compactor') +
+    statefulSet.spec.template.spec.withTolerations($._config.tolerations) +
     $.config_hash_mixin +
+    statefulSet.mixin.spec.template.metadata.withLabelsMixin($._config.labels) +
+    statefulSet.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations) +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile

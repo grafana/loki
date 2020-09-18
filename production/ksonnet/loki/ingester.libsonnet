@@ -22,8 +22,8 @@
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests($._config.ingester.CPURequests, $._config.ingester.memoryRequests) +
-    $.util.resourcesLimits($._config.ingester.CPULimits, $._config.ingester.memoryLimits) +
+    $.util.resourcesRequests($._config.ingester.cpuRequests, $._config.ingester.memoryRequests) +
+    $.util.resourcesLimits($._config.ingester.cpuLimits, $._config.ingester.memoryLimits) +
     if $._config.stateful_ingesters then
         container.withVolumeMountsMixin([
           volumeMount.new('ingester-data', '/data'),
@@ -35,9 +35,10 @@
 
   ingester_deployment: if !$._config.stateful_ingesters then
     deployment.new(name, $._config.ingester.replicas, [$.ingester_container]) +
-    $.extra_tolerations +
+    deployment.spec.template.spec.withTolerations($._config.tolerations) +
     $.config_hash_mixin +
-    $.extra_annotations +
+    deployment.mixin.spec.template.metadata.withLabelsMixin($._config.labels) +
+    deployment.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations) +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity +
@@ -55,9 +56,12 @@
     else {},
 
   ingester_statefulset: if $._config.stateful_ingesters then
-    statefulSet.new('ingester', 3, [$.ingester_container], $.ingester_data_pvc) +
+    statefulSet.new('ingester', $._config.ingester.replicas, [$.ingester_container], $.ingester_data_pvc) +
     statefulSet.mixin.spec.withServiceName('ingester') +
+    statefulSet.spec.template.spec.withTolerations($._config.tolerations) +
     $.config_hash_mixin +
+    statefulSet.mixin.spec.template.metadata.withLabelsMixin($._config.labels) +
+    statefulSet.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations) +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity +

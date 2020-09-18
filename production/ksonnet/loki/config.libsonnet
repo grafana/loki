@@ -21,7 +21,15 @@
 
     annotations: {},
 
+    labels: {},
+
     tolerations: [{},],
+
+    compactor: {
+      replicas: 1,
+      cpuRequests: '4',
+      memoryRequests: '2Gi',
+    },
 
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
@@ -29,7 +37,7 @@
       // cores and will result in scheduling delays.
       replicas: 3,
       concurrency: 4,
-      CPURequests: '4',
+      cpuRequests: '4',
       memoryRequests: '2Gi',
     },
 
@@ -37,7 +45,7 @@
       replicas: 2,
       shard_factor: 16,  // v10 schema shard factor
       sharded_queries_enabled: false,
-      CPURequests: '2',
+      cpuRequests: '2',
       memoryRequests: '2Gi',
       memoryLimits: '6Gi',
       // only when sharded_queries_enabled was false
@@ -55,39 +63,39 @@
 
     distributor: {
       replicas: 3,
-      CPURequests: '500m',
+      cpuRequests: '500m',
       memoryRequests: '500Mi',
-      CPULimits: '1',
+      cpuLimits: '1',
       memoryLimits: '1Gi',
     },
 
     ingester: {
       replicas: 3,
-      CPURequests: '1',
+      cpuRequests: '1',
       memoryRequests: '5Gi',
-      CPULimits: '2',
+      cpuLimits: '2',
       memoryLimits: '10Gi',
     },
 
     ruler: {
       replicas: 2,
-      CPURequests: '1',
+      cpuRequests: '1',
       memoryRequests: '6Gi',
-      CPULimits: '16',
+      cpuLimits: '16',
       memoryLimits: '16Gi',
     },
 
     tableManager: {
       replicas: 1,
-      CPURequests: '100m',
+      cpuRequests: '100m',
       memoryRequests: '100Mi',
-      CPULimits: '200m',
+      cpuLimits: '200m',
       memoryLimits: '200Mi',
     },
 
     gateway: {
       replicas: 3, 
-      CPURequests: '50m',
+      cpuRequests: '50m',
       memoryRequests: '100Mi',
     },
 
@@ -412,11 +420,5 @@
     deployment.mixin.spec.template.metadata.withAnnotationsMixin({
       config_hash: std.md5(std.toString($._config.loki)),
     }),
-  
-  extra_annotations::
-    deployment.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations),
-
-  extra_tolerations::
-    deployment.spec.template.spec.withTolerations($._config.tolerations),
 
 }

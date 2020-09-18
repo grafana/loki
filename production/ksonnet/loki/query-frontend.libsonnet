@@ -17,21 +17,22 @@
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.jaeger_mixin +
     if $._config.queryFrontend.sharded_queries_enabled then
-      $.util.resourcesRequests($._config.queryFrontend.CPURequests, $._config.queryFrontend.memoryRequests) +
+      $.util.resourcesRequests($._config.queryFrontend.cpuRequests, $._config.queryFrontend.memoryRequests) +
       $.util.resourcesLimits(null, $._config.queryFrontend.memoryLimits) +
       container.withEnvMap({
         JAEGER_REPORTER_MAX_QUEUE_SIZE: '5000',
       })
-    else $.util.resourcesRequests($._config.queryFrontend.CPURequests, $._config.queryFrontend.memoryRequestsSharded) +
+    else $.util.resourcesRequests($._config.queryFrontend.cpuRequests, $._config.queryFrontend.memoryRequestsSharded) +
          $.util.resourcesLimits(null, $._config.queryFrontend.memoryLimitsSharded),
 
   local deployment = $.apps.v1.deployment,
 
   query_frontend_deployment:
     deployment.new('query-frontend', $._config.queryFrontend.replicas, [$.query_frontend_container]) +
-    $.extra_tolerations +
+    deployment.spec.template.spec.withTolerations($._config.tolerations) +
     $.config_hash_mixin +
-    $.extra_annotations +
+    deployment.mixin.spec.template.metadata.withLabelsMixin($._config.labels) +
+    deployment.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations) +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity,

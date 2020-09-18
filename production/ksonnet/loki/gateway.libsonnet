@@ -83,7 +83,7 @@
   gateway_container::
     container.new('nginx', $._images.nginx) +
     container.withPorts($.core.v1.containerPort.new(name='http', port=80)) +
-    $.util.resourcesRequests($._config.gateway.CPURequests, $._config.gateway.memoryRequests),
+    $.util.resourcesRequests($._config.gateway.cpuRequests, $._config.gateway.memoryRequests),
 
   local deployment = $.apps.v1.deployment,
 
@@ -91,7 +91,9 @@
     deployment.new('gateway', $._config.gateway.replicas, [
       $.gateway_container,
     ]) +
-    $.extra_tolerations +
+    deployment.spec.template.spec.withTolerations($._config.tolerations) +
+    deployment.mixin.spec.template.metadata.withLabelsMixin($._config.labels) +
+    deployment.mixin.spec.template.metadata.withAnnotationsMixin($._config.annotations) +
     $.util.configVolumeMount('gateway-config', '/etc/nginx') +
     $.util.secretVolumeMount('gateway-secret', '/etc/nginx/secrets', defaultMode=420) +
     $.util.antiAffinity,
