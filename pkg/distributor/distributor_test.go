@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -193,6 +194,23 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+// loopbackInterfaceName search for the name of a loopback interface in the list
+// of the system's network interfaces.
+func loopbackInterfaceName() (string, error) {
+	is, err := net.Interfaces()
+	if err != nil {
+		return "", fmt.Errorf("can't retrieve loopback interface name: %s", err)
+	}
+
+	for _, i := range is {
+		if i.Flags&net.FlagLoopback != 0 {
+			return i.Name, nil
+		}
+	}
+
+	return "", fmt.Errorf("can't retrieve loopback interface name")
+}
+
 func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distributor {
 	var (
 		distributorConfig Config
@@ -218,10 +236,13 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distri
 		})
 	}
 
+	loopbackName, err := loopbackInterfaceName()
+	require.NoError(t, err)
+
 	distributorConfig.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
 	distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
 	distributorConfig.DistributorRing.KVStore.Mock = kvStore
-	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{"eth0", "en0", "lo0"}
+	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
 	distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
 		return ingesters[addr], nil
 	}
