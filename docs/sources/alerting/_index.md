@@ -9,7 +9,9 @@ Loki includes a component called the Ruler, adapted from our upstream project, C
 
 ## Prometheus Compatible
 
-When running the ruler (by default in single binary form), Loki will accept rules files and then schedule them for continual evaluation. These are _Prometheus Compabile_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL. Let's see what that looks like:
+When running the ruler (by default in single binary form), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL. 
+
+Let's see what that looks like:
 
 The syntax of a rule file is:
 
@@ -98,9 +100,9 @@ groups:
           severity: critical
 ```
 
-## Use Cases
+## Use cases
 
-The Ruler's Prometheus compatibility further accentuates the marriage between metrics & logs. For those looking to get started alerting based on logs, or wondering why this may be useful, here are a few use cases we think fit very well.
+The Ruler's Prometheus compatibility further accentuates the marriage between metrics and logs. For those looking to get started alerting based on logs, or wondering why this might be useful, here are a few use cases we think fit very well.
 
 ### We aren't using metrics yet
 
@@ -114,13 +116,13 @@ Many nascent projects, apps, or even companies may not have a metrics backend ye
     > 0.05
 ```
 
-### Black Box Monitoring
+### Black box monitoring
 
-We don't always control the source code of applications we run. Think load balancers & the myriad components (both open source & closed 3rd party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively? Alerting based on logs is a great answer for these problems.
+We don't always control the source code of applications we run. Think load balancers and the myriad components (both open source and closed third-party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively? Alerting based on logs is a great answer for these problems.
 
 For a sneak peek of how to combine this with the upcoming LogQL v2 functionality, take a look at Ward's [video](https://www.youtube.com/watch?v=RwQlR3D4Km4) which builds a robust nginx monitoring dashboard entirely from nginx logs.
 
-### Event Alerting
+### Event alerting
 
 Sometimes you want to know whether _any_ instance of something has occurred. Alerting based on logs can be a great way to handle this, such as finding examples of leaked authentication credentials:
 ```yaml
@@ -135,19 +137,19 @@ Sometimes you want to know whether _any_ instance of something has occurred. Ale
         severity: critical
 ```
 
-### Alerting on High Cardinality Sources
+### Alerting on high-cardinality sources
 
 Another great use case is alerting on high cardinality sources. These are things which are difficult/expensive to record as metrics because the potential label set is huge. A great example of this is per-tenant alerting in multi-tenanted systems like Loki. It's a common balancing act between the desire to have per-tenant metrics and the cardinality explosion that ensues (adding a single _tenant_ label to an existing Prometheus metric would increase it's cardinality by the number of tenants).
 
 Creating these alerts in LogQL is attractive because these metrics can be extracted at _query time_, meaning we don't suffer the cardinality explosion in our metrics store.
 
-Note: to really take advantage of this, we'll need some features from the upcoming LogQL v2 language. Stay tuned.
+> **Note:** To really take advantage of this, we'll need some features from the upcoming LogQL v2 language. Stay tuned.
 
 ## Interacting with the Ruler
 
-Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortex-tool`](https://github.com/grafana/cortex-tools#rules). I know, I know, this should probably be rebranded, but the cutting edge requires sacrifices ;). The CLI is in early development, but works alongside both loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with loki.
+Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortex-tool`](https://github.com/grafana/cortex-tools#rules).he CLI is in early development, but works alongside both Loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with Loki.
 
-NOTE: not all commands in cortextool currently support loki.
+> **Note:** Not all commands in cortextool currently support Loki.
 
 An example workflow is included below:
 
@@ -200,7 +202,7 @@ jobs:
           ACTION: 'print'
 ```
 
-## Scheduling & Best Practices
+## Scheduling and best practices
 
 One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
@@ -227,35 +229,34 @@ ruler:
 
 ### Storage
 
-## Ruler Storage
+## Ruler storage
 
-The ruler supports six kinds of storage (configdb, azure, gcs, s3, swift, local).  Most kinds of storage work with the sharded ruler configuration in an obvious way, i.e. configure all rulers to use the same backend.
+The ruler supports six kinds of storage: configdb, azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded ruler configuration in an obvious way, i.e. configure all rulers to use the same backend.
 
 The local implementation reads the rule files off of the local filesystem.  This is a read only backend that does not support the creation and deletion of rules through [the API](https://grafana.com/docs/loki/latest/api/#ruler).  Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler.  For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every ruler pod.
 
-A typical local config may look something like:
+A typical local configuration might look something like:
 ```
   -ruler.storage.type=local
   -ruler.storage.local.directory=/tmp/loki/rules
 ```
 
-With the above configuration the ruler would expect the following layout:
+With the above configuration, the ruler would expect the following layout:
 ```
 /tmp/loki/rules/<tenant id>/rules1.yaml
                              /rules2.yaml
 ```
 Yaml files are expected to be in the [Prometheus format](#Prometheus_Compatible) but include LogQL expressions as specified in the beginning of this doc.
 
-## Future Improvements
+## Future improvements
 
-There are a few things coming to increase the robustness of this service. In no particular order,
+There are a few things coming to increase the robustness of this service. In no particular order:
 
-- recording rules
-- backend metric stores adapters for generated alert & recording rule data
+- Recording rules.
+- Backend metric stores adapters for generated alert and recording rule data. The first will likely be Cortex, as Loki is built atop it.
   - The first will likely be Cortex, as Loki is built atop it.
-- LogQL v2 introduction
+- Introduce LogQL v2.
 
 ### Minutiae: Metrics backends vs in-memory
 
 Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing & performance benefits.
-

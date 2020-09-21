@@ -56,7 +56,7 @@ The HTTP API includes the following endpoints:
   - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
   - [`GET /prometheus/api/v1/alerts`](#list-alerts)
   
-## Microservices Mode
+## Microservices mode
 
 When deploying Loki in microservices mode, the set of endpoints exposed by each
 component is different.
@@ -130,7 +130,7 @@ These endpoints are exposed by the ruler:
 
 A [list of clients](../clients) can be found in the clients documentation.
 
-## Matrix, Vector, And Streams
+## Matrix, vector, and streams
 
 Some Loki API endpoints return a result of a matrix, a vector, or a stream:
 
@@ -972,7 +972,7 @@ The example belows show all possible statistics returned with their respective d
 
 ## Ruler
 
-The ruler API endpoints require to configure a backend object storage to store the recording rules and alerts. The ruler API uses the concept of a "namespace" when creating rule groups. This is a stand in for the name of the rule file in Prometheus and rule groups must be named uniquely within a namespace.
+The ruler API endpoints require to configure a backend object storage to store the recording rules and alerts. The ruler API uses the concept of a "namespace" when creating rule groups. This is a stand-in for the name of the rule file in Prometheus. Rule groups must be named uniquely within a namespace.
 
 ### Ruler ring status
 

@@ -471,11 +471,11 @@ storage:
     # CLI flag: -ruler.storage.s3.secret-access-key
     [secret_access_key: <string> | default = ""]
 
-    # Disable https on s3 connection.
+    # Disable https on S3 connection.
     # CLI flag: -ruler.storage.s3.insecure
     [insecure: <boolean> | default = false]
 
-    # Enable AES256 AWS Server Side Encryption
+    # Enable AES256 AWS server-side encryption
     # CLI flag: -ruler.storage.s3.sse-encryption
     [sse_encryption: <boolean> | default = false]
 
@@ -506,19 +506,19 @@ storage:
     # CLI flag: -ruler.storage.swift.user-domain-name
     [user_domain_name: <string> | default = ""]
 
-    # Openstack user's domain id.
+    # Openstack user's domain ID.
     # CLI flag: -ruler.storage.swift.user-domain-id
     [user_domain_id: <string> | default = ""]
 
-    # Openstack userid for the api.
+    # Openstack user ID for the API.
     # CLI flag: -ruler.storage.swift.user-id
     [user_id: <string> | default = ""]
 
-    # Openstack api key.
+    # Openstack API key.
     # CLI flag: -ruler.storage.swift.password
     [password: <string> | default = ""]
 
-    # Openstack user's domain id.
+    # Openstack user's domain ID.
     # CLI flag: -ruler.storage.swift.domain-id
     [domain_id: <string> | default = ""]
 
@@ -526,7 +526,7 @@ storage:
     # CLI flag: -ruler.storage.swift.domain-name
     [domain_name: <string> | default = ""]
 
-    # Openstack project id (v2,v3 auth only).
+    # Openstack project ID (v2,v3 auth only).
     # CLI flag: -ruler.storage.swift.project-id
     [project_id: <string> | default = ""]
 
@@ -534,7 +534,7 @@ storage:
     # CLI flag: -ruler.storage.swift.project-name
     [project_name: <string> | default = ""]
 
-    # Id of the project's domain (v3 auth only), only needed if it differs the
+    # ID of the project's domain (v3 auth only), only needed if it differs the
     # from user domain.
     # CLI flag: -ruler.storage.swift.project-domain-id
     [project_domain_id: <string> | default = ""]
@@ -558,12 +558,12 @@ storage:
     # CLI flag: -ruler.storage.local.directory
     [directory: <string> | default = ""]
 
-# file path to store temporary rule files
+# File path to store temporary rule files
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
 
-# Comma-separated list of URL(s) of the Alertmanager(s) to send notifications
-# to. Each Alertmanager URL is treated as a separate group in the configuration.
+# Comma-separated list of Alertmanager URLs to send notifications to.
+# Each Alertmanager URL is treated as a separate group in the configuration.
 # Multiple Alertmanagers in HA per group can be supported by using DNS
 # resolution via -ruler.alertmanager-discovery.
 # CLI flag: -ruler.alertmanager-url
@@ -577,7 +577,7 @@ storage:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled requests to Alertmanager will utilize the V2 API.
+# If enabled, then requests to Alertmanager use the v2 API.
 # CLI flag: -ruler.alertmanager-use-v2
 [enable_alertmanager_v2: <boolean> | default = false]
 
@@ -594,7 +594,7 @@ storage:
 [for_outage_tolerance: <duration> | default = 1h]
 
 # Minimum duration between alert and restored "for" state. This is maintained
-# only for alerts with configured "for" time greater than grace period.
+# only for alerts with configured "for" time greater than the grace period.
 # CLI flag: -ruler.for-grace-period
 [for_grace_period: <duration> | default = 10m]
 
@@ -602,7 +602,7 @@ storage:
 # CLI flag: -ruler.resend-delay
 [resend_delay: <duration> | default = 1m]
 
-# Distribute rule evaluation using ring backend
+# Distribute rule evaluation using ring backend.
 # CLI flag: -ruler.enable-sharding
 [enable_sharding: <boolean> | default = false]
 
@@ -663,12 +663,12 @@ ring:
 # CLI flag: -ruler.flush-period
 [flush_period: <duration> | default = 1m]
 
-# Enable the ruler api
+# Enable the Ruler API.
 # CLI flag: -experimental.ruler.enable-api
 [enable_api: <boolean> | default = false]
 ```
 
-## `frontend_worker_config`
+## frontend_worker_config
 
 The `frontend_worker_config` configures the worker - running within the Loki querier - picking up and executing queries enqueued by the query-frontend.
 
