@@ -438,6 +438,10 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		t.server.HTTP.Handle("/ruler/ring", t.ruler)
 		cortex_ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
 
+		// Prometheus Rule API Routes
+		t.server.HTTP.Path("/prometheus/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.PrometheusRules)))
+		t.server.HTTP.Path("/prometheus/api/v1/alerts").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.PrometheusAlerts)))
+
 		// Ruler Legacy API Routes
 		t.server.HTTP.Path("/api/prom/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
 		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
