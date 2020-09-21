@@ -6,6 +6,11 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+type InstrumentedEntryHandler interface {
+	EntryHandler
+	UnregisterLatencyMetric(labels model.LabelSet)
+}
+
 // EntryHandler is something that can "handle" entries.
 type EntryHandler interface {
 	Handle(labels model.LabelSet, time time.Time, entry string) error

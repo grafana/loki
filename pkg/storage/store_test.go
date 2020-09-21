@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cespare/xxhash/v2"
@@ -188,26 +190,42 @@ func getLocalStore() Store {
 	if err != nil {
 		panic(err)
 	}
-	store, err := NewStore(Config{
+
+	storeConfig := Config{
 		Config: storage.Config{
 			BoltDBConfig: cortex_local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
 			FSConfig:     cortex_local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},
 		MaxChunkBatchSize: 10,
-	}, chunk.StoreConfig{}, SchemaConfig{chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
-			{
-				From:       chunk.DayTime{Time: start},
-				IndexType:  "boltdb",
-				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: chunk.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+	}
+
+	schemaConfig := SchemaConfig{
+		chunk.SchemaConfig{
+			Configs: []chunk.PeriodConfig{
+				{
+					From:       chunk.DayTime{Time: start},
+					IndexType:  "boltdb",
+					ObjectType: "filesystem",
+					Schema:     "v9",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					},
 				},
 			},
 		},
-	}}, limits, nil)
+	}
+
+	chunkStore, err := storage.NewStore(
+		storeConfig.Config,
+		chunk.StoreConfig{},
+		schemaConfig.SchemaConfig, limits, nil, nil, cortex_util.Logger)
+
+	if err != nil {
+		panic(err)
+	}
+
+	store, err := NewStore(storeConfig, schemaConfig, chunkStore, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -753,33 +771,47 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
 
-	RegisterCustomIndexClients(&config, nil)
-
-	store, err := NewStore(config, chunk.StoreConfig{}, SchemaConfig{chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
-			{
-				From:       chunk.DayTime{Time: timeToModelTime(firstStoreDate)},
-				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: chunk.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+	schemaConfig := SchemaConfig{
+		chunk.SchemaConfig{
+			Configs: []chunk.PeriodConfig{
+				{
+					From:       chunk.DayTime{Time: timeToModelTime(firstStoreDate)},
+					IndexType:  "boltdb-shipper",
+					ObjectType: "filesystem",
+					Schema:     "v9",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					},
 				},
-			},
-			{
-				From:       chunk.DayTime{Time: timeToModelTime(secondStoreDate)},
-				IndexType:  "boltdb-shipper",
-				ObjectType: "filesystem",
-				Schema:     "v11",
-				IndexTables: chunk.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+				{
+					From:       chunk.DayTime{Time: timeToModelTime(secondStoreDate)},
+					IndexType:  "boltdb-shipper",
+					ObjectType: "filesystem",
+					Schema:     "v11",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					},
+					RowShards: 2,
 				},
-				RowShards: 2,
 			},
 		},
-	}}, limits, nil)
+	}
+
+	RegisterCustomIndexClients(&config, nil)
+
+	chunkStore, err := storage.NewStore(
+		config.Config,
+		chunk.StoreConfig{},
+		schemaConfig.SchemaConfig,
+		limits,
+		nil,
+		nil,
+		cortex_util.Logger,
+	)
+
+	store, err := NewStore(config, schemaConfig, chunkStore, nil)
 	require.NoError(t, err)
 
 	defer store.Stop()
@@ -875,21 +907,21 @@ func TestActiveIndexType(t *testing.T) {
 		IndexType: "first",
 	}}
 
-	assert.Equal(t, 0, ActivePeriodConfig(cfg))
+	assert.Equal(t, 0, ActivePeriodConfig(cfg.Configs))
 
 	// add a newer PeriodConfig in the past which should be considered
 	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
 		From:      chunk.DayTime{Time: model.Now().Add(-12 * time.Hour)},
 		IndexType: "second",
 	})
-	assert.Equal(t, 1, ActivePeriodConfig(cfg))
+	assert.Equal(t, 1, ActivePeriodConfig(cfg.Configs))
 
 	// add a newer PeriodConfig in the future which should not be considered
 	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
 		From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
 		IndexType: "third",
 	})
-	assert.Equal(t, 1, ActivePeriodConfig(cfg))
+	assert.Equal(t, 1, ActivePeriodConfig(cfg.Configs))
 }
 
 func TestUsingBoltdbShipper(t *testing.T) {
@@ -900,18 +932,18 @@ func TestUsingBoltdbShipper(t *testing.T) {
 		From:      chunk.DayTime{Time: model.Now().Add(-24 * time.Hour)},
 		IndexType: "boltdb-shipper",
 	}}
-	assert.Equal(t, true, UsingBoltdbShipper(cfg))
+	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
 
 	// just one PeriodConfig in the past not using boltdb-shipper
 	cfg.Configs[0].IndexType = "boltdb"
-	assert.Equal(t, false, UsingBoltdbShipper(cfg))
+	assert.Equal(t, false, UsingBoltdbShipper(cfg.Configs))
 
 	// add a newer PeriodConfig in the future using boltdb-shipper
 	cfg.Configs = append(cfg.Configs, chunk.PeriodConfig{
 		From:      chunk.DayTime{Time: model.Now().Add(time.Hour)},
 		IndexType: "boltdb-shipper",
 	})
-	assert.Equal(t, true, UsingBoltdbShipper(cfg))
+	assert.Equal(t, true, UsingBoltdbShipper(cfg.Configs))
 }
 
 func TestSchemaConfig_Validate(t *testing.T) {

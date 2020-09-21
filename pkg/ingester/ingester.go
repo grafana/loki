@@ -8,9 +8,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -26,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -104,7 +108,8 @@ type Ingester struct {
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	store ChunkStore
+	store           ChunkStore
+	periodicConfigs []chunk.PeriodConfig
 
 	loopDone    sync.WaitGroup
 	loopQuit    chan struct{}
@@ -124,6 +129,8 @@ type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
+	GetSchemaConfigs() []chunk.PeriodConfig
 }
 
 // New makes a new Ingester.
@@ -137,13 +144,14 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	}
 
 	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-		instances:    map[string]*instance{},
-		store:        store,
-		loopQuit:     make(chan struct{}),
-		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		tailersQuit:  make(chan struct{}),
+		cfg:             cfg,
+		clientConfig:    clientConfig,
+		instances:       map[string]*instance{},
+		store:           store,
+		periodicConfigs: store.GetSchemaConfigs(),
+		loopQuit:        make(chan struct{}),
+		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		tailersQuit:     make(chan struct{}),
 		factory: func() chunkenc.Chunk {
 			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
@@ -354,6 +362,64 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
 }
 
+// boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.
+// max look back is limited to from time of boltdb-shipper config.
+// It considers previous periodic config's from time if that also has index type set to boltdb-shipper.
+func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
+	activePeriodicConfigIndex := storage.ActivePeriodConfig(i.periodicConfigs)
+	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
+	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType {
+		return 0
+	}
+
+	startTime := activePeriodicConfig.From
+	if activePeriodicConfigIndex != 0 && i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == shipper.BoltDBShipperType {
+		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
+	}
+
+	maxLookBack := time.Since(startTime.Time.Time())
+	return maxLookBack
+}
+
+// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
+func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
+	if boltdbShipperMaxLookBack == 0 {
+		return nil, nil
+	}
+
+	reqStart := req.Start
+	reqStart = adjustQueryStartTime(boltdbShipperMaxLookBack, reqStart, time.Now())
+
+	// parse the request
+	start, end := listutil.RoundToMilliseconds(reqStart, req.End)
+	matchers, err := logql.ParseMatchers(req.Matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	// get chunk references
+	chunksGroups, _, err := i.store.GetChunkRefs(ctx, orgID, start, end, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// build the response
+	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
+	for _, chunks := range chunksGroups {
+		for _, chk := range chunks {
+			resp.ChunkIDs = append(resp.ChunkIDs, chk.ExternalKey())
+		}
+	}
+
+	return &resp, nil
+}
+
 // Label returns the set of labels for the stream this ingester knows about.
 func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	instanceID, err := user.ExtractOrgID(ctx)
@@ -367,8 +433,9 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	// Only continue if we should query the store for labels
-	if !i.cfg.QueryStore {
+	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.
+	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
+	if boltdbShipperMaxLookBack == 0 && !i.cfg.QueryStore {
 		return resp, nil
 	}
 
@@ -383,8 +450,13 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
+
+	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
+	if boltdbShipperMaxLookBack != 0 {
+		maxLookBackPeriod = boltdbShipperMaxLookBack
+	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-	start := adjustQueryStartTime(i.cfg, *req.Start, time.Now())
+	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
 	if start.After(*req.End) {
 		// The request is older than we are allowed to query the store, just return what we have.
 		return resp, nil
@@ -506,7 +578,7 @@ func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.T
 	if !cfg.QueryStore {
 		return time.Time{}, time.Time{}, false
 	}
-	start = adjustQueryStartTime(cfg, start, now)
+	start = adjustQueryStartTime(cfg.QueryStoreMaxLookBackPeriod, start, now)
 
 	if start.After(end) {
 		return time.Time{}, time.Time{}, false
@@ -514,9 +586,9 @@ func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.T
 	return start, end, true
 }
 
-func adjustQueryStartTime(cfg Config, start, now time.Time) time.Time {
-	if cfg.QueryStoreMaxLookBackPeriod > 0 {
-		oldestStartTime := now.Add(-cfg.QueryStoreMaxLookBackPeriod)
+func adjustQueryStartTime(maxLookBackPeriod time.Duration, start, now time.Time) time.Time {
+	if maxLookBackPeriod > 0 {
+		oldestStartTime := now.Add(-maxLookBackPeriod)
 		if oldestStartTime.After(start) {
 			return oldestStartTime
 		}

@@ -113,3 +113,7 @@ func (ingesterFn) Series(context.Context, *logproto.SeriesRequest) (*logproto.Se
 func (ingesterFn) TailersCount(context.Context, *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
 	return nil, nil
 }
+
+func (i ingesterFn) GetChunkIDs(ctx context.Context, request *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	return nil, nil
+}

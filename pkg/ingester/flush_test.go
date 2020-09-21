@@ -237,6 +237,14 @@ func (s *testStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return nil, nil
 }
 
+func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	return nil, nil, nil
+}
+
+func (s *testStore) GetSchemaConfigs() []chunk.PeriodConfig {
+	return nil
+}
+
 func (s *testStore) Stop() {}
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
