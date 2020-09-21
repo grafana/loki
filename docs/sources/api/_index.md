@@ -54,6 +54,7 @@ The HTTP API includes the following endpoints:
   - [`POST /api/prom/rules/{namespace}`](#set-rule-group)
   - [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
   - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
+  - [`GET /prometheus/api/v1/alerts`](#list-alerts)
   
 ## Microservices Mode
 
@@ -125,6 +126,7 @@ These endpoints are exposed by the ruler:
 - [`POST /api/prom/rules/{namespace}`](#set-rule-group)
 - [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
 - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
+- [`GET /prometheus/api/v1/alerts`](#list-alerts)
 
 A [list of clients](../clients) can be found in the clients documentation.
 
@@ -1113,3 +1115,16 @@ Deletes all the rule groups in a namespace (including the namespace itself). Thi
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
 _Requires [authentication](#authentication)._
+
+
+### List alerts
+
+```
+GET /prometheus/api/v1/alerts
+```
+
+Prometheus-compatible rules endpoint to list all active alerts.
+
+_For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation._
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
