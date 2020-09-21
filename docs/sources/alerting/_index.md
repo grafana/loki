@@ -231,7 +231,7 @@ Ruler:
 
 The Ruler supports six kinds of storage: configdb, azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded Ruler configuration in an obvious way, i.e. configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem.  This is a read only backend that does not support the creation and deletion of rules through [the API](https://grafana.com/docs/loki/latest/api/#Ruler).  Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler.  For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read only backend that does not support the creation and deletion of rules through [the API](https://grafana.com/docs/loki/latest/api/#Ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```
