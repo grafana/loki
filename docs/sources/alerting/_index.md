@@ -147,7 +147,7 @@ Creating these alerts in LogQL is attractive because these metrics can be extrac
 
 ## Interacting with the Ruler
 
-Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortex-tool`](https://github.com/grafana/cortex-tools#rules).he CLI is in early development, but works alongside both Loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with Loki.
+Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortex-tool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but works alongside both Loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with Loki.
 
 > **Note:** Not all commands in cortextool currently support Loki.
 
@@ -227,8 +227,6 @@ ruler:
             bucket_name: <loki-rules-bucket>
 ```
 
-### Storage
-
 ## Ruler storage
 
 The ruler supports six kinds of storage: configdb, azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded ruler configuration in an obvious way, i.e. configure all rulers to use the same backend.
@@ -257,6 +255,6 @@ There are a few things coming to increase the robustness of this service. In no 
   - The first will likely be Cortex, as Loki is built atop it.
 - Introduce LogQL v2.
 
-### Minutiae: Metrics backends vs in-memory
+## Misc Details: Metrics backends vs in-memory
 
 Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing & performance benefits.
