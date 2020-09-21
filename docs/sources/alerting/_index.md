@@ -9,7 +9,7 @@ Loki includes a component called the Ruler, adapted from our upstream project, C
 
 ## Prometheus Compatible
 
-When running the ruler (by default in single binary form), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL. 
+When running the Ruler (by default in single binary form), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL.
 
 Let's see what that looks like:
 
@@ -38,7 +38,7 @@ groups:
 name: <string>
 
 # How often rules in the group are evaluated.
-[ interval: <duration> | default = ruler.evaluation_interval || 1m ]
+[ interval: <duration> | default = Ruler.evaluation_interval || 1m ]
 
 rules:
   [ - <rule> ... ]
@@ -204,14 +204,14 @@ jobs:
 
 ## Scheduling and best practices
 
-One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.
+One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the configuration [docs](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.ruler.enable-api`) or config file parameter. Secondly, the ruler requires it's own ring be configured. From there the rulers will shard and handle the division of rules automatically. Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.
+The possible configurations are listed fully in the configuration [docs](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.Ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
-A full ruler config example is:
+A full Ruler config example is:
 
 ```yaml
-ruler:
+Ruler:
     alertmanager_url: <alertmanager_endpoint>
     enable_alertmanager_v2: true
     enable_api: true
@@ -229,17 +229,17 @@ ruler:
 
 ## Ruler storage
 
-The ruler supports six kinds of storage: configdb, azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded ruler configuration in an obvious way, i.e. configure all rulers to use the same backend.
+The Ruler supports six kinds of storage: configdb, azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded Ruler configuration in an obvious way, i.e. configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem.  This is a read only backend that does not support the creation and deletion of rules through [the API](https://grafana.com/docs/loki/latest/api/#ruler).  Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler.  For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every ruler pod.
+The local implementation reads the rule files off of the local filesystem.  This is a read only backend that does not support the creation and deletion of rules through [the API](https://grafana.com/docs/loki/latest/api/#Ruler).  Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler.  For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```
-  -ruler.storage.type=local
-  -ruler.storage.local.directory=/tmp/loki/rules
+  -Ruler.storage.type=local
+  -Ruler.storage.local.directory=/tmp/loki/rules
 ```
 
-With the above configuration, the ruler would expect the following layout:
+With the above configuration, the Ruler would expect the following layout:
 ```
 /tmp/loki/rules/<tenant id>/rules1.yaml
                              /rules2.yaml
@@ -257,4 +257,4 @@ There are a few things coming to increase the robustness of this service. In no 
 
 ## Misc Details: Metrics backends vs in-memory
 
-Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing & performance benefits.
+Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding Rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing & performance benefits.
