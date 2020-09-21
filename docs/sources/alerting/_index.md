@@ -72,7 +72,7 @@ annotations:
 
 ### Example
 
-A full fledged example of a rules file may look like:
+A full-fledged example of a rules file might look like:
 
 ```yaml
 groups:
