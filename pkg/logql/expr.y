@@ -4,6 +4,7 @@ package logql
 import (
   "time"
   "github.com/prometheus/prometheus/pkg/labels"
+  "github.com/grafana/loki/pkg/logql/labelfilter"
 )
 %}
 
@@ -28,7 +29,13 @@ import (
   duration                time.Duration
   LiteralExpr             *literalExpr
   BinOpModifier           BinOpOptions
-  LabelParser             struct{ op, param string}
+  LabelParser             *labelParserExpr
+  LineFilters             *lineFilterExpr
+  PipelineExpr            MultiPipelineExpr
+  PipelineStage           PipelineExpr
+  NumberFilter            labelfilter.Filterer
+  DurationFilter          labelfilter.Filterer
+  LabelFilter             labelfilter.Filterer
 }
 
 %start root
@@ -50,13 +57,20 @@ import (
 %type <BinOpExpr>             binOpExpr
 %type <LiteralExpr>           literalExpr
 %type <BinOpModifier>         binOpModifier
-%type <LabelParser>           labelparser
+%type <LabelParser>           labelParser
+%type <PipelineExpr>          pipelineExpr
+%type <PipelineStage>         pipelineStage
+%type <NumberFilter>          numberFilter
+%type <DurationFilter>        durationFilter
+%type <LabelFilter>           labelFilter
+%type <LineFilters>           lineFilters
+
 
 %token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
-                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE
+                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -85,18 +99,17 @@ metricExpr:
 
 logExpr:
       selector                                    { $$ = newMatcherExpr($1)}
-    | logExpr filter STRING                       { $$ = NewFilterExpr( $1, $2, $3 ) }
-    | logExpr labelparser                         { $$ = newParserExpr($1, $2.op, $2.param) }
+    | selector pipelineExpr                       { $$ = newPipelineExpr(newMatcherExpr($1), $2)}
     | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
-    | logExpr filter error
     | logExpr error
     ;
 
+
 logRangeExpr:
-      logExpr DURATION { $$ = newLogRange($1, $2) } // <selector> <filters> <range>
-    | logRangeExpr filter STRING                       { $$ = addFilterToLogRangeExpr( $1, $2, $3 ) }
+      logExpr DURATION                                 { $$ = newLogRange($1, $2) }
+    | selector DURATION pipelineExpr                   { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2 ) }
+    | selector DURATION                                { $$ = newLogRange(newMatcherExpr($1), $2 ) }
     | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS  { $$ = $2 }
-    | logRangeExpr filter error
     | logRangeExpr error
     ;
 
@@ -135,6 +148,67 @@ matcher:
     | IDENTIFIER NEQ STRING            { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
     | IDENTIFIER RE STRING             { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
     | IDENTIFIER NRE STRING            { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
+    ;
+
+pipelineExpr:
+      pipelineStage                  { $$ = MultiPipelineExpr{ $1 } }
+    | pipelineExpr pipelineStage     { $$ = append($1, $2)}
+    ;
+
+pipelineStage:
+   lineFilters                   { $$ = $1 }
+  | PIPE labelParser             { $$ = $2 }
+  | PIPE labelFilter             { $$ = &labelFilterExpr{Filterer: $2 }}
+// | PIPE lineFormat
+// | PIPE labelFormat
+
+lineFilters:
+    filter STRING                 { $$ = newLineFilterExpr(nil, $1, $2 ) }
+  | lineFilters filter STRING     { $$ = newLineFilterExpr($1, $2, $3 ) }
+
+labelParser:
+    JSON           { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
+  | LOGFMT         { $$ = newLabelParserExpr(OpParserTypeLogfmt, "") }
+  | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
+  ;
+
+// lineFormat: 
+//       LINE_FMT IDENTIFIER
+//     | LINE_FMT STRING
+//     ;
+
+// labelFormat:
+//       LABEL_FMT IDENTIFIER EQ IDENTIFIER
+//     | LABEL_FMT IDENTIFIER EQ STRING
+//     ;
+
+labelFilter:
+      matcher { $$ = labelfilter.NewString($1) }
+    | durationFilter { $$ = $1 }
+    | numberFilter { $$ = $1 }
+    | OPEN_PARENTHESIS labelFilter CLOSE_PARENTHESIS { $$ = $2 }
+    | labelFilter labelFilter { $$ = labelfilter.NewAnd($1, $2 ) }
+    | labelFilter AND labelFilter { $$ = labelfilter.NewAnd($1, $3 ) }
+    | labelFilter COMMA labelFilter { $$ = labelfilter.NewAnd($1, $3 ) }
+    | labelFilter OR labelFilter { $$ = labelfilter.NewOr($1, $3 ) }
+    ;
+
+durationFilter:
+      IDENTIFIER GT DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThan, $1, $3) }
+    | IDENTIFIER GTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, $1, $3) }
+    | IDENTIFIER LT DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThan, $1, $3) }
+    | IDENTIFIER LTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThanOrEqual, $1, $3) }
+    | IDENTIFIER NEQ DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterNotEqual, $1, $3) }
+    | IDENTIFIER EQ DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterEqual, $1, $3) }
+    ;
+
+numberFilter:
+      IDENTIFIER GT NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterGreaterThan, $1, mustNewFloat($3))}
+    | IDENTIFIER GTE NUMBER { $$ = labelfilter.NewNumeric(labelfilter.FilterGreaterThanOrEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER LT NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterLesserThan, $1, mustNewFloat($3))}
+    | IDENTIFIER LTE NUMBER { $$ = labelfilter.NewNumeric(labelfilter.FilterLesserThanOrEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER NEQ NUMBER { $$ = labelfilter.NewNumeric(labelfilter.FilterNotEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER EQ NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterEqual, $1, mustNewFloat($3))}
     ;
 
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr
@@ -197,10 +271,4 @@ grouping:
       BY OPEN_PARENTHESIS labels CLOSE_PARENTHESIS        { $$ = &grouping{ without: false , groups: $3 } }
     | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &grouping{ without: true , groups: $3 } }
     ;
-
-labelparser:
-    PIPE JSON           { $$ = struct{ op, param string}{ op: OpParserTypeJSON} }
-  | PIPE LOGFMT         { $$ = struct{ op, param string}{ op: OpParserTypeLogfmt} }
-  | PIPE REGEXP STRING  { $$ = struct{ op, param string}{ op: OpParserTypeRegexp, param: $3} }
-  ;
 %%

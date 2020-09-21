@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/labelfilter"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
@@ -73,10 +74,85 @@ type Querier interface {
 
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
 type LogSelectorExpr interface {
-	Filter() (LineFilter, error)
 	Matchers() []*labels.Matcher
-	Parser() (LabelParser, error)
+	PipelineExpr
 	Expr
+}
+
+type PipelineExpr interface {
+	Pipeline() (Pipeline, error)
+	Expr
+}
+
+type Pipeline interface {
+	Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool)
+}
+
+var NoopPipeline = &noopPipeline{}
+
+type noopPipeline struct{}
+
+func (noopPipeline) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+	return line, lbs, true
+}
+
+type PipelineFunc func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool)
+
+func (fn PipelineFunc) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+	return fn(line, lbs)
+}
+
+type MultiPipeline []Pipeline
+
+func (m MultiPipeline) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+	var ok bool
+	for _, p := range m {
+		line, lbs, ok = p.Process(line, lbs)
+		if !ok {
+			return line, lbs, ok
+		}
+	}
+	return line, lbs, ok
+}
+
+type MultiPipelineExpr []PipelineExpr
+
+func (m MultiPipelineExpr) Pipeline() (Pipeline, error) {
+	c := make(MultiPipeline, 0, len(m))
+	for _, e := range m {
+		p, err := e.Pipeline()
+		if err != nil {
+			return nil, err
+		}
+		c = append(c, p)
+	}
+	return c, nil
+}
+
+func (m MultiPipelineExpr) String() string {
+	var sb strings.Builder
+	for _, e := range m {
+		sb.WriteString(e.String())
+	}
+	return sb.String()
+}
+
+func (MultiPipelineExpr) logQLExpr() {}
+
+func FilterToPipeline(f LineFilter) Pipeline {
+	if f == nil || f == TrueFilter {
+		return NoopPipeline
+	}
+	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+		return line, lbs, f.Filter(line)
+	})
+}
+
+func ParserToPipeline(p LabelParser) Pipeline {
+	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+		lbs = p.Parse(line, lbs)
+		return line, lbs, true
+	})
 }
 
 type matchersExpr struct {
@@ -84,7 +160,7 @@ type matchersExpr struct {
 	implicit
 }
 
-func newMatcherExpr(matchers []*labels.Matcher) LogSelectorExpr {
+func newMatcherExpr(matchers []*labels.Matcher) *matchersExpr {
 	return &matchersExpr{matchers: matchers}
 }
 
@@ -105,35 +181,54 @@ func (e *matchersExpr) String() string {
 	return sb.String()
 }
 
-func (e *matchersExpr) Filter() (LineFilter, error) {
-	return nil, nil
+func (e *matchersExpr) Pipeline() (Pipeline, error) {
+	return NoopPipeline, nil
 }
 
-func (e *matchersExpr) Parser() (LabelParser, error) {
-	return NoopLabelParser, nil
+type pipelineExpr struct {
+	pipeline MultiPipelineExpr
+	left     *matchersExpr
+	implicit
 }
 
-type filterExpr struct {
-	left  LogSelectorExpr
+func newPipelineExpr(left *matchersExpr, pipeline MultiPipelineExpr) LogSelectorExpr {
+	return &pipelineExpr{
+		left:     left,
+		pipeline: pipeline,
+	}
+}
+
+func (e *pipelineExpr) Matchers() []*labels.Matcher {
+	return e.left.Matchers()
+}
+
+func (e *pipelineExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(e.left.String())
+	sb.WriteString(e.pipeline.String())
+	return sb.String()
+}
+
+func (e *pipelineExpr) Pipeline() (Pipeline, error) {
+	return e.pipeline.Pipeline()
+}
+
+type lineFilterExpr struct {
+	left  *lineFilterExpr
 	ty    labels.MatchType
 	match string
 	implicit
 }
 
-// NewFilterExpr wraps an existing Expr with a next filter expression.
-func NewFilterExpr(left LogSelectorExpr, ty labels.MatchType, match string) LogSelectorExpr {
-	return &filterExpr{
+func newLineFilterExpr(left *lineFilterExpr, ty labels.MatchType, match string) *lineFilterExpr {
+	return &lineFilterExpr{
 		left:  left,
 		ty:    ty,
 		match: match,
 	}
 }
 
-func (e *filterExpr) Matchers() []*labels.Matcher {
-	return e.left.Matchers()
-}
-
-func (e *filterExpr) String() string {
+func (e *lineFilterExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(e.left.String())
 	switch e.ty {
@@ -150,13 +245,13 @@ func (e *filterExpr) String() string {
 	return sb.String()
 }
 
-func (e *filterExpr) Filter() (LineFilter, error) {
+func (e *lineFilterExpr) Filter() (LineFilter, error) {
 	f, err := newFilter(e.match, e.ty)
 	if err != nil {
 		return nil, err
 	}
-	if nextExpr, ok := e.left.(*filterExpr); ok {
-		nextFilter, err := nextExpr.Filter()
+	if e.left != nil {
+		nextFilter, err := e.left.Filter()
 		if err != nil {
 			return nil, err
 		}
@@ -172,35 +267,29 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 	return f, nil
 }
 
-func (e *filterExpr) Parser() (LabelParser, error) {
-	return NoopLabelParser, nil
+func (e *lineFilterExpr) Pipeline() (Pipeline, error) {
+	f, err := e.Filter()
+	if err != nil {
+		return nil, err
+	}
+	return FilterToPipeline(f), nil
 }
 
-type parserExpr struct {
-	left  LogSelectorExpr
+type labelParserExpr struct {
 	op    string
 	param string
 	implicit
 }
 
-func newParserExpr(left LogSelectorExpr, op, param string) LogSelectorExpr {
+func newLabelParserExpr(op, param string) *labelParserExpr {
 	// todo(cyriltovena): we might want to pre-validate param here to fail fast.
-	return &parserExpr{
-		left:  left,
+	return &labelParserExpr{
 		op:    op,
 		param: param,
 	}
 }
 
-func (e *parserExpr) Matchers() []*labels.Matcher {
-	return e.left.Matchers()
-}
-
-func (e *parserExpr) Filter() (LineFilter, error) {
-	return e.left.Filter()
-}
-
-func (e *parserExpr) Parser() (LabelParser, error) {
+func (e *labelParserExpr) parser() (LabelParser, error) {
 	switch e.op {
 	case OpParserTypeJSON:
 		return NewJSONParser(), nil
@@ -213,9 +302,16 @@ func (e *parserExpr) Parser() (LabelParser, error) {
 	}
 }
 
-func (e *parserExpr) String() string {
+func (e *labelParserExpr) Pipeline() (Pipeline, error) {
+	p, err := e.parser()
+	if err != nil {
+		return nil, err
+	}
+	return ParserToPipeline(p), nil
+}
+
+func (e *labelParserExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(e.left.String())
 	sb.WriteString("|")
 	sb.WriteString(e.op)
 	if e.param != "" {
@@ -224,12 +320,44 @@ func (e *parserExpr) String() string {
 	return sb.String()
 }
 
+type labelFilterExpr struct {
+	labelfilter.Filterer
+	implicit
+}
+
+func (e *labelFilterExpr) Pipeline() (Pipeline, error) {
+	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+		//todo (cyriltovena): handle error
+		ok, _ := e.Filterer.Filter(lbs)
+		return line, lbs, ok
+	}), nil
+}
+
+// func (e *parserExpr) String() string {
+// 	var sb strings.Builder
+// 	sb.WriteString(e.left.String())
+// 	sb.WriteString("|")
+// 	sb.WriteString(e.op)
+// 	if e.param != "" {
+// 		sb.WriteString(strconv.Quote(e.param))
+// 	}
+// 	return sb.String()
+// }
+
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
 		panic(newParseError(err.Error(), 0, 0))
 	}
 	return m
+}
+
+func mustNewFloat(s string) float64 {
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		panic(newParseError(fmt.Sprintf("unable to parse float: %s", err.Error()), 0, 0))
+	}
+	return n
 }
 
 type logRange struct {
@@ -252,14 +380,14 @@ func newLogRange(left LogSelectorExpr, interval time.Duration) *logRange {
 	}
 }
 
-func addFilterToLogRangeExpr(left *logRange, ty labels.MatchType, match string) *logRange {
-	left.left = &filterExpr{
-		left:  left.left,
-		ty:    ty,
-		match: match,
-	}
-	return left
-}
+// func addFilterToLogRangeExpr(left *logRange, ty labels.MatchType, match string) *logRange {
+// 	left.left = &filterExpr{
+// 		left:  left.left,
+// 		ty:    ty,
+// 		match: match,
+// 	}
+// 	return left
+// }
 
 const (
 	// vector ops
@@ -565,9 +693,8 @@ func (e *literalExpr) String() string {
 // and they will only be present in binary operation legs.
 func (e *literalExpr) Selector() LogSelectorExpr           { return e }
 func (e *literalExpr) Operations() []string                { return nil }
-func (e *literalExpr) Filter() (LineFilter, error)         { return nil, nil }
+func (e *literalExpr) Pipeline() (Pipeline, error)         { return NoopPipeline, nil }
 func (e *literalExpr) Matchers() []*labels.Matcher         { return nil }
-func (e *literalExpr) Parser() (LabelParser, error)        { return NoopLabelParser, nil }
 func (e *literalExpr) Extractor() (SampleExtractor, error) { return nil, nil }
 
 // helper used to impl Stringer for vector and range aggregations

@@ -37,11 +37,11 @@ func Test_logSelectorExpr_String(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to parse log selector: %s", err)
 			}
-			f, err := expr.Filter()
+			p, err := expr.Pipeline()
 			if err != nil {
 				t.Fatalf("failed to get filter: %s", err)
 			}
-			require.Equal(t, tt.expectFilter, f != nil)
+			require.Equal(t, tt.expectFilter, p != NoopPipeline)
 			if expr.String() != strings.Replace(tt.selector, " ", "", -1) {
 				t.Fatalf("error expected: %s got: %s", tt.selector, expr.String())
 			}
@@ -99,10 +99,11 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 			expr, err := ParseLogSelector(tc)
 			require.Nil(t, err)
 
-			filter, err := expr.Filter()
+			p, err := expr.Pipeline()
 			require.Nil(t, err)
+			_, _, ok := p.Process([]byte("bleepbloop"), labelBar)
 
-			require.True(t, filter.Filter([]byte("bleepbloop")))
+			require.True(t, ok)
 		})
 	}
 
@@ -181,13 +182,14 @@ func Test_FilterMatcher(t *testing.T) {
 			expr, err := ParseLogSelector(tt.q)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expectedMatchers, expr.Matchers())
-			f, err := expr.Filter()
+			p, err := expr.Pipeline()
 			assert.Nil(t, err)
 			if tt.lines == nil {
-				assert.Nil(t, f)
+				assert.Equal(t, p, NoopPipeline)
 			} else {
 				for _, lc := range tt.lines {
-					assert.Equal(t, lc.e, f.Filter([]byte(lc.l)))
+					_, _, ok := p.Process([]byte(lc.l), labelBar)
+					assert.Equal(t, lc.e, ok)
 				}
 			}
 		})
@@ -239,7 +241,7 @@ func BenchmarkContainsFilter(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	f, err := expr.Filter()
+	p, err := expr.Pipeline()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -249,7 +251,7 @@ func BenchmarkContainsFilter(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		if !f.Filter(line) {
+		if _, _, ok := p.Process(line, labelBar); !ok {
 			b.Fatal("doesn't match")
 		}
 	}
@@ -270,11 +272,11 @@ func Test_parserExpr_Parser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := &parserExpr{
+			e := &labelParserExpr{
 				op:    tt.op,
 				param: tt.param,
 			}
-			got, err := e.Parser()
+			got, err := e.parser()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parserExpr.Parser() error = %v, wantErr %v", err, tt.wantErr)
 				return

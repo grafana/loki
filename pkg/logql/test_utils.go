@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -33,7 +32,7 @@ func (q MockQuerier) SelectLogs(ctx context.Context, req SelectLogParams) (iter.
 	if err != nil {
 		return nil, err
 	}
-	filter, err := expr.Filter()
+	pipeline, err := expr.Pipeline()
 	if err != nil {
 		return nil, err
 	}
@@ -69,27 +68,7 @@ outer:
 	}
 
 	// apply the LineFilter
-	filtered := make([]logproto.Stream, 0, len(matched))
-	if filter == nil || filter == TrueFilter {
-		filtered = matched
-	} else {
-		for _, s := range matched {
-			var entries []logproto.Entry
-			for _, entry := range s.Entries {
-				if filter.Filter([]byte(entry.Line)) {
-					entries = append(entries, entry)
-				}
-			}
-
-			if len(entries) > 0 {
-				filtered = append(filtered, logproto.Stream{
-					Labels:  s.Labels,
-					Entries: entries,
-				})
-			}
-		}
-
-	}
+	filtered := processStream(matched, pipeline)
 
 	streamIters := make([]iter.EntryIterator, 0, len(filtered))
 	for i := range filtered {
@@ -110,12 +89,22 @@ outer:
 	return iter.NewHeapIterator(ctx, streamIters, req.Direction), nil
 }
 
+func processStream(in []logproto.Stream, pipeline Pipeline) []logproto.Stream {
+	// todo(cyriltovena)
+	return in
+}
+
+func processSeries(in []logproto.Stream, pipeline Pipeline, ex SampleExtractor) []logproto.Series {
+	// todo(cyriltovena)
+	return nil
+}
+
 func (q MockQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
 	selector, err := req.LogSelector()
 	if err != nil {
 		return nil, err
 	}
-	filter, err := selector.Filter()
+	pipeline, err := selector.Pipeline()
 	if err != nil {
 		return nil, err
 	}
@@ -160,30 +149,31 @@ outer:
 	}
 
 	// apply the LineFilter
-	filtered := make([]logproto.Series, 0, len(matched))
-	for _, s := range matched {
-		var samples []logproto.Sample
-		for _, entry := range s.Entries {
-			if filter == nil || filter.Filter([]byte(entry.Line)) {
-				v, ok := extractor.Extract([]byte(entry.Line))
-				if !ok {
-					continue
-				}
-				samples = append(samples, logproto.Sample{
-					Timestamp: entry.Timestamp.UnixNano(),
-					Value:     v,
-					Hash:      xxhash.Sum64([]byte(entry.Line)),
-				})
-			}
-		}
+	filtered := processSeries(matched, pipeline, extractor)
+	// for _, s := range matched {
+	// 	var samples []logproto.Sample
+	// 	for _, entry := range s.Entries {
+	// 		// todo(cyriltovena)
+	// 		// if filter == nil || filter.Filter([]byte(entry.Line)) {
+	// 		v, ok := extractor.Extract([]byte(entry.Line))
+	// 		if !ok {
+	// 			continue
+	// 		}
+	// 		samples = append(samples, logproto.Sample{
+	// 			Timestamp: entry.Timestamp.UnixNano(),
+	// 			Value:     v,
+	// 			Hash:      xxhash.Sum64([]byte(entry.Line)),
+	// 		})
+	// 		// }
+	// 	}
 
-		if len(samples) > 0 {
-			filtered = append(filtered, logproto.Series{
-				Labels:  s.Labels,
-				Samples: samples,
-			})
-		}
-	}
+	// 	if len(samples) > 0 {
+	// 		filtered = append(filtered, logproto.Series{
+	// 			Labels:  s.Labels,
+	// 			Samples: samples,
+	// 		})
+	// 	}
+	// }
 
 	return iter.NewTimeRangedSampleIterator(
 		iter.NewMultiSeriesIterator(ctx, filtered),
