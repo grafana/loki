@@ -1122,7 +1122,7 @@ GET /loki/api/v1/rules
 
 Prometheus-compatible rules endpoint to list alerting and recording rules that are currently loaded.
 
-_For more information, please check out the Prometheus [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation._
+For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
