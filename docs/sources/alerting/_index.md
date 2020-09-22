@@ -5,11 +5,11 @@ weight: 700
 
 # Alerting
 
-Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and then alerting when certain conditions happen, like the when they detect a high percentage of error logs.
+Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and then alerting when certain conditions happen, e.g. a high percentage of error logs.
 
 ## Prometheus Compatible
 
-When running the Ruler (by default in single binary form), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL.
+When running the Ruler (which runs by default in the single binary), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL.
 
 Let's see what that looks like:
 
@@ -120,7 +120,7 @@ Many nascent projects, apps, or even companies may not have a metrics backend ye
 
 We don't always control the source code of applications we run. Think load balancers and the myriad components (both open source and closed third-party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively? Alerting based on logs is a great answer for these problems.
 
-For a sneak peek of how to combine this with the upcoming LogQL v2 functionality, take a look at Ward's [video](https://www.youtube.com/watch?v=RwQlR3D4Km4) which builds a robust nginx monitoring dashboard entirely from nginx logs.
+For a sneak peek of how to combine this with the upcoming LogQL v2 functionality, take a look at Ward Bekker's [video](https://www.youtube.com/watch?v=RwQlR3D4Km4) which builds a robust nginx monitoring dashboard entirely from nginx logs.
 
 ### Event alerting
 
@@ -252,7 +252,6 @@ There are a few things coming to increase the robustness of this service. In no 
 
 - Recording rules.
 - Backend metric stores adapters for generated alert and recording rule data. The first will likely be Cortex, as Loki is built atop it.
-  - The first will likely be Cortex, as Loki is built atop it.
 - Introduce LogQL v2.
 
 ## Misc Details: Metrics backends vs in-memory
