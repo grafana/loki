@@ -524,3 +524,172 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 		})
 	}
 }
+
+func TestQuerier_buildQueryIntervals(t *testing.T) {
+	// For simplicity it is always assumed that ingesterQueryStoreMaxLookback and queryIngestersWithin both would be set upto 11 hours so
+	// overlappingQuery has range of last 11 hours while nonOverlappingQuery has range older than last 11 hours.
+	// We would test the cases below with both the queries.
+	overlappingQuery := interval{
+		start: time.Now().Add(-6 * time.Hour),
+		end:   time.Now(),
+	}
+
+	nonOverlappingQuery := interval{
+		start: time.Now().Add(-24 * time.Hour),
+		end:   time.Now().Add(-12 * time.Hour),
+	}
+
+	type response struct {
+		ingesterQueryInterval *interval
+		storeQueryInterval    *interval
+	}
+
+	compareResponse := func(t *testing.T, expectedResponse, actualResponse response) {
+		if expectedResponse.ingesterQueryInterval == nil {
+			require.Nil(t, actualResponse.ingesterQueryInterval)
+		} else {
+			require.InDelta(t, expectedResponse.ingesterQueryInterval.start.Second(), actualResponse.ingesterQueryInterval.start.Second(), 1)
+			require.InDelta(t, expectedResponse.ingesterQueryInterval.end.Second(), expectedResponse.ingesterQueryInterval.end.Second(), 1)
+		}
+
+		if expectedResponse.storeQueryInterval == nil {
+			require.Nil(t, actualResponse.storeQueryInterval)
+		} else {
+			require.InDelta(t, expectedResponse.storeQueryInterval.start.Second(), actualResponse.storeQueryInterval.start.Second(), 1)
+			require.InDelta(t, expectedResponse.storeQueryInterval.end.Second(), expectedResponse.storeQueryInterval.end.Second(), 1)
+		}
+	}
+
+	for _, tc := range []struct {
+		name                                string
+		ingesterQueryStoreMaxLookback       time.Duration
+		queryIngestersWithin                time.Duration
+		overlappingQueryExpectedResponse    response
+		nonOverlappingQueryExpectedResponse response
+	}{
+		{
+			name: "default values, query ingesters and store for whole duration",
+			overlappingQueryExpectedResponse: response{ // query both store and ingesters
+				ingesterQueryInterval: &overlappingQuery,
+				storeQueryInterval:    &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query both store and ingesters
+				ingesterQueryInterval: &overlappingQuery,
+				storeQueryInterval:    &overlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 1h",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
+				ingesterQueryInterval: &interval{
+					start: time.Now().Add(-time.Hour),
+					end:   overlappingQuery.end,
+				},
+				storeQueryInterval: &interval{
+					start: overlappingQuery.start,
+					end:   time.Now().Add(-time.Hour),
+				},
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 10h",
+			ingesterQueryStoreMaxLookback: 10 * time.Hour,
+			overlappingQueryExpectedResponse: response{ // query just the ingesters.
+				ingesterQueryInterval: &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 1h and queryIngestersWithin set to 2h, ingesterQueryStoreMaxLookback takes precedence",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
+				ingesterQueryInterval: &interval{
+					start: time.Now().Add(-time.Hour),
+					end:   overlappingQuery.end,
+				},
+				storeQueryInterval: &interval{
+					start: overlappingQuery.start,
+					end:   time.Now().Add(-time.Hour),
+				},
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 2h and queryIngestersWithin set to 1h, ingesterQueryStoreMaxLookback takes precedence",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			overlappingQueryExpectedResponse: response{ // query ingesters for last 2h and store until last 2h.
+				ingesterQueryInterval: &interval{
+					start: time.Now().Add(-2 * time.Hour),
+					end:   overlappingQuery.end,
+				},
+				storeQueryInterval: &interval{
+					start: overlappingQuery.start,
+					end:   time.Now().Add(-2 * time.Hour),
+				},
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to -1, query just ingesters",
+			ingesterQueryStoreMaxLookback: -1,
+			overlappingQueryExpectedResponse: response{
+				ingesterQueryInterval: &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{
+				ingesterQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                 "queryIngestersWithin set to 1h",
+			queryIngestersWithin: time.Hour,
+			overlappingQueryExpectedResponse: response{ // query both store and ingesters since query overlaps queryIngestersWithin
+				ingesterQueryInterval: &overlappingQuery,
+				storeQueryInterval:    &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store since query doesn't overlap queryIngestersWithin
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                 "queryIngestersWithin set to 10h",
+			queryIngestersWithin: time.Hour,
+			overlappingQueryExpectedResponse: response{ // query both store and ingesters since query overlaps queryIngestersWithin
+				ingesterQueryInterval: &overlappingQuery,
+				storeQueryInterval:    &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store since query doesn't overlap queryIngestersWithin
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := Querier{cfg: Config{
+				IngesterQueryStoreMaxLookback: tc.ingesterQueryStoreMaxLookback,
+				QueryIngestersWithin:          tc.queryIngestersWithin,
+			}}
+
+			ingesterQueryInterval, storeQueryInterval := querier.buildQueryIntervals(overlappingQuery.start, overlappingQuery.end)
+			compareResponse(t, tc.overlappingQueryExpectedResponse, response{
+				ingesterQueryInterval: ingesterQueryInterval,
+				storeQueryInterval:    storeQueryInterval,
+			})
+
+			ingesterQueryInterval, storeQueryInterval = querier.buildQueryIntervals(nonOverlappingQuery.start, nonOverlappingQuery.end)
+			compareResponse(t, tc.nonOverlappingQueryExpectedResponse, response{
+				ingesterQueryInterval: ingesterQueryInterval,
+				storeQueryInterval:    storeQueryInterval,
+			})
+
+		})
+	}
+}
