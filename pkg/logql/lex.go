@@ -2,8 +2,10 @@ package logql
 
 import (
 	"strconv"
+	"strings"
 	"text/scanner"
 	"time"
+	"unicode"
 
 	"github.com/prometheus/common/model"
 )
@@ -78,8 +80,14 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return 0
 
 	case scanner.Int, scanner.Float:
-		lval.str = l.TokenText()
-		return NUMBER
+		numberText := l.TokenText()
+		duration, ok := tryScanDuration(numberText, &l.Scanner)
+		if !ok {
+			lval.str = numberText
+			return NUMBER
+		}
+		lval.duration = duration
+		return DURATION
 
 	case scanner.String, scanner.RawString:
 		var err error
@@ -102,7 +110,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 					return 0
 				}
 				lval.duration = time.Duration(i)
-				return DURATION
+				return RANGE
 			}
 			d += string(r)
 		}
@@ -125,4 +133,44 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 func (l *lexer) Error(msg string) {
 	l.errs = append(l.errs, newParseError(msg, l.Line, l.Column))
+}
+
+func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
+	var sb strings.Builder
+	sb.WriteString(number)
+	//copy the scanner to avoid advancing it in case it's not a duration.
+	s := *l
+	consumed := 0
+	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
+		if !unicode.IsNumber(r) && !isDurationRune(r) && r != '.' {
+			break
+		}
+		_, _ = sb.WriteRune(r)
+		_ = s.Next()
+		consumed++
+	}
+
+	if consumed == 0 {
+		return 0, false
+	}
+	// we've found more characters before a whitespace or the end
+	d, err := time.ParseDuration(sb.String())
+	if err != nil {
+		return 0, false
+	}
+	// we need to consume the scanner, now that we know this is a duration.
+	for i := 0; i <= consumed; i++ {
+		_ = l.Next()
+	}
+	return d, true
+}
+
+func isDurationRune(r rune) bool {
+	// "ns", "us" (or "µs"), "ms", "s", "m", "h".
+	switch r {
+	case 'n', 's', 'u', 'm', 'h', 'µ':
+		return true
+	default:
+		return false
+	}
 }

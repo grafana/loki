@@ -67,7 +67,7 @@ import (
 
 
 %token <str>      IDENTIFIER STRING NUMBER
-%token <duration> DURATION
+%token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT
@@ -106,9 +106,9 @@ logExpr:
 
 
 logRangeExpr:
-      logExpr DURATION                                 { $$ = newLogRange($1, $2) }
-    | selector DURATION pipelineExpr                   { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2 ) }
-    | selector DURATION                                { $$ = newLogRange(newMatcherExpr($1), $2 ) }
+      logExpr RANGE                                 { $$ = newLogRange($1, $2) }
+    | selector RANGE pipelineExpr                   { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2 ) }
+    | selector RANGE                                { $$ = newLogRange(newMatcherExpr($1), $2 ) }
     | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS  { $$ = $2 }
     | logRangeExpr error
     ;
@@ -200,6 +200,7 @@ durationFilter:
     | IDENTIFIER LTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThanOrEqual, $1, $3) }
     | IDENTIFIER NEQ DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterNotEqual, $1, $3) }
     | IDENTIFIER EQ DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterEqual, $1, $3) }
+    | IDENTIFIER CMP_EQ DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterEqual, $1, $3) }
     ;
 
 numberFilter:
@@ -209,6 +210,7 @@ numberFilter:
     | IDENTIFIER LTE NUMBER { $$ = labelfilter.NewNumeric(labelfilter.FilterLesserThanOrEqual, $1, mustNewFloat($3))}
     | IDENTIFIER NEQ NUMBER { $$ = labelfilter.NewNumeric(labelfilter.FilterNotEqual, $1, mustNewFloat($3))}
     | IDENTIFIER EQ NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER CMP_EQ NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterEqual, $1, mustNewFloat($3))}
     ;
 
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr

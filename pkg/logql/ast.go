@@ -230,7 +230,9 @@ func newLineFilterExpr(left *lineFilterExpr, ty labels.MatchType, match string) 
 
 func (e *lineFilterExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(e.left.String())
+	if e.left != nil {
+		sb.WriteString(e.left.String())
+	}
 	switch e.ty {
 	case labels.MatchRegexp:
 		sb.WriteString("|~")
