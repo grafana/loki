@@ -18,6 +18,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 type Config struct {
@@ -88,22 +90,30 @@ func (tm *TableManager) Stop() {
 }
 
 func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
-	return chunk_util.DoParallelQueries(ctx, tm.query, queries, callback)
+	queriesByTable := util.QueriesByTable(queries)
+	for tableName, queries := range queriesByTable {
+		err := tm.query(ctx, tableName, queries, callback)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
 	log, ctx := spanlogger.New(ctx, "Shipper.Uploads.Query")
 	defer log.Span.Finish()
 
-	table, ok := tm.tables[query.TableName]
+	table, ok := tm.tables[tableName]
 	if !ok {
 		return nil
 	}
 
-	return table.Query(ctx, query, callback)
+	return util.DoParallelQueries(ctx, table, queries, callback)
 }
 
 func (tm *TableManager) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {

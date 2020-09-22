@@ -13,6 +13,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 const cacheCleanupInterval = time.Hour
@@ -102,27 +104,35 @@ func (tm *TableManager) Stop() {
 }
 
 func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
-	return chunk_util.DoParallelQueries(ctx, tm.query, queries, callback)
+	queriesByTable := util.QueriesByTable(queries)
+	for tableName, queries := range queriesByTable {
+		err := tm.query(ctx, tableName, queries, callback)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Query")
 	defer log.Span.Finish()
 
-	level.Debug(log).Log("table-name", query.TableName)
+	level.Debug(log).Log("table-name", tableName)
 
-	table := tm.getOrCreateTable(ctx, query.TableName)
+	table := tm.getOrCreateTable(ctx, tableName)
 
-	err := table.Query(ctx, query, callback)
+	err := util.DoParallelQueries(ctx, table, queries, callback)
 	if err != nil {
 		if table.Err() != nil {
 			// table is in invalid state, remove the table so that next queries re-create it.
 			tm.tablesMtx.Lock()
 			defer tm.tablesMtx.Unlock()
 
-			level.Error(pkg_util.Logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", query.TableName), "err", table.Err())
+			level.Error(pkg_util.Logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", tableName), "err", table.Err())
 
-			delete(tm.tables, query.TableName)
+			delete(tm.tables, tableName)
 			return table.Err()
 		}
 	}

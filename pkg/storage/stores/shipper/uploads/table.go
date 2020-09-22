@@ -98,14 +98,16 @@ func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageCli
 	}, nil
 }
 
-// Query serves the index by querying all the open dbs.
-func (lt *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+// MultiQueries runs multiple queries without having to take lock multiple times for each query.
+func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
 
 	for _, db := range lt.dbs {
-		if err := lt.boltdbIndexClient.QueryDB(ctx, db, query, callback); err != nil {
-			return err
+		for _, query := range queries {
+			if err := lt.boltdbIndexClient.QueryDB(ctx, db, query, callback); err != nil {
+				return err
+			}
 		}
 	}
 
