@@ -54,6 +54,7 @@ The HTTP API includes the following endpoints:
   - [`POST /api/prom/rules/{namespace}`](#set-rule-group)
   - [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
   - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
+  - [`GET /prometheus/api/v1/rules`](#list-rules)
   - [`GET /prometheus/api/v1/alerts`](#list-alerts)
   
 ## Microservices mode
@@ -112,20 +113,19 @@ The API endpoints starting with `/loki/` are [Prometheus API-compatible](https:/
 These endpoints are exposed by the ruler:
 
 - [`GET /ruler/ring`](#ruler-ring-status)
-- [`GET /api/v1/rules`](#list-rules)
-- [`GET /api/v1/rules`](#list-rule-groups)
-- [`GET /api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
-- [`GET /api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
-- [`POST /api/v1/rules/{namespace}`](#set-rule-group)
-- [`DELETE /api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
-- [`DELETE /api/v1/rules/{namespace}`](#delete-namespace)
-- [`GET /api/prom/rules`](#list-rules)
+- [`GET /loki/api/v1/rules`](#list-rule-groups)
+- [`GET /loki/api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
+- [`GET /loki/api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
+- [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
+- [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
+- [`DELETE /loki/api/v1/rules/{namespace}`](#delete-namespace)
 - [`GET /api/prom/rules`](#list-rule-groups)
 - [`GET /api/prom/rules/{namespace}`](#get-rule-groups-by-namespace)
 - [`GET /api/prom/rules/{namespace}/{groupName}`](#get-rule-group)
 - [`POST /api/prom/rules/{namespace}`](#set-rule-group)
 - [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
 - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
+- [`GET /prometheus/api/v1/rules`](#list-rules)
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
 
 A [list of clients](../clients) can be found in the clients documentation.
@@ -1114,8 +1114,17 @@ Deletes all the rule groups in a namespace (including the namespace itself). Thi
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
-_Requires [authentication](#authentication)._
+### List rules
 
+```
+GET /loki/api/v1/rules
+```
+
+Prometheus-compatible rules endpoint to list alerting and recording rules that are currently loaded.
+
+For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
 ### List alerts
 

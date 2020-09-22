@@ -7,6 +7,23 @@ weight: 700
 
 Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and then alerting when certain conditions happen, e.g. a high percentage of error logs.
 
+First, ensure the Ruler component is enabled. The following is a basic configuration which loads rules from configuration files (it requires `/tmp/rules` and `/tmp/scratch` exist):
+
+```yaml
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /tmp/rules
+  rule_path: /tmp/scratch
+  alertmanager_url: http://localhost
+  ring:
+    kvstore:
+      store: inmemory
+  enable_api: true
+
+```
+
 ## Prometheus Compatible
 
 When running the Ruler (which runs by default in the single binary), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL.
@@ -80,10 +97,10 @@ groups:
     rules:
       - alert: HighPercentageError
         expr: |
-        sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
-          /
-        sum(rate({app="foo", env="production"}[5m])) by (job)
-          > 0.05
+          sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+            /
+          sum(rate({app="foo", env="production"}[5m])) by (job)
+            > 0.05
         for: 10m
         labels:
             severity: page
@@ -208,7 +225,7 @@ One option to scale the Ruler is by scaling it horizontally. However, with multi
 
 The possible configurations are listed fully in the configuration [docs](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.Ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
-A full Ruler config example is:
+A full sharding-enabled Ruler example is:
 
 ```yaml
 Ruler:
@@ -242,7 +259,7 @@ A typical local configuration might look something like:
 With the above configuration, the Ruler would expect the following layout:
 ```
 /tmp/loki/rules/<tenant id>/rules1.yaml
-                             /rules2.yaml
+                           /rules2.yaml
 ```
 Yaml files are expected to be in the [Prometheus format](#Prometheus_Compatible) but include LogQL expressions as specified in the beginning of this doc.
 
