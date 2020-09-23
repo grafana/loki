@@ -1,10 +1,12 @@
 package logql
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -339,6 +341,98 @@ func (e *labelFilterExpr) String() string {
 	return fmt.Sprintf("|%s", e.Filterer.String())
 }
 
+type lineFmtExpr struct {
+	value string
+	implicit
+}
+
+func newLineFmtExpr(value string) *lineFmtExpr {
+
+	return &lineFmtExpr{
+		value: value,
+		// t:     t,
+	}
+}
+
+func (e *lineFmtExpr) Pipeline() (Pipeline, error) {
+	t, err := template.New("line").Funcs(functionMap).Parse(e.value)
+	if err != nil {
+		return nil, err
+	}
+	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+		buf := &bytes.Buffer{}
+		//todo (cyriltovena): handle error
+		_ = t.Execute(buf, lbs.Map())
+		return buf.Bytes(), lbs, true
+	}), nil
+}
+
+func (e *lineFmtExpr) String() string {
+	return fmt.Sprintf("| line_format %s", strconv.Quote(e.value))
+}
+
+type labelFmt struct {
+	name string
+
+	value  string
+	rename bool
+}
+
+func newRenameLabelFmt(old, new string) labelFmt {
+	return labelFmt{
+		name:   old,
+		rename: true,
+		value:  new,
+	}
+}
+func newTemplateLabelFmt(dst, template string) labelFmt {
+	return labelFmt{
+		name:   dst,
+		rename: true,
+		value:  template,
+	}
+}
+
+type labelFmtExpr struct {
+	formats []labelFmt
+
+	implicit
+}
+
+func newLabelFmtExpr(fmts []labelFmt) *labelFmtExpr {
+	return &labelFmtExpr{
+		formats: fmts,
+	}
+}
+
+func (e *labelFmtExpr) Pipeline() (Pipeline, error) {
+	//todo pipeline for labels.
+	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+		// buf := &bytes.Buffer{}
+		// //todo (cyriltovena): handle error
+		// _ = e.t.Execute(buf, lbs.Map())
+		return line, lbs, true
+	}), nil
+}
+
+func (e *labelFmtExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString("| label_format ")
+	for i, f := range e.formats {
+		sb.WriteString(f.name)
+		sb.WriteString("=")
+		if f.rename {
+			sb.WriteString(f.value)
+		} else {
+			sb.WriteString(strconv.Quote(f.value))
+		}
+		if i+1 != len(e.formats) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
@@ -427,6 +521,9 @@ const (
 	OpParserTypeJSON   = "json"
 	OpParserTypeLogfmt = "logfmt"
 	OpParserTypeRegexp = "regexp"
+
+	OpFmtLine  = "line_format"
+	OpFmtLabel = "label_format"
 )
 
 func IsComparisonOperator(op string) bool {

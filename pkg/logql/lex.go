@@ -64,6 +64,10 @@ var tokens = map[string]int{
 	OpParserTypeJSON:   JSON,
 	OpParserTypeRegexp: REGEXP,
 	OpParserTypeLogfmt: LOGFMT,
+
+	// fmt
+	OpFmtLabel: LABEL_FMT,
+	OpFmtLine:  LINE_FMT,
 }
 
 type lexer struct {

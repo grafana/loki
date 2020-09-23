@@ -36,6 +36,10 @@ import (
   NumberFilter            labelfilter.Filterer
   DurationFilter          labelfilter.Filterer
   LabelFilter             labelfilter.Filterer
+  LineFormatExpr          *lineFmtExpr
+  LabelFormatExpr         *labelFmtExpr
+  LabelFormat             labelFmt
+  LabelsFormat            []labelFmt
 }
 
 %start root
@@ -64,6 +68,10 @@ import (
 %type <DurationFilter>        durationFilter
 %type <LabelFilter>           labelFilter
 %type <LineFilters>           lineFilters
+%type <LineFormatExpr>        lineFormatExpr
+%type <LabelFormatExpr>       labelFormatExpr
+%type <LabelFormat>           labelFormat
+%type <LabelsFormat>          labelsFormat
 
 
 %token <str>      IDENTIFIER STRING NUMBER
@@ -159,8 +167,8 @@ pipelineStage:
    lineFilters                   { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE labelFilter             { $$ = &labelFilterExpr{Filterer: $2 }}
-// | PIPE lineFormat
-// | PIPE labelFormat
+  | PIPE lineFormatExpr          { $$ = $2 }
+  | PIPE labelFormatExpr         { $$ = $2 }
 
 lineFilters:
     filter STRING                 { $$ = newLineFilterExpr(nil, $1, $2 ) }
@@ -172,15 +180,19 @@ labelParser:
   | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
   ;
 
-// lineFormat: 
-//       LINE_FMT IDENTIFIER
-//     | LINE_FMT STRING
-//     ;
+lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 
-// labelFormat:
-//       LABEL_FMT IDENTIFIER EQ IDENTIFIER
-//     | LABEL_FMT IDENTIFIER EQ STRING
-//     ;
+labelFormat:
+     IDENTIFIER EQ IDENTIFIER { $$ = newRenameLabelFmt($1, $3)}
+  |  IDENTIFIER EQ STRING     { $$ = newTemplateLabelFmt($1, $3)}
+  ;
+
+labelsFormat:
+    labelFormat                    { $$ = []labelFmt{ $1 } }
+  | labelsFormat COMMA labelFormat { $$ = append($1, $3) }
+  ;
+
+labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
 
 labelFilter:
       matcher { $$ = labelfilter.NewString($1) }

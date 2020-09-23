@@ -976,6 +976,62 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{app="foo"} |= "bar" | line_format "blip{{ .foo }}blop"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiPipelineExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFmtExpr("blip{{ .foo }}blop"),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiPipelineExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						Filterer: labelfilter.NewOr(
+							labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							labelfilter.NewAnd(
+								labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+								labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+							),
+						),
+					},
+					newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiPipelineExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						Filterer: labelfilter.NewOr(
+							labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							labelfilter.NewAnd(
+								labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+								labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+							),
+						),
+					},
+					newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+					newLabelFmtExpr([]labelFmt{
+						newRenameLabelFmt("foo", "bar"),
+						newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+					}),
+				},
+			},
+		},
+		{
 			// ensure binary ops with two literals are reduced recursively
 			in:  `1 + 1 + 1`,
 			exp: &literalExpr{value: 3},
