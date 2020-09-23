@@ -163,7 +163,7 @@ func (t *FileTarget) run() {
 	defer func() {
 		helpers.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
-			v.stop()
+			v.stop(false)
 		}
 		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
 		close(t.done)
@@ -313,7 +313,7 @@ func (t *FileTarget) startTailing(ps []string) {
 func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 	for _, p := range ps {
 		if tailer, ok := t.tails[p]; ok {
-			tailer.stop()
+			tailer.stop(true)
 			t.positions.Remove(tailer.path)
 			delete(t.tails, p)
 		}
