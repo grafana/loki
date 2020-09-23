@@ -407,6 +407,12 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		return
 	}
 
+	// Loki doesn't support the configdb backend, but without excessive mangling/refactoring
+	// it's hard to enforce this at validation time. Therefore detect this and fail early.
+	if t.cfg.Ruler.StoreConfig.Type == "configdb" {
+		return nil, errors.New("configdb is not supported as a Loki rules backend type")
+	}
+
 	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig, manager.GroupLoader{})
 
 	return
