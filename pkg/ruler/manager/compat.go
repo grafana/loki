@@ -75,7 +75,7 @@ type MultiTenantManager struct {
 
 // ValidateRuleGroup validates a rulegroup
 func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
-	return validateGroups(grp)
+	return ValidateGroups(grp)
 }
 
 func MemstoreTenantManager(
@@ -163,10 +163,10 @@ func (GroupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
 		return nil, errs
 	}
 
-	return &groups, validateGroups(groups.Groups...)
+	return &groups, ValidateGroups(groups.Groups...)
 }
 
-func validateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
+func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 	set := map[string]struct{}{}
 
 	for i, g := range grps {
