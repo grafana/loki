@@ -20,7 +20,7 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} |~ "\\w+" | foo = 0ms`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, EQ, DURATION}},
 		{`{foo="bar"} |~ "\\w+" | latency > 1h15m30.918273645s`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, DURATION}},
 		{`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, DURATION}},
-		{`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s or foo ==4.00 and bar ="foo"`,
+		{`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s or foo == 4.00 and bar ="foo"`,
 			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
 				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING}},
 		{`{ foo = "bar" }`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},

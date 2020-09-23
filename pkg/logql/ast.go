@@ -335,16 +335,9 @@ func (e *labelFilterExpr) Pipeline() (Pipeline, error) {
 	}), nil
 }
 
-// func (e *parserExpr) String() string {
-// 	var sb strings.Builder
-// 	sb.WriteString(e.left.String())
-// 	sb.WriteString("|")
-// 	sb.WriteString(e.op)
-// 	if e.param != "" {
-// 		sb.WriteString(strconv.Quote(e.param))
-// 	}
-// 	return sb.String()
-// }
+func (e *labelFilterExpr) String() string {
+	return fmt.Sprintf("|%s", e.Filterer.String())
+}
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
