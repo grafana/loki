@@ -4,11 +4,13 @@ package ring
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
 	"math"
-	"sort"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -47,7 +49,10 @@ type ReadRing interface {
 	GetAll(op Operation) (ReplicationSet, error)
 	ReplicationFactor() int
 	IngesterCount() int
-	Subring(key uint32, n int) ReadRing
+
+	// ShuffleShard returns a subring for the provided identifier (eg. a tenant ID)
+	// and size (number of instances).
+	ShuffleShard(identifier string, size int) ReadRing
 
 	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
 	HasInstance(instanceID string) bool
@@ -80,9 +85,10 @@ var (
 
 // Config for a Ring
 type Config struct {
-	KVStore           kv.Config     `yaml:"kvstore"`
-	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout"`
-	ReplicationFactor int           `yaml:"replication_factor"`
+	KVStore              kv.Config     `yaml:"kvstore"`
+	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor    int           `yaml:"replication_factor"`
+	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -96,6 +102,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
+	f.BoolVar(&cfg.ZoneAwarenessEnabled, prefix+"distributor.zone-awareness-enabled", false, "True to enable the zone-awareness and replicate ingested samples across different availability zones.")
 }
 
 // Ring holds the information about the members of the consistent hash ring.
@@ -107,9 +114,14 @@ type Ring struct {
 	KVClient kv.Client
 	strategy ReplicationStrategy
 
-	mtx        sync.RWMutex
-	ringDesc   *Desc
-	ringTokens []TokenDesc
+	mtx              sync.RWMutex
+	ringDesc         *Desc
+	ringTokens       []TokenDesc
+	ringTokensByZone map[string][]TokenDesc
+
+	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
+	// to be sorted alphabetically.
+	ringZones []string
 
 	memberOwnershipDesc *prometheus.Desc
 	numMembersDesc      *prometheus.Desc
@@ -190,11 +202,15 @@ func (r *Ring) loop(ctx context.Context) error {
 
 		ringDesc := value.(*Desc)
 		ringTokens := ringDesc.getTokens()
+		ringTokensByZone := ringDesc.getTokensByZone()
+		ringZones := getZones(ringTokensByZone)
 
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = ringDesc
 		r.ringTokens = ringTokens
+		r.ringTokensByZone = ringTokensByZone
+		r.ringZones = ringZones
 		return true
 	})
 	return nil
@@ -213,7 +229,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		ingesters     = buf[:0]
 		distinctHosts = map[string]struct{}{}
 		distinctZones = map[string]struct{}{}
-		start         = r.search(key)
+		start         = searchToken(r.ringTokens, key)
 		iterations    = 0
 	)
 	for i := start; len(distinctHosts) < n && iterations < len(r.ringTokens); i++ {
@@ -226,12 +242,15 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
 		}
-		if token.Zone != "" { // Ignore if the ingesters don't have a zone set.
+
+		// Ignore if the ingesters don't have a zone set.
+		if r.cfg.ZoneAwarenessEnabled && token.Zone != "" {
 			if _, ok := distinctZones[token.Zone]; ok {
 				continue
 			}
 			distinctZones[token.Zone] = struct{}{}
 		}
+
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
@@ -244,7 +263,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		ingesters = append(ingesters, ingester)
 	}
 
-	liveIngesters, maxFailure, err := r.strategy.Filter(ingesters, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout)
+	liveIngesters, maxFailure, err := r.strategy.Filter(ingesters, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled)
 	if err != nil {
 		return ReplicationSet{}, err
 	}
@@ -288,16 +307,6 @@ func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
 		Ingesters: ingesters,
 		MaxErrors: len(ingesters) - numRequired,
 	}, nil
-}
-
-func (r *Ring) search(key uint32) int {
-	i := sort.Search(len(r.ringTokens), func(x int) bool {
-		return r.ringTokens[x].Token > key
-	})
-	if i >= len(r.ringTokens) {
-		i = 0
-	}
-	return i
 }
 
 // Describe implements prometheus.Collector.
@@ -398,70 +407,118 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	)
 }
 
-// Subring returns a ring of n ingesters from the given ring. If the subring can't be built
-// (ie. because there are not enough instances) then it returns the full ring.
-func (r *Ring) Subring(key uint32, n int) ReadRing {
+// ShuffleShard returns a subring for the provided identifier (eg. a tenant ID)
+// and size (number of instances). The size is expected to be a multiple of the
+// number of zones and the returned subring will contain the same number of
+// instances per zone as far as there are enough registered instances in the ring.
+//
+// The algorithm used to build the subring is a shuffle sharder based on probabilistic
+// hashing. We treat each zone as a separate ring and pick N unique replicas from each
+// zone, walking the ring starting from random but predictable numbers. The random
+// generator is initialised with a seed based on the provided identifier.
+//
+// This implementation guarantees:
+//
+// - Stability: given the same ring, two invocations returns the same result.
+//
+// - Consistency: adding/removing 1 instance from the ring generates a resulting
+// subring with no more then 1 difference.
+//
+// - Shuffling: probabilistically, for a large enough cluster each identifier gets a different
+// set of instances, with a reduced number of overlapping instances between two identifiers.
+func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
+	// Nothing to do if the shard size is not smaller then the actual ring.
+	if size <= 0 || r.IngesterCount() <= size {
+		return r
+	}
+
+	// Use the identifier to compute an hash we'll use to seed the random.
+	hasher := md5.New()
+	hasher.Write([]byte(identifier)) // nolint:errcheck
+	checksum := hasher.Sum(nil)
+
+	// Generate the seed based on the first 64 bits of the checksum.
+	seed := int64(binary.BigEndian.Uint64(checksum))
+
+	// Initialise the random generator used to select instances in the ring.
+	random := rand.New(rand.NewSource(seed))
+
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	if r.ringDesc == nil || len(r.ringTokens) == 0 || n <= 0 {
-		return r
+	var numInstancesPerZone int
+	var actualZones []string
+
+	if r.cfg.ZoneAwarenessEnabled {
+		// When zone-awareness is enabled, we expect the shard size to be divisible
+		// by the number of zones, in order to have nodes balanced across zones.
+		// If it's not, we do round up.
+		numInstancesPerZone = int(math.Ceil(float64(size) / float64(len(r.ringZones))))
+		actualZones = r.ringZones
+	} else {
+		numInstancesPerZone = size
+		actualZones = []string{""}
 	}
 
-	var (
-		ingesters     = make(map[string]IngesterDesc, n)
-		distinctHosts = map[string]struct{}{}
-		start         = r.search(key)
-		iterations    = 0
-	)
+	shard := make(map[string]IngesterDesc, size)
 
-	// Subring exceeds number of ingesters, set to total ring size
-	if n > len(r.ringDesc.Ingesters) {
-		n = len(r.ringDesc.Ingesters)
-	}
+	// We need to iterate zones always in the same order to guarantee stability.
+	for _, zone := range actualZones {
+		var tokens []TokenDesc
 
-	for i := start; len(distinctHosts) < n && iterations < len(r.ringTokens); i++ {
-		iterations++
-		// Wrap i around in the ring.
-		i %= len(r.ringTokens)
-
-		// We want n *distinct* ingesters.
-		token := r.ringTokens[i]
-		if _, ok := distinctHosts[token.Ingester]; ok {
-			continue
+		if r.cfg.ZoneAwarenessEnabled {
+			tokens = r.ringTokensByZone[zone]
+		} else {
+			// When zone-awareness is disabled, we just iterate over 1 single fake zone
+			// and use all tokens in the ring.
+			tokens = r.ringTokens
 		}
-		distinctHosts[token.Ingester] = struct{}{}
-		ingester := r.ringDesc.Ingesters[token.Ingester]
 
-		ingesters[token.Ingester] = ingester
-	}
+		// To select one more instance while guaranteeing the "consistency" property,
+		// we do pick a random value from the generator and resolve uniqueness collisions
+		// (if any) continuing walking the ring.
+		for i := 0; i < numInstancesPerZone; i++ {
+			start := searchToken(tokens, random.Uint32())
+			iterations := 0
+			found := false
 
-	if n > len(ingesters) {
-		return r
-	}
+			for p := start; iterations < len(tokens); p++ {
+				iterations++
 
-	numTokens := 0
-	for _, ing := range ingesters {
-		numTokens += len(ing.Tokens)
-	}
+				// Wrap p around in the ring.
+				p %= len(tokens)
 
-	sub := &Ring{
-		cfg:      r.cfg,
-		strategy: r.strategy,
-		ringDesc: &Desc{
-			Ingesters: ingesters,
-		},
-		ringTokens: make([]TokenDesc, 0, numTokens),
-	}
+				// Ensure we select an unique instance.
+				if _, ok := shard[tokens[p].Ingester]; ok {
+					continue
+				}
 
-	// add tokens for the ingesters in the subring, they should already be sorted, so no need to re-sort
-	for _, t := range r.ringTokens {
-		if _, ok := ingesters[t.Ingester]; ok {
-			sub.ringTokens = append(sub.ringTokens, t)
+				shard[tokens[p].Ingester] = r.ringDesc.Ingesters[tokens[p].Ingester]
+				found = true
+				break
+			}
+
+			// If one more instance has not been found, we can stop looking for
+			// more instances in this zone, because it means the zone has no more
+			// instances which haven't been already selected.
+			if !found {
+				break
+			}
 		}
 	}
 
-	return sub
+	// Build a read-only ring for the shard.
+	shardDesc := &Desc{Ingesters: shard}
+	shardTokensByZone := shardDesc.getTokensByZone()
+
+	return &Ring{
+		cfg:              r.cfg,
+		strategy:         r.strategy,
+		ringDesc:         shardDesc,
+		ringTokens:       shardDesc.getTokens(),
+		ringTokensByZone: shardTokensByZone,
+		ringZones:        getZones(shardTokensByZone),
+	}
 }
 
 // GetInstanceState returns the current state of an instance or an error if the

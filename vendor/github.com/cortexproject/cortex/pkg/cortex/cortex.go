@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -43,6 +44,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -143,12 +145,16 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f, "")
 
 	// These don't seem to have a home.
-	flag.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
+	f.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
 }
 
 // Validate the cortex config and returns an error if the validation
 // doesn't pass
 func (c *Config) Validate(log log.Logger) error {
+	if err := c.validateYAMLEmptyNodes(); err != nil {
+		return err
+	}
+
 	if err := c.Schema.Validate(); err != nil {
 		return errors.Wrap(err, "invalid schema config")
 	}
@@ -170,7 +176,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
-	if err := c.Distributor.Validate(); err != nil {
+	if err := c.Distributor.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid distributor config")
 	}
 	if err := c.Querier.Validate(); err != nil {
@@ -194,6 +200,33 @@ func (c *Config) Validate(log log.Logger) error {
 
 	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
 		level.Warn(log).Log("schema configuration is not used by the blocks storage engine, and will have no effect")
+	}
+
+	return nil
+}
+
+// validateYAMLEmptyNodes ensure that no empty node has been specified in the YAML config file.
+// When an empty node is defined in YAML, the YAML parser sets the whole struct to its zero value
+// and so we loose all default values. It's very difficult to detect this case for the user, so we
+// try to prevent it (on the root level) with this custom validation.
+func (c *Config) validateYAMLEmptyNodes() error {
+	defaults := Config{}
+	flagext.DefaultValues(&defaults)
+
+	defStruct := reflect.ValueOf(defaults)
+	cfgStruct := reflect.ValueOf(*c)
+
+	// We expect all structs are the exact same. This check should never fail.
+	if cfgStruct.NumField() != defStruct.NumField() {
+		return errors.New("unable to validate configuration because of mismatching internal config data structure")
+	}
+
+	for i := 0; i < cfgStruct.NumField(); i++ {
+		// If the struct has been reset due to empty YAML value and the zero struct value
+		// doesn't match the default one, then we should warn the user about the issue.
+		if cfgStruct.Field(i).Kind() == reflect.Struct && cfgStruct.Field(i).IsZero() && !defStruct.Field(i).IsZero() {
+			return fmt.Errorf("the %s configuration in YAML has been specified as an empty YAML node", cfgStruct.Type().Field(i).Name)
+		}
 	}
 
 	return nil

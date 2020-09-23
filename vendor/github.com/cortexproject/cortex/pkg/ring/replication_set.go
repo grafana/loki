@@ -14,17 +14,15 @@ type ReplicationSet struct {
 
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise.
-func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*IngesterDesc) (interface{}, error)) ([]interface{}, error) {
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *IngesterDesc) (interface{}, error)) ([]interface{}, error) {
 	var (
 		errs        = make(chan error, len(r.Ingesters))
 		resultsChan = make(chan interface{}, len(r.Ingesters))
 		minSuccess  = len(r.Ingesters) - r.MaxErrors
-		done        = make(chan struct{})
 		forceStart  = make(chan struct{}, r.MaxErrors)
 	)
-	defer func() {
-		close(done)
-	}()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	for i := range r.Ingesters {
 		go func(i int, ing *IngesterDesc) {
@@ -33,13 +31,13 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*Ing
 				after := time.NewTimer(delay)
 				defer after.Stop()
 				select {
-				case <-done:
+				case <-ctx.Done():
 					return
 				case <-forceStart:
 				case <-after.C:
 				}
 			}
-			result, err := f(ing)
+			result, err := f(ctx, ing)
 			if err != nil {
 				errs <- err
 			} else {

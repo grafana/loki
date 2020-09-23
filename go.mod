@@ -10,7 +10,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.3.1-0.20200915110508-cbaf36e4fa61
+	github.com/cortexproject/cortex v1.3.1-0.20200923132904-22f2efdc1339
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v17.12.0-ce-rc1.0.20200706150819-a40b877fbb9e+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect

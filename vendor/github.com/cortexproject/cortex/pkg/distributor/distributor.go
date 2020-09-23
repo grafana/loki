@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -104,11 +105,21 @@ var (
 		Help: "Unix timestamp of latest received sample per user.",
 	}, []string{"user"})
 	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
+
+	supportedShardingStrategies = []string{ShardingStrategyDefault, ShardingStrategyShuffle}
+
+	// Validation errors.
+	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
+	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
 )
 
 const (
 	typeSamples  = "samples"
 	typeMetadata = "metadata"
+
+	// Supported sharding strategies.
+	ShardingStrategyDefault = "default"
+	ShardingStrategyShuffle = "shuffle-sharding"
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -147,7 +158,8 @@ type Config struct {
 	RemoteTimeout   time.Duration `yaml:"remote_timeout"`
 	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
 
-	ShardByAllLabels bool `yaml:"shard_by_all_labels"`
+	ShardingStrategy string `yaml:"sharding_strategy"`
+	ShardByAllLabels bool   `yaml:"shard_by_all_labels"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -170,10 +182,19 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
+	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 }
 
 // Validate config and returns error on failure
-func (cfg *Config) Validate() error {
+func (cfg *Config) Validate(limits validation.Limits) error {
+	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+		return errInvalidShardingStrategy
+	}
+
+	if cfg.ShardingStrategy == ShardingStrategyShuffle && limits.IngestionTenantShardSize <= 0 {
+		return errInvalidTenantShardSize
+	}
+
 	return cfg.HATrackerConfig.Validate()
 }
 
@@ -508,13 +529,11 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
 	}
 
-	var subRing ring.ReadRing
-	subRing = d.ingestersRing
+	subRing := d.ingestersRing.(ring.ReadRing)
 
-	// Obtain a subring if required
-	if size := d.limits.SubringSize(userID); size > 0 {
-		h := client.HashAdd32a(client.HashNew32a(), userID)
-		subRing = d.ingestersRing.Subring(h, size)
+	// Obtain a subring if required.
+	if d.cfg.ShardingStrategy == ShardingStrategyShuffle {
+		subRing = d.ingestersRing.ShuffleShard(userID, d.limits.IngestionTenantShardSize(userID))
 	}
 
 	keys := append(seriesKeys, metadataKeys...)
@@ -604,7 +623,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, time
 }
 
 // ForAllIngesters runs f, in parallel, for all ingesters
-func (d *Distributor) ForAllIngesters(ctx context.Context, reallyAll bool, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+func (d *Distributor) ForAllIngesters(ctx context.Context, reallyAll bool, f func(context.Context, client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
 	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
@@ -613,13 +632,13 @@ func (d *Distributor) ForAllIngesters(ctx context.Context, reallyAll bool, f fun
 		replicationSet.MaxErrors = 0
 	}
 
-	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ing *ring.IngesterDesc) (interface{}, error) {
+	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.IngesterDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
 		}
 
-		return f(client.(ingester_client.IngesterClient))
+		return f(ctx, client.(ingester_client.IngesterClient))
 	})
 }
 
@@ -628,7 +647,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 	req := &client.LabelValuesRequest{
 		LabelName: string(labelName),
 	}
-	resps, err := d.ForAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, false, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
 	})
 	if err != nil {
@@ -652,7 +671,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 // LabelNames returns all of the label names.
 func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
 	req := &client.LabelNamesRequest{}
-	resps, err := d.ForAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, false, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelNames(ctx, req)
 	})
 	if err != nil {
@@ -684,7 +703,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 		return nil, err
 	}
 
-	resps, err := d.ForAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, false, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.MetricsForLabelMatchers(ctx, req)
 	})
 	if err != nil {
@@ -712,7 +731,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
 	req := &ingester_client.MetricsMetadataRequest{}
 	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
-	resps, err := d.ForAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, false, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.MetricsMetadata(ctx, req)
 	})
 	if err != nil {
@@ -746,7 +765,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	req := &client.UserStatsRequest{}
-	resps, err := d.ForAllIngesters(ctx, true, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, true, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.UserStats(ctx, req)
 	})
 	if err != nil {

@@ -134,6 +134,13 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]userconfig.View, er
 		cfg.DeletedAt = deletedAt.Time
 		cfgs[userID] = cfg
 	}
+
+	// Check for any errors encountered.
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
 	return cfgs, nil
 }
 
@@ -272,6 +279,13 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]userconfig.Ver
 		cfg.DeletedAt = deletedAt.Time
 		cfgs[userID] = cfg
 	}
+
+	// Check for any errors encountered.
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
 	return cfgs, nil
 }
 
