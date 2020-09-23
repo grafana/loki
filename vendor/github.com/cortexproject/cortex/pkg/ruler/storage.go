@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
@@ -62,9 +63,13 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 }
 
 // NewRuleStorage returns a new rule storage backend poller and store
-func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
+func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader) (rules.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
+	}
+
+	if loader == nil {
+		loader = promRules.FileLoader{}
 	}
 
 	switch cfg.Type {
@@ -85,7 +90,7 @@ func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
 	case "swift":
 		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift, ""))
 	case "local":
-		return local.NewLocalRulesClient(cfg.Local)
+		return local.NewLocalRulesClient(cfg.Local, loader)
 	default:
 		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
 	}

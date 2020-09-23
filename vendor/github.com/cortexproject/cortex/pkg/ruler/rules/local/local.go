@@ -4,10 +4,11 @@ import (
 	"context"
 	"flag"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
+	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
@@ -24,16 +25,18 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // Client expects to load already existing rules located at:
 //  cfg.Directory / userID / namespace
 type Client struct {
-	cfg Config
+	cfg    Config
+	loader promRules.GroupLoader
 }
 
-func NewLocalRulesClient(cfg Config) (*Client, error) {
+func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader) (*Client, error) {
 	if cfg.Directory == "" {
 		return nil, errors.New("directory required for local rules config")
 	}
 
 	return &Client{
-		cfg: cfg,
+		cfg:    cfg,
+		loader: loader,
 	}, nil
 }
 
@@ -48,16 +51,27 @@ func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 	}
 
 	for _, info := range infos {
+		// After resolving link, info.Name() may be different than user, so keep original name.
+		user := info.Name()
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			// ioutil.ReadDir only returns result of LStat. Calling Stat resolves symlink.
+			info, err = os.Stat(filepath.Join(root, info.Name()))
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		if !info.IsDir() {
 			continue
 		}
 
-		list, err := l.listAllRulesGroupsForUser(ctx, info.Name())
+		list, err := l.listAllRulesGroupsForUser(ctx, user)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to list rule groups for user %s", info.Name())
+			return nil, errors.Wrapf(err, "failed to list rule groups for user %s", user)
 		}
 
-		lists[info.Name()] = list
+		lists[user] = list
 	}
 
 	return lists, nil
@@ -102,13 +116,24 @@ func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (
 	}
 
 	for _, info := range infos {
+		// After resolving link, info.Name() may be different than namespace, so keep original name.
+		namespace := info.Name()
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			// ioutil.ReadDir only returns result of LStat. Calling Stat resolves symlink.
+			info, err = os.Stat(filepath.Join(root, info.Name()))
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		if info.IsDir() {
 			continue
 		}
 
-		list, err := l.listAllRulesGroupsForUserAndNamespace(ctx, userID, info.Name())
+		list, err := l.listAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to list rule group for user %s and namespace %s", userID, info.Name())
+			return nil, errors.Wrapf(err, "failed to list rule group for user %s and namespace %s", userID, namespace)
 		}
 
 		allLists = append(allLists, list...)
@@ -120,7 +145,7 @@ func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (
 func (l *Client) listAllRulesGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
-	rulegroups, allErrors := rulefmt.ParseFile(filename)
+	rulegroups, allErrors := l.loader.Load(filename)
 	if len(allErrors) > 0 {
 		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
 	}

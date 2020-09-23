@@ -14,7 +14,6 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -76,28 +75,16 @@ func (d *DayTime) String() string {
 type SchemaConfig struct {
 	Configs []PeriodConfig `yaml:"configs"`
 
-	fileName       string
-	legacyFileName string
+	fileName string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file.")
-	// TODO(gouthamve): Add a metric for this.
-	f.StringVar(&cfg.legacyFileName, "config-yaml", "", "DEPRECATED(use -schema-config-file) The path to the schema config file.")
+	f.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file. The schema config is used only when running Cortex with the chunks storage.")
 }
 
 // loadFromFile loads the schema config from a yaml file
 func (cfg *SchemaConfig) loadFromFile() error {
-	if cfg.fileName == "" {
-		cfg.fileName = cfg.legacyFileName
-
-		if cfg.legacyFileName != "" {
-			flagext.DeprecatedFlagsUsed.Inc()
-			level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag -config-yaml, use -schema-config-file instead")
-		}
-	}
-
 	if cfg.fileName == "" {
 		return errConfigFileNotSet
 	}
