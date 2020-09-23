@@ -307,6 +307,14 @@ func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.IngesterDes
 	return r.replicationSet, nil
 }
 
+func (r *readRingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
+	// pass by value to copy
+	return func(r readRingMock) *readRingMock {
+		r.replicationSet.Ingesters = r.replicationSet.Ingesters[:size]
+		return &r
+	}(*r)
+}
+
 func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
 	return []ring.ReplicationSet{r.replicationSet}, nil
 }
