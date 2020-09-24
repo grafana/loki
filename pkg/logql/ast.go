@@ -1,12 +1,10 @@
 package logql
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -338,7 +336,7 @@ func (e *labelFilterExpr) Pipeline() (Pipeline, error) {
 }
 
 func (e *labelFilterExpr) String() string {
-	return fmt.Sprintf("|%s", e.Filterer.String())
+	return fmt.Sprintf("| %s", e.Filterer.String())
 }
 
 type lineFmtExpr struct {
@@ -347,50 +345,24 @@ type lineFmtExpr struct {
 }
 
 func newLineFmtExpr(value string) *lineFmtExpr {
-
 	return &lineFmtExpr{
 		value: value,
-		// t:     t,
 	}
 }
 
 func (e *lineFmtExpr) Pipeline() (Pipeline, error) {
-	t, err := template.New("line").Funcs(functionMap).Parse(e.value)
+	f, err := newLineFormatter(e.value)
 	if err != nil {
 		return nil, err
 	}
 	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-		buf := &bytes.Buffer{}
-		//todo (cyriltovena): handle error
-		_ = t.Execute(buf, lbs.Map())
-		return buf.Bytes(), lbs, true
+		line, lbs = f.Format(line, lbs)
+		return line, lbs, true
 	}), nil
 }
 
 func (e *lineFmtExpr) String() string {
-	return fmt.Sprintf("| line_format %s", strconv.Quote(e.value))
-}
-
-type labelFmt struct {
-	name string
-
-	value  string
-	rename bool
-}
-
-func newRenameLabelFmt(old, new string) labelFmt {
-	return labelFmt{
-		name:   old,
-		rename: true,
-		value:  new,
-	}
-}
-func newTemplateLabelFmt(dst, template string) labelFmt {
-	return labelFmt{
-		name:   dst,
-		rename: true,
-		value:  template,
-	}
+	return fmt.Sprintf("| %s %s", OpFmtLine, strconv.Quote(e.value))
 }
 
 type labelFmtExpr struct {
@@ -400,24 +372,27 @@ type labelFmtExpr struct {
 }
 
 func newLabelFmtExpr(fmts []labelFmt) *labelFmtExpr {
+	if err := validate(fmts); err != nil {
+		panic(newParseError(err.Error(), 0, 0))
+	}
 	return &labelFmtExpr{
 		formats: fmts,
 	}
 }
 
 func (e *labelFmtExpr) Pipeline() (Pipeline, error) {
-	//todo pipeline for labels.
+	f, err := newLabelsFormatter(e.formats)
+	if err != nil {
+		return nil, err
+	}
 	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-		// buf := &bytes.Buffer{}
-		// //todo (cyriltovena): handle error
-		// _ = e.t.Execute(buf, lbs.Map())
-		return line, lbs, true
+		return line, f.Format(lbs), true
 	}), nil
 }
 
 func (e *labelFmtExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString("| label_format ")
+	sb.WriteString(fmt.Sprintf("| %s ", OpFmtLabel))
 	for i, f := range e.formats {
 		sb.WriteString(f.name)
 		sb.WriteString("=")
@@ -468,15 +443,6 @@ func newLogRange(left LogSelectorExpr, interval time.Duration) *logRange {
 		interval: interval,
 	}
 }
-
-// func addFilterToLogRangeExpr(left *logRange, ty labels.MatchType, match string) *logRange {
-// 	left.left = &filterExpr{
-// 		left:  left.left,
-// 		ty:    ty,
-// 		match: match,
-// 	}
-// 	return left
-// }
 
 const (
 	// vector ops
