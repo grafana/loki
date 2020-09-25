@@ -208,7 +208,7 @@ func TestPurger_BuildPlan(t *testing.T) {
 				require.NoError(t, err)
 				planPath := fmt.Sprintf("%s:%s/", userID, deleteRequest.RequestID)
 
-				plans, _, err := storageClient.List(context.Background(), planPath)
+				plans, _, err := storageClient.List(context.Background(), planPath, "/")
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedNumberOfPlans, len(plans))
 

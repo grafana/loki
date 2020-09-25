@@ -94,12 +94,11 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 type S3ObjectClient struct {
 	bucketNames   []string
 	S3            s3iface.S3API
-	delimiter     string
 	sseEncryption *string
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) {
+func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	s3Config, bucketNames, err := buildS3Config(cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build s3 config")
@@ -120,7 +119,6 @@ func NewS3ObjectClient(cfg S3Config, delimiter string) (*S3ObjectClient, error) 
 	client := S3ObjectClient{
 		S3:            s3Client,
 		bucketNames:   bucketNames,
-		delimiter:     delimiter,
 		sseEncryption: sseEncryption,
 	}
 	return &client, nil
@@ -289,8 +287,8 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 	})
 }
 
-// List objects and common-prefixes i.e synthetic directories from the store non-recursively
-func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+// List implements chunk.ObjectClient.
+func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
 
@@ -299,7 +297,7 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 			input := s3.ListObjectsV2Input{
 				Bucket:    aws.String(a.bucketNames[i]),
 				Prefix:    aws.String(prefix),
-				Delimiter: aws.String(a.delimiter),
+				Delimiter: aws.String(delimiter),
 			}
 
 			for {
@@ -336,8 +334,4 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 	}
 
 	return storageObjects, commonPrefixes, nil
-}
-
-func (a *S3ObjectClient) PathSeparator() string {
-	return a.delimiter
 }

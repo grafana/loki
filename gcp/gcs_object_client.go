@@ -13,10 +13,9 @@ import (
 )
 
 type GCSObjectClient struct {
-	cfg       GCSConfig
-	client    *storage.Client
-	bucket    *storage.BucketHandle
-	delimiter string
+	cfg    GCSConfig
+	client *storage.Client
+	bucket *storage.BucketHandle
 }
 
 // GCSConfig is config for the GCS Chunk Client.
@@ -39,7 +38,7 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
-func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, delimiter string) (*GCSObjectClient, error) {
+func NewGCSObjectClient(ctx context.Context, cfg GCSConfig) (*GCSObjectClient, error) {
 	option, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
 	if err != nil {
 		return nil, err
@@ -49,16 +48,15 @@ func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, delimiter string) (*
 	if err != nil {
 		return nil, err
 	}
-	return newGCSObjectClient(cfg, client, delimiter), nil
+	return newGCSObjectClient(cfg, client), nil
 }
 
-func newGCSObjectClient(cfg GCSConfig, client *storage.Client, delimiter string) *GCSObjectClient {
+func newGCSObjectClient(cfg GCSConfig, client *storage.Client) *GCSObjectClient {
 	bucket := client.Bucket(cfg.BucketName)
 	return &GCSObjectClient{
-		cfg:       cfg,
-		client:    client,
-		bucket:    bucket,
-		delimiter: delimiter,
+		cfg:    cfg,
+		client: client,
+		bucket: bucket,
 	}
 }
 
@@ -107,12 +105,12 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 	return nil
 }
 
-// List objects and common-prefixes i.e synthetic directories from the store non-recursively
-func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+// List implements chunk.ObjectClient.
+func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
 
-	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: s.delimiter})
+	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: delimiter})
 	for {
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
@@ -154,8 +152,4 @@ func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 	}
 
 	return nil
-}
-
-func (s *GCSObjectClient) PathSeparator() string {
-	return s.delimiter
 }

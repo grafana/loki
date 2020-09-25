@@ -425,7 +425,8 @@ func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error 
 	return nil
 }
 
-func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject, []StorageCommonPrefix, error) {
+// List implements chunk.ObjectClient.
+func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]StorageObject, []StorageCommonPrefix, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -440,10 +441,6 @@ func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject,
 	}
 
 	return storageObjects, []StorageCommonPrefix{}, nil
-}
-
-func (m *MockStorage) PathSeparator() string {
-	return DirDelim
 }
 
 type mockWriteBatch struct {
