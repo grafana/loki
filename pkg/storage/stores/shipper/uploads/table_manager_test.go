@@ -101,7 +101,7 @@ func TestLoadTables(t *testing.T) {
 	require.True(t, !stat.IsDir())
 
 	for tableName, expectedIndex := range expectedTables {
-		testutil.TestSingleQuery(t, chunk.IndexQuery{TableName: tableName}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -137,7 +137,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 	require.Len(t, tm.tables, len(tc))
 
 	for tableName, expectedIndex := range tc {
-		testutil.TestSingleQuery(t, chunk.IndexQuery{TableName: tableName}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 

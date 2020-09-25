@@ -198,8 +198,8 @@ func (t *Table) Close() {
 	t.dbs = map[string]*downloadedFile{}
 }
 
-// Queries all the dbs for index.
-func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+// MultiQueries runs multiple queries without having to take lock multiple times for each query.
+func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	// let us check if table is ready for use while also honoring the context timeout
 	select {
 	case <-ctx.Done():
@@ -216,10 +216,18 @@ func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chun
 
 	t.lastUsedAt = time.Now()
 
-	for _, db := range t.dbs {
-		if err := t.boltDBIndexClient.QueryDB(ctx, db.boltdb, query, callback); err != nil {
-			return err
+	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Table.MultiQueries")
+	defer log.Span.Finish()
+
+	level.Debug(log).Log("table-name", t.name, "query-count", len(queries))
+
+	for name, db := range t.dbs {
+		for _, query := range queries {
+			if err := t.boltDBIndexClient.QueryDB(ctx, db.boltdb, query, callback); err != nil {
+				return err
+			}
 		}
+		level.Debug(log).Log("queried-db", name)
 	}
 
 	return nil
