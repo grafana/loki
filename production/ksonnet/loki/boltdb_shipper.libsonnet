@@ -40,7 +40,7 @@
   } else {},
 
   // we don't dedupe index writes when using boltdb-shipper so don't deploy a cache for it.
-  memcached_index_writes:: if $._config.using_boltdb_shipper then {} else self.memcached_index_writes,
+  memcached_index_writes: if $._config.using_boltdb_shipper then {} else super.memcached_index_writes,
 
   // Use PVC for compactor instead of node disk.
   compactor_data_pvc:: if $._config.using_boltdb_shipper then
