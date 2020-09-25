@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/stats"
@@ -509,4 +511,83 @@ func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryRespon
 		result.Series = append(result.Series, *s)
 	}
 	return &result, respSize, i.Error()
+}
+
+type nsInterval struct {
+	Start, End int64
+}
+
+func modelIntervalToNSInterval(modelInterval model.Interval) (i nsInterval) {
+	i.Start = modelInterval.Start.UnixNano()
+	i.End = modelInterval.End.UnixNano()
+	return
+}
+
+type deletedSampleIterator struct {
+	SampleIterator
+	tombstones               tombstonesSet
+	deletedIntervalsByLabels map[string][]nsInterval
+	queryInterval            model.Interval
+
+	err error
+}
+
+func NewDeletedSampleIterator(iter SampleIterator, tombstones tombstonesSet, queryInterval model.Interval) SampleIterator {
+	return &deletedSampleIterator{
+		SampleIterator:           iter,
+		tombstones:               tombstones,
+		deletedIntervalsByLabels: map[string][]nsInterval{},
+		queryInterval:            queryInterval,
+	}
+}
+
+// isDeleted removes intervals which are past ts while checking for whether ts happens to be in one of the deleted intervals
+func (d *deletedSampleIterator) isDeleted(labels string, tm int64) bool {
+	deletedIntervals, ok := d.deletedIntervalsByLabels[labels]
+	if !ok {
+		deletedIntervalsModel, err := loadDeletedInterval(labels, d.queryInterval, d.tombstones)
+		if err != nil {
+			d.err = err
+			return false
+		}
+
+		for _, deletedInterval := range deletedIntervalsModel {
+			deletedIntervals = append(deletedIntervals, modelIntervalToNSInterval(deletedInterval))
+		}
+		d.deletedIntervalsByLabels[labels] = deletedIntervals
+	}
+
+	for _, interval := range d.deletedIntervalsByLabels[labels] {
+		if tm > interval.End {
+			d.deletedIntervalsByLabels[labels] = d.deletedIntervalsByLabels[labels][1:]
+			continue
+		} else if tm < interval.Start {
+			return false
+		}
+
+		return true
+	}
+
+	return false
+}
+
+func (d *deletedSampleIterator) Next() bool {
+	for d.SampleIterator.Next() {
+		labels := d.SampleIterator.Labels()
+		ts := d.SampleIterator.Sample().Timestamp
+
+		if d.isDeleted(labels, ts) {
+			continue
+		}
+		return true
+	}
+
+	return false
+}
+
+func (d *deletedSampleIterator) Error() error {
+	if d.err != nil {
+		return d.err
+	}
+	return d.SampleIterator.Error()
 }

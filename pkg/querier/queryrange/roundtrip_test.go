@@ -92,7 +92,7 @@ var (
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxSeries: math.MaxInt32}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxSeries: math.MaxInt32}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -156,7 +156,7 @@ func TestMetricsTripperware(t *testing.T) {
 
 func TestLogFilterTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -204,7 +204,7 @@ func TestLogFilterTripperware(t *testing.T) {
 
 func TestSeriesTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -246,7 +246,7 @@ func TestSeriesTripperware(t *testing.T) {
 
 func TestLabelsTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -292,7 +292,7 @@ func TestLabelsTripperware(t *testing.T) {
 }
 
 func TestLogNoRegex(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -326,7 +326,7 @@ func TestLogNoRegex(t *testing.T) {
 }
 
 func TestUnhandledPath(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -350,7 +350,7 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -429,7 +429,7 @@ func TestPostQueries(t *testing.T) {
 }
 
 func TestEntriesLimitsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -460,7 +460,7 @@ func TestEntriesLimitsTripperware(t *testing.T) {
 }
 
 func TestEntriesLimitWithZeroTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}

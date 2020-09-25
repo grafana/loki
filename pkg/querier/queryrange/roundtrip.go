@@ -43,6 +43,7 @@ func NewTripperware(
 	limits Limits,
 	schema chunk.SchemaConfig,
 	minShardingLookback time.Duration,
+	cacheGenNumberLoader queryrange.CacheGenNumberLoader,
 	registerer prometheus.Registerer,
 ) (queryrange.Tripperware, Stopper, error) {
 	// Ensure that QuerySplitDuration uses configuration defaults.
@@ -55,7 +56,7 @@ func NewTripperware(
 	splitByMetrics := NewSplitByMetrics(registerer)
 
 	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec,
-		PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics, registerer)
+		PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics, cacheGenNumberLoader, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -329,6 +330,7 @@ func NewMetricTripperware(
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
+	cacheGenNumberLoader queryrange.CacheGenNumberLoader,
 	registerer prometheus.Registerer,
 ) (queryrange.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
@@ -360,7 +362,7 @@ func NewMetricTripperware(
 			limits,
 			codec,
 			extractor,
-			nil,
+			cacheGenNumberLoader,
 			func(r queryrange.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},

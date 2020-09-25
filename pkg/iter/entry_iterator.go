@@ -8,6 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/stats"
@@ -742,4 +746,121 @@ func (it *peekingEntryIterator) Error() error {
 // Close implements `EntryIterator`
 func (it *peekingEntryIterator) Close() error {
 	return it.iter.Close()
+}
+
+type tombstonesSet interface {
+	GetDeletedIntervals(lbls labels.Labels, from, to model.Time) []model.Interval
+}
+
+type timeInterval struct {
+	Start, End time.Time
+}
+
+func modelIntervalToTimeInterval(modelInterval model.Interval) (i timeInterval) {
+	i.Start = modelInterval.Start.Time()
+	i.End = modelInterval.End.Time()
+	return
+}
+
+type deletedEntryIterator struct {
+	EntryIterator
+	tombstones               tombstonesSet
+	direction                logproto.Direction
+	queryInterval            model.Interval
+	deletedIntervalsByLabels map[string][]timeInterval
+
+	err error
+}
+
+func NewDeletedEntryIterator(iter EntryIterator, tombstones tombstonesSet, direction logproto.Direction, queryInterval model.Interval) EntryIterator {
+	return &deletedEntryIterator{
+		EntryIterator:            iter,
+		tombstones:               tombstones,
+		direction:                direction,
+		queryInterval:            queryInterval,
+		deletedIntervalsByLabels: map[string][]timeInterval{},
+	}
+}
+
+// isDeleted checks for whether ts happens to be in one of the deleted intervals. It also removes intervals which are past ts.
+func (d *deletedEntryIterator) isDeleted(labels string, tm time.Time) bool {
+	deletedIntervals, ok := d.deletedIntervalsByLabels[labels]
+	if !ok {
+		deletedIntervalsModel, err := loadDeletedInterval(labels, d.queryInterval, d.tombstones)
+		if err != nil {
+			d.err = err
+			return false
+		}
+		for _, deletedInterval := range deletedIntervalsModel {
+			deletedIntervals = append(deletedIntervals, modelIntervalToTimeInterval(deletedInterval))
+		}
+
+		if d.direction == logproto.BACKWARD {
+			for i, j := 0, len(deletedIntervals)-1; i < j; i, j = i+1, j-1 {
+				deletedIntervals[i], deletedIntervals[j] = deletedIntervals[j], deletedIntervals[i]
+			}
+		}
+		d.deletedIntervalsByLabels[labels] = deletedIntervals
+	}
+
+	if d.direction == logproto.FORWARD {
+		for _, interval := range d.deletedIntervalsByLabels[labels] {
+			if tm.After(interval.End) {
+				d.deletedIntervalsByLabels[labels] = d.deletedIntervalsByLabels[labels][1:]
+				continue
+			} else if tm.Before(interval.Start) {
+				return false
+			}
+
+			return true
+		}
+	} else {
+		for _, interval := range d.deletedIntervalsByLabels[labels] {
+			if tm.Before(interval.Start) {
+				d.deletedIntervalsByLabels[labels] = d.deletedIntervalsByLabels[labels][1:]
+				continue
+			} else if tm.After(interval.End) {
+				return false
+			}
+
+			return true
+		}
+	}
+
+	return false
+}
+
+func (d *deletedEntryIterator) Next() bool {
+	for d.EntryIterator.Next() {
+		labels := d.EntryIterator.Labels()
+		ts := d.EntryIterator.Entry().Timestamp
+
+		if d.isDeleted(labels, ts) {
+			continue
+		}
+		return true
+	}
+
+	return false
+}
+
+func (d *deletedEntryIterator) Error() error {
+	if d.err != nil {
+		return d.err
+	}
+	return d.EntryIterator.Error()
+}
+
+func loadDeletedInterval(labelsStr string, queryInterval model.Interval, tombstones tombstonesSet) ([]model.Interval, error) {
+	lbls, err := parser.ParseMetric(labelsStr)
+	if err != nil {
+		return nil, err
+	}
+
+	lbls = append(lbls, labels.Label{
+		Name:  labels.MetricName,
+		Value: "logs",
+	})
+
+	return tombstones.GetDeletedIntervals(lbls, queryInterval.Start, queryInterval.End), nil
 }

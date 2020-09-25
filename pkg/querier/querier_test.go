@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
+
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -40,7 +42,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 	if err != nil {
 		return nil, err
 	}
-	return New(cfg, store, iq, limits)
+	return New(cfg, store, iq, limits, purger.NewTombstonesLoader(nil, nil))
 }
 
 func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {

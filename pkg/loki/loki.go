@@ -7,30 +7,27 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	frontend "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/querier/worker"
-
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/modules"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/signals"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/distributor"
@@ -41,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -70,6 +68,7 @@ type Config struct {
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
 	Tracing          tracing.Config              `yaml:"tracing"`
 	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
+	PurgerConfig     purger.Config               `yaml:"purger"`
 }
 
 // RegisterFlags registers flag.
@@ -98,6 +97,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
+	c.PurgerConfig.RegisterFlags(f)
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -140,23 +140,26 @@ type Loki struct {
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
 
-	Server          *server.Server
-	ring            *ring.Ring
-	overrides       *validation.Overrides
-	distributor     *distributor.Distributor
-	ingester        *ingester.Ingester
-	querier         *querier.Querier
-	ingesterQuerier *querier.IngesterQuerier
-	store           storage.Store
-	tableManager    *chunk.TableManager
-	frontend        *frontend.Frontend
-	ruler           *cortex_ruler.Ruler
-	RulerStorage    rules.RuleStore
-	rulerAPI        *cortex_ruler.API
-	stopper         queryrange.Stopper
-	runtimeConfig   *runtimeconfig.Manager
-	memberlistKV    *memberlist.KVInitService
-	compactor       *compactor.Compactor
+	Server           *server.Server
+	ring             *ring.Ring
+	overrides        *validation.Overrides
+	distributor      *distributor.Distributor
+	ingester         *ingester.Ingester
+	querier          *querier.Querier
+	ingesterQuerier  *querier.IngesterQuerier
+	store            storage.Store
+	tableManager     *chunk.TableManager
+	frontend         *frontend.Frontend
+	ruler            *cortex_ruler.Ruler
+	RulerStorage     rules.RuleStore
+	rulerAPI         *cortex_ruler.API
+	stopper          queryrange.Stopper
+	runtimeConfig    *runtimeconfig.Manager
+	memberlistKV     *memberlist.KVInitService
+	compactor        *compactor.Compactor
+	TombstonesLoader *purger.TombstonesLoader
+	DeletesStore     *purger.DeleteStore
+	Purger           *purger.Purger
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -350,6 +353,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
+	mm.RegisterModule(Purger, t.initPurger)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -357,14 +362,15 @@ func (t *Loki) setupModuleManager() error {
 		Ring:            {RuntimeConfig, Server, MemberlistKV},
 		Overrides:       {RuntimeConfig},
 		Distributor:     {Ring, Server, Overrides},
-		Store:           {Overrides},
+		Store:           {Overrides, DeleteRequestsStore},
 		Ingester:        {Store, Server, MemberlistKV},
 		Querier:         {Store, Ring, Server, IngesterQuerier},
-		QueryFrontend:   {Server, Overrides},
+		QueryFrontend:   {Server, Overrides, DeleteRequestsStore},
 		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides},
 		TableManager:    {Server},
 		Compactor:       {Server},
 		IngesterQuerier: {Ring},
+		Purger:          {Store, DeleteRequestsStore},
 		All:             {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
 
@@ -373,10 +379,14 @@ func (t *Loki) setupModuleManager() error {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
-	// If we are running Loki with boltdb-shipper as a single binary, without clustered mode(which should always be the case when using inmemory ring),
-	// we should start compactor as well for better user experience.
-	if storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) && t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
-		deps[All] = append(deps[All], Compactor)
+	// If we are running Loki as a single binary, without clustered mode(which should always be the case when using inmemory ring),
+	// we should start singleton services as well for better user experience.
+	if t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
+		deps[All] = append(deps[All], Purger)
+		// compactor should run only when using boltdb-shipper
+		if storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
+			deps[All] = append(deps[All], Compactor)
+		}
 	}
 
 	for mod, targets := range deps {

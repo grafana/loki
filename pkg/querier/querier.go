@@ -11,6 +11,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -56,20 +57,22 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Querier handlers queries.
 type Querier struct {
-	cfg             Config
-	store           storage.Store
-	engine          *logql.Engine
-	limits          *validation.Overrides
-	ingesterQuerier *IngesterQuerier
+	cfg              Config
+	store            storage.Store
+	engine           *logql.Engine
+	limits           *validation.Overrides
+	ingesterQuerier  *IngesterQuerier
+	tombstonesLoader *purger.TombstonesLoader
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*Querier, error) {
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, tombstonesLoader *purger.TombstonesLoader) (*Querier, error) {
 	querier := Querier{
-		cfg:             cfg,
-		store:           store,
-		ingesterQuerier: ingesterQuerier,
-		limits:          limits,
+		cfg:              cfg,
+		store:            store,
+		ingesterQuerier:  ingesterQuerier,
+		limits:           limits,
+		tombstonesLoader: tombstonesLoader,
 	}
 
 	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits)
@@ -79,7 +82,12 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
-	err := q.validateQueryRequest(ctx, params)
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = q.validateQueryRequest(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -117,11 +125,27 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		iters = append(iters, storeIter)
 	}
 
-	return iter.NewHeapIterator(ctx, iters, params.Direction), nil
+	itr := iter.NewHeapIterator(ctx, iters, params.Direction)
+
+	queryStart, queryEnd := listutil.RoundToMilliseconds(params.Start, params.End)
+	tombstonesSet, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, queryStart, queryEnd)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewDeletedEntryIterator(itr, tombstonesSet, params.Direction, model.Interval{
+		Start: queryStart,
+		End:   queryEnd,
+	}), nil
 }
 
 func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-	err := q.validateQueryRequest(ctx, params)
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = q.validateQueryRequest(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +182,19 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewHeapSampleIterator(ctx, iters), nil
+
+	itr := iter.NewHeapSampleIterator(ctx, iters)
+
+	queryStart, queryEnd := listutil.RoundToMilliseconds(params.Start, params.End)
+	tombstonesSet, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, queryStart, queryEnd)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewDeletedSampleIterator(itr, tombstonesSet, model.Interval{
+		Start: queryStart,
+		End:   queryEnd,
+	}), nil
 }
 
 func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
