@@ -303,6 +303,9 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 	defer cancelQuery()
 
 	tailClients, err := q.ingesterQuerier.Tail(tailCtx, req)
+	if err != nil {
+		return nil, err
+	}
 
 	histIterators, err := q.SelectLogs(queryCtx, histReq)
 	if err != nil {
