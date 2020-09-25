@@ -44,6 +44,25 @@ func newPlugin(cfg *config, logger log.Logger) (*loki, error) {
 	}, nil
 }
 
+func extractParsedField(res model.LabelSet, records map[string]interface{}, parsedFields map[string]string) model.LabelSet {
+	for key, replaceKey := range parsedFields {
+		v, ok := records[key]
+		if !ok {
+			continue
+		}
+		ln := model.LabelName(replaceKey)
+		if !ln.IsValid() {
+			continue
+		}
+		lv := model.LabelValue(fmt.Sprintf("%v", v))
+		if !lv.IsValid() {
+			continue
+		}
+		res[ln] = lv
+	}
+	return res
+}
+
 // sendRecord send fluentbit records to loki as an entry.
 func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	records := toStringMap(r)
@@ -59,6 +78,11 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	} else {
 		lbs = extractLabels(records, l.cfg.labelKeys)
 	}
+
+	if l.cfg.parsedField != nil {
+		lbs = extractParsedField(lbs, records, l.cfg.parsedField)
+	}
+
 	removeKeys(records, append(l.cfg.labelKeys, l.cfg.removeKeys...))
 	if len(records) == 0 {
 		return nil

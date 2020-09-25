@@ -51,6 +51,7 @@ type config struct {
 	lineFormat           format
 	dropSingleKey        bool
 	labelMap             map[string]interface{}
+	parsedField          map[string]string
 }
 
 func parseConfig(cfg ConfigGetter) (*config, error) {
@@ -270,6 +271,18 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		res.clientConfig.Client.TLSConfig.InsecureSkipVerify = true
 	default:
 		return nil, fmt.Errorf("invalid string insecure_skip_verify: %v", insecureSkipVerify)
+	}
+
+	parsedFileds := cfg.Get("extract_parsed_field")
+	if parsedFileds != "" {
+		res.parsedField = make(map[string]string)
+		items := strings.Split(parsedFileds, ",")
+		for _, item := range items {
+			field := strings.Split(item, ":")
+			if len(field) == 2 {
+				res.parsedField[field[0]] = field[1]
+			}
+		}
 	}
 
 	return res, nil
