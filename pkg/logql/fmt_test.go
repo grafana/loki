@@ -80,6 +80,15 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "blip and blop"}, {Name: "bar", Value: "blip"}},
 		},
+		{
+			"fn",
+			mustNewLabelsFormatter([]labelFmt{
+				newTemplateLabelFmt("blip", "{{.foo | ToUpper }} and {{.bar}}"),
+				newRenameLabelFmt("bar", "foo"),
+			}),
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "blip", Value: "BLIP and blop"}, {Name: "bar", Value: "blip"}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -96,4 +105,22 @@ func mustNewLabelsFormatter(fmts []labelFmt) *labelsFormatter {
 		panic(err)
 	}
 	return lf
+}
+
+func Test_validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		fmts    []labelFmt
+		wantErr bool
+	}{
+		{"no dup", []labelFmt{newRenameLabelFmt("foo", "bar"), newRenameLabelFmt("bar", "foo")}, false},
+		{"dup", []labelFmt{newRenameLabelFmt("foo", "bar"), newRenameLabelFmt("foo", "blip")}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := validate(tt.fmts); (err != nil) != tt.wantErr {
+				t.Errorf("validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }

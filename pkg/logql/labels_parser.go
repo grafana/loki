@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/logfmt"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -24,6 +26,10 @@ const (
 var (
 	errMissingCapture = errors.New("at least one named capture must be supplied")
 	NoopLabelParser   = noopParser{}
+
+	underscore = []byte("_")
+	point      = []byte(".")
+	dash       = []byte("-")
 )
 
 type LabelParser interface {
@@ -103,9 +109,17 @@ func NewRegexpParser(re string) (*regexpParser, error) {
 		return nil, errMissingCapture
 	}
 	nameIndex := map[int]string{}
+	uniqueNames := map[string]struct{}{}
 	for i, n := range regex.SubexpNames() {
 		if n != "" {
+			if !model.LabelName(n).IsValid() {
+				return nil, fmt.Errorf("invalid extracted label name '%s'", n)
+			}
+			if _, ok := uniqueNames[n]; ok {
+				return nil, fmt.Errorf("duplicate extracted label name '%s'", n)
+			}
 			nameIndex[i] = n
+			uniqueNames[n] = struct{}{}
 		}
 	}
 	if len(nameIndex) == 0 {
@@ -153,7 +167,8 @@ func (l *logfmtParser) Parse(line []byte, lbs labels.Labels) labels.Labels {
 	l.dec.Reset(line)
 
 	for l.dec.ScanKeyval() {
-		addLabel(l.builder, lbs)(string(l.dec.Key()), string(l.dec.Value()))
+		k := string(bytes.ReplaceAll(bytes.ReplaceAll(l.dec.Key(), point, underscore), dash, underscore))
+		addLabel(l.builder, lbs)(k, string(l.dec.Value()))
 	}
 	if l.dec.Err() != nil {
 		l.builder.Set(errorLabel, errLogfmt)

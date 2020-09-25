@@ -91,6 +91,8 @@ func TestNewRegexpParser(t *testing.T) {
 		{"sub but not named", "f(.*) (foo|bar|buzz)", true},
 		{"named and unamed", "blah (.*) (?P<foo>)", false},
 		{"named", "blah (.*) (?P<foo>foo)(?P<bar>barr)", false},
+		{"invalid name", "blah (.*) (?P<foo$>foo)(?P<bar>barr)", true},
+		{"duplicate", "blah (.*) (?P<foo>foo)(?P<foo>barr)", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -242,6 +244,19 @@ func Test_logfmtParser_Parse(t *testing.T) {
 				labels.Label{Name: "foo", Value: "bar"},
 				labels.Label{Name: "foo_extracted", Value: "foo bar"},
 				labels.Label{Name: "foobar", Value: "10ms"},
+			},
+		},
+		{
+			"invalid key names",
+			[]byte(`foo="foo bar" foo.bar=10ms test-dash=foo`),
+			labels.Labels{
+				labels.Label{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				labels.Label{Name: "foo", Value: "bar"},
+				labels.Label{Name: "foo_extracted", Value: "foo bar"},
+				labels.Label{Name: "foo_bar", Value: "10ms"},
+				labels.Label{Name: "test_dash", Value: "foo"},
 			},
 		},
 	}
