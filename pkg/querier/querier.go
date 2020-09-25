@@ -162,7 +162,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 }
 
 func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
-	// limitQueryInterval is a flag for whether queries should be limited to start time of ingester queries.
+	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.
 	ingesterMLB := time.Duration(-1)
