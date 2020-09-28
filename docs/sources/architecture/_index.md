@@ -88,7 +88,7 @@ value is larger than the hash of the stream. When the replication factor is
 larger than 1, the next subsequent tokens (clockwise in the ring) that belong to
 different ingesters will also be included in the result.
 
-The effect of this hash setup is that each token that an ingester owns is
+The effect of this hash set up is that each token that an ingester owns is
 responsible for a range of hashes. If there are three tokens with values 0, 25,
 and 50, then a hash of 3 would be given to the ingester that owns the token 25;
 the ingester owning token 25 is responsible for the hash range of 1-25.
