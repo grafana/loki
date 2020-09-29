@@ -58,6 +58,31 @@ rbac:
   create: true
   pspEnabled: true
 
+podSecurityPolicy:
+  privileged: false
+  allowPrivilegeEscalation: false
+  volumes:
+    - 'secret'
+    - 'configMap'
+    - 'hostPath'
+    - 'projected'
+    - 'downwardAPI'
+    - 'emptyDir'
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: 'RunAsAny'
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'RunAsAny'
+  fsGroup:
+    rule: 'RunAsAny'
+  readOnlyRootFilesystem: true
+  requiredDropCapabilities:
+    - ALL
+
 readinessProbe:
   failureThreshold: 5
   httpGet:
