@@ -146,6 +146,9 @@
     dynamodb_secret_access_key: '',
     dynamodb_region: error 'must specify dynamodb_region',
 
+    // ruler extra config
+    ruler_s3_region: '%s' % $._config.s3_address, 
+
     client_configs: {
       dynamo: {
         dynamodb: {} + if $._config.dynamodb_access_key != '' then {
@@ -416,7 +419,7 @@
         storage+: {
           type: 's3',
           s3+: {
-            bucketnames: '%s' % $._config.ruler_bucket_name,
+            s3: 's3://%(ruler_s3_region)s/%(ruler_bucket_name)s' % $._config,
           },
         },
         } else {}) +
