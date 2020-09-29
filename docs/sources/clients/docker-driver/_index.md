@@ -35,7 +35,7 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once the plugin is installed it can be [configured](../../configuration/).
+Once the plugin is installed it can be [configured](./configuration).
 
 ## Upgrading
 
@@ -43,8 +43,8 @@ The upgrade process involves disabling the existing plugin, upgrading, then
 re-enabling and restarting Docker:
 
 ```bash
-docker plugin disable loki
-docker plugin upgrade loki grafana/loki-docker-driver:latest
+docker plugin disable loki --force
+docker plugin upgrade loki grafana/loki-docker-driver:latest --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```
@@ -54,6 +54,6 @@ systemctl restart docker
 To cleanly uninstall the plugin, disable and remove it:
 
 ```bash
-docker plugin disable loki
+docker plugin disable loki --force
 docker plugin rm loki
 ```
