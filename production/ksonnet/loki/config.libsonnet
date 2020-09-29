@@ -110,6 +110,9 @@
     index_period_hours: 168,  // 1 week
 
     ruler_enabled: false,
+    ruler_storage: 'gcs',
+    ruler_alertmanager_url: 'http://alertmanager.%s.svc.cluster.local/alertmanager' % $._config.namespace,
+    ruler_bucket_name: '%(cluster)s-%(namespace)s-ruler' % $._config,
     schema_store: 'bigtable',
     schema_object_store: 'gcs',
 
@@ -384,7 +387,7 @@
       ruler: if $._config.ruler_enabled then {
         rule_path: '/tmp/rules',
         enable_api: true,
-        alertmanager_url: 'http://alertmanager.%s.svc.cluster.local/alertmanager' % $._config.namespace,
+        alertmanager_url: '%s' % $._config.ruler_alertmanager_url,
         enable_sharding: true,
         enable_alertmanager_v2: true,
         ring: {
@@ -395,13 +398,48 @@
             },
           },
         },
+      } +
+      (if $._config.ruler_storage == 'gcs' then {
         storage+: {
           type: 'gcs',
           gcs+: {
-            bucket_name: '%(cluster)s-%(namespace)s-ruler' % $._config,
+            bucket_name: '%s' % $._config.ruler_bucket_name,
           },
         },
-      } else {},
+        } else {}) +
+        (if $._config.ruler_storage == 's3' then {
+        storage+: {
+          type: 's3',
+          s3+: {
+            bucketnames: '%s' % $._config.ruler_bucket_name,
+          },
+        },
+        } else {}) +
+        (if $._config.ruler_storage == 'azure' then {
+        storage+: {
+          type: 'azure',
+          azure+: {
+            container_name: '%s' % $._config.ruler_bucket_name,
+          },
+        },
+        } else {}) +
+        (if $._config.ruler_storage == 'swift' then {
+        storage+: {
+          type: 'swift',
+          swift+: {
+            container_name: '%s' % $._config.ruler_bucket_name,
+          },
+        },
+        } else {}) +
+        (if $._config.ruler_storage == 'local' then {
+        storage+: {
+          type: 'local',
+          'local'+: {
+            directory: '%s' % $._config.ruler_bucket_name,
+          },
+        },
+        } else {})
+      else {},
 
     },
   },
