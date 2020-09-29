@@ -114,19 +114,19 @@ logExpr:
     ;
 
 logRangeExpr:
-      selector RANGE                                    { $$ = newLogRange(newMatcherExpr($1), $2, nil) }  
-    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE { $$ = newLogRange(newMatcherExpr($2), $4, nil) }  
-    | selector RANGE unwrapExpr                       { $$ = newLogRange(newMatcherExpr($1), $2 , $3) }  
-    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE unwrapExpr { $$ = newLogRange(newMatcherExpr($2), $4 , $5) }  
-    | selector unwrapExpr RANGE                       { $$ = newLogRange(newMatcherExpr($1), $3, $2 ) }  
-    | OPEN_PARENTHESIS selector unwrapExpr CLOSE_PARENTHESIS RANGE                       { $$ = newLogRange(newMatcherExpr($2), $5, $3 ) }  
-    | selector pipelineExpr RANGE                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil ) } 
-    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil ) } 
-    | selector pipelineExpr unwrapExpr RANGE          { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $4, $3) } 
-    | OPEN_PARENTHESIS selector pipelineExpr unwrapExpr CLOSE_PARENTHESIS RANGE          { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $6, $4) } 
-    | selector RANGE pipelineExpr                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, nil) } 
-    | selector RANGE pipelineExpr unwrapExpr          { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, $4 ) } 
-    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = $2 } 
+      selector RANGE                                                             { $$ = newLogRange(newMatcherExpr($1), $2, nil) }  
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE                          { $$ = newLogRange(newMatcherExpr($2), $4, nil) }  
+    | selector RANGE unwrapExpr                                                  { $$ = newLogRange(newMatcherExpr($1), $2 , $3) }  
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE unwrapExpr               { $$ = newLogRange(newMatcherExpr($2), $4 , $5) }  
+    | selector unwrapExpr RANGE                                                  { $$ = newLogRange(newMatcherExpr($1), $3, $2 ) }  
+    | OPEN_PARENTHESIS selector unwrapExpr CLOSE_PARENTHESIS RANGE               { $$ = newLogRange(newMatcherExpr($2), $5, $3 ) }  
+    | selector pipelineExpr RANGE                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil ) } 
+    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE             { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil ) } 
+    | selector pipelineExpr unwrapExpr RANGE                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $4, $3) } 
+    | OPEN_PARENTHESIS selector pipelineExpr unwrapExpr CLOSE_PARENTHESIS RANGE  { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $6, $4) } 
+    | selector RANGE pipelineExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, nil) } 
+    | selector RANGE pipelineExpr unwrapExpr                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, $4 ) } 
+    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                            { $$ = $2 } 
     | logRangeExpr error
     ;
 
