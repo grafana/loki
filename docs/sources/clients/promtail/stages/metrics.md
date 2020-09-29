@@ -223,7 +223,7 @@ line with the text `order successful` was scraped by Promtail.
       description: "failed orders"
       source: order_status
       config:
-        fail: fail
+        value: fail
         action: inc
 ```
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
@@ -162,7 +163,7 @@ func (t *FileTarget) run() {
 	defer func() {
 		helpers.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
-			v.stop()
+			v.stop(false)
 		}
 		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
 		close(t.done)
@@ -312,9 +313,12 @@ func (t *FileTarget) startTailing(ps []string) {
 func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 	for _, p := range ps {
 		if tailer, ok := t.tails[p]; ok {
-			tailer.stop()
+			tailer.stop(true)
 			t.positions.Remove(tailer.path)
 			delete(t.tails, p)
+		}
+		if h, ok := t.handler.(api.InstrumentedEntryHandler); ok {
+			h.UnregisterLatencyMetric(model.LabelSet{model.LabelName(client.LatencyLabel): model.LabelValue(p)})
 		}
 	}
 }

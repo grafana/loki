@@ -152,11 +152,13 @@ func (t *tailer) markPositionAndSize() error {
 	return nil
 }
 
-func (t *tailer) stop() {
+func (t *tailer) stop(removed bool) {
 	// Save the current position before shutting down tailer
-	err := t.markPositionAndSize()
-	if err != nil {
-		level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
+	if !removed {
+		err := t.markPositionAndSize()
+		if err != nil {
+			level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
+		}
 	}
 	close(t.quit)
 	<-t.done

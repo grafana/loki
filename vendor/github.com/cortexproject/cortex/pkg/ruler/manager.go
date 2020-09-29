@@ -2,12 +2,14 @@ package ruler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
@@ -246,10 +248,24 @@ func (r *DefaultMultiTenantManager) Stop() {
 	wg.Wait()
 	r.userManagerMtx.Unlock()
 	level.Info(r.logger).Log("msg", "all user managers stopped")
+
+	// cleanup user rules directories
+	r.mapper.cleanup()
 }
 
 func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {
 	var errs []error
+
+	if g.Name == "" {
+		errs = append(errs, errors.New("invalid rules config: rule group name must not be empty"))
+		return errs
+	}
+
+	if len(g.Rules) == 0 {
+		errs = append(errs, fmt.Errorf("invalid rules config: rule group '%s' has no rules", g.Name))
+		return errs
+	}
+
 	for i, r := range g.Rules {
 		for _, err := range r.Validate() {
 			var ruleName string

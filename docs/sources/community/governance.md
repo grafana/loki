@@ -156,7 +156,7 @@ The ex-member is
 If needed, we reserve the right to publicly announce removal.
 
 [announce]: https://groups.google.com/forum/#!forum/loki-announce
-[coc]: https://github.com/grafana/loki/blob/master/CODE_OF_CONDUCT
+[coc]: https://github.com/grafana/loki/blob/master/CODE_OF_CONDUCT.md
 [devs]: https://groups.google.com/forum/#!forum/loki-developers
 [maintainers]: https://github.com/grafana/loki/blob/master/MAINTAINERS
 [rough]: https://tools.ietf.org/html/rfc7282

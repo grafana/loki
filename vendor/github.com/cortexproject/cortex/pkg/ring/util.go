@@ -3,6 +3,7 @@ package ring
 import (
 	"context"
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -17,7 +18,7 @@ func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	used := make(map[uint32]bool)
+	used := make(map[uint32]bool, len(takenTokens))
 	for _, v := range takenTokens {
 		used[v] = true
 	}
@@ -79,4 +80,28 @@ func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state In
 	}
 
 	return backoff.Err()
+}
+
+// getZones return the list zones from the provided tokens. The returned list
+// is guaranteed to be sorted.
+func getZones(tokens map[string][]TokenDesc) []string {
+	var zones []string
+
+	for zone := range tokens {
+		zones = append(zones, zone)
+	}
+
+	sort.Strings(zones)
+	return zones
+}
+
+// searchToken returns the offset of the tokens entry holding the range for the provided key.
+func searchToken(tokens []TokenDesc, key uint32) int {
+	i := sort.Search(len(tokens), func(x int) bool {
+		return tokens[x].Token > key
+	})
+	if i >= len(tokens) {
+		i = 0
+	}
+	return i
 }

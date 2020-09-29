@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -443,10 +444,13 @@ func (r *Ruler) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	errs := r.manager.ValidateRuleGroup(rg)
 	if len(errs) > 0 {
+		e := []string{}
 		for _, err := range errs {
 			level.Error(logger).Log("msg", "unable to validate rule group payload", "err", err.Error())
+			e = append(e, err.Error())
 		}
-		http.Error(w, errs[0].Error(), http.StatusBadRequest)
+
+		http.Error(w, strings.Join(e, ", "), http.StatusBadRequest)
 		return
 	}
 

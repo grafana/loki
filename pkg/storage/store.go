@@ -11,7 +11,6 @@ import (
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -55,7 +54,7 @@ func (cfg *SchemaConfig) Validate() error {
 	if len(cfg.Configs) == 0 {
 		return zeroLengthConfigError
 	}
-	activePCIndex := ActivePeriodConfig(*cfg)
+	activePCIndex := ActivePeriodConfig((*cfg).Configs)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
 	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
@@ -76,24 +75,23 @@ type Store interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	GetSchemaConfigs() []chunk.PeriodConfig
 }
 
 type store struct {
 	chunk.Store
 	cfg          Config
 	chunkMetrics *ChunkMetrics
+	schemaCfg    SchemaConfig
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg.SchemaConfig, limits, registerer, nil, pkg_util.Logger)
-	if err != nil {
-		return nil, err
-	}
+func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, registerer prometheus.Registerer) (Store, error) {
 	return &store{
-		Store:        s,
+		Store:        chunkStore,
 		cfg:          cfg,
 		chunkMetrics: NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
+		schemaCfg:    schemaCfg,
 	}, nil
 }
 
@@ -318,6 +316,10 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
 }
 
+func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {
+	return s.schemaCfg.Configs
+}
+
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
@@ -360,10 +362,10 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 
 // ActivePeriodConfig returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
 // Note: Another PeriodicConfig might be applicable for future logs which can change index type.
-func ActivePeriodConfig(cfg SchemaConfig) int {
+func ActivePeriodConfig(configs []chunk.PeriodConfig) int {
 	now := model.Now()
-	i := sort.Search(len(cfg.Configs), func(i int) bool {
-		return cfg.Configs[i].From.Time > now
+	i := sort.Search(len(configs), func(i int) bool {
+		return configs[i].From.Time > now
 	})
 	if i > 0 {
 		i--
@@ -372,10 +374,10 @@ func ActivePeriodConfig(cfg SchemaConfig) int {
 }
 
 // UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(cfg SchemaConfig) bool {
-	activePCIndex := ActivePeriodConfig(cfg)
-	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
-		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
+func UsingBoltdbShipper(configs []chunk.PeriodConfig) bool {
+	activePCIndex := ActivePeriodConfig(configs)
+	if configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
+		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
 		return true
 	}
 

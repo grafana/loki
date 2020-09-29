@@ -136,7 +136,7 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in:  `max(count(rate({foo="bar"}[5m]))) / 2`,
-			out: `max(sum(downstream<count(rate({foo="bar"}[5m])), shard=0_of_2> ++ downstream<count(rate({foo="bar"}[5m])), shard=1_of_2>)) / 2.000000`,
+			out: `max(sum(downstream<count(rate({foo="bar"}[5m])), shard=0_of_2> ++ downstream<count(rate({foo="bar"}[5m])), shard=1_of_2>)) / 2`,
 		},
 		{
 			in:  `topk(3, rate({foo="bar"}[5m]))`,

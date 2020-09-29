@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/logentry/metric"
 	"github.com/grafana/loki/pkg/promtail/api"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -34,6 +37,9 @@ const (
 	// Label reserved to override the tenant ID while processing
 	// pipeline stages
 	ReservedLabelTenantID = "__tenant_id__"
+
+	LatencyLabel = "filename"
+	HostLabel    = "host"
 )
 
 var (
@@ -41,32 +47,33 @@ var (
 		Namespace: "promtail",
 		Name:      "encoded_bytes_total",
 		Help:      "Number of bytes encoded and ready to send.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	sentBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_bytes_total",
 		Help:      "Number of bytes sent.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	droppedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "dropped_bytes_total",
 		Help:      "Number of bytes dropped because failed to be sent to the ingester after all retries.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	sentEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_entries_total",
 		Help:      "Number of log entries sent to the ingester.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	droppedEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "dropped_entries_total",
 		Help:      "Number of log entries dropped because failed to be sent to the ingester after all retries.",
-	}, []string{"host"})
+	}, []string{HostLabel})
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
 		Help:      "Duration of send requests.",
-	}, []string{"status_code", "host"})
+	}, []string{"status_code", HostLabel})
+	streamLag *metric.Gauges
 
 	countersWithHost = []*prometheus.CounterVec{
 		encodedBytes, sentBytes, droppedBytes, sentEntries, droppedEntries,
@@ -82,6 +89,16 @@ func init() {
 	prometheus.MustRegister(sentEntries)
 	prometheus.MustRegister(droppedEntries)
 	prometheus.MustRegister(requestDuration)
+	var err error
+	streamLag, err = metric.NewGauges("promtail_stream_lag_seconds",
+		"Difference between current time and last batch timestamp for successful sends",
+		metric.GaugeConfig{Action: "set"},
+		int64(1*time.Minute.Seconds()), // This strips out files which update slowly and reduces noise in this metric.
+	)
+	if err != nil {
+		panic(err)
+	}
+	prometheus.MustRegister(streamLag)
 }
 
 // Client pushes entries to Loki and can be stopped
@@ -234,6 +251,26 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		if err == nil {
 			sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 			sentEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+			for _, s := range batch.streams {
+				lbls, err := parser.ParseMetric(s.Labels)
+				if err != nil {
+					// is this possible?
+					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
+					return
+				}
+				var lblSet model.LabelSet
+				for i := range lbls {
+					if lbls[i].Name == LatencyLabel {
+						lblSet = model.LabelSet{
+							model.LabelName(HostLabel):    model.LabelValue(c.cfg.URL.Host),
+							model.LabelName(LatencyLabel): model.LabelValue(lbls[i].Value),
+						}
+					}
+				}
+				if lblSet != nil {
+					streamLag.With(lblSet).Set(time.Now().Sub(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
+				}
+			}
 			return
 		}
 
@@ -329,4 +366,9 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 		Line:      s,
 	}}
 	return nil
+}
+
+func (c *client) UnregisterLatencyMetric(labels model.LabelSet) {
+	labels[HostLabel] = model.LabelValue(c.cfg.URL.Host)
+	streamLag.Delete(labels)
 }

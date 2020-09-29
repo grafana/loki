@@ -412,6 +412,25 @@ func (d *Desc) getTokens() []TokenDesc {
 	return tokens
 }
 
+// getTokensByZone returns instances tokens grouped by zone. Tokens within each zone
+// are guaranteed to be sorted.
+func (d *Desc) getTokensByZone() map[string][]TokenDesc {
+	zones := map[string][]TokenDesc{}
+
+	for key, ing := range d.Ingesters {
+		for _, token := range ing.Tokens {
+			zones[ing.Zone] = append(zones[ing.Zone], TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
+		}
+	}
+
+	// Ensure tokens are sorted within each zone.
+	for zone := range zones {
+		sort.Sort(ByToken(zones[zone]))
+	}
+
+	return zones
+}
+
 func GetOrCreateRingDesc(d interface{}) *Desc {
 	if d == nil {
 		return NewDesc()

@@ -3,7 +3,7 @@ title: Pipelines
 ---
 # Pipelines
 
-A detailed look at how to setup Promtail to process your log lines, including
+A detailed look at how to set up Promtail to process your log lines, including
 extracting metrics and labels.
 
 ## Pipeline

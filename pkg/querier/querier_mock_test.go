@@ -265,6 +265,10 @@ func (s *storeMock) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
 	panic("don't call me please")
 }
 
+func (s *storeMock) GetSchemaConfigs() []chunk.PeriodConfig {
+	panic("don't call me please")
+}
+
 func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
@@ -301,6 +305,14 @@ func (r *readRingMock) Collect(ch chan<- prometheus.Metric) {
 
 func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
+}
+
+func (r *readRingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
+	// pass by value to copy
+	return func(r readRingMock) *readRingMock {
+		r.replicationSet.Ingesters = r.replicationSet.Ingesters[:size]
+		return &r
+	}(*r)
 }
 
 func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {

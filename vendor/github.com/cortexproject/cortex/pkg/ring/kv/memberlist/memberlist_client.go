@@ -359,8 +359,6 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 }
 
 func (m *KV) starting(_ context.Context) error {
-	util.WarnExperimentalUse("Gossip memberlist ring")
-
 	mlCfg, err := m.buildMemberlistConfig()
 	if err != nil {
 		return err
