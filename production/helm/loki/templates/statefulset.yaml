@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ template "loki.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ template "loki.namespace" . }}
   labels:
     app: {{ template "loki.name" . }}
     chart: {{ template "loki.chart" . }}

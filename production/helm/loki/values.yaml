@@ -242,3 +242,5 @@ extraPorts: []
 
 # Extra env variables to pass to the loki container
 env: []
+
+namespaceOverride: ""

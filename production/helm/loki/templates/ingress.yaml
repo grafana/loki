@@ -9,7 +9,7 @@ apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   name: {{ $fullName }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ template "loki.namespace" . }}
   labels:
     app: {{ template "loki.name" . }}
     chart: {{ template "loki.chart" . }}
