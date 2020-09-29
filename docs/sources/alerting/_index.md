@@ -199,22 +199,27 @@ jobs:
   sync-loki-alerts:
     runs-on: ubuntu-18.04
     steps:
+      - name: Lint Rules
+        uses: grafana/cortex-rules-action@v0.3.1
+        env:
+          ACTION: 'lint'
+        with:
+          args: --backend=loki
       - name: Diff rules
-        id: diff-rules
-        uses: grafana/cortex-rules-action@v0.3.0
+        uses: grafana/cortex-rules-action@v0.3.1
         env:
           ACTION: 'diff'
         with:
           args: --backend=loki
       - name: Sync rules
         if: ${{ !contains(steps.diff-rules.outputs.detailed, 'no changes detected') }}
-        uses: grafana/cortex-rules-action@v0.3.0
+        uses: grafana/cortex-rules-action@v0.3.1
         env:
           ACTION: 'sync'
         with:
           args: --backend=loki
       - name: Print rules
-        uses: grafana/cortex-rules-action@v0.3.0
+        uses: grafana/cortex-rules-action@v0.3.1
         env:
           ACTION: 'print'
 ```
