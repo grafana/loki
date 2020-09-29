@@ -1073,6 +1073,90 @@ func TestParse(t *testing.T) {
 			err: ParseError{msg: "invalid aggregation count_over_time with unwrap"},
 		},
 		{
+			in: `stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiPipelineExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							Filterer: labelfilter.NewOr(
+								labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								labelfilter.NewAnd(
+									labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+									labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]labelFmt{
+							newRenameLabelFmt("foo", "bar"),
+							newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo")),
+				OpRangeTypeStdvar,
+			),
+		},
+		{
+			in: `stddev_over_time({app="foo"} |= "bar" | unwrap bar [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiPipelineExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("bar")),
+				OpRangeTypeStddev,
+			),
+		},
+		{
+			in: `min_over_time({app="foo"} | unwrap bar [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar")),
+				OpRangeTypeMin,
+			),
+		},
+		{
+			in: `max_over_time(({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo )[5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiPipelineExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							Filterer: labelfilter.NewOr(
+								labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								labelfilter.NewAnd(
+									labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+									labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]labelFmt{
+							newRenameLabelFmt("foo", "bar"),
+							newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo")),
+				OpRangeTypeMax,
+			),
+		},
+		{
 			// ensure binary ops with two literals are reduced recursively
 			in:  `1 + 1 + 1`,
 			exp: &literalExpr{value: 3},
