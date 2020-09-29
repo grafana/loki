@@ -22,7 +22,7 @@ spec:
       release: {{ .Release.Name | quote }}
   namespaceSelector:
     matchNames:
-      - {{ .Release.Namespace | quote }}
+      - {{ template "promtail.namespace" . | quote }}
   endpoints:
   - port: http-metrics
     {{- if .Values.serviceMonitor.interval }}

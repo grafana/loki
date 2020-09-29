@@ -11,7 +11,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ template "promtail.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ template "promtail.namespace" . }}
 roleRef:
   kind: ClusterRole
   name: {{ template "promtail.fullname" . }}-clusterrole

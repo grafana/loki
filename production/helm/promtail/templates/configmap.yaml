@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ template "promtail.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ template "promtail.namespace" . }}
   labels:
     app: {{ template "promtail.name" . }}
     chart: {{ template "promtail.chart" . }}
