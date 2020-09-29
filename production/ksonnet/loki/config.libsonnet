@@ -23,7 +23,12 @@
 
     labels: {},
 
-    tolerations: [{},],
+    tolerations: [{
+      key: 'GrafanaLokiDeployOnly',
+      operator: 'Equal',
+      value: 'true',
+      effect: 'NoSchedule'
+    }],
 
     compactor: {
       replicas: 1,
