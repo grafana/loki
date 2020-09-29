@@ -17,13 +17,22 @@
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.jaeger_mixin +
     if $._config.queryFrontend.sharded_queries_enabled then
-      $.util.resourcesRequests('2', '2Gi') +
-      $.util.resourcesLimits(null, '6Gi') +
+    $.util.resourcesRequests(
+      $._config.queryFrontend.sharded_queries_enabled_resources.requests.cpu,
+      $._config.queryFrontend.sharded_queries_enabled_resources.requests.memory) +
+    $.util.resourcesLimits(
+      $._config.queryFrontend.sharded_queries_enabled_resources.limits.cpu,
+      $._config.queryFrontend.sharded_queries_enabled_resources.limits.memory) +
       container.withEnvMap({
         JAEGER_REPORTER_MAX_QUEUE_SIZE: '5000',
       })
-    else $.util.resourcesRequests('2', '600Mi') +
-         $.util.resourcesLimits(null, '1200Mi'),
+    else
+    $.util.resourcesRequests(
+      $._config.queryFrontend.resources.requests.cpu,
+      $._config.queryFrontend.resources.requests.memory) +
+    $.util.resourcesLimits(
+      $._config.queryFrontend.resources.limits.cpu,
+      $._config.queryFrontend.resources.limits.memory),
 
   local deployment = $.apps.v1.deployment,
 

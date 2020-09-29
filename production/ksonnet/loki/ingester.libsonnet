@@ -22,8 +22,12 @@
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests('1', '5Gi') +
-    $.util.resourcesLimits('2', '10Gi') +
+    $.util.resourcesRequests(
+      $._config.loki.ingester.resources.requests.cpu,
+      $._config.loki.ingester.resources.requests.memory) +
+    $.util.resourcesLimits(
+      $._config.loki.ingester.resources.limits.cpu,
+      $._config.loki.ingester.resources.limits.memory) +
     if $._config.stateful_ingesters then
         container.withVolumeMountsMixin([
           volumeMount.new('ingester-data', '/data'),
@@ -34,7 +38,7 @@
   local name = 'ingester',
 
   ingester_deployment: if !$._config.stateful_ingesters then
-    deployment.new(name, 3, [$.ingester_container]) +
+    deployment.new(name, $._config.loki.ingester.replicas, [$.ingester_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
@@ -47,13 +51,13 @@
 
   ingester_data_pvc:: if $._config.stateful_ingesters then
     pvc.new('ingester-data') +
-    pvc.mixin.spec.resources.withRequests({ storage: '10Gi' }) +
+    pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName('fast')
     else {},
 
   ingester_statefulset: if $._config.stateful_ingesters then
-    statefulSet.new('ingester', 3, [$.ingester_container], $.ingester_data_pvc) +
+    statefulSet.new('ingester', $._config.loki.ingester.replicas, [$.ingester_container], $.ingester_data_pvc) +
     statefulSet.mixin.spec.withServiceName('ingester') +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +

@@ -4,7 +4,7 @@
 (import 'common.libsonnet') +
 (import 'config.libsonnet') +
 (import 'overrides.libsonnet') +
-(import 'consul/consul.libsonnet') +
+(import 'consul.libsonnet') +
 
 // Loki services
 (import 'distributor.libsonnet') +

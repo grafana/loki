@@ -6,6 +6,7 @@
 
     replication_factor: 3,
     memcached_replicas: 3,
+    consul_replicas: 1,
 
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
@@ -14,12 +15,24 @@
 
     // flags for running ingesters/queriers as a statefulset instead of deployment type.
     stateful_ingesters: false,
-    ingester_pvc_size: '5Gi',
+    ingester_pvc_size: '10Gi',
 
     stateful_queriers: false,
     querier_pvc_size: '10Gi',
 
     querier: {
+      replicas: 3,
+      resources: {
+        requests: {
+          cpu: 4,
+          memory: '2Gi',
+        },
+        limits: {
+          cpu: null,
+          memory: null,
+        },
+      },
+
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
       // A higher value will lead to a querier trying to process more requests than there are available
       // cores and will result in scheduling delays.
@@ -28,8 +41,30 @@
 
     queryFrontend: {
       replicas: 2,
+      resources: {
+        requests: {
+          cpu: 2,
+          memory: '600Mi',
+        },
+        limits: {
+          cpu: null,
+          memory: '1200Mi',
+        },
+      },
+
       shard_factor: 16,  // v10 schema shard factor
       sharded_queries_enabled: false,
+      sharded_queries_enabled_resources: {
+        requests: {
+          cpu: 2,
+          memory: '2Gi',
+        },
+        limits: {
+          cpu: null,
+          memory: '6Gi',
+        },
+      },
+
       // Queries can technically be sharded an arbitrary number of times. Thus query_split_factor is used
       // as a coefficient to multiply the frontend tenant queues by. The idea is that this
       // yields a bit of headroom so tenant queues aren't underprovisioned. Therefore the split factor
@@ -192,6 +227,18 @@
       },
 
       ingester: {
+        replicas: 3,
+        resources: {
+          requests: {
+            cpu: 1,
+            memory: '5Gi',
+          },
+          limits: {
+            cpu: 2,
+            memory: '10Gi',
+          },
+        },
+
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
         max_transfer_retries: 60,
@@ -298,13 +345,50 @@
       },
 
       table_manager: {
+        replicas: 1,
+        resources: {
+          requests: {
+            cpu: '100m',
+            memory: '100Mi',
+          },
+          limits: {
+            cpu: '200m',
+            memory: '200Mi',
+          },
+        },
         retention_period: 0,
         retention_deletes_enabled: false,
         poll_interval: '10m',
         creation_grace_period: '3h',
       },
 
+      gateway: {
+        replicas: 3,
+        resources: {
+          requests: {
+            cpu: '50m',
+            memory: '100Mi',
+          },
+          limits: {
+            cpu: null,
+            memory: null,
+          },
+        },
+      },
+
       distributor: {
+        replicas: 3,
+        resources: {
+          requests: {
+            cpu: '500m',
+            memory: '500Mi',
+          },
+          limits: {
+            cpu: 1,
+            memory: '1Gi',
+          },
+        },
+
         // Creates a ring between distributors, required by the ingestion rate global limit.
         ring: {
           kvstore: {
