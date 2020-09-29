@@ -40,6 +40,7 @@ import (
   LabelFormatExpr         *labelFmtExpr
   LabelFormat             labelFmt
   LabelsFormat            []labelFmt
+  UnwrapExpr              *unwrapExpr
 }
 
 %start root
@@ -72,13 +73,14 @@ import (
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
-
+%type <UnwrapExpr>            unwrapExpr
 
 %token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
-                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT
+                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
+                  MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -109,19 +111,30 @@ logExpr:
       selector                                    { $$ = newMatcherExpr($1)}
     | selector pipelineExpr                       { $$ = newPipelineExpr(newMatcherExpr($1), $2)}
     | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
-    | logExpr error
     ;
 
-
 logRangeExpr:
-      logExpr RANGE                                 { $$ = newLogRange($1, $2) }
-    | selector RANGE pipelineExpr                   { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2 ) }
-    | selector RANGE                                { $$ = newLogRange(newMatcherExpr($1), $2 ) }
-    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS  { $$ = $2 }
+      selector RANGE                                    { $$ = newLogRange(newMatcherExpr($1), $2, nil) }  
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE { $$ = newLogRange(newMatcherExpr($2), $4, nil) }  
+    | selector RANGE unwrapExpr                       { $$ = newLogRange(newMatcherExpr($1), $2 , $3) }  
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE unwrapExpr { $$ = newLogRange(newMatcherExpr($2), $4 , $5) }  
+    | selector unwrapExpr RANGE                       { $$ = newLogRange(newMatcherExpr($1), $3, $2 ) }  
+    | OPEN_PARENTHESIS selector unwrapExpr CLOSE_PARENTHESIS RANGE                       { $$ = newLogRange(newMatcherExpr($2), $5, $3 ) }  
+    | selector pipelineExpr RANGE                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil ) } 
+    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil ) } 
+    | selector pipelineExpr unwrapExpr RANGE          { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $4, $3) } 
+    | OPEN_PARENTHESIS selector pipelineExpr unwrapExpr CLOSE_PARENTHESIS RANGE          { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $6, $4) } 
+    | selector RANGE pipelineExpr                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, nil) } 
+    | selector RANGE pipelineExpr unwrapExpr          { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, $4 ) } 
+    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = $2 } 
     | logRangeExpr error
     ;
 
-rangeAggregationExpr: rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($3,$1) };
+unwrapExpr:
+    PIPE UNWRAP IDENTIFIER { $$ = newUnwrapExpr($3)};
+
+rangeAggregationExpr: 
+      rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($3,$1) } ;
 
 vectorAggregationExpr:
     // Aggregations with 1 argument.
@@ -169,6 +182,7 @@ pipelineStage:
   | PIPE labelFilter             { $$ = &labelFilterExpr{Filterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
+  ;
 
 lineFilters:
     filter STRING                 { $$ = newLineFilterExpr(nil, $1, $2 ) }
@@ -190,6 +204,7 @@ labelFormat:
 labelsFormat:
     labelFormat                    { $$ = []labelFmt{ $1 } }
   | labelsFormat COMMA labelFormat { $$ = append($1, $3) }
+  | labelsFormat COMMA error
   ;
 
 labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
@@ -269,10 +284,16 @@ vectorOp:
       ;
 
 rangeOp:
-      COUNT_OVER_TIME { $$ = OpRangeTypeCount }
-    | RATE            { $$ = OpRangeTypeRate }
-    | BYTES_OVER_TIME { $$ = OpRangeTypeBytes }
-    | BYTES_RATE      { $$ = OpRangeTypeBytesRate }
+      COUNT_OVER_TIME    { $$ = OpRangeTypeCount }
+    | RATE               { $$ = OpRangeTypeRate }
+    | BYTES_OVER_TIME    { $$ = OpRangeTypeBytes }
+    | BYTES_RATE         { $$ = OpRangeTypeBytesRate }
+    | AVG_OVER_TIME      { $$ = OpRangeTypeAvg }
+    | SUM_OVER_TIME      { $$ = OpRangeTypeSum }
+    | MIN_OVER_TIME      { $$ = OpRangeTypeMin }
+    | MAX_OVER_TIME      { $$ = OpRangeTypeMax }
+    | STDVAR_OVER_TIME   { $$ = OpRangeTypeStdvar }
+    | STDDEV_OVER_TIME   { $$ = OpRangeTypeStddev }
     ;
 
 

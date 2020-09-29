@@ -424,23 +424,37 @@ func mustNewFloat(s string) float64 {
 	return n
 }
 
+type unwrapExpr struct {
+	identifier string
+}
+
+func newUnwrapExpr(id string) *unwrapExpr {
+	return &unwrapExpr{identifier: id}
+}
+
 type logRange struct {
 	left     LogSelectorExpr
 	interval time.Duration
+
+	unwrap *unwrapExpr
 }
 
 // impls Stringer
 func (r logRange) String() string {
 	var sb strings.Builder
 	sb.WriteString(r.left.String())
+	if r.unwrap != nil {
+		sb.WriteString(fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, r.unwrap.identifier))
+	}
 	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
 	return sb.String()
 }
 
-func newLogRange(left LogSelectorExpr, interval time.Duration) *logRange {
+func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr) *logRange {
 	return &logRange{
 		left:     left,
 		interval: interval,
+		unwrap:   u,
 	}
 }
 
@@ -461,6 +475,13 @@ const (
 	OpRangeTypeRate      = "rate"
 	OpRangeTypeBytes     = "bytes_over_time"
 	OpRangeTypeBytesRate = "bytes_rate"
+	OpRangeTypeAvg       = "avg_over_time"
+	OpRangeTypeSum       = "sum_over_time"
+	OpRangeTypeMin       = "min_over_time"
+	OpRangeTypeMax       = "max_over_time"
+	OpRangeTypeStdvar    = "stdvar_over_time"
+	OpRangeTypeStddev    = "stddev_over_time"
+	OpRangeTypeQuantile  = "quantile_over_time"
 
 	// binops - logical/set
 	OpTypeOr     = "or"
@@ -490,6 +511,9 @@ const (
 
 	OpFmtLine  = "line_format"
 	OpFmtLabel = "label_format"
+
+	OpPipe   = "|"
+	OpUnwrap = "unwrap"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -528,14 +552,35 @@ type rangeAggregationExpr struct {
 }
 
 func newRangeAggregationExpr(left *logRange, operation string) SampleExpr {
-	return &rangeAggregationExpr{
+	e := &rangeAggregationExpr{
 		left:      left,
 		operation: operation,
 	}
+	if err := e.validate(); err != nil {
+		panic(newParseError(err.Error(), 0, 0))
+	}
+	return e
 }
 
 func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.left
+}
+
+func (e rangeAggregationExpr) validate() error {
+	if e.left.unwrap != nil {
+		switch e.operation {
+		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile:
+			return nil
+		default:
+			return fmt.Errorf("invalid aggregation %s with unwrap", e.operation)
+		}
+	}
+	switch e.operation {
+	case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeCount, OpRangeTypeRate:
+		return nil
+	default:
+		return fmt.Errorf("invalid aggregation %s without unwrap", e.operation)
+	}
 }
 
 // impls Stringer
