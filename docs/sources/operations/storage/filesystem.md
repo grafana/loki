@@ -29,7 +29,7 @@ Great for low volume applications, proof of concepts, and just playing around wi
 
 ### Scaling
 
-At some point there is a limit to how many chunks can be stored in a single directory, for example see [this issue](https://github.com/grafana/loki/issues/1502) which explains how a Loki user ran into a strange error with about **5.5 million chunk files** in their file store (and also a workaround for the problem).
+At some point there is a limit to how many chunks can be stored in a single directory, for example see [issue #1502](https://github.com/grafana/loki/issues/1502) which explains how a Loki user ran into a strange error with about **5.5 million chunk files** in their file store (and also a workaround for the problem).
 
 However, if you keep your streams low (remember loki writes a chunk per stream) and use configs like `chunk_target_size` (around 1MB), `max_chunk_age` (increase beyond 1h), `chunk_idle_period` (increase to match `max_chunk_age`) can be tweaked to reduce the number of chunks flushed (although they will trade for more memory consumption).
 

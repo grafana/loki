@@ -26,7 +26,7 @@ Before we start you'll need:
 - The [AWS CLI][aws cli] configured (run `aws configure`).
 - A Grafana instance with a Loki data source already configured, you can use [GrafanaCloud][GrafanaCloud] free trial.
 
-For the sake of simplicity we'll use a GrafanaCloud Loki and Grafana instances, you can get an free account for this tutorial on our [website][GrafanaCloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
+For the sake of simplicity we'll use a GrafanaCloud Loki and Grafana instances, you can get an free account for this tutorial at [GrafanaCloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
 
 To make it easy to learn all the following instructions are manual, however in a real setup we recommend you to use provisioning tools such as [Terraform][terraform], [CloudFormation][cloud formation], [Ansible][ansible] or [Chef][chef].
 
@@ -97,7 +97,7 @@ chmod a+x "promtail-linux-amd64"
 ```
 
 Now we're going to download the [promtail configuration](../../promtail/) file below and edit it, don't worry we will explain what those means.
-The file is also available on [github][config gist].
+The file is also available as a gist at [cyriltovena/promtail-ec2.yaml][config gist].
 
 ```bash
 curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ec2/promtail-ec2.yaml > ec2-promtail.yaml
@@ -259,7 +259,7 @@ We will edit our previous config (`vi ec2-promtail.yaml`) and add the following 
 
 Note that you can use [relabeling][relabeling] to convert systemd labels to match what you want. Finally make sure that the path of journald logs is correct, it might be different on some systems.
 
-> You can download the final config example in [our repository][final config].
+> You can download the final config example from our [github repository][final config].
 
 That's it, save the config and you can `reboot` the machine (or simply restart the service `systemctl restart promtail.service`).
 
