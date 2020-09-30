@@ -1,6 +1,7 @@
 ## Metadata
 
 Author: Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](https://grafana.com/))
+
 Date: 30/09/2020
 
 ## Impetus
@@ -106,7 +107,7 @@ Instead of building checkpoints from memory, this would build the same efficienc
 
 This could be used to drop WAL records which have already elapsed the `ingester.retain-period`, allowing for faster WAL replays and more efficient loading.
 ```golang
-type FlushMarker struct {
+type FlushRecord struct {
   Fingerprint uint64 // labels
   FlushedAt uint64 // timestamp when it was flushed, can be used with `ingester.retain-period` to either keep or discard records on replay
   LastEntry logproto.Entry // last entry included in the flushed chunk
