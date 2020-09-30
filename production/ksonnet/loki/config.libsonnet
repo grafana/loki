@@ -5,75 +5,95 @@
     http_listen_port: 3100,
 
     replication_factor: 3,
-    memcached_replicas: 3,
-    consul_replicas: 1,
 
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
     // flag for tuning things when boltdb-shipper is current or upcoming index type.
     using_boltdb_shipper: false,
 
-    // flags for running ingesters/queriers as a statefulset instead of deployment type.
-    stateful_ingesters: false,
-    ingester_pvc_size: '10Gi',
+    gateway_replicas: 3,
+    gateway_resources_requests_cpu: '50m',
+    gateway_resources_requests_memory: '100Mi',
+    gateway_resources_limits_cpu: null,
+    gateway_resources_limits_memory: null,
 
-    stateful_queriers: false,
+    query_frontend_replicas: 2,
+    query_frontend_resources_requests_cpu: 2,
+    query_frontend_resources_requests_memory: '600Mi',
+    query_frontend_resources_limits_cpu: null,
+    query_frontend_resources_limits_memory: '1200Mi',
+
+    query_frontend_sharded_queries_enabled: false,
+    query_frontend_sharded_queries_shard_factor: 16, // v10 schema shard factor
+    // Queries can technically be sharded an arbitrary number of times. Thus query_split_factor is used
+    // as a coefficient to multiply the frontend tenant queues by. The idea is that this
+    // yields a bit of headroom so tenant queues aren't underprovisioned. Therefore the split factor
+    // should represent the highest reasonable split factor for a query. If too low, a long query
+    // (i.e. 30d) with a high split factor (i.e. 5) would result in
+    // (day_splits * shard_factor * split_factor) or 30 * 16 * 5 = 2400 sharded queries, which may be
+    // more than the max queue size and thus would always error.
+    query_frontend_sharded_queries_query_split_factor:: 3,
+    query_frontend_sharded_queries_resources_requests_cpu: 2,
+    query_frontend_sharded_queries_resources_requests_memory: '2Gi',
+    query_frontend_sharded_queries_resources_limits_cpu: null,
+    query_frontend_sharded_queries_resources_limits_memory: '6Gi',
+
+    // flags for running queriers as a statefulset instead of deployment type.
+    querier_stateful: false,
+    querier_replicas: 3,
     querier_pvc_size: '10Gi',
+    // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
+    // A higher value will lead to a querier trying to process more requests than there are available
+    // cores and will result in scheduling delays.
+    querier_concurrency: 4,
+    querier_resources_requests_cpu: 4,
+    querier_resources_requests_memory: '2Gi',
+    querier_resources_limits_cpu: null,
+    querier_resources_limits_memory: null,
 
-    querier: {
-      replicas: 3,
-      resources: {
-        requests: {
-          cpu: 4,
-          memory: '2Gi',
-        },
-        limits: {
-          cpu: null,
-          memory: null,
-        },
-      },
+    distributor_replicas: 3,
+    distributor_resources_requests_cpu: '500m',
+    distributor_resources_requests_memory: '500Mi',
+    distributor_resources_limits_cpu: 1,
+    distributor_resources_limits_memory: '1Gi',
 
-      // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
-      // A higher value will lead to a querier trying to process more requests than there are available
-      // cores and will result in scheduling delays.
-      concurrency: 4,
-    },
+    // flags for running queriers as a statefulset instead of deployment type.
+    ingester_stateful: false,
+    ingester_replicas: 3,
+    ingester_pvc_size: '10Gi',
+    ingester_resources_requests_cpu: 1,
+    ingester_resources_requests_memory: '5Gi',
+    ingester_resources_limits_cpu: 2,
+    ingester_resources_limits_memory: '10Gi',
 
-    queryFrontend: {
-      replicas: 2,
-      resources: {
-        requests: {
-          cpu: 2,
-          memory: '600Mi',
-        },
-        limits: {
-          cpu: null,
-          memory: '1200Mi',
-        },
-      },
+    table_manager_replicas: 1,
+    table_manager_resources_requests_cpu: '100m',
+    table_manager_resources_requests_memory: '100Mi',
+    table_manager_resources_limits_cpu: '200m',
+    table_manager_resources_limits_memory: '200Mi',
 
-      shard_factor: 16,  // v10 schema shard factor
-      sharded_queries_enabled: false,
-      sharded_queries_enabled_resources: {
-        requests: {
-          cpu: 2,
-          memory: '2Gi',
-        },
-        limits: {
-          cpu: null,
-          memory: '6Gi',
-        },
-      },
+    memcached_replicas: 3,
+    memcached_chunks_max_item_size: '2m',
+    memcached_chunks_memory_limit_mb: 4096,
+    memcached_index_queries_max_item_size: '5m',
+    memcached_index_queries_memory_limit_mb: 1024,
+    memcached_index_writes_max_item_size: '1m',
+    memcached_index_writes_memory_limit_mb: 1024,
+    memcached_frontend_max_item_size: '5m',
+    memcached_frontend_memory_limit_mb: 1024,
 
-      // Queries can technically be sharded an arbitrary number of times. Thus query_split_factor is used
-      // as a coefficient to multiply the frontend tenant queues by. The idea is that this
-      // yields a bit of headroom so tenant queues aren't underprovisioned. Therefore the split factor
-      // should represent the highest reasonable split factor for a query. If too low, a long query
-      // (i.e. 30d) with a high split factor (i.e. 5) would result in
-      // (day_splits * shard_factor * split_factor) or 30 * 16 * 5 = 2400 sharded queries, which may be
-      // more than the max queue size and thus would always error.
-      query_split_factor:: 3,
-    },
+    ruler_enabled: false,
+    ruler_replicas: 2,
+    ruler_resources_requests_cpu: 1,
+    ruler_resources_requests_memory: '6Gi',
+    ruler_resources_limits_cpu: 16,
+    ruler_resources_limits_memory: '16Gi',
+
+    consul_replicas: 1,
+    consul_resources_requests_cpu: '100m',
+    consul_resources_requests_memory: '500Mi',
+    consul_resources_limits_cpu: null,
+    consul_resources_limits_memory: null,
 
     storage_backend: error 'must define storage_backend as a comma separated list of backends in use,\n    valid entries: dynamodb,s3,gcs,bigtable,cassandra. Typically this would be two entries, e.g. `gcs,bigtable`',
 
@@ -84,8 +104,6 @@
 
     table_prefix: $._config.namespace,
     index_period_hours: 168,  // 1 week
-
-    ruler_enabled: false,
 
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
@@ -170,11 +188,12 @@
       },
       frontend: {
         compress_responses: true,
-      } + if $._config.queryFrontend.sharded_queries_enabled then {
+      } + if $._config.query_frontend_sharded_queries_enabled then {
         // In process tenant queues on frontends. We divide by the number of frontends;
         // 2 in this case in order to apply the global limit in aggregate.
         // This is basically base * shard_factor * query_split_factor / num_frontends where
-        max_outstanding_per_tenant: std.floor(200 * $._config.queryFrontend.shard_factor * $._config.queryFrontend.query_split_factor / $._config.queryFrontend.replicas),
+        max_outstanding_per_tenant:
+          std.floor(200 * $._config.query_frontend_sharded_queries_shard_factor * $._config.query_frontend_sharded_queries_query_split_factor / $._config.query_frontend_replicas),
       }
       else {
         max_outstanding_per_tenant: 200,
@@ -183,7 +202,7 @@
       frontend_worker: {
         frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
         // Limit to N/2 worker threads per frontend, as we have two frontends.
-        parallelism: std.floor($._config.querier.concurrency / $._config.queryFrontend.replicas),
+        parallelism: std.floor($._config.querier_concurrency / $._config.query_frontend_replicas),
         grpc_client_config: {
           max_send_msg_size: $._config.grpc_server_max_msg_size,
         },
@@ -205,7 +224,7 @@
             },
           },
         },
-      } + if $._config.queryFrontend.sharded_queries_enabled then {
+      } + if $._config.query_frontend_sharded_queries_enabled then {
         parallelise_shardable_queries: true,
       } else {},
       querier: {
@@ -214,7 +233,7 @@
       limits_config: {
         enforce_metric_name: false,
         // align middleware parallelism with shard factor to optimize one-legged sharded queries.
-        max_query_parallelism: $._config.queryFrontend.shard_factor,
+        max_query_parallelism: $._config.query_frontend_sharded_queries_shard_factor,
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
         max_query_length: '12000h',  // 500 days
@@ -227,18 +246,6 @@
       },
 
       ingester: {
-        replicas: 3,
-        resources: {
-          requests: {
-            cpu: 1,
-            memory: '5Gi',
-          },
-          limits: {
-            cpu: 2,
-            memory: '10Gi',
-          },
-        },
-
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
         max_transfer_retries: 60,
@@ -272,34 +279,34 @@
       },
 
       storage_config: {
-                        index_queries_cache_config: {
-                          memcached: {
-                            batch_size: 100,
-                            parallelism: 100,
-                          },
+        index_queries_cache_config: {
+          memcached: {
+            batch_size: 100,
+            parallelism: 100,
+          },
 
-                          memcached_client: {
-                            host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
-                            service: 'memcached-client',
-                            consistent_hash: true,
-                          },
-                        },
-                      } +
-                      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
-                         gcs: $._config.client_configs.gcs,
-                       } else {}) +
-                      (if std.count($._config.enabledBackends, 's3') > 0 then {
-                         aws+: $._config.client_configs.s3,
-                       } else {}) +
-                      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
-                         bigtable: $._config.client_configs.gcp,
-                       } else {}) +
-                      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
-                         cassandra: $._config.client_configs.cassandra,
-                       } else {}) +
-                      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
-                         aws+: $._config.client_configs.dynamo,
-                       } else {}),
+          memcached_client: {
+            host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
+            service: 'memcached-client',
+            consistent_hash: true,
+          },
+        },
+      } +
+      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
+         gcs: $._config.client_configs.gcs,
+       } else {}) +
+      (if std.count($._config.enabledBackends, 's3') > 0 then {
+         aws+: $._config.client_configs.s3,
+       } else {}) +
+      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
+         bigtable: $._config.client_configs.gcp,
+       } else {}) +
+      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
+         cassandra: $._config.client_configs.cassandra,
+       } else {}) +
+      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
+         aws+: $._config.client_configs.dynamo,
+       } else {}),
 
       chunk_store_config: {
         chunk_cache_config: {
@@ -345,50 +352,13 @@
       },
 
       table_manager: {
-        replicas: 1,
-        resources: {
-          requests: {
-            cpu: '100m',
-            memory: '100Mi',
-          },
-          limits: {
-            cpu: '200m',
-            memory: '200Mi',
-          },
-        },
         retention_period: 0,
         retention_deletes_enabled: false,
         poll_interval: '10m',
         creation_grace_period: '3h',
       },
 
-      gateway: {
-        replicas: 3,
-        resources: {
-          requests: {
-            cpu: '50m',
-            memory: '100Mi',
-          },
-          limits: {
-            cpu: null,
-            memory: null,
-          },
-        },
-      },
-
       distributor: {
-        replicas: 3,
-        resources: {
-          requests: {
-            cpu: '500m',
-            memory: '500Mi',
-          },
-          limits: {
-            cpu: 1,
-            memory: '1Gi',
-          },
-        },
-
         // Creates a ring between distributors, required by the ingestion rate global limit.
         ring: {
           kvstore: {

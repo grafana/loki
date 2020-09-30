@@ -84,16 +84,16 @@
     container.new('nginx', $._images.nginx) +
     container.withPorts($.core.v1.containerPort.new(name='http', port=80)) +
     $.util.resourcesRequests(
-      $._config.loki.gateway.resources.requests.cpu,
-      $._config.loki.gateway.resources.requests.memory) +
+      $._config.gateway_resources_requests_cpu,
+      $._config.gateway_resources_requests_memory) +
     $.util.resourcesLimits(
-      $._config.loki.gateway.resources.limits.cpu,
-      $._config.loki.gateway.resources.limits.memory),
+      $._config.gateway_resources_limits_cpu,
+      $._config.gateway_resources_limits_memory),
 
   local deployment = $.apps.v1.deployment,
 
   gateway_deployment:
-    deployment.new('gateway', $._config.loki.gateway.replicas, [
+    deployment.new('gateway', $._config.gateway_replicas, [
       $.gateway_container,
     ]) +
     $.util.configVolumeMount('gateway-config', '/etc/nginx') +

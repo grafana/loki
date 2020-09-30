@@ -16,28 +16,28 @@
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.jaeger_mixin +
-    if $._config.queryFrontend.sharded_queries_enabled then
+    if $._config.query_frontend_sharded_queries_enabled then
     $.util.resourcesRequests(
-      $._config.queryFrontend.sharded_queries_enabled_resources.requests.cpu,
-      $._config.queryFrontend.sharded_queries_enabled_resources.requests.memory) +
+      $._config.query_frontend_sharded_queries_resources_requests_cpu,
+      $._config.query_frontend_sharded_queries_resources_requests_memory) +
     $.util.resourcesLimits(
-      $._config.queryFrontend.sharded_queries_enabled_resources.limits.cpu,
-      $._config.queryFrontend.sharded_queries_enabled_resources.limits.memory) +
+      $._config.query_frontend_sharded_queries_resources_limits_cpu,
+      $._config.query_Frontend_sharded_queries_resources_limits_memory) +
       container.withEnvMap({
         JAEGER_REPORTER_MAX_QUEUE_SIZE: '5000',
       })
     else
     $.util.resourcesRequests(
-      $._config.queryFrontend.resources.requests.cpu,
-      $._config.queryFrontend.resources.requests.memory) +
+      $._config.query_frontend_resources_requests_cpu,
+      $._config.query_frontend_resources_requests_memory) +
     $.util.resourcesLimits(
-      $._config.queryFrontend.resources.limits.cpu,
-      $._config.queryFrontend.resources.limits.memory),
+      $._config.query_frontend_resources_limits_cpu,
+      $._config.query_frontend_resources_limits_memory),
 
   local deployment = $.apps.v1.deployment,
 
   query_frontend_deployment:
-    deployment.new('query-frontend', $._config.queryFrontend.replicas, [$.query_frontend_container]) +
+    deployment.new('query-frontend', $._config.query_frontend_replicas, [$.query_frontend_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +

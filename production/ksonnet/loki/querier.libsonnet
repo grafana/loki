@@ -18,20 +18,20 @@
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.util.resourcesRequests(
-      $._config.querier.resources.requests.cpu,
-      $._config.querier.resources.requests.memory) +
+      $._config.querier_resources_requests_cpu,
+      $._config.querier_resources_requests_memory) +
     $.util.resourcesLimits(
-      $._config.querier.resources.limits.cpu,
-      $._config.querier.resources.limits.memory) +
-    if $._config.stateful_queriers then
+      $._config.querier_resources_limits_cpu,
+      $._config.querier_resources_limits_memory) +
+    if $._config.querier_stateful then
       container.withVolumeMountsMixin([
         volumeMount.new('querier-data', '/data'),
       ]) else {},
 
   local deployment = $.apps.v1.deployment,
 
-  querier_deployment: if !$._config.stateful_queriers then
-    deployment.new('querier', $._config.querier.replicas, [$.querier_container]) +
+  querier_deployment: if !$._config.querier_stateful then
+    deployment.new('querier', $._config.querier_replicas, [$.querier_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
@@ -39,15 +39,15 @@
     else {},
 
   // PVC for queriers when running as statefulsets
-  querier_data_pvc:: if $._config.stateful_queriers then
+  querier_data_pvc:: if $._config.querier_stateful then
     pvc.new('querier-data') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.querier_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName('fast')
     else {},
 
-  querier_statefulset: if $._config.stateful_queriers then
-    statefulSet.new('querier', $._config.querier.replicas, [$.querier_container], $.querier_data_pvc) +
+  querier_statefulset: if $._config.querier_stateful then
+    statefulSet.new('querier', $._config.querier_replicas, [$.querier_container], $.querier_data_pvc) +
     statefulSet.mixin.spec.withServiceName('querier') +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
@@ -58,7 +58,7 @@
     else {},
 
   querier_service:
-    if !$._config.stateful_queriers then
+    if !$._config.querier_stateful then
       $.util.serviceFor($.querier_deployment)
     else
       $.util.serviceFor($.querier_statefulset),

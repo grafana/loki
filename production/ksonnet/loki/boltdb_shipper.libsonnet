@@ -8,8 +8,8 @@
 
   _config+:: {
     // run ingesters and queriers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
-    stateful_ingesters: if self.using_boltdb_shipper then true else super.stateful_ingesters,
-    stateful_queriers: if self.using_boltdb_shipper then true else super.stateful_queriers,
+    querier_stateful: if self.using_boltdb_shipper then true else super.querier_stateful,
+    ingester_stateful: if self.using_boltdb_shipper then true else super.ingester_stateful,
 
     boltdb_shipper_shared_store: error 'must define boltdb_shipper_shared_store',
     compactor_pvc_size: '10Gi',

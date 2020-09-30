@@ -10,8 +10,12 @@
       container.new('ruler', $._images.ruler) +
       container.withPorts($.util.defaultPorts) +
       container.withArgsMixin($.util.mapToFlags($.ruler_args)) +
-      $.util.resourcesRequests('1', '6Gi') +
-      $.util.resourcesLimits('16', '16Gi') +
+    $.util.resourcesRequests(
+      $._config.ruler_resources_requests_cpu,
+      $._config.ruler_resources_requests_memory) +
+    $.util.resourcesLimits(
+      $._config.ruler_resources_limits_cpu,
+      $._config.ruler_resources_limits_memory) +
       $.util.readinessProbe +
       $.jaeger_mixin
     else {},
@@ -20,7 +24,7 @@
 
   ruler_deployment:
     if $._config.ruler_enabled then
-      deployment.new('ruler', 2, [$.ruler_container]) +
+      deployment.new('ruler', $._config.ruler_replicas, [$.ruler_container]) +
       deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(600) +
       $.config_hash_mixin +
       $.util.configVolumeMount('loki', '/etc/loki/config') +

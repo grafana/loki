@@ -24,16 +24,16 @@
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.util.resourcesRequests(
-      $._config.loki.table_manager.resources.requests.cpu,
-      $._config.loki.table_manager.resources.requests.memory) +
+      $._config.table_manager_resources_requests_cpu,
+      $._config.table_manager_resources_requests_memory) +
     $.util.resourcesLimits(
-      $._config.loki.table_manager.resources.limits.cpu,
-      $._config.loki.table_manager.resources.limits.memory),
+      $._config.table_manager_resources_limits_cpu,
+      $._config.table_manager_resources_limits_memory),
 
   local deployment = $.apps.v1.deployment,
 
   table_manager_deployment:
-    deployment.new('table-manager', $._config.loki.table_manager.replicas, [$.table_manager_container]) +
+    deployment.new('table-manager', $._config.table_manager_replicas, [$.table_manager_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config'),
 

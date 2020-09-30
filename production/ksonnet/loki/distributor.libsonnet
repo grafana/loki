@@ -16,16 +16,16 @@
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.util.resourcesRequests(
-      $._config.loki.distributor.resources.requests.cpu,
-      $._config.loki.distributor.resources.requests.memory) +
+      $._config.distributor_resources_requests_cpu,
+      $._config.distributor_resources_requests_memory) +
     $.util.resourcesLimits(
-      $._config.loki.distributor.resources.limits.cpu,
-      $._config.loki.distributor.resources.limits.memory),
+      $._config.distributor_resources_limits_cpu,
+      $._config.distributor_resources_limits_memory),
 
   local deployment = $.apps.v1.deployment,
 
   distributor_deployment:
-    deployment.new('distributor', $._config.loki.distributor.replicas, [$.distributor_container]) +
+    deployment.new('distributor', $._config.distributor_replicas, [$.distributor_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +

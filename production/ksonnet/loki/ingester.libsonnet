@@ -7,7 +7,7 @@
   ingester_args::
     $._config.commonArgs {
       target: 'ingester',
-    } + if $._config.stateful_ingesters then
+    } + if $._config.ingester_stateful then
     {
       // Disable chunk transfer when using statefulset since ingester which is going down won't find another
       // ingester which is joining the ring for transferring chunks.
@@ -23,12 +23,12 @@
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.util.resourcesRequests(
-      $._config.loki.ingester.resources.requests.cpu,
-      $._config.loki.ingester.resources.requests.memory) +
+      $._config.ingester_resources_requests_cpu,
+      $._config.ingester_resources_requests_memory) +
     $.util.resourcesLimits(
-      $._config.loki.ingester.resources.limits.cpu,
-      $._config.loki.ingester.resources.limits.memory) +
-    if $._config.stateful_ingesters then
+      $._config.ingester_resources_limits_cpu,
+      $._config.ingester_resources_limits_memory) +
+    if $._config.ingester_stateful then
         container.withVolumeMountsMixin([
           volumeMount.new('ingester-data', '/data'),
         ]) else {},
@@ -37,8 +37,8 @@
 
   local name = 'ingester',
 
-  ingester_deployment: if !$._config.stateful_ingesters then
-    deployment.new(name, $._config.loki.ingester.replicas, [$.ingester_container]) +
+  ingester_deployment: if !$._config.ingester_stateful then
+    deployment.new(name, $._config.ingester_replicas, [$.ingester_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
@@ -49,15 +49,15 @@
     deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800)
     else {},
 
-  ingester_data_pvc:: if $._config.stateful_ingesters then
+  ingester_data_pvc:: if $._config.ingester_stateful then
     pvc.new('ingester-data') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName('fast')
     else {},
 
-  ingester_statefulset: if $._config.stateful_ingesters then
-    statefulSet.new('ingester', $._config.loki.ingester.replicas, [$.ingester_container], $.ingester_data_pvc) +
+  ingester_statefulset: if $._config.ingester_stateful then
+    statefulSet.new('ingester', $._config.ingester_replicas, [$.ingester_container], $.ingester_data_pvc) +
     statefulSet.mixin.spec.withServiceName('ingester') +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
@@ -69,7 +69,7 @@
     else {},
 
   ingester_service:
-    if !$._config.stateful_ingesters then
+    if !$._config.ingester_stateful then
       $.util.serviceFor($.ingester_deployment)
     else
       $.util.serviceFor($.ingester_statefulset),
