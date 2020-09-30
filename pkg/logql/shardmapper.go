@@ -130,8 +130,8 @@ func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
 	case *literalExpr:
 		return e, nil
 	//todo(cyriltovena) enable sharding on logqlv2
-	// case *matchersExpr, *filterExpr:
-	// 	return m.mapLogSelectorExpr(e.(LogSelectorExpr), r), nil
+	case *matchersExpr, *pipelineExpr:
+		return m.mapLogSelectorExpr(e.(LogSelectorExpr), r), nil
 	case *vectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, r)
 	case *rangeAggregationExpr:

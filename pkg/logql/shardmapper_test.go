@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -131,6 +132,10 @@ func TestMappingStrings(t *testing.T) {
 			out: `downstream<{foo="bar"}, shard=0_of_2> ++ downstream<{foo="bar"}, shard=1_of_2>`,
 		},
 		{
+			in:  `{foo="bar"} |= "foo" |~ "bar" | json | latency >= 10s or foo<5 and bar="t" | line_format "b{{.blip}}"`,
+			out: `downstream<{foo="bar"} |="foo" |~"bar" | json | latency>=10s or foo<5,bar="t"| line_format "b{{.blip}}",shard=0_of_2>++downstream<{foo="bar"} |="foo" |~"bar" | json | latency>=10s or foo<5, bar="t" | line_format "b{{.blip}}",shard=1_of_2>`,
+		},
+		{
 			in:  `sum(rate({foo="bar"}[1m]))`,
 			out: `sum(downstream<sum(rate({foo="bar"}[1m])), shard=0_of_2> ++ downstream<sum(rate({foo="bar"}[1m])), shard=1_of_2>)`,
 		},
@@ -162,7 +167,7 @@ func TestMappingStrings(t *testing.T) {
 			mapped, err := m.Map(ast, nilMetrics.shardRecorder())
 			require.Nil(t, err)
 
-			require.Equal(t, tc.out, mapped.String())
+			require.Equal(t, strings.ReplaceAll(tc.out, " ", ""), strings.ReplaceAll(mapped.String(), " ", ""))
 
 		})
 	}
@@ -207,45 +212,38 @@ func TestMapping(t *testing.T) {
 				},
 			},
 		},
-		// todo(cyriltovena) fix
-		// {
-		// 	in: `{foo="bar"} |= "error"`,
-		// 	expr: &ConcatLogSelectorExpr{
-		// 		DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-		// 			shard: &astmapper.ShardAnnotation{
-		// 				Shard: 0,
-		// 				Of:    2,
-		// 			},
-		// 			LogSelectorExpr: &filterExpr{
-		// 				match: "error",
-		// 				ty:    labels.MatchEqual,
-		// 				left: &matchersExpr{
-		// 					matchers: []*labels.Matcher{
-		// 						mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 					},
-		// 				},
-		// 			},
-		// 		},
-		// 		next: &ConcatLogSelectorExpr{
-		// 			DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
-		// 				shard: &astmapper.ShardAnnotation{
-		// 					Shard: 1,
-		// 					Of:    2,
-		// 				},
-		// 				LogSelectorExpr: &filterExpr{
-		// 					match: "error",
-		// 					ty:    labels.MatchEqual,
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 						},
-		// 					},
-		// 				},
-		// 			},
-		// 			next: nil,
-		// 		},
-		// 	},
-		// },
+		{
+			in: `{foo="bar"} |= "error"`,
+			expr: &ConcatLogSelectorExpr{
+				DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
+					shard: &astmapper.ShardAnnotation{
+						Shard: 0,
+						Of:    2,
+					},
+					LogSelectorExpr: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiPipelineExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "error"),
+						},
+					),
+				},
+				next: &ConcatLogSelectorExpr{
+					DownstreamLogSelectorExpr: DownstreamLogSelectorExpr{
+						shard: &astmapper.ShardAnnotation{
+							Shard: 1,
+							Of:    2,
+						},
+						LogSelectorExpr: newPipelineExpr(
+							newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+							MultiPipelineExpr{
+								newLineFilterExpr(nil, labels.MatchEqual, "error"),
+							},
+						),
+					},
+					next: nil,
+				},
+			},
+		},
 		{
 			in: `rate({foo="bar"}[5m])`,
 			expr: &ConcatSampleExpr{

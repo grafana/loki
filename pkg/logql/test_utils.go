@@ -90,13 +90,58 @@ outer:
 }
 
 func processStream(in []logproto.Stream, pipeline Pipeline) []logproto.Stream {
-	// todo(cyriltovena)
-	return in
+	resByStream := map[string]*logproto.Stream{}
+
+	for _, stream := range in {
+		for _, e := range stream.Entries {
+			if l, out, ok := pipeline.Process([]byte(e.Line), mustParseLabels(stream.Labels)); ok {
+				var s *logproto.Stream
+				var found bool
+				s, found = resByStream[out.String()]
+				if !found {
+					s = &logproto.Stream{Labels: out.String()}
+					resByStream[out.String()] = s
+				}
+				s.Entries = append(s.Entries, logproto.Entry{
+					Timestamp: e.Timestamp,
+					Line:      string(l),
+				})
+			}
+		}
+	}
+	streams := []logproto.Stream{}
+	for _, stream := range resByStream {
+		streams = append(streams, *stream)
+	}
+	return streams
 }
 
 func processSeries(in []logproto.Stream, pipeline Pipeline, ex SampleExtractor) []logproto.Series {
-	// todo(cyriltovena)
-	return nil
+	resBySeries := map[string]*logproto.Series{}
+
+	for _, stream := range in {
+		for _, e := range stream.Entries {
+			if l, out, ok := pipeline.Process([]byte(e.Line), mustParseLabels(stream.Labels)); ok {
+				f, lbs := ex.Extract(l, out)
+				var s *logproto.Series
+				var found bool
+				s, found = resBySeries[lbs.String()]
+				if !found {
+					s = &logproto.Series{Labels: lbs.String()}
+					resBySeries[lbs.String()] = s
+				}
+				s.Samples = append(s.Samples, logproto.Sample{
+					Timestamp: e.Timestamp.UnixNano(),
+					Value:     f,
+				})
+			}
+		}
+	}
+	series := []logproto.Series{}
+	for _, s := range resBySeries {
+		series = append(series, *s)
+	}
+	return series
 }
 
 func (q MockQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) (iter.SampleIterator, error) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	// "math"
 	"testing"
@@ -1817,7 +1818,7 @@ func paramsID(p interface{}) string {
 	if err != nil {
 		panic(err)
 	}
-	return string(b)
+	return strings.ReplaceAll(string(b), " ", "")
 }
 
 type logData struct {
