@@ -2,7 +2,6 @@ package chunkenc
 
 import (
 	"hash/fnv"
-	"hash/maphash"
 	"testing"
 
 	"github.com/cespare/xxhash/v2"
@@ -36,18 +35,6 @@ func Benchmark_xxhash(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < len(testdata.LogsBytes); i++ {
 			res = xxhash.Sum64(testdata.LogsBytes[i])
-		}
-	}
-}
-
-func Benchmark_hashmap(b *testing.B) {
-	// I discarded hashmap/map as it will compute different value on different binary for the same entry
-	var h maphash.Hash
-	for n := 0; n < b.N; n++ {
-		for i := 0; i < len(testdata.LogsBytes); i++ {
-			h.SetSeed(maphash.MakeSeed())
-			_, _ = h.Write(testdata.LogsBytes[i])
-			res = h.Sum64()
 		}
 	}
 }

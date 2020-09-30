@@ -1,6 +1,6 @@
 // +build !amd64 appengine !gc noasm
 
-package lz4
+package lz4block
 
 func decodeBlock(dst, src []byte) (ret int) {
 	const hasError = -2

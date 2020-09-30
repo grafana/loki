@@ -583,7 +583,7 @@ func BenchmarkWrite(b *testing.B) {
 func BenchmarkRead(b *testing.B) {
 	for _, enc := range testEncoding {
 		b.Run(enc.String(), func(b *testing.B) {
-			chunks, size := generateData(enc)
+			chunks, size := generateData(enc, 5)
 			b.ResetTimer()
 			bytesRead := uint64(0)
 			now := time.Now()
@@ -631,7 +631,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 func TestGenerateDataSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chunks, size := generateData(enc)
+			chunks, size := generateData(enc, 50)
 
 			bytesRead := uint64(0)
 			for _, c := range chunks {
