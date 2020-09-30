@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Config for an Ingester.
@@ -38,6 +39,7 @@ type Flusher struct {
 	cfg            Config
 	ingesterConfig ingester.Config
 	chunkStore     ingester.ChunkStore
+	limits         *validation.Overrides
 	registerer     prometheus.Registerer
 }
 
@@ -51,6 +53,7 @@ func New(
 	cfg Config,
 	ingesterConfig ingester.Config,
 	chunkStore ingester.ChunkStore,
+	limits *validation.Overrides,
 	registerer prometheus.Registerer,
 ) (*Flusher, error) {
 
@@ -63,6 +66,7 @@ func New(
 		cfg:            cfg,
 		ingesterConfig: ingesterConfig,
 		chunkStore:     chunkStore,
+		limits:         limits,
 		registerer:     registerer,
 	}
 	f.Service = services.NewBasicService(nil, f.running, nil)
@@ -70,7 +74,7 @@ func New(
 }
 
 func (f *Flusher) running(ctx context.Context) error {
-	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.chunkStore, f.registerer)
+	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.chunkStore, f.limits, f.registerer)
 	if err != nil {
 		return errors.Wrap(err, "create ingester")
 	}

@@ -49,6 +49,7 @@ type userTSDB struct {
 	*tsdb.DB
 	userID         string
 	refCache       *cortex_tsdb.RefCache
+	activeSeries   *ActiveSeries
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
@@ -184,7 +185,6 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
-	util.WarnExperimentalUse("Blocks storage engine")
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -193,7 +193,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i := &Ingester{
 		cfg:           cfg,
 		clientConfig:  clientConfig,
-		metrics:       newIngesterMetrics(registerer, false),
+		metrics:       newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled),
 		limits:        limits,
 		chunkStore:    nil,
 		usersMetadata: map[string]*userMetricsMetadata{},
@@ -231,7 +231,6 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 // Special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
 // on Flush method and flush all openened TSDBs when called.
 func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	util.WarnExperimentalUse("Blocks storage engine")
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -239,7 +238,7 @@ func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, e
 
 	i := &Ingester{
 		cfg:       cfg,
-		metrics:   newIngesterMetrics(registerer, false),
+		metrics:   newIngesterMetrics(registerer, false, false),
 		wal:       &noopWAL{},
 		TSDBState: newTSDBState(bucketClient, registerer),
 	}
@@ -330,6 +329,13 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	refCachePurgeTicker := time.NewTicker(5 * time.Minute)
 	defer refCachePurgeTicker.Stop()
 
+	var activeSeriesTickerChan <-chan time.Time
+	if i.cfg.ActiveSeriesMetricsEnabled {
+		t := time.NewTicker(i.cfg.ActiveSeriesMetricsUpdatePeriod)
+		activeSeriesTickerChan = t.C
+		defer t.Stop()
+	}
+
 	// Similarly to the above, this is a hardcoded value.
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
@@ -356,11 +362,29 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 				userDB.refCache.Purge(startTime.Add(-cortex_tsdb.DefaultRefCacheTTL))
 				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
 			}
+
+		case <-activeSeriesTickerChan:
+			i.v2UpdateActiveSeries()
+
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():
 			return errors.Wrap(err, "ingester subservice failed")
 		}
+	}
+}
+
+func (i *Ingester) v2UpdateActiveSeries() {
+	purgeTime := time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout)
+
+	for _, userID := range i.getTSDBUsers() {
+		userDB := i.getTSDB(userID)
+		if userDB == nil {
+			continue
+		}
+
+		userDB.activeSeries.Purge(purgeTime)
+		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
 	}
 }
 
@@ -403,11 +427,18 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx)
 	for _, ts := range req.Timeseries {
+		// Keeps a reference to labels copy, if it was needed. This is to avoid making a copy twice,
+		// once for TSDB/refcache, and second time for activeSeries map.
+		var copiedLabels []labels.Label
+
 		// Check if we already have a cached reference for this series. Be aware
 		// that even if we have a reference it's not guaranteed to be still valid.
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
 		cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(ts.Labels))
+
+		// To find out if any sample was added to this series, we keep old value.
+		oldSucceededSamplesCount := succeededSamplesCount
 
 		for _, s := range ts.Samples {
 			var err error
@@ -430,7 +461,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				var ref uint64
 
 				// Copy the label set because both TSDB and the cache may retain it.
-				copiedLabels := client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+				copiedLabels = client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
 				if ref, err = app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
 					db.refCache.SetRef(startAppend, copiedLabels, ref)
@@ -482,6 +513,16 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			}
 
 			return nil, wrapWithUser(err, userID)
+		}
+
+		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
+			db.activeSeries.UpdateSeries(client.FromLabelAdaptersToLabels(ts.Labels), startAppend, func(l labels.Labels) labels.Labels {
+				// If we have already made a copy during this push, no need to create new one.
+				if copiedLabels != nil {
+					return copiedLabels
+				}
+				return client.CopyLabels(l)
+			})
 		}
 	}
 
@@ -908,6 +949,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	userDB := &userTSDB{
 		userID:              userID,
 		refCache:            cortex_tsdb.NewRefCache(),
+		activeSeries:        NewActiveSeries(),
 		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),

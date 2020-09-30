@@ -20,14 +20,16 @@ import (
 )
 
 type Config struct {
-	WorkingDirectory string `yaml:"working_directory"`
-	SharedStoreType  string `yaml:"shared_store"`
+	WorkingDirectory   string        `yaml:"working_directory"`
+	SharedStoreType    string        `yaml:"shared_store"`
+	CompactionInterval time.Duration `yaml:"compaction_interval"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
+	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 2*time.Hour, "Interval at which to re-run the compaction operation.")
 }
 
 type Compactor struct {
@@ -56,8 +58,31 @@ func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registe
 		metrics:      newMetrics(r),
 	}
 
-	compactor.Service = services.NewTimerService(4*time.Hour, nil, compactor.Run, nil)
+	compactor.Service = services.NewBasicService(nil, compactor.loop, nil)
 	return &compactor, nil
+}
+
+func (c *Compactor) loop(ctx context.Context) error {
+	runCompaction := func() {
+		err := c.Run(ctx)
+		if err != nil {
+			level.Error(pkg_util.Logger).Log("msg", "failed to run compaction", "err", err)
+		}
+	}
+
+	runCompaction()
+
+	ticker := time.NewTicker(c.cfg.CompactionInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			runCompaction()
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
 
 func (c *Compactor) Run(ctx context.Context) error {

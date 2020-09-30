@@ -714,3 +714,7 @@ func (c *store) DeleteSeriesIDs(ctx context.Context, from, through model.Time, u
 	// SeriesID is something which is only used in SeriesStore so we need not do anything here
 	return nil
 }
+
+func (c *baseStore) GetChunkFetcher(_ model.Time) *Fetcher {
+	return c.fetcher
+}

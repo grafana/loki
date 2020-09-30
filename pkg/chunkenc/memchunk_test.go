@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -255,7 +256,7 @@ func TestSerialization(t *testing.T) {
 			numSamples := 50000
 
 			for i := 0; i < numSamples; i++ {
-				require.NoError(t, chk.Append(logprotoEntry(int64(i), string(i))))
+				require.NoError(t, chk.Append(logprotoEntry(int64(i), strconv.Itoa(i))))
 			}
 
 			byt, err := chk.Bytes()
@@ -271,7 +272,7 @@ func TestSerialization(t *testing.T) {
 
 				e := it.Entry()
 				require.Equal(t, int64(i), e.Timestamp.UnixNano())
-				require.Equal(t, string(i), e.Line)
+				require.Equal(t, strconv.Itoa(i), e.Line)
 			}
 			require.NoError(t, it.Error())
 

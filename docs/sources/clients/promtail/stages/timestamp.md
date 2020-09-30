@@ -20,6 +20,12 @@ timestamp:
   # UnixMs UnixUs UnixNs].
   format: <string>
 
+  # Fallback formats to try if the format fails to parse the value
+  # Can use pre-defined formats by name: [ANSIC UnixDate RubyDate RFC822
+  # RFC822Z RFC850 RFC1123 RFC1123Z RFC3339 RFC3339Nano Unix
+  # UnixMs UnixUs UnixNs].
+  [fallback_formats: []<string>]
+
   # IANA Timezone Database string.
   [location: <string>]
 

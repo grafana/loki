@@ -116,7 +116,7 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 			// We hash the row key and prepend it back to the key for better distribution.
 			// We preserve the existing key to make migrations and o11y easier.
 			if cfg.DistributeKeys {
-				hashValue = hashPrefix(hashValue) + "-" + hashValue
+				hashValue = HashPrefix(hashValue) + "-" + hashValue
 			}
 
 			return hashValue, string(rangeValue)
@@ -124,9 +124,9 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 	}
 }
 
-// hashPrefix calculates a 64bit hash of the input string and hex-encodes
+// HashPrefix calculates a 64bit hash of the input string and hex-encodes
 // the result, taking care to zero pad etc.
-func hashPrefix(input string) string {
+func HashPrefix(input string) string {
 	prefix := hashAdd(hashNew(), input)
 	var encodedUint64 [8]byte
 	binary.LittleEndian.PutUint64(encodedUint64[:], prefix)

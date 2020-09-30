@@ -14,7 +14,6 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -25,10 +24,11 @@ const (
 )
 
 var (
-	errInvalidSchemaVersion    = errors.New("invalid schema version")
-	errInvalidTablePeriod      = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
-	errConfigFileNotSet        = errors.New("schema config file needs to be set")
-	errConfigChunkPrefixNotSet = errors.New("schema config for chunks is missing the 'prefix' setting")
+	errInvalidSchemaVersion     = errors.New("invalid schema version")
+	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
+	errConfigFileNotSet         = errors.New("schema config file needs to be set")
+	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
+	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
 )
 
 // PeriodConfig defines the schema and tables to use for a period of time
@@ -75,28 +75,16 @@ func (d *DayTime) String() string {
 type SchemaConfig struct {
 	Configs []PeriodConfig `yaml:"configs"`
 
-	fileName       string
-	legacyFileName string
+	fileName string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file.")
-	// TODO(gouthamve): Add a metric for this.
-	f.StringVar(&cfg.legacyFileName, "config-yaml", "", "DEPRECATED(use -schema-config-file) The path to the schema config file.")
+	f.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file. The schema config is used only when running Cortex with the chunks storage.")
 }
 
 // loadFromFile loads the schema config from a yaml file
 func (cfg *SchemaConfig) loadFromFile() error {
-	if cfg.fileName == "" {
-		cfg.fileName = cfg.legacyFileName
-
-		if cfg.legacyFileName != "" {
-			flagext.DeprecatedFlagsUsed.Inc()
-			level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag -config-yaml, use -schema-config-file instead")
-		}
-	}
-
 	if cfg.fileName == "" {
 		return errConfigFileNotSet
 	}
@@ -119,6 +107,12 @@ func (cfg *SchemaConfig) Validate() error {
 		periodCfg.applyDefaults()
 		if err := periodCfg.validate(); err != nil {
 			return err
+		}
+
+		if i+1 < len(cfg.Configs) {
+			if cfg.Configs[i].From.Time.Unix() >= cfg.Configs[i+1].From.Time.Unix() {
+				return errSchemaIncreasingFromTime
+			}
 		}
 	}
 	return nil

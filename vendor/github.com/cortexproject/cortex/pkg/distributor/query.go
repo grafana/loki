@@ -88,7 +88,7 @@ func (d *Distributor) queryPrep(ctx context.Context, from, to model.Time, matche
 func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.ReplicationSet, req *client.QueryRequest) (model.Matrix, error) {
 	// Fetch samples from multiple ingesters in parallel, using the replicationSet
 	// to deal with consistency.
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ing *ring.IngesterDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.IngesterDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -133,7 +133,7 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 // queryIngesterStream queries the ingesters using the new streaming API.
 func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	// Fetch samples from multiple ingesters
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ing *ring.IngesterDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.IngesterDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -170,32 +170,32 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		return nil, err
 	}
 
-	hashToChunkseries := map[model.Fingerprint]ingester_client.TimeSeriesChunk{}
-	hashToTimeSeries := map[model.Fingerprint]ingester_client.TimeSeries{}
+	hashToChunkseries := map[string]ingester_client.TimeSeriesChunk{}
+	hashToTimeSeries := map[string]ingester_client.TimeSeries{}
 
 	for _, result := range results {
 		response := result.(*ingester_client.QueryStreamResponse)
 
 		// Parse any chunk series
 		for _, series := range response.Chunkseries {
-			hash := client.FastFingerprint(series.Labels)
-			existing := hashToChunkseries[hash]
+			key := client.LabelsToKeyString(client.FromLabelAdaptersToLabels(series.Labels))
+			existing := hashToChunkseries[key]
 			existing.Labels = series.Labels
 			existing.Chunks = append(existing.Chunks, series.Chunks...)
-			hashToChunkseries[hash] = existing
+			hashToChunkseries[key] = existing
 		}
 
 		// Parse any time series
 		for _, series := range response.Timeseries {
-			hash := client.FastFingerprint(series.Labels)
-			existing := hashToTimeSeries[hash]
+			key := client.LabelsToKeyString(client.FromLabelAdaptersToLabels(series.Labels))
+			existing := hashToTimeSeries[key]
 			existing.Labels = series.Labels
 			if existing.Samples == nil {
 				existing.Samples = series.Samples
 			} else {
 				existing.Samples = mergeSamples(existing.Samples, series.Samples)
 			}
-			hashToTimeSeries[hash] = existing
+			hashToTimeSeries[key] = existing
 		}
 	}
 

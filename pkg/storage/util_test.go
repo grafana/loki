@@ -189,6 +189,9 @@ func (m *mockChunkStore) Stop() {}
 func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
 }
+func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
+	return nil
+}
 
 func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
 	refs := make([]chunk.Chunk, 0, len(m.chunks))

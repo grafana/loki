@@ -38,7 +38,6 @@ var (
 		MaxRetries:             3,
 		CacheResults:           true,
 		ResultsCacheConfig: queryrange.ResultsCacheConfig{
-			LegacyMaxCacheFreshness: 1 * time.Minute,
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{

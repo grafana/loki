@@ -386,7 +386,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 		if am.fallbackConfig == "" {
 			return fmt.Errorf("blank Alertmanager configuration for %v", cfg.User)
 		}
-		level.Info(am.logger).Log("msg", "blank Alertmanager configuration; using fallback", "user", cfg.User)
+		level.Debug(am.logger).Log("msg", "blank Alertmanager configuration; using fallback", "user", cfg.User)
 		userAmConfig, err = amconfig.Load(am.fallbackConfig)
 		if err != nil {
 			return fmt.Errorf("unable to load fallback configuration for %v: %v", cfg.User, err)
@@ -528,6 +528,10 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
+	if fn != filepath.Base(fn) {
+		return false, fmt.Errorf("template file name '%s' is not not valid", fn)
+	}
+
 	dir := filepath.Join(dataDir, "templates", userID, filepath.Dir(fn))
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {

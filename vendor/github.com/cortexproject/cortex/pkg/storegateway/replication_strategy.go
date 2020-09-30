@@ -9,7 +9,7 @@ import (
 
 type BlocksReplicationStrategy struct{}
 
-func (s *BlocksReplicationStrategy) Filter(instances []ring.IngesterDesc, op ring.Operation, replicationFactor int, heartbeatTimeout time.Duration) ([]ring.IngesterDesc, int, error) {
+func (s *BlocksReplicationStrategy) Filter(instances []ring.IngesterDesc, op ring.Operation, _ int, heartbeatTimeout time.Duration, _ bool) ([]ring.IngesterDesc, int, error) {
 	// Filter out unhealthy instances.
 	for i := 0; i < len(instances); {
 		if instances[i].IsHealthy(op, heartbeatTimeout) {

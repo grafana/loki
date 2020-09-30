@@ -116,7 +116,18 @@ func (m *Manager) AwaitHealthy(ctx context.Context) error {
 	defer m.mu.Unlock()
 
 	if m.state != healthy {
-		return errors.New("not healthy")
+		terminated := len(m.byState[Terminated])
+
+		var failedReasons []string
+		for _, s := range m.byState[Failed] {
+			err := s.FailureCase()
+			if err != nil {
+				// err is never nil for a failed service.
+				failedReasons = append(failedReasons, err.Error())
+			}
+		}
+
+		return fmt.Errorf("not healthy, %d terminated, %d failed: %v", terminated, len(failedReasons), failedReasons)
 	}
 	return nil
 }

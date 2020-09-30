@@ -11,13 +11,22 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 service Frontend {
-  rpc Process(stream ProcessResponse) returns (stream ProcessRequest) {};
+  // After calling this method, client enters a loop, in which it waits for
+  // a "FrontendToClient" message and replies with single "ClientToFrontend" message.
+  rpc Process(stream ClientToFrontend) returns (stream FrontendToClient) {};
 }
 
-message ProcessRequest {
+enum Type {
+  HTTP_REQUEST = 0;
+  GET_ID = 1;
+}
+
+message FrontendToClient {
   httpgrpc.HTTPRequest httpRequest = 1;
+  Type type = 2;
 }
 
-message ProcessResponse {
+message ClientToFrontend {
   httpgrpc.HTTPResponse httpResponse = 1;
+  string clientID = 2;
 }

@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -58,7 +59,7 @@ func buildTestTable(t *testing.T, tableName, path string) (*Table, *local.BoltIn
 	}
 }
 
-func TestTable_Query(t *testing.T) {
+func TestTable_MultiQueries(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "table-writes")
 	require.NoError(t, err)
 
@@ -90,7 +91,14 @@ func TestTable_Query(t *testing.T) {
 		stopFunc()
 	}()
 
-	testutil.TestSingleQuery(t, chunk.IndexQuery{}, table, 0, 30)
+	// build queries each looking for specific value from all the dbs
+	var queries []chunk.IndexQuery
+	for i := 5; i < 25; i++ {
+		queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+	}
+
+	// query the loaded table to see if it has right data.
+	testutil.TestSingleTableQuery(t, queries, table, 5, 20)
 }
 
 func TestTable_Sync(t *testing.T) {
@@ -136,7 +144,7 @@ func TestTable_Sync(t *testing.T) {
 	}()
 
 	// query table to see it has expected records setup
-	testutil.TestSingleQuery(t, chunk.IndexQuery{}, table, 0, 30)
+	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, 30)
 
 	// add a sleep since we are updating a file and CI is sometimes too fast to create a difference in mtime of files
 	time.Sleep(time.Second)
@@ -150,7 +158,7 @@ func TestTable_Sync(t *testing.T) {
 	require.NoError(t, table.Sync(context.Background()))
 
 	// query and verify table has expected records from new and updated db and the records from deleted db are gone
-	testutil.TestSingleQuery(t, chunk.IndexQuery{}, table, 10, 40)
+	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 10, 40)
 
 	// verify files in cache where dbs for the table are synced to double check.
 	expectedFilesInDir := map[string]struct{}{
@@ -187,7 +195,7 @@ func TestTable_LastUsedAt(t *testing.T) {
 	require.InDelta(t, time.Now().Add(-time.Hour).Unix(), table.LastUsedAt().Unix(), 1)
 
 	// query the table which should set the last used at to now.
-	err = table.Query(context.Background(), chunk.IndexQuery{}, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = table.MultiQueries(context.Background(), []chunk.IndexQuery{{}}, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		return true
 	})
 	require.NoError(t, err)
@@ -226,7 +234,7 @@ func TestTable_doParallelDownload(t *testing.T) {
 
 			// ensure that we have `tc` number of files downloaded and opened.
 			require.Len(t, table.dbs, tc)
-			testutil.TestSingleQuery(t, chunk.IndexQuery{}, table, 0, tc*10)
+			testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, tc*10)
 		})
 	}
 }

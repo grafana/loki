@@ -13,6 +13,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -66,6 +67,7 @@ type API struct {
 	server         *server.Server
 	logger         log.Logger
 	sourceIPs      *middleware.SourceIPExtractor
+	indexPage      *IndexPageContent
 }
 
 func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
@@ -88,6 +90,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 		server:         s,
 		logger:         logger,
 		sourceIPs:      sourceIPs,
+		indexPage:      newIndexPageContent(),
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
@@ -143,6 +146,7 @@ func fakeRemoteAddr(handler http.Handler) http.Handler {
 // RegisterAlertmanager registers endpoints associated with the alertmanager. It will only
 // serve endpoints using the legacy http-prefix if it is not run as a single binary.
 func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target, apiEnabled bool) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/status", "Alertmanager Status")
 	// Ensure this route is registered before the prefixed AM route
 	a.RegisterRoute("/multitenant_alertmanager/status", am.GetStatusHandler(), false)
 
@@ -166,14 +170,21 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 }
 
 // RegisterAPI registers the standard endpoints associated with a running Cortex.
-func (a *API) RegisterAPI(cfg interface{}) {
+func (a *API) RegisterAPI(httpPathPrefix string, cfg interface{}) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config")
+
 	a.RegisterRoute("/config", configHandler(cfg), false)
-	a.RegisterRoute("/", http.HandlerFunc(indexHandler), false)
+	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false)
+	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false)
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.
 func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config) {
 	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true)
+
+	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/all_user_stats", "Usage Statistics")
+	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ha_tracker", "HA Tracking Status")
+
 	a.RegisterRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false)
 
@@ -187,6 +198,8 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Config) {
 	client.RegisterIngesterServer(a.server.GRPC, i)
 
+	a.indexPage.AddLink(SectionDangerous, "/ingester/flush", "Trigger a Flush of data from Ingester to storage")
+	a.indexPage.AddLink(SectionDangerous, "/ingester/shutdown", "Trigger Ingester Shutdown (Dangerous)")
 	a.RegisterRoute("/ingester/flush", http.HandlerFunc(i.FlushHandler), false)
 	a.RegisterRoute("/ingester/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
 	a.RegisterRoute("/ingester/push", push.Handler(pushConfig, a.sourceIPs, i.Push), true) // For testing and debugging.
@@ -216,6 +229,7 @@ func (a *API) RegisterPurger(store *purger.DeleteStore, deleteRequestCancelPerio
 // RegisterRuler registers routes associated with the Ruler service. If the
 // API is not enabled only the ring route is registered.
 func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/ruler/ring", "Ruler Ring Status")
 	a.RegisterRoute("/ruler/ring", r, false)
 
 	// Legacy Ring Route
@@ -234,6 +248,7 @@ func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
 		a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
 		a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
 		a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+		a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 
 		// Legacy Prometheus Rule API Routes
 		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
@@ -245,11 +260,13 @@ func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
 		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
 		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
 		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 	}
 }
 
-// // RegisterRing registers the ring UI page associated with the distributor for writes.
+// RegisterRing registers the ring UI page associated with the distributor for writes.
 func (a *API) RegisterRing(r *ring.Ring) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/ingester/ring", "Ingester Ring Status")
 	a.RegisterRoute("/ingester/ring", r, false)
 
 	// Legacy Route
@@ -260,11 +277,13 @@ func (a *API) RegisterRing(r *ring.Ring) {
 func (a *API) RegisterStoreGateway(s *storegateway.StoreGateway) {
 	storegatewaypb.RegisterStoreGatewayServer(a.server.GRPC, s)
 
+	a.indexPage.AddLink(SectionAdminEndpoints, "/store-gateway/ring", "Store Gateway Ring")
 	a.RegisterRoute("/store-gateway/ring", http.HandlerFunc(s.RingHandler), false)
 }
 
 // RegisterCompactor registers the ring UI page associated with the compactor.
 func (a *API) RegisterCompactor(c *compactor.Compactor) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/compactor/ring", "Compactor Ring Status")
 	a.RegisterRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false)
 }
 
@@ -404,5 +423,6 @@ func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 // TODO: Refactor this code to be accomplished using the services.ServiceManager
 // or a future module manager #2291
 func (a *API) RegisterServiceMapHandler(handler http.Handler) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/services", "Service Status")
 	a.RegisterRoute("/services", handler, false)
 }

@@ -71,6 +71,10 @@ type Config struct {
 
 	RateUpdatePeriod time.Duration `yaml:"rate_update_period"`
 
+	ActiveSeriesMetricsEnabled      bool          `yaml:"active_series_metrics_enabled"`
+	ActiveSeriesMetricsUpdatePeriod time.Duration `yaml:"active_series_metrics_update_period"`
+	ActiveSeriesMetricsIdleTimeout  time.Duration `yaml:"active_series_metrics_idle_timeout"`
+
 	// Use blocks storage.
 	BlocksStorageEnabled bool                     `yaml:"-"`
 	BlocksStorageConfig  tsdb.BlocksStorageConfig `yaml:"-"`
@@ -103,6 +107,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
 
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
+	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", false, "Enable tracking of active series and export them as metrics.")
+	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
+	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -187,7 +194,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true),
+		metrics:      newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled),
 
 		limits:        limits,
 		chunkStore:    chunkStore,
@@ -262,20 +269,21 @@ func (i *Ingester) startFlushLoops() {
 // Compared to the 'New' method:
 //   * Always replays the WAL.
 //   * Does not start the lifecycler.
-func NewForFlusher(cfg Config, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.BlocksStorageEnabled {
 		return NewV2ForFlusher(cfg, registerer)
 	}
 
 	i := &Ingester{
 		cfg:         cfg,
-		metrics:     newIngesterMetrics(registerer, true),
+		metrics:     newIngesterMetrics(registerer, true, false),
 		chunkStore:  chunkStore,
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		wal:         &noopWAL{},
+		limits:      limits,
 	}
 
-	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loop, i.stopping)
+	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
 	return i, nil
 }
 
@@ -297,6 +305,18 @@ func (i *Ingester) startingForFlusher(ctx context.Context) error {
 	return nil
 }
 
+func (i *Ingester) loopForFlusher(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+
+		case err := <-i.subservicesWatcher.Chan():
+			return errors.Wrap(err, "ingester subservice failed")
+		}
+	}
+}
+
 func (i *Ingester) loop(ctx context.Context) error {
 	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
 	defer flushTicker.Stop()
@@ -306,6 +326,13 @@ func (i *Ingester) loop(ctx context.Context) error {
 
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
+
+	var activeSeriesTickerChan <-chan time.Time
+	if i.cfg.ActiveSeriesMetricsEnabled {
+		t := time.NewTicker(i.cfg.ActiveSeriesMetricsUpdatePeriod)
+		activeSeriesTickerChan = t.C
+		defer t.Stop()
+	}
 
 	for {
 		select {
@@ -317,6 +344,9 @@ func (i *Ingester) loop(ctx context.Context) error {
 
 		case <-rateUpdateTicker.C:
 			i.userStates.updateRates()
+
+		case <-activeSeriesTickerChan:
+			i.userStates.purgeAndUpdateActiveSeries(time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout))
 
 		case <-ctx.Done():
 			return nil
@@ -412,10 +442,12 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 	}
 
 	for _, ts := range req.Timeseries {
+		seriesSamplesIngested := 0
 		for _, s := range ts.Samples {
 			// append() copies the memory in `ts.Labels` except on the error path
 			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, record)
 			if err == nil {
+				seriesSamplesIngested++
 				continue
 			}
 
@@ -429,6 +461,11 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 			// non-validation error: abandon this request
 			return nil, grpcForwardableError(userID, http.StatusInternalServerError, err)
+		}
+
+		if i.cfg.ActiveSeriesMetricsEnabled && seriesSamplesIngested > 0 {
+			// updateActiveSeries will copy labels if necessary.
+			i.updateActiveSeries(userID, time.Now(), ts.Labels)
 		}
 	}
 
@@ -710,6 +747,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	}
 
 	numSeries, numChunks := 0, 0
+	reuseWireChunks := [queryStreamBatchSize][]client.Chunk{}
 	batch := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 	// We'd really like to have series in label order, not FP order, so we
 	// can iteratively merge them with entries coming from the chunk store.  But
@@ -728,10 +766,12 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		}
 
 		numSeries++
-		wireChunks, err := toWireChunks(chunks, nil)
+		reusePos := len(batch)
+		wireChunks, err := toWireChunks(chunks, reuseWireChunks[reusePos])
 		if err != nil {
 			return err
 		}
+		reuseWireChunks[reusePos] = wireChunks
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
@@ -950,4 +990,12 @@ func (i *Ingester) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("ingester not ready: %v", err)
 	}
 	return i.lifecycler.CheckReady(ctx)
+}
+
+// labels will be copied if needed.
+func (i *Ingester) updateActiveSeries(userID string, now time.Time, labels []client.LabelAdapter) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+
+	i.userStates.updateActiveSeriesForUser(userID, now, client.FromLabelAdaptersToLabels(labels))
 }

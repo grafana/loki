@@ -12,9 +12,20 @@ On this page we will document any upgrade issues/gotchas/considerations we are a
 
 ## Master / Unreleased
 
+### IMPORTANT: `results_cache.max_freshness` removed from YAML config
+
+The `max_freshness` config from `results_cache` has been removed in favour of another flag called `max_cache_freshness_per_query` in `limits_config` which has the same effect.
+If you happen to have `results_cache.max_freshness` set please use `limits_config.max_cache_freshness_per_query` YAML config instead.
+
+### Important: Roll out ingesters before queriers when using BoltDB-Shipper
+
+Ingesters now expose a new RPC method that queriers use when the index type is `boltdb-shipper`.
+Queriers generally roll out faster than ingesters, so if new queriers query older ingesters using the new RPC, the queries would fail.
+To avoid any query downtime during the upgrade, rollout ingesters before queriers.
+
 ## 1.6.0
 
-### IMPORTANT: Ksonnet Port Change and Removal of NET_BIND_SERVICE Capability from docker image
+### Important: Ksonnet port changed and removed NET_BIND_SERVICE capability from Docker image
 
 In 1.5.0 we changed the Loki user to not run as root which created problems binding to port 80.
 To address this we updated the docker image to add the NET_BIND_SERVICE capability to the loki process

@@ -9,11 +9,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/loki/pkg/ruler/manager"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -49,21 +51,22 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring          string = "ring"
-	RuntimeConfig string = "runtime-config"
-	Overrides     string = "overrides"
-	Server        string = "server"
-	Distributor   string = "distributor"
-	Ingester      string = "ingester"
-	Querier       string = "querier"
-	QueryFrontend string = "query-frontend"
-	RulerStorage  string = "ruler-storage"
-	Ruler         string = "ruler"
-	Store         string = "store"
-	TableManager  string = "table-manager"
-	MemberlistKV  string = "memberlist-kv"
-	Compactor     string = "compactor"
-	All           string = "all"
+	Ring            string = "ring"
+	RuntimeConfig   string = "runtime-config"
+	Overrides       string = "overrides"
+	Server          string = "server"
+	Distributor     string = "distributor"
+	Ingester        string = "ingester"
+	Querier         string = "querier"
+	IngesterQuerier string = "ingester-querier"
+	QueryFrontend   string = "query-frontend"
+	RulerStorage    string = "ruler-storage"
+	Ruler           string = "ruler"
+	Store           string = "store"
+	TableManager    string = "table-manager"
+	MemberlistKV    string = "memberlist-kv"
+	Compactor       string = "compactor"
+	All             string = "all"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -159,7 +162,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.cfg.Querier.IngesterQueryStoreMaxLookback = t.cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
-	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
+	t.querier, err = querier.New(t.cfg.Querier, t.store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +171,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
+		serverutil.ResponseJSONMiddleware(),
 	)
 	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
@@ -191,17 +195,6 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
-
-	// We want ingester to also query the store when using boltdb-shipper
-	pc := t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)]
-	if pc.IndexType == shipper.BoltDBShipperType {
-		t.cfg.Ingester.QueryStore = true
-		mlb, err := calculateMaxLookBack(pc, t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
-		if err != nil {
-			return nil, err
-		}
-		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
-	}
 
 	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -257,12 +250,21 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
-	if t.cfg.SchemaConfig.Configs[loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig)].IndexType == shipper.BoltDBShipperType {
+	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
+	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
+	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
+		t.cfg.ChunkStoreConfig.DisableIndexDeduplication = true
+		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
+	}
+
+	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
 		case Ingester:
 			// We do not want ingester to unnecessarily keep downloading files
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
+			// Do not cache index from Ingester.
+			t.cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{}
 		case Querier:
 			// We do not want query to do any updates to index
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
@@ -271,14 +273,35 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
-	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
-	if t.cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig) {
-		t.cfg.ChunkStoreConfig.DisableIndexDeduplication = true
-		t.cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
+	chunkStore, err := cortex_storage.NewStore(t.cfg.StorageConfig.Config, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util.Logger)
+	if err != nil {
+		return
 	}
 
-	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
+	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
+		switch t.cfg.Target {
+		case Querier:
+			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
+			// Only queriers should use the AsyncStore, it should never be used in ingesters.
+			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier)
+		case All:
+			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
+			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
+			// ToDo: See if we can avoid doing this when not running loki in clustered mode.
+			t.cfg.Ingester.QueryStore = true
+			boltdbShipperConfigIdx := loki_storage.ActivePeriodConfig(t.cfg.SchemaConfig.Configs)
+			if t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx].IndexType != shipper.BoltDBShipperType {
+				boltdbShipperConfigIdx++
+			}
+			mlb, err := calculateMaxLookBack(t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx], t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
+			if err != nil {
+				return nil, err
+			}
+			t.cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
+		}
+	}
+
+	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -289,9 +312,24 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}), nil
 }
 
+func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
+	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.cfg.IngesterClient, t.ring, t.cfg.Querier.ExtraQueryDelay)
+	if err != nil {
+		return nil, err
+	}
+
+	return services.NewIdleService(nil, nil), nil
+}
+
+// Placeholder limits type to pass to cortex frontend
+type disabledShuffleShardingLimits struct{}
+
+func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { return 0 }
+
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
+
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
-	t.frontend, err = frontend.New(t.cfg.Frontend.Config, util.Logger, prometheus.DefaultRegisterer)
+	t.frontend, err = frontend.New(t.cfg.Frontend.Config, disabledShuffleShardingLimits{}, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -319,6 +357,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		queryrange.StatsHTTPMiddleware,
 		t.httpAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
+		serverutil.ResponseJSONMiddleware(),
 	).Wrap(t.frontend.Handler())
 
 	var defaultHandler http.Handler
@@ -370,7 +409,13 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		return
 	}
 
-	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig)
+	// Loki doesn't support the configdb backend, but without excessive mangling/refactoring
+	// it's hard to enforce this at validation time. Therefore detect this and fail early.
+	if t.cfg.Ruler.StoreConfig.Type == "configdb" {
+		return nil, errors.New("configdb is not supported as a Loki rules backend type")
+	}
+
+	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig, manager.GroupLoader{})
 
 	return
 }
@@ -383,7 +428,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	t.cfg.Ruler.Ring.ListenPort = t.cfg.Server.GRPCListenPort
 	t.cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	q, err := querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
+	q, err := querier.New(t.cfg.Querier, t.store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -407,6 +452,10 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 		t.server.HTTP.Handle("/ruler/ring", t.ruler)
 		cortex_ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
+
+		// Prometheus Rule API Routes
+		t.server.HTTP.Path("/prometheus/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.PrometheusRules)))
+		t.server.HTTP.Path("/prometheus/api/v1/alerts").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.PrometheusAlerts)))
 
 		// Ruler Legacy API Routes
 		t.server.HTTP.Path("/api/prom/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
@@ -432,7 +481,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 		ring.GetCodec(),
 	}
 
-	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV)
+	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV, util.Logger)
 	return t.memberlistKV, nil
 }
 
