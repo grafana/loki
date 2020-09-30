@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
@@ -38,11 +39,18 @@ func ToClientLabels(labels string) ([]client.LabelAdapter, error) {
 
 // ModelLabelSetToMap convert a model.LabelSet to a map[string]string
 func ModelLabelSetToMap(m model.LabelSet) map[string]string {
-	result := map[string]string{}
-	for k, v := range m {
-		result[string(k)] = string(v)
+	if len(m) == 0 {
+		return map[string]string{}
 	}
-	return result
+	return *(*map[string]string)(unsafe.Pointer(&m))
+}
+
+// MapToModelLabelSet converts a map into a model.LabelSet
+func MapToModelLabelSet(m map[string]string) model.LabelSet {
+	if len(m) == 0 {
+		return model.LabelSet{}
+	}
+	return *(*map[model.LabelName]model.LabelValue)(unsafe.Pointer(&m))
 }
 
 // RoundToMilliseconds returns milliseconds precision time from nanoseconds.
