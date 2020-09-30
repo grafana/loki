@@ -328,8 +328,6 @@ github.com/felixge/httpsnoop
 # github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 ## explicit
 github.com/fluent/fluent-bit-go/output
-# github.com/frankban/quicktest v1.7.2
-## explicit
 # github.com/fsnotify/fsnotify v1.4.9
 github.com/fsnotify/fsnotify
 # github.com/fsouza/fake-gcs-server v1.7.0
@@ -639,10 +637,13 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/pierrec/lz4 v2.5.3-0.20200429092203-e876bbd321b3+incompatible
+# github.com/pierrec/lz4/v4 v4.0.2-0.20200813132121-22f5d580d5c4
 ## explicit
-github.com/pierrec/lz4
-github.com/pierrec/lz4/internal/xxh32
+github.com/pierrec/lz4/v4
+github.com/pierrec/lz4/v4/internal/lz4block
+github.com/pierrec/lz4/v4/internal/lz4errors
+github.com/pierrec/lz4/v4/internal/lz4stream
+github.com/pierrec/lz4/v4/internal/xxh32
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors

@@ -2,7 +2,7 @@
 // +build gc
 // +build !noasm
 
-package lz4
+package lz4block
 
 //go:noescape
 func decodeBlock(dst, src []byte) int
