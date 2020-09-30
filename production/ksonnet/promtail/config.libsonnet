@@ -16,6 +16,9 @@
       container_root_path: '/var/lib/docker',
       pipeline_stages: [{
         docker: {},
+        drop: {
+          expression: '.*(error).*(filetarget.go).*(no such file).*',
+        },
       }],
     },
     promtail_cluster_role_name: 'promtail',
