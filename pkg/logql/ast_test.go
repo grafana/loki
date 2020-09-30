@@ -1,7 +1,6 @@
 package logql
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -27,6 +26,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | foo<5.01 , bar>20ms or foo="bar" | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
 	}
 
 	for _, tt := range tests {
@@ -42,7 +42,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 				t.Fatalf("failed to get filter: %s", err)
 			}
 			require.Equal(t, tt.expectFilter, p != NoopPipeline)
-			if expr.String() != strings.Replace(tt.selector, " ", "", -1) {
+			if expr.String() != tt.selector {
 				t.Fatalf("error expected: %s got: %s", tt.selector, expr.String())
 			}
 		})
@@ -61,6 +61,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
+		`avg(min_over_time({job="nginx"} |= "GET" | unwrap foo[10s])) by (region)`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m]))`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m])) / sum by (cluster) (count_over_time({job="postgres"}[5m])) `,
 		`
@@ -73,6 +74,14 @@ func Test_SampleExpr_String(t *testing.T) {
 			count_over_time({namespace="tns"} |= "level=error"[5m])
 		/
 			count_over_time({namespace="tns"}[5m])
+		)`,
+		`stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+		| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m])`,
+		`sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms|unwrap latency [5m])`,
+		`sum by (job) (
+			sum_over_time({namespace="tns"} |= "level=error" | json | foo=5 and bar<25ms | unwrap latency[5m])
+		/
+			count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
 		)`,
 	} {
 		t.Run(tc, func(t *testing.T) {

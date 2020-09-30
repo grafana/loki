@@ -174,7 +174,7 @@ func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 		return 0, false
 	}
 	// we need to consume the scanner, now that we know this is a duration.
-	for i := 0; i <= consumed; i++ {
+	for i := 0; i < consumed; i++ {
 		_ = l.Next()
 	}
 	return d, true

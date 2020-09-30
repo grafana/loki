@@ -124,15 +124,24 @@ func (m MultiPipelineExpr) Pipeline() (Pipeline, error) {
 		if err != nil {
 			return nil, err
 		}
+		if p == NoopPipeline {
+			continue
+		}
 		c = append(c, p)
+	}
+	if len(c) == 0 {
+		return NoopPipeline, nil
 	}
 	return c, nil
 }
 
 func (m MultiPipelineExpr) String() string {
 	var sb strings.Builder
-	for _, e := range m {
+	for i, e := range m {
 		sb.WriteString(e.String())
+		if i+1 != len(m) {
+			sb.WriteString(" ")
+		}
 	}
 	return sb.String()
 }
@@ -174,7 +183,7 @@ func (e *matchersExpr) String() string {
 	for i, m := range e.matchers {
 		sb.WriteString(m.String())
 		if i+1 != len(e.matchers) {
-			sb.WriteString(",")
+			sb.WriteString(", ")
 		}
 	}
 	sb.WriteString("}")
@@ -205,6 +214,7 @@ func (e *pipelineExpr) Matchers() []*labels.Matcher {
 func (e *pipelineExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(e.left.String())
+	sb.WriteString(" ")
 	sb.WriteString(e.pipeline.String())
 	return sb.String()
 }
@@ -232,6 +242,7 @@ func (e *lineFilterExpr) String() string {
 	var sb strings.Builder
 	if e.left != nil {
 		sb.WriteString(e.left.String())
+		sb.WriteString(" ")
 	}
 	switch e.ty {
 	case labels.MatchRegexp:
@@ -243,6 +254,7 @@ func (e *lineFilterExpr) String() string {
 	case labels.MatchNotEqual:
 		sb.WriteString("!=")
 	}
+	sb.WriteString(" ")
 	sb.WriteString(strconv.Quote(e.match))
 	return sb.String()
 }
@@ -314,9 +326,11 @@ func (e *labelParserExpr) Pipeline() (Pipeline, error) {
 
 func (e *labelParserExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString("|")
+	sb.WriteString(OpPipe)
+	sb.WriteString(" ")
 	sb.WriteString(e.op)
 	if e.param != "" {
+		sb.WriteString(" ")
 		sb.WriteString(strconv.Quote(e.param))
 	}
 	return sb.String()
@@ -336,7 +350,7 @@ func (e *labelFilterExpr) Pipeline() (Pipeline, error) {
 }
 
 func (e *labelFilterExpr) String() string {
-	return fmt.Sprintf("| %s", e.Filterer.String())
+	return fmt.Sprintf("%s %s", OpPipe, e.Filterer.String())
 }
 
 type lineFmtExpr struct {
@@ -362,7 +376,7 @@ func (e *lineFmtExpr) Pipeline() (Pipeline, error) {
 }
 
 func (e *lineFmtExpr) String() string {
-	return fmt.Sprintf("| %s %s", OpFmtLine, strconv.Quote(e.value))
+	return fmt.Sprintf("%s %s %s", OpPipe, OpFmtLine, strconv.Quote(e.value))
 }
 
 type labelFmtExpr struct {
@@ -392,7 +406,7 @@ func (e *labelFmtExpr) Pipeline() (Pipeline, error) {
 
 func (e *labelFmtExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("| %s ", OpFmtLabel))
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
 	for i, f := range e.formats {
 		sb.WriteString(f.name)
 		sb.WriteString("=")

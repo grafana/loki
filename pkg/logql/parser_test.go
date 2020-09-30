@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql/labelfilter"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/labelfilter"
 )
 
 func newString(s string) *string {
@@ -1100,6 +1101,48 @@ func TestParse(t *testing.T) {
 					5*time.Minute,
 					newUnwrapExpr("foo")),
 				OpRangeTypeStdvar,
+			),
+		},
+		{
+			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
+					pipeline: MultiPipelineExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							Filterer: labelfilter.NewAnd(
+								labelfilter.NewNumeric(labelfilter.FilterGreaterThanOrEqual, "foo", 5),
+								labelfilter.NewDuration(labelfilter.FilterLesserThan, "bar", 25*time.Millisecond),
+							),
+						},
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("latency")),
+				OpRangeTypeSum,
+			),
+		},
+		{
+			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo==5,bar<25ms| unwrap latency [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
+					pipeline: MultiPipelineExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							Filterer: labelfilter.NewAnd(
+								labelfilter.NewNumeric(labelfilter.FilterEqual, "foo", 5),
+								labelfilter.NewDuration(labelfilter.FilterLesserThan, "bar", 25*time.Millisecond),
+							),
+						},
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("latency")),
+				OpRangeTypeSum,
 			),
 		},
 		{
