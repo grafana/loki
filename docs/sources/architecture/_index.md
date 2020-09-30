@@ -50,7 +50,7 @@ processes with the following limitations:
    monolithic mode with more than one replica, as each replica must be able to
    access the same storage backend, and local storage is not safe for concurrent
    access.
-2. Individual components cannot be scaled independently, so it is not possible
+1. Individual components cannot be scaled independently, so it is not possible
    to have more read components than write components.
 
 ## Components
@@ -117,17 +117,17 @@ the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
 1. `PENDING` is an Ingester's state when it is waiting for a handoff from
    another ingester that is `LEAVING`.
 
-2. `JOINING` is an Ingester's state when it is currently inserting its tokens
+1. `JOINING` is an Ingester's state when it is currently inserting its tokens
    into the ring and initializing itself. It may receive write requests for
    tokens it owns.
 
-3. `ACTIVE` is an Ingester's state when it is fully initialized. It may receive
+1. `ACTIVE` is an Ingester's state when it is fully initialized. It may receive
    both write and read requests for tokens it owns.
 
-4. `LEAVING` is an Ingester's state when it is shutting down. It may receive
+1. `LEAVING` is an Ingester's state when it is shutting down. It may receive
    read requests for data it still has in memory.
 
-5. `UNHEALTHY` is an Ingester's state when it has failed to heartbeat to
+1. `UNHEALTHY` is an Ingester's state when it has failed to heartbeat to
    Consul. `UNHEALTHY` is set by the distributor when it periodically checks the ring.
 
 Each log stream that an ingester receives is built up into a set of many
@@ -137,8 +137,8 @@ interval.
 Chunks are compressed and marked as read-only when:
 
 1. The current chunk has reached capacity (a configurable value).
-2. Too much time has passed without the current chunk being updated
-3. A flush occurs.
+1. Too much time has passed without the current chunk being updated
+1. A flush occurs.
 
 Whenever a chunk is compressed and marked as read-only, a writable chunk takes
 its place.
@@ -320,12 +320,12 @@ writes and improve query performance.
 To summarize, the read path works as follows:
 
 1. The querier receives an HTTP/1 request for data.
-2. The querier passes the query to all ingesters for in-memory data.
-3. The ingesters receive the read request and return data matching the query, if
+1. The querier passes the query to all ingesters for in-memory data.
+1. The ingesters receive the read request and return data matching the query, if
    any.
-4. The querier lazily loads data from the backing store and runs the query
+1. The querier lazily loads data from the backing store and runs the query
    against it if no ingesters returned data.
-5. The querier iterates over all received data and deduplicates, returning a
+1. The querier iterates over all received data and deduplicates, returning a
    final set of data over the HTTP/1 connection.
 
 ## Write Path
@@ -335,9 +335,9 @@ To summarize, the read path works as follows:
 To summarize, the write path works as follows:
 
 1. The distributor receives an HTTP/1 request to store data for streams.
-2. Each stream is hashed using the hash ring.
-3. The distributor sends each stream to the appropriate ingesters and their
+1. Each stream is hashed using the hash ring.
+1. The distributor sends each stream to the appropriate ingesters and their
    replicas (based on the configured replication factor).
-4. Each ingester will create a chunk or append to an existing chunk for the
+1. Each ingester will create a chunk or append to an existing chunk for the
    stream's data. A chunk is unique per tenant and per labelset.
-5. The distributor responds with a success code over the HTTP/1 connection.
+1. The distributor responds with a success code over the HTTP/1 connection.
