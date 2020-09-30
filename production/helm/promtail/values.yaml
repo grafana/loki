@@ -43,6 +43,8 @@ nodeSelector: {}
 
 pipelineStages:
 - docker: {}
+- drop:
+    expression: ".*(error).*(filetarget.go).*(no such file).*"
 
 ## Pod Labels
 podLabels: {}
