@@ -206,7 +206,7 @@ pipelineStages:
         namespace: ""
 ```
 
-> Pipeline stages are great ways to parse log content and create labels (which are [indexed][labels post]), if you want to configure more of them, check out the [documentation][pipeline].
+> Pipeline stages are great ways to parse log content and create labels (which are [indexed][labels post]), if you want to configure more of them, check out the [pipeline][pipeline] documentation.
 
 Now update Promtail again:
 

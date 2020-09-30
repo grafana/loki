@@ -147,11 +147,11 @@ The **clients** section allow you to target your loki instance, if you're using 
 
 Since we're running on AWS EC2 we want to uses EC2 service discovery, this will allows us to scrape metadata about the current instance (and even your custom tags) and attach those to our logs. This way managing and querying on logs will be much easier.
 
-Make sure to replace accordingly you current `region`, `access_key` and `secret_key`, alternatively you can use an [AWS Role][role] ARN, for more information about this, see the `ec2_sd_config` [documentation][ec2_sd_config].
+Make sure to replace accordingly you current `region`, `access_key` and `secret_key`, alternatively you can use an [AWS Role][role] ARN, for more information about this, see documentation for [`ec2_sd_config`][ec2_sd_config].
 
 Finally the [`relabeling_configs`][relabel] section has three purposes:
 
-1. Selecting the labels discovered you want to attach to your targets. In our case here, we're keeping `instance_id` as instance, the tag `Name` as name and the `zone` of the instance. Make sure to check out the Prometheus [documentation][ec2_sd_config] for the full list of available labels.
+1. Selecting the labels discovered you want to attach to your targets. In our case here, we're keeping `instance_id` as instance, the tag `Name` as name and the `zone` of the instance. Make sure to check out the Prometheus [`ec2_sd_config`][ec2_sd_config] documentation for the full list of available labels.
 
 2. Choosing where promtail should find log files to tail, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob, you can simply add another job in your `scrape_configs`.
 
