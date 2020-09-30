@@ -5,11 +5,11 @@ weight: 800
 # Operating Loki
 
 1. [Upgrading](upgrade/)
-2. [Authentication](authentication/)
-3. [Observability](observability/)
-4. [Scalability](scalability/)
-5. [Storage](storage/)
+1. [Authentication](authentication/)
+1. [Observability](observability/)
+1. [Scalability](scalability/)
+1. [Storage](storage/)
     1. [Table Manager](storage/table-manager/)
-    2. [Retention](storage/retention/)
-6. [Multi-tenancy](multi-tenancy/)
-7. [Loki Canary](loki-canary/)
+    1. [Retention](storage/retention/)
+1. [Multi-tenancy](multi-tenancy/)
+1. [Loki Canary](loki-canary/)

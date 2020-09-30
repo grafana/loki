@@ -14,14 +14,14 @@ stages:
 
 1. **Parsing stages** parse the current log line and extract data out of it. The
    extracted data is then available for use by other stages.
-2. **Transform stages** transform extracted data from previous stages.
-3. **Action stages** take extracted data from previous stages and do something
+1. **Transform stages** transform extracted data from previous stages.
+1. **Action stages** take extracted data from previous stages and do something
    with them. Actions can:
     1. Add or modify existing labels to the log line
-    2. Change the timestamp of the log line
-    3. Change the content of the log line
-    4. Create a metric based on the extracted data
-4. **Filtering stages** optionally apply a subset of stages or drop entries based on some
+    1. Change the timestamp of the log line
+    1. Change the content of the log line
+    1. Create a metric based on the extracted data
+1. **Filtering stages** optionally apply a subset of stages or drop entries based on some
    condition.
 
 Typical pipelines will start with a parsing stage (such as a
@@ -37,7 +37,7 @@ Note that pipelines can not currently be used to deduplicate logs; Loki will
 receive the same log line multiple times if, for example:
 
 1. Two scrape configs read from the same file
-2. Duplicate log lines in a file are sent through a pipeline. Deduplication is
+1. Duplicate log lines in a file are sent through a pipeline. Deduplication is
    not done.
 
 However, Loki will perform some deduplication at query time for logs that have

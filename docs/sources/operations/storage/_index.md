@@ -19,7 +19,7 @@ how to configure the storage and the index.
 For more information:
 
 1. [Table Manager](table-manager/)
-2. [Retention](retention/)
+1. [Retention](retention/)
 
 ## Supported Stores
 

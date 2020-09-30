@@ -17,7 +17,7 @@ The following instructions should help you get started.
 wget https://raw.githubusercontent.com/grafana/loki/master/cmd/promtail/promtail-local-config.yaml
 ```
 
-2. Open the config file in the text editor of your choice. It should look similar to this:
+1. Open the config file in the text editor of your choice. It should look similar to this:
 
 ```
 server:
@@ -42,7 +42,7 @@ scrape_configs:
 
    The seven lines under `scrape_configs` are what send the logs that Loki generates to Loki, which then outputs them in the command line and http://localhost:3100/metrics.
 
-3. Copy the seven lines under `scrape_configs`, and then paste them under the original job (you can also just edit the original seven lines).
+1. Copy the seven lines under `scrape_configs`, and then paste them under the original job (you can also just edit the original seven lines).
 
    Below is an example that sends logs from a default Grafana installation to Loki. We updated the following fields:
    - job_name - This differentiates the logs collected from other log groups.
@@ -60,7 +60,7 @@ scrape_configs:
       __path__: "C:/Program Files/GrafanaLabs/grafana/data/log/grafana.log"
 ```
 
-4. Enter the following command to run Promtail. Examples below assume you have put the config file in the same directory as the binary.
+1. Enter the following command to run Promtail. Examples below assume you have put the config file in the same directory as the binary.
 
 **Windows**
 
