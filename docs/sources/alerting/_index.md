@@ -171,6 +171,9 @@ Because the rule files are identical to Prometheus rule files, we can interact w
 An example workflow is included below:
 
 ```sh
+# lint the rules.yaml file ensuring it's valid and reformatting it if necessary
+cortextool rules lint --backend=loki ./output/rules.yaml
+
 # diff rules against the currently managed ruleset in Loki
 cortextool rules diff --rule-dirs=./output --backend=loki
 
