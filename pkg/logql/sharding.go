@@ -8,7 +8,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
@@ -47,25 +46,13 @@ func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *S
 }
 
 // Query constructs a Query
-func (ng *ShardedEngine) Query(p Params, shards int) Query {
+func (ng *ShardedEngine) Query(p Params, mapped Expr) Query {
 	return &query{
 		timeout:   ng.timeout,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),
-		parse: func(ctx context.Context, query string) (Expr, error) {
-			logger := spanlogger.FromContext(ctx)
-			mapper, err := NewShardMapper(shards, ng.metrics)
-			if err != nil {
-				return nil, err
-			}
-			noop, parsed, err := mapper.Parse(query)
-			if err != nil {
-				level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", query)
-				return nil, err
-			}
-
-			level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
-			return parsed, nil
+		parse: func(_ context.Context, _ string) (Expr, error) {
+			return mapped, nil
 		},
 	}
 }
