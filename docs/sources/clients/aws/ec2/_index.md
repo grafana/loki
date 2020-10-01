@@ -259,7 +259,7 @@ We will edit our previous config (`vi ec2-promtail.yaml`) and add the following 
 
 Note that you can use [relabeling][relabeling] to convert systemd labels to match what you want. Finally make sure that the path of journald logs is correct, it might be different on some systems.
 
-> You can download the final config example from our [github repository][final config].
+> You can download the final config example from our [GitHub repository][final config].
 
 That's it, save the config and you can `reboot` the machine (or simply restart the service `systemctl restart promtail.service`).
 
