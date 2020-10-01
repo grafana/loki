@@ -26,7 +26,7 @@ Before we start you'll need:
 - The [AWS CLI][aws cli] configured (run `aws configure`).
 - A Grafana instance with a Loki data source already configured, you can use [GrafanaCloud][GrafanaCloud] free trial.
 
-For the sake of simplicity we'll use a GrafanaCloud Loki and Grafana instances, you can get an free account for this tutorial at [GrafanaCloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
+For the sake of simplicity we'll use a Grafana Cloud Loki and Grafana instances, you can get a free account for this tutorial at [Grafana Cloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
 
 To make it easy to learn all the following instructions are manual, however in a real setup we recommend you to use provisioning tools such as [Terraform][terraform], [CloudFormation][cloud formation], [Ansible][ansible] or [Chef][chef].
 
