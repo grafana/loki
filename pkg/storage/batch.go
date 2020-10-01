@@ -350,8 +350,7 @@ type logBatchIterator struct {
 	ctx      context.Context
 	metrics  *ChunkMetrics
 	matchers []*labels.Matcher
-	filter   logql.LineFilter
-	parser   logql.LabelParser
+	pipeline logql.Pipeline
 }
 
 func newLogBatchIterator(
@@ -360,8 +359,7 @@ func newLogBatchIterator(
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
-	filter logql.LineFilter,
-	parser logql.LabelParser,
+	pipeline logql.Pipeline,
 	direction logproto.Direction,
 	start, end time.Time,
 ) (iter.EntryIterator, error) {
@@ -371,8 +369,7 @@ func newLogBatchIterator(
 	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
 	logbatch := &logBatchIterator{
 		matchers: matchers,
-		filter:   filter,
-		parser:   parser,
+		pipeline: pipeline,
 		metrics:  metrics,
 		ctx:      ctx,
 	}
@@ -428,7 +425,7 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, it.filter, it.parser, nextChunk)
+			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, it.pipeline, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -451,8 +448,7 @@ type sampleBatchIterator struct {
 	ctx       context.Context
 	metrics   *ChunkMetrics
 	matchers  []*labels.Matcher
-	filter    logql.LineFilter
-	parser    logql.LabelParser
+	pipeline  logql.Pipeline
 	extractor logql.SampleExtractor
 }
 
@@ -462,8 +458,7 @@ func newSampleBatchIterator(
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
-	filter logql.LineFilter,
-	parser logql.LabelParser,
+	pipeline logql.Pipeline,
 	extractor logql.SampleExtractor,
 	start, end time.Time,
 ) (iter.SampleIterator, error) {
@@ -474,8 +469,7 @@ func newSampleBatchIterator(
 
 	samplebatch := &sampleBatchIterator{
 		matchers:  matchers,
-		filter:    filter,
-		parser:    parser,
+		pipeline:  pipeline,
 		extractor: extractor,
 		metrics:   metrics,
 		ctx:       ctx,
@@ -529,7 +523,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, it.filter, it.extractor, it.parser, nextChunk)
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, it.pipeline, it.extractor, nextChunk)
 			if err != nil {
 				return nil, err
 			}

@@ -956,7 +956,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, logql.NoopLabelParser, tt.direction, tt.start, tt.end)
+			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), logql.NoopPipeline, tt.direction, tt.start, tt.end)
 			require.NoError(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
@@ -1241,7 +1241,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newSampleBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, logql.NoopLabelParser, logql.ExtractCount, tt.start, tt.end)
+			it, err := newSampleBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), logql.NoopPipeline, logql.ExtractCount, tt.start, tt.end)
 			require.NoError(t, err)
 			series, _, err := iter.ReadSampleBatch(it, 1000)
 			_ = it.Close()
@@ -1448,8 +1448,8 @@ func TestBuildHeapIterator(t *testing.T) {
 				batchChunkIterator: &batchChunkIterator{
 					direction: logproto.FORWARD,
 				},
-				ctx:    ctx,
-				parser: logql.NoopLabelParser,
+				ctx:      ctx,
+				pipeline: logql.NoopPipeline,
 			}
 			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), nil)
 			if err != nil {

@@ -76,6 +76,7 @@ type Querier interface {
 type LogSelectorExpr interface {
 	Matchers() []*labels.Matcher
 	PipelineExpr
+	HasFilter() bool
 	Expr
 }
 
@@ -194,6 +195,10 @@ func (e *matchersExpr) Pipeline() (Pipeline, error) {
 	return NoopPipeline, nil
 }
 
+func (e *matchersExpr) HasFilter() bool {
+	return false
+}
+
 type pipelineExpr struct {
 	pipeline MultiPipelineExpr
 	left     *matchersExpr
@@ -223,6 +228,18 @@ func (e *pipelineExpr) Pipeline() (Pipeline, error) {
 	return e.pipeline.Pipeline()
 }
 
+func (e *pipelineExpr) HasFilter() bool {
+	for _, p := range e.pipeline {
+		switch p.(type) {
+		case *lineFilterExpr, *labelFilterExpr:
+			return true
+		default:
+			continue
+		}
+	}
+	return false
+}
+
 type lineFilterExpr struct {
 	left  *lineFilterExpr
 	ty    labels.MatchType
@@ -236,6 +253,21 @@ func newLineFilterExpr(left *lineFilterExpr, ty labels.MatchType, match string) 
 		ty:    ty,
 		match: match,
 	}
+}
+
+// AddFilterExpr adds a filter expression to a logselector expression.
+func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, match string) (LogSelectorExpr, error) {
+	filter := newLineFilterExpr(nil, ty, match)
+	switch e := expr.(type) {
+	case *matchersExpr:
+		return newPipelineExpr(e, MultiPipelineExpr{filter}), nil
+	case *pipelineExpr:
+		e.pipeline = append(e.pipeline, filter)
+		return e, nil
+	default:
+		return nil, fmt.Errorf("unknown LogSelector: %v+", expr)
+	}
+
 }
 
 func (e *lineFilterExpr) String() string {
@@ -809,6 +841,7 @@ func (e *literalExpr) String() string {
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
 func (e *literalExpr) Selector() LogSelectorExpr           { return e }
+func (e *literalExpr) HasFilter() bool                     { return false }
 func (e *literalExpr) Operations() []string                { return nil }
 func (e *literalExpr) Pipeline() (Pipeline, error)         { return NoopPipeline, nil }
 func (e *literalExpr) Matchers() []*labels.Matcher         { return nil }

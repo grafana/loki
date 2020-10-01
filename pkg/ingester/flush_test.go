@@ -320,7 +320,7 @@ func (s *testStore) getChunksForUser(userID string) []chunk.Chunk {
 }
 
 func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logproto.Stream {
-	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, labels.Labels{}, nil, logql.NoopLabelParser)
+	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, labels.Labels{}, logql.NoopPipeline)
 	require.NoError(t, err)
 
 	stream := logproto.Stream{

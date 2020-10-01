@@ -476,7 +476,7 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, lbs labels.Labels, filter logql.LineFilter, parser logql.LabelParser) (iter.EntryIterator, error) {
+func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, lbs labels.Labels, pipeline logql.Pipeline) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
 	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
@@ -484,11 +484,11 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
-		its = append(its, b.Iterator(ctx, lbs, filter, parser))
+		its = append(its, b.Iterator(ctx, lbs, pipeline))
 	}
 
 	if !c.head.isEmpty() {
-		its = append(its, c.head.iterator(ctx, direction, mint, maxt, lbs, filter, parser))
+		its = append(its, c.head.iterator(ctx, direction, mint, maxt, lbs, pipeline))
 	}
 
 	iterForward := iter.NewTimeRangedIterator(
@@ -505,7 +505,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, lbs labels.Labels, filter logql.LineFilter, extractor logql.SampleExtractor, parser logql.LabelParser) iter.SampleIterator {
+func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, lbs labels.Labels, pipeline logql.Pipeline, extractor logql.SampleExtractor) iter.SampleIterator {
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
@@ -513,11 +513,11 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
-		its = append(its, b.SampleIterator(ctx, lbs, filter, extractor, parser))
+		its = append(its, b.SampleIterator(ctx, lbs, pipeline, extractor))
 	}
 
 	if !c.head.isEmpty() {
-		its = append(its, c.head.sampleIterator(ctx, mint, maxt, lbs, filter, extractor, parser))
+		its = append(its, c.head.sampleIterator(ctx, mint, maxt, lbs, pipeline, extractor))
 	}
 
 	return iter.NewTimeRangedSampleIterator(
@@ -540,18 +540,18 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 	return blocks
 }
 
-func (b block) Iterator(ctx context.Context, lbs labels.Labels, filter logql.LineFilter, parser logql.LabelParser) iter.EntryIterator {
+func (b block) Iterator(ctx context.Context, lbs labels.Labels, pipeline logql.Pipeline) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newEntryIterator(ctx, b.readers, b.b, lbs, filter, parser)
+	return newEntryIterator(ctx, b.readers, b.b, lbs, pipeline)
 }
 
-func (b block) SampleIterator(ctx context.Context, lbs labels.Labels, filter logql.LineFilter, extractor logql.SampleExtractor, parser logql.LabelParser) iter.SampleIterator {
+func (b block) SampleIterator(ctx context.Context, lbs labels.Labels, pipeline logql.Pipeline, extractor logql.SampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newSampleIterator(ctx, b.readers, b.b, lbs, filter, extractor, parser)
+	return newSampleIterator(ctx, b.readers, b.b, lbs, pipeline, extractor)
 }
 
 func (b block) Offset() int {
@@ -568,7 +568,7 @@ func (b block) MaxTime() int64 {
 	return b.maxt
 }
 
-func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, lbs labels.Labels, filter logql.LineFilter, parser logql.LabelParser) iter.EntryIterator {
+func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, lbs labels.Labels, pipeline logql.Pipeline) iter.EntryIterator {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
@@ -584,22 +584,23 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 	for _, e := range hb.entries {
 		chunkStats.HeadChunkBytes += int64(len(e.s))
 		line := []byte(e.s)
-		if filter == nil || filter.Filter(line) {
-			parsedLbs := parser.Parse(line, lbs)
-			var ok bool
-			var stream *logproto.Stream
-			lhash := parsedLbs.Hash()
-			if stream, ok = streams[lhash]; !ok {
-				stream = &logproto.Stream{
-					Labels: parsedLbs.String(),
-				}
-				streams[lhash] = stream
-			}
-			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp: time.Unix(0, e.t),
-				Line:      e.s,
-			})
+		newLine, parsedLbs, ok := pipeline.Process(line, lbs)
+		if !ok {
+			continue
 		}
+		var stream *logproto.Stream
+		lhash := parsedLbs.Hash()
+		if stream, ok = streams[lhash]; !ok {
+			stream = &logproto.Stream{
+				Labels: parsedLbs.String(),
+			}
+			streams[lhash] = stream
+		}
+		stream.Entries = append(stream.Entries, logproto.Entry{
+			Timestamp: time.Unix(0, e.t),
+			Line:      string(newLine),
+		})
+
 	}
 
 	if len(streams) == 0 {
@@ -612,7 +613,7 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 	return iter.NewStreamsIterator(ctx, streamsResult, direction)
 }
 
-func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, lbs labels.Labels, filter logql.LineFilter, extractor logql.SampleExtractor, parser logql.LabelParser) iter.SampleIterator {
+func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, lbs labels.Labels, pipeline logql.Pipeline, extractor logql.SampleExtractor) iter.SampleIterator {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
@@ -622,26 +623,26 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, lbs l
 	for _, e := range hb.entries {
 		chunkStats.HeadChunkBytes += int64(len(e.s))
 		line := []byte(e.s)
-		if filter == nil || filter.Filter(line) {
-			parsedLbs := parser.Parse(line, lbs)
-			if value, ok := extractor.Extract([]byte(e.s)); ok {
-				var ok bool
-				var s *logproto.Series
-				lhash := parsedLbs.Hash()
-				if s, ok = series[lhash]; !ok {
-					s = &logproto.Series{
-						Labels: parsedLbs.String(),
-					}
-					series[lhash] = s
-				}
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: e.t,
-					Value:     value,
-					Hash:      xxhash.Sum64([]byte(e.s)),
-				})
-
-			}
+		newLine, parsedLabels, ok := pipeline.Process(line, lbs)
+		if !ok {
+			continue
 		}
+		var value float64
+		var found bool
+		value, parsedLabels = extractor.Extract(newLine, parsedLabels)
+		var s *logproto.Series
+		lhash := parsedLabels.Hash()
+		if s, found = series[lhash]; !found {
+			s = &logproto.Series{
+				Labels: parsedLabels.String(),
+			}
+			series[lhash] = s
+		}
+		s.Samples = append(s.Samples, logproto.Sample{
+			Timestamp: e.t,
+			Value:     value,
+			Hash:      xxhash.Sum64([]byte(e.s)),
+		})
 	}
 
 	if len(series) == 0 {
@@ -668,17 +669,16 @@ type bufferedIterator struct {
 	buf        []byte // The buffer for a single entry.
 	currLine   []byte // the current line, this is the same as the buffer but sliced the the line size.
 	currTs     int64
-	currLabels string
+	currLabels labels.Labels
 	consumed   bool
 
 	closed bool
 
-	baseLbs labels.Labels
-	parser  logql.LabelParser
-	filter  logql.LineFilter
+	baseLbs  labels.Labels
+	pipeline logql.Pipeline
 }
 
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, lbs labels.Labels, filter logql.LineFilter, parser logql.LabelParser) *bufferedIterator {
+func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, lbs labels.Labels, pipeline logql.Pipeline) *bufferedIterator {
 	chunkStats := stats.GetChunkData(ctx)
 	chunkStats.CompressedBytes += int64(len(b))
 	return &bufferedIterator{
@@ -687,11 +687,10 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, lbs lab
 		reader:    nil, // will be initialized later
 		bufReader: nil, // will be initialized later
 		pool:      pool,
-		filter:    filter,
+		pipeline:  pipeline,
 		decBuf:    make([]byte, binary.MaxVarintLen64),
 		consumed:  true,
 		baseLbs:   lbs,
-		parser:    parser,
 	}
 }
 
@@ -711,14 +710,16 @@ func (si *bufferedIterator) Next() bool {
 		// we decode always the line length and ts as varint
 		si.stats.DecompressedBytes += int64(len(line)) + 2*binary.MaxVarintLen64
 		si.stats.DecompressedLines++
-		if si.filter != nil && !si.filter.Filter(line) {
+
+		newLine, lbs, ok := si.pipeline.Process(line, si.baseLbs)
+		if !ok {
 			continue
 		}
 		si.currTs = ts
-		si.currLine = line
+		si.currLine = newLine
 		si.consumed = false
 		// todo(cyriltovena) add cache for building the string of labels via some sort of decode context.
-		si.currLabels = si.parser.Parse(line, si.baseLbs).String()
+		si.currLabels = lbs
 		return true
 	}
 }
@@ -803,11 +804,11 @@ func (si *bufferedIterator) close() {
 	si.decBuf = nil
 }
 
-func (si *bufferedIterator) Labels() string { return si.currLabels }
+func (si *bufferedIterator) Labels() string { return si.currLabels.String() }
 
-func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, lbs labels.Labels, filter logql.LineFilter, parser logql.LabelParser) iter.EntryIterator {
+func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, lbs labels.Labels, pipeline logql.Pipeline) iter.EntryIterator {
 	return &entryBufferedIterator{
-		bufferedIterator: newBufferedIterator(ctx, pool, b, lbs, filter, parser),
+		bufferedIterator: newBufferedIterator(ctx, pool, b, lbs, pipeline),
 	}
 }
 
@@ -825,9 +826,9 @@ func (e *entryBufferedIterator) Entry() logproto.Entry {
 	return e.cur
 }
 
-func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, lbs labels.Labels, filter logql.LineFilter, extractor logql.SampleExtractor, parser logql.LabelParser) iter.SampleIterator {
+func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, lbs labels.Labels, pipeline logql.Pipeline, extractor logql.SampleExtractor) iter.SampleIterator {
 	it := &sampleBufferedIterator{
-		bufferedIterator: newBufferedIterator(ctx, pool, b, lbs, filter, parser),
+		bufferedIterator: newBufferedIterator(ctx, pool, b, lbs, pipeline),
 		extractor:        extractor,
 	}
 	return it
@@ -835,20 +836,24 @@ func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, lbs label
 
 type sampleBufferedIterator struct {
 	*bufferedIterator
+
 	extractor logql.SampleExtractor
-	cur       logproto.Sample
-	currValue float64
+
+	cur        logproto.Sample
+	currLabels string
+	currValue  float64
 }
 
 func (e *sampleBufferedIterator) Next() bool {
-	var ok bool
+	var newLabels labels.Labels
 	for e.bufferedIterator.Next() {
-		if e.currValue, ok = e.extractor.Extract(e.currLine); ok {
-			return true
-		}
+		e.currValue, newLabels = e.extractor.Extract(e.currLine, e.bufferedIterator.currLabels)
+		e.currLabels = newLabels.String()
+		return true
 	}
 	return false
 }
+func (e *sampleBufferedIterator) Labels() string { return e.currLabels }
 
 func (e *sampleBufferedIterator) Sample() logproto.Sample {
 	if !e.consumed {

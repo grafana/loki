@@ -99,8 +99,8 @@ type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Append(*logproto.Entry) error
-	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, lbs labels.Labels, filter logql.LineFilter, parser logql.LabelParser) (iter.EntryIterator, error)
-	SampleIterator(ctx context.Context, from, through time.Time, lbs labels.Labels, filter logql.LineFilter, extractor logql.SampleExtractor, parser logql.LabelParser) iter.SampleIterator
+	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, lbs labels.Labels, pipeline logql.Pipeline) (iter.EntryIterator, error)
+	SampleIterator(ctx context.Context, from, through time.Time, lbs labels.Labels, pipeline logql.Pipeline, extractor logql.SampleExtractor) iter.SampleIterator
 	// Returns the list of blocks in the chunks.
 	Blocks(mintT, maxtT time.Time) []Block
 	Size() int
@@ -123,7 +123,7 @@ type Block interface {
 	// Entries is the amount of entries in the block.
 	Entries() int
 	// Iterator returns an entry iterator for the block.
-	Iterator(ctx context.Context, lbs labels.Labels, filter logql.LineFilter, parser logql.LabelParser) iter.EntryIterator
+	Iterator(ctx context.Context, lbs labels.Labels, pipeline logql.Pipeline) iter.EntryIterator
 	// SampleIterator returns a sample iterator for the block.
-	SampleIterator(ctx context.Context, lbs labels.Labels, filter logql.LineFilter, extractor logql.SampleExtractor, parser logql.LabelParser) iter.SampleIterator
+	SampleIterator(ctx context.Context, lbs labels.Labels, pipeline logql.Pipeline, extractor logql.SampleExtractor) iter.SampleIterator
 }
