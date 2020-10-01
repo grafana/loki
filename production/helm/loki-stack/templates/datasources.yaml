@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ template "loki-stack.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ template "loki-stack.namespace" . }}
   labels:
     app: {{ template "loki-stack.name" . }}
     chart: {{ template "loki-stack.chart" . }}
