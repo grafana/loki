@@ -141,6 +141,10 @@ message LabelPair {
 
 message Chunk {
   bytes data = 1;
+  google.protobuf.Timestamp from = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp to = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp flushed = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  bool closed = 5;
 }
 
 message TransferChunksResponse {

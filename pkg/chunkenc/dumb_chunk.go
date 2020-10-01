@@ -68,6 +68,8 @@ func (c *dumbChunk) Utilization() float64 {
 	return float64(len(c.entries)) / float64(tmpNumEntries)
 }
 
+func (c *dumbChunk) Encoding() Encoding { return EncNone }
+
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
 func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, direction logproto.Direction, _ labels.Labels, _ logql.Pipeline) (iter.EntryIterator, error) {
@@ -100,6 +102,10 @@ func (c *dumbChunk) SampleIterator(_ context.Context, from, through time.Time, _
 }
 
 func (c *dumbChunk) Bytes() ([]byte, error) {
+	return nil, nil
+}
+
+func (c *dumbChunk) BytesWith(_ []byte) ([]byte, error) {
 	return nil, nil
 }
 

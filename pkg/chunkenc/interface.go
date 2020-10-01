@@ -106,11 +106,13 @@ type Chunk interface {
 	Blocks(mintT, maxtT time.Time) []Block
 	Size() int
 	Bytes() ([]byte, error)
+	BytesWith([]byte) ([]byte, error) // uses provided []byte for buffer instantiation
 	BlockCount() int
 	Utilization() float64
 	UncompressedSize() int
 	CompressedSize() int
 	Close() error
+	Encoding() Encoding
 }
 
 // Block is a chunk block.
