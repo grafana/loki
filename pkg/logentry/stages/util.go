@@ -112,7 +112,7 @@ func convertDateLayout(predef string, location *time.Location) parser {
 			return time.Unix(0, i), nil
 		}
 	default:
-		if !strings.Contains(predef, "2006") {
+		if !strings.Contains(predef, "06") && !strings.Contains(predef, "2006") {
 			return func(t string) (time.Time, error) {
 				return parseTimestampWithoutYear(predef, location, t, time.Now())
 			}
