@@ -58,7 +58,7 @@ type ReadBatchIterator interface {
 	Value() []byte
 }
 
-// ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/Etc)
+// ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
 type ObjectClient interface {
 	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
@@ -85,4 +85,5 @@ type StorageObject struct {
 }
 
 // StorageCommonPrefix represents a common prefix aka a synthetic directory in Object Store.
+// It is guaranteed to always end with delimiter passed to List method.
 type StorageCommonPrefix string
