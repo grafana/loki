@@ -945,6 +945,82 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{app="foo"} |= "bar" | json | (duration > 1s or status!= 200) and method!="POST"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiPipelineExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						Filterer: labelfilter.NewAnd(
+							labelfilter.NewOr(
+								labelfilter.NewDuration(labelfilter.FilterGreaterThan, "duration", 1*time.Second),
+								labelfilter.NewNumeric(labelfilter.FilterNotEqual, "status", 200.0),
+							),
+							labelfilter.NewString(mustNewMatcher(labels.MatchNotEqual, "method", "POST")),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | ( status_code < 500 and status_code > 200) or latency >= 250ms `,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiPipelineExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						Filterer: labelfilter.NewOr(
+							labelfilter.NewAnd(
+								labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+								labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+							),
+							labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | ( status_code < 500 or status_code > 200) and latency >= 250ms `,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiPipelineExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						Filterer: labelfilter.NewAnd(
+							labelfilter.NewOr(
+								labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+								labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+							),
+							labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json |  status_code < 500 or status_code > 200 and latency >= 250ms `,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiPipelineExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						Filterer: labelfilter.NewOr(
+							labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+							labelfilter.NewAnd(
+								labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+								labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							),
+						),
+					},
+				},
+			},
+		},
+		{
 			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 				| foo="bar" buzz!="blip", blop=~"boop" or fuzz==5`,
 			exp: &pipelineExpr{
@@ -1459,4 +1535,22 @@ func TestIsParseError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_PipelineCombined(t *testing.T) {
+	query := `{job="cortex-ops/query-frontend"} |= "logging.go" | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)" | (duration > 1s or status!=200) and method!="POST" | line_format "{{.duration}}|{{.method}}|{{.status}}"`
+
+	expr, err := ParseLogSelector(query)
+	require.Nil(t, err)
+
+	p, err := expr.Pipeline()
+	require.Nil(t, err)
+
+	_, lbs, ok := p.Process([]byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`), labels.Labels{})
+	require.False(t, ok)
+	require.Equal(
+		t,
+		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		lbs,
+	)
 }

@@ -133,7 +133,7 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in:  `{foo="bar"} |= "foo" |~ "bar" | json | latency >= 10s or foo<5 and bar="t" | line_format "b{{.blip}}"`,
-			out: `downstream<{foo="bar"} |="foo" |~"bar" | json | latency>=10s or foo<5,bar="t"| line_format "b{{.blip}}",shard=0_of_2>++downstream<{foo="bar"} |="foo" |~"bar" | json | latency>=10s or foo<5, bar="t" | line_format "b{{.blip}}",shard=1_of_2>`,
+			out: `downstream<{foo="bar"} |="foo" |~"bar" | json | (latency>=10s or (foo<5,bar="t"))| line_format "b{{.blip}}",shard=0_of_2>++downstream<{foo="bar"} |="foo" |~"bar" | json | (latency>=10s or (foo<5, bar="t")) | line_format "b{{.blip}}",shard=1_of_2>`,
 		},
 		{
 			in:  `sum(rate({foo="bar"}[1m]))`,

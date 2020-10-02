@@ -53,6 +53,7 @@ func (b *Binary) Filter(lbs labels.Labels) (bool, error) {
 
 func (b *Binary) String() string {
 	var sb strings.Builder
+	sb.WriteString("( ")
 	sb.WriteString(b.Left.String())
 	if b.and {
 		sb.WriteString(" , ")
@@ -60,5 +61,6 @@ func (b *Binary) String() string {
 		sb.WriteString(" or ")
 	}
 	sb.WriteString(b.Right.String())
+	sb.WriteString(" )")
 	return sb.String()
 }
