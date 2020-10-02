@@ -4,19 +4,28 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
 )
 
+// Chunk is a {de,}serializable intermediate type for chunkDesc which allows
+// efficient loading/unloading to disk during WAL checkpoint recovery.
+type Chunk struct {
+	Data    []byte
+	From    time.Time
+	To      time.Time
+	Flushed time.Time
+	Closed  bool
+}
+
 // The passed wireChunks slice is for re-use.
-func toWireChunks(descs []*chunkDesc, wireChunks []logproto.Chunk) ([]logproto.Chunk, error) {
+func toWireChunks(descs []*chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 	if cap(wireChunks) < len(descs) {
-		wireChunks = make([]logproto.Chunk, len(descs))
+		wireChunks = make([]Chunk, len(descs))
 	} else {
 		wireChunks = wireChunks[:len(descs)]
 	}
 	for i, d := range descs {
 		from, to := d.chunk.Bounds()
-		wireChunk := logproto.Chunk{
+		wireChunk := Chunk{
 			From:    from,
 			To:      to,
 			Closed:  d.closed,
@@ -39,7 +48,7 @@ func toWireChunks(descs []*chunkDesc, wireChunks []logproto.Chunk) ([]logproto.C
 	return wireChunks, nil
 }
 
-func fromWireChunks(conf *Config, wireChunks []logproto.Chunk) ([]*chunkDesc, error) {
+func fromWireChunks(conf *Config, wireChunks []Chunk) ([]*chunkDesc, error) {
 	descs := make([]*chunkDesc, 0, len(wireChunks))
 	for _, c := range wireChunks {
 		desc := &chunkDesc{

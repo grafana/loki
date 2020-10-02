@@ -244,11 +244,8 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 					return err
 				}
 
-				from, to := c.chunk.Bounds()
 				chunks := make([]*logproto.Chunk, 1, 1)
 				chunks[0] = &logproto.Chunk{
-					From: from, // unused in the transfer, but included for correctness
-					To:   to,   // unused in the transfer, but included for correctness
 					Data: bb,
 				}
 
