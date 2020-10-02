@@ -42,6 +42,7 @@ var tokens = map[string]int{
 	OpRangeTypeMax:       MAX_OVER_TIME,
 	OpRangeTypeStdvar:    STDVAR_OVER_TIME,
 	OpRangeTypeStddev:    STDDEV_OVER_TIME,
+	OpRangeTypeQuantile:  QUANTILE_OVER_TIME,
 
 	// vec ops
 	OpTypeSum:     SUM,

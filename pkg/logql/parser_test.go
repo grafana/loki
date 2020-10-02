@@ -359,7 +359,7 @@ func TestParse(t *testing.T) {
 						},
 					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 		},
 		{
 			in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
@@ -378,7 +378,7 @@ func TestParse(t *testing.T) {
 						},
 					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeBytes),
+				}, OpRangeTypeBytes, nil, nil),
 		},
 		{
 			in: `sum(count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
@@ -397,7 +397,7 @@ func TestParse(t *testing.T) {
 						},
 					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 				"sum",
 				&grouping{
 					without: false,
@@ -422,7 +422,7 @@ func TestParse(t *testing.T) {
 						},
 					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeBytesRate),
+				}, OpRangeTypeBytesRate, nil, nil),
 				"sum",
 				&grouping{
 					without: false,
@@ -447,7 +447,7 @@ func TestParse(t *testing.T) {
 						},
 					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 				"topk",
 				&grouping{
 					without: true,
@@ -474,7 +474,7 @@ func TestParse(t *testing.T) {
 								},
 							),
 							interval: 5 * time.Minute,
-						}, OpRangeTypeRate),
+						}, OpRangeTypeRate, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -502,7 +502,7 @@ func TestParse(t *testing.T) {
 						},
 					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 		},
 		{
 			in: `sum(count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (foo)`,
@@ -521,7 +521,7 @@ func TestParse(t *testing.T) {
 						},
 					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 				"sum",
 				&grouping{
 					without: false,
@@ -546,7 +546,7 @@ func TestParse(t *testing.T) {
 						},
 					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 				"topk",
 				&grouping{
 					without: true,
@@ -573,7 +573,7 @@ func TestParse(t *testing.T) {
 								},
 							),
 							interval: 5 * time.Minute,
-						}, OpRangeTypeRate),
+						}, OpRangeTypeRate, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -647,7 +647,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -663,7 +663,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -680,7 +680,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpRangeTypeCount),
+					}, OpRangeTypeCount, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -710,7 +710,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -726,7 +726,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -743,7 +743,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpRangeTypeCount),
+					}, OpRangeTypeCount, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -771,7 +771,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpRangeTypeCount),
+					}, OpRangeTypeCount, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -790,7 +790,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -806,7 +806,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -836,7 +836,7 @@ func TestParse(t *testing.T) {
 									newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
 								}),
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 					newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -845,7 +845,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+						}, OpRangeTypeCount, nil, nil)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
 		},
 		{
 			in: `sum by (job) (
@@ -866,7 +866,7 @@ func TestParse(t *testing.T) {
 									newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
 								}),
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 					newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -875,7 +875,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+						}, OpRangeTypeCount, nil, nil)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
 				mustNewLiteralExpr("100", false),
 			),
 		},
@@ -894,7 +894,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -1136,6 +1136,7 @@ func TestParse(t *testing.T) {
 					5*time.Minute,
 					nil),
 				OpRangeTypeCount,
+				nil, nil,
 			),
 		},
 		{
@@ -1176,7 +1177,7 @@ func TestParse(t *testing.T) {
 				},
 					5*time.Minute,
 					newUnwrapExpr("foo")),
-				OpRangeTypeStdvar,
+				OpRangeTypeStdvar, nil, nil,
 			),
 		},
 		{
@@ -1197,7 +1198,7 @@ func TestParse(t *testing.T) {
 				},
 					5*time.Minute,
 					newUnwrapExpr("latency")),
-				OpRangeTypeSum,
+				OpRangeTypeSum, nil, nil,
 			),
 		},
 		{
@@ -1218,7 +1219,7 @@ func TestParse(t *testing.T) {
 				},
 					5*time.Minute,
 					newUnwrapExpr("latency")),
-				OpRangeTypeSum,
+				OpRangeTypeSum, nil, nil,
 			),
 		},
 		{
@@ -1232,7 +1233,7 @@ func TestParse(t *testing.T) {
 				},
 					5*time.Minute,
 					newUnwrapExpr("bar")),
-				OpRangeTypeStddev,
+				OpRangeTypeStddev, nil, nil,
 			),
 		},
 		{
@@ -1242,7 +1243,7 @@ func TestParse(t *testing.T) {
 					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					5*time.Minute,
 					newUnwrapExpr("bar")),
-				OpRangeTypeMin,
+				OpRangeTypeMin, nil, nil,
 			),
 		},
 		{
@@ -1272,7 +1273,222 @@ func TestParse(t *testing.T) {
 				},
 					5*time.Minute,
 					newUnwrapExpr("foo")),
-				OpRangeTypeMax,
+				OpRangeTypeMax, nil, nil,
+			),
+		},
+		{
+			in: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiPipelineExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							Filterer: labelfilter.NewOr(
+								labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								labelfilter.NewAnd(
+									labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+									labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]labelFmt{
+							newRenameLabelFmt("foo", "bar"),
+							newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo")),
+				OpRangeTypeQuantile, nil, newString("0.99998"),
+			),
+		},
+		{
+			in: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]) by (namespace,instance)`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiPipelineExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							Filterer: labelfilter.NewOr(
+								labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								labelfilter.NewAnd(
+									labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+									labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]labelFmt{
+							newRenameLabelFmt("foo", "bar"),
+							newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo")),
+				OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, newString("0.99998"),
+			),
+		},
+		{
+			in: `sum without (foo) (
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiPipelineExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								Filterer: labelfilter.NewOr(
+									labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									labelfilter.NewAnd(
+										labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+										labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]labelFmt{
+								newRenameLabelFmt("foo", "bar"),
+								newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo")),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, newString("0.99998"),
+				),
+				OpTypeSum,
+				&grouping{without: true, groups: []string{"foo"}},
+				nil,
+			),
+		},
+		{
+			in: `topk(10,
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiPipelineExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								Filterer: labelfilter.NewOr(
+									labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									labelfilter.NewAnd(
+										labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+										labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]labelFmt{
+								newRenameLabelFmt("foo", "bar"),
+								newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo")),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, newString("0.99998"),
+				),
+				OpTypeTopK,
+				nil,
+				newString("10"),
+			),
+		},
+		{
+			in: `
+			sum by (foo,bar) (
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)
+					+
+					avg(
+						avg_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+							| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+										) by (namespace,instance)
+							) by (foo,bar)
+					`,
+			exp: mustNewBinOpExpr(OpTypeAdd, BinOpOptions{ReturnBool: false},
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&pipelineExpr{
+							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							pipeline: MultiPipelineExpr{
+								newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&labelFilterExpr{
+									Filterer: labelfilter.NewOr(
+										labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										labelfilter.NewAnd(
+											labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+											labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]labelFmt{
+									newRenameLabelFmt("foo", "bar"),
+									newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo")),
+						OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, newString("0.99998"),
+					),
+					OpTypeSum,
+					&grouping{groups: []string{"foo", "bar"}},
+					nil,
+				),
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&pipelineExpr{
+							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							pipeline: MultiPipelineExpr{
+								newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&labelFilterExpr{
+									Filterer: labelfilter.NewOr(
+										labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										labelfilter.NewAnd(
+											labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+											labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]labelFmt{
+									newRenameLabelFmt("foo", "bar"),
+									newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo")),
+						OpRangeTypeAvg, &grouping{without: false, groups: []string{"namespace", "instance"}}, nil,
+					),
+					OpTypeAvg,
+					&grouping{groups: []string{"foo", "bar"}},
+					nil,
+				),
 			),
 		},
 		{
@@ -1446,6 +1662,22 @@ func TestParse(t *testing.T) {
 				line: 1,
 				col:  1,
 			},
+		},
+		{
+			in:  `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m]) by (foo)`,
+			err: ParseError{msg: "grouping not allowed for sum_over_time aggregation"},
+		},
+		{
+			in:  `sum_over_time(50,{namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
+			err: ParseError{msg: "parameter 50 not supported for operation sum_over_time"},
+		},
+		{
+			in:  `quantile_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
+			err: ParseError{msg: "parameter required for operation quantile_over_time"},
+		},
+		{
+			in:  `quantile_over_time(foo,{namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
+			err: ParseError{msg: "syntax error: unexpected IDENTIFIER, expecting NUMBER or { or (", line: 1, col: 20},
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

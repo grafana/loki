@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/prometheus/prometheus/promql"
@@ -47,6 +48,8 @@ func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 		return stddevOverTime, nil
 	case OpRangeTypeStdvar:
 		return stdvarOverTime, nil
+	case OpRangeTypeQuantile:
+		return quantileOverTime(*r.params), nil
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}
@@ -145,4 +148,44 @@ func stddevOverTime(samples []promql.Point) float64 {
 		aux += delta * (v.V - mean)
 	}
 	return math.Sqrt(aux / count)
+}
+
+func quantileOverTime(q float64) func(samples []promql.Point) float64 {
+	return func(samples []promql.Point) float64 {
+		values := make(vectorByValueHeap, 0, len(samples))
+		for _, v := range samples {
+			values = append(values, promql.Sample{Point: promql.Point{V: v.V}})
+		}
+		return quantile(q, values)
+	}
+}
+
+// quantile calculates the given quantile of a vector of samples.
+//
+// The Vector will be sorted.
+// If 'values' has zero elements, NaN is returned.
+// If q<0, -Inf is returned.
+// If q>1, +Inf is returned.
+func quantile(q float64, values vectorByValueHeap) float64 {
+	if len(values) == 0 {
+		return math.NaN()
+	}
+	if q < 0 {
+		return math.Inf(-1)
+	}
+	if q > 1 {
+		return math.Inf(+1)
+	}
+	sort.Sort(values)
+
+	n := float64(len(values))
+	// When the quantile lies between two samples,
+	// we use a weighted average of the two samples.
+	rank := q * (n - 1)
+
+	lowerIndex := math.Max(0, math.Floor(rank))
+	upperIndex := math.Min(n-1, lowerIndex+1)
+
+	weight := rank - math.Floor(rank)
+	return values[int(lowerIndex)].V*(1-weight) + values[int(upperIndex)].V*weight
 }

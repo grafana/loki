@@ -594,13 +594,35 @@ type SampleExpr interface {
 type rangeAggregationExpr struct {
 	left      *logRange
 	operation string
+
+	params   *float64
+	grouping *grouping
 	implicit
 }
 
-func newRangeAggregationExpr(left *logRange, operation string) SampleExpr {
+func newRangeAggregationExpr(left *logRange, operation string, gr *grouping, stringParams *string) SampleExpr {
+	var params *float64
+	if stringParams != nil {
+		if operation != OpRangeTypeQuantile {
+			panic(newParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0))
+		}
+		var err error
+		params = new(float64)
+		*params, err = strconv.ParseFloat(*stringParams, 64)
+		if err != nil {
+			panic(newParseError(fmt.Sprintf("invalid parameter for operation %s: %s", operation, err), 0, 0))
+		}
+
+	} else {
+		if operation == OpRangeTypeQuantile {
+			panic(newParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
+		}
+	}
 	e := &rangeAggregationExpr{
 		left:      left,
 		operation: operation,
+		grouping:  gr,
+		params:    params,
 	}
 	if err := e.validate(); err != nil {
 		panic(newParseError(err.Error(), 0, 0))
@@ -613,6 +635,13 @@ func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 }
 
 func (e rangeAggregationExpr) validate() error {
+	if e.grouping != nil {
+		switch e.operation {
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile:
+		default:
+			return fmt.Errorf("grouping not allowed for %s aggregation", e.operation)
+		}
+	}
 	if e.left.unwrap != nil {
 		switch e.operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile:
@@ -631,7 +660,19 @@ func (e rangeAggregationExpr) validate() error {
 
 // impls Stringer
 func (e *rangeAggregationExpr) String() string {
-	return formatOperation(e.operation, nil, e.left.String())
+	var sb strings.Builder
+	sb.WriteString(e.operation)
+	sb.WriteString("(")
+	if e.params != nil {
+		sb.WriteString(strconv.FormatFloat(*e.params, 'f', -1, 64))
+		sb.WriteString(",")
+	}
+	sb.WriteString(e.left.String())
+	sb.WriteString(")")
+	if e.grouping != nil {
+		sb.WriteString(e.grouping.String())
+	}
+	return sb.String()
 }
 
 // impl SampleExpr
