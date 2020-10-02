@@ -109,8 +109,13 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
+	q := &storage.Query{Prefix: prefix, Delimiter: delimiter}
+	err := q.SetAttrSelection([]string{"Name", "Updated"})
+	if err != nil {
+		return nil, nil, err
+	}
 
-	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: delimiter})
+	iter := s.bucket.Objects(ctx, q)
 	for {
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
