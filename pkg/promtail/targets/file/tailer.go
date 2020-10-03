@@ -100,7 +100,7 @@ func (t *tailer) run() {
 			if err != nil {
 				level.Error(t.logger).Log("msg", "position timer: error getting tail position and/or size, stopping tailer", "path", t.path, "error", err)
 				// To prevent a deadlock on stopping the tailer we need to launch a thread to consume any unread lines
-				defer go func() {
+				go func() {
 					for range t.tail.Lines {}
 				}()
 				t.tail.Stop()
