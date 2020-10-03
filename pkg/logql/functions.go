@@ -16,7 +16,7 @@ func (r rangeAggregationExpr) Extractor() (SampleExtractor, error) {
 		return nil, err
 	}
 	if r.left.unwrap != nil {
-		return newLabelSampleExtractor(r.left.unwrap.identifier), nil
+		return newLabelSampleExtractor(r.left.unwrap.identifier, r.grouping), nil
 	}
 	switch r.operation {
 	case OpRangeTypeRate, OpRangeTypeCount:

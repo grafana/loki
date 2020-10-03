@@ -31,8 +31,7 @@ func (bytesSampleExtractor) Extract(line []byte, lbs labels.Labels) (float64, la
 
 type labelSampleExtractor struct {
 	labelName string
-
-	builder *labels.Builder
+	gr        *grouping
 }
 
 func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, labels.Labels) {
@@ -46,14 +45,18 @@ func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, la
 		// todo(cyriltovena) handle errors.
 		return 0, lbs
 	}
-	l.builder.Reset(lbs)
-	l.builder.Del(l.labelName)
-	return f, l.builder.Labels()
+	if l.gr != nil {
+		if l.gr.without {
+			return f, lbs.WithoutLabels(append(l.gr.groups, l.labelName)...)
+		}
+		return f, lbs.WithLabels(l.gr.groups...)
+	}
+	return f, lbs.WithoutLabels(l.labelName)
 }
 
-func newLabelSampleExtractor(labelName string) *labelSampleExtractor {
+func newLabelSampleExtractor(labelName string, gr *grouping) *labelSampleExtractor {
 	return &labelSampleExtractor{
 		labelName: labelName,
-		builder:   labels.NewBuilder(nil),
+		gr:        gr,
 	}
 }
