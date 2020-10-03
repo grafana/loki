@@ -98,7 +98,15 @@ func (t *tailer) run() {
 		case <-positionWait.C:
 			err := t.markPositionAndSize()
 			if err != nil {
-				level.Error(t.logger).Log("msg", "error getting tail position and/or size, stopping tailer", "path", t.path, "error", err)
+				level.Error(t.logger).Log("msg", "position timer: error getting tail position and/or size, stopping tailer", "path", t.path, "error", err)
+				// To prevent a deadlock on stopping the tailer we need to launch a thread to consume any unread lines
+				defer go func() {
+					for range t.tail.Lines {}
+				}()
+				t.tail.Stop()
+				if err != nil {
+					level.Error(t.logger).Log("msg", "position timer: error stopping tailer", "path", t.path, "error", err)
+				}
 				return
 			}
 
@@ -132,7 +140,7 @@ func (t *tailer) markPositionAndSize() error {
 	if err != nil {
 		// If the file no longer exists, no need to save position information
 		if err == os.ErrNotExist {
-			level.Info(t.logger).Log("msg", "skipping update of position for a file which no longer exists")
+			level.Info(t.logger).Log("msg", "skipping update of position for a file which does not currently exist")
 			return nil
 		}
 		return err
