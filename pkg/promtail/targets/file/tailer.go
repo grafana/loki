@@ -128,6 +128,17 @@ func (t *tailer) markPositionAndSize() error {
 	t.posAndSizeMtx.Lock()
 	defer t.posAndSizeMtx.Unlock()
 
+	size, err := t.tail.Size()
+	if err != nil {
+		// If the file no longer exists, no need to save position information
+		if err == os.ErrNotExist {
+			level.Info(t.logger).Log("msg", "skipping update of position for a file which no longer exists")
+			return nil
+		}
+		return err
+	}
+	totalBytes.WithLabelValues(t.path).Set(float64(size))
+
 	pos, err := t.tail.Tell()
 	if err != nil {
 		return err
@@ -135,24 +146,17 @@ func (t *tailer) markPositionAndSize() error {
 	readBytes.WithLabelValues(t.path).Set(float64(pos))
 	t.positions.Put(t.path, pos)
 
-	size, err := t.tail.Size()
-	if err != nil {
-		return err
-	}
-	totalBytes.WithLabelValues(t.path).Set(float64(size))
-
 	return nil
 }
 
-func (t *tailer) stop(removed bool) {
+func (t *tailer) stop() {
 	// Save the current position before shutting down tailer
-	if !removed {
-		err := t.markPositionAndSize()
-		if err != nil {
-			level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
-		}
+	err := t.markPositionAndSize()
+	if err != nil {
+		level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
 	}
-	err := t.tail.Stop()
+
+	err = t.tail.Stop()
 	if err != nil {
 		level.Error(t.logger).Log("msg", "error stopping tailer", "path", t.path, "error", err)
 	}
