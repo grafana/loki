@@ -27,7 +27,6 @@ type tailer struct {
 	posAndSizeMtx sync.Mutex
 
 	running *atomic.Bool
-	quit    chan struct{}
 	done    chan struct{}
 }
 
@@ -69,7 +68,6 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.
 		path:      path,
 		tail:      tail,
 		running:   atomic.NewBool(false),
-		quit:      make(chan struct{}),
 		done:      make(chan struct{}),
 	}
 	tail.Logger = util.NewLogAdapter(logger)
@@ -88,11 +86,6 @@ func (t *tailer) run() {
 	// This function runs in a goroutine, if it exits this tailer will never do any more tailing.
 	// Clean everything up.
 	defer func() {
-		err := t.tail.Stop()
-		if err != nil {
-			level.Error(t.logger).Log("msg", "error stopping tailer when exiting tail goroutine", "path", t.path, "error", err)
-		}
-
 		positionWait.Stop()
 		t.cleanupMetrics()
 		t.running.Store(false)
@@ -111,6 +104,7 @@ func (t *tailer) run() {
 
 		case line, ok := <-t.tail.Lines:
 			if !ok {
+				level.Info(t.logger).Log("msg", "tail channel closed, stopping tailer", "path", t.path)
 				return
 			}
 
@@ -125,8 +119,6 @@ func (t *tailer) run() {
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "path", t.path, "error", err)
 			}
-		case <-t.quit:
-			return
 		}
 	}
 }
@@ -160,7 +152,10 @@ func (t *tailer) stop(removed bool) {
 			level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
 		}
 	}
-	close(t.quit)
+	err := t.tail.Stop()
+	if err != nil {
+		level.Error(t.logger).Log("msg", "error stopping tailer", "path", t.path, "error", err)
+	}
 	<-t.done
 	level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 	return
