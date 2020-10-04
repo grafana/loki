@@ -92,6 +92,7 @@ func (t *tailer) updatePosition() {
 	defer func() {
 		positionWait.Stop()
 		level.Info(t.logger).Log("msg", "position timer: exited", "path", t.path)
+		close(t.posdone)
 	}()
 
 	for {
