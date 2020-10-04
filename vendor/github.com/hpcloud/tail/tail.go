@@ -86,7 +86,8 @@ type Tail struct {
 
 	tomb.Tomb // provides: Done, Kill, Dying
 
-	lk sync.Mutex
+	fileMtx sync.Mutex
+	lk      sync.Mutex
 }
 
 var (
@@ -139,29 +140,38 @@ func TailFile(filename string, config Config) (*Tail, error) {
 // But this value is not very accurate.
 // it may readed one line in the chan(tail.Lines),
 // so it may lost one line.
-func (tail *Tail) Tell() (offset int64, err error) {
-	if tail.file == nil {
-		return
+func (tail *Tail) Tell() (int64, error) {
+	tail.fileMtx.Lock()
+	f := tail.file
+	tail.fileMtx.Unlock()
+	if f == nil {
+		return 0, os.ErrNotExist
 	}
-	offset, err = tail.file.Seek(0, io.SeekCurrent)
+	offset, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return
+		return 0, err
 	}
 
 	tail.lk.Lock()
 	defer tail.lk.Unlock()
 	if tail.reader == nil {
-		return
+		return 0, nil
 	}
 
 	offset -= int64(tail.reader.Buffered())
-	return
+	return offset, nil
 }
 
 // Size returns the length in bytes of the file being tailed,
 // or 0 with an error if there was an error Stat'ing the file.
 func (tail *Tail) Size() (int64, error) {
-	fi, err := tail.file.Stat()
+	tail.fileMtx.Lock()
+	f := tail.file
+	tail.fileMtx.Unlock()
+	if f == nil {
+		return 0, os.ErrNotExist
+	}
+	fi, err := f.Stat()
 	if err != nil {
 		return 0, err
 	}
@@ -189,6 +199,8 @@ func (tail *Tail) close() {
 }
 
 func (tail *Tail) closeFile() {
+	tail.fileMtx.Lock()
+	defer tail.fileMtx.Unlock()
 	if tail.file != nil {
 		tail.file.Close()
 		tail.file = nil
@@ -211,7 +223,9 @@ func (tail *Tail) reopen(truncated bool) error {
 	tail.closeFile()
 	for {
 		var err error
+		tail.fileMtx.Lock()
 		tail.file, err = OpenFile(tail.Filename)
+		tail.fileMtx.Unlock()
 		if err != nil {
 			if os.IsNotExist(err) {
 				tail.Logger.Printf("Waiting for %s to appear...", tail.Filename)
