@@ -201,7 +201,9 @@ func (tail *Tail) close() {
 func (tail *Tail) closeFile() {
 	if tail.file != nil {
 		tail.file.Close()
+		tail.fileMtx.Lock()
 		tail.file = nil
+		tail.fileMtx.Unlock()
 	}
 }
 
