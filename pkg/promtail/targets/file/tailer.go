@@ -25,11 +25,13 @@ type tailer struct {
 	tail *tail.Tail
 
 	posAndSizeMtx sync.Mutex
+	stopMtx       sync.Mutex
 
 	running *atomic.Bool
 	posquit chan struct{}
 	posdone chan struct{}
 	done    chan struct{}
+	stopped chan struct{}
 }
 
 func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
@@ -73,6 +75,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.
 		posquit:   make(chan struct{}),
 		posdone:   make(chan struct{}),
 		done:      make(chan struct{}),
+		stopped:   make(chan struct{}),
 	}
 	tail.Logger = util.NewLogAdapter(logger)
 
@@ -181,6 +184,25 @@ func (t *tailer) markPositionAndSize() error {
 }
 
 func (t *tailer) stop() {
+	t.stopMtx.Lock()
+	defer t.stopMtx.Unlock()
+
+	// Use some behaviors of go channels to prevent multiple executions of stop.
+	// This is necessary because there are two separate threads which can call this method from filetarget
+	select {
+	case <-t.stopped:
+		// From the spec: A receive operation on a closed channel can always proceed immediately,
+		// yielding the element type's zero value after any previously sent values have been received.
+		return
+	default:
+		// Also from the spec: If one or more of the communications can proceed,
+		// a single one that can proceed is chosen via a uniform pseudo-random selection.
+		// Otherwise, if there is a default case, that case is chosen.
+		// We have no sender on t.stopped so that case can only proceed when the channel is closed.
+		// If we hit the default case it's because nobody has closed the channel and therefore nobody has called stop.
+		break
+	}
+
 	// Shut down the position marker thread
 	close(t.posquit)
 	<-t.posdone
@@ -199,6 +221,7 @@ func (t *tailer) stop() {
 	// Wait for readLines() to consume all the remaining messages and exit when the channel is closed
 	<-t.done
 	level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
+	close(t.stopped)
 	return
 }
 
