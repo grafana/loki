@@ -105,7 +105,7 @@ It's also worth noting that the batching nature of the Loki push API can lead to
 
 ## 7. Use `chunk_target_size`
 
-This was added earlier this year when we released [Loki v1.3.0](https://grafana.com/blog/2020/01/22/loki-1.3.0-released/), and we've been experimenting with it for several months. We have `chunk_target_size: 1536000` in all our environments now. This instructs Loki to try to fill all chunks to a target _compressed_ size of 1.5MB. These larger chunks are more efficient for Loki to process.
+This was added earlier in the [Loki v1.3.0](https://grafana.com/blog/2020/01/22/loki-1.3.0-released/) release, and we've been experimenting with it for several months. We have `chunk_target_size: 1536000` in all our environments now. This instructs Loki to try to fill all chunks to a target _compressed_ size of 1.5MB. These larger chunks are more efficient for Loki to process.
 
 A couple other config variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 1h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
 
