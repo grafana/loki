@@ -5,15 +5,15 @@ title: Governance
 
 This document describes the rules and governance of the project. It is meant to be followed by all the developers of the project and the Loki community. Common terminology used in this governance document are listed below:
 
-* **Team members**: Any members of the private [team mailing list][team].
+- **Team members**: Any members of the private [team mailing list][team].
 
-* **Maintainers**: Maintainers lead an individual project or parts thereof ([`MAINTAINERS.md`][maintainers]).
+- **Maintainers**: Maintainers lead an individual project or parts thereof ([`MAINTAINERS.md`][maintainers]).
 
-* **Projects**: A single repository in the Grafana GitHub organization and listed below is referred to as a project:
-  * loki
-  * puppet-promtail
+- **Projects**: A single repository in the Grafana GitHub organization and listed below is referred to as a project:
+  - loki
+  - puppet-promtail
 
-* **The Loki project**: The sum of all activities performed under this governance, concerning one or more repositories or the community.
+- **The Loki project**: The sum of all activities performed under this governance, concerning one or more repositories or the community.
 
 ## Values
 
@@ -137,21 +137,21 @@ If there are multiple alternatives, members may vote for one or more alternative
 
 The new member is
 
-* added to the list of [team members](#team-members). Ideally by sending a PR of their own, at least approving said PR.
-* announced on the [developers mailing list][devs] by an existing team member. Ideally, the new member replies in this thread, acknowledging team membership.
-* added to the projects with commit rights.
-* added to the [team mailing list][team].
+- added to the list of [team members](#team-members). Ideally by sending a PR of their own, at least approving said PR.
+- announced on the [developers mailing list][devs] by an existing team member. Ideally, the new member replies in this thread, acknowledging team membership.
+- added to the projects with commit rights.
+- added to the [team mailing list][team].
 
 
 ### Offboarding
 
 The ex-member is
 
-* removed from the list of [team members](#team-members). Ideally by sending a PR of their own, at least approving said PR. In case of forced removal, no approval is needed.
-* removed from the projects. Optionally, they can retain maintainership of one or more repositories if the [team](#team-members) agrees.
-* removed from the team mailing list and demoted to a normal member of the other mailing lists.
-* not allowed to call themselves an active team member any more, nor allowed to imply this to be the case.
-* added to a list of previous members if they so choose.
+- removed from the list of [team members](#team-members). Ideally by sending a PR of their own, at least approving said PR. In case of forced removal, no approval is needed.
+- removed from the projects. Optionally, they can retain maintainership of one or more repositories if the [team](#team-members) agrees.
+- removed from the team mailing list and demoted to a normal member of the other mailing lists.
+- not allowed to call themselves an active team member any more, nor allowed to imply this to be the case.
+- added to a list of previous members if they so choose.
 
 If needed, we reserve the right to publicly announce removal.
 
