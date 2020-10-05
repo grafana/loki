@@ -56,9 +56,8 @@ type Query struct {
 	LocalConfig     string
 }
 
-// DoQuery executes the query and prints out the results
+// DoQuery executes the query and prints out the results.
 func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) {
-
 	if q.LocalConfig != "" {
 		if err := q.DoLocalQuery(out, statistics, c.GetOrgID()); err != nil {
 			log.Fatalf("Query failed: %+v", err)
@@ -80,76 +79,76 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			q.printStats(resp.Data.Statistics)
 		}
 		_, _ = q.printResult(resp.Data.Result, out, nil)
-	} else {
-		if q.Limit < q.BatchSize {
-			q.BatchSize = q.Limit
-		}
-		resultLength := q.BatchSize
-		total := 0
-		start := q.Start
-		end := q.End
-		var lastEntry []*loghttp.Entry
-		for total < q.Limit {
-			bs := q.BatchSize
-			// We want to truncate the batch size if the remaining number
-			// of items needed to reach the limit is less than the batch size
-			if q.Limit-total < q.BatchSize {
-				// Truncated batchsize is q.Limit - total, however we add to this
-				// the length of the overlap from the last query to make sure we get the
-				// correct amount of new logs knowing there will be some overlapping logs returned.
-				bs = q.Limit - total + len(lastEntry)
-			}
-			resp, err = c.QueryRange(q.QueryString, bs, start, end, d, q.Step, q.Interval, q.Quiet)
-			if err != nil {
-				log.Fatalf("Query failed: %+v", err)
-			}
-
-			if statistics {
-				q.printStats(resp.Data.Statistics)
-			}
-
-			resultLength, lastEntry = q.printResult(resp.Data.Result, out, lastEntry)
-			// Was not a log stream query, or no results, no more batching
-			if resultLength <= 0 {
-				break
-			}
-			// Also no result, wouldn't expect to hit this.
-			if lastEntry == nil || len(lastEntry) == 0 {
-				break
-			}
-			// Can only happen if all the results return in one request
-			if resultLength == q.Limit {
-				break
-			}
-			if len(lastEntry) >= q.BatchSize {
-				log.Fatalf("Invalid batch size %v, the next query will have %v overlapping entries "+
-					"(there will always be 1 overlapping entry but Loki allows multiple entries to have "+
-					"the same timestamp, so when a batch ends in this scenario the next query will include "+
-					"all the overlapping entries again).  Please increase your batch size to at least %v to account "+
-					"for overlapping entryes\n", q.BatchSize, len(lastEntry), len(lastEntry)+1)
-			}
-
-			// Batching works by taking the timestamp of the last query and using it in the next query,
-			// because Loki supports multiple entries with the same timestamp it's possible for a batch to have
-			// fallen in the middle of a list of entries for the same time, so to make sure we get all entries
-			// we start the query on the same time as the last entry from the last batch, and then we keep this last
-			// entry and remove the duplicate when printing the results.
-			// Because of this duplicate entry, we have to subtract it here from the total for each batch
-			// to get the desired limit.
-			total += resultLength
-			// Based on the query direction we either set the start or end for the next query.
-			// If there are multiple entries in `lastEntry` they have to have the same timestamp so we can pick just the first
-			if q.Forward {
-				start = lastEntry[0].Timestamp
-			} else {
-				// The end timestamp is exclusive on a backward query, so to make sure we get back an overlapping result
-				// fudge the timestamp forward in time to make sure to get the last entry from this batch in the next query
-				end = lastEntry[0].Timestamp.Add(1 * time.Nanosecond)
-			}
-
-		}
+		return
 	}
 
+	if q.Limit < q.BatchSize {
+		q.BatchSize = q.Limit
+	}
+	resultLength := q.BatchSize
+	total := 0
+	start := q.Start
+	end := q.End
+	var lastEntry []*loghttp.Entry
+	for total < q.Limit {
+		bs := q.BatchSize
+		// We want to truncate the batch size if the remaining number
+		// of items needed to reach the limit is less than the batch size
+		if q.Limit-total < q.BatchSize {
+			// Truncated batchsize is q.Limit - total, however we add to this
+			// the length of the overlap from the last query to make sure we get the
+			// correct amount of new logs knowing there will be some overlapping logs returned.
+			bs = q.Limit - total + len(lastEntry)
+		}
+		resp, err = c.QueryRange(q.QueryString, bs, start, end, d, q.Step, q.Interval, q.Quiet)
+		if err != nil {
+			log.Fatalf("Query failed: %+v", err)
+		}
+
+		if statistics {
+			q.printStats(resp.Data.Statistics)
+		}
+
+		resultLength, lastEntry = q.printResult(resp.Data.Result, out, lastEntry)
+		// Was not a log stream query, or no results, no more batching
+		if resultLength <= 0 {
+			break
+		}
+		// Also no result, wouldn't expect to hit this.
+		if len(lastEntry) == 0 {
+			break
+		}
+		// Can only happen if all the results return in one request
+		if resultLength == q.Limit {
+			break
+		}
+		if len(lastEntry) >= q.BatchSize {
+			log.Fatalf("Invalid batch size %v, the next query will have %v overlapping entries "+
+				"(there will always be 1 overlapping entry but Loki allows multiple entries to have "+
+				"the same timestamp, so when a batch ends in this scenario the next query will include "+
+				"all the overlapping entries again).  Please increase your batch size to at least %v to account "+
+				"for overlapping entryes\n", q.BatchSize, len(lastEntry), len(lastEntry)+1)
+		}
+
+		// Batching works by taking the timestamp of the last query and using it in the next query,
+		// because Loki supports multiple entries with the same timestamp it's possible for a batch to have
+		// fallen in the middle of a list of entries for the same time, so to make sure we get all entries
+		// we start the query on the same time as the last entry from the last batch, and then we keep this last
+		// entry and remove the duplicate when printing the results.
+		// Because of this duplicate entry, we have to subtract it here from the total for each batch
+		// to get the desired limit.
+		total += resultLength
+		// Based on the query direction we either set the start or end for the next query.
+		// If there are multiple entries in `lastEntry` they have to have the same timestamp so we can pick just the first
+		if q.Forward {
+			start = lastEntry[0].Timestamp
+			continue
+		}
+
+		// The end timestamp is exclusive on a backward query, so to make sure we get back an overlapping result
+		// fudge the timestamp forward in time to make sure to get the last entry from this batch in the next query
+		end = lastEntry[0].Timestamp.Add(1 * time.Nanosecond)
+	}
 }
 
 func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
