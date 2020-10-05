@@ -408,7 +408,7 @@ func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, throug
 	return result.Strings(), nil
 }
 
-// Put implements ChunkStore
+// Put implements Store
 func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
 		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
@@ -418,7 +418,7 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 	return nil
 }
 
-// PutOne implements ChunkStore
+// PutOne implements Store
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.PutOne")
 	defer log.Finish()
