@@ -379,7 +379,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 		boltDBIndexClient.Stop()
 	}()
 
-	// shardCutoff is calulated based on when shards are considered to not be active anymore and are safe to be uploaded.
+	// shardCutoff is calculated based on when shards are considered to not be active anymore and are safe to be uploaded.
 	shardCutoff := getOldestActiveShardTime()
 
 	// some dbs to setup
