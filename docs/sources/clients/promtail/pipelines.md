@@ -199,24 +199,24 @@ given log entry.
 
 Parsing stages:
 
-  * [docker](../stages/docker/): Extract data by parsing the log line using the standard Docker format.
-  * [cri](../stages/cri/): Extract data by parsing the log line using the standard CRI format.
-  * [regex](../stages/regex/): Extract data using a regular expression.
-  * [json](../stages/json/): Extract data by parsing the log line as JSON.
+  - [docker](../stages/docker/): Extract data by parsing the log line using the standard Docker format.
+  - [cri](../stages/cri/): Extract data by parsing the log line using the standard CRI format.
+  - [regex](../stages/regex/): Extract data using a regular expression.
+  - [json](../stages/json/): Extract data by parsing the log line as JSON.
 
 Transform stages:
 
-  * [template](../stages/template/): Use Go templates to modify extracted data.
+  - [template](../stages/template/): Use Go templates to modify extracted data.
 
 Action stages:
 
-  * [timestamp](../stages/timestamp/): Set the timestamp value for the log entry.
-  * [output](../stages/output/): Set the log line text.
-  * [labels](../stages/labels/): Update the label set for the log entry.
-  * [metrics](../stages/metrics/): Calculate metrics based on extracted data.
-  * [tenant](../stages/tenant/): Set the tenant ID value to use for the log entry.
+  - [timestamp](../stages/timestamp/): Set the timestamp value for the log entry.
+  - [output](../stages/output/): Set the log line text.
+  - [labels](../stages/labels/): Update the label set for the log entry.
+  - [metrics](../stages/metrics/): Calculate metrics based on extracted data.
+  - [tenant](../stages/tenant/): Set the tenant ID value to use for the log entry.
 
 Filtering stages:
 
-  * [match](../stages/match/): Conditionally run stages based on the label set.
-  * [drop](../stages/drop/): Conditionally drop log lines based on several options.
+  - [match](../stages/match/): Conditionally run stages based on the label set.
+  - [drop](../stages/drop/): Conditionally drop log lines based on several options.

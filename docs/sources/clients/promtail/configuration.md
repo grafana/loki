@@ -82,16 +82,16 @@ from scraped targets, see [Pipelines](../pipelines/).
 
 Generic placeholders are defined as follows:
 
-* `<boolean>`: a boolean that can take the values `true` or `false`
-* `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
-* `<duration>`: a duration matching the regular expression `[0-9]+(ms|[smhdwy])`
-* `<labelname>`: a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
-* `<labelvalue>`: a string of Unicode characters
-* `<filename>`: a valid path relative to current working directory or an
+- `<boolean>`: a boolean that can take the values `true` or `false`
+- `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
+- `<duration>`: a duration matching the regular expression `[0-9]+(ms|[smhdwy])`
+- `<labelname>`: a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
+- `<labelvalue>`: a string of Unicode characters
+- `<filename>`: a valid path relative to current working directory or an
     absolute path.
-* `<host>`: a valid string consisting of a hostname or IP followed by an optional port number
-* `<string>`: a regular string
-* `<secret>`: a regular string that is a secret, such as a password
+- `<host>`: a valid string consisting of a hostname or IP followed by an optional port number
+- `<string>`: a regular string
+- `<secret>`: a regular string that is a secret, such as a password
 
 Supported contents and default values of `config.yaml`:
 
@@ -752,15 +752,15 @@ labels:
 
 #### Available Labels
 
-* `__syslog_connection_ip_address`: The remote IP address.
-* `__syslog_connection_hostname`: The remote hostname.
-* `__syslog_message_severity`: The [syslog severity](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L184).
-* `__syslog_message_facility`: The [syslog facility](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L235) and `syslog(3)`.
-* `__syslog_message_hostname`: The [hostname](https://tools.ietf.org/html/rfc5424#section-6.2.4) parsed from the message.
-* `__syslog_message_app_name`: The [app-name field](https://tools.ietf.org/html/rfc5424#section-6.2.5) parsed from the message.
-* `__syslog_message_proc_id`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
-* `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
-* `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
+- `__syslog_connection_ip_address`: The remote IP address.
+- `__syslog_connection_hostname`: The remote hostname.
+- `__syslog_message_severity`: The [syslog severity](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L184).
+- `__syslog_message_facility`: The [syslog facility](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L235) and `syslog(3)`.
+- `__syslog_message_hostname`: The [hostname](https://tools.ietf.org/html/rfc5424#section-6.2.4) parsed from the message.
+- `__syslog_message_app_name`: The [app-name field](https://tools.ietf.org/html/rfc5424#section-6.2.5) parsed from the message.
+- `__syslog_message_proc_id`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
+- `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
+- `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
 
 ### loki_push_api_config
 
@@ -846,19 +846,19 @@ use `.*<regex>.*`.
 
 `<relabel_action>` determines the relabeling action to take:
 
-* `replace`: Match `regex` against the concatenated `source_labels`. Then, set
+- `replace`: Match `regex` against the concatenated `source_labels`. Then, set
   `target_label` to `replacement`, with match group references
   (`${1}`, `${2}`, ...) in `replacement` substituted by their value. If `regex`
   does not match, no replacement takes place.
-* `keep`: Drop targets for which `regex` does not match the concatenated `source_labels`.
-* `drop`: Drop targets for which `regex` matches the concatenated `source_labels`.
-* `hashmod`: Set `target_label` to the `modulus` of a hash of the concatenated `source_labels`.
-* `labelmap`: Match `regex` against all label names. Then copy the values of the matching labels
+- `keep`: Drop targets for which `regex` does not match the concatenated `source_labels`.
+- `drop`: Drop targets for which `regex` matches the concatenated `source_labels`.
+- `hashmod`: Set `target_label` to the `modulus` of a hash of the concatenated `source_labels`.
+- `labelmap`: Match `regex` against all label names. Then copy the values of the matching labels
    to label names given by `replacement` with match group references
   (`${1}`, `${2}`, ...) in `replacement` substituted by their value.
-* `labeldrop`: Match `regex` against all label names. Any label that matches will be
+- `labeldrop`: Match `regex` against all label names. Any label that matches will be
   removed from the set of labels.
-* `labelkeep`: Match `regex` against all label names. Any label that does not match will be
+- `labelkeep`: Match `regex` against all label names. Any label that does not match will be
   removed from the set of labels.
 
 Care must be taken with `labeldrop` and `labelkeep` to ensure that logs are
@@ -954,12 +954,12 @@ node object in the address type order of `NodeInternalIP`, `NodeExternalIP`,
 
 Available meta labels:
 
-* `__meta_kubernetes_node_name`: The name of the node object.
-* `__meta_kubernetes_node_label_<labelname>`: Each label from the node object.
-* `__meta_kubernetes_node_labelpresent_<labelname>`: `true` for each label from the node object.
-* `__meta_kubernetes_node_annotation_<annotationname>`: Each annotation from the node object.
-* `__meta_kubernetes_node_annotationpresent_<annotationname>`: `true` for each annotation from the node object.
-* `__meta_kubernetes_node_address_<address_type>`: The first address for each node address type, if it exists.
+- `__meta_kubernetes_node_name`: The name of the node object.
+- `__meta_kubernetes_node_label_<labelname>`: Each label from the node object.
+- `__meta_kubernetes_node_labelpresent_<labelname>`: `true` for each label from the node object.
+- `__meta_kubernetes_node_annotation_<annotationname>`: Each annotation from the node object.
+- `__meta_kubernetes_node_annotationpresent_<annotationname>`: `true` for each annotation from the node object.
+- `__meta_kubernetes_node_address_<address_type>`: The first address for each node address type, if it exists.
 
 In addition, the `instance` label for the node will be set to the node name
 as retrieved from the API server.
@@ -973,16 +973,16 @@ service port.
 
 Available meta labels:
 
-* `__meta_kubernetes_namespace`: The namespace of the service object.
-* `__meta_kubernetes_service_annotation_<annotationname>`: Each annotation from the service object.
-* `__meta_kubernetes_service_annotationpresent_<annotationname>`: "true" for each annotation of the service object.
-* `__meta_kubernetes_service_cluster_ip`: The cluster IP address of the service. (Does not apply to services of type ExternalName)
-* `__meta_kubernetes_service_external_name`: The DNS name of the service. (Applies to services of type ExternalName)
-* `__meta_kubernetes_service_label_<labelname>`: Each label from the service object.
-* `__meta_kubernetes_service_labelpresent_<labelname>`: `true` for each label of the service object.
-* `__meta_kubernetes_service_name`: The name of the service object.
-* `__meta_kubernetes_service_port_name`: Name of the service port for the target.
-* `__meta_kubernetes_service_port_protocol`: Protocol of the service port for the target.
+- `__meta_kubernetes_namespace`: The namespace of the service object.
+- `__meta_kubernetes_service_annotation_<annotationname>`: Each annotation from the service object.
+- `__meta_kubernetes_service_annotationpresent_<annotationname>`: "true" for each annotation of the service object.
+- `__meta_kubernetes_service_cluster_ip`: The cluster IP address of the service. (Does not apply to services of type ExternalName)
+- `__meta_kubernetes_service_external_name`: The DNS name of the service. (Applies to services of type ExternalName)
+- `__meta_kubernetes_service_label_<labelname>`: Each label from the service object.
+- `__meta_kubernetes_service_labelpresent_<labelname>`: `true` for each label of the service object.
+- `__meta_kubernetes_service_name`: The name of the service object.
+- `__meta_kubernetes_service_port_name`: Name of the service port for the target.
+- `__meta_kubernetes_service_port_protocol`: Protocol of the service port for the target.
 
 #### `pod`
 
@@ -993,26 +993,26 @@ adding a port via relabeling.
 
 Available meta labels:
 
-* `__meta_kubernetes_namespace`: The namespace of the pod object.
-* `__meta_kubernetes_pod_name`: The name of the pod object.
-* `__meta_kubernetes_pod_ip`: The pod IP of the pod object.
-* `__meta_kubernetes_pod_label_<labelname>`: Each label from the pod object.
-* `__meta_kubernetes_pod_labelpresent_<labelname>`: `true`for each label from the pod object.
-* `__meta_kubernetes_pod_annotation_<annotationname>`: Each annotation from the pod object.
-* `__meta_kubernetes_pod_annotationpresent_<annotationname>`: `true` for each annotation from the pod object.
-* `__meta_kubernetes_pod_container_init`: `true` if the container is an [InitContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/)
-* `__meta_kubernetes_pod_container_name`: Name of the container the target address points to.
-* `__meta_kubernetes_pod_container_port_name`: Name of the container port.
-* `__meta_kubernetes_pod_container_port_number`: Number of the container port.
-* `__meta_kubernetes_pod_container_port_protocol`: Protocol of the container port.
-* `__meta_kubernetes_pod_ready`: Set to `true` or `false` for the pod's ready state.
-* `__meta_kubernetes_pod_phase`: Set to `Pending`, `Running`, `Succeeded`, `Failed` or `Unknown`
+- `__meta_kubernetes_namespace`: The namespace of the pod object.
+- `__meta_kubernetes_pod_name`: The name of the pod object.
+- `__meta_kubernetes_pod_ip`: The pod IP of the pod object.
+- `__meta_kubernetes_pod_label_<labelname>`: Each label from the pod object.
+- `__meta_kubernetes_pod_labelpresent_<labelname>`: `true`for each label from the pod object.
+- `__meta_kubernetes_pod_annotation_<annotationname>`: Each annotation from the pod object.
+- `__meta_kubernetes_pod_annotationpresent_<annotationname>`: `true` for each annotation from the pod object.
+- `__meta_kubernetes_pod_container_init`: `true` if the container is an [InitContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/)
+- `__meta_kubernetes_pod_container_name`: Name of the container the target address points to.
+- `__meta_kubernetes_pod_container_port_name`: Name of the container port.
+- `__meta_kubernetes_pod_container_port_number`: Number of the container port.
+- `__meta_kubernetes_pod_container_port_protocol`: Protocol of the container port.
+- `__meta_kubernetes_pod_ready`: Set to `true` or `false` for the pod's ready state.
+- `__meta_kubernetes_pod_phase`: Set to `Pending`, `Running`, `Succeeded`, `Failed` or `Unknown`
   in the [lifecycle](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase).
-* `__meta_kubernetes_pod_node_name`: The name of the node the pod is scheduled onto.
-* `__meta_kubernetes_pod_host_ip`: The current host IP of the pod object.
-* `__meta_kubernetes_pod_uid`: The UID of the pod object.
-* `__meta_kubernetes_pod_controller_kind`: Object kind of the pod controller.
-* `__meta_kubernetes_pod_controller_name`: Name of the pod controller.
+- `__meta_kubernetes_pod_node_name`: The name of the node the pod is scheduled onto.
+- `__meta_kubernetes_pod_host_ip`: The current host IP of the pod object.
+- `__meta_kubernetes_pod_uid`: The UID of the pod object.
+- `__meta_kubernetes_pod_controller_kind`: Object kind of the pod controller.
+- `__meta_kubernetes_pod_controller_name`: Name of the pod controller.
 
 #### `endpoints`
 
@@ -1023,19 +1023,19 @@ endpoint port, are discovered as targets as well.
 
 Available meta labels:
 
-* `__meta_kubernetes_namespace`: The namespace of the endpoints object.
-* `__meta_kubernetes_endpoints_name`: The names of the endpoints object.
-* For all targets discovered directly from the endpoints list (those not additionally inferred
+- `__meta_kubernetes_namespace`: The namespace of the endpoints object.
+- `__meta_kubernetes_endpoints_name`: The names of the endpoints object.
+- For all targets discovered directly from the endpoints list (those not additionally inferred
   from underlying pods), the following labels are attached:
-  * `__meta_kubernetes_endpoint_hostname`: Hostname of the endpoint.
-  * `__meta_kubernetes_endpoint_node_name`: Name of the node hosting the endpoint.
-  * `__meta_kubernetes_endpoint_ready`: Set to `true` or `false` for the endpoint's ready state.
-  * `__meta_kubernetes_endpoint_port_name`: Name of the endpoint port.
-  * `__meta_kubernetes_endpoint_port_protocol`: Protocol of the endpoint port.
-  * `__meta_kubernetes_endpoint_address_target_kind`: Kind of the endpoint address target.
-  * `__meta_kubernetes_endpoint_address_target_name`: Name of the endpoint address target.
-* If the endpoints belong to a service, all labels of the `role: service` discovery are attached.
-* For all targets backed by a pod, all labels of the `role: pod` discovery are attached.
+  - `__meta_kubernetes_endpoint_hostname`: Hostname of the endpoint.
+  - `__meta_kubernetes_endpoint_node_name`: Name of the node hosting the endpoint.
+  - `__meta_kubernetes_endpoint_ready`: Set to `true` or `false` for the endpoint's ready state.
+  - `__meta_kubernetes_endpoint_port_name`: Name of the endpoint port.
+  - `__meta_kubernetes_endpoint_port_protocol`: Protocol of the endpoint port.
+  - `__meta_kubernetes_endpoint_address_target_kind`: Kind of the endpoint address target.
+  - `__meta_kubernetes_endpoint_address_target_name`: Name of the endpoint address target.
+- If the endpoints belong to a service, all labels of the `role: service` discovery are attached.
+- For all targets backed by a pod, all labels of the `role: pod` discovery are attached.
 
 #### `ingress`
 
@@ -1045,15 +1045,15 @@ The address will be set to the host specified in the ingress spec.
 
 Available meta labels:
 
-* `__meta_kubernetes_namespace`: The namespace of the ingress object.
-* `__meta_kubernetes_ingress_name`: The name of the ingress object.
-* `__meta_kubernetes_ingress_label_<labelname>`: Each label from the ingress object.
-* `__meta_kubernetes_ingress_labelpresent_<labelname>`: `true` for each label from the ingress object.
-* `__meta_kubernetes_ingress_annotation_<annotationname>`: Each annotation from the ingress object.
-* `__meta_kubernetes_ingress_annotationpresent_<annotationname>`: `true` for each annotation from the ingress object.
-* `__meta_kubernetes_ingress_scheme`: Protocol scheme of ingress, `https` if TLS
+- `__meta_kubernetes_namespace`: The namespace of the ingress object.
+- `__meta_kubernetes_ingress_name`: The name of the ingress object.
+- `__meta_kubernetes_ingress_label_<labelname>`: Each label from the ingress object.
+- `__meta_kubernetes_ingress_labelpresent_<labelname>`: `true` for each label from the ingress object.
+- `__meta_kubernetes_ingress_annotation_<annotationname>`: Each annotation from the ingress object.
+- `__meta_kubernetes_ingress_annotationpresent_<annotationname>`: `true` for each annotation from the ingress object.
+- `__meta_kubernetes_ingress_scheme`: Protocol scheme of ingress, `https` if TLS
   config is set. Defaults to `http`.
-* `__meta_kubernetes_ingress_path`: Path from ingress spec. Defaults to `/`.
+- `__meta_kubernetes_ingress_path`: Path from ingress spec. Defaults to `/`.
 
 See below for the configuration options for Kubernetes discovery:
 

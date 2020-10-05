@@ -333,13 +333,13 @@ kvstore:
   store: <string>
 ```
 
-* Running without using a shared ring (inmemory): No action required
-* Running with a shared ring and upgrading from v1.3.0 -> v1.4.0: No action required
-* Running with a shared ring and upgrading from any version less than v1.3.0 (e.g. v1.2.0) -> v1.4.0: **ACTION REQUIRED**
+- Running without using a shared ring (inmemory): No action required
+- Running with a shared ring and upgrading from v1.3.0 -> v1.4.0: No action required
+- Running with a shared ring and upgrading from any version less than v1.3.0 (e.g. v1.2.0) -> v1.4.0: **ACTION REQUIRED**
 
 There are two options for upgrade if you are not on version 1.3.0 and are using a shared ring:
 
-* Upgrade first to v1.3.0 **BEFORE** upgrading to v1.4.0
+- Upgrade first to v1.3.0 **BEFORE** upgrading to v1.4.0
 
 OR
 

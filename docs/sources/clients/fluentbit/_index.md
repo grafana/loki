@@ -146,8 +146,8 @@ If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log li
 
 Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. Loki output plugin in certain situation can be blocked by loki client because of its design:
 
-* BatchSize is over limit, output plugin pause receiving new records until the pending batch is successfully sent to the server
-* Loki server is unreachable (retry 429s, 500s and connection-level errors), output plugin blocks new records until loki server will be available again and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
+- BatchSize is over limit, output plugin pause receiving new records until the pending batch is successfully sent to the server
+- Loki server is unreachable (retry 429s, 500s and connection-level errors), output plugin blocks new records until loki server will be available again and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
 
 The blocking state with some of the input plugins is not acceptable because it can have a undesirable side effects on the part that generates the logs. Fluent Bit implements buffering mechanism that is based on parallel processing and it cannot send logs in order which is loki requirement (loki logs must be in increasing time order per stream).
 

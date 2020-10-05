@@ -19,18 +19,18 @@ Loki as a grep replacement, log tailing or log scrolling tool is highly desirabl
 
 As defined for prometheus “Use labels to differentiate the characteristics of the thing that is being measured” There are common cases where someone would want to search for all logs which had a level of “Error” or for a certain HTTP path (possibly too high cardinality), or of a certain order or event type.
 Examples:
-* Log levels.
-* HTTP Status codes.
-* Event type.
+- Log levels.
+- HTTP Status codes.
+- Event type.
 
 ## Challenges
 
-* Logs are often unstructured data, it can be very difficult to extract reliable data from some unstructured formats, often requiring the use of complicated regular expressions.
-* Easy to abuse.  Easy to create a Label with high cardinality, even possibly by accident with a rogue regular expression.
-* Where do we extract metrics and labels at the client (Promtail or other?) or Loki? Extraction at the server (Loki) side has some pros/cons.  Can we do both? At least with labels we could define a set of expected labels and if loki doesn’t receive them they could be extracted.
-  * Server side extraction would improve interoperability at the expense of increase server workload and cost.
-  * Are there discoverability questions/concerns with metrics exposed via loki vs the agent? Maybe this is better/easier to manage?
-  * Potentially more difficult to manage configuration with the server side having to match configs to incoming log streams
+- Logs are often unstructured data, it can be very difficult to extract reliable data from some unstructured formats, often requiring the use of complicated regular expressions.
+- Easy to abuse.  Easy to create a Label with high cardinality, even possibly by accident with a rogue regular expression.
+- Where do we extract metrics and labels at the client (Promtail or other?) or Loki? Extraction at the server (Loki) side has some pros/cons.  Can we do both? At least with labels we could define a set of expected labels and if loki doesn’t receive them they could be extracted.
+  - Server side extraction would improve interoperability at the expense of increase server workload and cost.
+  - Are there discoverability questions/concerns with metrics exposed via loki vs the agent? Maybe this is better/easier to manage?
+  - Potentially more difficult to manage configuration with the server side having to match configs to incoming log streams
 
 ## Existing Solutions
 
@@ -178,15 +178,15 @@ You can define a more complicated regular expression with multiple capture group
 Please also note the regex for `message` is incomplete and would do a terrible job of matching any standard log message which might contain spaces or non alpha characters.
 
 ### Concerns
-* Debugging, especially if a pipeline stage is mutating the log entry.
-* Clashing labels and how to handle this (two stages try to set the same label)
-* Performance vs ease of writing/use, if every label is extracted one at a time and there are a lot of labels and a long line, it would force reading the line many times, however contrast this to a really long complicated regex which only has to read the line once but is difficult to write and/or change and maintain
+- Debugging, especially if a pipeline stage is mutating the log entry.
+- Clashing labels and how to handle this (two stages try to set the same label)
+- Performance vs ease of writing/use, if every label is extracted one at a time and there are a lot of labels and a long line, it would force reading the line many times, however contrast this to a really long complicated regex which only has to read the line once but is difficult to write and/or change and maintain
 
 ### Further improvements
 There are some basic building blocks for our pipeline which will use the EntryMiddleware interface, the two most commonly used will likely be:
 
-* Regex Parser
-* JSON Parser
+- Regex Parser
+- JSON Parser
 
 However we don’t want to ask people to copy and paste basic configs over and over for very common use cases, so it would make sense to add some additional parsers which would really be supersets of the base parsers above.
 
@@ -237,6 +237,6 @@ There are also some challenges with auto detection and edge cases, though most p
 
 ## Other Thoughts and Considerations
 
-* We should have a standalone client in some fashion which allows for testing of log parsing at the command line, allowing users to validate regular expressions or configurations to see what information is extracted.
-* Other input formats to the pipeline which are not reading from log files, such as containerd grpc api, or from stdin or unix pipes, etc.
-* It would be nice if at some point we could support loading code into the pipeline stages for even more advanced/powerful parsing capabilities.
+- We should have a standalone client in some fashion which allows for testing of log parsing at the command line, allowing users to validate regular expressions or configurations to see what information is extracted.
+- Other input formats to the pipeline which are not reading from log files, such as containerd grpc api, or from stdin or unix pipes, etc.
+- It would be nice if at some point we could support loading code into the pipeline stages for even more advanced/powerful parsing capabilities.
