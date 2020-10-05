@@ -472,10 +472,18 @@ func mustNewFloat(s string) float64 {
 
 type unwrapExpr struct {
 	identifier string
+	operation  string
 }
 
-func newUnwrapExpr(id string) *unwrapExpr {
-	return &unwrapExpr{identifier: id}
+func (u unwrapExpr) String() string {
+	if u.operation != "" {
+		return fmt.Sprintf("%s %s %s(%s)", OpPipe, OpUnwrap, u.operation, u.identifier)
+	}
+	return fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, u.identifier)
+}
+
+func newUnwrapExpr(id string, operation string) *unwrapExpr {
+	return &unwrapExpr{identifier: id, operation: operation}
 }
 
 type logRange struct {
@@ -490,7 +498,7 @@ func (r logRange) String() string {
 	var sb strings.Builder
 	sb.WriteString(r.left.String())
 	if r.unwrap != nil {
-		sb.WriteString(fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, r.unwrap.identifier))
+		sb.WriteString(r.unwrap.String())
 	}
 	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
 	return sb.String()
@@ -560,6 +568,9 @@ const (
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
+
+	// conversion Op
+	OpConvDuration = "duration_format"
 )
 
 func IsComparisonOperator(op string) bool {

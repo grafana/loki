@@ -80,6 +80,9 @@ var tokens = map[string]int{
 	// fmt
 	OpFmtLabel: LABEL_FMT,
 	OpFmtLine:  LINE_FMT,
+
+	// conversion Op
+	OpConvDuration: DURATION_CONV,
 }
 
 type lexer struct {
