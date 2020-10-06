@@ -354,8 +354,8 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	frontendHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
-		queryrange.StatsHTTPMiddleware,
 		t.httpAuthMiddleware,
+		queryrange.StatsHTTPMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
 	).Wrap(t.frontend.Handler())
