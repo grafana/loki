@@ -23,6 +23,9 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s or foo == 4.00 and bar ="foo"`,
 			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
 				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING}},
+		{`{foo="bar"} |~ "\\w+" | duration > 1h0.0m0s or avg == 4.00 and bar ="foo"`,
+			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
+				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING}},
 		{`{foo="bar"} |~ "\\w+" | latency > 1h0.0m0s or foo == 4.00 and bar ="foo" | unwrap foo`,
 			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING,
 				PIPE, IDENTIFIER, GT, DURATION, OR, IDENTIFIER, CMP_EQ, NUMBER, AND, IDENTIFIER, EQ, STRING, PIPE, UNWRAP, IDENTIFIER}},
@@ -58,6 +61,48 @@ func TestLex(t *testing.T) {
 				actual = append(actual, tok)
 			}
 			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func Test_isFunction(t *testing.T) {
+	tests := []struct {
+		next string
+		want bool
+	}{
+		{"   (", true},
+		{"(", true},
+		{"by (", true},
+		{"by(", true},
+		{"by    (", true},
+		{"  by (", true},
+		{" by(", true},
+		{"by    (", true},
+		{"without (", true},
+		{"without(", true},
+		{"without    (", true},
+		{"  without (", true},
+		{" without(", true},
+		{"without    (", true},
+		{"   ( whatever is this", true},
+		{"   (foo,bar)", true},
+		{"\r\n \t\t\r\n \n   (foo,bar)", true},
+
+		{"  foo (", false},
+		{"123", false},
+		{"", false},
+		{"   ", false},
+		{"   )(", false},
+		{"byfoo", false},
+		{"without foo", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.next, func(t *testing.T) {
+			sc := scanner.Scanner{}
+			sc.Init(strings.NewReader(tt.next))
+			if got := isFunction(sc); got != tt.want {
+				t.Errorf("isFunction() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }

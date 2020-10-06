@@ -570,7 +570,8 @@ const (
 	OpUnwrap = "unwrap"
 
 	// conversion Op
-	OpConvDuration = "duration_format"
+	OpConvDuration        = "duration"
+	OpConvDurationSeconds = "duration_seconds"
 )
 
 func IsComparisonOperator(op string) bool {

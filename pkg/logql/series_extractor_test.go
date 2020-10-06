@@ -18,7 +18,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	}{
 		{
 			"convert float",
-			newLabelSampleExtractor("foo", nil),
+			newLabelSampleExtractor("foo", "", nil),
 			labels.Labels{labels.Label{Name: "foo", Value: "15.0"}},
 			15,
 			labels.Labels{},
@@ -26,6 +26,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			"convert float without",
 			newLabelSampleExtractor("foo",
+				"",
 				&grouping{without: true, groups: []string{"bar", "buzz"}},
 			),
 			labels.Labels{
@@ -42,6 +43,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			"convert float with",
 			newLabelSampleExtractor("foo",
+				"",
 				&grouping{without: false, groups: []string{"bar", "buzz"}},
 			),
 			labels.Labels{
@@ -51,6 +53,42 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 				{Name: "namespace", Value: "dev"},
 			},
 			0.6,
+			labels.Labels{
+				{Name: "bar", Value: "foo"},
+				{Name: "buzz", Value: "blip"},
+			},
+		},
+		{
+			"convert duration with",
+			newLabelSampleExtractor("foo",
+				OpConvDuration,
+				&grouping{without: false, groups: []string{"bar", "buzz"}},
+			),
+			labels.Labels{
+				{Name: "foo", Value: "500ms"},
+				{Name: "bar", Value: "foo"},
+				{Name: "buzz", Value: "blip"},
+				{Name: "namespace", Value: "dev"},
+			},
+			0.5,
+			labels.Labels{
+				{Name: "bar", Value: "foo"},
+				{Name: "buzz", Value: "blip"},
+			},
+		},
+		{
+			"convert duration_seconds with",
+			newLabelSampleExtractor("foo",
+				OpConvDurationSeconds,
+				&grouping{without: false, groups: []string{"bar", "buzz"}},
+			),
+			labels.Labels{
+				{Name: "foo", Value: "250ms"},
+				{Name: "bar", Value: "foo"},
+				{Name: "buzz", Value: "blip"},
+				{Name: "namespace", Value: "dev"},
+			},
+			0.25,
 			labels.Labels{
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},

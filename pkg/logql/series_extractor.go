@@ -2,6 +2,7 @@ package logql
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -32,6 +33,8 @@ func (bytesSampleExtractor) Extract(line []byte, lbs labels.Labels) (float64, la
 type labelSampleExtractor struct {
 	labelName string
 	gr        *grouping
+
+	conversion string
 }
 
 func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, labels.Labels) {
@@ -40,7 +43,14 @@ func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, la
 		// todo(cyriltovena) handle errors.
 		return 0, lbs
 	}
-	f, err := strconv.ParseFloat(stringValue, 64)
+	var f float64
+	var err error
+	switch l.conversion {
+	case OpConvDuration, OpConvDurationSeconds:
+		f, err = convertDuration(stringValue)
+	default:
+		f, err = convertFloat(stringValue)
+	}
 	if err != nil {
 		// todo(cyriltovena) handle errors.
 		return 0, lbs
@@ -54,9 +64,22 @@ func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, la
 	return f, lbs.WithoutLabels(l.labelName)
 }
 
-func newLabelSampleExtractor(labelName string, gr *grouping) *labelSampleExtractor {
+func newLabelSampleExtractor(labelName, conversion string, gr *grouping) *labelSampleExtractor {
 	return &labelSampleExtractor{
-		labelName: labelName,
-		gr:        gr,
+		labelName:  labelName,
+		conversion: conversion,
+		gr:         gr,
 	}
+}
+
+func convertFloat(v string) (float64, error) {
+	return strconv.ParseFloat(v, 64)
+}
+
+func convertDuration(v string) (float64, error) {
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, err
+	}
+	return d.Seconds(), nil
 }

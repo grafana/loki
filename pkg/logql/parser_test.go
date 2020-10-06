@@ -1179,6 +1179,35 @@ func TestParse(t *testing.T) {
 					newUnwrapExpr("foo", "")),
 				OpRangeTypeStdvar, nil, nil,
 			),
+		}, {
+			in: `stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration(foo) [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiPipelineExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							Filterer: labelfilter.NewOr(
+								labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								labelfilter.NewAnd(
+									labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+									labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]labelFmt{
+							newRenameLabelFmt("foo", "bar"),
+							newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", OpConvDuration)),
+				OpRangeTypeStdvar, nil, nil,
+			),
 		},
 		{
 			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
@@ -1368,6 +1397,120 @@ func TestParse(t *testing.T) {
 						5*time.Minute,
 						newUnwrapExpr("foo", "")),
 					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, newString("0.99998"),
+				),
+				OpTypeSum,
+				&grouping{without: true, groups: []string{"foo"}},
+				nil,
+			),
+		},
+		{
+			in: `sum without (foo) (
+			quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+				| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration(foo) [5m]
+							) by (namespace,instance)
+				)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiPipelineExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								Filterer: labelfilter.NewOr(
+									labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									labelfilter.NewAnd(
+										labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+										labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]labelFmt{
+								newRenameLabelFmt("foo", "bar"),
+								newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo", OpConvDuration)),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, newString("0.99998"),
+				),
+				OpTypeSum,
+				&grouping{without: true, groups: []string{"foo"}},
+				nil,
+			),
+		},
+		{
+			in: `sum without (foo) (
+			quantile_over_time(.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+				| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration(foo) [5m]
+							) by (namespace,instance)
+				)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiPipelineExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								Filterer: labelfilter.NewOr(
+									labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									labelfilter.NewAnd(
+										labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+										labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]labelFmt{
+								newRenameLabelFmt("foo", "bar"),
+								newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo", OpConvDuration)),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, newString(".99998"),
+				),
+				OpTypeSum,
+				&grouping{without: true, groups: []string{"foo"}},
+				nil,
+			),
+		},
+		{
+			in: `sum without (foo) (
+			quantile_over_time(.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+				| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration_seconds(foo) [5m]
+							) by (namespace,instance)
+				)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiPipelineExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								Filterer: labelfilter.NewOr(
+									labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									labelfilter.NewAnd(
+										labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+										labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]labelFmt{
+								newRenameLabelFmt("foo", "bar"),
+								newTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo", OpConvDurationSeconds)),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, newString(".99998"),
 				),
 				OpTypeSum,
 				&grouping{without: true, groups: []string{"foo"}},

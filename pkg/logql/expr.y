@@ -19,6 +19,7 @@ import (
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
   RangeOp                 string
+  ConvOp                  string
   Selector                []*labels.Matcher
   VectorAggregationExpr   SampleExpr
   MetricExpr              SampleExpr
@@ -56,6 +57,7 @@ import (
 %type <Matchers>              matchers
 %type <RangeAggregationExpr>  rangeAggregationExpr
 %type <RangeOp>               rangeOp
+%type <ConvOp>                convOp
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
@@ -80,7 +82,7 @@ import (
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
-                  MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME DURATION_CONV
+                  MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME DURATION_CONV DURATION_SECONDS_CONV
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -114,32 +116,37 @@ logExpr:
     ;
 
 logRangeExpr:
-      selector RANGE                                                             { $$ = newLogRange(newMatcherExpr($1), $2, nil) }  
-    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE                          { $$ = newLogRange(newMatcherExpr($2), $4, nil) }  
-    | selector RANGE unwrapExpr                                                  { $$ = newLogRange(newMatcherExpr($1), $2 , $3) }  
-    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE unwrapExpr               { $$ = newLogRange(newMatcherExpr($2), $4 , $5) }  
-    | selector unwrapExpr RANGE                                                  { $$ = newLogRange(newMatcherExpr($1), $3, $2 ) }  
-    | OPEN_PARENTHESIS selector unwrapExpr CLOSE_PARENTHESIS RANGE               { $$ = newLogRange(newMatcherExpr($2), $5, $3 ) }  
-    | selector pipelineExpr RANGE                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil ) } 
-    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE             { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil ) } 
-    | selector pipelineExpr unwrapExpr RANGE                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $4, $3) } 
-    | OPEN_PARENTHESIS selector pipelineExpr unwrapExpr CLOSE_PARENTHESIS RANGE  { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $6, $4) } 
-    | selector RANGE pipelineExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, nil) } 
-    | selector RANGE pipelineExpr unwrapExpr                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, $4 ) } 
-    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                            { $$ = $2 } 
+      selector RANGE                                                             { $$ = newLogRange(newMatcherExpr($1), $2, nil) }
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE                          { $$ = newLogRange(newMatcherExpr($2), $4, nil) }
+    | selector RANGE unwrapExpr                                                  { $$ = newLogRange(newMatcherExpr($1), $2 , $3) }
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE unwrapExpr               { $$ = newLogRange(newMatcherExpr($2), $4 , $5) }
+    | selector unwrapExpr RANGE                                                  { $$ = newLogRange(newMatcherExpr($1), $3, $2 ) }
+    | OPEN_PARENTHESIS selector unwrapExpr CLOSE_PARENTHESIS RANGE               { $$ = newLogRange(newMatcherExpr($2), $5, $3 ) }
+    | selector pipelineExpr RANGE                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil ) }
+    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE             { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil ) }
+    | selector pipelineExpr unwrapExpr RANGE                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $4, $3) }
+    | OPEN_PARENTHESIS selector pipelineExpr unwrapExpr CLOSE_PARENTHESIS RANGE  { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $6, $4) }
+    | selector RANGE pipelineExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, nil) }
+    | selector RANGE pipelineExpr unwrapExpr                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, $4 ) }
+    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                            { $$ = $2 }
     | logRangeExpr error
     ;
 
 unwrapExpr:
-    PIPE UNWRAP IDENTIFIER                                                  { $$ = newUnwrapExpr($3, "")}
-  | PIPE UNWRAP DURATION_CONV OPEN_PARENTHESIS IDENTIFIER CLOSE_PARENTHESIS { $$ = newUnwrapExpr($5, OpConvDuration)}
+    PIPE UNWRAP IDENTIFIER                                                   { $$ = newUnwrapExpr($3, "")}
+  | PIPE UNWRAP convOp OPEN_PARENTHESIS IDENTIFIER CLOSE_PARENTHESIS         { $$ = newUnwrapExpr($5, $3)}
   ;
 
-rangeAggregationExpr: 
-      rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                        { $$ = newRangeAggregationExpr($3, $1, nil, nil) } 
-    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS           { $$ = newRangeAggregationExpr($5, $1, nil, &$3) }       
-    | rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS grouping               { $$ = newRangeAggregationExpr($3, $1, $5, nil) } 
-    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping  { $$ = newRangeAggregationExpr($5, $1, $7, &$3) } 
+convOp:
+    DURATION_CONV           { $$ = OpConvDuration }
+  | DURATION_SECONDS_CONV   { $$ = OpConvDurationSeconds }
+  ;
+
+rangeAggregationExpr:
+      rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                        { $$ = newRangeAggregationExpr($3, $1, nil, nil) }
+    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS           { $$ = newRangeAggregationExpr($5, $1, nil, &$3) }
+    | rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS grouping               { $$ = newRangeAggregationExpr($3, $1, $5, nil) }
+    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping  { $$ = newRangeAggregationExpr($5, $1, $7, &$3) }
     ;
 
 vectorAggregationExpr:

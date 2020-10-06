@@ -31,30 +31,6 @@ var tokens = map[string]int{
 	"[":       OPEN_BRACKET,
 	"]":       CLOSE_BRACKET,
 
-	// range vec ops
-	OpRangeTypeRate:      RATE,
-	OpRangeTypeCount:     COUNT_OVER_TIME,
-	OpRangeTypeBytesRate: BYTES_RATE,
-	OpRangeTypeBytes:     BYTES_OVER_TIME,
-	OpRangeTypeAvg:       AVG_OVER_TIME,
-	OpRangeTypeSum:       SUM_OVER_TIME,
-	OpRangeTypeMin:       MIN_OVER_TIME,
-	OpRangeTypeMax:       MAX_OVER_TIME,
-	OpRangeTypeStdvar:    STDVAR_OVER_TIME,
-	OpRangeTypeStddev:    STDDEV_OVER_TIME,
-	OpRangeTypeQuantile:  QUANTILE_OVER_TIME,
-
-	// vec ops
-	OpTypeSum:     SUM,
-	OpTypeAvg:     AVG,
-	OpTypeMax:     MAX,
-	OpTypeMin:     MIN,
-	OpTypeCount:   COUNT,
-	OpTypeStddev:  STDDEV,
-	OpTypeStdvar:  STDVAR,
-	OpTypeBottomK: BOTTOMK,
-	OpTypeTopK:    TOPK,
-
 	// binops
 	OpTypeOr:     OR,
 	OpTypeAnd:    AND,
@@ -80,9 +56,37 @@ var tokens = map[string]int{
 	// fmt
 	OpFmtLabel: LABEL_FMT,
 	OpFmtLine:  LINE_FMT,
+}
+
+// functionTokens are tokens that needs to be suffixes with parenthesis
+var functionTokens = map[string]int{
+	// range vec ops
+	OpRangeTypeRate:      RATE,
+	OpRangeTypeCount:     COUNT_OVER_TIME,
+	OpRangeTypeBytesRate: BYTES_RATE,
+	OpRangeTypeBytes:     BYTES_OVER_TIME,
+	OpRangeTypeAvg:       AVG_OVER_TIME,
+	OpRangeTypeSum:       SUM_OVER_TIME,
+	OpRangeTypeMin:       MIN_OVER_TIME,
+	OpRangeTypeMax:       MAX_OVER_TIME,
+	OpRangeTypeStdvar:    STDVAR_OVER_TIME,
+	OpRangeTypeStddev:    STDDEV_OVER_TIME,
+	OpRangeTypeQuantile:  QUANTILE_OVER_TIME,
+
+	// vec ops
+	OpTypeSum:     SUM,
+	OpTypeAvg:     AVG,
+	OpTypeMax:     MAX,
+	OpTypeMin:     MIN,
+	OpTypeCount:   COUNT,
+	OpTypeStddev:  STDDEV,
+	OpTypeStdvar:  STDVAR,
+	OpTypeBottomK: BOTTOMK,
+	OpTypeTopK:    TOPK,
 
 	// conversion Op
-	OpConvDuration: DURATION_CONV,
+	OpConvDuration:        DURATION_CONV,
+	OpConvDurationSeconds: DURATION_SECONDS_CONV,
 }
 
 type lexer struct {
@@ -135,6 +139,20 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 		l.Error("missing closing ']' in duration")
 		return 0
+	}
+
+	if tok, ok := functionTokens[l.TokenText()+string(l.Peek())]; ok {
+		// create a copy to advance to the entire token for testing suffix
+		sc := l.Scanner
+		sc.Next()
+		if isFunction(sc) {
+			l.Next()
+			return tok
+		}
+	}
+
+	if tok, ok := functionTokens[l.TokenText()]; ok && isFunction(l.Scanner) {
+		return tok
 	}
 
 	if tok, ok := tokens[l.TokenText()+string(l.Peek())]; ok {
@@ -192,4 +210,33 @@ func isDurationRune(r rune) bool {
 	default:
 		return false
 	}
+}
+
+// isFunction check if the next runes are either an open parenthesis
+// or by/without tokens. This allows to dissociate functions and identifier correctly.
+func isFunction(sc scanner.Scanner) bool {
+	var sb strings.Builder
+	sc = trimSpace(sc)
+	for r := sc.Next(); r != scanner.EOF; r = sc.Next() {
+		sb.WriteRune(r)
+		switch sb.String() {
+		case "(":
+			return true
+		case "by", "without":
+			sc = trimSpace(sc)
+			return sc.Next() == '('
+		}
+	}
+	return false
+}
+
+func trimSpace(l scanner.Scanner) scanner.Scanner {
+	for n := l.Peek(); n != scanner.EOF; n = l.Peek() {
+		if unicode.IsSpace(n) {
+			l.Next()
+			continue
+		}
+		return l
+	}
+	return l
 }
