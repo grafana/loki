@@ -1,5 +1,5 @@
-global:
-  namespaceOverride: ""
+# global:
+  # namespaceOverride: ""
 
 loki:
   enabled: true
