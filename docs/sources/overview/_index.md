@@ -139,11 +139,11 @@ The **chunk store** is Loki's long-term data store, designed to support
 interactive querying and sustained writing without the need for background
 maintenance tasks. It consists of:
 
-* An index for the chunks. This index can be backed by
+- An index for the chunks. This index can be backed by
   [DynamoDB from Amazon Web Services](https://aws.amazon.com/dynamodb),
   [Bigtable from Google Cloud Platform](https://cloud.google.com/bigtable), or
   [Apache Cassandra](https://cassandra.apache.org).
-* A key-value (KV) store for the chunk data itself, which can be DynamoDB,
+- A key-value (KV) store for the chunk data itself, which can be DynamoDB,
   Bigtable, Cassandra again, or an object store such as
   [Amazon * S3](https://aws.amazon.com/s3)
 
@@ -156,16 +156,16 @@ The chunk store relies on a unified interface to the
 Cassandra) that can be used to back the chunk store index. This interface
 assumes that the index is a collection of entries keyed by:
 
-* A **hash key**. This is required for *all* reads and writes.
-* A **range key**. This is required for writes and can be omitted for reads,
+- A **hash key**. This is required for *all* reads and writes.
+- A **range key**. This is required for writes and can be omitted for reads,
 which can be queried by prefix or range.
 
 The interface works somewhat differently across the supported databases:
 
-* DynamoDB supports range and hash keys natively. Index entries are thus
+- DynamoDB supports range and hash keys natively. Index entries are thus
   modelled directly as DynamoDB entries, with the hash key as the distribution
   key and the range as the range key.
-* For Bigtable and Cassandra, index entries are modelled as individual column
+- For Bigtable and Cassandra, index entries are modelled as individual column
   values. The hash key becomes the row key and the range key becomes the column
   key.
 

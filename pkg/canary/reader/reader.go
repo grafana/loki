@@ -160,6 +160,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		Host:   r.addr,
 		Path:   "/loki/api/v1/query",
 		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("count_over_time({%v=\"%v\",%v=\"%v\"}[%s])", r.sName, r.sValue, r.lName, r.lVal, queryRange)) +
+			fmt.Sprintf("&time=%d", time.Now().UnixNano()) +
 			"&limit=1000",
 	}
 	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v\n", u.String())

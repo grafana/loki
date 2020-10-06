@@ -159,18 +159,18 @@ config:
     # Maximum wait period before sending batch
     batchwait: 1s
     # Maximum batch size to accrue before sending, unit is byte
-    batchsize: 102400
+    batchsize: 1048576
 
     # Maximum time to wait for server to respond to a request
     timeout: 10s
 
     backoff_config:
       # Initial backoff time between retries
-      min_period: 100ms
+      min_period: 500ms
       # Maximum backoff time between retries
-      max_period: 5s
+      max_period: 5m
       # Maximum number of retries when sending batches, 0 means infinite retries
-      max_retries: 20
+      max_retries: 10
 
     # The labels to add to any time series or alerts when communicating with loki
     external_labels: {}
