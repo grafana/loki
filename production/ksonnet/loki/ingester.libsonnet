@@ -29,9 +29,9 @@
       $._config.ingester_resources_limits_cpu,
       $._config.ingester_resources_limits_memory) +
     if $._config.ingester_stateful then
-        container.withVolumeMountsMixin([
-          volumeMount.new('ingester-data', '/data'),
-        ]) else {},
+      container.withVolumeMountsMixin([
+        volumeMount.new('ingester-data', '/data'),
+      ]) else {},
 
   local deployment = $.apps.v1.deployment,
 
