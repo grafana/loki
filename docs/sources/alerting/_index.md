@@ -236,7 +236,7 @@ The possible configurations are listed fully in the configuration [docs](https:/
 A full sharding-enabled Ruler example is:
 
 ```yaml
-Ruler:
+ruler:
     alertmanager_url: <alertmanager_endpoint>
     enable_alertmanager_v2: true
     enable_api: true
@@ -260,8 +260,8 @@ The local implementation reads the rule files off of the local filesystem. This 
 
 A typical local configuration might look something like:
 ```
-  -Ruler.storage.type=local
-  -Ruler.storage.local.directory=/tmp/loki/rules
+  -ruler.storage.type=local
+  -ruler.storage.local.directory=/tmp/loki/rules
 ```
 
 With the above configuration, the Ruler would expect the following layout:
