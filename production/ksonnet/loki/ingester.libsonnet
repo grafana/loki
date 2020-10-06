@@ -47,14 +47,14 @@
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(0) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1) +
     deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800)
-    else {},
+  else {},
 
   ingester_data_pvc:: if $._config.ingester_stateful then
     pvc.new('ingester-data') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName('fast')
-    else {},
+  else {},
 
   ingester_statefulset: if $._config.ingester_stateful then
     statefulSet.new('ingester', $._config.ingester_replicas, [$.ingester_container], $.ingester_data_pvc) +
@@ -66,7 +66,7 @@
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001) +  // 10001 is the group ID assigned to Loki in the Dockerfile
     statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800)
-    else {},
+  else {},
 
   ingester_service:
     if !$._config.ingester_stateful then

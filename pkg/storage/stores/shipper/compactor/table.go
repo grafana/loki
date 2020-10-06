@@ -91,7 +91,7 @@ func (t *table) compact() error {
 	readObjectChan := make(chan string)
 	n := util.Min(len(objects), readDBsParallelism)
 
-	// read files parallely
+	// read files parallelly
 	for i := 0; i < n; i++ {
 		go func() {
 			var err error

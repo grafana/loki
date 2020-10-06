@@ -171,6 +171,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
+		serverutil.ResponseJSONMiddleware(),
 	)
 	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
@@ -356,6 +357,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		queryrange.StatsHTTPMiddleware,
 		t.httpAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
+		serverutil.ResponseJSONMiddleware(),
 	).Wrap(t.frontend.Handler())
 
 	var defaultHandler http.Handler

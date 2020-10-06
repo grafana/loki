@@ -169,7 +169,7 @@ func Test_batch(t *testing.T) {
 					Entries: []logproto.Entry{
 						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
 						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"}, // End timestmap is exclusive
+						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"}, // End timestamp is exclusive
 					},
 				},
 			},
@@ -193,7 +193,7 @@ func Test_batch(t *testing.T) {
 					Entries: []logproto.Entry{
 						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
 						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"}, // End timestmap is exclusive
+						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"}, // End timestamp is exclusive
 					},
 				},
 			},

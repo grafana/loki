@@ -221,7 +221,7 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 
 	// Everything matched, drop the line
 	if Debug {
-		level.Debug(m.logger).Log("msg", "all critera met, line will be dropped")
+		level.Debug(m.logger).Log("msg", "all criteria met, line will be dropped")
 	}
 	// Adds the drop label to not be sent by the api.EntryHandler
 	labels[dropLabel] = model.LabelValue(*m.cfg.DropReason)

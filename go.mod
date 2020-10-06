@@ -18,7 +18,6 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fatih/color v1.9.0
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
-	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/go-kit/kit v0.10.0
 	github.com/go-logfmt/logfmt v0.5.0
 	github.com/gofrs/flock v0.7.1 // indirect
@@ -40,7 +39,8 @@ require (
 	github.com/mitchellh/mapstructure v1.2.2
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.2.0
-	github.com/pierrec/lz4 v2.5.3-0.20200429092203-e876bbd321b3+incompatible
+	// github.com/pierrec/lz4 v2.0.5+incompatible
+	github.com/pierrec/lz4/v4 v4.0.2-0.20200813132121-22f5d580d5c4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/client_model v0.2.0
@@ -66,7 +66,7 @@ require (
 	k8s.io/klog v1.0.0
 )
 
-replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20191024143944-0b54ddf21fe7
+replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 

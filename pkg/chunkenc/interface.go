@@ -32,8 +32,6 @@ const (
 	EncDumb
 	EncLZ4_64k
 	EncSnappy
-
-	// Added for testing.
 	EncLZ4_256k
 	EncLZ4_1M
 	EncLZ4_4M
@@ -44,6 +42,9 @@ var supportedEncoding = []Encoding{
 	EncGZIP,
 	EncLZ4_64k,
 	EncSnappy,
+	EncLZ4_256k,
+	EncLZ4_1M,
+	EncLZ4_4M,
 }
 
 func (e Encoding) String() string {
@@ -55,13 +56,13 @@ func (e Encoding) String() string {
 	case EncDumb:
 		return "dumb"
 	case EncLZ4_64k:
-		return "lz4"
+		return "lz4-64k"
 	case EncLZ4_256k:
 		return "lz4-256k"
 	case EncLZ4_1M:
 		return "lz4-1M"
 	case EncLZ4_4M:
-		return "lz4-4M"
+		return "lz4"
 	case EncSnappy:
 		return "snappy"
 	default:

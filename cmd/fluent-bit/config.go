@@ -258,5 +258,19 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		res.bufferConfig.dqueConfig.queueName = queueName
 	}
 
+	res.clientConfig.Client.TLSConfig.CAFile = cfg.Get("ca_file")
+	res.clientConfig.Client.TLSConfig.CertFile = cfg.Get("cert_file")
+	res.clientConfig.Client.TLSConfig.KeyFile = cfg.Get("key_file")
+
+	insecureSkipVerify := cfg.Get("insecure_skip_verify")
+	switch insecureSkipVerify {
+	case "false", "":
+		res.clientConfig.Client.TLSConfig.InsecureSkipVerify = false
+	case "true":
+		res.clientConfig.Client.TLSConfig.InsecureSkipVerify = true
+	default:
+		return nil, fmt.Errorf("invalid string insecure_skip_verify: %v", insecureSkipVerify)
+	}
+
 	return res, nil
 }

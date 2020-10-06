@@ -71,10 +71,10 @@ cat my.log | promtail --config.file promtail.yaml
 Given the following order of events:
 
 1. `promtail` is tailing `/app.log`
-2. `promtail` current position for `/app.log` is `100` (byte offset)
-3. `promtail` is stopped
-4. `/app.log` is truncated and new logs are appended to it
-5. `promtail` is restarted
+1. `promtail` current position for `/app.log` is `100` (byte offset)
+1. `promtail` is stopped
+1. `/app.log` is truncated and new logs are appended to it
+1. `promtail` is restarted
 
 When `promtail` is restarted, it reads the previous position (`100`) from the
 positions file. Two scenarios are then possible:
