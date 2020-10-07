@@ -76,11 +76,11 @@ func getStore() (lstore.Store, error) {
 		nil,
 		cortex_util.Logger,
 	)
-	store, err := lstore.NewStore(storeConfig, schemaCfg, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
-	return store, nil
+
+	return lstore.NewStore(storeConfig, schemaCfg, chunkStore, prometheus.DefaultRegisterer)
 }
 
 func fillStore() error {
