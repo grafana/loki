@@ -35,8 +35,10 @@ const (
 	snapshotFileSuffix = ".temp"
 )
 
+var bucketName = []byte("index")
+
 type BoltDBIndexClient interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
 }
 
@@ -104,10 +106,23 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 	defer lt.dbsMtx.RUnlock()
 
 	for _, db := range lt.dbs {
-		for _, query := range queries {
-			if err := lt.boltdbIndexClient.QueryDB(ctx, db, query, callback); err != nil {
-				return err
+		err := db.View(func(tx *bbolt.Tx) error {
+			bucket := tx.Bucket(bucketName)
+			if bucket == nil {
+				return nil
 			}
+
+			for _, query := range queries {
+				if err := lt.boltdbIndexClient.QueryWithCursor(ctx, bucket.Cursor(), query, callback); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return err
 		}
 	}
 
