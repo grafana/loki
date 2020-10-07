@@ -110,9 +110,16 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
 	q := &storage.Query{Prefix: prefix, Delimiter: delimiter}
-	err := q.SetAttrSelection([]string{"Name", "Updated"})
-	if err != nil {
-		return nil, nil, err
+
+	// Using delimiter and selected attributes doesn't work well together -- it returns nothing.
+	// Reason is that Go's API only sets "fields=items(name,updated)" parameter in the request,
+	// but what we really need is "fields=prefixes,items(name,updated)". Unfortunately we cannot set that,
+	// so instead we don't use attributes selection when using delimiter.
+	if delimiter == "" {
+		err := q.SetAttrSelection([]string{"Name", "Updated"})
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	iter := s.bucket.Objects(ctx, q)
@@ -130,7 +137,7 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 		}
 
 		// When doing query with Delimiter, Prefix is the only field set for entries which represent synthetic "directory entries".
-		if attr.Name == "" {
+		if attr.Prefix != "" {
 			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(attr.Prefix))
 			continue
 		}
