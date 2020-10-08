@@ -135,9 +135,8 @@ jobs:
       - run:
           name: Run Chart Tests
           command: |
-            helm repo add elastic https://helm.elastic.co
-            ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
-            ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
+            ct lint --chart-dirs=production/helm --config=production/helm/ct.yaml
+            ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack --config=production/helm/ct.yaml
 
   publish-helm:
     <<: *defaults
