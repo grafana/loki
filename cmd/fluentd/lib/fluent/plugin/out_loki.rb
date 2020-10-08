@@ -35,21 +35,21 @@ module Fluent
 
       DEFAULT_BUFFER_TYPE = 'memory'
 
-      desc 'url of loki server'
+      desc 'Loki API base URL'
       config_param :url, :string, default: 'https://logs-prod-us-central1.grafana.net'
 
       desc 'BasicAuth credentials'
       config_param :username, :string, default: nil
       config_param :password, :string, default: nil, secret: true
 
-      desc 'Client certificate'
+      desc 'TLS: parameters for presenting a client certificate'
       config_param :cert, :string, default: nil
       config_param :key, :string, default: nil
 
-      desc 'TLS'
+      desc 'TLS: CA certificate file for server certificate verification'
       config_param :ca_cert, :string, default: nil
 
-      desc 'Disable server certificate verification'
+      desc 'TLS: disable server certificate verification'
       config_param :insecure_tls, :bool, default: false
 
       desc 'Loki tenant id'
