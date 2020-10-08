@@ -42,6 +42,9 @@ module Fluent
       config_param :username, :string, default: nil
       config_param :password, :string, default: nil, secret: true
 
+      desc 'Authentication: Authorization header with Bearer token scheme'
+      config_param :bearer_token_file, :string, default: nil
+
       desc 'TLS: parameters for presenting a client certificate'
       config_param :cert, :string, default: nil
       config_param :key, :string, default: nil
@@ -101,6 +104,8 @@ module Fluent
           load_client_cert
           validate_client_cert_key
         end
+
+        raise "bearer_token_file #{@bearer_token_file} not found" if !@bearer_token_file.nil? && !File.exist?(@bearer_token_file)
 
         raise "CA certificate file #{@ca_cert} not found" if !@ca_cert.nil? && !File.exist?(@ca_cert)
       end
