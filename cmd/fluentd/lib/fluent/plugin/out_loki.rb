@@ -38,7 +38,7 @@ module Fluent
       desc 'Loki API base URL'
       config_param :url, :string, default: 'https://logs-prod-us-central1.grafana.net'
 
-      desc 'BasicAuth credentials'
+      desc 'Authentication: basic auth credentials'
       config_param :username, :string, default: nil
       config_param :password, :string, default: nil, secret: true
 
@@ -96,24 +96,25 @@ module Fluent
           @remove_keys_accessors.push(record_accessor_create(key))
         end
 
-        if ssl_cert?
-          load_ssl
-          validate_ssl_key
+        # If configured, load and validate client certificate (and corresponding key)
+        if client_cert_configured?
+          load_client_cert
+          validate_client_cert_key
         end
 
         raise "CA certificate file #{@ca_cert} not found" if !@ca_cert.nil? && !File.exist?(@ca_cert)
       end
 
-      def ssl_cert?
+      def client_cert_configured?
         !@key.nil? && !@cert.nil?
       end
 
-      def load_ssl
+      def load_client_cert
         @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
         @key = OpenSSL::PKey.read(File.read(@key)) if @key
       end
 
-      def validate_ssl_key
+      def validate_client_cert_key
         if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
           raise "Unsupported private key type #{key.class}"
         end
