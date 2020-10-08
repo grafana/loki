@@ -87,3 +87,124 @@ func buildQueries(n int) []chunk.IndexQuery {
 
 	return queries
 }
+
+func TestIndexDeduper(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		batches        []batch
+		expectedValues map[string][][]byte
+	}{
+		{
+			name: "single batch",
+			batches: []batch{
+				{
+					hashValue:   "1",
+					rangeValues: [][]byte{[]byte("a"), []byte("b")},
+				},
+			},
+			expectedValues: map[string][][]byte{
+				"1": {[]byte("a"), []byte("b")},
+			},
+		},
+		{
+			name: "multiple batches, no duplicates",
+			batches: []batch{
+				{
+					hashValue:   "1",
+					rangeValues: [][]byte{[]byte("a"), []byte("b")},
+				},
+				{
+					hashValue:   "2",
+					rangeValues: [][]byte{[]byte("c"), []byte("d")},
+				},
+			},
+			expectedValues: map[string][][]byte{
+				"1": {[]byte("a"), []byte("b")},
+				"2": {[]byte("c"), []byte("d")},
+			},
+		},
+		{
+			name: "duplicate rangeValues but different hashValues",
+			batches: []batch{
+				{
+					hashValue:   "1",
+					rangeValues: [][]byte{[]byte("a"), []byte("b"), []byte("c")},
+				},
+				{
+					hashValue:   "2",
+					rangeValues: [][]byte{[]byte("a"), []byte("b")},
+				},
+			},
+			expectedValues: map[string][][]byte{
+				"1": {[]byte("a"), []byte("b"), []byte("c")},
+				"2": {[]byte("a"), []byte("b")},
+			},
+		},
+		{
+			name: "duplicate rangeValues in same hashValues",
+			batches: []batch{
+				{
+					hashValue:   "1",
+					rangeValues: [][]byte{[]byte("a"), []byte("b"), []byte("c")},
+				},
+				{
+					hashValue:   "1",
+					rangeValues: [][]byte{[]byte("a"), []byte("b"), []byte("d")},
+				},
+			},
+			expectedValues: map[string][][]byte{
+				"1": {[]byte("a"), []byte("b"), []byte("c"), []byte("d")},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actualValues := map[string][][]byte{}
+			deduper := NewIndexDeduper(func(query chunk.IndexQuery, readBatch chunk.ReadBatch) bool {
+				itr := readBatch.Iterator()
+				for itr.Next() {
+					actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
+				}
+				return true
+			})
+
+			for _, batch := range tc.batches {
+				deduper.Callback(chunk.IndexQuery{HashValue: batch.hashValue}, batch)
+			}
+
+			require.Equal(t, tc.expectedValues, actualValues)
+		})
+	}
+}
+
+type batch struct {
+	hashValue   string
+	rangeValues [][]byte
+}
+
+func (b batch) Iterator() chunk.ReadBatchIterator {
+	return &batchIterator{
+		rangeValues: b.rangeValues,
+	}
+}
+
+type batchIterator struct {
+	rangeValues [][]byte
+	idx         int
+}
+
+func (b *batchIterator) Next() bool {
+	if b.idx >= len(b.rangeValues) {
+		return false
+	}
+
+	b.idx++
+	return true
+}
+
+func (b batchIterator) RangeValue() []byte {
+	return b.rangeValues[b.idx-1]
+}
+
+func (b batchIterator) Value() []byte {
+	panic("implement me")
+}

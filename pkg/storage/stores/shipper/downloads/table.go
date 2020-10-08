@@ -227,6 +227,8 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 	level.Debug(log).Log("table-name", t.name, "query-count", len(queries))
 
+	id := shipper_util.NewIndexDeduper(callback)
+
 	for name, db := range t.dbs {
 		err := db.boltdb.View(func(tx *bbolt.Tx) error {
 			bucket := tx.Bucket(bucketName)
@@ -235,7 +237,9 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 			}
 
 			for _, query := range queries {
-				if err := t.boltDBIndexClient.QueryWithCursor(ctx, bucket.Cursor(), query, callback); err != nil {
+				if err := t.boltDBIndexClient.QueryWithCursor(ctx, bucket.Cursor(), query, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+					return id.Callback(query, batch)
+				}); err != nil {
 					return err
 				}
 			}
