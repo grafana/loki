@@ -118,6 +118,7 @@ module Fluent
           if @auth_token_bearer.empty?
             raise "bearer_token_file #{@bearer_token_file} is empty"
           end
+          log.info "will use Bearer token from bearer_token_file #{@bearer_token_file} in Authorization header"
         end
 
 
@@ -155,7 +156,7 @@ module Fluent
         res = loki_http_request(body, tenant)
 
         if res.is_a?(Net::HTTPSuccess)
-          log.debug "POST request was responded to with status code #{res.code})"
+          log.debug "POST request was responded to with status code #{res.code}"
           return
         end
 
