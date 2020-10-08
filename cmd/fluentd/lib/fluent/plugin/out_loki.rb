@@ -83,7 +83,7 @@ module Fluent
         super
         @uri = URI.parse(@url + '/loki/api/v1/push')
         unless @uri.is_a?(URI::HTTP) || @uri.is_a?(URI::HTTPS)
-          raise Fluent::ConfigError, 'url parameter must be valid HTTP'
+          raise Fluent::ConfigError, 'URL parameter must have HTTP/HTTPS scheme'
         end
 
         @record_accessors = {}
