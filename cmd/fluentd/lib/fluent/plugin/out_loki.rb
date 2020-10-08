@@ -123,13 +123,6 @@ module Fluent
         true
       end
 
-      def http_opts(uri)
-        opts = {
-          use_ssl: uri.scheme == 'https'
-        }
-        opts
-      end
-
       # flush a chunk to loki
       def write(chunk)
         # streams by label
@@ -151,19 +144,19 @@ module Fluent
         raise(LogPostError, res_summary) if res.is_a?(Net::HTTPTooManyRequests) || res.is_a?(Net::HTTPServerError)
       end
 
-      def ssl_opts(uri)
+      def http_request_opts(uri)
         opts = {
           use_ssl: uri.scheme == 'https'
         }
 
-        # Disable server TLS certificate verification
+        # Optionally disable server server certificate verification.
         if @insecure_tls
           opts = opts.merge(
             verify_mode: OpenSSL::SSL::VERIFY_NONE
           )
         end
 
-        # Verify client TLS certificate
+        # Optionally present client certificate
         if !@cert.nil? && !@key.nil?
           opts = opts.merge(
             cert: @cert,
@@ -171,7 +164,8 @@ module Fluent
           )
         end
 
-        # Specify custom certificate authority
+        # For server certificate verification: set custom CA bundle.
+        # Only takes effect when `insecure_tls` is not set.
         unless @ca_cert.nil?
           opts = opts.merge(
             ca_file: @ca_cert
@@ -198,7 +192,7 @@ module Fluent
         req.body = Yajl.dump(body)
         req.basic_auth(@username, @password) if @username
 
-        opts = ssl_opts(@uri)
+        opts = http_request_opts(@uri)
 
         msg = "sending #{req.body.length} bytes to loki"
         msg += " (tenant: \"#{tenant}\")" if tenant
