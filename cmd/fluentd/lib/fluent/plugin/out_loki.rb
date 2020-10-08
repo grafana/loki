@@ -154,7 +154,10 @@ module Fluent
         # add ingest path to loki url
         res = loki_http_request(body, tenant)
 
-        return if res.is_a?(Net::HTTPSuccess)
+        if res.is_a?(Net::HTTPSuccess)
+          log.debug "POST request was responded to with status code #{res.code})"
+          return
+        end
 
         res_summary = "#{res.code} #{res.message} #{res.body}"
         log.warn "failed to write post to #{@uri} (#{res_summary})"
@@ -208,7 +211,7 @@ module Fluent
           @uri.request_uri
         )
         req.add_field('Content-Type', 'application/json')
-        req.add_field('Authorization', 'Bearer #{@auth_token_bearer}') if !@auth_token_bearer.nil?
+        req.add_field('Authorization', "Bearer #{@auth_token_bearer}") if !@auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant
         req.body = Yajl.dump(body)
         req.basic_auth(@username, @password) if @username
