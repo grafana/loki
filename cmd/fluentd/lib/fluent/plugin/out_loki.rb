@@ -107,6 +107,20 @@ module Fluent
 
         raise "bearer_token_file #{@bearer_token_file} not found" if !@bearer_token_file.nil? && !File.exist?(@bearer_token_file)
 
+        @auth_token_bearer = nil
+        if !@bearer_token_file.nil?
+          if !File.exist?(@bearer_token_file)
+            raise "bearer_token_file #{@bearer_token_file} not found"
+          end
+
+          # Read the file once, assume long-lived authentication token.
+          @auth_token_bearer = File.read(@bearer_token_file)
+          if @auth_token_bearer.empty?
+            raise "bearer_token_file #{@bearer_token_file} is empty"
+          end
+        end
+
+
         raise "CA certificate file #{@ca_cert} not found" if !@ca_cert.nil? && !File.exist?(@ca_cert)
       end
 
@@ -194,6 +208,7 @@ module Fluent
           @uri.request_uri
         )
         req.add_field('Content-Type', 'application/json')
+        req.add_field('Authorization', 'Bearer #{@auth_token_bearer}') if !@auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant
         req.body = Yajl.dump(body)
         req.basic_auth(@username, @password) if @username
