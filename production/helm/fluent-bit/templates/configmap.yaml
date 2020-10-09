@@ -24,12 +24,13 @@ data:
         Path           /var/log/containers/*.log
         Parser         docker
         DB             /run/fluent-bit/flb_kube.db
-        Mem_Buf_Limit  5MB
+        Mem_Buf_Limit  {{ .Values.config.memBufLimit }}
     [FILTER]
         Name           kubernetes
         Match          kube.*
         Kube_URL       https://kubernetes.default.svc:443
         Merge_Log On
+        K8S-Logging.Exclude {{ .Values.config.k8sLoggingExclude }}
         K8S-Logging.Parser {{ .Values.config.k8sLoggingParser }}
     [Output]
         Name loki
