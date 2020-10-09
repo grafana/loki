@@ -26,6 +26,7 @@ import (
   VectorOp                string
   BinOpExpr               SampleExpr
   binOp                   string
+  bytes                   uint64
   str                     string
   duration                time.Duration
   LiteralExpr             *literalExpr
@@ -34,9 +35,11 @@ import (
   LineFilters             *lineFilterExpr
   PipelineExpr            MultiPipelineExpr
   PipelineStage           PipelineExpr
+  BytesFilter             labelfilter.Filterer
   NumberFilter            labelfilter.Filterer
   DurationFilter          labelfilter.Filterer
   LabelFilter             labelfilter.Filterer
+  UnitFilter              labelfilter.Filterer
   LineFormatExpr          *lineFmtExpr
   LabelFormatExpr         *labelFmtExpr
   LabelFormat             labelFmt
@@ -67,6 +70,7 @@ import (
 %type <LabelParser>           labelParser
 %type <PipelineExpr>          pipelineExpr
 %type <PipelineStage>         pipelineStage
+%type <BytesFilter>           bytesFilter
 %type <NumberFilter>          numberFilter
 %type <DurationFilter>        durationFilter
 %type <LabelFilter>           labelFilter
@@ -76,7 +80,9 @@ import (
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
 %type <UnwrapExpr>            unwrapExpr
+%type <UnitFilter>           unitFilter
 
+%token <bytes> BYTES
 %token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
@@ -224,7 +230,7 @@ labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
 
 labelFilter:
       matcher { $$ = labelfilter.NewString($1) }
-    | durationFilter { $$ = $1 }
+    | unitFilter { $$ = $1 }
     | numberFilter { $$ = $1 }
     | OPEN_PARENTHESIS labelFilter CLOSE_PARENTHESIS { $$ = $2 }
     | labelFilter labelFilter { $$ = labelfilter.NewAnd($1, $2 ) }
@@ -233,14 +239,28 @@ labelFilter:
     | labelFilter OR labelFilter { $$ = labelfilter.NewOr($1, $3 ) }
     ;
 
+unitFilter:
+      durationFilter { $$ = $1 }
+    | bytesFilter { $$ = $1 }
+
 durationFilter:
-      IDENTIFIER GT DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThan, $1, $3) }
+      IDENTIFIER GT DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThan, $1, $3) }
     | IDENTIFIER GTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, $1, $3) }
     | IDENTIFIER LT DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThan, $1, $3) }
     | IDENTIFIER LTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThanOrEqual, $1, $3) }
     | IDENTIFIER NEQ DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterNotEqual, $1, $3) }
     | IDENTIFIER EQ DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterEqual, $1, $3) }
     | IDENTIFIER CMP_EQ DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterEqual, $1, $3) }
+    ;
+
+bytesFilter:
+      IDENTIFIER GT BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterGreaterThan, $1, $3) }
+    | IDENTIFIER GTE BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterGreaterThanOrEqual, $1, $3) }
+    | IDENTIFIER LT BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterLesserThan, $1, $3) }
+    | IDENTIFIER LTE BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterLesserThanOrEqual, $1, $3) }
+    | IDENTIFIER NEQ BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterNotEqual, $1, $3) }
+    | IDENTIFIER EQ BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterEqual, $1, $3) }
+    | IDENTIFIER CMP_EQ BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterEqual, $1, $3) }
     ;
 
 numberFilter:
