@@ -4,8 +4,8 @@ title: Loki in Grafana
 # Loki in Grafana
 
 Grafana ships with built-in support for Loki for versions greater than
-[6.0.0](https://grafana.com/grafana/download/6.0.0). Using
-[6.3.0](https://grafana.com/grafana/download/6.3.0) or later is highly
+[6.0](https://grafana.com/grafana/download/6.0.0). Using
+[6.3](https://grafana.com/grafana/download/6.3.0) or later is highly
 recommended to take advantage of new LogQL functionality.
 
 1. Log into your Grafana instance. If this is your first time running
