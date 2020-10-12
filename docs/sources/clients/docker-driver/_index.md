@@ -8,7 +8,7 @@ containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or [Grafana Cloud](https://grafana.com/oss/loki).
 
 > Docker plugins are not yet supported on Windows; see the
-> [Docker docs](https://docs.docker.com/engine/extend) for more information.
+> [Docker Engine managed plugin system](https://docs.docker.com/engine/extend) documentation for more information.
 
 Documentation on configuring the Loki Docker Driver can be found on the
 [configuration page](./configuration).

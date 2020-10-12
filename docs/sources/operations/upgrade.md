@@ -350,7 +350,7 @@ OR
 1. Proceed with upgrading to v1.4.0
 1. Remove the config option (only do this after everything is running v1.4.0)
 
-**Note:** It's also possible to enable this flag via config file, see the [docs](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config)
+**Note:** It's also possible to enable this flag via config file, see the [`lifecycler_config`](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config) configuration option.
 
 If using the Helm Loki chart:
 

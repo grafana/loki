@@ -37,7 +37,7 @@ Loki has several client options: [Promtail](https://github.com/grafana/loki/tree
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied. 
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality. 
-Details of the Series API can be found [here](https://grafana.com/docs/loki/latest/api/#series), or you can use [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/) to query Loki for series information.
+Series information can be queried through the [Series API](https://grafana.com/docs/loki/latest/api/#series), or you can use [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/).
 
 In Loki 1.6.0 and newer the logcli series command added the `--analyze-labels` flag specifically for debugging high cardinality labels:
 
@@ -105,7 +105,7 @@ It's also worth noting that the batching nature of the Loki push API can lead to
 
 ## 7. Use `chunk_target_size`
 
-This was added earlier this year when we [released v1.3.0 of Loki](https://grafana.com/blog/2020/01/22/loki-1.3.0-released/), and we've been experimenting with it for several months. We have `chunk_target_size: 1536000` in all our environments now. This instructs Loki to try to fill all chunks to a target _compressed_ size of 1.5MB. These larger chunks are more efficient for Loki to process.
+This was added earlier in the [Loki v1.3.0](https://grafana.com/blog/2020/01/22/loki-1.3.0-released/) release, and we've been experimenting with it for several months. We have `chunk_target_size: 1536000` in all our environments now. This instructs Loki to try to fill all chunks to a target _compressed_ size of 1.5MB. These larger chunks are more efficient for Loki to process.
 
 A couple other config variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 1h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
 

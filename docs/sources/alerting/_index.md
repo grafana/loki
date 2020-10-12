@@ -26,7 +26,7 @@ ruler:
 
 ## Prometheus Compatible
 
-When running the Ruler (which runs by default in the single binary), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL.
+When running the Ruler (which runs by default in the single binary), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus' Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), except that the rules specified are in LogQL.
 
 Let's see what that looks like:
 
@@ -63,7 +63,7 @@ rules:
 
 ### `<rule>`
 
-The syntax for alerting rules is (see the LogQL [docs](https://grafana.com/docs/loki/latest/logql/#metric-queries) for more details):
+The syntax for alerting rules is (see the LogQL [Metric Queries](https://grafana.com/docs/loki/latest/logql/#metric-queries) for more details):
 
 ```yaml
 # The name of the alert. Must be a valid label value.
@@ -137,7 +137,7 @@ Many nascent projects, apps, or even companies may not have a metrics backend ye
 
 We don't always control the source code of applications we run. Think load balancers and the myriad components (both open source and closed third-party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively? Alerting based on logs is a great answer for these problems.
 
-For a sneak peek of how to combine this with the upcoming LogQL v2 functionality, take a look at Ward Bekker's [video](https://www.youtube.com/watch?v=RwQlR3D4Km4) which builds a robust nginx monitoring dashboard entirely from nginx logs.
+For a sneak peek of how to combine this with the upcoming LogQL v2 functionality, take a look at Ward Bekker's video [Grafana Loki sneak peek: Generate Ad-hoc metrics from your NGINX Logs](https://www.youtube.com/watch?v=RwQlR3D4Km4) which builds a robust nginx monitoring dashboard entirely from nginx logs.
 
 ### Event alerting
 
@@ -231,7 +231,7 @@ jobs:
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the configuration [docs](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.Ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.Ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 
@@ -256,7 +256,7 @@ ruler:
 
 The Ruler supports six kinds of storage: configdb, azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded Ruler configuration in an obvious way, i.e. configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read only backend that does not support the creation and deletion of rules through [the API](https://grafana.com/docs/loki/latest/api/#Ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](https://grafana.com/docs/loki/latest/api/#Ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```
@@ -269,7 +269,7 @@ With the above configuration, the Ruler would expect the following layout:
 /tmp/loki/rules/<tenant id>/rules1.yaml
                            /rules2.yaml
 ```
-Yaml files are expected to be in the [Prometheus format](#Prometheus_Compatible) but include LogQL expressions as specified in the beginning of this doc.
+Yaml files are expected to be [Prometheus compatible](#Prometheus_Compatible) but include LogQL expressions as specified in the beginning of this doc.
 
 ## Future improvements
 
