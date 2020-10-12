@@ -473,13 +473,26 @@ func mustNewFloat(s string) float64 {
 type unwrapExpr struct {
 	identifier string
 	operation  string
+
+	postFilters []labelfilter.Filterer
 }
 
 func (u unwrapExpr) String() string {
+	var sb strings.Builder
 	if u.operation != "" {
-		return fmt.Sprintf("%s %s %s(%s)", OpPipe, OpUnwrap, u.operation, u.identifier)
+		sb.WriteString(fmt.Sprintf(" %s %s %s(%s)", OpPipe, OpUnwrap, u.operation, u.identifier))
+	} else {
+		sb.WriteString(fmt.Sprintf(" %s %s %s", OpPipe, OpUnwrap, u.identifier))
 	}
-	return fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, u.identifier)
+	for _, f := range u.postFilters {
+		sb.WriteString(fmt.Sprintf(" %s %s", OpPipe, f))
+	}
+	return sb.String()
+}
+
+func (u *unwrapExpr) addPostFilter(f labelfilter.Filterer) *unwrapExpr {
+	u.postFilters = append(u.postFilters, f)
+	return u
 }
 
 func newUnwrapExpr(id string, operation string) *unwrapExpr {

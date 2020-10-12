@@ -49,12 +49,21 @@ func Test_jsonParser_Parse(t *testing.T) {
 			},
 		},
 		{
+			"bad key replaced",
+			NewJSONParser(),
+			[]byte(`{"cou-nter":1}`),
+			labels.Labels{},
+			labels.Labels{
+				labels.Label{Name: "cou_nter", Value: "1"},
+			},
+		},
+		{
 			"errors",
 			NewJSONParser(),
 			[]byte(`{n}`),
 			labels.Labels{},
 			labels.Labels{
-				labels.Label{Name: errorLabel, Value: errJson},
+				labels.Label{Name: errorLabel, Value: errJSON},
 			},
 		},
 		{
