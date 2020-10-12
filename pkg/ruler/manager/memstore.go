@@ -88,7 +88,7 @@ func NewMemStore(userID string, queryFunc rules.QueryFunc, metrics *Metrics, cle
 		userID:          userID,
 		metrics:         metrics,
 		queryFunc:       queryFunc,
-		logger:          logger,
+		logger:          log.With(logger, "subcomponent", "MemStore", "user", userID),
 		cleanupInterval: cleanupInterval,
 		rules:           make(map[string]*RuleCache),
 
@@ -205,7 +205,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	}
 	ls := b.Labels()
 	if ruleKey == "" {
-		level.Error(m.logger).Log("msg", "MemStoreQuerier.Select called in an unexpected fashion without alertname or ALERTS_FOR_STATE labels")
+		level.Error(m.logger).Log("msg", "Select called in an unexpected fashion without alertname or ALERTS_FOR_STATE labels")
 		return storage.NoopSeriesSet()
 	}
 
@@ -225,7 +225,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 		return storage.NoopSeriesSet()
 	}
 
-	level.Debug(m.logger).Log("msg", "restoring for state via evaluation", "rule", ruleKey, "tenant", m.MemStore.userID)
+	level.Debug(m.logger).Log("msg", "restoring for state via evaluation", "rule", ruleKey)
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -240,7 +240,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	smpl, cached := cache.Get(m.ts, ls)
 	if cached {
 		m.metrics.CacheHits.WithLabelValues(m.userID).Inc()
-		level.Debug(m.logger).Log("msg", "result cached", "rule", ruleKey, "tenant", m.MemStore.userID)
+		level.Debug(m.logger).Log("msg", "result cached", "rule", ruleKey)
 		// Assuming the result is cached but the desired series is not in the result, it wouldn't be considered active.
 		if smpl == nil {
 			return storage.NoopSeriesSet()
@@ -260,12 +260,12 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	// that's the only condition under which this is queried (via RestoreForState).
 	vec, err := m.queryFunc(m.ctx, rule.Query().String(), m.ts.Add(-rule.HoldDuration()))
 	if err != nil {
-		level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "tenant", m.MemStore.userID, "err", err.Error())
+		level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "err", err.Error())
 		m.metrics.Evaluations.WithLabelValues(statusFailure, m.userID).Inc()
 		return storage.NoopSeriesSet()
 	}
 	m.metrics.Evaluations.WithLabelValues(statusSuccess, m.userID).Inc()
-	level.Debug(m.logger).Log("msg", "rule state successfully restored", "rule", ruleKey, "tenant", m.MemStore.userID, "len", len(vec))
+	level.Debug(m.logger).Log("msg", "rule state successfully restored", "rule", ruleKey, "len", len(vec))
 
 	// translate the result into the ALERTS_FOR_STATE series for caching,
 	// considered active & written at the timetamp requested
