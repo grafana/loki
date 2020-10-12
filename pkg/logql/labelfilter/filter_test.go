@@ -23,6 +23,12 @@ func TestBinary_Filter(t *testing.T) {
 			false,
 		},
 		{
+			NewAnd(NewNumeric(FilterEqual, "foo", 5), NewBytes(FilterEqual, "bar", 42)),
+			labels.Labels{labels.Label{Name: "foo", Value: "5"}, labels.Label{Name: "bar", Value: "42B"}},
+			true,
+			false,
+		},
+		{
 			NewAnd(
 				NewNumeric(FilterEqual, "foo", 5),
 				NewDuration(FilterEqual, "bar", 1*time.Second),
