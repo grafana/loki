@@ -1,11 +1,11 @@
 package logql
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/grafana/loki/pkg/logql/logfmt"
 	jsoniter "github.com/json-iterator/go"
@@ -22,9 +22,9 @@ var (
 	errMissingCapture = errors.New("at least one named capture must be supplied")
 	NoopLabelParser   = noopParser{}
 
-	underscore = []byte("_")
-	point      = []byte(".")
-	dash       = []byte("-")
+	underscore = "_"
+	point      = "."
+	dash       = "-"
 )
 
 type LabelParser interface {
@@ -61,6 +61,7 @@ func (j *jsonParser) Parse(line []byte, lbs labels.Labels) labels.Labels {
 
 func addLabel(builder *labels.Builder, lbs labels.Labels) func(key, value string) {
 	return func(key, value string) {
+		key = strings.ReplaceAll(strings.ReplaceAll(key, point, underscore), dash, underscore)
 		if lbs.Has(key) {
 			key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 		}
@@ -162,8 +163,7 @@ func (l *logfmtParser) Parse(line []byte, lbs labels.Labels) labels.Labels {
 	l.dec.Reset(line)
 
 	for l.dec.ScanKeyval() {
-		k := string(bytes.ReplaceAll(bytes.ReplaceAll(l.dec.Key(), point, underscore), dash, underscore))
-		addLabel(l.builder, lbs)(k, string(l.dec.Value()))
+		addLabel(l.builder, lbs)(string(l.dec.Key()), string(l.dec.Value()))
 	}
 	if l.dec.Err() != nil {
 		l.builder.Set(errorLabel, errLogfmt)
