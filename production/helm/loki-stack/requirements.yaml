@@ -2,23 +2,23 @@ dependencies:
 - name: "loki"
   condition: loki.enabled
   repository: "file://../loki"
-  version: "^0.30.0"
+  version: "^0.31.1"
 - name: "promtail"
   condition: promtail.enabled
   repository: "file://../promtail"
-  version: "^0.23.0"
+  version: "^0.25.1"
 - name: "fluent-bit"
   condition: fluent-bit.enabled
   repository: "file://../fluent-bit"
-  version: "^0.1.0"
+  version: "^0.3.1"
 - name: "grafana"
   condition: grafana.enabled
-  version: "~3.8.15"
-  repository:  "https://kubernetes-charts.storage.googleapis.com/"
+  version: "~5.7.0"
+  repository:  "https://grafana.github.io/helm-charts"
 - name: "prometheus"
   condition: prometheus.enabled
-  version: "~9.3.0"
-  repository:  "https://kubernetes-charts.storage.googleapis.com/"
+  version: "~11.16.0"
+  repository:  "https://prometheus-community.github.io/helm-charts"
 - name: "filebeat"
   condition: filebeat.enabled
   version: "~7.8.0"
