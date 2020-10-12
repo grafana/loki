@@ -1151,6 +1151,25 @@ func TestParse(t *testing.T) {
 			err: ParseError{msg: "invalid aggregation count_over_time with unwrap"},
 		},
 		{
+			in: `{app="foo"} |= "bar" | json |  status_code < 500 or status_code > 200 and size >= 2.5KiB `,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiPipelineExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						Filterer: labelfilter.NewOr(
+							labelfilter.NewNumeric(labelfilter.FilterLesserThan, "status_code", 500.0),
+							labelfilter.NewAnd(
+								labelfilter.NewNumeric(labelfilter.FilterGreaterThan, "status_code", 200.0),
+								labelfilter.NewBytes(labelfilter.FilterGreaterThanOrEqual, "size", 2560),
+							),
+						),
+					},
+				},
+			},
+		},
+		{
 			in: `stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m])`,
 			exp: newRangeAggregationExpr(

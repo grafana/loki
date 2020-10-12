@@ -244,7 +244,7 @@ unitFilter:
     | bytesFilter { $$ = $1 }
 
 durationFilter:
-      IDENTIFIER GT DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThan, $1, $3) }
+      IDENTIFIER GT DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThan, $1, $3) }
     | IDENTIFIER GTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, $1, $3) }
     | IDENTIFIER LT DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThan, $1, $3) }
     | IDENTIFIER LTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThanOrEqual, $1, $3) }
@@ -254,12 +254,12 @@ durationFilter:
     ;
 
 bytesFilter:
-      IDENTIFIER GT BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterGreaterThan, $1, $3) }
+      IDENTIFIER GT BYTES  { $$ = labelfilter.NewBytes(labelfilter.FilterGreaterThan, $1, $3) }
     | IDENTIFIER GTE BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterLesserThan, $1, $3) }
+    | IDENTIFIER LT BYTES  { $$ = labelfilter.NewBytes(labelfilter.FilterLesserThan, $1, $3) }
     | IDENTIFIER LTE BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterLesserThanOrEqual, $1, $3) }
     | IDENTIFIER NEQ BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterEqual, $1, $3) }
+    | IDENTIFIER EQ BYTES  { $$ = labelfilter.NewBytes(labelfilter.FilterEqual, $1, $3) }
     | IDENTIFIER CMP_EQ BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterEqual, $1, $3) }
     ;
 
