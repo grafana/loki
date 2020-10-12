@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name    = 'logstash-output-loki'
-  s.version = '1.0.2'
+  s.version = '1.0.3'
   s.authors = ['Aditya C S','Cyril Tovena']
   s.email   = ['aditya.gnu@gmail.com','cyril.tovena@grafana.com']
 
@@ -22,6 +22,5 @@ Gem::Specification.new do |s|
   #
   s.add_runtime_dependency "logstash-core-plugin-api", ">= 1.60", "<= 2.99"
   s.add_runtime_dependency "logstash-codec-plain", "3.0.6"
-  s.add_runtime_dependency "concurrent-ruby-edge", "0.6.0"
   s.add_development_dependency 'logstash-devutils', "2.0.2"
 end
