@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql/labelfilter"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -31,10 +32,10 @@ func (bytesSampleExtractor) Extract(line []byte, lbs labels.Labels) (float64, la
 }
 
 type labelSampleExtractor struct {
-	labelName string
-	gr        *grouping
-
-	conversion string
+	labelName   string
+	gr          *grouping
+	postFilters []labelfilter.Filterer
+	conversion  string // the sample conversion operation to attempt
 }
 
 func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, labels.Labels) {
@@ -55,16 +56,20 @@ func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, la
 		// todo(cyriltovena) handle errors.
 		return 0, lbs
 	}
-	if l.gr != nil {
-		if l.gr.without {
-			return f, lbs.WithoutLabels(append(l.gr.groups, l.labelName)...)
-		}
-		return f, lbs.WithLabels(l.gr.groups...)
-	}
-	return f, lbs.WithoutLabels(l.labelName)
+	return f, l.groupLabels(lbs)
 }
 
-func newLabelSampleExtractor(labelName, conversion string, gr *grouping) *labelSampleExtractor {
+func (l *labelSampleExtractor) groupLabels(lbs labels.Labels) labels.Labels {
+	if l.gr != nil {
+		if l.gr.without {
+			return lbs.WithoutLabels(append(l.gr.groups, l.labelName)...)
+		}
+		return lbs.WithLabels(l.gr.groups...)
+	}
+	return lbs.WithoutLabels(l.labelName)
+}
+
+func newLabelSampleExtractor(labelName, conversion string, postFilters []labelfilter.Filterer, gr *grouping) *labelSampleExtractor {
 	return &labelSampleExtractor{
 		labelName:  labelName,
 		conversion: conversion,

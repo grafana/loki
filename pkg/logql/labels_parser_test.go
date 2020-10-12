@@ -54,7 +54,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{n}`),
 			labels.Labels{},
 			labels.Labels{
-				labels.Label{Name: errorLabel, Value: errJson},
+				labels.Label{Name: errorLabel, Value: errJSON},
 			},
 		},
 		{

@@ -14,12 +14,7 @@ import (
 )
 
 const (
-	jsonSpacer = "_"
-
-	errJson    = "JSONParserError"
-	errLogfmt  = "LogfmtParserError"
-	errorLabel = "__error__"
-
+	jsonSpacer      = "_"
 	duplicateSuffix = "_extracted"
 )
 
@@ -57,7 +52,7 @@ func (j *jsonParser) Parse(line []byte, lbs labels.Labels) labels.Labels {
 	j.builder.Reset(lbs)
 	err := jsoniter.ConfigFastest.Unmarshal(line, &data)
 	if err != nil {
-		j.builder.Set(errorLabel, errJson)
+		j.builder.Set(errorLabel, errJSON)
 		return j.builder.Labels()
 	}
 	parseMap("", data, addLabel(j.builder, lbs))

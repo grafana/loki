@@ -135,6 +135,7 @@ logRangeExpr:
 unwrapExpr:
     PIPE UNWRAP IDENTIFIER                                                   { $$ = newUnwrapExpr($3, "")}
   | PIPE UNWRAP convOp OPEN_PARENTHESIS IDENTIFIER CLOSE_PARENTHESIS         { $$ = newUnwrapExpr($5, $3)}
+  | unwrapExpr PIPE labelFilter                                              { $$ = $1.addPostFilter($3) }
   ;
 
 convOp:
