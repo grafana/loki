@@ -72,7 +72,7 @@ func (l LazyQuerier) Close() error {
 	return l.next.Close()
 }
 
-// Get implements ChunkStore for the chunk tar HTTP handler.
+// Get implements chunk.Store for the chunk tar HTTP handler.
 func (l LazyQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	store, ok := l.next.(chunkstore.ChunkStore)
 	if !ok {

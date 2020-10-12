@@ -99,8 +99,17 @@ func NewManagerMetrics() *ManagerMetrics {
 // AddUserRegistry adds a Prometheus registry to the struct
 func (m *ManagerMetrics) AddUserRegistry(user string, reg *prometheus.Registry) {
 	m.regsMu.Lock()
+	defer m.regsMu.Unlock()
+
 	m.regs[user] = reg
-	m.regsMu.Unlock()
+}
+
+// DeleteUserRegistry removes user-specific Prometheus registry.
+func (m *ManagerMetrics) DeleteUserRegistry(user string) {
+	m.regsMu.Lock()
+	defer m.regsMu.Unlock()
+
+	delete(m.regs, user)
 }
 
 // Registries returns a map of prometheus registries managed by the struct
@@ -134,8 +143,12 @@ func (m *ManagerMetrics) Describe(out chan<- *prometheus.Desc) {
 func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.Registries())
 
+	// WARNING: It is important that all metrics generated in this method are "Per User".
+	// Thanks to that we can actually *remove* metrics for given user (see DeleteUserRegistry).
+	// If same user is later re-added, all metrics will start from 0, which is fine.
+
 	data.SendSumOfSummariesPerUser(out, m.EvalDuration, "prometheus_rule_evaluation_duration_seconds")
-	data.SendSumOfSummariesPerUser(out, m.IterationDuration, "cortex_prometheus_rule_group_duration_seconds")
+	data.SendSumOfSummariesPerUser(out, m.IterationDuration, "prometheus_rule_group_duration_seconds")
 
 	data.SendSumOfCountersPerUser(out, m.IterationsMissed, "prometheus_rule_group_iterations_missed_total")
 	data.SendSumOfCountersPerUser(out, m.IterationsScheduled, "prometheus_rule_group_iterations_total")

@@ -33,7 +33,7 @@ type DefaultMultiTenantManager struct {
 	// Structs for holding per-user Prometheus rules Managers
 	// and a corresponding metrics struct
 	userManagerMtx     sync.Mutex
-	userManagers       map[string]*promRules.Manager
+	userManagers       map[string]RulesManager
 	userManagerMetrics *ManagerMetrics
 
 	// Per-user notifiers with separate queues.
@@ -65,7 +65,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		managerFactory:     managerFactory,
 		notifiers:          map[string]*rulerNotifier{},
 		mapper:             newMapper(cfg.RulePath, logger),
-		userManagers:       map[string]*promRules.Manager{},
+		userManagers:       map[string]RulesManager{},
 		userManagerMetrics: userManagerMetrics,
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
@@ -110,6 +110,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
+			r.userManagerMetrics.DeleteUserRegistry(userID)
 			level.Info(r.logger).Log("msg", "deleting rule manager", "user", userID)
 		}
 	}
@@ -129,11 +130,12 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		return
 	}
 
-	if update {
-		level.Debug(r.logger).Log("msg", "updating rules", "user", "user")
+	manager, exists := r.userManagers[user]
+	if !exists || update {
+		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
-		manager, exists := r.userManagers[user]
 		if !exists {
+			level.Debug(r.logger).Log("msg", "creating rule manager for user", "user", user)
 			manager, err = r.newManager(ctx, user)
 			if err != nil {
 				r.lastReloadSuccessful.WithLabelValues(user).Set(0)
@@ -159,7 +161,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
-func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
+func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID string) (RulesManager, error) {
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
@@ -239,7 +241,7 @@ func (r *DefaultMultiTenantManager) Stop() {
 	for user, manager := range r.userManagers {
 		level.Debug(r.logger).Log("msg", "shutting down user  manager", "user", user)
 		wg.Add(1)
-		go func(manager *promRules.Manager, user string) {
+		go func(manager RulesManager, user string) {
 			manager.Stop()
 			wg.Done()
 			level.Debug(r.logger).Log("msg", "user manager shut down", "user", user)

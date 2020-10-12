@@ -2,6 +2,7 @@ package s3
 
 import (
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
 )
@@ -23,5 +24,11 @@ func newS3Config(cfg Config) s3.Config {
 		AccessKey: cfg.AccessKeyID,
 		SecretKey: cfg.SecretAccessKey.Value,
 		Insecure:  cfg.Insecure,
+		HTTPConfig: s3.HTTPConfig{
+			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
+			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
+			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
+			Transport:             cfg.HTTP.Transport,
+		},
 	}
 }

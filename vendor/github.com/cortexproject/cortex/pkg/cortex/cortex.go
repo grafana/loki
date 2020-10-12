@@ -71,11 +71,10 @@ import (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      string `yaml:"target"`
-	AuthEnabled bool   `yaml:"auth_enabled"`
-	PrintConfig bool   `yaml:"-"`
-	HTTPPrefix  string `yaml:"http_prefix"`
-	ListModules bool   `yaml:"-"` // No yaml for this, it only works with flags.
+	Target      flagext.StringSliceCSV `yaml:"target"`
+	AuthEnabled bool                   `yaml:"auth_enabled"`
+	PrintConfig bool                   `yaml:"-"`
+	HTTPPrefix  string                 `yaml:"http_prefix"`
 
 	API            api.Config               `yaml:"api"`
 	Server         server.Config            `yaml:"server"`
@@ -110,8 +109,14 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
-	f.StringVar(&c.Target, "target", All, "The Cortex module to run. Use \"-modules\" command line flag to get a list of available modules, and to see which modules are included in \"All\".")
-	f.BoolVar(&c.ListModules, "modules", false, "List available values to be use as target. Cannot be used in YAML config.")
+
+	// Set the default module list to 'all'
+	c.Target = []string{All}
+
+	f.Var(&c.Target, "target", "Comma-separated list of Cortex modules to load. "+
+		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
+		"Use '-modules' command line flag to get a list of available modules, and to see which modules are included in 'all'.")
+
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
@@ -167,7 +172,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.ChunkStore.Validate(); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
-	if err := c.Ruler.Validate(); err != nil {
+	if err := c.Ruler.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
 	if err := c.BlocksStorage.Validate(); err != nil {
@@ -203,6 +208,10 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 
 	return nil
+}
+
+func (c *Config) isModuleEnabled(m string) bool {
+	return util.StringsContain(c.Target, m)
 }
 
 // validateYAMLEmptyNodes ensure that no empty node has been specified in the YAML config file.
@@ -309,16 +318,18 @@ func (t *Cortex) setupThanosTracing() {
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
-	if !t.ModuleManager.IsUserVisibleModule(t.Cfg.Target) {
-		level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", t.Cfg.Target)
+	for _, module := range t.Cfg.Target {
+		if !t.ModuleManager.IsUserVisibleModule(module) {
+			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
+		}
 	}
 
-	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
+	var err error
+	t.ServiceMap, err = t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
 		return err
 	}
 
-	t.ServiceMap = serviceMap
 	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
 
 	// get all services, create service manager and tell it to start

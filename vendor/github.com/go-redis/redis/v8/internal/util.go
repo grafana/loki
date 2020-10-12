@@ -11,7 +11,7 @@ import (
 )
 
 func Sleep(ctx context.Context, dur time.Duration) error {
-	return WithSpan(ctx, "sleep", func(ctx context.Context) error {
+	return WithSpan(ctx, "sleep", func(ctx context.Context, span trace.Span) error {
 		t := time.NewTimer(dur)
 		defer t.Stop()
 
@@ -62,15 +62,15 @@ func Unwrap(err error) error {
 
 //------------------------------------------------------------------------------
 
-func WithSpan(ctx context.Context, name string, fn func(context.Context) error) error {
-	if !trace.SpanFromContext(ctx).IsRecording() {
-		return fn(ctx)
+func WithSpan(ctx context.Context, name string, fn func(context.Context, trace.Span) error) error {
+	if span := trace.SpanFromContext(ctx); !span.IsRecording() {
+		return fn(ctx, span)
 	}
 
 	ctx, span := global.Tracer("github.com/go-redis/redis").Start(ctx, name)
 	defer span.End()
 
-	return fn(ctx)
+	return fn(ctx, span)
 }
 
 func RecordError(ctx context.Context, err error) error {

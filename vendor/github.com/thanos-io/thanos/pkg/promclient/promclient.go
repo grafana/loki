@@ -636,7 +636,7 @@ func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []sto
 	u.Path = path.Join(u.Path, "/api/v1/series")
 	q := u.Query()
 
-	matcher, err := matchersToString(matchers)
+	matcher, err := MatchersToString(matchers)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid matchers")
 	}

@@ -200,7 +200,7 @@ func (c *S3) CompleteMultipartUploadRequest(input *CompleteMultipartUploadInput)
 // For information about permissions required to use the multipart upload API,
 // see Multipart Upload API and Permissions (https://docs.aws.amazon.com/AmazonS3/latest/dev/mpuAndPermissions.html).
 //
-// GetBucketLifecycle has the following special errors:
+// CompleteMultipartUpload has the following special errors:
 //
 //    * Error code: EntityTooSmall Description: Your proposed upload is smaller
 //    than the minimum allowed object size. Each part must be at least 5 MB
@@ -7883,6 +7883,13 @@ func (c *S3) PutBucketReplicationRequest(input *PutBucketReplicationInput) (req 
 // When you add the Filter element in the configuration, you must also add the
 // following elements: DeleteMarkerReplication, Status, and Priority.
 //
+// The latest version of the replication configuration XML is V2. XML V2 replication
+// configurations are those that contain the Filter element for rules, and rules
+// that specify S3 Replication Time Control (S3 RTC). In XML V2 replication
+// configurations, Amazon S3 doesn't replicate delete markers. Therefore, you
+// must set the DeleteMarkerReplication element to Disabled. For backward compatibility,
+// Amazon S3 continues to support the XML V1 replication configuration.
+//
 // For information about enabling versioning on a bucket, see Using Versioning
 // (https://docs.aws.amazon.com/AmazonS3/latest/dev/Versioning.html).
 //
@@ -9474,7 +9481,7 @@ func (c *S3) SelectObjectContentRequest(input *SelectObjectContentInput) (req *r
 	output = &SelectObjectContentOutput{}
 	req = c.newRequest(op, input, output)
 
-	es := newSelectObjectContentEventStream()
+	es := NewSelectObjectContentEventStream()
 	req.Handlers.Unmarshal.PushBack(es.setStreamCloser)
 	output.EventStream = es
 
@@ -9602,6 +9609,10 @@ func (c *S3) SelectObjectContentWithContext(ctx aws.Context, input *SelectObject
 var _ awserr.Error
 
 // SelectObjectContentEventStream provides the event stream handling for the SelectObjectContent.
+//
+// For testing and mocking the event stream this type should be initialized via
+// the NewSelectObjectContentEventStream constructor function. Using the functional options
+// to pass in nested mock behavior.
 type SelectObjectContentEventStream struct {
 
 	// Reader is the EventStream reader for the SelectObjectContentEventStream
@@ -9624,11 +9635,31 @@ type SelectObjectContentEventStream struct {
 	err       *eventstreamapi.OnceError
 }
 
-func newSelectObjectContentEventStream() *SelectObjectContentEventStream {
-	return &SelectObjectContentEventStream{
+// NewSelectObjectContentEventStream initializes an SelectObjectContentEventStream.
+// This function should only be used for testing and mocking the SelectObjectContentEventStream
+// stream within your application.
+//
+// The Reader member must be set before reading events from the stream.
+//
+// The StreamCloser member should be set to the underlying io.Closer,
+// (e.g. http.Response.Body), that will be closed when the stream Close method
+// is called.
+//
+//   es := NewSelectObjectContentEventStream(func(o *SelectObjectContentEventStream{
+//       es.Reader = myMockStreamReader
+//       es.StreamCloser = myMockStreamCloser
+//   })
+func NewSelectObjectContentEventStream(opts ...func(*SelectObjectContentEventStream)) *SelectObjectContentEventStream {
+	es := &SelectObjectContentEventStream{
 		done: make(chan struct{}),
 		err:  eventstreamapi.NewOnceError(),
 	}
+
+	for _, fn := range opts {
+		fn(es)
+	}
+
+	return es
 }
 
 func (es *SelectObjectContentEventStream) setStreamCloser(r *request.Request) {
@@ -14118,7 +14149,7 @@ type DeleteObjectTaggingInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
-	// Name of the tag.
+	// Name of the object key.
 	//
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
@@ -21474,7 +21505,7 @@ type ListObjectsOutput struct {
 	// is true), you can use the key name in this field as marker in the subsequent
 	// request to get next set of objects. Amazon S3 lists objects in alphabetical
 	// order Note: This element is returned only if you have delimiter request parameter
-	// specified. If response does not include the NextMaker and it is truncated,
+	// specified. If response does not include the NextMarker and it is truncated,
 	// you can use the value of the last Key in the response as the marker in the
 	// subsequent request to get the next set of object keys.
 	NextMarker *string `type:"string"`
@@ -22954,8 +22985,22 @@ func (s *NotificationConfigurationFilter) SetKey(v *KeyFilter) *NotificationConf
 type Object struct {
 	_ struct{} `type:"structure"`
 
-	// The entity tag is an MD5 hash of the object. ETag reflects only changes to
-	// the contents of an object, not its metadata.
+	// The entity tag is a hash of the object. The ETag reflects changes only to
+	// the contents of an object, not its metadata. The ETag may or may not be an
+	// MD5 digest of the object data. Whether or not it is depends on how the object
+	// was created and how it is encrypted as described below:
+	//
+	//    * Objects created by the PUT Object, POST Object, or Copy operation, or
+	//    through the AWS Management Console, and are encrypted by SSE-S3 or plaintext,
+	//    have ETags that are an MD5 digest of their object data.
+	//
+	//    * Objects created by the PUT Object, POST Object, or Copy operation, or
+	//    through the AWS Management Console, and are encrypted by SSE-C or SSE-KMS,
+	//    have ETags that are not an MD5 digest of their object data.
+	//
+	//    * If an object is created by either the Multipart Upload or Part Copy
+	//    operation, the ETag is not an MD5 digest, regardless of the method of
+	//    encryption.
 	ETag *string `type:"string"`
 
 	// The name that you assign to an object. You use the object key to retrieve
@@ -26602,7 +26647,7 @@ type PutObjectTaggingInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
-	// Name of the tag.
+	// Name of the object key.
 	//
 	// Key is a required field
 	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
@@ -29123,7 +29168,7 @@ func (s *StorageClassAnalysisDataExport) SetOutputSchemaVersion(v string) *Stora
 type Tag struct {
 	_ struct{} `type:"structure"`
 
-	// Name of the tag.
+	// Name of the object key.
 	//
 	// Key is a required field
 	Key *string `min:"1" type:"string" required:"true"`
@@ -30207,6 +30252,13 @@ const (
 	AnalyticsS3ExportFileFormatCsv = "CSV"
 )
 
+// AnalyticsS3ExportFileFormat_Values returns all elements of the AnalyticsS3ExportFileFormat enum
+func AnalyticsS3ExportFileFormat_Values() []string {
+	return []string{
+		AnalyticsS3ExportFileFormatCsv,
+	}
+}
+
 const (
 	// BucketAccelerateStatusEnabled is a BucketAccelerateStatus enum value
 	BucketAccelerateStatusEnabled = "Enabled"
@@ -30214,6 +30266,14 @@ const (
 	// BucketAccelerateStatusSuspended is a BucketAccelerateStatus enum value
 	BucketAccelerateStatusSuspended = "Suspended"
 )
+
+// BucketAccelerateStatus_Values returns all elements of the BucketAccelerateStatus enum
+func BucketAccelerateStatus_Values() []string {
+	return []string{
+		BucketAccelerateStatusEnabled,
+		BucketAccelerateStatusSuspended,
+	}
+}
 
 const (
 	// BucketCannedACLPrivate is a BucketCannedACL enum value
@@ -30229,18 +30289,31 @@ const (
 	BucketCannedACLAuthenticatedRead = "authenticated-read"
 )
 
+// BucketCannedACL_Values returns all elements of the BucketCannedACL enum
+func BucketCannedACL_Values() []string {
+	return []string{
+		BucketCannedACLPrivate,
+		BucketCannedACLPublicRead,
+		BucketCannedACLPublicReadWrite,
+		BucketCannedACLAuthenticatedRead,
+	}
+}
+
 const (
-	// BucketLocationConstraintEu is a BucketLocationConstraint enum value
-	BucketLocationConstraintEu = "EU"
+	// BucketLocationConstraintAfSouth1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintAfSouth1 = "af-south-1"
 
-	// BucketLocationConstraintEuWest1 is a BucketLocationConstraint enum value
-	BucketLocationConstraintEuWest1 = "eu-west-1"
+	// BucketLocationConstraintApEast1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintApEast1 = "ap-east-1"
 
-	// BucketLocationConstraintUsWest1 is a BucketLocationConstraint enum value
-	BucketLocationConstraintUsWest1 = "us-west-1"
+	// BucketLocationConstraintApNortheast1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintApNortheast1 = "ap-northeast-1"
 
-	// BucketLocationConstraintUsWest2 is a BucketLocationConstraint enum value
-	BucketLocationConstraintUsWest2 = "us-west-2"
+	// BucketLocationConstraintApNortheast2 is a BucketLocationConstraint enum value
+	BucketLocationConstraintApNortheast2 = "ap-northeast-2"
+
+	// BucketLocationConstraintApNortheast3 is a BucketLocationConstraint enum value
+	BucketLocationConstraintApNortheast3 = "ap-northeast-3"
 
 	// BucketLocationConstraintApSouth1 is a BucketLocationConstraint enum value
 	BucketLocationConstraintApSouth1 = "ap-south-1"
@@ -30251,18 +30324,88 @@ const (
 	// BucketLocationConstraintApSoutheast2 is a BucketLocationConstraint enum value
 	BucketLocationConstraintApSoutheast2 = "ap-southeast-2"
 
-	// BucketLocationConstraintApNortheast1 is a BucketLocationConstraint enum value
-	BucketLocationConstraintApNortheast1 = "ap-northeast-1"
-
-	// BucketLocationConstraintSaEast1 is a BucketLocationConstraint enum value
-	BucketLocationConstraintSaEast1 = "sa-east-1"
+	// BucketLocationConstraintCaCentral1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintCaCentral1 = "ca-central-1"
 
 	// BucketLocationConstraintCnNorth1 is a BucketLocationConstraint enum value
 	BucketLocationConstraintCnNorth1 = "cn-north-1"
 
+	// BucketLocationConstraintCnNorthwest1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintCnNorthwest1 = "cn-northwest-1"
+
+	// BucketLocationConstraintEu is a BucketLocationConstraint enum value
+	BucketLocationConstraintEu = "EU"
+
 	// BucketLocationConstraintEuCentral1 is a BucketLocationConstraint enum value
 	BucketLocationConstraintEuCentral1 = "eu-central-1"
+
+	// BucketLocationConstraintEuNorth1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintEuNorth1 = "eu-north-1"
+
+	// BucketLocationConstraintEuSouth1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintEuSouth1 = "eu-south-1"
+
+	// BucketLocationConstraintEuWest1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintEuWest1 = "eu-west-1"
+
+	// BucketLocationConstraintEuWest2 is a BucketLocationConstraint enum value
+	BucketLocationConstraintEuWest2 = "eu-west-2"
+
+	// BucketLocationConstraintEuWest3 is a BucketLocationConstraint enum value
+	BucketLocationConstraintEuWest3 = "eu-west-3"
+
+	// BucketLocationConstraintMeSouth1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintMeSouth1 = "me-south-1"
+
+	// BucketLocationConstraintSaEast1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintSaEast1 = "sa-east-1"
+
+	// BucketLocationConstraintUsEast2 is a BucketLocationConstraint enum value
+	BucketLocationConstraintUsEast2 = "us-east-2"
+
+	// BucketLocationConstraintUsGovEast1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintUsGovEast1 = "us-gov-east-1"
+
+	// BucketLocationConstraintUsGovWest1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintUsGovWest1 = "us-gov-west-1"
+
+	// BucketLocationConstraintUsWest1 is a BucketLocationConstraint enum value
+	BucketLocationConstraintUsWest1 = "us-west-1"
+
+	// BucketLocationConstraintUsWest2 is a BucketLocationConstraint enum value
+	BucketLocationConstraintUsWest2 = "us-west-2"
 )
+
+// BucketLocationConstraint_Values returns all elements of the BucketLocationConstraint enum
+func BucketLocationConstraint_Values() []string {
+	return []string{
+		BucketLocationConstraintAfSouth1,
+		BucketLocationConstraintApEast1,
+		BucketLocationConstraintApNortheast1,
+		BucketLocationConstraintApNortheast2,
+		BucketLocationConstraintApNortheast3,
+		BucketLocationConstraintApSouth1,
+		BucketLocationConstraintApSoutheast1,
+		BucketLocationConstraintApSoutheast2,
+		BucketLocationConstraintCaCentral1,
+		BucketLocationConstraintCnNorth1,
+		BucketLocationConstraintCnNorthwest1,
+		BucketLocationConstraintEu,
+		BucketLocationConstraintEuCentral1,
+		BucketLocationConstraintEuNorth1,
+		BucketLocationConstraintEuSouth1,
+		BucketLocationConstraintEuWest1,
+		BucketLocationConstraintEuWest2,
+		BucketLocationConstraintEuWest3,
+		BucketLocationConstraintMeSouth1,
+		BucketLocationConstraintSaEast1,
+		BucketLocationConstraintUsEast2,
+		BucketLocationConstraintUsGovEast1,
+		BucketLocationConstraintUsGovWest1,
+		BucketLocationConstraintUsWest1,
+		BucketLocationConstraintUsWest2,
+	}
+}
 
 const (
 	// BucketLogsPermissionFullControl is a BucketLogsPermission enum value
@@ -30275,6 +30418,15 @@ const (
 	BucketLogsPermissionWrite = "WRITE"
 )
 
+// BucketLogsPermission_Values returns all elements of the BucketLogsPermission enum
+func BucketLogsPermission_Values() []string {
+	return []string{
+		BucketLogsPermissionFullControl,
+		BucketLogsPermissionRead,
+		BucketLogsPermissionWrite,
+	}
+}
+
 const (
 	// BucketVersioningStatusEnabled is a BucketVersioningStatus enum value
 	BucketVersioningStatusEnabled = "Enabled"
@@ -30282,6 +30434,14 @@ const (
 	// BucketVersioningStatusSuspended is a BucketVersioningStatus enum value
 	BucketVersioningStatusSuspended = "Suspended"
 )
+
+// BucketVersioningStatus_Values returns all elements of the BucketVersioningStatus enum
+func BucketVersioningStatus_Values() []string {
+	return []string{
+		BucketVersioningStatusEnabled,
+		BucketVersioningStatusSuspended,
+	}
+}
 
 const (
 	// CompressionTypeNone is a CompressionType enum value
@@ -30294,6 +30454,15 @@ const (
 	CompressionTypeBzip2 = "BZIP2"
 )
 
+// CompressionType_Values returns all elements of the CompressionType enum
+func CompressionType_Values() []string {
+	return []string{
+		CompressionTypeNone,
+		CompressionTypeGzip,
+		CompressionTypeBzip2,
+	}
+}
+
 const (
 	// DeleteMarkerReplicationStatusEnabled is a DeleteMarkerReplicationStatus enum value
 	DeleteMarkerReplicationStatusEnabled = "Enabled"
@@ -30301,6 +30470,14 @@ const (
 	// DeleteMarkerReplicationStatusDisabled is a DeleteMarkerReplicationStatus enum value
 	DeleteMarkerReplicationStatusDisabled = "Disabled"
 )
+
+// DeleteMarkerReplicationStatus_Values returns all elements of the DeleteMarkerReplicationStatus enum
+func DeleteMarkerReplicationStatus_Values() []string {
+	return []string{
+		DeleteMarkerReplicationStatusEnabled,
+		DeleteMarkerReplicationStatusDisabled,
+	}
+}
 
 // Requests Amazon S3 to encode the object keys in the response and specifies
 // the encoding method to use. An object key may contain any Unicode character;
@@ -30312,6 +30489,13 @@ const (
 	// EncodingTypeUrl is a EncodingType enum value
 	EncodingTypeUrl = "url"
 )
+
+// EncodingType_Values returns all elements of the EncodingType enum
+func EncodingType_Values() []string {
+	return []string{
+		EncodingTypeUrl,
+	}
+}
 
 // The bucket event for which to send notifications.
 const (
@@ -30367,6 +30551,29 @@ const (
 	EventS3ReplicationOperationReplicatedAfterThreshold = "s3:Replication:OperationReplicatedAfterThreshold"
 )
 
+// Event_Values returns all elements of the Event enum
+func Event_Values() []string {
+	return []string{
+		EventS3ReducedRedundancyLostObject,
+		EventS3ObjectCreated,
+		EventS3ObjectCreatedPut,
+		EventS3ObjectCreatedPost,
+		EventS3ObjectCreatedCopy,
+		EventS3ObjectCreatedCompleteMultipartUpload,
+		EventS3ObjectRemoved,
+		EventS3ObjectRemovedDelete,
+		EventS3ObjectRemovedDeleteMarkerCreated,
+		EventS3ObjectRestore,
+		EventS3ObjectRestorePost,
+		EventS3ObjectRestoreCompleted,
+		EventS3Replication,
+		EventS3ReplicationOperationFailedReplication,
+		EventS3ReplicationOperationNotTracked,
+		EventS3ReplicationOperationMissedThreshold,
+		EventS3ReplicationOperationReplicatedAfterThreshold,
+	}
+}
+
 const (
 	// ExistingObjectReplicationStatusEnabled is a ExistingObjectReplicationStatus enum value
 	ExistingObjectReplicationStatusEnabled = "Enabled"
@@ -30374,6 +30581,14 @@ const (
 	// ExistingObjectReplicationStatusDisabled is a ExistingObjectReplicationStatus enum value
 	ExistingObjectReplicationStatusDisabled = "Disabled"
 )
+
+// ExistingObjectReplicationStatus_Values returns all elements of the ExistingObjectReplicationStatus enum
+func ExistingObjectReplicationStatus_Values() []string {
+	return []string{
+		ExistingObjectReplicationStatusEnabled,
+		ExistingObjectReplicationStatusDisabled,
+	}
+}
 
 const (
 	// ExpirationStatusEnabled is a ExpirationStatus enum value
@@ -30383,10 +30598,25 @@ const (
 	ExpirationStatusDisabled = "Disabled"
 )
 
+// ExpirationStatus_Values returns all elements of the ExpirationStatus enum
+func ExpirationStatus_Values() []string {
+	return []string{
+		ExpirationStatusEnabled,
+		ExpirationStatusDisabled,
+	}
+}
+
 const (
 	// ExpressionTypeSql is a ExpressionType enum value
 	ExpressionTypeSql = "SQL"
 )
+
+// ExpressionType_Values returns all elements of the ExpressionType enum
+func ExpressionType_Values() []string {
+	return []string{
+		ExpressionTypeSql,
+	}
+}
 
 const (
 	// FileHeaderInfoUse is a FileHeaderInfo enum value
@@ -30399,6 +30629,15 @@ const (
 	FileHeaderInfoNone = "NONE"
 )
 
+// FileHeaderInfo_Values returns all elements of the FileHeaderInfo enum
+func FileHeaderInfo_Values() []string {
+	return []string{
+		FileHeaderInfoUse,
+		FileHeaderInfoIgnore,
+		FileHeaderInfoNone,
+	}
+}
+
 const (
 	// FilterRuleNamePrefix is a FilterRuleName enum value
 	FilterRuleNamePrefix = "prefix"
@@ -30406,6 +30645,14 @@ const (
 	// FilterRuleNameSuffix is a FilterRuleName enum value
 	FilterRuleNameSuffix = "suffix"
 )
+
+// FilterRuleName_Values returns all elements of the FilterRuleName enum
+func FilterRuleName_Values() []string {
+	return []string{
+		FilterRuleNamePrefix,
+		FilterRuleNameSuffix,
+	}
+}
 
 const (
 	// InventoryFormatCsv is a InventoryFormat enum value
@@ -30418,6 +30665,15 @@ const (
 	InventoryFormatParquet = "Parquet"
 )
 
+// InventoryFormat_Values returns all elements of the InventoryFormat enum
+func InventoryFormat_Values() []string {
+	return []string{
+		InventoryFormatCsv,
+		InventoryFormatOrc,
+		InventoryFormatParquet,
+	}
+}
+
 const (
 	// InventoryFrequencyDaily is a InventoryFrequency enum value
 	InventoryFrequencyDaily = "Daily"
@@ -30426,6 +30682,14 @@ const (
 	InventoryFrequencyWeekly = "Weekly"
 )
 
+// InventoryFrequency_Values returns all elements of the InventoryFrequency enum
+func InventoryFrequency_Values() []string {
+	return []string{
+		InventoryFrequencyDaily,
+		InventoryFrequencyWeekly,
+	}
+}
+
 const (
 	// InventoryIncludedObjectVersionsAll is a InventoryIncludedObjectVersions enum value
 	InventoryIncludedObjectVersionsAll = "All"
@@ -30433,6 +30697,14 @@ const (
 	// InventoryIncludedObjectVersionsCurrent is a InventoryIncludedObjectVersions enum value
 	InventoryIncludedObjectVersionsCurrent = "Current"
 )
+
+// InventoryIncludedObjectVersions_Values returns all elements of the InventoryIncludedObjectVersions enum
+func InventoryIncludedObjectVersions_Values() []string {
+	return []string{
+		InventoryIncludedObjectVersionsAll,
+		InventoryIncludedObjectVersionsCurrent,
+	}
+}
 
 const (
 	// InventoryOptionalFieldSize is a InventoryOptionalField enum value
@@ -30469,6 +30741,23 @@ const (
 	InventoryOptionalFieldIntelligentTieringAccessTier = "IntelligentTieringAccessTier"
 )
 
+// InventoryOptionalField_Values returns all elements of the InventoryOptionalField enum
+func InventoryOptionalField_Values() []string {
+	return []string{
+		InventoryOptionalFieldSize,
+		InventoryOptionalFieldLastModifiedDate,
+		InventoryOptionalFieldStorageClass,
+		InventoryOptionalFieldEtag,
+		InventoryOptionalFieldIsMultipartUploaded,
+		InventoryOptionalFieldReplicationStatus,
+		InventoryOptionalFieldEncryptionStatus,
+		InventoryOptionalFieldObjectLockRetainUntilDate,
+		InventoryOptionalFieldObjectLockMode,
+		InventoryOptionalFieldObjectLockLegalHoldStatus,
+		InventoryOptionalFieldIntelligentTieringAccessTier,
+	}
+}
+
 const (
 	// JSONTypeDocument is a JSONType enum value
 	JSONTypeDocument = "DOCUMENT"
@@ -30476,6 +30765,14 @@ const (
 	// JSONTypeLines is a JSONType enum value
 	JSONTypeLines = "LINES"
 )
+
+// JSONType_Values returns all elements of the JSONType enum
+func JSONType_Values() []string {
+	return []string{
+		JSONTypeDocument,
+		JSONTypeLines,
+	}
+}
 
 const (
 	// MFADeleteEnabled is a MFADelete enum value
@@ -30485,6 +30782,14 @@ const (
 	MFADeleteDisabled = "Disabled"
 )
 
+// MFADelete_Values returns all elements of the MFADelete enum
+func MFADelete_Values() []string {
+	return []string{
+		MFADeleteEnabled,
+		MFADeleteDisabled,
+	}
+}
+
 const (
 	// MFADeleteStatusEnabled is a MFADeleteStatus enum value
 	MFADeleteStatusEnabled = "Enabled"
@@ -30492,6 +30797,14 @@ const (
 	// MFADeleteStatusDisabled is a MFADeleteStatus enum value
 	MFADeleteStatusDisabled = "Disabled"
 )
+
+// MFADeleteStatus_Values returns all elements of the MFADeleteStatus enum
+func MFADeleteStatus_Values() []string {
+	return []string{
+		MFADeleteStatusEnabled,
+		MFADeleteStatusDisabled,
+	}
+}
 
 const (
 	// MetadataDirectiveCopy is a MetadataDirective enum value
@@ -30501,6 +30814,14 @@ const (
 	MetadataDirectiveReplace = "REPLACE"
 )
 
+// MetadataDirective_Values returns all elements of the MetadataDirective enum
+func MetadataDirective_Values() []string {
+	return []string{
+		MetadataDirectiveCopy,
+		MetadataDirectiveReplace,
+	}
+}
+
 const (
 	// MetricsStatusEnabled is a MetricsStatus enum value
 	MetricsStatusEnabled = "Enabled"
@@ -30508,6 +30829,14 @@ const (
 	// MetricsStatusDisabled is a MetricsStatus enum value
 	MetricsStatusDisabled = "Disabled"
 )
+
+// MetricsStatus_Values returns all elements of the MetricsStatus enum
+func MetricsStatus_Values() []string {
+	return []string{
+		MetricsStatusEnabled,
+		MetricsStatusDisabled,
+	}
+}
 
 const (
 	// ObjectCannedACLPrivate is a ObjectCannedACL enum value
@@ -30532,10 +30861,30 @@ const (
 	ObjectCannedACLBucketOwnerFullControl = "bucket-owner-full-control"
 )
 
+// ObjectCannedACL_Values returns all elements of the ObjectCannedACL enum
+func ObjectCannedACL_Values() []string {
+	return []string{
+		ObjectCannedACLPrivate,
+		ObjectCannedACLPublicRead,
+		ObjectCannedACLPublicReadWrite,
+		ObjectCannedACLAuthenticatedRead,
+		ObjectCannedACLAwsExecRead,
+		ObjectCannedACLBucketOwnerRead,
+		ObjectCannedACLBucketOwnerFullControl,
+	}
+}
+
 const (
 	// ObjectLockEnabledEnabled is a ObjectLockEnabled enum value
 	ObjectLockEnabledEnabled = "Enabled"
 )
+
+// ObjectLockEnabled_Values returns all elements of the ObjectLockEnabled enum
+func ObjectLockEnabled_Values() []string {
+	return []string{
+		ObjectLockEnabledEnabled,
+	}
+}
 
 const (
 	// ObjectLockLegalHoldStatusOn is a ObjectLockLegalHoldStatus enum value
@@ -30545,6 +30894,14 @@ const (
 	ObjectLockLegalHoldStatusOff = "OFF"
 )
 
+// ObjectLockLegalHoldStatus_Values returns all elements of the ObjectLockLegalHoldStatus enum
+func ObjectLockLegalHoldStatus_Values() []string {
+	return []string{
+		ObjectLockLegalHoldStatusOn,
+		ObjectLockLegalHoldStatusOff,
+	}
+}
+
 const (
 	// ObjectLockModeGovernance is a ObjectLockMode enum value
 	ObjectLockModeGovernance = "GOVERNANCE"
@@ -30553,6 +30910,14 @@ const (
 	ObjectLockModeCompliance = "COMPLIANCE"
 )
 
+// ObjectLockMode_Values returns all elements of the ObjectLockMode enum
+func ObjectLockMode_Values() []string {
+	return []string{
+		ObjectLockModeGovernance,
+		ObjectLockModeCompliance,
+	}
+}
+
 const (
 	// ObjectLockRetentionModeGovernance is a ObjectLockRetentionMode enum value
 	ObjectLockRetentionModeGovernance = "GOVERNANCE"
@@ -30560,6 +30925,14 @@ const (
 	// ObjectLockRetentionModeCompliance is a ObjectLockRetentionMode enum value
 	ObjectLockRetentionModeCompliance = "COMPLIANCE"
 )
+
+// ObjectLockRetentionMode_Values returns all elements of the ObjectLockRetentionMode enum
+func ObjectLockRetentionMode_Values() []string {
+	return []string{
+		ObjectLockRetentionModeGovernance,
+		ObjectLockRetentionModeCompliance,
+	}
+}
 
 const (
 	// ObjectStorageClassStandard is a ObjectStorageClass enum value
@@ -30584,15 +30957,42 @@ const (
 	ObjectStorageClassDeepArchive = "DEEP_ARCHIVE"
 )
 
+// ObjectStorageClass_Values returns all elements of the ObjectStorageClass enum
+func ObjectStorageClass_Values() []string {
+	return []string{
+		ObjectStorageClassStandard,
+		ObjectStorageClassReducedRedundancy,
+		ObjectStorageClassGlacier,
+		ObjectStorageClassStandardIa,
+		ObjectStorageClassOnezoneIa,
+		ObjectStorageClassIntelligentTiering,
+		ObjectStorageClassDeepArchive,
+	}
+}
+
 const (
 	// ObjectVersionStorageClassStandard is a ObjectVersionStorageClass enum value
 	ObjectVersionStorageClassStandard = "STANDARD"
 )
 
+// ObjectVersionStorageClass_Values returns all elements of the ObjectVersionStorageClass enum
+func ObjectVersionStorageClass_Values() []string {
+	return []string{
+		ObjectVersionStorageClassStandard,
+	}
+}
+
 const (
 	// OwnerOverrideDestination is a OwnerOverride enum value
 	OwnerOverrideDestination = "Destination"
 )
+
+// OwnerOverride_Values returns all elements of the OwnerOverride enum
+func OwnerOverride_Values() []string {
+	return []string{
+		OwnerOverrideDestination,
+	}
+}
 
 const (
 	// PayerRequester is a Payer enum value
@@ -30601,6 +31001,14 @@ const (
 	// PayerBucketOwner is a Payer enum value
 	PayerBucketOwner = "BucketOwner"
 )
+
+// Payer_Values returns all elements of the Payer enum
+func Payer_Values() []string {
+	return []string{
+		PayerRequester,
+		PayerBucketOwner,
+	}
+}
 
 const (
 	// PermissionFullControl is a Permission enum value
@@ -30619,6 +31027,17 @@ const (
 	PermissionReadAcp = "READ_ACP"
 )
 
+// Permission_Values returns all elements of the Permission enum
+func Permission_Values() []string {
+	return []string{
+		PermissionFullControl,
+		PermissionWrite,
+		PermissionWriteAcp,
+		PermissionRead,
+		PermissionReadAcp,
+	}
+}
+
 const (
 	// ProtocolHttp is a Protocol enum value
 	ProtocolHttp = "http"
@@ -30626,6 +31045,14 @@ const (
 	// ProtocolHttps is a Protocol enum value
 	ProtocolHttps = "https"
 )
+
+// Protocol_Values returns all elements of the Protocol enum
+func Protocol_Values() []string {
+	return []string{
+		ProtocolHttp,
+		ProtocolHttps,
+	}
+}
 
 const (
 	// QuoteFieldsAlways is a QuoteFields enum value
@@ -30635,6 +31062,14 @@ const (
 	QuoteFieldsAsneeded = "ASNEEDED"
 )
 
+// QuoteFields_Values returns all elements of the QuoteFields enum
+func QuoteFields_Values() []string {
+	return []string{
+		QuoteFieldsAlways,
+		QuoteFieldsAsneeded,
+	}
+}
+
 const (
 	// ReplicationRuleStatusEnabled is a ReplicationRuleStatus enum value
 	ReplicationRuleStatusEnabled = "Enabled"
@@ -30642,6 +31077,14 @@ const (
 	// ReplicationRuleStatusDisabled is a ReplicationRuleStatus enum value
 	ReplicationRuleStatusDisabled = "Disabled"
 )
+
+// ReplicationRuleStatus_Values returns all elements of the ReplicationRuleStatus enum
+func ReplicationRuleStatus_Values() []string {
+	return []string{
+		ReplicationRuleStatusEnabled,
+		ReplicationRuleStatusDisabled,
+	}
+}
 
 const (
 	// ReplicationStatusComplete is a ReplicationStatus enum value
@@ -30657,6 +31100,16 @@ const (
 	ReplicationStatusReplica = "REPLICA"
 )
 
+// ReplicationStatus_Values returns all elements of the ReplicationStatus enum
+func ReplicationStatus_Values() []string {
+	return []string{
+		ReplicationStatusComplete,
+		ReplicationStatusPending,
+		ReplicationStatusFailed,
+		ReplicationStatusReplica,
+	}
+}
+
 const (
 	// ReplicationTimeStatusEnabled is a ReplicationTimeStatus enum value
 	ReplicationTimeStatusEnabled = "Enabled"
@@ -30665,12 +31118,27 @@ const (
 	ReplicationTimeStatusDisabled = "Disabled"
 )
 
+// ReplicationTimeStatus_Values returns all elements of the ReplicationTimeStatus enum
+func ReplicationTimeStatus_Values() []string {
+	return []string{
+		ReplicationTimeStatusEnabled,
+		ReplicationTimeStatusDisabled,
+	}
+}
+
 // If present, indicates that the requester was successfully charged for the
 // request.
 const (
 	// RequestChargedRequester is a RequestCharged enum value
 	RequestChargedRequester = "requester"
 )
+
+// RequestCharged_Values returns all elements of the RequestCharged enum
+func RequestCharged_Values() []string {
+	return []string{
+		RequestChargedRequester,
+	}
+}
 
 // Confirms that the requester knows that they will be charged for the request.
 // Bucket owners need not specify this parameter in their requests. For information
@@ -30682,10 +31150,24 @@ const (
 	RequestPayerRequester = "requester"
 )
 
+// RequestPayer_Values returns all elements of the RequestPayer enum
+func RequestPayer_Values() []string {
+	return []string{
+		RequestPayerRequester,
+	}
+}
+
 const (
 	// RestoreRequestTypeSelect is a RestoreRequestType enum value
 	RestoreRequestTypeSelect = "SELECT"
 )
+
+// RestoreRequestType_Values returns all elements of the RestoreRequestType enum
+func RestoreRequestType_Values() []string {
+	return []string{
+		RestoreRequestTypeSelect,
+	}
+}
 
 const (
 	// ServerSideEncryptionAes256 is a ServerSideEncryption enum value
@@ -30695,6 +31177,14 @@ const (
 	ServerSideEncryptionAwsKms = "aws:kms"
 )
 
+// ServerSideEncryption_Values returns all elements of the ServerSideEncryption enum
+func ServerSideEncryption_Values() []string {
+	return []string{
+		ServerSideEncryptionAes256,
+		ServerSideEncryptionAwsKms,
+	}
+}
+
 const (
 	// SseKmsEncryptedObjectsStatusEnabled is a SseKmsEncryptedObjectsStatus enum value
 	SseKmsEncryptedObjectsStatusEnabled = "Enabled"
@@ -30702,6 +31192,14 @@ const (
 	// SseKmsEncryptedObjectsStatusDisabled is a SseKmsEncryptedObjectsStatus enum value
 	SseKmsEncryptedObjectsStatusDisabled = "Disabled"
 )
+
+// SseKmsEncryptedObjectsStatus_Values returns all elements of the SseKmsEncryptedObjectsStatus enum
+func SseKmsEncryptedObjectsStatus_Values() []string {
+	return []string{
+		SseKmsEncryptedObjectsStatusEnabled,
+		SseKmsEncryptedObjectsStatusDisabled,
+	}
+}
 
 const (
 	// StorageClassStandard is a StorageClass enum value
@@ -30726,10 +31224,30 @@ const (
 	StorageClassDeepArchive = "DEEP_ARCHIVE"
 )
 
+// StorageClass_Values returns all elements of the StorageClass enum
+func StorageClass_Values() []string {
+	return []string{
+		StorageClassStandard,
+		StorageClassReducedRedundancy,
+		StorageClassStandardIa,
+		StorageClassOnezoneIa,
+		StorageClassIntelligentTiering,
+		StorageClassGlacier,
+		StorageClassDeepArchive,
+	}
+}
+
 const (
 	// StorageClassAnalysisSchemaVersionV1 is a StorageClassAnalysisSchemaVersion enum value
 	StorageClassAnalysisSchemaVersionV1 = "V_1"
 )
+
+// StorageClassAnalysisSchemaVersion_Values returns all elements of the StorageClassAnalysisSchemaVersion enum
+func StorageClassAnalysisSchemaVersion_Values() []string {
+	return []string{
+		StorageClassAnalysisSchemaVersionV1,
+	}
+}
 
 const (
 	// TaggingDirectiveCopy is a TaggingDirective enum value
@@ -30738,6 +31256,14 @@ const (
 	// TaggingDirectiveReplace is a TaggingDirective enum value
 	TaggingDirectiveReplace = "REPLACE"
 )
+
+// TaggingDirective_Values returns all elements of the TaggingDirective enum
+func TaggingDirective_Values() []string {
+	return []string{
+		TaggingDirectiveCopy,
+		TaggingDirectiveReplace,
+	}
+}
 
 const (
 	// TierStandard is a Tier enum value
@@ -30749,6 +31275,15 @@ const (
 	// TierExpedited is a Tier enum value
 	TierExpedited = "Expedited"
 )
+
+// Tier_Values returns all elements of the Tier enum
+func Tier_Values() []string {
+	return []string{
+		TierStandard,
+		TierBulk,
+		TierExpedited,
+	}
+}
 
 const (
 	// TransitionStorageClassGlacier is a TransitionStorageClass enum value
@@ -30767,6 +31302,17 @@ const (
 	TransitionStorageClassDeepArchive = "DEEP_ARCHIVE"
 )
 
+// TransitionStorageClass_Values returns all elements of the TransitionStorageClass enum
+func TransitionStorageClass_Values() []string {
+	return []string{
+		TransitionStorageClassGlacier,
+		TransitionStorageClassStandardIa,
+		TransitionStorageClassOnezoneIa,
+		TransitionStorageClassIntelligentTiering,
+		TransitionStorageClassDeepArchive,
+	}
+}
+
 const (
 	// TypeCanonicalUser is a Type enum value
 	TypeCanonicalUser = "CanonicalUser"
@@ -30777,3 +31323,12 @@ const (
 	// TypeGroup is a Type enum value
 	TypeGroup = "Group"
 )
+
+// Type_Values returns all elements of the Type enum
+func Type_Values() []string {
+	return []string{
+		TypeCanonicalUser,
+		TypeAmazonCustomerByEmail,
+		TypeGroup,
+	}
+}

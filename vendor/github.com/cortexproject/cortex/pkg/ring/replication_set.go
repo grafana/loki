@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"sort"
 	"time"
 )
 
@@ -77,6 +78,35 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 func (r ReplicationSet) Includes(addr string) bool {
 	for _, instance := range r.Ingesters {
 		if instance.GetAddr() == addr {
+			return true
+		}
+	}
+
+	return false
+}
+
+// HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),
+// false if they differ in any way (number of instances, instance states, tokens, zones, ...).
+func HasReplicationSetChanged(before, after ReplicationSet) bool {
+	beforeInstances := before.Ingesters
+	afterInstances := after.Ingesters
+
+	if len(beforeInstances) != len(afterInstances) {
+		return true
+	}
+
+	sort.Sort(ByAddr(beforeInstances))
+	sort.Sort(ByAddr(afterInstances))
+
+	for i := 0; i < len(beforeInstances); i++ {
+		b := beforeInstances[i]
+		a := afterInstances[i]
+
+		// Exclude the heartbeat timestamp from the comparison.
+		b.Timestamp = 0
+		a.Timestamp = 0
+
+		if !b.Equal(a) {
 			return true
 		}
 	}

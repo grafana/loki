@@ -55,9 +55,9 @@ func NewAlertStore(cfg AlertStoreConfig) (AlertStore, error) {
 	case "local":
 		return local.NewStore(cfg.Local)
 	case "gcs":
-		return newObjAlertStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS, ""))
+		return newObjAlertStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
 	case "s3":
-		return newObjAlertStore(aws.NewS3ObjectClient(cfg.S3, ""))
+		return newObjAlertStore(aws.NewS3ObjectClient(cfg.S3))
 	default:
 		return nil, fmt.Errorf("unrecognized alertmanager storage backend %v, choose one of: azure, configdb, gcs, local, s3", cfg.Type)
 	}

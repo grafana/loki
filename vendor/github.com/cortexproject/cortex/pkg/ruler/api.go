@@ -27,10 +27,8 @@ import (
 )
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
-// This is required because the prometheus api implementation does not pass a context to
-// the rule retrieval function.
-// https://github.com/prometheus/prometheus/blob/2aacd807b3ec6ddd90ae55f3a42f4cffed561ea9/web/api/v1/api.go#L108
-// https://github.com/prometheus/prometheus/pull/4999
+// This is required because the prometheus api implementation does not allow us to return errors
+// on rule lookups, which might fail in Cortex's case.
 
 type response struct {
 	Status    string       `json:"status"`
@@ -377,19 +375,25 @@ func (r *Ruler) ListRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
-	rgs, err := r.store.ListRuleGroups(req.Context(), userID, namespace)
+	rgs, err := r.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
 
 	if len(rgs) == 0 {
 		level.Info(logger).Log("msg", "no rule groups found", "userID", userID)
 		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
 		return
 	}
+
+	err = r.store.LoadRuleGroups(req.Context(), map[string]rules.RuleGroupList{userID: rgs})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
 
 	formatted := rgs.Formatted()
 	marshalAndSend(formatted, w, logger)

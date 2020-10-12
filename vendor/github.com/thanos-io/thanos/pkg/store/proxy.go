@@ -273,7 +273,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s filtered out", st))
 				continue
 			}
-			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s queried", st))
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
 
 			// This is used to cancel this stream when one operations takes too long.
 			seriesCtx, closeSeries := context.WithCancel(gctx)
@@ -511,11 +511,12 @@ func (s *streamSeriesSet) Err() error {
 // matchers.
 func storeMatches(s Client, mint, maxt int64, storeMatcher [][]storepb.LabelMatcher, matchers ...storepb.LabelMatcher) (bool, error) {
 	storeMinTime, storeMaxTime := s.TimeRange()
-	if mint > storeMaxTime || maxt < storeMinTime {
+	if mint > storeMaxTime || maxt <= storeMinTime {
 		return false, nil
 	}
 	match, err := storeMatchMetadata(s, storeMatcher)
-	if err != nil || !match {
+	// Return result here if no matchers set.
+	if len(matchers) == 0 || err != nil || !match {
 		return match, err
 	}
 	return labelSetsMatch(s.LabelSets(), matchers)
@@ -587,14 +588,32 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 	*storepb.LabelNamesResponse, error,
 ) {
 	var (
-		warnings []string
-		names    [][]string
-		mtx      sync.Mutex
-		g, gctx  = errgroup.WithContext(ctx)
+		warnings       []string
+		names          [][]string
+		mtx            sync.Mutex
+		g, gctx        = errgroup.WithContext(ctx)
+		storeDebugMsgs []string
 	)
 
 	for _, st := range s.stores() {
 		st := st
+		var ok bool
+		tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
+			storeMatcher := [][]storepb.LabelMatcher{}
+			if ctxVal := ctx.Value(StoreMatcherKey); ctxVal != nil {
+				if value, ok := ctxVal.([][]storepb.LabelMatcher); ok {
+					storeMatcher = value
+				}
+			}
+			// We can skip error, we already translated matchers once.
+			ok, _ = storeMatches(st, r.Start, r.End, storeMatcher)
+		})
+		if !ok {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out", st))
+			continue
+		}
+		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
+
 		g.Go(func() error {
 			resp, err := st.LabelNames(gctx, &storepb.LabelNamesRequest{
 				PartialResponseDisabled: r.PartialResponseDisabled,
@@ -626,6 +645,7 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 		return nil, err
 	}
 
+	level.Debug(s.logger).Log("msg", strings.Join(storeDebugMsgs, ";"))
 	return &storepb.LabelNamesResponse{
 		Names:    strutil.MergeUnsortedSlices(names...),
 		Warnings: warnings,
@@ -637,14 +657,32 @@ func (s *ProxyStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequ
 	*storepb.LabelValuesResponse, error,
 ) {
 	var (
-		warnings []string
-		all      [][]string
-		mtx      sync.Mutex
-		g, gctx  = errgroup.WithContext(ctx)
+		warnings       []string
+		all            [][]string
+		mtx            sync.Mutex
+		g, gctx        = errgroup.WithContext(ctx)
+		storeDebugMsgs []string
 	)
 
 	for _, st := range s.stores() {
 		store := st
+		var ok bool
+		tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
+			storeMatcher := [][]storepb.LabelMatcher{}
+			if ctxVal := ctx.Value(StoreMatcherKey); ctxVal != nil {
+				if value, ok := ctxVal.([][]storepb.LabelMatcher); ok {
+					storeMatcher = value
+				}
+			}
+			// We can skip error, we already translated matchers once.
+			ok, _ = storeMatches(st, r.Start, r.End, storeMatcher)
+		})
+		if !ok {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out", st))
+			continue
+		}
+		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
+
 		g.Go(func() error {
 			resp, err := store.LabelValues(gctx, &storepb.LabelValuesRequest{
 				Label:                   r.Label,
@@ -677,6 +715,7 @@ func (s *ProxyStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequ
 		return nil, err
 	}
 
+	level.Debug(s.logger).Log("msg", strings.Join(storeDebugMsgs, ";"))
 	return &storepb.LabelValuesResponse{
 		Values:   strutil.MergeUnsortedSlices(all...),
 		Warnings: warnings,
