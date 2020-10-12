@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -75,7 +74,7 @@ func NewFileTargetManager(
 		return nil, err
 	}
 
-	config := map[string]sd_config.ServiceDiscoveryConfig{}
+	config := map[string]discovery.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
 		if !cfg.HasServiceDiscoveryConfig() {
 			continue

@@ -13,7 +13,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
@@ -38,7 +38,7 @@ var (
 	// defaultStdInCfg is the default config for stdin target if none provided.
 	defaultStdInCfg = scrapeconfig.Config{
 		JobName: "stdin",
-		ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
+		ServiceDiscoveryConfig: discovery.ServiceDiscoveryConfig{
 			StaticConfigs: []*targetgroup.Group{
 				{Labels: model.LabelSet{"job": "stdin"}},
 				{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},

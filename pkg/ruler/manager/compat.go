@@ -84,7 +84,7 @@ func MemstoreTenantManager(
 ) ruler.ManagerFactory {
 	var metrics *Metrics
 
-	return func(
+	return ruler.ManagerFactory(func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
@@ -120,7 +120,7 @@ func MemstoreTenantManager(
 		memStore.Start(mgr)
 
 		return mgr
-	}
+	})
 }
 
 type GroupLoader struct{}

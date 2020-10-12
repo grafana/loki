@@ -61,7 +61,7 @@ func newTable(ctx context.Context, workingDirectory string, objectClient chunk.O
 }
 
 func (t *table) compact() error {
-	objects, _, err := t.storageClient.List(t.ctx, t.name+"/")
+	objects, _, err := t.storageClient.List(t.ctx, t.name, delimiter)
 	if err != nil {
 		return err
 	}
