@@ -1117,7 +1117,7 @@ _This experimental endpoint is disabled by default and can be enabled via the `-
 ### List rules
 
 ```
-GET /loki/api/v1/rules
+GET /prometheus/api/v1/rules
 ```
 
 Prometheus-compatible rules endpoint to list alerting and recording rules that are currently loaded.
