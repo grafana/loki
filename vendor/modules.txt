@@ -681,7 +681,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20200923143134-7e2db3d092f3 => github.com/prometheus/prometheus v1.8.2-0.20200923143134-7e2db3d092f3
+# github.com/prometheus/prometheus v1.8.2-0.20200923143134-7e2db3d092f3
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -1346,7 +1346,7 @@ k8s.io/apimachinery/pkg/util/yaml
 k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/client-go v0.18.8 => k8s.io/client-go v0.18.3
+# k8s.io/client-go v12.0.0+incompatible => k8s.io/client-go v0.18.3
 k8s.io/client-go/discovery
 k8s.io/client-go/kubernetes
 k8s.io/client-go/kubernetes/scheme
@@ -1424,7 +1424,6 @@ rsc.io/binaryregexp/syntax
 sigs.k8s.io/structured-merge-diff/v3/value
 # sigs.k8s.io/yaml v1.2.0
 sigs.k8s.io/yaml
-# github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20200923143134-7e2db3d092f3
 # github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
 # github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 # k8s.io/client-go => k8s.io/client-go v0.18.3
