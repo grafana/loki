@@ -4,7 +4,9 @@ package logql
 import (
   "time"
   "github.com/prometheus/prometheus/pkg/labels"
-  "github.com/grafana/loki/pkg/logql/labelfilter"
+  "github.com/grafana/loki/pkg/logql/log/labelfilter"
+  "github.com/grafana/loki/pkg/logql/log"
+
 )
 %}
 
@@ -42,8 +44,8 @@ import (
   UnitFilter              labelfilter.Filterer
   LineFormatExpr          *lineFmtExpr
   LabelFormatExpr         *labelFmtExpr
-  LabelFormat             labelFmt
-  LabelsFormat            []labelFmt
+  LabelFormat             log.LabelFmt
+  LabelsFormat            []log.LabelFmt
   UnwrapExpr              *unwrapExpr
 }
 
@@ -217,17 +219,17 @@ labelParser:
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 
 labelFormat:
-     IDENTIFIER EQ IDENTIFIER { $$ = newRenameLabelFmt($1, $3)}
-  |  IDENTIFIER EQ STRING     { $$ = newTemplateLabelFmt($1, $3)}
+     IDENTIFIER EQ IDENTIFIER { $$ = log.NewRenameLabelFmt($1, $3)}
+  |  IDENTIFIER EQ STRING     { $$ = log.NewTemplateLabelFmt($1, $3)}
   ;
 
 labelsFormat:
-    labelFormat                    { $$ = []labelFmt{ $1 } }
+    labelFormat                    { $$ = []LabelFmt{ $1 } }
   | labelsFormat COMMA labelFormat { $$ = append($1, $3) }
   | labelsFormat COMMA error
   ;
 
-labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
+labelFormatExpr: LABEL_FMT labelsFormat { $$ = log.NewLabelFmtExpr($2) };
 
 labelFilter:
       matcher { $$ = labelfilter.NewString($1) }

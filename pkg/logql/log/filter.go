@@ -12,6 +12,7 @@ import (
 // Filterer is a interface to filter log lines.
 type Filterer interface {
 	Filter(line []byte) bool
+	ToStage() Stage
 }
 
 // LineFilterFunc is a syntax sugar for creating line filter from a function
@@ -24,6 +25,7 @@ func (f FiltererFunc) Filter(line []byte) bool {
 type trueFilter struct{}
 
 func (trueFilter) Filter(_ []byte) bool { return true }
+func (trueFilter) ToStage() Stage       { return NoopStage }
 
 // TrueFilter is a filter that returns and matches all log lines whatever their content.
 var TrueFilter = trueFilter{}
@@ -72,6 +74,12 @@ func (a andFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) && a.right.Filter(line)
 }
 
+func (a andFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
+}
+
 type orFilter struct {
 	left  Filterer
 	right Filterer
@@ -105,6 +113,12 @@ func (a orFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) || a.right.Filter(line)
 }
 
+func (a orFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
+}
+
 type regexpFilter struct {
 	*regexp.Regexp
 }
@@ -127,6 +141,12 @@ func (r regexpFilter) Filter(line []byte) bool {
 	return r.Match(line)
 }
 
+func (r regexpFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, r.Filter(line)
+	})
+}
+
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
@@ -137,6 +157,12 @@ func (l containsFilter) Filter(line []byte) bool {
 		line = bytes.ToLower(line)
 	}
 	return bytes.Contains(line, l.match)
+}
+
+func (l containsFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, l.Filter(line)
+	})
 }
 
 func (l containsFilter) String() string {

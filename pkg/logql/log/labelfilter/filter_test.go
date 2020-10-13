@@ -6,63 +6,65 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func TestBinary_Filter(t *testing.T) {
 
 	tests := []struct {
 		f       *Binary
-		lbs     labels.Labels
+		lbs     log.Labels
 		want    bool
-		wantErr bool
+		wantLbs log.Labels
 	}{
 		{
 			NewAnd(NewNumeric(FilterEqual, "foo", 5), NewDuration(FilterEqual, "bar", 1*time.Second)),
-			labels.Labels{labels.Label{Name: "foo", Value: "5"}, labels.Label{Name: "bar", Value: "1s"}},
+			log.Labels{"foo": "5", "bar": "1s"},
 			true,
-			false,
+			log.Labels{"foo": "5", "bar": "1s"},
 		},
 		{
 			NewAnd(NewNumeric(FilterEqual, "foo", 5), NewBytes(FilterEqual, "bar", 42)),
-			labels.Labels{labels.Label{Name: "foo", Value: "5"}, labels.Label{Name: "bar", Value: "42B"}},
+			log.Labels{"foo": "5", "bar": "42B"},
 			true,
-			false,
+			log.Labels{"foo": "5", "bar": "42B"},
 		},
 		{
 			NewAnd(
 				NewNumeric(FilterEqual, "foo", 5),
 				NewDuration(FilterEqual, "bar", 1*time.Second),
 			),
-			labels.Labels{labels.Label{Name: "foo", Value: "6"}, labels.Label{Name: "bar", Value: "1s"}},
+			log.Labels{"foo": "6", "bar": "1s"},
 			false,
-			false,
+			log.Labels{"foo": "6", "bar": "1s"},
 		},
 		{
 			NewAnd(
 				NewNumeric(FilterEqual, "foo", 5),
 				NewDuration(FilterEqual, "bar", 1*time.Second),
 			),
-			labels.Labels{labels.Label{Name: "foo", Value: "5"}, labels.Label{Name: "bar", Value: "2s"}},
+			log.Labels{"foo": "5", "bar": "2s"},
 			false,
-			false,
+			log.Labels{"foo": "5", "bar": "2s"},
 		},
 		{
 			NewAnd(
 				NewString(labels.MustNewMatcher(labels.MatchEqual, "foo", "5")),
 				NewDuration(FilterEqual, "bar", 1*time.Second),
 			),
-			labels.Labels{labels.Label{Name: "foo", Value: "5"}, labels.Label{Name: "bar", Value: "1s"}},
+			log.Labels{"foo": "5", "bar": "1s"},
 			true,
-			false,
+			log.Labels{"foo": "5", "bar": "1s"},
 		},
 		{
 			NewAnd(
 				NewString(labels.MustNewMatcher(labels.MatchEqual, "foo", "5")),
 				NewDuration(FilterEqual, "bar", 1*time.Second),
 			),
-			labels.Labels{labels.Label{Name: "foo", Value: "6"}, labels.Label{Name: "bar", Value: "1s"}},
+			log.Labels{"foo": "6", "bar": "1s"},
 			false,
-			false,
+			log.Labels{"foo": "6", "bar": "1s"},
 		},
 		{
 			NewAnd(
@@ -72,13 +74,17 @@ func TestBinary_Filter(t *testing.T) {
 				),
 				NewString(labels.MustNewMatcher(labels.MatchNotEqual, "method", "POST")),
 			),
-			labels.Labels{
-				{Name: "duration", Value: "2s"},
-				{Name: "status", Value: "200"},
-				{Name: "method", Value: "GET"},
+			log.Labels{
+				"duration": "2s",
+				"status":   "200",
+				"method":   "GET",
 			},
 			true,
-			false,
+			log.Labels{
+				"duration": "2s",
+				"status":   "200",
+				"method":   "GET",
+			},
 		},
 		{
 			NewAnd(
@@ -88,13 +94,17 @@ func TestBinary_Filter(t *testing.T) {
 				),
 				NewString(labels.MustNewMatcher(labels.MatchNotEqual, "method", "POST")),
 			),
-			labels.Labels{
-				{Name: "duration", Value: "2s"},
-				{Name: "status", Value: "200"},
-				{Name: "method", Value: "POST"},
+			log.Labels{
+				"duration": "2s",
+				"status":   "200",
+				"method":   "POST",
 			},
 			false,
-			false,
+			log.Labels{
+				"duration": "2s",
+				"status":   "200",
+				"method":   "POST",
+			},
 		},
 		{
 			NewAnd(
@@ -104,13 +114,17 @@ func TestBinary_Filter(t *testing.T) {
 				),
 				NewString(labels.MustNewMatcher(labels.MatchNotEqual, "method", "POST")),
 			),
-			labels.Labels{
-				{Name: "duration", Value: "2s"},
-				{Name: "status", Value: "500"},
-				{Name: "method", Value: "POST"},
+			log.Labels{
+				"duration": "2s",
+				"status":   "500",
+				"method":   "POST",
 			},
 			false,
-			false,
+			log.Labels{
+				"duration": "2s",
+				"status":   "500",
+				"method":   "POST",
+			},
 		},
 		{
 			NewAnd(
@@ -120,23 +134,24 @@ func TestBinary_Filter(t *testing.T) {
 				),
 				NewString(labels.MustNewMatcher(labels.MatchNotEqual, "method", "POST")),
 			),
-			labels.Labels{
-				{Name: "duration", Value: "2s"},
-				{Name: "status", Value: "200"},
-				{Name: "method", Value: "POST"},
+			log.Labels{
+				"duration": "2s",
+				"status":   "200",
+				"method":   "POST",
 			},
 			false,
-			false,
+			log.Labels{
+				"duration": "2s",
+				"status":   "200",
+				"method":   "POST",
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
-			got, err := tt.f.Filter(tt.lbs)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Binary.Filter() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			require.Equal(t, got, tt.want, tt.lbs)
+			_, got := tt.f.Process(nil, tt.lbs)
+			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.wantLbs, tt.lbs)
 		})
 	}
 }

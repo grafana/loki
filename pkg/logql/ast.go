@@ -13,8 +13,8 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/labelfilter"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/log/labelfilter"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
@@ -124,22 +124,6 @@ func (m MultiStageExpr) String() string {
 
 func (MultiStageExpr) logQLExpr() {}
 
-func FilterToPipeline(f LineFilter) Pipeline {
-	if f == nil || f == TrueFilter {
-		return NoopPipeline
-	}
-	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-		return line, lbs, f.Filter(line)
-	})
-}
-
-func ParserToPipeline(p LabelParser) Pipeline {
-	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-		lbs = p.Parse(line, lbs)
-		return line, lbs, true
-	})
-}
-
 type matchersExpr struct {
 	matchers []*labels.Matcher
 	implicit
@@ -235,7 +219,7 @@ func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, match string) (Log
 	filter := newLineFilterExpr(nil, ty, match)
 	switch e := expr.(type) {
 	case *matchersExpr:
-		return newPipelineExpr(e, MultiPipelineExpr{filter}), nil
+		return newPipelineExpr(e, MultiStageExpr{filter}), nil
 	case *pipelineExpr:
 		e.pipeline = append(e.pipeline, filter)
 		return e, nil
@@ -281,19 +265,15 @@ func (e *lineFilterExpr) Filter() (log.Filterer, error) {
 		}
 	}
 
-	if f == log.TrueFilter {
-		return nil, nil
-	}
-
 	return f, nil
 }
 
-func (e *lineFilterExpr) Pipeline() (Pipeline, error) {
+func (e *lineFilterExpr) Stage() (log.Stage, error) {
 	f, err := e.Filter()
 	if err != nil {
 		return nil, err
 	}
-	return FilterToPipeline(f), nil
+	return f.ToStage(), nil
 }
 
 type labelParserExpr struct {
@@ -310,25 +290,17 @@ func newLabelParserExpr(op, param string) *labelParserExpr {
 	}
 }
 
-func (e *labelParserExpr) parser() (LabelParser, error) {
+func (e *labelParserExpr) Stage() (log.Stage, error) {
 	switch e.op {
 	case OpParserTypeJSON:
-		return NewJSONParser(), nil
+		return log.NewJSONParser(), nil
 	case OpParserTypeLogfmt:
-		return NewLogfmtParser(), nil
+		return log.NewLogfmtParser(), nil
 	case OpParserTypeRegexp:
-		return NewRegexpParser(e.param)
+		return log.NewRegexpParser(e.param)
 	default:
 		return nil, fmt.Errorf("unknown parser operator: %s", e.op)
 	}
-}
-
-func (e *labelParserExpr) Pipeline() (Pipeline, error) {
-	p, err := e.parser()
-	if err != nil {
-		return nil, err
-	}
-	return ParserToPipeline(p), nil
 }
 
 func (e *labelParserExpr) String() string {
@@ -348,35 +320,8 @@ type labelFilterExpr struct {
 	implicit
 }
 
-func (e *labelFilterExpr) Pipeline() (Pipeline, error) {
-	f := newLabelFilter(e.Filterer)
-	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-		ok, lbs := f.Filter(lbs)
-		return line, lbs, ok
-	}), nil
-}
-
-type labelFilter struct {
-	labelfilter.Filterer
-
-	builder *labels.Builder
-}
-
-func newLabelFilter(f labelfilter.Filterer) *labelFilter {
-	return &labelFilter{
-		Filterer: f,
-		builder:  labels.NewBuilder(nil),
-	}
-}
-
-func (l *labelFilter) Filter(lbs labels.Labels) (bool, labels.Labels) {
-	l.builder.Reset(lbs)
-	ok, err := l.Filterer.Filter(lbs)
-	if err != nil {
-		l.builder.Set(errorLabel, errFilter)
-		return true, l.builder.Labels()
-	}
-	return ok, nil
+func (e *labelFilterExpr) Stage() (log.Stage, error) {
+	return e.Filterer, nil
 }
 
 func (e *labelFilterExpr) String() string {
@@ -394,15 +339,8 @@ func newLineFmtExpr(value string) *lineFmtExpr {
 	}
 }
 
-func (e *lineFmtExpr) Pipeline() (Pipeline, error) {
-	f, err := newLineFormatter(e.value)
-	if err != nil {
-		return nil, err
-	}
-	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-		line, lbs = f.Format(line, lbs)
-		return line, lbs, true
-	}), nil
+func (e *lineFmtExpr) Stage() (log.Stage, error) {
+	return log.NewFormatter(e.value)
 }
 
 func (e *lineFmtExpr) String() string {
@@ -410,40 +348,31 @@ func (e *lineFmtExpr) String() string {
 }
 
 type labelFmtExpr struct {
-	formats []labelFmt
+	formats []log.LabelFmt
 
 	implicit
 }
 
-func newLabelFmtExpr(fmts []labelFmt) *labelFmtExpr {
-	if err := validate(fmts); err != nil {
-		panic(newParseError(err.Error(), 0, 0))
-	}
+func newLabelFmtExpr(fmts []log.LabelFmt) *labelFmtExpr {
 	return &labelFmtExpr{
 		formats: fmts,
 	}
 }
 
-func (e *labelFmtExpr) Pipeline() (Pipeline, error) {
-	f, err := newLabelsFormatter(e.formats)
-	if err != nil {
-		return nil, err
-	}
-	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-		return line, f.Format(lbs), true
-	}), nil
+func (e *labelFmtExpr) Stage() (log.Stage, error) {
+	return log.NewLabelsFormatter(e.formats)
 }
 
 func (e *labelFmtExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
 	for i, f := range e.formats {
-		sb.WriteString(f.name)
+		sb.WriteString(f.Name)
 		sb.WriteString("=")
-		if f.rename {
-			sb.WriteString(f.value)
+		if f.Rename {
+			sb.WriteString(f.Value)
 		} else {
-			sb.WriteString(strconv.Quote(f.value))
+			sb.WriteString(strconv.Quote(f.Value))
 		}
 		if i+1 != len(e.formats) {
 			sb.WriteString(",")
@@ -907,7 +836,7 @@ func (e *literalExpr) String() string {
 func (e *literalExpr) Selector() LogSelectorExpr           { return e }
 func (e *literalExpr) HasFilter() bool                     { return false }
 func (e *literalExpr) Operations() []string                { return nil }
-func (e *literalExpr) Pipeline() (Pipeline, error)         { return NoopPipeline, nil }
+func (e *literalExpr) Pipeline() (log.Pipeline, error)     { return log.NoopPipeline, nil }
 func (e *literalExpr) Matchers() []*labels.Matcher         { return nil }
 func (e *literalExpr) Extractor() (SampleExtractor, error) { return nil, nil }
 

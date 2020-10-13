@@ -29,9 +29,9 @@ func (noopStage) Process(line []byte, lbs Labels) ([]byte, bool) {
 	return line, true
 }
 
-type PipelineFunc func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool)
+type StageFunc func(line []byte, lbs Labels) ([]byte, bool)
 
-func (fn PipelineFunc) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+func (fn StageFunc) Process(line []byte, lbs Labels) ([]byte, bool) {
 	return fn(line, lbs)
 }
 

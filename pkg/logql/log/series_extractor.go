@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql/labelfilter"
+	"github.com/grafana/loki/pkg/logql/log/labelfilter"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 )

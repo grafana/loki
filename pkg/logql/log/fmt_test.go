@@ -1,10 +1,8 @@
 package log
 
 import (
-	"sort"
 	"testing"
 
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,44 +59,43 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		name  string
 		fmter *labelsFormatter
 
-		in   labels.Labels
-		want labels.Labels
+		in   Labels
+		want Labels
 	}{
 		{
 			"combined with template",
-			mustNewLabelsFormatter([]labelFmt{newTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "foo", Value: "blip and blop"}, {Name: "bar", Value: "blop"}},
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
+			map[string]string{"foo": "blip", "bar": "blop"},
+			map[string]string{"foo": "blip and blop", "bar": "blop"},
 		},
 		{
 			"combined with template and rename",
-			mustNewLabelsFormatter([]labelFmt{
-				newTemplateLabelFmt("blip", "{{.foo}} and {{.bar}}"),
-				newRenameLabelFmt("bar", "foo"),
+			mustNewLabelsFormatter([]LabelFmt{
+				NewTemplateLabelFmt("blip", "{{.foo}} and {{.bar}}"),
+				NewRenameLabelFmt("bar", "foo"),
 			}),
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "blip", Value: "blip and blop"}, {Name: "bar", Value: "blip"}},
+			map[string]string{"foo": "blip", "bar": "blop"},
+			map[string]string{"blip": "blip and blop", "bar": "blip"},
 		},
 		{
 			"fn",
-			mustNewLabelsFormatter([]labelFmt{
-				newTemplateLabelFmt("blip", "{{.foo | ToUpper }} and {{.bar}}"),
-				newRenameLabelFmt("bar", "foo"),
+			mustNewLabelsFormatter([]LabelFmt{
+				NewTemplateLabelFmt("blip", "{{.foo | ToUpper }} and {{.bar}}"),
+				NewRenameLabelFmt("bar", "foo"),
 			}),
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
-			labels.Labels{{Name: "blip", Value: "BLIP and blop"}, {Name: "bar", Value: "blip"}},
+			map[string]string{"foo": "blip", "bar": "blop"},
+			map[string]string{"blip": "BLIP and blop", "bar": "blip"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sort.Sort(tt.want)
 			_, _ = tt.fmter.Process(nil, tt.in)
 			require.Equal(t, tt.want, tt.in)
 		})
 	}
 }
 
-func mustNewLabelsFormatter(fmts []labelFmt) *labelsFormatter {
+func mustNewLabelsFormatter(fmts []LabelFmt) *labelsFormatter {
 	lf, err := NewLabelsFormatter(fmts)
 	if err != nil {
 		panic(err)
@@ -109,12 +106,12 @@ func mustNewLabelsFormatter(fmts []labelFmt) *labelsFormatter {
 func Test_validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		fmts    []labelFmt
+		fmts    []LabelFmt
 		wantErr bool
 	}{
-		{"no dup", []labelFmt{newRenameLabelFmt("foo", "bar"), newRenameLabelFmt("bar", "foo")}, false},
-		{"dup", []labelFmt{newRenameLabelFmt("foo", "bar"), newRenameLabelFmt("foo", "blip")}, true},
-		{"no error", []labelFmt{newRenameLabelFmt(errorLabel, "bar")}, true},
+		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false},
+		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, true},
+		{"no error", []LabelFmt{NewRenameLabelFmt(errorLabel, "bar")}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

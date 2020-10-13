@@ -9,6 +9,9 @@ import (
 )
 
 var (
+	_ Stage = &lineFormatter{}
+	_ Stage = &labelsFormatter{}
+
 	functionMap = template.FuncMap{
 		"ToLower":    strings.ToLower,
 		"ToUpper":    strings.ToUpper,
@@ -56,31 +59,31 @@ func (lf *lineFormatter) Process(_ []byte, lbs Labels) ([]byte, bool) {
 	return res, true
 }
 
-type labelFmt struct {
-	name string
+type LabelFmt struct {
+	Name  string
+	Value string
 
-	value  string
-	rename bool
+	Rename bool
 }
 
-func newRenameLabelFmt(dst, target string) labelFmt {
-	return labelFmt{
-		name:   dst,
-		rename: true,
-		value:  target,
+func NewRenameLabelFmt(dst, target string) LabelFmt {
+	return LabelFmt{
+		Name:   dst,
+		Rename: true,
+		Value:  target,
 	}
 }
-func newTemplateLabelFmt(dst, template string) labelFmt {
-	return labelFmt{
-		name:   dst,
-		rename: false,
-		value:  template,
+func NewTemplateLabelFmt(dst, template string) LabelFmt {
+	return LabelFmt{
+		Name:   dst,
+		Rename: false,
+		Value:  template,
 	}
 }
 
 type labelFormatter struct {
-	*template.Template
-	labelFmt
+	tmpl *template.Template
+	LabelFmt
 }
 
 type labelsFormatter struct {
@@ -88,19 +91,19 @@ type labelsFormatter struct {
 	buf     *bytes.Buffer
 }
 
-func NewLabelsFormatter(fmts []labelFmt) (*labelsFormatter, error) {
+func NewLabelsFormatter(fmts []LabelFmt) (*labelsFormatter, error) {
 	if err := validate(fmts); err != nil {
 		return nil, err
 	}
 	formats := make([]labelFormatter, 0, len(fmts))
 	for _, fm := range fmts {
-		toAdd := labelFormatter{labelFmt: fm}
-		if !fm.rename {
-			t, err := template.New("label").Option("missingkey=zero").Funcs(functionMap).Parse(fm.value)
+		toAdd := labelFormatter{LabelFmt: fm}
+		if !fm.Rename {
+			t, err := template.New("label").Option("missingkey=zero").Funcs(functionMap).Parse(fm.Value)
 			if err != nil {
-				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.name, err)
+				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.Name, err)
 			}
-			toAdd.Template = t
+			toAdd.tmpl = t
 		}
 		formats = append(formats, toAdd)
 	}
@@ -110,33 +113,33 @@ func NewLabelsFormatter(fmts []labelFmt) (*labelsFormatter, error) {
 	}, nil
 }
 
-func validate(fmts []labelFmt) error {
+func validate(fmts []LabelFmt) error {
 	// it would be too confusing to rename and change the same label value.
 	// To avoid confusion we allow to have a label name only once per stage.
 	uniqueLabelName := map[string]struct{}{}
 	for _, f := range fmts {
-		if f.name == errorLabel {
-			return fmt.Errorf("%s cannot be formatted", f.name)
+		if f.Name == errorLabel {
+			return fmt.Errorf("%s cannot be formatted", f.Name)
 		}
-		if _, ok := uniqueLabelName[f.name]; ok {
-			return fmt.Errorf("multiple label name '%s' not allowed in a single format operation", f.name)
+		if _, ok := uniqueLabelName[f.Name]; ok {
+			return fmt.Errorf("multiple label name '%s' not allowed in a single format operation", f.Name)
 		}
-		uniqueLabelName[f.name] = struct{}{}
+		uniqueLabelName[f.Name] = struct{}{}
 	}
 	return nil
 }
 
 func (lf *labelsFormatter) Process(l []byte, lbs Labels) ([]byte, bool) {
 	for _, f := range lf.formats {
-		if f.rename {
-			lbs[f.name] = lbs[f.value]
-			delete(lbs, f.value)
+		if f.Rename {
+			lbs[f.Name] = lbs[f.Value]
+			delete(lbs, f.Value)
 			continue
 		}
 		lf.buf.Reset()
 		//todo (cyriltovena): handle error
-		_ = f.Template.Execute(lf.buf, lbs)
-		lbs[f.name] = lf.buf.String()
+		_ = f.tmpl.Execute(lf.buf, lbs)
+		lbs[f.Name] = lf.buf.String()
 	}
 	return l, true
 }

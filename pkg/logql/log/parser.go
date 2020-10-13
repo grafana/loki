@@ -11,7 +11,6 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const (
@@ -20,54 +19,48 @@ const (
 )
 
 var (
+	_ Stage = &jsonParser{}
+	_ Stage = &regexpParser{}
+	_ Stage = &logfmtParser{}
+
 	errMissingCapture = errors.New("at least one named capture must be supplied")
-	NoopLabelParser   = noopParser{}
 
 	underscore = "_"
 	point      = "."
 	dash       = "-"
 )
 
-type Parser interface {
-	Parse(line []byte, lbs Labels)
-}
-
-type noopParser struct{}
-
-func (noopParser) Parse(_ []byte, lbs labels.Labels) labels.Labels {
-	return lbs
-}
-
-type jsonParser struct {
-	builder *labels.Builder
-}
-
-func NewJSONParser() *jsonParser {
-	return &jsonParser{
-		builder: labels.NewBuilder(nil),
-	}
-}
-
-func (j *jsonParser) Parse(line []byte, lbs labels.Labels) labels.Labels {
-	data := map[string]interface{}{}
-	j.builder.Reset(lbs)
-	err := jsoniter.ConfigFastest.Unmarshal(line, &data)
-	if err != nil {
-		j.builder.Set(errorLabel, errJSON)
-		return j.builder.Labels()
-	}
-	parseMap("", data, addLabel(j.builder, lbs))
-	return j.builder.Labels()
-}
-
-func addLabel(builder *labels.Builder, lbs labels.Labels) func(key, value string) {
+func addLabel(lbs Labels) func(key, value string) {
+	unique := map[string]struct{}{}
 	return func(key, value string) {
+		_, ok := unique[key]
+		if ok {
+			return
+		}
+		unique[key] = struct{}{}
 		key = strings.ReplaceAll(strings.ReplaceAll(key, point, underscore), dash, underscore)
 		if lbs.Has(key) {
 			key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 		}
-		builder.Set(key, value)
+		lbs[key] = value
 	}
+}
+
+type jsonParser struct{}
+
+func NewJSONParser() *jsonParser {
+	return &jsonParser{}
+}
+
+func (j *jsonParser) Process(line []byte, lbs Labels) ([]byte, bool) {
+	data := map[string]interface{}{}
+	err := jsoniter.ConfigFastest.Unmarshal(line, &data)
+	if err != nil {
+		lbs.SetError(errJSON)
+		return line, true
+	}
+	parseMap("", data, addLabel(lbs))
+	return line, true
 }
 
 func parseMap(prefix string, data map[string]interface{}, add func(key, value string)) {
@@ -93,7 +86,6 @@ func jsonKey(prefix, key string) string {
 
 type regexpParser struct {
 	regex     *regexp.Regexp
-	builder   *labels.Builder
 	nameIndex map[int]string
 }
 
@@ -124,7 +116,6 @@ func NewRegexpParser(re string) (*regexpParser, error) {
 	}
 	return &regexpParser{
 		regex:     regex,
-		builder:   labels.NewBuilder(nil),
 		nameIndex: nameIndex,
 	}, nil
 }
@@ -137,37 +128,35 @@ func mustNewRegexParser(re string) *regexpParser {
 	return r
 }
 
-func (r *regexpParser) Parse(line []byte, lbs labels.Labels) labels.Labels {
-	r.builder.Reset(lbs)
+func (r *regexpParser) Process(line []byte, lbs Labels) ([]byte, bool) {
+	add := addLabel(lbs)
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
-			addLabel(r.builder, lbs)(name, string(value))
+			add(name, string(value))
 		}
 	}
-	return r.builder.Labels()
+	return line, true
 }
 
 type logfmtParser struct {
-	builder *labels.Builder
-	dec     *logfmt.Decoder
+	dec *logfmt.Decoder
 }
 
 func NewLogfmtParser() *logfmtParser {
 	return &logfmtParser{
-		builder: labels.NewBuilder(nil),
-		dec:     logfmt.NewDecoder(),
+		dec: logfmt.NewDecoder(),
 	}
 }
 
-func (l *logfmtParser) Parse(line []byte, lbs labels.Labels) labels.Labels {
-	l.builder.Reset(lbs)
+func (l *logfmtParser) Process(line []byte, lbs Labels) ([]byte, bool) {
 	l.dec.Reset(line)
-
+	add := addLabel(lbs)
 	for l.dec.ScanKeyval() {
-		addLabel(l.builder, lbs)(string(l.dec.Key()), string(l.dec.Value()))
+		add(string(l.dec.Key()), string(l.dec.Value()))
 	}
 	if l.dec.Err() != nil {
-		l.builder.Set(errorLabel, errLogfmt)
+		lbs.SetError(errLogfmt)
+		return line, true
 	}
-	return l.builder.Labels()
+	return line, true
 }

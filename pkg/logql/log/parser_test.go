@@ -1,10 +1,8 @@
 package log
 
 import (
-	"sort"
 	"testing"
 
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -12,80 +10,74 @@ func Test_jsonParser_Parse(t *testing.T) {
 
 	tests := []struct {
 		name string
-		j    *jsonParser
 		line []byte
-		lbs  labels.Labels
-		want labels.Labels
+		lbs  Labels
+		want Labels
 	}{
 		{
 			"multi depth",
-			NewJSONParser(),
 			[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
-			labels.Labels{},
-			labels.Labels{
-				labels.Label{Name: "app", Value: "foo"},
-				labels.Label{Name: "namespace", Value: "prod"},
-				labels.Label{Name: "pod_uuid", Value: "foo"},
-				labels.Label{Name: "pod_deployment_ref", Value: "foobar"},
+			Labels{},
+			Labels{
+				"app":                "foo",
+				"namespace":          "prod",
+				"pod_uuid":           "foo",
+				"pod_deployment_ref": "foobar",
 			},
 		},
 		{
 			"numeric",
-			NewJSONParser(),
 			[]byte(`{"counter":1, "price": {"_net_":5.56909}}`),
-			labels.Labels{},
-			labels.Labels{
-				labels.Label{Name: "counter", Value: "1"},
-				labels.Label{Name: "price__net_", Value: "5.56909"},
+			Labels{},
+			Labels{
+				"counter":     "1",
+				"price__net_": "5.56909",
 			},
 		},
 		{
 			"skip arrays",
-			NewJSONParser(),
 			[]byte(`{"counter":1, "price": {"net_":["10","20"]}}`),
-			labels.Labels{},
-			labels.Labels{
-				labels.Label{Name: "counter", Value: "1"},
+			Labels{},
+			Labels{
+				"counter": "1",
 			},
 		},
 		{
 			"bad key replaced",
-			NewJSONParser(),
 			[]byte(`{"cou-nter":1}`),
-			labels.Labels{},
-			labels.Labels{
-				labels.Label{Name: "cou_nter", Value: "1"},
+			Labels{},
+			Labels{
+				"cou_nter": "1",
 			},
 		},
 		{
 			"errors",
-			NewJSONParser(),
 			[]byte(`{n}`),
-			labels.Labels{},
-			labels.Labels{
-				labels.Label{Name: errorLabel, Value: errJSON},
+			Labels{},
+			Labels{
+				errorLabel: errJSON,
 			},
 		},
 		{
 			"duplicate extraction",
-			NewJSONParser(),
 			[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
-			labels.Labels{
-				labels.Label{Name: "app", Value: "bar"},
+			Labels{
+				"app": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "app", Value: "bar"},
-				labels.Label{Name: "app_extracted", Value: "foo"},
-				labels.Label{Name: "namespace", Value: "prod"},
-				labels.Label{Name: "pod_uuid", Value: "foo"},
-				labels.Label{Name: "pod_deployment_ref", Value: "foobar"}},
+			Labels{
+				"app":                "bar",
+				"app_extracted":      "foo",
+				"namespace":          "prod",
+				"pod_uuid":           "foo",
+				"pod_deployment_ref": "foobar",
+			},
 		},
 	}
 	for _, tt := range tests {
+		j := NewJSONParser()
 		t.Run(tt.name, func(t *testing.T) {
-			sort.Sort(tt.want)
-			got := tt.j.Parse(tt.line, tt.lbs)
-			require.Equal(t, tt.want, got)
+			_, _ = j.Process(tt.line, tt.lbs)
+			require.Equal(t, tt.want, tt.lbs)
 		})
 	}
 }
@@ -119,63 +111,62 @@ func Test_regexpParser_Parse(t *testing.T) {
 		name   string
 		parser *regexpParser
 		line   []byte
-		lbs    labels.Labels
-		want   labels.Labels
+		lbs    Labels
+		want   Labels
 	}{
 		{
 			"no matches",
 			mustNewRegexParser("(?P<foo>foo|bar)buzz"),
 			[]byte("blah"),
-			labels.Labels{
-				labels.Label{Name: "app", Value: "foo"},
+			Labels{
+				"app": "foo",
 			},
-			labels.Labels{
-				labels.Label{Name: "app", Value: "foo"},
+			Labels{
+				"app": "foo",
 			},
 		},
 		{
 			"double matches",
 			mustNewRegexParser("(?P<foo>.*)buzz"),
 			[]byte("matchebuzz barbuzz"),
-			labels.Labels{
-				labels.Label{Name: "app", Value: "bar"},
+			Labels{
+				"app": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "app", Value: "bar"},
-				labels.Label{Name: "foo", Value: "matchebuzz bar"},
+			Labels{
+				"app": "bar",
+				"foo": "matchebuzz bar",
 			},
 		},
 		{
 			"duplicate labels",
 			mustNewRegexParser("(?P<bar>bar)buzz"),
 			[]byte("barbuzz"),
-			labels.Labels{
-				labels.Label{Name: "bar", Value: "foo"},
+			Labels{
+				"bar": "foo",
 			},
-			labels.Labels{
-				labels.Label{Name: "bar", Value: "foo"},
-				labels.Label{Name: "bar_extracted", Value: "bar"},
+			Labels{
+				"bar":           "foo",
+				"bar_extracted": "bar",
 			},
 		},
 		{
 			"multiple labels extracted",
 			mustNewRegexParser("status=(?P<status>\\w+),latency=(?P<latency>\\w+)(ms|ns)"),
 			[]byte("status=200,latency=500ms"),
-			labels.Labels{
-				labels.Label{Name: "app", Value: "foo"},
+			Labels{
+				"app": "foo",
 			},
-			labels.Labels{
-				labels.Label{Name: "app", Value: "foo"},
-				labels.Label{Name: "status", Value: "200"},
-				labels.Label{Name: "latency", Value: "500"},
+			Labels{
+				"app":     "foo",
+				"status":  "200",
+				"latency": "500",
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sort.Sort(tt.want)
-			got := tt.parser.Parse(tt.line, tt.lbs)
-			require.Equal(t, tt.want, got)
+			_, _ = tt.parser.Process(tt.line, tt.lbs)
+			require.Equal(t, tt.want, tt.lbs)
 		})
 	}
 }
@@ -184,97 +175,97 @@ func Test_logfmtParser_Parse(t *testing.T) {
 	tests := []struct {
 		name string
 		line []byte
-		lbs  labels.Labels
-		want labels.Labels
+		lbs  Labels
+		want Labels
 	}{
 		{
 			"not logfmt",
 			[]byte("foobar====wqe=sdad1r"),
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
+			Labels{
+				"foo": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
-				labels.Label{Name: errorLabel, Value: errLogfmt},
+			Labels{
+				"foo":      "bar",
+				errorLabel: errLogfmt,
 			},
 		},
 		{
 			"key alone logfmt",
 			[]byte("buzz bar=foo"),
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
+			Labels{
+				"foo": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
-				labels.Label{Name: "bar", Value: "foo"},
+			Labels{
+				"foo":  "bar",
+				"bar":  "foo",
+				"buzz": "",
 			},
 		},
 		{
 			"quoted logfmt",
 			[]byte(`foobar="foo bar"`),
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
+			Labels{
+				"foo": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
-				labels.Label{Name: "foobar", Value: "foo bar"},
+			Labels{
+				"foo":    "bar",
+				"foobar": "foo bar",
 			},
 		},
 		{
 			"double property logfmt",
 			[]byte(`foobar="foo bar" latency=10ms`),
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
+			Labels{
+				"foo": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
-				labels.Label{Name: "foobar", Value: "foo bar"},
-				labels.Label{Name: "latency", Value: "10ms"},
+			Labels{
+				"foo":     "bar",
+				"foobar":  "foo bar",
+				"latency": "10ms",
 			},
 		},
 		{
 			"duplicate from line property",
 			[]byte(`foobar="foo bar" foobar=10ms`),
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
+			Labels{
+				"foo": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
-				labels.Label{Name: "foobar", Value: "10ms"},
+			Labels{
+				"foo":    "bar",
+				"foobar": "foo bar",
 			},
 		},
 		{
 			"duplicate property",
 			[]byte(`foo="foo bar" foobar=10ms`),
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
+			Labels{
+				"foo": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
-				labels.Label{Name: "foo_extracted", Value: "foo bar"},
-				labels.Label{Name: "foobar", Value: "10ms"},
+			Labels{
+				"foo":           "bar",
+				"foo_extracted": "foo bar",
+				"foobar":        "10ms",
 			},
 		},
 		{
 			"invalid key names",
 			[]byte(`foo="foo bar" foo.bar=10ms test-dash=foo`),
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
+			Labels{
+				"foo": "bar",
 			},
-			labels.Labels{
-				labels.Label{Name: "foo", Value: "bar"},
-				labels.Label{Name: "foo_extracted", Value: "foo bar"},
-				labels.Label{Name: "foo_bar", Value: "10ms"},
-				labels.Label{Name: "test_dash", Value: "foo"},
+			Labels{
+				"foo":           "bar",
+				"foo_extracted": "foo bar",
+				"foo_bar":       "10ms",
+				"test_dash":     "foo",
 			},
 		},
 	}
 	p := NewLogfmtParser()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sort.Sort(tt.want)
-			got := p.Parse(tt.line, tt.lbs)
-			require.Equal(t, tt.want, got)
+			_, _ = p.Process(tt.line, tt.lbs)
+			require.Equal(t, tt.want, tt.lbs)
 		})
 	}
 }
