@@ -16,14 +16,14 @@ import (
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName                string                `yaml:"job_name,omitempty"`
-	EntryParser            api.EntryParser       `yaml:"entry_parser"`
-	PipelineStages         stages.PipelineStages `yaml:"pipeline_stages,omitempty"`
-	JournalConfig          *JournalTargetConfig  `yaml:"journal,omitempty"`
-	SyslogConfig           *SyslogTargetConfig   `yaml:"syslog,omitempty"`
-	PushConfig             *PushTargetConfig     `yaml:"loki_push_api,omitempty"`
-	RelabelConfigs         []*relabel.Config     `yaml:"relabel_configs,omitempty"`
-	ServiceDiscoveryConfig discovery.Config      `yaml:",inline"`
+	JobName        string                `yaml:"job_name,omitempty"`
+	EntryParser    api.EntryParser       `yaml:"entry_parser"`
+	PipelineStages stages.PipelineStages `yaml:"pipeline_stages,omitempty"`
+	JournalConfig  *JournalTargetConfig  `yaml:"journal,omitempty"`
+	SyslogConfig   *SyslogTargetConfig   `yaml:"syslog,omitempty"`
+	PushConfig     *PushTargetConfig     `yaml:"loki_push_api,omitempty"`
+	RelabelConfigs []*relabel.Config     `yaml:"relabel_configs,omitempty"`
+	discovery.Config
 }
 
 // JournalTargetConfig describes systemd journal records to scrape.
@@ -87,7 +87,7 @@ var DefaultScrapeConfig = Config{
 // HasServiceDiscoveryConfig checks to see if the service discovery used for
 // file targets is non-zero.
 func (c *Config) HasServiceDiscoveryConfig() bool {
-	return c.ServiceDiscoveryConfig != nil
+	return c.Config != nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

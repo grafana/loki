@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
@@ -38,11 +37,9 @@ var (
 	// defaultStdInCfg is the default config for stdin target if none provided.
 	defaultStdInCfg = scrapeconfig.Config{
 		JobName: "stdin",
-		ServiceDiscoveryConfig: discovery.ServiceDiscoveryConfig{
-			StaticConfigs: []*targetgroup.Group{
-				{Labels: model.LabelSet{"job": "stdin"}},
-				{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},
-			},
+		Config: discovery.StaticConfig{
+			{Labels: model.LabelSet{"job": "stdin"}},
+			{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},
 		},
 	}
 )
@@ -108,11 +105,14 @@ func newReaderTarget(logger log.Logger, in io.Reader, client api.EntryHandler, c
 		return nil, err
 	}
 	lbs := model.LabelSet{}
-	for _, static := range cfg.ServiceDiscoveryConfig.StaticConfigs {
-		if static != nil && static.Labels != nil {
-			lbs = lbs.Merge(static.Labels)
+	if tgs, ok := cfg.Config.(discovery.StaticConfig); ok {
+		for _, static := range tgs {
+			if static != nil && static.Labels != nil {
+				lbs = lbs.Merge(static.Labels)
+			}
 		}
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &readerTarget{
 		in:     bufio.NewReaderSize(in, bufferSize),

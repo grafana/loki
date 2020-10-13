@@ -595,18 +595,14 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		Source: "",
 	}
 
-	serviceConfig := sd_config.ServiceDiscoveryConfig{
-		StaticConfigs: []*targetgroup.Group{
+	scrapeConfig := scrapeconfig.Config{
+		JobName:        "",
+		EntryParser:    api.Raw,
+		PipelineStages: pipeline,
+		RelabelConfigs: nil,
+		Config: discovery.StaticConfig{
 			&targetGroup,
 		},
-	}
-
-	scrapeConfig := scrapeconfig.Config{
-		JobName:                "",
-		EntryParser:            api.Raw,
-		PipelineStages:         pipeline,
-		RelabelConfigs:         nil,
-		ServiceDiscoveryConfig: serviceConfig,
 	}
 	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
 
