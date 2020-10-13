@@ -230,7 +230,7 @@ github.com/dgrijalva/jwt-go
 github.com/dgryski/go-rendezvous
 # github.com/docker/distribution v2.7.1+incompatible
 github.com/docker/distribution/registry/api/errcode
-# github.com/docker/docker v17.12.0-ce-rc1.0.20200706150819-a40b877fbb9e+incompatible
+# github.com/docker/docker v17.12.0-ce-rc1.0.20201009160326-9c15e82f19b0+incompatible
 ## explicit
 github.com/docker/docker/api/types
 github.com/docker/docker/api/types/backend
@@ -264,8 +264,6 @@ github.com/docker/docker/pkg/pubsub
 github.com/docker/docker/pkg/streamformatter
 github.com/docker/docker/pkg/stringid
 github.com/docker/docker/pkg/tailfile
-github.com/docker/docker/pkg/term
-github.com/docker/docker/pkg/term/windows
 # github.com/docker/go-connections v0.4.0
 github.com/docker/go-connections/nat
 github.com/docker/go-connections/sockets
@@ -571,6 +569,10 @@ github.com/mitchellh/go-homedir
 # github.com/mitchellh/mapstructure v1.2.2
 ## explicit
 github.com/mitchellh/mapstructure
+# github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2
+## explicit
+github.com/moby/term
+github.com/moby/term/windows
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.1

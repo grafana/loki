@@ -12,7 +12,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/cortexproject/cortex v1.4.1-0.20201012150016-9e8beee8cacb
 	github.com/davecgh/go-spew v1.1.1
-	github.com/docker/docker v17.12.0-ce-rc1.0.20200706150819-a40b877fbb9e+incompatible
+	github.com/docker/docker v17.12.0-ce-rc1.0.20201009160326-9c15e82f19b0+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
 	github.com/dustin/go-humanize v1.0.0
@@ -37,6 +37,7 @@ require (
 	github.com/json-iterator/go v1.1.10
 	github.com/klauspost/compress v1.9.5
 	github.com/mitchellh/mapstructure v1.2.2
+	github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.2.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
