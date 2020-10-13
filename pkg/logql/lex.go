@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 )
 
@@ -104,13 +105,21 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	case scanner.Int, scanner.Float:
 		numberText := l.TokenText()
+
 		duration, ok := tryScanDuration(numberText, &l.Scanner)
-		if !ok {
-			lval.str = numberText
-			return NUMBER
+		if ok {
+			lval.duration = duration
+			return DURATION
 		}
-		lval.duration = duration
-		return DURATION
+
+		bytes, ok := tryScanBytes(numberText, &l.Scanner)
+		if ok {
+			lval.bytes = bytes
+			return BYTES
+		}
+
+		lval.str = numberText
+		return NUMBER
 
 	case scanner.String, scanner.RawString:
 		var err error
@@ -206,6 +215,47 @@ func isDurationRune(r rune) bool {
 	// "ns", "us" (or "µs"), "ms", "s", "m", "h".
 	switch r {
 	case 'n', 's', 'u', 'm', 'h', 'µ':
+		return true
+	default:
+		return false
+	}
+}
+
+func tryScanBytes(number string, l *scanner.Scanner) (uint64, bool) {
+	var sb strings.Builder
+	sb.WriteString(number)
+	//copy the scanner to avoid advancing it in case it's not a duration.
+	s := *l
+	consumed := 0
+	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
+		if !unicode.IsNumber(r) && !isBytesSizeRune(r) && r != '.' {
+			break
+		}
+		_, _ = sb.WriteRune(r)
+		_ = s.Next()
+		consumed++
+	}
+
+	if consumed == 0 {
+		return 0, false
+	}
+	// we've found more characters before a whitespace or the end
+	b, err := humanize.ParseBytes(sb.String())
+	if err != nil {
+		return 0, false
+	}
+	// we need to consume the scanner, now that we know this is a duration.
+	for i := 0; i < consumed; i++ {
+		_ = l.Next()
+	}
+	return b, true
+}
+
+func isBytesSizeRune(r rune) bool {
+	// B, kB, MB, GB, TB, PB, EB, ZB, YB
+	// KB, KiB, MiB, GiB, TiB, PiB, EiB, ZiB, YiB
+	switch r {
+	case 'B', 'i', 'k', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y':
 		return true
 	default:
 		return false
