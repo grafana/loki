@@ -88,6 +88,8 @@ func TestLoadTable(t *testing.T) {
 		table.Stop()
 	}()
 
+	require.NoError(t, table.Snapshot())
+
 	// query the loaded table to see if it has right data.
 	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, 20)
 }
@@ -146,6 +148,8 @@ func TestTable_Write(t *testing.T) {
 			}
 			db, ok := table.dbs[expectedDBName]
 			require.True(t, ok)
+
+			require.NoError(t, table.Snapshot())
 
 			// test that the table has current + previous records
 			testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, (i+1)*10)
@@ -283,6 +287,8 @@ func TestTable_Cleanup(t *testing.T) {
 		table.Stop()
 	}()
 
+	require.NoError(t, table.Snapshot())
+
 	// upload all the existing dbs
 	require.NoError(t, table.Upload(context.Background(), true))
 	require.Len(t, table.uploadedDBsMtime, 3)
@@ -339,7 +345,7 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 			Start:      0,
 			NumRecords: 10,
 		},
-		"db1" + snapshotFileSuffix: { // a snapshot file which should be ignored.
+		"db1" + tempFileSuffix: { // a snapshot file which should be ignored.
 			Start:      0,
 			NumRecords: 10,
 		},
@@ -487,6 +493,8 @@ func TestTable_MultiQueries(t *testing.T) {
 	defer func() {
 		table.Stop()
 	}()
+
+	require.NoError(t, table.Snapshot())
 
 	// build queries each looking for specific value from all the dbs
 	var queries []chunk.IndexQuery

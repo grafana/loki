@@ -814,8 +814,6 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	store, err := NewStore(config, schemaConfig, chunkStore, nil)
 	require.NoError(t, err)
 
-	defer store.Stop()
-
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
 	chunksToBuildForTimeRanges := []timeRange{
 		{
@@ -845,6 +843,24 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 		addedChunkIDs[chk.ExternalKey()] = struct{}{}
 	}
+
+	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
+	store.Stop()
+
+	chunkStore, err = storage.NewStore(
+		config.Config,
+		chunk.StoreConfig{},
+		schemaConfig.SchemaConfig,
+		limits,
+		nil,
+		nil,
+		cortex_util.Logger,
+	)
+
+	store, err = NewStore(config, schemaConfig, chunkStore, nil)
+	require.NoError(t, err)
+
+	defer store.Stop()
 
 	// get all the chunks from both the stores
 	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName)...)

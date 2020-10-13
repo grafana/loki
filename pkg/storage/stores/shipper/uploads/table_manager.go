@@ -169,7 +169,13 @@ func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 
 	status := statusSuccess
 	for _, table := range tm.tables {
-		err := table.Upload(ctx, force)
+		err := table.Snapshot()
+		if err != nil {
+			// we do not want to stop uploading of dbs due to failures in snapshotting them so logging just the error here.
+			level.Error(pkg_util.Logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
+		}
+
+		err = table.Upload(ctx, force)
 		if err != nil {
 			// continue uploading other tables while skipping cleanup for a failed one.
 			status = statusFailure
@@ -242,6 +248,11 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 				level.Error(pkg_util.Logger).Log("msg", "failed to remove empty table folder", "table", fileInfo.Name(), "err", err)
 			}
 			continue
+		}
+
+		err = table.Snapshot()
+		if err != nil {
+			return nil, err
 		}
 
 		localTables[fileInfo.Name()] = table
