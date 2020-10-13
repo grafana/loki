@@ -374,11 +374,34 @@ type labelFilterExpr struct {
 }
 
 func (e *labelFilterExpr) Pipeline() (Pipeline, error) {
+	f := newLabelFilter(e.Filterer)
 	return PipelineFunc(func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-		//todo (cyriltovena): handle error
-		ok, _ := e.Filterer.Filter(lbs)
+		ok, lbs := f.Filter(lbs)
 		return line, lbs, ok
 	}), nil
+}
+
+type labelFilter struct {
+	labelfilter.Filterer
+
+	builder *labels.Builder
+}
+
+func newLabelFilter(f labelfilter.Filterer) *labelFilter {
+	return &labelFilter{
+		Filterer: f,
+		builder:  labels.NewBuilder(nil),
+	}
+}
+
+func (l *labelFilter) Filter(lbs labels.Labels) (bool, labels.Labels) {
+	l.builder.Reset(lbs)
+	ok, err := l.Filterer.Filter(lbs)
+	if err != nil {
+		l.builder.Set(errorLabel, errFilter)
+		return true, l.builder.Labels()
+	}
+	return ok, nil
 }
 
 func (e *labelFilterExpr) String() string {

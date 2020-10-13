@@ -7,6 +7,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+var (
+	Noop = noopFilter{}
+)
+
 type Filterer interface {
 	Filter(lbs labels.Labels) (bool, error)
 	fmt.Stringer
@@ -63,4 +67,21 @@ func (b *Binary) String() string {
 	sb.WriteString(b.Right.String())
 	sb.WriteString(" )")
 	return sb.String()
+}
+
+type noopFilter struct{}
+
+func (noopFilter) Filter(lbs labels.Labels) (bool, error) { return true, nil }
+
+func (noopFilter) String() string { return "" }
+
+func ReduceAnd(filters []Filterer) Filterer {
+	if len(filters) == 0 {
+		return Noop
+	}
+	result := filters[0]
+	for _, f := range filters[0:] {
+		result = NewAnd(result, f)
+	}
+	return result
 }

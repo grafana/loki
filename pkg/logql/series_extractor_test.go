@@ -1,11 +1,11 @@
 package logql
 
 import (
-	"reflect"
 	"sort"
 	"testing"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
@@ -15,6 +15,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		in      labels.Labels
 		want    float64
 		wantLbs labels.Labels
+		wantOk  bool
 	}{
 		{
 			"convert float",
@@ -22,6 +23,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			labels.Labels{labels.Label{Name: "foo", Value: "15.0"}},
 			15,
 			labels.Labels{},
+			true,
 		},
 		{
 			"convert float without",
@@ -40,6 +42,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			labels.Labels{
 				{Name: "namespace", Value: "dev"},
 			},
+			true,
 		},
 		{
 			"convert float with",
@@ -59,6 +62,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 			},
+			true,
 		},
 		{
 			"convert duration with",
@@ -78,6 +82,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 			},
+			true,
 		},
 		{
 			"convert duration_seconds with",
@@ -97,18 +102,16 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 				{Name: "bar", Value: "foo"},
 				{Name: "buzz", Value: "blip"},
 			},
+			true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sort.Sort(tt.in)
-			outval, outlbs := tt.ex.Extract([]byte(""), tt.in)
-			if outval != tt.want {
-				t.Errorf("labelSampleExtractor.Extract() val = %v, want %v", outval, tt.want)
-			}
-			if !reflect.DeepEqual(outlbs, tt.wantLbs) {
-				t.Errorf("labelSampleExtractor.Extract() lbs = %v, want %v", outlbs, tt.wantLbs)
-			}
+			ok, outval, outlbs := tt.ex.Extract([]byte(""), tt.in)
+			require.Equal(t, tt.wantOk, ok)
+			require.Equal(t, tt.want, outval)
+			require.Equal(t, tt.wantLbs, outlbs)
 		})
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logql/labelfilter"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -16,33 +17,46 @@ var (
 // SampleExtractor transforms a log entry into a sample.
 // In case of failure the second return value will be false.
 type SampleExtractor interface {
-	Extract(line []byte, lbs labels.Labels) (float64, labels.Labels)
+	Extract(line []byte, lbs labels.Labels) (bool, float64, labels.Labels)
 }
 
 type countSampleExtractor struct{}
 
-func (countSampleExtractor) Extract(line []byte, lbs labels.Labels) (float64, labels.Labels) {
-	return 1., lbs
+func (countSampleExtractor) Extract(line []byte, lbs labels.Labels) (bool, float64, labels.Labels) {
+	return true, 1., lbs
 }
 
 type bytesSampleExtractor struct{}
 
-func (bytesSampleExtractor) Extract(line []byte, lbs labels.Labels) (float64, labels.Labels) {
-	return float64(len(line)), lbs
+func (bytesSampleExtractor) Extract(line []byte, lbs labels.Labels) (bool, float64, labels.Labels) {
+	return true, float64(len(line)), lbs
 }
 
 type labelSampleExtractor struct {
-	labelName   string
-	gr          *grouping
-	postFilters []labelfilter.Filterer
-	conversion  string // the sample conversion operation to attempt
+	labelName  string
+	gr         *grouping
+	postFilter labelfilter.Filterer
+	conversion string // the sample conversion operation to attempt
+
+	builder *labels.Builder
 }
 
-func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, labels.Labels) {
+func newLabelSampleExtractor(labelName, conversion string, postFilters []labelfilter.Filterer, gr *grouping) *labelSampleExtractor {
+	return &labelSampleExtractor{
+		labelName:  labelName,
+		conversion: conversion,
+		gr:         gr,
+		postFilter: labelfilter.ReduceAnd(postFilters),
+		builder:    labels.NewBuilder(nil),
+	}
+}
+
+func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (bool, float64, labels.Labels) {
 	stringValue := lbs.Get(l.labelName)
+	l.builder.Reset(lbs)
 	if stringValue == "" {
-		// todo(cyriltovena) handle errors.
-		return 0, lbs
+		l.builder.Set(errorLabel, errSampleExtraction)
+		return true, 0, lbs
 	}
 	var f float64
 	var err error
@@ -53,10 +67,10 @@ func (l *labelSampleExtractor) Extract(_ []byte, lbs labels.Labels) (float64, la
 		f, err = convertFloat(stringValue)
 	}
 	if err != nil {
-		// todo(cyriltovena) handle errors.
-		return 0, lbs
+		l.builder.Set(errorLabel, errSampleExtraction)
+		return true, 0, lbs
 	}
-	return f, l.groupLabels(lbs)
+	return true, f, l.groupLabels(lbs)
 }
 
 func (l *labelSampleExtractor) groupLabels(lbs labels.Labels) labels.Labels {
@@ -67,14 +81,6 @@ func (l *labelSampleExtractor) groupLabels(lbs labels.Labels) labels.Labels {
 		return lbs.WithLabels(l.gr.groups...)
 	}
 	return lbs.WithoutLabels(l.labelName)
-}
-
-func newLabelSampleExtractor(labelName, conversion string, postFilters []labelfilter.Filterer, gr *grouping) *labelSampleExtractor {
-	return &labelSampleExtractor{
-		labelName:  labelName,
-		conversion: conversion,
-		gr:         gr,
-	}
 }
 
 func convertFloat(v string) (float64, error) {

@@ -629,7 +629,10 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, lbs l
 		}
 		var value float64
 		var found bool
-		value, parsedLabels = extractor.Extract(newLine, parsedLabels)
+		ok, value, parsedLabels = extractor.Extract(newLine, parsedLabels)
+		if !ok {
+			continue
+		}
 		var s *logproto.Series
 		lhash := parsedLabels.Hash()
 		if s, found = series[lhash]; !found {
@@ -845,10 +848,13 @@ type sampleBufferedIterator struct {
 }
 
 func (e *sampleBufferedIterator) Next() bool {
-	var newLabels labels.Labels
 	for e.bufferedIterator.Next() {
-		e.currValue, newLabels = e.extractor.Extract(e.currLine, e.bufferedIterator.currLabels)
-		e.currLabels = newLabels.String()
+		ok, val, labels := e.extractor.Extract(e.currLine, e.bufferedIterator.currLabels)
+		if !ok {
+			continue
+		}
+		e.currValue = val
+		e.currLabels = labels.String()
 		return true
 	}
 	return false
