@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/labelfilter"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
@@ -81,62 +82,36 @@ type LogSelectorExpr interface {
 }
 
 type PipelineExpr interface {
-	Pipeline() (Pipeline, error)
+	Pipeline() (log.Pipeline, error)
 	Expr
 }
 
-type Pipeline interface {
-	Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool)
+type StageExpr interface {
+	Stage() (log.Stage, error)
+	Expr
 }
 
-var NoopPipeline = &noopPipeline{}
+type MultiStageExpr []StageExpr
 
-type noopPipeline struct{}
-
-func (noopPipeline) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-	return line, lbs, true
-}
-
-type PipelineFunc func(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool)
-
-func (fn PipelineFunc) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-	return fn(line, lbs)
-}
-
-type MultiPipeline []Pipeline
-
-func (m MultiPipeline) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
-	var ok bool
-	for _, p := range m {
-		line, lbs, ok = p.Process(line, lbs)
-		if !ok {
-			return line, lbs, ok
-		}
-	}
-	return line, lbs, ok
-}
-
-type MultiPipelineExpr []PipelineExpr
-
-func (m MultiPipelineExpr) Pipeline() (Pipeline, error) {
-	c := make(MultiPipeline, 0, len(m))
+func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
+	c := make(log.MultiStage, 0, len(m))
 	for _, e := range m {
-		p, err := e.Pipeline()
+		p, err := e.Stage()
 		if err != nil {
 			return nil, err
 		}
-		if p == NoopPipeline {
+		if p == log.NoopStage {
 			continue
 		}
 		c = append(c, p)
 	}
 	if len(c) == 0 {
-		return NoopPipeline, nil
+		return log.NoopPipeline, nil
 	}
 	return c, nil
 }
 
-func (m MultiPipelineExpr) String() string {
+func (m MultiStageExpr) String() string {
 	var sb strings.Builder
 	for i, e := range m {
 		sb.WriteString(e.String())
@@ -147,7 +122,7 @@ func (m MultiPipelineExpr) String() string {
 	return sb.String()
 }
 
-func (MultiPipelineExpr) logQLExpr() {}
+func (MultiStageExpr) logQLExpr() {}
 
 func FilterToPipeline(f LineFilter) Pipeline {
 	if f == nil || f == TrueFilter {
@@ -191,8 +166,8 @@ func (e *matchersExpr) String() string {
 	return sb.String()
 }
 
-func (e *matchersExpr) Pipeline() (Pipeline, error) {
-	return NoopPipeline, nil
+func (e *matchersExpr) Pipeline() (log.Pipeline, error) {
+	return log.NoopPipeline, nil
 }
 
 func (e *matchersExpr) HasFilter() bool {
@@ -200,12 +175,12 @@ func (e *matchersExpr) HasFilter() bool {
 }
 
 type pipelineExpr struct {
-	pipeline MultiPipelineExpr
+	pipeline MultiStageExpr
 	left     *matchersExpr
 	implicit
 }
 
-func newPipelineExpr(left *matchersExpr, pipeline MultiPipelineExpr) LogSelectorExpr {
+func newPipelineExpr(left *matchersExpr, pipeline MultiStageExpr) LogSelectorExpr {
 	return &pipelineExpr{
 		left:     left,
 		pipeline: pipeline,
@@ -224,7 +199,7 @@ func (e *pipelineExpr) String() string {
 	return sb.String()
 }
 
-func (e *pipelineExpr) Pipeline() (Pipeline, error) {
+func (e *pipelineExpr) Pipeline() (log.Pipeline, error) {
 	return e.pipeline.Pipeline()
 }
 
@@ -291,8 +266,8 @@ func (e *lineFilterExpr) String() string {
 	return sb.String()
 }
 
-func (e *lineFilterExpr) Filter() (LineFilter, error) {
-	f, err := newFilter(e.match, e.ty)
+func (e *lineFilterExpr) Filter() (log.Filterer, error) {
+	f, err := log.NewFilter(e.match, e.ty)
 	if err != nil {
 		return nil, err
 	}
@@ -302,11 +277,11 @@ func (e *lineFilterExpr) Filter() (LineFilter, error) {
 			return nil, err
 		}
 		if nextFilter != nil {
-			f = newAndFilter(nextFilter, f)
+			f = log.NewAndFilter(nextFilter, f)
 		}
 	}
 
-	if f == TrueFilter {
+	if f == log.TrueFilter {
 		return nil, nil
 	}
 

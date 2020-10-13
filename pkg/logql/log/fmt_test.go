@@ -1,4 +1,4 @@
-package logql
+package log
 
 import (
 	"sort"
@@ -12,46 +12,44 @@ func Test_lineFormatter_Format(t *testing.T) {
 	tests := []struct {
 		name  string
 		fmter *lineFormatter
-		lbs   labels.Labels
+		lbs   map[string]string
 
 		want    []byte
-		wantLbs labels.Labels
+		wantLbs map[string]string
 	}{
 		{
 			"combining",
 			newMustLineFormatter("foo{{.foo}}buzz{{  .bar  }}"),
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			map[string]string{"foo": "blip", "bar": "blop"},
 			[]byte("fooblipbuzzblop"),
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			map[string]string{"foo": "blip", "bar": "blop"},
 		},
 		{
 			"missing",
 			newMustLineFormatter("foo {{.foo}}buzz{{  .bar  }}"),
-			labels.Labels{{Name: "bar", Value: "blop"}},
+			map[string]string{"bar": "blop"},
 			[]byte("foo buzzblop"),
-			labels.Labels{{Name: "bar", Value: "blop"}},
+			map[string]string{"bar": "blop"},
 		},
 		{
 			"function",
 			newMustLineFormatter("foo {{.foo | ToUpper }} buzz{{  .bar  }}"),
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			map[string]string{"foo": "blip", "bar": "blop"},
 			[]byte("foo BLIP buzzblop"),
-			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			map[string]string{"foo": "blip", "bar": "blop"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			outLine, outLbs := tt.fmter.Format(nil, tt.lbs)
+			outLine, _ := tt.fmter.Process(nil, tt.lbs)
 			require.Equal(t, tt.want, outLine)
-			sort.Sort(tt.wantLbs)
-			sort.Sort(outLbs)
-			require.Equal(t, tt.wantLbs, outLbs)
+			require.Equal(t, tt.wantLbs, tt.lbs)
 		})
 	}
 }
 
 func newMustLineFormatter(tmpl string) *lineFormatter {
-	l, err := newLineFormatter(tmpl)
+	l, err := NewFormatter(tmpl)
 	if err != nil {
 		panic(err)
 	}
@@ -62,8 +60,9 @@ func Test_labelsFormatter_Format(t *testing.T) {
 	tests := []struct {
 		name  string
 		fmter *labelsFormatter
-		in    labels.Labels
-		want  labels.Labels
+
+		in   labels.Labels
+		want labels.Labels
 	}{
 		{
 			"combined with template",
@@ -93,14 +92,14 @@ func Test_labelsFormatter_Format(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sort.Sort(tt.want)
-			out := tt.fmter.Format(tt.in)
-			require.Equal(t, tt.want, out)
+			_, _ = tt.fmter.Process(nil, tt.in)
+			require.Equal(t, tt.want, tt.in)
 		})
 	}
 }
 
 func mustNewLabelsFormatter(fmts []labelFmt) *labelsFormatter {
-	lf, err := newLabelsFormatter(fmts)
+	lf, err := NewLabelsFormatter(fmts)
 	if err != nil {
 		panic(err)
 	}
@@ -115,6 +114,7 @@ func Test_validate(t *testing.T) {
 	}{
 		{"no dup", []labelFmt{newRenameLabelFmt("foo", "bar"), newRenameLabelFmt("bar", "foo")}, false},
 		{"dup", []labelFmt{newRenameLabelFmt("foo", "bar"), newRenameLabelFmt("foo", "blip")}, true},
+		{"no error", []labelFmt{newRenameLabelFmt(errorLabel, "bar")}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1,4 +1,4 @@
-package logql
+package log
 
 import (
 	"bytes"
@@ -6,8 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
-
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 var (
@@ -37,8 +35,8 @@ type lineFormatter struct {
 	buf *bytes.Buffer
 }
 
-func newLineFormatter(tmpl string) (*lineFormatter, error) {
-	t, err := template.New(OpFmtLine).Option("missingkey=zero").Funcs(functionMap).Parse(tmpl)
+func NewFormatter(tmpl string) (*lineFormatter, error) {
+	t, err := template.New("line").Option("missingkey=zero").Funcs(functionMap).Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %s", err)
 	}
@@ -48,14 +46,14 @@ func newLineFormatter(tmpl string) (*lineFormatter, error) {
 	}, nil
 }
 
-func (lf *lineFormatter) Format(_ []byte, lbs labels.Labels) ([]byte, labels.Labels) {
+func (lf *lineFormatter) Process(_ []byte, lbs Labels) ([]byte, bool) {
 	lf.buf.Reset()
 	// todo(cyriltovena) handle error
-	_ = lf.Template.Execute(lf.buf, lbs.Map())
+	_ = lf.Template.Execute(lf.buf, lbs)
 	// todo we might want to reuse the input line.
 	res := make([]byte, len(lf.buf.Bytes()))
 	copy(res, lf.buf.Bytes())
-	return res, lbs
+	return res, true
 }
 
 type labelFmt struct {
@@ -87,11 +85,10 @@ type labelFormatter struct {
 
 type labelsFormatter struct {
 	formats []labelFormatter
-	builder *labels.Builder
 	buf     *bytes.Buffer
 }
 
-func newLabelsFormatter(fmts []labelFmt) (*labelsFormatter, error) {
+func NewLabelsFormatter(fmts []labelFmt) (*labelsFormatter, error) {
 	if err := validate(fmts); err != nil {
 		return nil, err
 	}
@@ -99,7 +96,7 @@ func newLabelsFormatter(fmts []labelFmt) (*labelsFormatter, error) {
 	for _, fm := range fmts {
 		toAdd := labelFormatter{labelFmt: fm}
 		if !fm.rename {
-			t, err := template.New(OpFmtLabel).Option("missingkey=zero").Funcs(functionMap).Parse(fm.value)
+			t, err := template.New("label").Option("missingkey=zero").Funcs(functionMap).Parse(fm.value)
 			if err != nil {
 				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.name, err)
 			}
@@ -109,7 +106,6 @@ func newLabelsFormatter(fmts []labelFmt) (*labelsFormatter, error) {
 	}
 	return &labelsFormatter{
 		formats: formats,
-		builder: labels.NewBuilder(nil),
 		buf:     bytes.NewBuffer(make([]byte, 1024)),
 	}, nil
 }
@@ -119,6 +115,9 @@ func validate(fmts []labelFmt) error {
 	// To avoid confusion we allow to have a label name only once per stage.
 	uniqueLabelName := map[string]struct{}{}
 	for _, f := range fmts {
+		if f.name == errorLabel {
+			return fmt.Errorf("%s cannot be formatted", f.name)
+		}
 		if _, ok := uniqueLabelName[f.name]; ok {
 			return fmt.Errorf("multiple label name '%s' not allowed in a single format operation", f.name)
 		}
@@ -127,18 +126,17 @@ func validate(fmts []labelFmt) error {
 	return nil
 }
 
-func (lf *labelsFormatter) Format(lbs labels.Labels) labels.Labels {
-	lf.builder.Reset(lbs)
+func (lf *labelsFormatter) Process(l []byte, lbs Labels) ([]byte, bool) {
 	for _, f := range lf.formats {
 		if f.rename {
-			lf.builder.Set(f.name, lbs.Get(f.value))
-			lf.builder.Del(f.value)
+			lbs[f.name] = lbs[f.value]
+			delete(lbs, f.value)
 			continue
 		}
 		lf.buf.Reset()
 		//todo (cyriltovena): handle error
-		_ = f.Template.Execute(lf.buf, lbs.Map())
-		lf.builder.Set(f.name, lf.buf.String())
+		_ = f.Template.Execute(lf.buf, lbs)
+		lbs[f.name] = lf.buf.String()
 	}
-	return lf.builder.Labels()
+	return l, true
 }

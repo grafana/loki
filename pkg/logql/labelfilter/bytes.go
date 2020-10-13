@@ -9,11 +9,11 @@ import (
 
 type Bytes struct {
 	Name  string
-	Value uint64 
+	Value uint64
 	Type  FilterType
 }
 
-func NewBytes(t FilterType, name string, b uint64) *Bytes{
+func NewBytes(t FilterType, name string, b uint64) *Bytes {
 	return &Bytes{
 		Name:  name,
 		Type:  t,

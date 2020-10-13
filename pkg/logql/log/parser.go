@@ -1,4 +1,4 @@
-package logql
+package log
 
 import (
 	"errors"
@@ -7,7 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/loki/pkg/logql/logfmt"
+	"github.com/grafana/loki/pkg/logql/log/logfmt"
+
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -27,8 +28,8 @@ var (
 	dash       = "-"
 )
 
-type LabelParser interface {
-	Parse(line []byte, lbs labels.Labels) labels.Labels
+type Parser interface {
+	Parse(line []byte, lbs Labels)
 }
 
 type noopParser struct{}

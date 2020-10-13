@@ -33,8 +33,8 @@ import (
   BinOpModifier           BinOpOptions
   LabelParser             *labelParserExpr
   LineFilters             *lineFilterExpr
-  PipelineExpr            MultiPipelineExpr
-  PipelineStage           PipelineExpr
+  PipelineExpr            MultiStageExpr
+  PipelineStage           StageExpr
   BytesFilter             labelfilter.Filterer
   NumberFilter            labelfilter.Filterer
   DurationFilter          labelfilter.Filterer
@@ -192,7 +192,7 @@ matcher:
     ;
 
 pipelineExpr:
-      pipelineStage                  { $$ = MultiPipelineExpr{ $1 } }
+      pipelineStage                  { $$ = MultiStageExpr{ $1 } }
     | pipelineExpr pipelineStage     { $$ = append($1, $2)}
     ;
 
