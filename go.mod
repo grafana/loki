@@ -57,7 +57,6 @@ require (
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	go.uber.org/atomic v1.6.0
 	golang.org/x/crypto v0.0.0-20200728195943-123391ffb6de
-	golang.org/x/exp v0.0.0-20200821190819-94841d0725da // indirect
 	golang.org/x/net v0.0.0-20200822124328-c89045814202
 	google.golang.org/grpc v1.30.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6

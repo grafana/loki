@@ -64,7 +64,7 @@ func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc 
 }
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
-func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) *MultiTenantManager {
+func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) ruler.MultiTenantManager {
 	return &MultiTenantManager{mgr}
 }
 
@@ -90,7 +90,7 @@ func MemstoreTenantManager(
 		notifier *notifier.Manager,
 		logger log.Logger,
 		reg prometheus.Registerer,
-	) *rules.Manager {
+	) ruler.RulesManager {
 
 		// We'll ignore the passed registere and use the default registerer to avoid prefix issues and other weirdness.
 		// This closure prevents re-registering.
