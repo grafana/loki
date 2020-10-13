@@ -92,7 +92,7 @@ Our pipelined config might look like this:
 ```yaml
 scrape_configs:
 - job_name: system
-  entry_parsers:
+  pipeline_stages:
     - json:
         timestamp:
           source: time
@@ -153,7 +153,7 @@ There is an alternative configuration that could be used here to accomplish the 
 ```yaml
 scrape_configs:
 - job_name: system
-  entry_parsers:
+  pipeline_stages:
     - json:
         timestamp:
           source: time
@@ -195,7 +195,7 @@ For example, the config above might be simplified to:
 ```yaml
 scrape_configs:
 - job_name: system
-  entry_parsers:
+  pipeline_stages:
     - docker:
 ```
 
@@ -204,7 +204,7 @@ or
 ```yaml
 scrape_configs:
 - job_name: system
-  entry_parsers:
+  pipeline_stages:
     - cri:
 ```
 
@@ -213,7 +213,7 @@ Which could still easily be extended to extract additional labels:
 ```yaml
 scrape_configs:
 - job_name: system
-  entry_parsers:
+  pipeline_stages:
     - docker:
     - regex:
         expr: '.*level=(?P<level>[a-zA-Z]+).*'
@@ -227,7 +227,7 @@ An even further simplification would be to attempt to autodetect the log format,
 ```yaml
 scrape_configs:
 - job_name: system
-  entry_parsers:
+  pipeline_stages:
     - auto:
 ```
 

@@ -12,13 +12,11 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Config describes a job to scrape.
 type Config struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
-	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
 	PipelineStages         stages.PipelineStages            `yaml:"pipeline_stages,omitempty"`
 	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
 	SyslogConfig           *SyslogTargetConfig              `yaml:"syslog,omitempty"`
@@ -82,7 +80,11 @@ type PushTargetConfig struct {
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
-	EntryParser: api.Docker,
+	PipelineStages: []interface{}{
+		map[interface{}]interface{}{
+			stages.StageTypeDocker: nil,
+		},
+	},
 }
 
 // HasServiceDiscoveryConfig checks to see if the service discovery used for
