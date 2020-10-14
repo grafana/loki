@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
-	promRules "github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
@@ -25,18 +25,16 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // Client expects to load already existing rules located at:
 //  cfg.Directory / userID / namespace
 type Client struct {
-	cfg    Config
-	loader promRules.GroupLoader
+	cfg Config
 }
 
-func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader) (*Client, error) {
+func NewLocalRulesClient(cfg Config) (*Client, error) {
 	if cfg.Directory == "" {
 		return nil, errors.New("directory required for local rules config")
 	}
 
 	return &Client{
-		cfg:    cfg,
-		loader: loader,
+		cfg: cfg,
 	}, nil
 }
 
@@ -145,7 +143,7 @@ func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (
 func (l *Client) listAllRulesGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
-	rulegroups, allErrors := l.loader.Load(filename)
+	rulegroups, allErrors := rulefmt.ParseFile(filename)
 	if len(allErrors) > 0 {
 		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
 	}

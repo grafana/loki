@@ -176,7 +176,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
-	if err := c.Distributor.Validate(c.LimitsConfig); err != nil {
+	if err := c.Distributor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid distributor config")
 	}
 	if err := c.Querier.Validate(); err != nil {

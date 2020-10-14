@@ -228,12 +228,6 @@ func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
 // Do NOT use unsafe to convert between data types because this function may
 // get in input labels whose data structure is reused.
 func FromLabelAdaptersToLabelsWithCopy(input []LabelAdapter) labels.Labels {
-	return CopyLabels(FromLabelAdaptersToLabels(input))
-}
-
-// Efficiently copies labels input slice. To be used in cases where input slice
-// can be reused, but long-term copy is needed.
-func CopyLabels(input []labels.Label) labels.Labels {
 	result := make(labels.Labels, len(input))
 
 	size := 0

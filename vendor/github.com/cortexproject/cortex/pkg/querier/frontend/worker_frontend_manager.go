@@ -3,7 +3,6 @@ package frontend
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -26,11 +25,9 @@ var (
 )
 
 type frontendManager struct {
-	server     *server.Server
-	connection io.Closer
-	client     FrontendClient
-	clientCfg  grpcclient.ConfigWithTLS
-	querierID  string
+	server    *server.Server
+	client    FrontendClient
+	clientCfg grpcclient.ConfigWithTLS
 
 	log log.Logger
 
@@ -40,16 +37,14 @@ type frontendManager struct {
 	currentProcessors *atomic.Int32
 }
 
-func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, connection io.Closer, client FrontendClient, clientCfg grpcclient.ConfigWithTLS, querierID string) *frontendManager {
+func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, client FrontendClient, clientCfg grpcclient.ConfigWithTLS) *frontendManager {
 	f := &frontendManager{
 		log:               log,
-		connection:        connection,
 		client:            client,
 		clientCfg:         clientCfg,
 		server:            server,
 		serverCtx:         serverCtx,
 		currentProcessors: atomic.NewInt32(0),
-		querierID:         querierID,
 	}
 
 	return f
@@ -58,7 +53,6 @@ func newFrontendManager(serverCtx context.Context, log log.Logger, server *serve
 func (f *frontendManager) stop() {
 	f.concurrentRequests(0)
 	f.wg.Wait()
-	_ = f.connection.Close()
 }
 
 func (f *frontendManager) concurrentRequests(n int) {
@@ -98,7 +92,7 @@ func (f *frontendManager) runOne(ctx context.Context) {
 			continue
 		}
 
-		if err := f.process(c); err != nil {
+		if err := f.process(ctx, c); err != nil {
 			level.Error(f.log).Log("msg", "error processing requests", "err", err)
 			backoff.Wait()
 			continue
@@ -109,7 +103,7 @@ func (f *frontendManager) runOne(ctx context.Context) {
 }
 
 // process loops processing requests on an established stream.
-func (f *frontendManager) process(c Frontend_ProcessClient) error {
+func (f *frontendManager) process(ctx context.Context, c Frontend_ProcessClient) error {
 	// Build a child context so we can cancel a query when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
@@ -120,53 +114,39 @@ func (f *frontendManager) process(c Frontend_ProcessClient) error {
 			return err
 		}
 
-		switch request.Type {
-		case HTTP_REQUEST:
-			// Handle the request on a "background" goroutine, so we go back to
-			// blocking on c.Recv().  This allows us to detect the stream closing
-			// and cancel the query.  We don't actually handle queries in parallel
-			// here, as we're running in lock step with the server - each Recv is
-			// paired with a Send.
-			go f.runRequest(ctx, request.HttpRequest, func(response *httpgrpc.HTTPResponse) error {
-				return c.Send(&ClientToFrontend{HttpResponse: response})
-			})
-
-		case GET_ID:
-			err := c.Send(&ClientToFrontend{ClientID: f.querierID})
+		// Handle the request on a "background" goroutine, so we go back to
+		// blocking on c.Recv().  This allows us to detect the stream closing
+		// and cancel the query.  We don't actally handle queries in parallel
+		// here, as we're running in lock step with the server - each Recv is
+		// paired with a Send.
+		go func() {
+			response, err := f.server.Handle(ctx, request.HttpRequest)
 			if err != nil {
-				return err
+				var ok bool
+				response, ok = httpgrpc.HTTPResponseFromError(err)
+				if !ok {
+					response = &httpgrpc.HTTPResponse{
+						Code: http.StatusInternalServerError,
+						Body: []byte(err.Error()),
+					}
+				}
 			}
 
-		default:
-			return fmt.Errorf("unknown request type: %v", request.Type)
-		}
-	}
-}
-
-func (f *frontendManager) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, sendHTTPResponse func(response *httpgrpc.HTTPResponse) error) {
-	response, err := f.server.Handle(ctx, request)
-	if err != nil {
-		var ok bool
-		response, ok = httpgrpc.HTTPResponseFromError(err)
-		if !ok {
-			response = &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
-				Body: []byte(err.Error()),
+			// Ensure responses that are too big are not retried.
+			if len(response.Body) >= f.clientCfg.GRPC.MaxSendMsgSize {
+				errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), f.clientCfg.GRPC.MaxSendMsgSize)
+				response = &httpgrpc.HTTPResponse{
+					Code: http.StatusRequestEntityTooLarge,
+					Body: []byte(errMsg),
+				}
+				level.Error(f.log).Log("msg", "error processing query", "err", errMsg)
 			}
-		}
-	}
 
-	// Ensure responses that are too big are not retried.
-	if len(response.Body) >= f.clientCfg.GRPC.MaxSendMsgSize {
-		errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), f.clientCfg.GRPC.MaxSendMsgSize)
-		response = &httpgrpc.HTTPResponse{
-			Code: http.StatusRequestEntityTooLarge,
-			Body: []byte(errMsg),
-		}
-		level.Error(f.log).Log("msg", "error processing query", "err", errMsg)
-	}
-
-	if err := sendHTTPResponse(response); err != nil {
-		level.Error(f.log).Log("msg", "error processing requests", "err", err)
+			if err := c.Send(&ProcessResponse{
+				HttpResponse: response,
+			}); err != nil {
+				level.Error(f.log).Log("msg", "error processing requests", "err", err)
+			}
+		}()
 	}
 }

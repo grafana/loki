@@ -15,3 +15,9 @@ func HashBlockID(id ulid.ULID) uint32 {
 	}
 	return h
 }
+
+// HashTenantID returns a 32-bit hash of the tenant ID useful for
+// ring-based sharding.
+func HashTenantID(id string) uint32 {
+	return client.HashAdd32a(client.HashNew32a(), id)
+}

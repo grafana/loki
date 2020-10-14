@@ -56,27 +56,20 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 }
 
-type Limits interface {
-	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
-	MaxQueriersPerUser(user string) int
-}
-
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
 // for requests which failed.
 type Frontend struct {
 	cfg          Config
 	log          log.Logger
 	roundTripper http.RoundTripper
-	limits       Limits
 
 	mtx    sync.Mutex
-	cond   *sync.Cond // Notified when request is enqueued or dequeued, or querier is disconnected.
-	queues *queues
+	cond   *sync.Cond
+	queues *queueIterator
 
 	connectedClients *atomic.Int32
 
 	// Metrics.
-	numClients    prometheus.GaugeFunc
 	queueDuration prometheus.Histogram
 	queueLength   *prometheus.GaugeVec
 }
@@ -86,19 +79,17 @@ type request struct {
 	queueSpan   opentracing.Span
 	originalCtx context.Context
 
-	request  *httpgrpc.HTTPRequest
+	request  *ProcessRequest
 	err      chan error
-	response chan *httpgrpc.HTTPResponse
+	response chan *ProcessResponse
 }
 
 // New creates a new frontend.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
-	connectedClients := atomic.NewInt32(0)
+func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
-		limits: limits,
-		queues: newUserQueues(cfg.MaxOutstandingPerTenant),
+		queues: newQueueIterator(cfg.MaxOutstandingPerTenant),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "query_frontend_queue_duration_seconds",
@@ -110,12 +101,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 			Name:      "query_frontend_queue_length",
 			Help:      "Number of queries in the queue.",
 		}, []string{"user"}),
-		numClients: promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-			Namespace: "cortex",
-			Name:      "query_frontend_connected_clients",
-			Help:      "Number of worker clients currently connected to the frontend.",
-		}, func() float64 { return float64(connectedClients.Load()) }),
-		connectedClients: connectedClients,
+		connectedClients: atomic.NewInt32(0),
 	}
 	f.cond = sync.NewCond(&f.mtx)
 
@@ -239,17 +225,19 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	resp, err := f.RoundTripGRPC(r.Context(), req)
+	resp, err := f.RoundTripGRPC(r.Context(), &ProcessRequest{
+		HttpRequest: req,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	httpResp := &http.Response{
-		StatusCode: int(resp.Code),
-		Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
+		StatusCode: int(resp.HttpResponse.Code),
+		Body:       ioutil.NopCloser(bytes.NewReader(resp.HttpResponse.Body)),
 		Header:     http.Header{},
 	}
-	for _, h := range resp.Headers {
+	for _, h := range resp.HttpResponse.Headers {
 		httpResp.Header[h.Key] = h.Values
 	}
 	return httpResp, nil
@@ -265,11 +253,11 @@ func (c *httpgrpcHeadersCarrier) Set(key, val string) {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error) {
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
-		carrier := (*httpgrpcHeadersCarrier)(req)
+		carrier := (*httpgrpcHeadersCarrier)(req.HttpRequest)
 		tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
 	}
 
@@ -281,7 +269,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		// of the Process stream, even if this goroutine goes away due to
 		// client context cancellation.
 		err:      make(chan error, 1),
-		response: make(chan *httpgrpc.HTTPResponse, 1),
+		response: make(chan *ProcessResponse, 1),
 	}
 
 	if err := f.queueRequest(ctx, &request); err != nil {
@@ -302,40 +290,29 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
-	querierID, err := getQuerierID(server)
-	if err != nil {
-		return err
-	}
-
-	f.registerQuerierConnection(querierID)
-	defer f.unregisterQuerierConnection(querierID)
+	f.connectedClients.Inc()
+	defer f.connectedClients.Dec()
 
 	// If the downstream request(from querier -> frontend) is cancelled,
-	// we need to ping the condition variable to unblock getNextRequestForQuerier.
+	// we need to ping the condition variable to unblock getNextRequest.
 	// Ideally we'd have ctx aware condition variables...
 	go func() {
 		<-server.Context().Done()
 		f.cond.Broadcast()
 	}()
 
-	lastUserIndex := -1
-
 	for {
-		req, idx, err := f.getNextRequestForQuerier(server.Context(), lastUserIndex, querierID)
+		req, err := f.getNextRequest(server.Context())
 		if err != nil {
 			return err
 		}
-		lastUserIndex = idx
 
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
-		resps := make(chan *httpgrpc.HTTPResponse, 1)
+		resps := make(chan *ProcessResponse, 1)
 		errs := make(chan error, 1)
 		go func() {
-			err = server.Send(&FrontendToClient{
-				Type:        HTTP_REQUEST,
-				HttpRequest: req.request,
-			})
+			err = server.Send(req.request)
 			if err != nil {
 				errs <- err
 				return
@@ -347,7 +324,7 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 				return
 			}
 
-			resps <- resp.HttpResponse
+			resps <- resp
 		}()
 
 		select {
@@ -370,29 +347,6 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 	}
 }
 
-func getQuerierID(server Frontend_ProcessServer) (string, error) {
-	err := server.Send(&FrontendToClient{
-		Type: GET_ID,
-		// Old queriers don't support GET_ID, and will try to use the request.
-		// To avoid confusing them, include dummy request.
-		HttpRequest: &httpgrpc.HTTPRequest{
-			Method: "GET",
-			Url:    "/invalid_request_sent_by_frontend",
-		},
-	})
-
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := server.Recv()
-
-	// Old queriers will return empty string, which is fine. All old queriers will be
-	// treated as single querier with lot of connections.
-	// (Note: if resp is nil, GetClientID() returns "")
-	return resp.GetClientID(), err
-}
-
 func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -402,16 +356,10 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.enqueueTime = time.Now()
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
-	maxQueriers := f.limits.MaxQueriersPerUser(userID)
-
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	queue := f.queues.getOrAddQueue(userID, maxQueriers)
-	if queue == nil {
-		// This can only happen if userID is "".
-		return errors.New("no queue found")
-	}
+	queue := f.queues.getOrAddQueue(userID)
 
 	select {
 	case queue <- req:
@@ -425,26 +373,21 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 // getQueue picks a random queue and takes the next unexpired request off of it, so we
 // fairly process users queries.  Will block if there are no requests.
-func (f *Frontend) getNextRequestForQuerier(ctx context.Context, lastUserIndex int, querierID string) (*request, int, error) {
+func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	querierWait := false
-
 FindQueue:
-	// We need to wait if there are no users, or no pending requests for given querier.
-	for (f.queues.len() == 0 || querierWait) && ctx.Err() == nil {
-		querierWait = false
+	for f.queues.len() == 0 && ctx.Err() == nil {
 		f.cond.Wait()
 	}
 
 	if err := ctx.Err(); err != nil {
-		return nil, lastUserIndex, err
+		return nil, err
 	}
 
 	for {
-		queue, userID, idx := f.queues.getNextQueueForQuerier(lastUserIndex, querierID)
-		lastUserIndex = idx
+		queue, userID := f.queues.getNextQueue()
 		if queue == nil {
 			break
 		}
@@ -478,7 +421,7 @@ FindQueue:
 
 			// Ensure the request has not already expired.
 			if request.originalCtx.Err() == nil {
-				return request, lastUserIndex, nil
+				return request, nil
 			}
 
 			// Stop iterating on this queue if we've just consumed the last request.
@@ -490,7 +433,6 @@ FindQueue:
 
 	// There are no unexpired requests, so we can get back
 	// and wait for more requests.
-	querierWait = true
 	goto FindQueue
 }
 
@@ -512,20 +454,4 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 	msg := fmt.Sprintf("not ready: number of queriers connected to query-frontend is %d", connectedClients)
 	level.Info(f.log).Log("msg", msg)
 	return errors.New(msg)
-}
-
-func (f *Frontend) registerQuerierConnection(querier string) {
-	f.connectedClients.Inc()
-
-	f.mtx.Lock()
-	defer f.mtx.Unlock()
-	f.queues.addQuerierConnection(querier)
-}
-
-func (f *Frontend) unregisterQuerierConnection(querier string) {
-	f.connectedClients.Dec()
-
-	f.mtx.Lock()
-	defer f.mtx.Unlock()
-	f.queues.removeQuerierConnection(querier)
 }

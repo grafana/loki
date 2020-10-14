@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -27,7 +26,6 @@ type WorkerConfig struct {
 	Parallelism         int           `yaml:"parallelism"`
 	MatchMaxConcurrency bool          `yaml:"match_max_concurrent"`
 	DNSLookupDuration   time.Duration `yaml:"dns_lookup_duration"`
-	QuerierID           string        `yaml:"id"`
 
 	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
 }
@@ -38,7 +36,6 @@ func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query frontend.")
 	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", false, "Force worker concurrency to match the -querier.max-concurrent option.  Overrides querier.worker-parallelism.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
-	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 }
@@ -64,14 +61,6 @@ func NewWorker(cfg WorkerConfig, querierCfg querier.Config, server *server.Serve
 	if cfg.Address == "" {
 		level.Info(log).Log("msg", "no address specified, not starting worker")
 		return nil, nil
-	}
-
-	if cfg.QuerierID == "" {
-		hostname, err := os.Hostname()
-		if err != nil {
-			return nil, errors.Wrap(err, "unable to get hostname used to initialise default querier ID")
-		}
-		cfg.QuerierID = hostname
 	}
 
 	resolver, err := naming.NewDNSResolverWithFreq(cfg.DNSLookupDuration)
@@ -129,13 +118,13 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 			switch update.Op {
 			case naming.Add:
 				level.Debug(w.log).Log("msg", "adding connection", "addr", update.Addr)
-				conn, err := w.connect(servCtx, update.Addr)
+				client, err := w.connect(servCtx, update.Addr)
 				if err != nil {
 					level.Error(w.log).Log("msg", "error connecting", "addr", update.Addr, "err", err)
 					continue
 				}
 
-				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, conn, NewFrontendClient(conn), w.cfg.GRPCClientConfig, w.cfg.QuerierID)
+				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, client, w.cfg.GRPCClientConfig)
 
 			case naming.Delete:
 				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)
@@ -153,7 +142,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 	}
 }
 
-func (w *worker) connect(ctx context.Context, address string) (*grpc.ClientConn, error) {
+func (w *worker) connect(ctx context.Context, address string) (FrontendClient, error) {
 	opts, err := w.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor}, nil)
 	if err != nil {
 		return nil, err
@@ -163,7 +152,7 @@ func (w *worker) connect(ctx context.Context, address string) (*grpc.ClientConn,
 	if err != nil {
 		return nil, err
 	}
-	return conn, nil
+	return NewFrontendClient(conn), nil
 }
 
 func (w *worker) resetConcurrency() {
