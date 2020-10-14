@@ -6,23 +6,44 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/prometheus/prometheus/promql"
 )
 
 const unsupportedErr = "unsupported range vector aggregation operation: %s"
 
-func (r rangeAggregationExpr) Extractor() (SampleExtractor, error) {
+func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
-	if r.left.unwrap != nil {
-		return newLabelSampleExtractor(r.left.unwrap.identifier, r.left.unwrap.operation, r.left.unwrap.postFilters, r.grouping), nil
+	stages := log.MultiStage{}
+	if p, ok := r.left.left.(*pipelineExpr); ok {
+		// if the expression is a pipeline then take all stages into account first.
+		st, err := p.pipeline.stages()
+		if err != nil {
+			return nil, err
+		}
+		stages = st
 	}
+	// unwrap...means we want to extract metrics from labels.
+	if r.left.unwrap != nil {
+		var convOp string
+		var groups []string
+		var without bool
+		switch r.left.unwrap.operation {
+		case OpConvDuration, OpConvDurationSeconds:
+			convOp = log.ConvertDuration
+		default:
+			convOp = log.ConvertFloat
+		}
+		return stages.WithLabelExtractor(r.left.unwrap.identifier, convOp, groups, without, log.ReduceAndLabelFilter(r.left.unwrap.postFilters))
+	}
+	// otherwise we extract metrics from the log line.
 	switch r.operation {
 	case OpRangeTypeRate, OpRangeTypeCount:
-		return ExtractCount, nil
+		return stages.WithLineExtractor(log.CountExtractor)
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
-		return ExtractBytes, nil
+		return stages.WithLineExtractor(log.BytesExtractor)
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}

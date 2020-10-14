@@ -94,7 +94,7 @@ func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, directi
 	}, nil
 }
 
-func (c *dumbChunk) SampleIterator(_ context.Context, from, through time.Time, _ labels.Labels, _ logql.Pipeline, _ logql.SampleExtractor) iter.SampleIterator {
+func (c *dumbChunk) SampleIterator(_ context.Context, from, through time.Time, _ labels.Labels, _ logql.SampleExtractor) iter.SampleIterator {
 	return nil
 }
 

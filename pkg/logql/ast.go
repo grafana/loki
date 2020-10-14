@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/log/labelfilter"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
@@ -81,8 +80,17 @@ type LogSelectorExpr interface {
 	Expr
 }
 
+// type alias for backward compatibility
+type Pipeline = log.Pipeline
+type SampleExtractor = log.SampleExtractor
+
+var (
+	NoopPipeline = log.NoopPipeline
+	ExtractCount = log.CountExtractor.ToSampleExtractor()
+)
+
 type PipelineExpr interface {
-	Pipeline() (log.Pipeline, error)
+	Pipeline() (Pipeline, error)
 	Expr
 }
 
@@ -94,6 +102,17 @@ type StageExpr interface {
 type MultiStageExpr []StageExpr
 
 func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
+	stages, err := m.stages()
+	if err != nil {
+		return nil, err
+	}
+	if len(stages) == 0 {
+		return log.NoopPipeline, nil
+	}
+	return stages, nil
+}
+
+func (m MultiStageExpr) stages() (log.MultiStage, error) {
 	c := make(log.MultiStage, 0, len(m))
 	for _, e := range m {
 		p, err := e.Stage()
@@ -104,9 +123,6 @@ func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
 			continue
 		}
 		c = append(c, p)
-	}
-	if len(c) == 0 {
-		return log.NoopPipeline, nil
 	}
 	return c, nil
 }
@@ -316,16 +332,16 @@ func (e *labelParserExpr) String() string {
 }
 
 type labelFilterExpr struct {
-	labelfilter.Filterer
+	log.LabelFilterer
 	implicit
 }
 
 func (e *labelFilterExpr) Stage() (log.Stage, error) {
-	return e.Filterer, nil
+	return e.LabelFilterer, nil
 }
 
 func (e *labelFilterExpr) String() string {
-	return fmt.Sprintf("%s %s", OpPipe, e.Filterer.String())
+	return fmt.Sprintf("%s %s", OpPipe, e.LabelFilterer.String())
 }
 
 type lineFmtExpr struct {
@@ -401,7 +417,7 @@ type unwrapExpr struct {
 	identifier string
 	operation  string
 
-	postFilters []labelfilter.Filterer
+	postFilters []log.LabelFilterer
 }
 
 func (u unwrapExpr) String() string {
@@ -417,7 +433,7 @@ func (u unwrapExpr) String() string {
 	return sb.String()
 }
 
-func (u *unwrapExpr) addPostFilter(f labelfilter.Filterer) *unwrapExpr {
+func (u *unwrapExpr) addPostFilter(f log.LabelFilterer) *unwrapExpr {
 	u.postFilters = append(u.postFilters, f)
 	return u
 }
@@ -696,7 +712,7 @@ func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.Selector()
 }
 
-func (e *vectorAggregationExpr) Extractor() (SampleExtractor, error) {
+func (e *vectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	return e.left.Extractor()
 }
 
@@ -833,12 +849,12 @@ func (e *literalExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *literalExpr) Selector() LogSelectorExpr           { return e }
-func (e *literalExpr) HasFilter() bool                     { return false }
-func (e *literalExpr) Operations() []string                { return nil }
-func (e *literalExpr) Pipeline() (log.Pipeline, error)     { return log.NoopPipeline, nil }
-func (e *literalExpr) Matchers() []*labels.Matcher         { return nil }
-func (e *literalExpr) Extractor() (SampleExtractor, error) { return nil, nil }
+func (e *literalExpr) Selector() LogSelectorExpr               { return e }
+func (e *literalExpr) HasFilter() bool                         { return false }
+func (e *literalExpr) Operations() []string                    { return nil }
+func (e *literalExpr) Pipeline() (log.Pipeline, error)         { return log.NoopPipeline, nil }
+func (e *literalExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *literalExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer

@@ -40,14 +40,30 @@ type MultiStage []Stage
 func (m MultiStage) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
 	var ok bool
 	if len(m) == 0 {
-		return line, lbs, ok
+		return line, lbs, true
 	}
 	labelmap := lbs.Map()
 	for _, p := range m {
 		line, ok = p.Process(line, labelmap)
 		if !ok {
-			return line, labels.FromMap(labelmap), ok
+			return nil, nil, false
 		}
 	}
-	return line, labels.FromMap(labelmap), ok
+	return line, labels.FromMap(labelmap), true
+}
+
+func (m MultiStage) Reduce() Stage {
+	if len(m) == 0 {
+		return NoopStage
+	}
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		var ok bool
+		for _, p := range m {
+			line, ok = p.Process(line, lbs)
+			if !ok {
+				return nil, false
+			}
+		}
+		return line, true
+	})
 }

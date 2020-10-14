@@ -38,6 +38,12 @@ func (n notFilter) Filter(line []byte) bool {
 	return !n.Filterer.Filter(line)
 }
 
+func (n notFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, n.Filter(line)
+	})
+}
+
 // newNotFilter creates a new filter which matches only if the base filter doesn't match.
 // If the base filter is a `or` it will recursively simplify with `and` operations.
 func newNotFilter(base Filterer) Filterer {

@@ -177,7 +177,7 @@ func (f fakeBlock) MaxTime() int64 { return f.maxt }
 func (fakeBlock) Iterator(context.Context, labels.Labels, logql.Pipeline) iter.EntryIterator {
 	return nil
 }
-func (fakeBlock) SampleIterator(context.Context, labels.Labels, logql.Pipeline, logql.SampleExtractor) iter.SampleIterator {
+func (fakeBlock) SampleIterator(context.Context, labels.Labels, logql.SampleExtractor) iter.SampleIterator {
 	return nil
 }
 

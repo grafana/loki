@@ -231,10 +231,6 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	if err != nil {
 		return nil, err
 	}
-	pipeline, err := expr.Selector().Pipeline()
-	if err != nil {
-		return nil, err
-	}
 	extractor, err := expr.Extractor()
 	if err != nil {
 		return nil, err
@@ -246,7 +242,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		expr.Selector().Matchers(),
 		func(stream *stream) error {
 			ingStats.TotalChunksMatched += int64(len(stream.chunks))
-			iter, err := stream.SampleIterator(ctx, req.Start, req.End, pipeline, extractor)
+			iter, err := stream.SampleIterator(ctx, req.Start, req.End, extractor)
 			if err != nil {
 				return err
 			}

@@ -238,7 +238,7 @@ func TestMapping(t *testing.T) {
 					},
 					LogSelectorExpr: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-						MultiPipelineExpr{
+						MultiStageExpr{
 							newLineFilterExpr(nil, labels.MatchEqual, "error"),
 						},
 					),
@@ -251,7 +251,7 @@ func TestMapping(t *testing.T) {
 						},
 						LogSelectorExpr: newPipelineExpr(
 							newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-							MultiPipelineExpr{
+							MultiStageExpr{
 								newLineFilterExpr(nil, labels.MatchEqual, "error"),
 							},
 						),

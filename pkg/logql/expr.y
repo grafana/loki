@@ -4,7 +4,6 @@ package logql
 import (
   "time"
   "github.com/prometheus/prometheus/pkg/labels"
-  "github.com/grafana/loki/pkg/logql/log/labelfilter"
   "github.com/grafana/loki/pkg/logql/log"
 
 )
@@ -37,11 +36,11 @@ import (
   LineFilters             *lineFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
-  BytesFilter             labelfilter.Filterer
-  NumberFilter            labelfilter.Filterer
-  DurationFilter          labelfilter.Filterer
-  LabelFilter             labelfilter.Filterer
-  UnitFilter              labelfilter.Filterer
+  BytesFilter             log.LabelFilterer
+  NumberFilter            log.LabelFilterer
+  DurationFilter          log.LabelFilterer
+  LabelFilter             log.LabelFilterer
+  UnitFilter              log.LabelFilterer
   LineFormatExpr          *lineFmtExpr
   LabelFormatExpr         *labelFmtExpr
   LabelFormat             log.LabelFmt
@@ -201,7 +200,7 @@ pipelineExpr:
 pipelineStage:
    lineFilters                   { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
-  | PIPE labelFilter             { $$ = &labelFilterExpr{Filterer: $2 }}
+  | PIPE labelFilter             { $$ = &labelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
   ;
@@ -224,56 +223,56 @@ labelFormat:
   ;
 
 labelsFormat:
-    labelFormat                    { $$ = []LabelFmt{ $1 } }
+    labelFormat                    { $$ = []log.LabelFmt{ $1 } }
   | labelsFormat COMMA labelFormat { $$ = append($1, $3) }
   | labelsFormat COMMA error
   ;
 
-labelFormatExpr: LABEL_FMT labelsFormat { $$ = log.NewLabelFmtExpr($2) };
+labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
 
 labelFilter:
-      matcher { $$ = labelfilter.NewString($1) }
-    | unitFilter { $$ = $1 }
-    | numberFilter { $$ = $1 }
+      matcher                                        { $$ = log.NewStringLabelFilter($1) }
+    | unitFilter                                     { $$ = $1 }
+    | numberFilter                                   { $$ = $1 }
     | OPEN_PARENTHESIS labelFilter CLOSE_PARENTHESIS { $$ = $2 }
-    | labelFilter labelFilter { $$ = labelfilter.NewAnd($1, $2 ) }
-    | labelFilter AND labelFilter { $$ = labelfilter.NewAnd($1, $3 ) }
-    | labelFilter COMMA labelFilter { $$ = labelfilter.NewAnd($1, $3 ) }
-    | labelFilter OR labelFilter { $$ = labelfilter.NewOr($1, $3 ) }
+    | labelFilter labelFilter                        { $$ = log.NewAndLabelFilter($1, $2 ) }
+    | labelFilter AND labelFilter                    { $$ = log.NewAndLabelFilter($1, $3 ) }
+    | labelFilter COMMA labelFilter                  { $$ = log.NewAndLabelFilter($1, $3 ) }
+    | labelFilter OR labelFilter                     { $$ = log.NewOrLabelFilter($1, $3 ) }
     ;
 
 unitFilter:
       durationFilter { $$ = $1 }
-    | bytesFilter { $$ = $1 }
+    | bytesFilter    { $$ = $1 }
 
 durationFilter:
-      IDENTIFIER GT DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThan, $1, $3) }
-    | IDENTIFIER GTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThan, $1, $3) }
-    | IDENTIFIER LTE DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterLesserThanOrEqual, $1, $3) }
-    | IDENTIFIER NEQ DURATION { $$ = labelfilter.NewDuration(labelfilter.FilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterEqual, $1, $3) }
-    | IDENTIFIER CMP_EQ DURATION  { $$ = labelfilter.NewDuration(labelfilter.FilterEqual, $1, $3) }
+      IDENTIFIER GT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
+    | IDENTIFIER GTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
+    | IDENTIFIER LT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThan, $1, $3) }
+    | IDENTIFIER LTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
+    | IDENTIFIER NEQ DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterNotEqual, $1, $3) }
+    | IDENTIFIER EQ DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
+    | IDENTIFIER CMP_EQ DURATION  { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
     ;
 
 bytesFilter:
-      IDENTIFIER GT BYTES  { $$ = labelfilter.NewBytes(labelfilter.FilterGreaterThan, $1, $3) }
-    | IDENTIFIER GTE BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT BYTES  { $$ = labelfilter.NewBytes(labelfilter.FilterLesserThan, $1, $3) }
-    | IDENTIFIER LTE BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterLesserThanOrEqual, $1, $3) }
-    | IDENTIFIER NEQ BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ BYTES  { $$ = labelfilter.NewBytes(labelfilter.FilterEqual, $1, $3) }
-    | IDENTIFIER CMP_EQ BYTES { $$ = labelfilter.NewBytes(labelfilter.FilterEqual, $1, $3) }
+      IDENTIFIER GT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
+    | IDENTIFIER GTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
+    | IDENTIFIER LT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThan, $1, $3) }
+    | IDENTIFIER LTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
+    | IDENTIFIER NEQ BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterNotEqual, $1, $3) }
+    | IDENTIFIER EQ BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
+    | IDENTIFIER CMP_EQ BYTES { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
     ;
 
 numberFilter:
-      IDENTIFIER GT NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterGreaterThan, $1, mustNewFloat($3))}
-    | IDENTIFIER GTE NUMBER { $$ = labelfilter.NewNumeric(labelfilter.FilterGreaterThanOrEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER LT NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterLesserThan, $1, mustNewFloat($3))}
-    | IDENTIFIER LTE NUMBER { $$ = labelfilter.NewNumeric(labelfilter.FilterLesserThanOrEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER NEQ NUMBER { $$ = labelfilter.NewNumeric(labelfilter.FilterNotEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER EQ NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER CMP_EQ NUMBER  { $$ = labelfilter.NewNumeric(labelfilter.FilterEqual, $1, mustNewFloat($3))}
+      IDENTIFIER GT NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1, mustNewFloat($3))}
+    | IDENTIFIER GTE NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER LT NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, mustNewFloat($3))}
+    | IDENTIFIER LTE NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER NEQ NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER EQ NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     ;
 
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr

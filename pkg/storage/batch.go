@@ -448,7 +448,6 @@ type sampleBatchIterator struct {
 	ctx       context.Context
 	metrics   *ChunkMetrics
 	matchers  []*labels.Matcher
-	pipeline  logql.Pipeline
 	extractor logql.SampleExtractor
 }
 
@@ -458,7 +457,6 @@ func newSampleBatchIterator(
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
-	pipeline logql.Pipeline,
 	extractor logql.SampleExtractor,
 	start, end time.Time,
 ) (iter.SampleIterator, error) {
@@ -469,7 +467,6 @@ func newSampleBatchIterator(
 
 	samplebatch := &sampleBatchIterator{
 		matchers:  matchers,
-		pipeline:  pipeline,
 		extractor: extractor,
 		metrics:   metrics,
 		ctx:       ctx,
@@ -523,7 +520,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, it.pipeline, it.extractor, nextChunk)
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, it.extractor, nextChunk)
 			if err != nil {
 				return nil, err
 			}

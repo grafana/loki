@@ -280,10 +280,10 @@ func (s *stream) Iterator(ctx context.Context, from, through time.Time, directio
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, pipeline logql.Pipeline, extractor logql.SampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, extractor logql.SampleExtractor) (iter.SampleIterator, error) {
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
-		if itr := c.chunk.SampleIterator(ctx, from, through, s.labels, pipeline, extractor); itr != nil {
+		if itr := c.chunk.SampleIterator(ctx, from, through, s.labels, extractor); itr != nil {
 			iterators = append(iterators, itr)
 		}
 	}

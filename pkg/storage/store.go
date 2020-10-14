@@ -306,11 +306,6 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	pipeline, err := expr.Selector().Pipeline()
-	if err != nil {
-		return nil, err
-	}
-
 	extractor, err := expr.Extractor()
 	if err != nil {
 		return nil, err
@@ -324,7 +319,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
-	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, extractor, req.Start, req.End)
+	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End)
 }
 
 func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {

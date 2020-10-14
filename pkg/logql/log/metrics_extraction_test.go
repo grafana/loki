@@ -1,4 +1,4 @@
-package logql
+package log
 
 import (
 	"sort"
@@ -11,7 +11,7 @@ import (
 func Test_labelSampleExtractor_Extract(t *testing.T) {
 	tests := []struct {
 		name    string
-		ex      *labelSampleExtractor
+		ex      SampleExtractor
 		in      labels.Labels
 		want    float64
 		wantLbs labels.Labels
@@ -19,7 +19,9 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	}{
 		{
 			"convert float",
-			newLabelSampleExtractor("foo", "", nil, nil),
+			mustSampleExtractor(MultiStage{}.WithLabelExtractor(
+				"foo", ConvertFloat, nil, false, NoopStage,
+			)),
 			labels.Labels{labels.Label{Name: "foo", Value: "15.0"}},
 			15,
 			labels.Labels{},
@@ -27,11 +29,9 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		},
 		{
 			"convert float without",
-			newLabelSampleExtractor("foo",
-				"",
-				nil,
-				&grouping{without: true, groups: []string{"bar", "buzz"}},
-			),
+			mustSampleExtractor(MultiStage{}.WithLabelExtractor(
+				"foo", ConvertFloat, []string{"bar", "buzz"}, true, NoopStage,
+			)),
 			labels.Labels{
 				{Name: "foo", Value: "10"},
 				{Name: "bar", Value: "foo"},
@@ -46,11 +46,9 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		},
 		{
 			"convert float with",
-			newLabelSampleExtractor("foo",
-				"",
-				nil,
-				&grouping{without: false, groups: []string{"bar", "buzz"}},
-			),
+			mustSampleExtractor(MultiStage{}.WithLabelExtractor(
+				"foo", ConvertFloat, []string{"bar", "buzz"}, false, NoopStage,
+			)),
 			labels.Labels{
 				{Name: "foo", Value: "0.6"},
 				{Name: "bar", Value: "foo"},
@@ -66,11 +64,9 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		},
 		{
 			"convert duration with",
-			newLabelSampleExtractor("foo",
-				OpConvDuration,
-				nil,
-				&grouping{without: false, groups: []string{"bar", "buzz"}},
-			),
+			mustSampleExtractor(MultiStage{}.WithLabelExtractor(
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, NoopStage,
+			)),
 			labels.Labels{
 				{Name: "foo", Value: "500ms"},
 				{Name: "bar", Value: "foo"},
@@ -84,34 +80,21 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			},
 			true,
 		},
-		{
-			"convert duration_seconds with",
-			newLabelSampleExtractor("foo",
-				OpConvDurationSeconds,
-				nil,
-				&grouping{without: false, groups: []string{"bar", "buzz"}},
-			),
-			labels.Labels{
-				{Name: "foo", Value: "250ms"},
-				{Name: "bar", Value: "foo"},
-				{Name: "buzz", Value: "blip"},
-				{Name: "namespace", Value: "dev"},
-			},
-			0.25,
-			labels.Labels{
-				{Name: "bar", Value: "foo"},
-				{Name: "buzz", Value: "blip"},
-			},
-			true,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sort.Sort(tt.in)
-			ok, outval, outlbs := tt.ex.Extract([]byte(""), tt.in)
+			outval, outlbs, ok := tt.ex.Process([]byte(""), tt.in)
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
 			require.Equal(t, tt.wantLbs, outlbs)
 		})
 	}
+}
+
+func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
+	if err != nil {
+		panic(err)
+	}
+	return ex
 }

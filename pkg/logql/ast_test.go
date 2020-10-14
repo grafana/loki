@@ -3,6 +3,8 @@ package logql
 import (
 	"testing"
 
+	"github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +43,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to get filter: %s", err)
 			}
-			require.Equal(t, tt.expectFilter, p != NoopPipeline)
+			require.Equal(t, tt.expectFilter, p != log.NoopPipeline)
 			if expr.String() != tt.selector {
 				t.Fatalf("error expected: %s got: %s", tt.selector, expr.String())
 			}
@@ -209,7 +211,7 @@ func Test_FilterMatcher(t *testing.T) {
 			p, err := expr.Pipeline()
 			assert.Nil(t, err)
 			if tt.lines == nil {
-				assert.Equal(t, p, NoopPipeline)
+				assert.Equal(t, p, log.NoopPipeline)
 			} else {
 				for _, lc := range tt.lines {
 					_, _, ok := p.Process([]byte(lc.l), labelBar)
@@ -286,11 +288,11 @@ func Test_parserExpr_Parser(t *testing.T) {
 		name    string
 		op      string
 		param   string
-		want    LabelParser
+		want    log.Stage
 		wantErr bool
 	}{
-		{"json", OpParserTypeJSON, "", NewJSONParser(), false},
-		{"logfmt", OpParserTypeLogfmt, "", NewLogfmtParser(), false},
+		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false},
+		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
 		{"regexp err ", OpParserTypeRegexp, "foo", nil, true},
 	}
@@ -300,7 +302,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 				op:    tt.op,
 				param: tt.param,
 			}
-			got, err := e.parser()
+			got, err := e.Stage()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parserExpr.Parser() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -312,4 +314,12 @@ func Test_parserExpr_Parser(t *testing.T) {
 			}
 		})
 	}
+}
+
+func mustNewRegexParser(re string) log.Stage {
+	r, err := log.NewRegexpParser(re)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }

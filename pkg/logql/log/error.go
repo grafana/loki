@@ -4,7 +4,7 @@ var (
 	errJSON             = "JSONParser"
 	errLogfmt           = "LogfmtParser"
 	errSampleExtraction = "SampleExtraction"
-	errFilter           = "Filter"
+	errLabelFilter      = "LabelFilter"
 
 	errorLabel = "__error__"
 )

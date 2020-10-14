@@ -95,7 +95,6 @@ func (c *LazyChunk) Iterator(
 func (c *LazyChunk) SampleIterator(
 	ctx context.Context,
 	from, through time.Time,
-	pipeline logql.Pipeline,
 	extractor logql.SampleExtractor,
 	nextChunk *LazyChunk,
 ) (iter.SampleIterator, error) {
@@ -123,7 +122,7 @@ func (c *LazyChunk) SampleIterator(
 		// if the block is overlapping cache it with the next chunk boundaries.
 		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
 			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
-			it := newCachedSampleIterator(b.SampleIterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), pipeline, extractor), b.Entries())
+			it := newCachedSampleIterator(b.SampleIterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), extractor), b.Entries())
 			its = append(its, it)
 			if c.overlappingSampleBlocks == nil {
 				c.overlappingSampleBlocks = make(map[int]*cachedSampleIterator)
@@ -135,7 +134,7 @@ func (c *LazyChunk) SampleIterator(
 			delete(c.overlappingSampleBlocks, b.Offset())
 		}
 		// non-overlapping block with the next chunk are not cached.
-		its = append(its, b.SampleIterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), pipeline, extractor))
+		its = append(its, b.SampleIterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), extractor))
 	}
 
 	// build the final iterator bound to the requested time range.

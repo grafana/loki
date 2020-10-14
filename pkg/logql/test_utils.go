@@ -3,7 +3,7 @@ package logql
 import (
 	"context"
 	"fmt"
-	"log"
+	logger "log"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
@@ -89,7 +90,7 @@ outer:
 	return iter.NewHeapIterator(ctx, streamIters, req.Direction), nil
 }
 
-func processStream(in []logproto.Stream, pipeline Pipeline) []logproto.Stream {
+func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Stream {
 	resByStream := map[string]*logproto.Stream{}
 
 	for _, stream := range in {
@@ -116,16 +117,12 @@ func processStream(in []logproto.Stream, pipeline Pipeline) []logproto.Stream {
 	return streams
 }
 
-func processSeries(in []logproto.Stream, pipeline Pipeline, ex SampleExtractor) []logproto.Series {
+func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Series {
 	resBySeries := map[string]*logproto.Series{}
 
 	for _, stream := range in {
 		for _, e := range stream.Entries {
-			if l, out, ok := pipeline.Process([]byte(e.Line), mustParseLabels(stream.Labels)); ok {
-				ok, f, lbs := ex.Extract(l, out)
-				if !ok {
-					continue
-				}
+			if f, lbs, ok := ex.Process([]byte(e.Line), mustParseLabels(stream.Labels)); ok {
 				var s *logproto.Series
 				var found bool
 				s, found = resBySeries[lbs.String()]
@@ -152,10 +149,7 @@ func (q MockQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) 
 	if err != nil {
 		return nil, err
 	}
-	pipeline, err := selector.Pipeline()
-	if err != nil {
-		return nil, err
-	}
+
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -196,32 +190,7 @@ outer:
 		matched = append(matched, stream)
 	}
 
-	// apply the LineFilter
-	filtered := processSeries(matched, pipeline, extractor)
-	// for _, s := range matched {
-	// 	var samples []logproto.Sample
-	// 	for _, entry := range s.Entries {
-	// 		// todo(cyriltovena)
-	// 		// if filter == nil || filter.Filter([]byte(entry.Line)) {
-	// 		v, ok := extractor.Extract([]byte(entry.Line))
-	// 		if !ok {
-	// 			continue
-	// 		}
-	// 		samples = append(samples, logproto.Sample{
-	// 			Timestamp: entry.Timestamp.UnixNano(),
-	// 			Value:     v,
-	// 			Hash:      xxhash.Sum64([]byte(entry.Line)),
-	// 		})
-	// 		// }
-	// 	}
-
-	// 	if len(samples) > 0 {
-	// 		filtered = append(filtered, logproto.Series{
-	// 			Labels:  s.Labels,
-	// 			Samples: samples,
-	// 		})
-	// 	}
-	// }
+	filtered := processSeries(matched, extractor)
 
 	return iter.NewTimeRangedSampleIterator(
 		iter.NewMultiSeriesIterator(ctx, filtered),
@@ -298,7 +267,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 func mustParseLabels(s string) labels.Labels {
 	labels, err := parser.ParseMetric(s)
 	if err != nil {
-		log.Fatalf("Failed to parse %s", s)
+		logger.Fatalf("Failed to parse %s", s)
 	}
 
 	return labels

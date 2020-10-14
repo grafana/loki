@@ -128,7 +128,7 @@ func TestBlock(t *testing.T) {
 			require.NoError(t, it.Close())
 			require.Equal(t, len(cases), idx)
 
-			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.NoopPipeline, logql.ExtractCount)
+			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
 			idx = 0
 			for sampleIt.Next() {
 				s := sampleIt.Sample()
@@ -276,7 +276,7 @@ func TestSerialization(t *testing.T) {
 			}
 			require.NoError(t, it.Error())
 
-			sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.NoopPipeline, logql.ExtractCount)
+			sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
 			for i := 0; i < numSamples; i++ {
 				require.True(t, sampleIt.Next(), i)
 
