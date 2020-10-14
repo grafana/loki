@@ -146,7 +146,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	status := "200"
 	if err != nil {
 		status = "500"
-		if IsParseError(err) {
+		if IsParseError(err) || IsPipelineError(err) {
 			status = "400"
 		}
 	}

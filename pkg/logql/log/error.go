@@ -1,10 +1,10 @@
 package log
 
 var (
-	errJSON             = "JSONParser"
-	errLogfmt           = "LogfmtParser"
-	errSampleExtraction = "SampleExtraction"
-	errLabelFilter      = "LabelFilter"
+	errJSON             = "JSONParserErr"
+	errLogfmt           = "LogfmtParserErr"
+	errSampleExtraction = "SampleExtractionErr"
+	errLabelFilter      = "LabelFilterErr"
 
 	ErrorLabel = "__error__"
 )

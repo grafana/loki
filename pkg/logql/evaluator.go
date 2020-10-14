@@ -402,6 +402,27 @@ type rangeVectorEvaluator struct {
 	err error
 }
 
+type pipelineError struct {
+	metric    labels.Labels
+	errorType string
+}
+
+func newPipelineErr(metric labels.Labels) *pipelineError {
+	return &pipelineError{
+		metric:    metric,
+		errorType: metric.Get(log.ErrorLabel),
+	}
+}
+
+func (e pipelineError) Error() string {
+	return fmt.Sprintf("pipeline error: '%s' for series: '%s' use label filters to intentionally skip those errors. (e.g | __error__=\"\")", e.errorType, e.metric)
+}
+
+func IsPipelineError(err error) bool {
+	_, ok := err.(*pipelineError)
+	return ok
+}
+
 func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
 	if !next {
@@ -410,7 +431,7 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	ts, vec := r.iter.At(r.agg)
 	for _, s := range vec {
 		if s.Metric.Has(log.ErrorLabel) {
-			r.err = errors.Errorf(s.Metric.Get(log.ErrorLabel))
+			r.err = newPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
 	}
