@@ -2,26 +2,34 @@ package scrapeconfig
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/server"
-
 	"github.com/prometheus/prometheus/discovery"
+	"github.com/prometheus/prometheus/discovery/file"
+	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 )
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName        string                `yaml:"job_name,omitempty"`
-	PipelineStages stages.PipelineStages `yaml:"pipeline_stages,omitempty"`
-	JournalConfig  *JournalTargetConfig  `yaml:"journal,omitempty"`
-	SyslogConfig   *SyslogTargetConfig   `yaml:"syslog,omitempty"`
-	PushConfig     *PushTargetConfig     `yaml:"loki_push_api,omitempty"`
-	RelabelConfigs []*relabel.Config     `yaml:"relabel_configs,omitempty"`
-	discovery.Config
+	JobName                string                 `yaml:"job_name,omitempty"`
+	PipelineStages         stages.PipelineStages  `yaml:"pipeline_stages,omitempty"`
+	JournalConfig          *JournalTargetConfig   `yaml:"journal,omitempty"`
+	SyslogConfig           *SyslogTargetConfig    `yaml:"syslog,omitempty"`
+	PushConfig             *PushTargetConfig      `yaml:"loki_push_api,omitempty"`
+	RelabelConfigs         []*relabel.Config      `yaml:"relabel_configs,omitempty"`
+	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
+}
+
+type ServiceDiscoveryConfig struct {
+	KubernetesSDConfigs []*kubernetes.SDConfig `yaml:"kubernetes_sd_configs"`
+	StaticConfigs       discovery.StaticConfig `yaml:"static_configs"`
+	FileSdConfigs       []*file.SDConfig       `yaml:"file_sd_configs,omitempty"`
 }
 
 // JournalTargetConfig describes systemd journal records to scrape.
@@ -89,18 +97,22 @@ var DefaultScrapeConfig = Config{
 // HasServiceDiscoveryConfig checks to see if the service discovery used for
 // file targets is non-zero.
 func (c *Config) HasServiceDiscoveryConfig() bool {
-	return c.Config != nil
+	return !reflect.DeepEqual(c.ServiceDiscoveryConfig, ServiceDiscoveryConfig{})
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+
 	*c = DefaultScrapeConfig
+
 	type plain Config
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
+
 	if len(c.JobName) == 0 {
 		return fmt.Errorf("job_name is empty")
 	}
+
 	return nil
 }
