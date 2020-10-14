@@ -79,7 +79,6 @@ func NewFileTargetManager(
 		if !cfg.HasServiceDiscoveryConfig() {
 			continue
 		}
-		var confs discovery.Configs
 
 		registerer := prometheus.DefaultRegisterer
 		pipeline, err := stages.NewPipeline(log.With(logger, "component", "file_pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
@@ -99,9 +98,6 @@ func NewFileTargetManager(
 				}
 			}
 		}
-		if statics := cfg.ServiceDiscoveryConfig.StaticConfigs; len(statics) > 0 {
-			confs = append(confs, statics)
-		}
 
 		// Add an additional api-level node filtering, so we only fetch pod metadata for
 		// all the pods from the current node. Without this filtering we will have to
@@ -113,7 +109,6 @@ func NewFileTargetManager(
 					{Role: kubernetes.RolePod, Field: selector},
 				}
 			}
-			confs = append(confs, kube)
 		}
 
 		s := &targetSyncer{
@@ -127,7 +122,7 @@ func NewFileTargetManager(
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
-		configs[cfg.JobName] = confs
+		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
 	}
 
 	go tm.run()
