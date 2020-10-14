@@ -55,7 +55,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{n}`),
 			Labels{},
 			Labels{
-				errorLabel: errJSON,
+				ErrorLabel: errJSON,
 			},
 		},
 		{
@@ -186,7 +186,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 			Labels{
 				"foo":      "bar",
-				errorLabel: errLogfmt,
+				ErrorLabel: errLogfmt,
 			},
 		},
 		{

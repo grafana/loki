@@ -1,6 +1,7 @@
 package log
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 func TestBinary_Filter(t *testing.T) {
 
 	tests := []struct {
-		f       *BinaryLabelFilter
+		f       LabelFilterer
 		lbs     Labels
 		want    bool
 		wantLbs Labels
@@ -144,12 +145,107 @@ func TestBinary_Filter(t *testing.T) {
 				"method":   "POST",
 			},
 		},
+		{
+
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, ErrorLabel, errJSON)),
+			Labels{
+				ErrorLabel: errJSON,
+				"status":   "200",
+				"method":   "POST",
+			},
+			false,
+			Labels{
+				ErrorLabel: errJSON,
+				"status":   "200",
+				"method":   "POST",
+			},
+		},
+		{
+
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".*")),
+			Labels{
+				ErrorLabel: "foo",
+				"status":   "200",
+				"method":   "POST",
+			},
+			false,
+			Labels{
+				ErrorLabel: "foo",
+				"status":   "200",
+				"method":   "POST",
+			},
+		},
+		{
+
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".*")),
+			Labels{
+				"status": "200",
+				"method": "POST",
+			},
+			true,
+			Labels{
+				"status": "200",
+				"method": "POST",
+			},
+		},
+		{
+
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, ErrorLabel, errJSON)),
+			Labels{
+				"status": "200",
+				"method": "POST",
+			},
+			true,
+			Labels{
+				"status": "200",
+				"method": "POST",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
 			_, got := tt.f.Process(nil, tt.lbs)
 			require.Equal(t, tt.want, got)
 			require.Equal(t, tt.wantLbs, tt.lbs)
+		})
+	}
+}
+
+func TestReduceAndLabelFilter(t *testing.T) {
+	tests := []struct {
+		name    string
+		filters []LabelFilterer
+		want    LabelFilterer
+	}{
+		{"empty", nil, NoopLabelFilter},
+		{"1", []LabelFilterer{NewBytesLabelFilter(LabelFilterEqual, "foo", 5)}, NewBytesLabelFilter(LabelFilterEqual, "foo", 5)},
+		{"2",
+			[]LabelFilterer{
+				NewBytesLabelFilter(LabelFilterEqual, "foo", 5),
+				NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6),
+			},
+			NewAndLabelFilter(NewBytesLabelFilter(LabelFilterEqual, "foo", 5), NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6)),
+		},
+		{"3",
+			[]LabelFilterer{
+				NewBytesLabelFilter(LabelFilterEqual, "foo", 5),
+				NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6),
+				NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "buzz", "bla")),
+			},
+			NewAndLabelFilter(
+				NewAndLabelFilter(
+					NewBytesLabelFilter(LabelFilterEqual, "foo", 5),
+					NewBytesLabelFilter(LabelFilterGreaterThanOrEqual, "bar", 6),
+				),
+				NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "buzz", "bla")),
+			),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ReduceAndLabelFilter(tt.filters); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ReduceAndLabelFilter() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }

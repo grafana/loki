@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 type QueryRangeType string
@@ -383,7 +384,7 @@ func rangeAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	return rangeVectorEvaluator{
+	return &rangeVectorEvaluator{
 		iter: newRangeVectorIterator(
 			it,
 			expr.left.interval.Nanoseconds(),
@@ -397,20 +398,33 @@ func rangeAggEvaluator(
 type rangeVectorEvaluator struct {
 	agg  RangeVectorAggregator
 	iter RangeVectorIterator
+
+	err error
 }
 
-func (r rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
+func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
 	if !next {
 		return false, 0, promql.Vector{}
 	}
 	ts, vec := r.iter.At(r.agg)
+	for _, s := range vec {
+		if s.Metric.Has(log.ErrorLabel) {
+			r.err = errors.Errorf(s.Metric.Get(log.ErrorLabel))
+			return false, 0, promql.Vector{}
+		}
+	}
 	return true, ts, vec
 }
 
 func (r rangeVectorEvaluator) Close() error { return r.iter.Close() }
 
-func (r rangeVectorEvaluator) Error() error { return r.iter.Error() }
+func (r rangeVectorEvaluator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
+	return r.iter.Error()
+}
 
 // binOpExpr explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr

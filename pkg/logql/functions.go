@@ -36,7 +36,15 @@ func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 		default:
 			convOp = log.ConvertFloat
 		}
-		return stages.WithLabelExtractor(r.left.unwrap.identifier, convOp, groups, without, log.ReduceAndLabelFilter(r.left.unwrap.postFilters))
+		if r.grouping != nil {
+			groups = r.grouping.groups
+			without = r.grouping.without
+		}
+		return stages.WithLabelExtractor(
+			r.left.unwrap.identifier,
+			convOp, groups, without,
+			log.ReduceAndLabelFilter(r.left.unwrap.postFilters),
+		)
 	}
 	// otherwise we extract metrics from the log line.
 	switch r.operation {

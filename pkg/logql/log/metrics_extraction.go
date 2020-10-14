@@ -113,8 +113,7 @@ func (l *labelSampleExtractor) Process(line []byte, lbs labels.Labels) (float64,
 		}
 	}
 	// post filters
-	_, ok = l.postFilter.Process(line, labelmap)
-	if !ok {
+	if _, ok = l.postFilter.Process(line, labelmap); !ok {
 		return 0, nil, false
 	}
 	if labelmap.HasError() {

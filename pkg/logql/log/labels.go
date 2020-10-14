@@ -8,10 +8,10 @@ func (l Labels) Has(key string) bool {
 }
 
 func (l Labels) SetError(err string) {
-	l[errorLabel] = err
+	l[ErrorLabel] = err
 }
 
 func (l Labels) HasError() bool {
-	_, ok := l[errorLabel]
+	_, ok := l[ErrorLabel]
 	return ok
 }

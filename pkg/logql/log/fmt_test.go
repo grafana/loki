@@ -111,7 +111,7 @@ func Test_validate(t *testing.T) {
 	}{
 		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false},
 		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, true},
-		{"no error", []LabelFmt{NewRenameLabelFmt(errorLabel, "bar")}, true},
+		{"no error", []LabelFmt{NewRenameLabelFmt(ErrorLabel, "bar")}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

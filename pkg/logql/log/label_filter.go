@@ -113,8 +113,11 @@ func ReduceAndLabelFilter(filters []LabelFilterer) LabelFilterer {
 	if len(filters) == 0 {
 		return NoopLabelFilter
 	}
+	if len(filters) == 1 {
+		return filters[0]
+	}
 	result := filters[0]
-	for _, f := range filters[0:] {
+	for _, f := range filters[1:] {
 		result = NewAndLabelFilter(result, f)
 	}
 	return result
@@ -292,10 +295,5 @@ func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
 }
 
 func (s *StringLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
-	for k, v := range lbs {
-		if k == s.Name {
-			return line, s.Matches(v)
-		}
-	}
-	return line, false
+	return line, s.Matches(lbs[s.Name])
 }

@@ -6,5 +6,5 @@ var (
 	errSampleExtraction = "SampleExtraction"
 	errLabelFilter      = "LabelFilter"
 
-	errorLabel = "__error__"
+	ErrorLabel = "__error__"
 )
