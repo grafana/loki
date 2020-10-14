@@ -88,15 +88,13 @@ type BlobStorage struct {
 	//blobService storage.Serv
 	cfg          *BlobStorageConfig
 	containerURL azblob.ContainerURL
-	delimiter    string
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
-func NewBlobStorage(cfg *BlobStorageConfig, delimiter string) (*BlobStorage, error) {
+func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
 	util.WarnExperimentalUse("Azure Blob Storage")
 	blobStorage := &BlobStorage{
-		cfg:       cfg,
-		delimiter: delimiter,
+		cfg: cfg,
 	}
 
 	var err error
@@ -196,8 +194,8 @@ func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
 	}), nil
 }
 
-// List objects and common-prefixes i.e synthetic directories from the store non-recursively
-func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+// List implements chunk.ObjectClient.
+func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
 
@@ -206,7 +204,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 			return nil, nil, ctx.Err()
 		}
 
-		listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, b.delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
+		listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -238,10 +236,6 @@ func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
 
 	_, err = blockBlobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
 	return err
-}
-
-func (b *BlobStorage) PathSeparator() string {
-	return b.delimiter
 }
 
 // Validate the config.

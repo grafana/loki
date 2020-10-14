@@ -77,6 +77,7 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Limit how long back data can be queried")
 }
 
+// Validate validates the store config.
 func (cfg *StoreConfig) Validate() error {
 	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
 		return err
@@ -138,7 +139,7 @@ func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Cli
 	}, nil
 }
 
-// Put implements ChunkStore
+// Put implements Store
 func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
 		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
@@ -148,7 +149,7 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	return nil
 }
 
-// PutOne implements ChunkStore
+// PutOne implements Store
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
 	defer log.Finish()

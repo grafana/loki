@@ -33,7 +33,7 @@ func NewAlertStore(client chunk.ObjectClient) *AlertStore {
 
 // ListAlertConfigs returns all of the active alert configs in this store
 func (a *AlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
-	objs, _, err := a.client.List(ctx, alertPrefix)
+	objs, _, err := a.client.List(ctx, alertPrefix, "")
 	if err != nil {
 		return nil, err
 	}

@@ -153,7 +153,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		return nil, err
 	}
 
-	c.client, err = config.NewClientFromConfig(cfg.Client, "promtail", false)
+	c.client, err = config.NewClientFromConfig(cfg.Client, "promtail", false, false)
 	if err != nil {
 		return nil, err
 	}

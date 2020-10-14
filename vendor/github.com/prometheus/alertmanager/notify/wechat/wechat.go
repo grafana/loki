@@ -51,13 +51,14 @@ type token struct {
 }
 
 type weChatMessage struct {
-	Text    weChatMessageContent `yaml:"text,omitempty" json:"text,omitempty"`
-	ToUser  string               `yaml:"touser,omitempty" json:"touser,omitempty"`
-	ToParty string               `yaml:"toparty,omitempty" json:"toparty,omitempty"`
-	Totag   string               `yaml:"totag,omitempty" json:"totag,omitempty"`
-	AgentID string               `yaml:"agentid,omitempty" json:"agentid,omitempty"`
-	Safe    string               `yaml:"safe,omitempty" json:"safe,omitempty"`
-	Type    string               `yaml:"msgtype,omitempty" json:"msgtype,omitempty"`
+	Text     weChatMessageContent `yaml:"text,omitempty" json:"text,omitempty"`
+	ToUser   string               `yaml:"touser,omitempty" json:"touser,omitempty"`
+	ToParty  string               `yaml:"toparty,omitempty" json:"toparty,omitempty"`
+	Totag    string               `yaml:"totag,omitempty" json:"totag,omitempty"`
+	AgentID  string               `yaml:"agentid,omitempty" json:"agentid,omitempty"`
+	Safe     string               `yaml:"safe,omitempty" json:"safe,omitempty"`
+	Type     string               `yaml:"msgtype,omitempty" json:"msgtype,omitempty"`
+	Markdown weChatMessageContent `yaml:"markdown,omitempty" json:"markdown,omitempty"`
 }
 
 type weChatMessageContent struct {
@@ -71,7 +72,7 @@ type weChatResponse struct {
 
 // New returns a new Wechat notifier.
 func New(c *config.WechatConfig, t *template.Template, l log.Logger) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "wechat", false)
+	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "wechat", false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -135,15 +136,22 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	}
 
 	msg := &weChatMessage{
-		Text: weChatMessageContent{
-			Content: tmpl(n.conf.Message),
-		},
 		ToUser:  tmpl(n.conf.ToUser),
 		ToParty: tmpl(n.conf.ToParty),
 		Totag:   tmpl(n.conf.ToTag),
 		AgentID: tmpl(n.conf.AgentID),
-		Type:    "text",
+		Type:    n.conf.MessageType,
 		Safe:    "0",
+	}
+
+	if msg.Type == "markdown" {
+		msg.Markdown = weChatMessageContent{
+			Content: tmpl(n.conf.Message),
+		}
+	} else {
+		msg.Text = weChatMessageContent{
+			Content: tmpl(n.conf.Message),
+		}
 	}
 	if err != nil {
 		return false, fmt.Errorf("templating error: %s", err)

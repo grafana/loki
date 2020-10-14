@@ -44,17 +44,23 @@ func NewDesc() *Desc {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState) IngesterDesc {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState, registeredAt time.Time) IngesterDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
 
+	registeredTimestamp := int64(0)
+	if !registeredAt.IsZero() {
+		registeredTimestamp = registeredAt.Unix()
+	}
+
 	ingester := IngesterDesc{
-		Addr:      addr,
-		Timestamp: time.Now().Unix(),
-		State:     state,
-		Tokens:    tokens,
-		Zone:      zone,
+		Addr:                addr,
+		Timestamp:           time.Now().Unix(),
+		RegisteredTimestamp: registeredTimestamp,
+		State:               state,
+		Tokens:              tokens,
+		Zone:                zone,
 	}
 
 	d.Ingesters[id] = ingester
@@ -127,6 +133,16 @@ func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 	return myTokens, takenTokens
 }
 
+// GetRegisteredAt returns the timestamp when the instance has been registered to the ring
+// or a zero value if unknown.
+func (i *IngesterDesc) GetRegisteredAt() time.Time {
+	if i == nil || i.RegisteredTimestamp == 0 {
+		return time.Time{}
+	}
+
+	return time.Unix(i.RegisteredTimestamp, 0)
+}
+
 // IsHealthy checks whether the ingester appears to be alive and heartbeating
 func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
 	healthy := false
@@ -145,6 +161,9 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 		healthy = (i.State == JOINING) || (i.State == ACTIVE) || (i.State == LEAVING)
 
 	case BlocksRead:
+		healthy = i.State == ACTIVE
+
+	case Ruler:
 		healthy = i.State == ACTIVE
 	}
 
@@ -188,7 +207,7 @@ func (d *Desc) Merge(mergeable memberlist.Mergeable, localCAS bool) (memberlist.
 
 	for name, oing := range otherIngesterMap {
 		ting := thisIngesterMap[name]
-		// firstIng.Timestamp will be 0, if there was no such ingester in our version
+		// ting.Timestamp will be 0, if there was no such ingester in our version
 		if oing.Timestamp > ting.Timestamp {
 			oing.Tokens = append([]uint32(nil), oing.Tokens...) // make a copy of tokens
 			thisIngesterMap[name] = oing
@@ -429,6 +448,78 @@ func (d *Desc) getTokensByZone() map[string][]TokenDesc {
 	}
 
 	return zones
+}
+
+type CompareResult int
+
+const (
+	Equal                       CompareResult = iota // Both rings contain same exact instances.
+	EqualButStatesAndTimestamps                      // Both rings contain the same instances with the same data except states and timestamps (may differ).
+	Different                                        // Rings have different set of instances, or their information don't match.
+)
+
+// RingCompare compares this ring against another one and returns one of Equal, EqualButStatesAndTimestamps or Different.
+func (d *Desc) RingCompare(o *Desc) CompareResult {
+	if d == nil {
+		if o == nil || len(o.Ingesters) == 0 {
+			return Equal
+		}
+		return Different
+	}
+	if o == nil {
+		if len(d.Ingesters) == 0 {
+			return Equal
+		}
+		return Different
+	}
+
+	if len(d.Ingesters) != len(o.Ingesters) {
+		return Different
+	}
+
+	equalStatesAndTimestamps := true
+
+	for name, ing := range d.Ingesters {
+		oing, ok := o.Ingesters[name]
+		if !ok {
+			return Different
+		}
+
+		if ing.Addr != oing.Addr {
+			return Different
+		}
+
+		if ing.Zone != oing.Zone {
+			return Different
+		}
+
+		if ing.RegisteredTimestamp != oing.RegisteredTimestamp {
+			return Different
+		}
+
+		if len(ing.Tokens) != len(oing.Tokens) {
+			return Different
+		}
+
+		for ix, t := range ing.Tokens {
+			if oing.Tokens[ix] != t {
+				return Different
+			}
+		}
+
+		if ing.Timestamp != oing.Timestamp {
+			equalStatesAndTimestamps = false
+		}
+
+		if ing.State != oing.State {
+			equalStatesAndTimestamps = false
+		}
+	}
+
+	if equalStatesAndTimestamps {
+		return Equal
+	}
+	return EqualButStatesAndTimestamps
 }
 
 func GetOrCreateRingDesc(d interface{}) *Desc {

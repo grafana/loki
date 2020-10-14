@@ -32,7 +32,7 @@ type RingConfig struct {
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
-	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"hidden"`
+	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 	NumTokens              int      `yaml:"num_tokens"`
@@ -59,7 +59,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
-	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), "ruler.ring.instance-interface", "Name of network interface to read address from.")
+	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), "ruler.ring.instance-interface-names", "Name of network interface to read address from.")
 	f.StringVar(&cfg.InstanceAddr, "ruler.ring.instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, "ruler.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, "ruler.ring.instance-id", hostname, "Instance ID to register in the ring.")
@@ -91,6 +91,8 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
+
+	// Each rule group is loaded to *exactly* one ruler.
 	rc.ReplicationFactor = 1
 
 	return rc

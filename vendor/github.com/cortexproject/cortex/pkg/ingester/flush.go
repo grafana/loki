@@ -10,6 +10,7 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -19,6 +20,8 @@ const (
 	// Backoff for retrying 'immediate' flushes. Only counts for queue
 	// position, not wallclock time.
 	flushBackoff = 1 * time.Second
+	// Lower bound on flushes per check period for rate-limiter
+	minFlushes = 100
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -94,6 +97,25 @@ func (i *Ingester) sweepUsers(immediate bool) {
 	}
 
 	i.metrics.oldestUnflushedChunkTimestamp.Set(float64(oldest.Unix()))
+	i.setFlushRate()
+}
+
+// Compute a rate such to spread calls to the store over nearly all of the flush period,
+// for example if we have 600 items in the queue and period 1 min we will send 10.5 per second.
+// Note if the store can't keep up with this rate then it doesn't make any difference.
+func (i *Ingester) setFlushRate() {
+	totalQueueLength := 0
+	for _, q := range i.flushQueues {
+		totalQueueLength += q.Length()
+	}
+	const fudge = 1.05 // aim to finish a little bit before the end of the period
+	flushesPerSecond := float64(totalQueueLength) / i.cfg.FlushCheckPeriod.Seconds() * fudge
+	// Avoid going very slowly with tiny queues
+	if flushesPerSecond*i.cfg.FlushCheckPeriod.Seconds() < minFlushes {
+		flushesPerSecond = minFlushes / i.cfg.FlushCheckPeriod.Seconds()
+	}
+	level.Debug(util.Logger).Log("msg", "computed flush rate", "rate", flushesPerSecond)
+	i.flushRateLimiter.SetLimit(rate.Limit(flushesPerSecond))
 }
 
 type flushReason int8
@@ -235,6 +257,9 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
+		if !op.immediate {
+			_ = i.flushRateLimiter.Wait(context.Background())
+		}
 		outcome, err := i.flushUserSeries(j, op.userID, op.fp, op.immediate)
 		i.metrics.seriesDequeuedOutcome.WithLabelValues(outcome.String()).Inc()
 		if err != nil {
