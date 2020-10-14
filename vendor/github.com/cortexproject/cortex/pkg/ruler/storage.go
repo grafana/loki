@@ -82,13 +82,13 @@ func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader) (rules.Ru
 
 		return rules.NewConfigRuleStore(c), nil
 	case "azure":
-		return newObjRuleStore(azure.NewBlobStorage(&cfg.Azure, ""))
+		return newObjRuleStore(azure.NewBlobStorage(&cfg.Azure))
 	case "gcs":
-		return newObjRuleStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS, ""))
+		return newObjRuleStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
 	case "s3":
-		return newObjRuleStore(aws.NewS3ObjectClient(cfg.S3, ""))
+		return newObjRuleStore(aws.NewS3ObjectClient(cfg.S3))
 	case "swift":
-		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift, ""))
+		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift))
 	case "local":
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	default:
@@ -100,5 +100,5 @@ func newObjRuleStore(client chunk.ObjectClient, err error) (rules.RuleStore, err
 	if err != nil {
 		return nil, err
 	}
-	return objectclient.NewRuleStore(client), nil
+	return objectclient.NewRuleStore(client, loadRulesConcurrency), nil
 }

@@ -1195,7 +1195,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	ticker := time.NewTicker(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval)
 	defer ticker.Stop()
 
-	for {
+	for ctx.Err() == nil {
 		select {
 		case <-ticker.C:
 			i.compactBlocks(ctx, false)
@@ -1213,6 +1213,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 			return nil
 		}
 	}
+	return nil
 }
 
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.

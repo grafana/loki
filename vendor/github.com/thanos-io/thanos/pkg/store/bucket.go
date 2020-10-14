@@ -111,6 +111,9 @@ type bucketStoreMetrics struct {
 	cachedPostingsCompressionTimeSeconds *prometheus.CounterVec
 	cachedPostingsOriginalSizeBytes      prometheus.Counter
 	cachedPostingsCompressedSizeBytes    prometheus.Counter
+
+	seriesFetchDuration   prometheus.Histogram
+	postingsFetchDuration prometheus.Histogram
 }
 
 func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
@@ -219,6 +222,18 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 	m.cachedPostingsCompressedSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_cached_postings_compressed_size_bytes_total",
 		Help: "Compressed size of postings stored into cache.",
+	})
+
+	m.seriesFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_cached_series_fetch_duration_seconds",
+		Help:    "Time it takes to fetch series from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
+		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
+	})
+
+	m.postingsFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_cached_postings_fetch_duration_seconds",
+		Help:    "Time it takes to fetch postings from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
+		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
 
 	return &m
@@ -473,7 +488,14 @@ func (s *BucketStore) addBlock(ctx context.Context, meta *metadata.Meta) (err er
 	lset := labels.FromMap(meta.Thanos.Labels)
 	h := lset.Hash()
 
-	indexHeaderReader, err := indexheader.NewBinaryReader(ctx, s.logger, s.bkt, s.dir, meta.ULID, s.postingOffsetsInMemSampling)
+	indexHeaderReader, err := indexheader.NewBinaryReader(
+		ctx,
+		s.logger,
+		s.bkt,
+		s.dir,
+		meta.ULID,
+		s.postingOffsetsInMemSampling,
+	)
 	if err != nil {
 		return errors.Wrap(err, "create index header reader")
 	}
@@ -486,6 +508,7 @@ func (s *BucketStore) addBlock(ctx context.Context, meta *metadata.Meta) (err er
 	b, err := newBucketBlock(
 		ctx,
 		log.With(s.logger, "block", meta.ULID),
+		s.metrics,
 		meta,
 		s.bkt,
 		dir,
@@ -493,7 +516,6 @@ func (s *BucketStore) addBlock(ctx context.Context, meta *metadata.Meta) (err er
 		s.chunkPool,
 		indexHeaderReader,
 		s.partitioner,
-		s.metrics.seriesRefetches,
 		s.enablePostingsCompression,
 	)
 	if err != nil {
@@ -1046,7 +1068,7 @@ func chunksSize(chks []storepb.AggrChunk) (size int) {
 }
 
 // LabelNames implements the storepb.StoreServer interface.
-func (s *BucketStore) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	g, gctx := errgroup.WithContext(ctx)
 
 	s.mtx.RLock()
@@ -1055,7 +1077,7 @@ func (s *BucketStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReque
 	var sets [][]string
 
 	for _, b := range s.blocks {
-		if b.meta.MinTime > r.End || b.meta.MaxTime < r.Start {
+		if !b.overlapsClosedInterval(req.Start, req.End) {
 			continue
 		}
 		indexr := b.indexReader(gctx)
@@ -1094,7 +1116,7 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 	var sets [][]string
 
 	for _, b := range s.blocks {
-		if b.meta.MinTime > req.End || b.meta.MaxTime < req.Start {
+		if !b.overlapsClosedInterval(req.Start, req.End) {
 			continue
 		}
 		indexr := b.indexReader(gctx)
@@ -1264,6 +1286,7 @@ func (s *bucketBlockSet) labelMatchers(matchers ...*labels.Matcher) ([]*labels.M
 // state for the block on local disk.
 type bucketBlock struct {
 	logger     log.Logger
+	metrics    *bucketStoreMetrics
 	bkt        objstore.BucketReader
 	meta       *metadata.Meta
 	dir        string
@@ -1278,8 +1301,6 @@ type bucketBlock struct {
 
 	partitioner partitioner
 
-	seriesRefetches prometheus.Counter
-
 	enablePostingsCompression bool
 
 	// Block's labels used by block-level matchers to filter blocks to query. These are used to select blocks using
@@ -1290,6 +1311,7 @@ type bucketBlock struct {
 func newBucketBlock(
 	ctx context.Context,
 	logger log.Logger,
+	metrics *bucketStoreMetrics,
 	meta *metadata.Meta,
 	bkt objstore.BucketReader,
 	dir string,
@@ -1297,11 +1319,11 @@ func newBucketBlock(
 	chunkPool pool.BytesPool,
 	indexHeadReader indexheader.Reader,
 	p partitioner,
-	seriesRefetches prometheus.Counter,
 	enablePostingsCompression bool,
 ) (b *bucketBlock, err error) {
 	b = &bucketBlock{
 		logger:                    logger,
+		metrics:                   metrics,
 		bkt:                       bkt,
 		indexCache:                indexCache,
 		chunkPool:                 chunkPool,
@@ -1309,7 +1331,6 @@ func newBucketBlock(
 		partitioner:               p,
 		meta:                      meta,
 		indexHeaderReader:         indexHeadReader,
-		seriesRefetches:           seriesRefetches,
 		enablePostingsCompression: enablePostingsCompression,
 	}
 
@@ -1393,6 +1414,13 @@ func (b *bucketBlock) matchRelabelLabels(matchers []*labels.Matcher) bool {
 		}
 	}
 	return true
+}
+
+// overlapsClosedInterval returns true if the block overlaps [mint, maxt).
+func (b *bucketBlock) overlapsClosedInterval(mint, maxt int64) bool {
+	// The block itself is a half-open interval
+	// [b.meta.MinTime, b.meta.MaxTime).
+	return b.meta.MinTime <= maxt && mint < b.meta.MaxTime
 }
 
 // Close waits for all pending readers to finish and then closes all underlying resources.
@@ -1616,6 +1644,9 @@ type postingPtr struct {
 // It returns one postings for each key, in the same order.
 // If postings for given key is not fetched, entry at given index will be nil.
 func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings, error) {
+	timer := prometheus.NewTimer(r.block.metrics.postingsFetchDuration)
+	defer timer.ObserveDuration()
+
 	var ptrs []postingPtr
 
 	output := make([]index.Postings, len(keys))
@@ -1833,6 +1864,9 @@ func (it *bigEndianPostings) length() int {
 }
 
 func (r *bucketIndexReader) PreloadSeries(ids []uint64) error {
+	timer := prometheus.NewTimer(r.block.metrics.seriesFetchDuration)
+	defer timer.ObserveDuration()
+
 	// Load series from cache, overwriting the list of ids to preload
 	// with the missing ones.
 	fromCache, ids := r.block.indexCache.FetchMultiSeries(r.ctx, r.block.meta.ULID, ids)
@@ -1883,7 +1917,7 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []uint64, refetc
 			}
 
 			// Inefficient, but should be rare.
-			r.block.seriesRefetches.Inc()
+			r.block.metrics.seriesRefetches.Inc()
 			level.Warn(r.block.logger).Log("msg", "series size exceeded expected size; refetching", "id", id, "series length", n+int(l), "maxSeriesSize", maxSeriesSize)
 
 			// Fetch plus to get the size of next one if exists.

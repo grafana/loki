@@ -73,7 +73,6 @@ message RuleGroup {
     google.protobuf.Timestamp last_evaluation = 6 [(gogoproto.jsontag) = "lastEvaluation", (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
 
     // Thanos specific.
-    PartialResponseStrategy DeprecatedPartialResponseStrategy = 7 [(gogoproto.jsontag) = "partial_response_strategy"];
     PartialResponseStrategy PartialResponseStrategy           = 8 [(gogoproto.jsontag) = "partialResponseStrategy" ];
 }
 

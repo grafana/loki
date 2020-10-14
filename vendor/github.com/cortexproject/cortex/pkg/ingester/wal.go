@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -263,7 +262,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 		return errors.New("function to get user states not initialised")
 	}
 
-	_, lastSegment, err := w.wal.Segments()
+	_, lastSegment, err := wal.Segments(w.wal.Dir())
 	if err != nil {
 		return err
 	}
@@ -284,7 +283,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 			return err
 		}
 
-		_, lastSegment, err = w.wal.Segments()
+		_, lastSegment, err = wal.Segments(w.wal.Dir())
 		if err != nil {
 			return err
 		}
@@ -1005,7 +1004,7 @@ func newWalReader(name string, startSegment int) (*wal.Reader, io.Closer, error)
 			return nil, nil, err
 		}
 	} else {
-		first, last, err := SegmentRange(name)
+		first, last, err := wal.Segments(name)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1025,33 +1024,6 @@ func newWalReader(name string, startSegment int) (*wal.Reader, io.Closer, error)
 		}
 	}
 	return wal.NewReader(segmentReader), segmentReader, nil
-}
-
-// SegmentRange returns the first and last segment index of the WAL in the dir.
-// If https://github.com/prometheus/prometheus/pull/6477 is merged, get rid of this
-// method and use from Prometheus directly.
-func SegmentRange(dir string) (int, int, error) {
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return 0, 0, err
-	}
-	first, last := math.MaxInt32, math.MinInt32
-	for _, f := range files {
-		k, err := strconv.Atoi(f.Name())
-		if err != nil {
-			continue
-		}
-		if k < first {
-			first = k
-		}
-		if k > last {
-			last = k
-		}
-	}
-	if first == math.MaxInt32 || last == math.MinInt32 {
-		return -1, -1, nil
-	}
-	return first, last, nil
 }
 
 func decodeCheckpointRecord(rec []byte, m proto.Message) (_ proto.Message, err error) {

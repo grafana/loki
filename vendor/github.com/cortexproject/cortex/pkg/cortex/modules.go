@@ -135,7 +135,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 		t.Cfg.LimitsConfig.RulerEvaluationDelay = t.Cfg.Ruler.EvaluationDelay
 
 		// No need to report if this field isn't going to be used.
-		if t.Cfg.Target == All || t.Cfg.Target == Ruler {
+		if t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(All) {
 			flagext.DeprecatedFlagsUsed.Inc()
 			level.Warn(util.Logger).Log("msg", "Using DEPRECATED YAML config field ruler.evaluation_delay_duration, please use limits.ruler_evaluation_delay_duration instead.")
 		}
@@ -173,7 +173,7 @@ func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
 	// ruler's dependency)
-	canJoinDistributorsRing := (t.Cfg.Target == All || t.Cfg.Target == Distributor)
+	canJoinDistributorsRing := t.Cfg.isModuleEnabled(Distributor) || t.Cfg.isModuleEnabled(All)
 
 	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -222,12 +222,12 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}, []string{"method", "route"})
 
 	// if we are not configured for single binary mode then the querier needs to register its paths externally
-	registerExternally := t.Cfg.Target != All
+	registerExternally := !t.Cfg.isModuleEnabled(All)
 	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration, receivedMessageSize, sentMessageSize, inflightRequests)
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
-	if t.Cfg.Worker.Address == "" && t.Cfg.Target == All {
+	if t.Cfg.Worker.Address == "" && t.Cfg.isModuleEnabled(All) {
 		address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
 		level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
 		t.Cfg.Worker.Address = address
@@ -298,7 +298,7 @@ func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, l
 	case storage.StorageEngineBlocks:
 		// When running in single binary, if the blocks sharding is disabled and no custom
 		// store-gateway address has been configured, we can set it to the running process.
-		if cfg.Target == All && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
+		if cfg.isModuleEnabled(All) && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
 			cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
 		}
 
@@ -510,13 +510,12 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	// unfortunately there is no way to generate a "default" config and compare default against actual
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
-	if t.Cfg.Target == All && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+	if t.Cfg.isModuleEnabled(All) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
 		level.Info(util.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
 		return
 	}
 
 	t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig, rules.FileLoader{})
-
 	return
 }
 
@@ -542,6 +541,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		prometheus.DefaultRegisterer,
 		util.Logger,
 		t.RulerStorage,
+		t.Overrides,
 	)
 	if err != nil {
 		return
@@ -573,7 +573,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 		return
 	}
 
-	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.Target == AlertManager, t.Cfg.Alertmanager.EnableAPI)
+	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.isModuleEnabled(AlertManager), t.Cfg.Alertmanager.EnableAPI)
 	return t.Alertmanager, nil
 }
 
@@ -592,6 +592,9 @@ func (t *Cortex) initCompactor() (serv services.Service, err error) {
 
 func (t *Cortex) initStoreGateway() (serv services.Service, err error) {
 	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
+		if !t.Cfg.isModuleEnabled(All) {
+			return nil, fmt.Errorf("storage engine must be set to blocks to enable the store-gateway")
+		}
 		return nil, nil
 	}
 

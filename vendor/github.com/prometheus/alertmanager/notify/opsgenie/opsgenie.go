@@ -44,7 +44,7 @@ type Notifier struct {
 
 // New returns a new OpsGenie notifier.
 func New(c *config.OpsGenieConfig, t *template.Template, l log.Logger) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "opsgenie", false)
+	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "opsgenie", false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,12 @@ func (n *Notifier) createRequest(ctx context.Context, as ...*types.Alert) (*http
 
 	tmpl := notify.TmplText(n.tmpl, data, &err)
 
-	details := make(map[string]string, len(n.conf.Details))
+	details := make(map[string]string)
+
+	for k, v := range data.CommonLabels {
+		details[k] = v
+	}
+
 	for k, v := range n.conf.Details {
 		details[k] = tmpl(v)
 	}

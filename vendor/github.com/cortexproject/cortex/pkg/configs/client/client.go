@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
@@ -139,6 +140,8 @@ func doRequest(endpoint string, timeout time.Duration, tlsConfig *tls.Config, si
 	if tlsConfig != nil {
 		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
 	}
+
+	req.Header.Set("User-Agent", fmt.Sprintf("Cortex/%s", version.Version))
 
 	resp, err := client.Do(req)
 	if err != nil {

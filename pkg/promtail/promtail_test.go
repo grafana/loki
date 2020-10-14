@@ -21,7 +21,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -594,18 +594,15 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		Source: "",
 	}
 
-	serviceConfig := sd_config.ServiceDiscoveryConfig{
-		StaticConfigs: []*targetgroup.Group{
+	scrapeConfig := scrapeconfig.Config{
+		JobName:        "",
+		PipelineStages: pipeline,
+		RelabelConfigs: nil,
+		Config: discovery.StaticConfig{
 			&targetGroup,
 		},
 	}
 
-	scrapeConfig := scrapeconfig.Config{
-		JobName:                "",
-		PipelineStages:         pipeline,
-		RelabelConfigs:         nil,
-		ServiceDiscoveryConfig: serviceConfig,
-	}
 	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
 
 	// Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)

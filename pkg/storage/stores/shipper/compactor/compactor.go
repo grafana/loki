@@ -19,6 +19,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
+const delimiter = "/"
+
 type Config struct {
 	WorkingDirectory   string        `yaml:"working_directory"`
 	SharedStoreType    string        `yaml:"shared_store"`
@@ -96,7 +98,7 @@ func (c *Compactor) Run(ctx context.Context) error {
 		}
 	}()
 
-	_, dirs, err := c.objectClient.List(ctx, "")
+	_, dirs, err := c.objectClient.List(ctx, "", delimiter)
 	if err != nil {
 		status = statusFailure
 		return err
@@ -104,7 +106,7 @@ func (c *Compactor) Run(ctx context.Context) error {
 
 	tables := make([]string, len(dirs))
 	for i, dir := range dirs {
-		tables[i] = strings.TrimSuffix(string(dir), "/")
+		tables[i] = strings.TrimSuffix(string(dir), delimiter)
 	}
 
 	for _, tableName := range tables {

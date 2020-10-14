@@ -29,6 +29,7 @@ type Limiter interface {
 	ReportResult(result error)
 }
 
+// Options keeps the settings to setup redis connection.
 type Options struct {
 	// The network type, either tcp or unix.
 	// Default is tcp.
@@ -57,7 +58,7 @@ type Options struct {
 	DB int
 
 	// Maximum number of retries before giving up.
-	// Default is to not retry failed commands.
+	// Default is 3 retries.
 	MaxRetries int
 	// Minimum backoff between each retry.
 	// Default is 8 milliseconds; -1 disables backoff.
@@ -103,9 +104,6 @@ type Options struct {
 
 	// Enables read only queries on slave nodes.
 	readOnly bool
-
-	// Enables read only queries on redis replicas in sentinel mode
-	sentinelReadOnly bool
 
 	// TLS Config to use. When set TLS will be negotiated.
 	TLSConfig *tls.Config
@@ -167,6 +165,8 @@ func (opt *Options) init() {
 
 	if opt.MaxRetries == -1 {
 		opt.MaxRetries = 0
+	} else if opt.MaxRetries == 0 {
+		opt.MaxRetries = 3
 	}
 	switch opt.MinRetryBackoff {
 	case -1:
@@ -188,26 +188,35 @@ func (opt *Options) clone() *Options {
 }
 
 // ParseURL parses an URL into Options that can be used to connect to Redis.
+// Scheme is required.
+// There are two connection types: by tcp socket and by unix socket.
+// Tcp connection:
+// 		redis://<user>:<password>@<host>:<port>/<db_number>
+// Unix connection:
+//		unix://<user>:<password>@</path/to/redis.sock>?db=<db_number>
 func ParseURL(redisURL string) (*Options, error) {
-	o := &Options{Network: "tcp"}
 	u, err := url.Parse(redisURL)
 	if err != nil {
 		return nil, err
 	}
 
-	if u.Scheme != "redis" && u.Scheme != "rediss" {
-		return nil, errors.New("invalid redis URL scheme: " + u.Scheme)
+	switch u.Scheme {
+	case "redis", "rediss":
+		return setupTCPConn(u)
+	case "unix":
+		return setupUnixConn(u)
+	default:
+		return nil, fmt.Errorf("redis: invalid URL scheme: %s", u.Scheme)
 	}
+}
 
-	if u.User != nil {
-		o.Username = u.User.Username()
-		if p, ok := u.User.Password(); ok {
-			o.Password = p
-		}
-	}
+func setupTCPConn(u *url.URL) (*Options, error) {
+	o := &Options{Network: "tcp"}
+
+	o.Username, o.Password = getUserPassword(u)
 
 	if len(u.Query()) > 0 {
-		return nil, errors.New("no options supported")
+		return nil, errors.New("redis: no options supported")
 	}
 
 	h, p, err := net.SplitHostPort(u.Host)
@@ -230,25 +239,63 @@ func ParseURL(redisURL string) (*Options, error) {
 		o.DB = 0
 	case 1:
 		if o.DB, err = strconv.Atoi(f[0]); err != nil {
-			return nil, fmt.Errorf("invalid redis database number: %q", f[0])
+			return nil, fmt.Errorf("redis: invalid database number: %q", f[0])
 		}
 	default:
-		return nil, errors.New("invalid redis URL path: " + u.Path)
+		return nil, fmt.Errorf("redis: invalid URL path: %s", u.Path)
 	}
 
 	if u.Scheme == "rediss" {
 		o.TLSConfig = &tls.Config{ServerName: h}
 	}
+
 	return o, nil
+}
+
+func setupUnixConn(u *url.URL) (*Options, error) {
+	o := &Options{
+		Network: "unix",
+	}
+
+	if strings.TrimSpace(u.Path) == "" { // path is required with unix connection
+		return nil, errors.New("redis: empty unix socket path")
+	}
+	o.Addr = u.Path
+
+	o.Username, o.Password = getUserPassword(u)
+
+	dbStr := u.Query().Get("db")
+	if dbStr == "" {
+		return o, nil // if database is not set, connect to 0 db.
+	}
+
+	db, err := strconv.Atoi(dbStr)
+	if err != nil {
+		return nil, fmt.Errorf("redis: invalid database number: %s", err)
+	}
+	o.DB = db
+
+	return o, nil
+}
+
+func getUserPassword(u *url.URL) (string, string) {
+	var user, password string
+	if u.User != nil {
+		user = u.User.Username()
+		if p, ok := u.User.Password(); ok {
+			password = p
+		}
+	}
+	return user, password
 }
 
 func newConnPool(opt *Options) *pool.ConnPool {
 	return pool.NewConnPool(&pool.Options{
 		Dialer: func(ctx context.Context) (net.Conn, error) {
 			var conn net.Conn
-			err := internal.WithSpan(ctx, "dialer", func(ctx context.Context) error {
+			err := internal.WithSpan(ctx, "dialer", func(ctx context.Context, span trace.Span) error {
 				var err error
-				trace.SpanFromContext(ctx).SetAttributes(
+				span.SetAttributes(
 					label.String("redis.network", opt.Network),
 					label.String("redis.addr", opt.Addr),
 				)

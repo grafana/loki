@@ -19,10 +19,21 @@ var (
 	ErrUserNotFound = errors.New("no rule groups found for user")
 )
 
-// RuleStore is used to store and retrieve rules
+// RuleStore is used to store and retrieve rules.
+// Methods starting with "List" prefix may return partially loaded groups: with only group Name, Namespace and User fields set.
+// To make sure that rules within each group are loaded, client must use LoadRuleGroups method.
 type RuleStore interface {
+	ListAllUsers(ctx context.Context) ([]string, error)
 	ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
-	ListRuleGroups(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
+	// ListRuleGroupsForUserAndNamespace returns all the active rule groups for a user from given namespace.
+	// If namespace is empty, groups from all namespaces are returned.
+	ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
+
+	// LoadRuleGroups loads rules for each rule group in the map.
+	// Parameter with groups to load *MUST* be coming from one of the List methods.
+	// Reason is that some implementations don't do anything, since their List method already loads the rules.
+	LoadRuleGroups(ctx context.Context, groupsToLoad map[string]RuleGroupList) error
+
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
@@ -63,9 +74,20 @@ func NewConfigRuleStore(c client.Client) *ConfigRuleStore {
 	}
 }
 
+func (c *ConfigRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
+	m, err := c.ListAllRuleGroups(ctx)
+
+	// TODO: this should be optimized, if possible.
+	result := []string(nil)
+	for u := range m {
+		result = append(result, u)
+	}
+
+	return result, err
+}
+
 // ListAllRuleGroups implements RuleStore
 func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error) {
-
 	configs, err := c.configClient.GetRules(ctx, c.since)
 
 	if err != nil {
@@ -90,10 +112,6 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]Rul
 		c.ruleGroupList[user] = userRules
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
 	c.since = getLatestConfigID(configs, c.since)
 
 	return c.ruleGroupList, nil
@@ -111,9 +129,31 @@ func getLatestConfigID(cfgs map[string]userconfig.VersionedRulesConfig, latest u
 	return ret
 }
 
-// ListRuleGroups is not implemented
-func (c *ConfigRuleStore) ListRuleGroups(ctx context.Context, userID string, namespace string) (RuleGroupList, error) {
-	return nil, errors.New("not implemented by the config service rule store")
+func (c *ConfigRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error) {
+	r, err := c.ListAllRuleGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if namespace == "" {
+		return r[userID], nil
+	}
+
+	list := r[userID]
+	for ix := 0; ix < len(list); {
+		if list[ix].GetNamespace() != namespace {
+			list = append(list[:ix], list[ix+1:]...)
+		} else {
+			ix++
+		}
+	}
+
+	return list, nil
+}
+
+func (c *ConfigRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]RuleGroupList) error {
+	// Since ConfigRuleStore already Loads the rules in the List methods, there is nothing left to do here.
+	return nil
 }
 
 // GetRuleGroup is not implemented

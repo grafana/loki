@@ -72,10 +72,10 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 }
 
-// RulesLimits is the one function we need from limits.Overrides, and
-// is here to limit coupling.
+// RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
-	EvaluationDelay(usedID string) time.Duration
+	EvaluationDelay(userID string) time.Duration
+	RulerTenantShardSize(userID string) int
 }
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
@@ -90,28 +90,26 @@ func engineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides Rules
 	}
 }
 
-type ManagerFactory = func(
-	ctx context.Context,
-	userID string,
-	notifier *notifier.Manager,
-	logger log.Logger,
-	reg prometheus.Registerer,
-) *rules.Manager
+// This interface mimicks rules.Manager API. Interface is used to simplify tests.
+type RulesManager interface {
+	// Starts rules manager. Blocks until Stop is called.
+	Run()
 
-func DefaultTenantManagerFactory(
-	cfg Config,
-	p Pusher,
-	q storage.Queryable,
-	engine *promql.Engine,
-	overrides RulesLimits,
-) ManagerFactory {
-	return func(
-		ctx context.Context,
-		userID string,
-		notifier *notifier.Manager,
-		logger log.Logger,
-		reg prometheus.Registerer,
-	) *rules.Manager {
+	// Stops rules manager. (Unblocks Run.)
+	Stop()
+
+	// Updates rules manager state.
+	Update(interval time.Duration, files []string, externalLabels labels.Labels) error
+
+	// Returns current rules groups.
+	RuleGroups() []*rules.Group
+}
+
+// ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
+type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
+
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits) ManagerFactory {
+	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      &PusherAppendable{pusher: p, userID: userID},
 			Queryable:       q,
