@@ -121,7 +121,9 @@ func (t *Table) init(ctx context.Context, spanLogger *spanlogger.SpanLogger) (er
 	startTime := time.Now()
 	totalFilesSize := int64(0)
 
-	objects, _, err := t.storageClient.List(ctx, t.name, delimiter)
+	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
+	// This is due to the object stores not having a concept of directories.
+	objects, _, err := t.storageClient.List(ctx, t.name+delimiter, delimiter)
 	if err != nil {
 		return
 	}
@@ -309,7 +311,10 @@ func (t *Table) Sync(ctx context.Context) error {
 func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.StorageObject, toDelete []string, err error) {
 	// listing tables from store
 	var objects []chunk.StorageObject
-	objects, _, err = t.storageClient.List(ctx, t.name, delimiter)
+
+	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
+	// This is due to the object stores not having a concept of directories.
+	objects, _, err = t.storageClient.List(ctx, t.name+delimiter, delimiter)
 	if err != nil {
 		return
 	}
