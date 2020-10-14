@@ -31,7 +31,6 @@ import (
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -597,13 +596,13 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 
 	scrapeConfig := scrapeconfig.Config{
 		JobName:        "",
-		EntryParser:    api.Raw,
 		PipelineStages: pipeline,
 		RelabelConfigs: nil,
 		Config: discovery.StaticConfig{
 			&targetGroup,
 		},
 	}
+
 	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
 
 	// Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)

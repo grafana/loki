@@ -259,12 +259,12 @@ backoff_config:
 # Use map like {"foo": "bar"} to add a label foo with
 # value bar.
 # These can also be specified from command line:
-# -client.external-labels=k1=v1,k2=v2 
+# -client.external-labels=k1=v1,k2=v2
 # (or --client.external-labels depending on your OS)
-# labels supplied by the command line are applied 
+# labels supplied by the command line are applied
 # to all clients configured in the `clients` section.
 # NOTE: values defined in the config file will replace values
-# defined on the command line for a given client if the 
+# defined on the command line for a given client if the
 # label keys are the same.
 external_labels:
   [ <labelname>: <labelvalue> ... ]
@@ -298,10 +298,6 @@ of targets using a specified discovery method:
 ```yaml
 # Name to identify this scrape config in the Promtail UI.
 job_name: <string>
-
-# Describes how to parse log lines. Supported values [cri docker raw]
-# Deprecated in favor of pipeline_stages using the cri or docker stages.
-[entry_parser: <string> | default = "docker"]
 
 # Describes how to transform logs from targets.
 [pipeline_stages: <pipeline_stages>]
