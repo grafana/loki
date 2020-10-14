@@ -87,30 +87,6 @@ func NewFileTargetManager(
 			return nil, err
 		}
 
-		// Backwards compatibility with old EntryParser config
-		if pipeline.Size() == 0 {
-			switch cfg.EntryParser {
-			case api.CRI:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				cri, err := stages.NewCRI(logger, registerer)
-				if err != nil {
-					return nil, err
-				}
-				pipeline.AddStage(cri)
-			case api.Docker:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				docker, err := stages.NewDocker(logger, registerer)
-				if err != nil {
-					return nil, err
-				}
-				pipeline.AddStage(docker)
-			case api.Raw:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-			default:
-
-			}
-		}
-
 		// Add Source value to the static config target groups for unique identification
 		// within scrape pool. Also, default target label to localhost if target is not
 		// defined in promtail config.
