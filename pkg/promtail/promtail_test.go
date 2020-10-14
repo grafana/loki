@@ -593,7 +593,6 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		},
 		Source: "",
 	}
-
 	scrapeConfig := scrapeconfig.Config{
 		JobName:        "",
 		PipelineStages: pipeline,

@@ -76,7 +76,7 @@ func NewFileTargetManager(
 
 	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
-		if cfg.HasServiceDiscoveryConfig() {
+		if !cfg.HasServiceDiscoveryConfig() {
 			continue
 		}
 		var confs discovery.Configs
