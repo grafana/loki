@@ -243,7 +243,7 @@ One possible upgrade path would look like this:
 
 If I were running Loki with this command `docker run -d --name=loki --mount source=loki-data,target=/tmp/loki -p 3100:3100 grafana/loki:1.4.0`
 
-This would mount a docker volume named `loki-data` to the `/temp/loki` folder which is where Loki will persist the `index` and `chunks` folder in 1.4.0
+This would mount a docker volume named `loki-data` to the `/tmp/loki` folder which is where Loki will persist the `index` and `chunks` folder in 1.4.0
 
 To move to 1.5.0 I can do the following (please note that your container names and paths and volumes etc may be different):
 
