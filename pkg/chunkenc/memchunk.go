@@ -670,8 +670,7 @@ type bufferedIterator struct {
 
 	closed bool
 
-	baseLbs  labels.Labels
-	pipeline logql.Pipeline
+	baseLbs labels.Labels
 }
 
 func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, lbs labels.Labels) *bufferedIterator {
@@ -695,20 +694,18 @@ func (si *bufferedIterator) Next() bool {
 		si.bufReader = BufReaderPool.Get(si.reader)
 	}
 
-	for {
-		ts, line, ok := si.moveNext()
-		if !ok {
-			si.Close()
-			return false
-		}
-		// we decode always the line length and ts as varint
-		si.stats.DecompressedBytes += int64(len(line)) + 2*binary.MaxVarintLen64
-		si.stats.DecompressedLines++
-
-		si.currTs = ts
-		si.currLine = line
-		return true
+	ts, line, ok := si.moveNext()
+	if !ok {
+		si.Close()
+		return false
 	}
+	// we decode always the line length and ts as varint
+	si.stats.DecompressedBytes += int64(len(line)) + 2*binary.MaxVarintLen64
+	si.stats.DecompressedLines++
+
+	si.currTs = ts
+	si.currLine = line
+	return true
 }
 
 // moveNext moves the buffer to the next entry

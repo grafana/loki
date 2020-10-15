@@ -5,10 +5,11 @@ import (
 	"sort"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const (

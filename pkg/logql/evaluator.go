@@ -416,10 +416,10 @@ func newPipelineErr(metric labels.Labels) *pipelineError {
 
 func (e pipelineError) Error() string {
 	return fmt.Sprintf(
-		`pipeline error: '%s' for series: '%s'.
-	Use a label filter to intentionally skip this error. (e.g | __error__!="%s").
-	To skip all potential errors you can match empty errors.(e.g __error__="")
-	The label filter can also be specified after unwrap. (e.g | unwrap latency | __error__="" )`,
+		"pipeline error: '%s' for series: '%s'.\n"+
+			"Use a label filter to intentionally skip this error. (e.g | __error__!=\"%s\").\n"+
+			"To skip all potential errors you can match empty errors.(e.g __error__=\"\")\n"+
+			"The label filter can also be specified after unwrap. (e.g | unwrap latency | __error__=\"\" )\n",
 		e.errorType, e.metric, e.errorType)
 }
 
