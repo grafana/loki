@@ -332,18 +332,6 @@ func (it *batchChunkIterator) Close() error {
 	return nil
 }
 
-type labelCache map[model.Fingerprint]string
-
-// computeLabels compute the labels string representation, uses a map to cache result per fingerprint.
-func (l labelCache) computeLabels(c *LazyChunk) string {
-	if lbs, ok := l[c.Chunk.Fingerprint]; ok {
-		return lbs
-	}
-	lbs := dropLabels(c.Chunk.Metric, labels.MetricName).String()
-	l[c.Chunk.Fingerprint] = lbs
-	return lbs
-}
-
 type logBatchIterator struct {
 	*batchChunkIterator
 
