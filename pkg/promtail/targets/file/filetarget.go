@@ -74,6 +74,7 @@ func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 }
 
 // FileTarget describes a particular set of logs.
+// nolint:golint
 type FileTarget struct {
 	logger log.Logger
 

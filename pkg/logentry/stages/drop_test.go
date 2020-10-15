@@ -38,7 +38,7 @@ pipeline_stages:
 func Test_dropStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
-	cfg.LogLevel.Set("debug")
+	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util.InitLogger(cfg)
 	Debug = true
 

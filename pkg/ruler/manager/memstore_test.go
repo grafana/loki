@@ -19,6 +19,8 @@ var (
 	NilLogger  = log.NewNopLogger()
 )
 
+const ruleName = "testrule"
+
 func labelsToMatchers(ls labels.Labels) (res []*labels.Matcher) {
 	for _, l := range ls {
 		res = append(res, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
@@ -30,13 +32,12 @@ type MockRuleIter []*rules.AlertingRule
 
 func (xs MockRuleIter) AlertingRules() []*rules.AlertingRule { return xs }
 
-func testStore(queryFunc rules.QueryFunc, itv time.Duration) *MemStore {
-	return NewMemStore("test", queryFunc, NilMetrics, itv, NilLogger)
+func testStore(queryFunc rules.QueryFunc) *MemStore {
+	return NewMemStore("test", queryFunc, NilMetrics, time.Minute, NilLogger)
 
 }
 
 func TestSelectRestores(t *testing.T) {
-	ruleName := "testrule"
 	ars := []*rules.AlertingRule{
 		rules.NewAlertingRule(
 			ruleName,
@@ -79,7 +80,7 @@ func TestSelectRestores(t *testing.T) {
 		}, nil
 	})
 
-	store := testStore(fn, time.Minute)
+	store := testStore(fn)
 	store.Start(MockRuleIter(ars))
 
 	now := util.TimeToMillis(time.Now())
@@ -135,7 +136,6 @@ func TestSelectRestores(t *testing.T) {
 }
 
 func TestMemstoreStart(t *testing.T) {
-	ruleName := "testrule"
 	ars := []*rules.AlertingRule{
 		rules.NewAlertingRule(
 			ruleName,
@@ -153,13 +153,13 @@ func TestMemstoreStart(t *testing.T) {
 		return nil, nil
 	})
 
-	store := testStore(fn, time.Minute)
+	store := testStore(fn)
 
 	store.Start(MockRuleIter(ars))
 }
 
 func TestMemStoreStopBeforeStart(t *testing.T) {
-	store := testStore(nil, time.Minute)
+	store := testStore(nil)
 	done := make(chan struct{})
 	go func() {
 		store.Stop()
@@ -173,7 +173,6 @@ func TestMemStoreStopBeforeStart(t *testing.T) {
 }
 
 func TestMemstoreBlocks(t *testing.T) {
-	ruleName := "testrule"
 	ars := []*rules.AlertingRule{
 		rules.NewAlertingRule(
 			ruleName,
@@ -191,11 +190,11 @@ func TestMemstoreBlocks(t *testing.T) {
 		return nil, nil
 	})
 
-	store := testStore(fn, time.Minute)
+	store := testStore(fn)
 
 	done := make(chan struct{})
 	go func() {
-		store.Querier(context.Background(), 0, 1)
+		_, _ = store.Querier(context.Background(), 0, 1)
 		done <- struct{}{}
 	}()
 

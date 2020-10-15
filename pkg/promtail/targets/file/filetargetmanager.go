@@ -46,6 +46,7 @@ var (
 )
 
 // FileTargetManager manages a set of targets.
+// nolint:golint
 type FileTargetManager struct {
 	log     log.Logger
 	quit    context.CancelFunc

@@ -50,17 +50,18 @@ type Shutdownable interface {
 	Shutdown()
 }
 
-type stdinTargetManager struct {
+// nolint:golint
+type StdinTargetManager struct {
 	*readerTarget
 	app Shutdownable
 }
 
-func NewStdinTargetManager(log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*stdinTargetManager, error) {
+func NewStdinTargetManager(log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*StdinTargetManager, error) {
 	reader, err := newReaderTarget(log, stdIn, client, getStdinConfig(log, configs))
 	if err != nil {
 		return nil, err
 	}
-	stdinManager := &stdinTargetManager{
+	stdinManager := &StdinTargetManager{
 		readerTarget: reader,
 		app:          app,
 	}
@@ -84,12 +85,12 @@ func getStdinConfig(log log.Logger, configs []scrapeconfig.Config) scrapeconfig.
 	return cfg
 }
 
-func (t *stdinTargetManager) Ready() bool {
+func (t *StdinTargetManager) Ready() bool {
 	return t.ctx.Err() == nil
 }
-func (t *stdinTargetManager) Stop()                                     { t.cancel() }
-func (t *stdinTargetManager) ActiveTargets() map[string][]target.Target { return nil }
-func (t *stdinTargetManager) AllTargets() map[string][]target.Target    { return nil }
+func (t *StdinTargetManager) Stop()                                     { t.cancel() }
+func (t *StdinTargetManager) ActiveTargets() map[string][]target.Target { return nil }
+func (t *StdinTargetManager) AllTargets() map[string][]target.Target    { return nil }
 
 type readerTarget struct {
 	in     *bufio.Reader
