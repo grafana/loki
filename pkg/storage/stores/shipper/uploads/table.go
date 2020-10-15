@@ -28,11 +28,7 @@ const (
 	// create a new db sharded by time based on when write request is received
 	shardDBsByDuration = 15 * time.Minute
 
-	// retain dbs for specified duration after they are modified to avoid keeping them locally forever.
-	// this period should be big enough than shardDBsByDuration to avoid any conflicts
-	dbRetainPeriod = time.Hour
-
-	// a temp file is created during uploads with name of the db + tempFileSuffix.
+	// a temp file is created during uploads with name of the db + tempFileSuffix
 	tempFileSuffix = ".temp"
 
 	// a snapshot file is created with name of the db + snapshotFileSuffix periodically for read operation.
@@ -70,9 +66,9 @@ type Table struct {
 	dbSnapshots    map[string]*dbSnapshot
 	dbSnapshotsMtx sync.RWMutex
 
-	uploadedDBsMtime    map[string]time.Time
-	uploadedDBsMtimeMtx sync.RWMutex
-	modifyShardsSince   int64
+	modifyShardsSince int64
+	dbUploadTime      map[string]time.Time
+	dbUploadTimeMtx   sync.RWMutex
 }
 
 // NewTable create a new Table without looking for any existing local dbs belonging to the table.
@@ -108,7 +104,7 @@ func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageCli
 		boltdbIndexClient: boltdbIndexClient,
 		dbs:               dbs,
 		dbSnapshots:       map[string]*dbSnapshot{},
-		uploadedDBsMtime:  map[string]time.Time{},
+		dbUploadTime:      map[string]time.Time{},
 		modifyShardsSince: time.Now().Unix(),
 	}, nil
 }
@@ -298,6 +294,10 @@ func (lt *Table) RemoveDB(name string) error {
 
 	delete(lt.dbs, name)
 
+	lt.dbUploadTimeMtx.Lock()
+	delete(lt.dbUploadTime, name)
+	lt.dbUploadTimeMtx.Unlock()
+
 	return os.Remove(filepath.Join(lt.path, name))
 }
 
@@ -344,16 +344,13 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 		if !force && filenameWithEpochRe.MatchString(name) && name >= uploadShardsBefore {
 			continue
 		}
-		stat, err := os.Stat(db.Path())
-		if err != nil {
-			return err
-		}
 
-		lt.uploadedDBsMtimeMtx.RLock()
-		uploadedDBMtime, ok := lt.uploadedDBsMtime[name]
-		lt.uploadedDBsMtimeMtx.RUnlock()
+		// if the file is uploaded already do not upload it again.
+		lt.dbUploadTimeMtx.RLock()
+		_, ok := lt.dbUploadTime[name]
+		lt.dbUploadTimeMtx.RUnlock()
 
-		if ok && !uploadedDBMtime.Before(stat.ModTime()) {
+		if ok {
 			continue
 		}
 
@@ -362,9 +359,9 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 			return err
 		}
 
-		lt.uploadedDBsMtimeMtx.Lock()
-		lt.uploadedDBsMtime[name] = stat.ModTime()
-		lt.uploadedDBsMtimeMtx.Unlock()
+		lt.dbUploadTimeMtx.Lock()
+		lt.dbUploadTime[name] = time.Now()
+		lt.dbUploadTimeMtx.Unlock()
 	}
 
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("finished uploading table %s", lt.name))
@@ -424,7 +421,7 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 
 // Cleanup removes dbs which are already uploaded and have not been modified for period longer than dbRetainPeriod.
 // This is to avoid keeping all the files forever in the ingesters.
-func (lt *Table) Cleanup() error {
+func (lt *Table) Cleanup(dbRetainPeriod time.Duration) error {
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted dbs from table %s", lt.name))
 
 	var filesToCleanup []string
@@ -432,18 +429,13 @@ func (lt *Table) Cleanup() error {
 
 	lt.dbsMtx.RLock()
 
-	for name, db := range lt.dbs {
-		stat, err := os.Stat(db.Path())
-		if err != nil {
-			return err
-		}
-
-		lt.uploadedDBsMtimeMtx.RLock()
-		uploadedDBMtime, ok := lt.uploadedDBsMtime[name]
-		lt.uploadedDBsMtimeMtx.RUnlock()
+	for name := range lt.dbs {
+		lt.dbUploadTimeMtx.RLock()
+		dbUploadTime, ok := lt.dbUploadTime[name]
+		lt.dbUploadTimeMtx.RUnlock()
 
 		// consider files which are already uploaded and have mod time before cutoff time to retain files.
-		if ok && !uploadedDBMtime.Before(stat.ModTime()) && stat.ModTime().Before(cutoffTime) {
+		if ok && dbUploadTime.Before(cutoffTime) {
 			filesToCleanup = append(filesToCleanup, name)
 		}
 	}

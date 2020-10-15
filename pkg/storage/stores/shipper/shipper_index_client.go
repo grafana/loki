@@ -42,7 +42,7 @@ const (
 	StorageKeyPrefix = "index/"
 
 	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
-	UploadInterval = 15 * time.Minute
+	UploadInterval = 1 * time.Minute
 )
 
 type boltDBIndexClient interface {
@@ -124,6 +124,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			Uploader:       uploader,
 			IndexDir:       s.cfg.ActiveIndexDirectory,
 			UploadInterval: UploadInterval,
+			DBRetainPeriod: s.cfg.ResyncInterval + 2*time.Minute,
 		}
 		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
 		if err != nil {
