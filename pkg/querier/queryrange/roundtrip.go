@@ -165,6 +165,7 @@ func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) logql.Lo
 		// force the form and query to be parsed again.
 		req.Form = nil
 		req.PostForm = nil
+		return filterExpr, nil
 	}
 	return expr
 }
