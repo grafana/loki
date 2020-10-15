@@ -90,13 +90,11 @@ func NewFileTargetManager(
 		// within scrape pool. Also, default target label to localhost if target is not
 		// defined in promtail config.
 		// Just to make sure prometheus target group sync works fine.
-		if tgs, ok := cfg.Config.(discovery.StaticConfig); ok {
-			for i, tg := range tgs {
-				tg.Source = fmt.Sprintf("%d", i)
-				if len(tg.Targets) == 0 {
-					tg.Targets = []model.LabelSet{
-						{model.AddressLabel: "localhost"},
-					}
+		for i, tg := range cfg.ServiceDiscoveryConfig.StaticConfigs {
+			tg.Source = fmt.Sprintf("%d", i)
+			if len(tg.Targets) == 0 {
+				tg.Targets = []model.LabelSet{
+					{model.AddressLabel: "localhost"},
 				}
 			}
 		}
@@ -104,7 +102,7 @@ func NewFileTargetManager(
 		// Add an additional api-level node filtering, so we only fetch pod metadata for
 		// all the pods from the current node. Without this filtering we will have to
 		// download metadata for all pods running on a cluster, which may be a long operation.
-		if kube, ok := cfg.Config.(*kubernetes.SDConfig); ok {
+		for _, kube := range cfg.ServiceDiscoveryConfig.KubernetesSDConfigs {
 			if kube.Role == kubernetes.RolePod {
 				selector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, hostname)
 				kube.Selectors = []kubernetes.SelectorConfig{
@@ -124,7 +122,7 @@ func NewFileTargetManager(
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
-		configs[cfg.JobName] = discovery.Configs{cfg.Config}
+		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
 	}
 
 	go tm.run()
