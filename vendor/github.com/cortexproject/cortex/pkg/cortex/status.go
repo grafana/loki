@@ -3,6 +3,7 @@ package cortex
 import (
 	"html/template"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -59,6 +60,9 @@ func (t *Cortex) servicesHandler(w http.ResponseWriter, r *http.Request) {
 			Status: s.State().String(),
 		})
 	}
+	sort.Slice(svcs, func(i, j int) bool {
+		return svcs[i].Name < svcs[j].Name
+	})
 
 	// TODO: this could be extended to also print sub-services, if given service has any
 	util.RenderHTTPResponse(w, struct {

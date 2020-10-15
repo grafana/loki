@@ -18,6 +18,7 @@ import (
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
@@ -141,6 +142,9 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// Spread out calls to the chunk store over the flush period
+	flushRateLimiter *rate.Limiter
+
 	// This should never be nil.
 	wal WAL
 	// To be passed to the WAL.
@@ -196,11 +200,12 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		clientConfig: clientConfig,
 		metrics:      newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled),
 
-		limits:        limits,
-		chunkStore:    chunkStore,
-		flushQueues:   make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		usersMetadata: map[string]*userMetricsMetadata{},
-		registerer:    registerer,
+		limits:           limits,
+		chunkStore:       chunkStore,
+		flushQueues:      make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
+		usersMetadata:    map[string]*userMetricsMetadata{},
+		registerer:       registerer,
 	}
 
 	var err error
@@ -275,12 +280,13 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 	}
 
 	i := &Ingester{
-		cfg:         cfg,
-		metrics:     newIngesterMetrics(registerer, true, false),
-		chunkStore:  chunkStore,
-		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		wal:         &noopWAL{},
-		limits:      limits,
+		cfg:              cfg,
+		metrics:          newIngesterMetrics(registerer, true, false),
+		chunkStore:       chunkStore,
+		flushQueues:      make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
+		wal:              &noopWAL{},
+		limits:           limits,
 	}
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)

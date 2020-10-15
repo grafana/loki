@@ -51,7 +51,7 @@ There are different types of labels present in Promtail:
   for the full list of Kubernetes meta labels.
 
 - The `__path__` label is a special label which Promtail uses after discovery to
-  figure out where the file to read is located. Wildcards are allowed, for example `/var/log/*.log` to get all files with a `log` extension in the specified directory, and `/var/log/**/*.log` for matching files and directories recursively. For a full list of options check out the [docs for the library promtail uses.](https://github.com/bmatcuk/doublestar)
+  figure out where the file to read is located. Wildcards are allowed, for example `/var/log/*.log` to get all files with a `log` extension in the specified directory, and `/var/log/**/*.log` for matching files and directories recursively. For a full list of options check out the docs for the [library](https://github.com/bmatcuk/doublestar) promtail uses.
 
 - The label `filename` is added for every file found in `__path__` to ensure the
   uniqueness of the streams. It is set to the absolute path of the file the line

@@ -13,10 +13,9 @@ import (
 )
 
 type GCSObjectClient struct {
-	cfg       GCSConfig
-	client    *storage.Client
-	bucket    *storage.BucketHandle
-	delimiter string
+	cfg    GCSConfig
+	client *storage.Client
+	bucket *storage.BucketHandle
 }
 
 // GCSConfig is config for the GCS Chunk Client.
@@ -33,13 +32,13 @@ func (cfg *GCSConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.BucketName, prefix+"gcs.bucketname", "", "Name of GCS bucket to put chunks in.")
+	f.StringVar(&cfg.BucketName, prefix+"gcs.bucketname", "", "Name of GCS bucket. Please refer to https://cloud.google.com/docs/authentication/production for more information about how to configure authentication.")
 	f.IntVar(&cfg.ChunkBufferSize, prefix+"gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
 }
 
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
-func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, delimiter string) (*GCSObjectClient, error) {
+func NewGCSObjectClient(ctx context.Context, cfg GCSConfig) (*GCSObjectClient, error) {
 	option, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
 	if err != nil {
 		return nil, err
@@ -49,16 +48,15 @@ func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, delimiter string) (*
 	if err != nil {
 		return nil, err
 	}
-	return newGCSObjectClient(cfg, client, delimiter), nil
+	return newGCSObjectClient(cfg, client), nil
 }
 
-func newGCSObjectClient(cfg GCSConfig, client *storage.Client, delimiter string) *GCSObjectClient {
+func newGCSObjectClient(cfg GCSConfig, client *storage.Client) *GCSObjectClient {
 	bucket := client.Bucket(cfg.BucketName)
 	return &GCSObjectClient{
-		cfg:       cfg,
-		client:    client,
-		bucket:    bucket,
-		delimiter: delimiter,
+		cfg:    cfg,
+		client: client,
+		bucket: bucket,
 	}
 }
 
@@ -107,12 +105,24 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 	return nil
 }
 
-// List objects and common-prefixes i.e synthetic directories from the store non-recursively
-func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+// List implements chunk.ObjectClient.
+func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
+	q := &storage.Query{Prefix: prefix, Delimiter: delimiter}
 
-	iter := s.bucket.Objects(ctx, &storage.Query{Prefix: prefix, Delimiter: s.delimiter})
+	// Using delimiter and selected attributes doesn't work well together -- it returns nothing.
+	// Reason is that Go's API only sets "fields=items(name,updated)" parameter in the request,
+	// but what we really need is "fields=prefixes,items(name,updated)". Unfortunately we cannot set that,
+	// so instead we don't use attributes selection when using delimiter.
+	if delimiter == "" {
+		err := q.SetAttrSelection([]string{"Name", "Updated"})
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	iter := s.bucket.Objects(ctx, q)
 	for {
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
@@ -127,7 +137,7 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 		}
 
 		// When doing query with Delimiter, Prefix is the only field set for entries which represent synthetic "directory entries".
-		if attr.Name == "" {
+		if attr.Prefix != "" {
 			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(attr.Prefix))
 			continue
 		}
@@ -154,8 +164,4 @@ func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 	}
 
 	return nil
-}
-
-func (s *GCSObjectClient) PathSeparator() string {
-	return s.delimiter
 }

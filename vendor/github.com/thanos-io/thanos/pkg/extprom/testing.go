@@ -4,6 +4,8 @@
 package extprom
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,12 +25,21 @@ func CurrentGaugeValuesFor(t *testing.T, reg prometheus.Gatherer, metricNames ..
 				continue
 			}
 
-			testutil.Equals(t, 1, len(g.GetMetric()))
-			if _, ok := res[m]; ok {
-				t.Error("expected only one metric family for", m)
-				t.FailNow()
+			for _, metric := range g.GetMetric() {
+				var lbls []string
+				for _, l := range metric.GetLabel() {
+					lbls = append(lbls, *l.Name+"="+*l.Value)
+				}
+
+				key := fmt.Sprintf("%s{%s}", m, strings.Join(lbls, ","))
+				if _, ok := res[key]; ok {
+					t.Fatal("duplicate metrics, should never happen with Prometheus Registry; key =", key)
+				}
+				if metric.GetGauge() == nil {
+					t.Fatal("metric is not a gauge; key =", key)
+				}
+				res[key] = *(metric.GetGauge().Value)
 			}
-			res[m] = *g.GetMetric()[0].GetGauge().Value
 		}
 	}
 	return res

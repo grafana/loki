@@ -37,8 +37,8 @@ func TranslateMatchers(ms []storepb.LabelMatcher) (res []*labels.Matcher, err er
 	return res, nil
 }
 
-// matchersToString converts label matchers to string format.
-func matchersToString(ms []storepb.LabelMatcher) (string, error) {
+// MatchersToString converts label matchers to string format.
+func MatchersToString(ms []storepb.LabelMatcher) (string, error) {
 	var res string
 	matchers, err := TranslateMatchers(ms)
 	if err != nil {

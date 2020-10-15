@@ -26,7 +26,7 @@ Before we start you'll need:
 - The [AWS CLI][aws cli] configured (run `aws configure`).
 - A Grafana instance with a Loki data source already configured, you can use [GrafanaCloud][GrafanaCloud] free trial.
 
-For the sake of simplicity we'll use a GrafanaCloud Loki and Grafana instances, you can get an free account for this tutorial on our [website][GrafanaCloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
+For the sake of simplicity we'll use a Grafana Cloud Loki and Grafana instances, you can get a free account for this tutorial at [Grafana Cloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
 
 To make it easy to learn all the following instructions are manual, however in a real setup we recommend you to use provisioning tools such as [Terraform][terraform], [CloudFormation][cloud formation], [Ansible][ansible] or [Chef][chef].
 
@@ -97,7 +97,7 @@ chmod a+x "promtail-linux-amd64"
 ```
 
 Now we're going to download the [promtail configuration](../../promtail/) file below and edit it, don't worry we will explain what those means.
-The file is also available on [github][config gist].
+The file is also available as a gist at [cyriltovena/promtail-ec2.yaml][config gist].
 
 ```bash
 curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ec2/promtail-ec2.yaml > ec2-promtail.yaml
@@ -147,11 +147,11 @@ The **clients** section allow you to target your loki instance, if you're using 
 
 Since we're running on AWS EC2 we want to uses EC2 service discovery, this will allows us to scrape metadata about the current instance (and even your custom tags) and attach those to our logs. This way managing and querying on logs will be much easier.
 
-Make sure to replace accordingly you current `region`, `access_key` and `secret_key`, alternatively you can use an [AWS Role][role] ARN, for more information about this, see the `ec2_sd_config` [documentation][ec2_sd_config].
+Make sure to replace accordingly you current `region`, `access_key` and `secret_key`, alternatively you can use an [AWS Role][role] ARN, for more information about this, see documentation for [`ec2_sd_config`][ec2_sd_config].
 
 Finally the [`relabeling_configs`][relabel] section has three purposes:
 
-1. Selecting the labels discovered you want to attach to your targets. In our case here, we're keeping `instance_id` as instance, the tag `Name` as name and the `zone` of the instance. Make sure to check out the Prometheus [documentation][ec2_sd_config] for the full list of available labels.
+1. Selecting the labels discovered you want to attach to your targets. In our case here, we're keeping `instance_id` as instance, the tag `Name` as name and the `zone` of the instance. Make sure to check out the Prometheus [`ec2_sd_config`][ec2_sd_config] documentation for the full list of available labels.
 
 2. Choosing where promtail should find log files to tail, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob, you can simply add another job in your `scrape_configs`.
 
@@ -259,7 +259,7 @@ We will edit our previous config (`vi ec2-promtail.yaml`) and add the following 
 
 Note that you can use [relabeling][relabeling] to convert systemd labels to match what you want. Finally make sure that the path of journald logs is correct, it might be different on some systems.
 
-> You can download the final config example in [our repository][final config].
+> You can download the final config example from our [GitHub repository][final config].
 
 That's it, save the config and you can `reboot` the machine (or simply restart the service `systemctl restart promtail.service`).
 

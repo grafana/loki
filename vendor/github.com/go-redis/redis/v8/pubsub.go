@@ -287,9 +287,10 @@ func (m *Subscription) String() string {
 
 // Message received as result of a PUBLISH command issued by another client.
 type Message struct {
-	Channel string
-	Pattern string
-	Payload string
+	Channel      string
+	Pattern      string
+	Payload      string
+	PayloadSlice []string
 }
 
 func (m *Message) String() string {
@@ -325,10 +326,24 @@ func (c *PubSub) newMessage(reply interface{}) (interface{}, error) {
 				Count:   int(reply[2].(int64)),
 			}, nil
 		case "message":
-			return &Message{
-				Channel: reply[1].(string),
-				Payload: reply[2].(string),
-			}, nil
+			switch payload := reply[2].(type) {
+			case string:
+				return &Message{
+					Channel: reply[1].(string),
+					Payload: payload,
+				}, nil
+			case []interface{}:
+				ss := make([]string, len(payload))
+				for i, s := range payload {
+					ss[i] = s.(string)
+				}
+				return &Message{
+					Channel:      reply[1].(string),
+					PayloadSlice: ss,
+				}, nil
+			default:
+				return nil, fmt.Errorf("redis: unsupported pubsub message payload: %T", payload)
+			}
 		case "pmessage":
 			return &Message{
 				Pattern: reply[1].(string),
@@ -513,7 +528,7 @@ func (c *PubSub) initMsgChan(size int) {
 					return
 				}
 				if errCount > 0 {
-					time.Sleep(c.retryBackoff(errCount))
+					time.Sleep(100 * time.Millisecond)
 				}
 				errCount++
 				continue
@@ -571,7 +586,7 @@ func (c *PubSub) initAllChan(size int) {
 					return
 				}
 				if errCount > 0 {
-					time.Sleep(c.retryBackoff(errCount))
+					time.Sleep(100 * time.Millisecond)
 				}
 				errCount++
 				continue
@@ -611,8 +626,4 @@ func (c *PubSub) sendMessage(msg interface{}, timer *time.Timer) {
 			c.getContext(),
 			"redis: %s channel is full for %s (message is dropped)", c, pingTimeout)
 	}
-}
-
-func (c *PubSub) retryBackoff(attempt int) time.Duration {
-	return internal.RetryBackoff(attempt, c.opt.MinRetryBackoff, c.opt.MaxRetryBackoff)
 }

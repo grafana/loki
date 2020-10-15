@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sort"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -45,7 +44,7 @@ type RingConfig struct {
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
-	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"hidden"`
+	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 	InstanceZone           string   `yaml:"instance_availability_zone"`
@@ -75,7 +74,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
-	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), ringFlagsPrefix+"instance-interface", "Name of network interface to read address from.")
+	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), ringFlagsPrefix+"instance-interface-names", "Name of network interface to read address from.")
 	f.StringVar(&cfg.InstanceAddr, ringFlagsPrefix+"instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, ringFlagsPrefix+"instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, ringFlagsPrefix+"instance-id", hostname, "Instance ID to register in the ring.")
@@ -113,31 +112,4 @@ func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) 
 		TokensObservePeriod: 0,
 		NumTokens:           RingNumTokens,
 	}, nil
-}
-
-func hasRingTopologyChanged(before, after ring.ReplicationSet) bool {
-	beforeInstances := before.Ingesters
-	afterInstances := after.Ingesters
-
-	if len(beforeInstances) != len(afterInstances) {
-		return true
-	}
-
-	sort.Sort(ring.ByAddr(beforeInstances))
-	sort.Sort(ring.ByAddr(afterInstances))
-
-	for i := 0; i < len(beforeInstances); i++ {
-		b := beforeInstances[i]
-		a := afterInstances[i]
-
-		// Exclude the heartbeat timestamp from the comparison.
-		b.Timestamp = 0
-		a.Timestamp = 0
-
-		if !b.Equal(a) {
-			return true
-		}
-	}
-
-	return false
 }

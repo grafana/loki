@@ -2,29 +2,26 @@ package scrapeconfig
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/server"
 
-	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName                string                           `yaml:"job_name,omitempty"`
-	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
-	PipelineStages         stages.PipelineStages            `yaml:"pipeline_stages,omitempty"`
-	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
-	SyslogConfig           *SyslogTargetConfig              `yaml:"syslog,omitempty"`
-	PushConfig             *PushTargetConfig                `yaml:"loki_push_api,omitempty"`
-	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
-	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+	JobName        string                `yaml:"job_name,omitempty"`
+	PipelineStages stages.PipelineStages `yaml:"pipeline_stages,omitempty"`
+	JournalConfig  *JournalTargetConfig  `yaml:"journal,omitempty"`
+	SyslogConfig   *SyslogTargetConfig   `yaml:"syslog,omitempty"`
+	PushConfig     *PushTargetConfig     `yaml:"loki_push_api,omitempty"`
+	RelabelConfigs []*relabel.Config     `yaml:"relabel_configs,omitempty"`
+	discovery.Config
 }
 
 // JournalTargetConfig describes systemd journal records to scrape.
@@ -82,13 +79,17 @@ type PushTargetConfig struct {
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
-	EntryParser: api.Docker,
+	PipelineStages: []interface{}{
+		map[interface{}]interface{}{
+			stages.StageTypeDocker: nil,
+		},
+	},
 }
 
 // HasServiceDiscoveryConfig checks to see if the service discovery used for
 // file targets is non-zero.
 func (c *Config) HasServiceDiscoveryConfig() bool {
-	return !reflect.DeepEqual(c.ServiceDiscoveryConfig, sd_config.ServiceDiscoveryConfig{})
+	return c.Config != nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

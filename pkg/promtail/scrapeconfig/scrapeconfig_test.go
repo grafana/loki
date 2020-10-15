@@ -11,7 +11,7 @@ var testYaml = `
 pipeline_stages:
   - regex:
       expr: "./*"
-  - json: 
+  - json:
       timestamp:
         source: time
         format: RFC3339
@@ -19,7 +19,7 @@ pipeline_stages:
         stream:
           source: json_key_name.json_sub_key_name
       output:
-        source: log     
+        source: log
 job_name: kubernetes-pods-name
 kubernetes_sd_configs:
 - role: pod

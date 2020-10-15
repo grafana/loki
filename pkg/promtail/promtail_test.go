@@ -21,7 +21,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -31,7 +31,6 @@ import (
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -595,19 +594,15 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		Source: "",
 	}
 
-	serviceConfig := sd_config.ServiceDiscoveryConfig{
-		StaticConfigs: []*targetgroup.Group{
+	scrapeConfig := scrapeconfig.Config{
+		JobName:        "",
+		PipelineStages: pipeline,
+		RelabelConfigs: nil,
+		Config: discovery.StaticConfig{
 			&targetGroup,
 		},
 	}
 
-	scrapeConfig := scrapeconfig.Config{
-		JobName:                "",
-		EntryParser:            api.Raw,
-		PipelineStages:         pipeline,
-		RelabelConfigs:         nil,
-		ServiceDiscoveryConfig: serviceConfig,
-	}
 	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
 
 	// Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)

@@ -14,9 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/dns"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/notifier"
 )
 
@@ -60,9 +58,9 @@ func (rn *rulerNotifier) applyConfig(cfg *config.Config) error {
 		return err
 	}
 
-	sdCfgs := make(map[string]sd_config.ServiceDiscoveryConfig)
+	sdCfgs := make(map[string]discovery.Configs)
 	for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
-		sdCfgs[k] = v.ServiceDiscoveryConfig
+		sdCfgs[k] = v.ServiceDiscoveryConfigs
 	}
 	return rn.sdManager.ApplyConfig(sdCfgs)
 }
@@ -124,26 +122,33 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 }
 
 func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.AlertmanagerAPIVersion) *config.AlertmanagerConfig {
-	var sdConfig sd_config.ServiceDiscoveryConfig
+	var sdConfig discovery.Configs
 	if rulerConfig.AlertmanagerDiscovery {
-		sdConfig.DNSSDConfigs = []*dns.SDConfig{{
-			Names:           []string{url.Host},
-			RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
-			Type:            "SRV",
-			Port:            0, // Ignored, because of SRV.
-		}}
+		sdConfig = discovery.Configs{
+			&dns.SDConfig{
+				Names:           []string{url.Host},
+				RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
+				Type:            "SRV",
+				Port:            0, // Ignored, because of SRV.
+			},
+		}
+
 	} else {
-		sdConfig.StaticConfigs = []*targetgroup.Group{{
-			Targets: []model.LabelSet{{model.AddressLabel: model.LabelValue(url.Host)}},
-		}}
+		sdConfig = discovery.Configs{
+			discovery.StaticConfig{
+				{
+					Targets: []model.LabelSet{{model.AddressLabel: model.LabelValue(url.Host)}},
+				},
+			},
+		}
 	}
 
 	amConfig := &config.AlertmanagerConfig{
-		APIVersion:             apiVersion,
-		Scheme:                 url.Scheme,
-		PathPrefix:             url.Path,
-		Timeout:                model.Duration(rulerConfig.NotificationTimeout),
-		ServiceDiscoveryConfig: sdConfig,
+		APIVersion:              apiVersion,
+		Scheme:                  url.Scheme,
+		PathPrefix:              url.Path,
+		Timeout:                 model.Duration(rulerConfig.NotificationTimeout),
+		ServiceDiscoveryConfigs: sdConfig,
 	}
 
 	if url.User != nil {

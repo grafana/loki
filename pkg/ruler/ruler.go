@@ -1,17 +1,36 @@
 package ruler
 
 import (
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/ruler"
 	cRules "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/ruler/manager"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Config struct {
 	ruler.Config `yaml:",inline"`
 }
+
+// Override the embedded cortex variant which expects a cortex limits struct. Instead copy the relevant bits over.
+func (cfg *Config) Validate() error {
+	if err := cfg.StoreConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
+	return nil
+}
+
+// Loki does not yet support shuffle sharding or per tenant evaluation delays, so implement what cortex expects.
+type passthroughLimits struct{ Config }
+
+func (cfg passthroughLimits) EvaluationDelay(_ string) time.Duration {
+	return cfg.Config.EvaluationDelay
+}
+func (passthroughLimits) RulerTenantShardSize(_ string) int { return 0 }
 
 func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logger log.Logger, ruleStore cRules.RuleStore) (*ruler.Ruler, error) {
 
@@ -34,6 +53,7 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 		reg,
 		logger,
 		ruleStore,
+		passthroughLimits{cfg},
 	)
 
 }

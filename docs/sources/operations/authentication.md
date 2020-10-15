@@ -10,8 +10,7 @@ as NGINX using basic auth or an OAuth2 proxy.
 Note that when using Loki in multi-tenant mode, Loki requires the HTTP header
 `X-Scope-OrgID` to be set to a string identifying the tenant; the responsibility
 of populating this value should be handled by the authenticating reverse proxy.
-For more information on multi-tenancy please read its
-[documentation](../multi-tenancy/).
+Read the [multi-tenancy](../multi-tenancy/) documentation for more information.
 
 For information on authenticating Promtail, please see the docs for [how to
 configure Promtail](../../clients/promtail/configuration/).
