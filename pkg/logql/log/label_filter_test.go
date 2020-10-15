@@ -162,7 +162,7 @@ func TestBinary_Filter(t *testing.T) {
 		},
 		{
 
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".*")),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".+")),
 			Labels{
 				ErrorLabel: "foo",
 				"status":   "200",
@@ -177,7 +177,7 @@ func TestBinary_Filter(t *testing.T) {
 		},
 		{
 
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".*")),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".+")),
 			Labels{
 				"status": "200",
 				"method": "POST",

@@ -80,7 +80,7 @@ type LogSelectorExpr interface {
 	Expr
 }
 
-// type alias for backward compatibility
+// Type alias for backward compatibility
 type Pipeline = log.Pipeline
 type SampleExtractor = log.SampleExtractor
 
@@ -89,16 +89,19 @@ var (
 	ExtractCount = log.CountExtractor.ToSampleExtractor()
 )
 
+// PipelineExpr is an expression defining a log pipeline.
 type PipelineExpr interface {
 	Pipeline() (Pipeline, error)
 	Expr
 }
 
+// StageExpr is an expression defining a single step into a log pipeline
 type StageExpr interface {
 	Stage() (log.Stage, error)
 	Expr
 }
 
+// MultiStageExpr is multiple stages which implement a PipelineExpr.
 type MultiStageExpr []StageExpr
 
 func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
@@ -203,6 +206,7 @@ func (e *pipelineExpr) Pipeline() (log.Pipeline, error) {
 	return e.pipeline.Pipeline()
 }
 
+// HasFilter returns true if the pipeline contains stage that can filter out lines.
 func (e *pipelineExpr) HasFilter() bool {
 	for _, p := range e.pipeline {
 		switch p.(type) {
@@ -299,7 +303,6 @@ type labelParserExpr struct {
 }
 
 func newLabelParserExpr(op, param string) *labelParserExpr {
-	// todo(cyriltovena): we might want to pre-validate param here to fail fast.
 	return &labelParserExpr{
 		op:    op,
 		param: param,

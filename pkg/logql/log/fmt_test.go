@@ -9,7 +9,7 @@ import (
 func Test_lineFormatter_Format(t *testing.T) {
 	tests := []struct {
 		name  string
-		fmter *lineFormatter
+		fmter *LineFormatter
 		lbs   map[string]string
 
 		want    []byte
@@ -46,7 +46,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 	}
 }
 
-func newMustLineFormatter(tmpl string) *lineFormatter {
+func newMustLineFormatter(tmpl string) *LineFormatter {
 	l, err := NewFormatter(tmpl)
 	if err != nil {
 		panic(err)
@@ -57,7 +57,7 @@ func newMustLineFormatter(tmpl string) *lineFormatter {
 func Test_labelsFormatter_Format(t *testing.T) {
 	tests := []struct {
 		name  string
-		fmter *labelsFormatter
+		fmter *LabelsFormatter
 
 		in   Labels
 		want Labels
@@ -95,7 +95,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 	}
 }
 
-func mustNewLabelsFormatter(fmts []LabelFmt) *labelsFormatter {
+func mustNewLabelsFormatter(fmts []LabelFmt) *LabelsFormatter {
 	lf, err := NewLabelsFormatter(fmts)
 	if err != nil {
 		panic(err)

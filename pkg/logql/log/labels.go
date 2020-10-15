@@ -1,5 +1,7 @@
 package log
 
+// Labels is the type that is passed across multiple stages.
+// I expect this type to become more and more complex over time as we optimize it.
 type Labels map[string]string
 
 func (l Labels) Has(key string) bool {

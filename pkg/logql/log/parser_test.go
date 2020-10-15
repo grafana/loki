@@ -108,7 +108,7 @@ func TestNewRegexpParser(t *testing.T) {
 func Test_regexpParser_Parse(t *testing.T) {
 	tests := []struct {
 		name   string
-		parser *regexpParser
+		parser *RegexpParser
 		line   []byte
 		lbs    Labels
 		want   Labels

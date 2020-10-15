@@ -19,9 +19,9 @@ const (
 )
 
 var (
-	_ Stage = &jsonParser{}
-	_ Stage = &regexpParser{}
-	_ Stage = &logfmtParser{}
+	_ Stage = &JSONParser{}
+	_ Stage = &RegexpParser{}
+	_ Stage = &LogfmtParser{}
 
 	errMissingCapture = errors.New("at least one named capture must be supplied")
 )
@@ -58,13 +58,14 @@ func sanitizeKey(key string) string {
 	}, key)
 }
 
-type jsonParser struct{}
+type JSONParser struct{}
 
-func NewJSONParser() *jsonParser {
-	return &jsonParser{}
+// NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
+func NewJSONParser() *JSONParser {
+	return &JSONParser{}
 }
 
-func (j *jsonParser) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (j *JSONParser) Process(line []byte, lbs Labels) ([]byte, bool) {
 	data := map[string]interface{}{}
 	err := jsoniter.ConfigFastest.Unmarshal(line, &data)
 	if err != nil {
@@ -96,12 +97,14 @@ func jsonKey(prefix, key string) string {
 	return fmt.Sprintf("%s%s%s", prefix, jsonSpacer, key)
 }
 
-type regexpParser struct {
+type RegexpParser struct {
 	regex     *regexp.Regexp
 	nameIndex map[int]string
 }
 
-func NewRegexpParser(re string) (*regexpParser, error) {
+// NewRegexpParser creates a new log stage that can extract labels from a log line using a regex expression.
+// The regex expression must contains at least one named match. If the regex doesn't match the line is not filtered out.
+func NewRegexpParser(re string) (*RegexpParser, error) {
 	regex, err := regexp.Compile(re)
 	if err != nil {
 		return nil, err
@@ -126,13 +129,13 @@ func NewRegexpParser(re string) (*regexpParser, error) {
 	if len(nameIndex) == 0 {
 		return nil, errMissingCapture
 	}
-	return &regexpParser{
+	return &RegexpParser{
 		regex:     regex,
 		nameIndex: nameIndex,
 	}, nil
 }
 
-func mustNewRegexParser(re string) *regexpParser {
+func mustNewRegexParser(re string) *RegexpParser {
 	r, err := NewRegexpParser(re)
 	if err != nil {
 		panic(err)
@@ -140,7 +143,7 @@ func mustNewRegexParser(re string) *regexpParser {
 	return r
 }
 
-func (r *regexpParser) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (r *RegexpParser) Process(line []byte, lbs Labels) ([]byte, bool) {
 	add := addLabel(lbs)
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
@@ -150,13 +153,15 @@ func (r *regexpParser) Process(line []byte, lbs Labels) ([]byte, bool) {
 	return line, true
 }
 
-type logfmtParser struct{}
+type LogfmtParser struct{}
 
-func NewLogfmtParser() *logfmtParser {
-	return &logfmtParser{}
+// NewLogfmtParser creates a parser that can extract labels from a logfmt log line.
+// Each keyval is extracted into a respective label.
+func NewLogfmtParser() *LogfmtParser {
+	return &LogfmtParser{}
 }
 
-func (l *logfmtParser) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (l *LogfmtParser) Process(line []byte, lbs Labels) ([]byte, bool) {
 	// todo(cyriltovena): we should be using the same decoder for the whole query.
 	// However right now backward queries, because of the batch iterator that has a go loop,
 	// can run this method in parallel. This causes a race e.g it will reset to a new line while scaning for keyvals.

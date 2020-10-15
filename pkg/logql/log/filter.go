@@ -175,6 +175,7 @@ func (l containsFilter) String() string {
 	return string(l.match)
 }
 
+// newContainsFilter creates a contains filter that checks if a log line contains a match.
 func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	if len(match) == 0 {
 		return TrueFilter

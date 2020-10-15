@@ -8,6 +8,12 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+const (
+	ConvertDuration = "duration"
+	ConvertFloat    = "float"
+)
+
+// SampleExtractor extracts sample for a log line.
 type SampleExtractor interface {
 	Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool)
 }
@@ -18,8 +24,11 @@ func (fn SampleExtractorFunc) Process(line []byte, lbs labels.Labels) (float64, 
 	return fn(line, lbs)
 }
 
+// LineExtractor extracts a float64 from a log line.
 type LineExtractor func([]byte) float64
 
+// ToSampleExtractor transform a LineExtractor into a SampleExtractor.
+// Useful for metric conversion without log Pipeline.
 func (l LineExtractor) ToSampleExtractor() SampleExtractor {
 	return SampleExtractorFunc(func(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
 		return l(line), lbs, true
@@ -45,6 +54,8 @@ func (l lineSampleExtractor) Process(line []byte, lbs labels.Labels) (float64, l
 	return l.LineExtractor(line), labels.FromMap(labelmap), true
 }
 
+// WithLineExtractor creates a SampleExtractor from a LineExtractor.
+// Multiple log stages are run before converting the log line.
 func (m MultiStage) WithLineExtractor(ex LineExtractor) (SampleExtractor, error) {
 	if len(m) == 0 {
 		return ex.ToSampleExtractor(), nil
@@ -64,11 +75,9 @@ type labelSampleExtractor struct {
 	without      bool
 }
 
-const (
-	ConvertDuration = "duration"
-	ConvertFloat    = "float"
-)
-
+// WithLabelExtractor creates a SampleExtractor that will extract metrics from a labels.
+// A set of log stage is executed before the conversion. A Filtering stage is executed after the conversion allowing
+// to remove sample containing the __error__ label.
 func (m MultiStage) WithLabelExtractor(
 	labelName, conversion string,
 	groups []string, without bool,
@@ -94,13 +103,13 @@ func (m MultiStage) WithLabelExtractor(
 }
 
 func (l *labelSampleExtractor) Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
-	// apply pipeline
+	// Apply the pipeline first.
 	labelmap := Labels(lbs.Map())
 	line, ok := l.preStage.Process(line, labelmap)
 	if !ok {
 		return 0, nil, false
 	}
-	// convert
+	// convert the label value.
 	var v float64
 	stringValue := labelmap[l.labelName]
 	if stringValue == "" {

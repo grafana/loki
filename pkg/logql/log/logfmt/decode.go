@@ -1,4 +1,5 @@
 // Adapted from https://github.com/go-logfmt/logfmt/ but []byte as parameter instead
+// Original license is MIT.
 package logfmt
 
 import (

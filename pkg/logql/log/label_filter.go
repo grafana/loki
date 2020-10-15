@@ -17,6 +17,7 @@ var (
 	_ LabelFilterer = &NumericLabelFilter{}
 	_ LabelFilterer = &StringLabelFilter{}
 
+	// NoopLabelFilter is a label filter that doesn't filter out any values.
 	NoopLabelFilter = noopLabelFilter{}
 )
 
@@ -52,6 +53,7 @@ func (f LabelFilterType) String() string {
 	}
 }
 
+// LabelFilterer can filter extracted labels.
 type LabelFilterer interface {
 	Stage
 	fmt.Stringer
@@ -63,6 +65,7 @@ type BinaryLabelFilter struct {
 	and   bool
 }
 
+// NewAndLabelFilter creates a new LabelFilterer from a and binary operation of two LabelFilterer.
 func NewAndLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilter {
 	return &BinaryLabelFilter{
 		Left:  left,
@@ -71,6 +74,7 @@ func NewAndLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilt
 	}
 }
 
+// NewOrLabelFilter creates a new LabelFilterer from a or binary operation of two LabelFilterer.
 func NewOrLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilter {
 	return &BinaryLabelFilter{
 		Left:  left,
@@ -109,6 +113,7 @@ type noopLabelFilter struct{}
 func (noopLabelFilter) String() string                                 { return "" }
 func (noopLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) { return line, true }
 
+// ReduceAndLabelFilter Reduces multiple label filterer into one using binary and operation.
 func ReduceAndLabelFilter(filters []LabelFilterer) LabelFilterer {
 	if len(filters) == 0 {
 		return NoopLabelFilter
@@ -129,6 +134,8 @@ type BytesLabelFilter struct {
 	Type  LabelFilterType
 }
 
+// NewBytesLabelFilter creates a new label filterer which parses bytes string representation (1KB) from the value of the named label
+// and compares it with the given b value.
 func NewBytesLabelFilter(t LabelFilterType, name string, b uint64) *BytesLabelFilter {
 	return &BytesLabelFilter{
 		Name:  name,
@@ -181,6 +188,8 @@ type DurationLabelFilter struct {
 	Type  LabelFilterType
 }
 
+// NewDurationLabelFilter creates a new label filterer which parses duration string representation (5s)
+// from the value of the named label and compares it with the given d value.
 func NewDurationLabelFilter(t LabelFilterType, name string, d time.Duration) *DurationLabelFilter {
 	return &DurationLabelFilter{
 		Name:  name,
@@ -233,6 +242,8 @@ type NumericLabelFilter struct {
 	Type  LabelFilterType
 }
 
+// NewNumericLabelFilter creates a new label filterer which parses float64 string representation (5.2)
+// from the value of the named label and compares it with the given f value.
 func NewNumericLabelFilter(t LabelFilterType, name string, v float64) *NumericLabelFilter {
 	return &NumericLabelFilter{
 		Name:  name,
@@ -288,6 +299,9 @@ type StringLabelFilter struct {
 	*labels.Matcher
 }
 
+// NewStringLabelFilter creates a new label filterer which compares string label.
+// This is the only LabelFilterer that can filter out the __error__ label.
+// Unlike other LabelFilterer which apply conversion, if the label name doesn't exist it is compared with an empty value.
 func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
 	return &StringLabelFilter{
 		Matcher: m,

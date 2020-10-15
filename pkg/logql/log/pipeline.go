@@ -4,10 +4,12 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+// Pipeline transform and filter log lines and labels.
 type Pipeline interface {
 	Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool)
 }
 
+// Stage is a single step of a Pipeline.
 type Stage interface {
 	Process(line []byte, lbs Labels) ([]byte, bool)
 }
@@ -35,6 +37,8 @@ func (fn StageFunc) Process(line []byte, lbs Labels) ([]byte, bool) {
 	return fn(line, lbs)
 }
 
+// MultiStage is a combinations of multiple stages. Which implement Pipeline
+// or can be reduced into a single stage for convenience.
 type MultiStage []Stage
 
 func (m MultiStage) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {

@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	_ Stage = &lineFormatter{}
-	_ Stage = &labelsFormatter{}
+	_ Stage = &LineFormatter{}
+	_ Stage = &LabelsFormatter{}
 
+	// Available map of functions for the text template engine.
 	functionMap = template.FuncMap{
 		"ToLower":    strings.ToLower,
 		"ToUpper":    strings.ToUpper,
@@ -33,32 +34,34 @@ var (
 	}
 )
 
-type lineFormatter struct {
+type LineFormatter struct {
 	*template.Template
 	buf *bytes.Buffer
 }
 
-func NewFormatter(tmpl string) (*lineFormatter, error) {
+// NewFormatter creates a new log line formatter from a given text template.
+func NewFormatter(tmpl string) (*LineFormatter, error) {
 	t, err := template.New("line").Option("missingkey=zero").Funcs(functionMap).Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %s", err)
 	}
-	return &lineFormatter{
+	return &LineFormatter{
 		Template: t,
 		buf:      bytes.NewBuffer(make([]byte, 4096)),
 	}, nil
 }
 
-func (lf *lineFormatter) Process(_ []byte, lbs Labels) ([]byte, bool) {
+func (lf *LineFormatter) Process(_ []byte, lbs Labels) ([]byte, bool) {
 	lf.buf.Reset()
-	// todo(cyriltovena) handle error
+	// todo(cyriltovena): handle error
 	_ = lf.Template.Execute(lf.buf, lbs)
-	// todo we might want to reuse the input line.
+	// todo(cyriltovena): we might want to reuse the input line or a bytes buffer.
 	res := make([]byte, len(lf.buf.Bytes()))
 	copy(res, lf.buf.Bytes())
 	return res, true
 }
 
+// LabelFmt is a configuration struct for formatting a label.
 type LabelFmt struct {
 	Name  string
 	Value string
@@ -66,6 +69,7 @@ type LabelFmt struct {
 	Rename bool
 }
 
+// NewRenameLabelFmt creates a configuration to rename a label.
 func NewRenameLabelFmt(dst, target string) LabelFmt {
 	return LabelFmt{
 		Name:   dst,
@@ -73,6 +77,8 @@ func NewRenameLabelFmt(dst, target string) LabelFmt {
 		Value:  target,
 	}
 }
+
+// NewTemplateLabelFmt creates a configuration to format a label using text template.
 func NewTemplateLabelFmt(dst, template string) LabelFmt {
 	return LabelFmt{
 		Name:   dst,
@@ -86,12 +92,15 @@ type labelFormatter struct {
 	LabelFmt
 }
 
-type labelsFormatter struct {
+type LabelsFormatter struct {
 	formats []labelFormatter
 	buf     *bytes.Buffer
 }
 
-func NewLabelsFormatter(fmts []LabelFmt) (*labelsFormatter, error) {
+// NewLabelsFormatter creates a new formatter that can format multiple labels at once.
+// Either by renaming or using text template.
+// It is not allowed to reformat the same label twice within the same formatter.
+func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 	if err := validate(fmts); err != nil {
 		return nil, err
 	}
@@ -107,7 +116,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*labelsFormatter, error) {
 		}
 		formats = append(formats, toAdd)
 	}
-	return &labelsFormatter{
+	return &LabelsFormatter{
 		formats: formats,
 		buf:     bytes.NewBuffer(make([]byte, 1024)),
 	}, nil
@@ -129,7 +138,7 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
-func (lf *labelsFormatter) Process(l []byte, lbs Labels) ([]byte, bool) {
+func (lf *LabelsFormatter) Process(l []byte, lbs Labels) ([]byte, bool) {
 	for _, f := range lf.formats {
 		if f.Rename {
 			lbs[f.Name] = lbs[f.Value]
