@@ -361,12 +361,12 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	).Wrap(t.frontend.Handler())
 
 	var defaultHandler http.Handler
-	if t.cfg.Frontend.TailProxyUrl != "" {
+	if t.cfg.Frontend.TailProxyURL != "" {
 		httpMiddleware := middleware.Merge(
 			t.httpAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
 		)
-		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyUrl)
+		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyURL)
 		if err != nil {
 			return nil, err
 		}

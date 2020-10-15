@@ -263,8 +263,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	tracker := pushTracker{
-		done:           make(chan struct{}),
-		err:            make(chan error),
+		done: make(chan struct{}),
+		err:  make(chan error),
 	}
 	tracker.samplesPending.Store(int32(len(streams)))
 	for ingester, samples := range samplesByIngester {
