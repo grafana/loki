@@ -222,7 +222,7 @@ func Test(t *testing.T) {
 					IdleDuration: &metricTestInvalidIdle,
 				},
 			},
-			errors.Errorf(ErrInvalidIdleDur, "time: unknown unit f in duration 10f"),
+			errors.Errorf(ErrInvalidIdleDur, "time: unknown unit \"f\" in duration \"10f\""),
 		},
 		"valid": {
 			MetricsConfig{
