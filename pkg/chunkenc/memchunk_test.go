@@ -767,3 +767,13 @@ func TestMemchunkLongLine(t *testing.T) {
 		})
 	}
 }
+
+// Ensure passing a reusable []byte doesn't affect output
+func TestBytesWith(t *testing.T) {
+	exp, err := NewMemChunk(EncNone, testBlockSize, testTargetSize).BytesWith(nil)
+	require.Nil(t, err)
+	out, err := NewMemChunk(EncNone, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
+	require.Nil(t, err)
+
+	require.Equal(t, exp, out)
+}

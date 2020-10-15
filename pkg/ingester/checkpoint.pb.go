@@ -31,6 +31,8 @@ var _ = time.Kitchen
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
+// Chunk is a {de,}serializable intermediate type for chunkDesc which allows
+// efficient loading/unloading to disk during WAL checkpoint recovery.
 type Chunk struct {
 	From      time.Time `protobuf:"bytes,1,opt,name=from,proto3,stdtime" json:"from"`
 	To        time.Time `protobuf:"bytes,2,opt,name=to,proto3,stdtime" json:"to"`
@@ -106,6 +108,7 @@ func (m *Chunk) GetData() []byte {
 	return nil
 }
 
+// Series is a {de,}serializable intermediate type for Series.
 type Series struct {
 	UserID      string                                                             `protobuf:"bytes,1,opt,name=userID,proto3" json:"userID,omitempty"`
 	Fingerprint uint64                                                             `protobuf:"varint,2,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`

@@ -252,7 +252,7 @@ func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
 	}
 	crc32Hash := newCRC32()
 
-	buf := bytes.NewBuffer(b)
+	buf := bytes.NewBuffer(b[:0])
 	offset := 0
 
 	eb := encbuf{b: make([]byte, 0, 1<<10)}
