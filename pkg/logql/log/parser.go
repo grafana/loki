@@ -24,10 +24,6 @@ var (
 	_ Stage = &logfmtParser{}
 
 	errMissingCapture = errors.New("at least one named capture must be supplied")
-
-	underscore = "_"
-	point      = "."
-	dash       = "-"
 )
 
 func addLabel(lbs Labels) func(key, value string) {
@@ -38,12 +34,28 @@ func addLabel(lbs Labels) func(key, value string) {
 			return
 		}
 		unique[key] = struct{}{}
-		key = strings.ReplaceAll(strings.ReplaceAll(key, point, underscore), dash, underscore)
+		key = sanitizeKey(key)
 		if lbs.Has(key) {
 			key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 		}
 		lbs[key] = value
 	}
+}
+
+func sanitizeKey(key string) string {
+	if len(key) == 0 {
+		return key
+	}
+	key = strings.TrimSpace(key)
+	if key[0] >= '0' && key[0] <= '9' {
+		key = "_" + key
+	}
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, key)
 }
 
 type jsonParser struct{}
