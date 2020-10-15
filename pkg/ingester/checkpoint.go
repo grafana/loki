@@ -6,16 +6,6 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 )
 
-// Chunk is a {de,}serializable intermediate type for chunkDesc which allows
-// efficient loading/unloading to disk during WAL checkpoint recovery.
-type Chunk struct {
-	Data    []byte
-	From    time.Time
-	To      time.Time
-	Flushed time.Time
-	Closed  bool
-}
-
 // The passed wireChunks slice is for re-use.
 func toWireChunks(descs []*chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 	if cap(wireChunks) < len(descs) {
@@ -26,10 +16,10 @@ func toWireChunks(descs []*chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 	for i, d := range descs {
 		from, to := d.chunk.Bounds()
 		wireChunk := Chunk{
-			From:    from,
-			To:      to,
-			Closed:  d.closed,
-			Flushed: d.flushed,
+			From:      from,
+			To:        to,
+			Closed:    d.closed,
+			FlushedAt: d.flushed,
 		}
 
 		slice := wireChunks[i].Data[:0] // try to re-use the memory from last time
@@ -53,7 +43,7 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]*chunkDesc, error) {
 	for _, c := range wireChunks {
 		desc := &chunkDesc{
 			closed:      c.Closed,
-			flushed:     c.Flushed,
+			flushed:     c.FlushedAt,
 			lastUpdated: time.Now(),
 		}
 
