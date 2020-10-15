@@ -138,23 +138,24 @@ func (r *regexpParser) Process(line []byte, lbs Labels) ([]byte, bool) {
 	return line, true
 }
 
-type logfmtParser struct {
-	dec *logfmt.Decoder
-}
+type logfmtParser struct{}
 
 func NewLogfmtParser() *logfmtParser {
-	return &logfmtParser{
-		dec: logfmt.NewDecoder(),
-	}
+	return &logfmtParser{}
 }
 
 func (l *logfmtParser) Process(line []byte, lbs Labels) ([]byte, bool) {
-	l.dec.Reset(line)
+	// todo(cyriltovena): we should be using the same decoder for the whole query.
+	// However right now backward queries, because of the batch iterator that has a go loop,
+	// can run this method in parallel. This causes a race e.g it will reset to a new line while scaning for keyvals.
+	dec := logfmt.NewDecoder(line)
 	add := addLabel(lbs)
-	for l.dec.ScanKeyval() {
-		add(string(l.dec.Key()), string(l.dec.Value()))
+	for dec.ScanKeyval() {
+		key := string(dec.Key())
+		val := string(dec.Value())
+		add(key, val)
 	}
-	if l.dec.Err() != nil {
+	if dec.Err() != nil {
 		lbs.SetError(errLogfmt)
 		return line, true
 	}

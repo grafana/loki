@@ -7,7 +7,6 @@ import (
 )
 
 func Test_jsonParser_Parse(t *testing.T) {
-
 	tests := []struct {
 		name string
 		line []byte
@@ -258,6 +257,16 @@ func Test_logfmtParser_Parse(t *testing.T) {
 				"foo_extracted": "foo bar",
 				"foo_bar":       "10ms",
 				"test_dash":     "foo",
+			},
+		},
+		{
+			"nil",
+			nil,
+			Labels{
+				"foo": "bar",
+			},
+			Labels{
+				"foo": "bar",
 			},
 		},
 	}

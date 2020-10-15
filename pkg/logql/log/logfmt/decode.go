@@ -20,8 +20,8 @@ type Decoder struct {
 //
 // The decoder introduces its own buffering and may read data from r beyond
 // the logfmt records requested.
-func NewDecoder() *Decoder {
-	dec := &Decoder{}
+func NewDecoder(line []byte) *Decoder {
+	dec := &Decoder{line: line}
 	return dec
 }
 

@@ -42,6 +42,9 @@ func (m MultiStage) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labe
 	if len(m) == 0 {
 		return line, lbs, true
 	}
+	// todo(cyriltovena): this should be deferred within a specific Labels type.
+	// Not all stages will need to access the labels map (e.g line filter).
+	// This could optimize queries that uses only those stages.
 	labelmap := lbs.Map()
 	for _, p := range m {
 		line, ok = p.Process(line, labelmap)
