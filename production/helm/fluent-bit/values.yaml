@@ -13,7 +13,9 @@ config:
   batchSize: 1048576
   loglevel: warn
   lineFormat: json
+  k8sLoggingExclude: "Off"
   k8sLoggingParser: "Off"
+  memBufLimit: "5MB"
   removeKeys:
     - kubernetes
     - stream
