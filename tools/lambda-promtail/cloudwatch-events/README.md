@@ -80,6 +80,14 @@ The command will package and deploy your application to AWS, with a series of pr
 
 # Appendix
 
+### Tags
+
+Initial auto-discovery of tags for EC2 services is included. If a ARN is of the EC2 service, the Lamda will issue a describe-tags for the resources mentioned and add the tags to the JSON log line. For example:
+
+```
+{"result":"deleted","cause":"","event":"deleteVolume","request-id":"44d1b93f-a7a6-46e3-9141-4bf624a471d6", "resources":["arn:aws:ec2:us-east-1:157203112201:volume/vol-04d7bd7da798e4856"],"tags":{"project":"sample-project"}}
+```
+
 ### Golang installation
 
 Please ensure Go 1.x (where 'x' is the latest version) is installed as per the instructions on the official golang website: https://golang.org/doc/install
