@@ -154,7 +154,7 @@ func GetShuffleShardingSubring(ring *ring.Ring, userID string, limits ShardingLi
 		return ring
 	}
 
-	return ring.Subring(cortex_tsdb.HashTenantID(userID), shardSize)
+	return ring.ShuffleShard(userID, shardSize)
 }
 
 type shardingMetadataFilterAdapter struct {

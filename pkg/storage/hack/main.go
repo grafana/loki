@@ -51,7 +51,7 @@ func getStore() (lstore.Store, error) {
 	}
 
 	schemaCfg := lstore.SchemaConfig{
-		chunk.SchemaConfig{
+		SchemaConfig: chunk.SchemaConfig{
 			Configs: []chunk.PeriodConfig{
 				{
 					From:       chunk.DayTime{Time: start},
@@ -76,11 +76,11 @@ func getStore() (lstore.Store, error) {
 		nil,
 		cortex_util.Logger,
 	)
-	store, err := lstore.NewStore(storeConfig, schemaCfg, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
-	return store, nil
+
+	return lstore.NewStore(storeConfig, schemaCfg, chunkStore, prometheus.DefaultRegisterer)
 }
 
 func fillStore() error {
@@ -108,7 +108,7 @@ func fillStore() error {
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
 			fp := client.FastFingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_64k, 262144, 1572864)
+			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_4M, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),

@@ -54,6 +54,7 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 	return services.NewBasicService(nil, runFn, stoppingFn)
 }
 
+// DisableSignalHandling puts a dummy signal handler
 func DisableSignalHandling(config *server.Config) {
 	config.SignalHandler = make(ignoreSignalHandler)
 }

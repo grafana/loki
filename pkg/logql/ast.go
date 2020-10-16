@@ -495,7 +495,7 @@ func mustNewLiteralExpr(s string, invert bool) *literalExpr {
 }
 
 func (e *literalExpr) String() string {
-	return fmt.Sprintf("%f", e.value)
+	return fmt.Sprint(e.value)
 }
 
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings

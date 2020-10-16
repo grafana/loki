@@ -45,7 +45,7 @@ type Limits struct {
 	CreationGracePeriod       time.Duration       `yaml:"creation_grace_period"`
 	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name"`
 	EnforceMetricName         bool                `yaml:"enforce_metric_name"`
-	SubringSize               int                 `yaml:"user_subring_size"`
+	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size"`
 
 	// Ingester enforced limits.
 	// Series
@@ -63,14 +63,16 @@ type Limits struct {
 	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery   int           `yaml:"max_chunks_per_query"`
-	MaxQueryLength      time.Duration `yaml:"max_query_length"`
-	MaxQueryParallelism int           `yaml:"max_query_parallelism"`
-	CardinalityLimit    int           `yaml:"cardinality_limit"`
-	MaxCacheFreshness   time.Duration `yaml:"max_cache_freshness"`
+	MaxChunksPerQuery    int           `yaml:"max_chunks_per_query"`
+	MaxQueryLength       time.Duration `yaml:"max_query_length"`
+	MaxQueryParallelism  int           `yaml:"max_query_parallelism"`
+	CardinalityLimit     int           `yaml:"cardinality_limit"`
+	MaxCacheFreshness    time.Duration `yaml:"max_cache_freshness"`
+	MaxQueriersPerTenant int           `yaml:"max_queriers_per_tenant"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay time.Duration `yaml:"ruler_evaluation_delay_duration"`
+	RulerTenantShardSize int           `yaml:"ruler_tenant_shard_size"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size"`
@@ -82,7 +84,7 @@ type Limits struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&l.SubringSize, "experimental.distributor.user-subring-size", 0, "Per-user subring to shard metrics to ingesters. 0 is disabled.")
+	f.IntVar(&l.IngestionTenantShardSize, "distributor.ingestion-tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set both on ingesters and distributors. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
@@ -118,8 +120,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends). This option only works with queriers connecting to the query-frontend, not when using downstream URL.")
 
 	f.DurationVar(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
+	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
@@ -307,6 +311,11 @@ func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxCacheFreshness
 }
 
+// MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
+func (o *Overrides) MaxQueriersPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+}
+
 // MaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
@@ -353,9 +362,9 @@ func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalMetadataPerMetric
 }
 
-// SubringSize returns the size of the subring for a given user.
-func (o *Overrides) SubringSize(userID string) int {
-	return o.getOverridesForUser(userID).SubringSize
+// IngestionTenantShardSize returns the ingesters shard size for a given user.
+func (o *Overrides) IngestionTenantShardSize(userID string) int {
+	return o.getOverridesForUser(userID).IngestionTenantShardSize
 }
 
 // EvaluationDelay returns the rules evaluation delay for a given user.
@@ -363,7 +372,12 @@ func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerEvaluationDelay
 }
 
-// StoreGatewayTenantShardSize returns the size of the store-gateway shard size for a given user.
+// RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) RulerTenantShardSize(userID string) int {
+	return o.getOverridesForUser(userID).RulerTenantShardSize
+}
+
+// StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.
 func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
 	return o.getOverridesForUser(userID).StoreGatewayTenantShardSize
 }

@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
-func buildTestTableManager(t *testing.T, path string) (*TableManager, *local.BoltIndexClient, stopFunc) {
+func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) {
 	boltDBIndexClient, fsObjectClient := buildTestClients(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
@@ -26,7 +26,7 @@ func buildTestTableManager(t *testing.T, path string) (*TableManager, *local.Bol
 	tableManager, err := NewTableManager(cfg, boltDBIndexClient, fsObjectClient, nil)
 	require.NoError(t, err)
 
-	return tableManager, boltDBIndexClient, func() {
+	return tableManager, func() {
 		tableManager.Stop()
 		boltDBIndexClient.Stop()
 	}
@@ -79,7 +79,7 @@ func TestTableManager_QueryPages(t *testing.T) {
 		testutil.SetupDBTablesAtPath(t, name, objectStoragePath, dbs, true)
 	}
 
-	tableManager, _, stopFunc := buildTestTableManager(t, tempDir)
+	tableManager, stopFunc := buildTestTableManager(t, tempDir)
 	defer stopFunc()
 
 	testutil.TestMultiTableQuery(t, queries, tableManager, 0, 60)
@@ -93,7 +93,7 @@ func TestTableManager_cleanupCache(t *testing.T) {
 		require.NoError(t, os.RemoveAll(tempDir))
 	}()
 
-	tableManager, _, stopFunc := buildTestTableManager(t, tempDir)
+	tableManager, stopFunc := buildTestTableManager(t, tempDir)
 	defer stopFunc()
 
 	// one table that would expire and other one won't

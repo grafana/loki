@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -41,6 +42,10 @@ type Config struct {
 	ConsistentReads   bool          `yaml:"consistent_reads"`
 	WatchKeyRateLimit float64       `yaml:"watch_rate_limit"` // Zero disables rate limit
 	WatchKeyBurstSize int           `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
+
+	// Used in tests only.
+	MaxCasRetries int           `yaml:"-"`
+	CasRetryDelay time.Duration `yaml:"-"`
 }
 
 type kv interface {
@@ -117,15 +122,24 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 }
 
 func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	var (
-		index   = uint64(0)
+	retries := c.cfg.MaxCasRetries
+	if retries == 0 {
 		retries = 10
-	)
+	}
+
+	sleepBeforeRetry := time.Duration(0)
+	if c.cfg.CasRetryDelay > 0 {
+		sleepBeforeRetry = time.Duration(rand.Int63n(c.cfg.CasRetryDelay.Nanoseconds()))
+	}
+
+	index := uint64(0)
 	for i := 0; i < retries; i++ {
-		options := &consul.QueryOptions{
-			AllowStale:        !c.cfg.ConsistentReads,
-			RequireConsistent: c.cfg.ConsistentReads,
+		if i > 0 && sleepBeforeRetry > 0 {
+			time.Sleep(sleepBeforeRetry)
 		}
+
+		// Get with default options - don't want stale data to compare with
+		options := &consul.QueryOptions{}
 		kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting key", "key", key, "err", err)

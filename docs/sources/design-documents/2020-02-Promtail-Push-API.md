@@ -56,7 +56,7 @@ rejected pushes. Users are recommended to do one of the following:
 
 1. Have a dedicated Promtail instance for receiving pushes. This also applies to
    using the syslog target.
-2. Have a separated k8s service that always resolves to the same Promtail pod,
+1. Have a separated k8s service that always resolves to the same Promtail pod,
    bypassing the load balancing issue.
 
 ## Implementation
@@ -100,10 +100,10 @@ Loki uses. There are some concerns with this approach:
 
 1. The gRPC Gateway reverse proxy will need to play nice with the existing HTTP
    mux used in Promtail.
-2. We couldn't control the HTTP and Protobuf formats separately as Loki can.
-3. Log lines will be double-encoded thanks to the reverse proxy.
-4. A small overhead of using a reverse proxy in-process will be introduced.
-5. This breaks our normal pattern of writing our own shim functions; may add
+1. We couldn't control the HTTP and Protobuf formats separately as Loki can.
+1. Log lines will be double-encoded thanks to the reverse proxy.
+1. A small overhead of using a reverse proxy in-process will be introduced.
+1. This breaks our normal pattern of writing our own shim functions; may add
    some cognitive overhead of having to deal with the gRPC gateway as an outlier
    in the code.
 

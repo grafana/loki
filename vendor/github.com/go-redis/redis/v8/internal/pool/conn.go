@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-redis/redis/v8/internal"
 	"github.com/go-redis/redis/v8/internal/proto"
+	"go.opentelemetry.io/otel/api/trace"
 )
 
 var noDeadline = time.Time{}
@@ -58,11 +59,14 @@ func (cn *Conn) Write(b []byte) (int, error) {
 }
 
 func (cn *Conn) RemoteAddr() net.Addr {
-	return cn.netConn.RemoteAddr()
+	if cn.netConn != nil {
+		return cn.netConn.RemoteAddr()
+	}
+	return nil
 }
 
 func (cn *Conn) WithReader(ctx context.Context, timeout time.Duration, fn func(rd *proto.Reader) error) error {
-	return internal.WithSpan(ctx, "with_reader", func(ctx context.Context) error {
+	return internal.WithSpan(ctx, "with_reader", func(ctx context.Context, span trace.Span) error {
 		if err := cn.netConn.SetReadDeadline(cn.deadline(ctx, timeout)); err != nil {
 			return internal.RecordError(ctx, err)
 		}
@@ -76,7 +80,7 @@ func (cn *Conn) WithReader(ctx context.Context, timeout time.Duration, fn func(r
 func (cn *Conn) WithWriter(
 	ctx context.Context, timeout time.Duration, fn func(wr *proto.Writer) error,
 ) error {
-	return internal.WithSpan(ctx, "with_writer", func(ctx context.Context) error {
+	return internal.WithSpan(ctx, "with_writer", func(ctx context.Context, span trace.Span) error {
 		if err := cn.netConn.SetWriteDeadline(cn.deadline(ctx, timeout)); err != nil {
 			return internal.RecordError(ctx, err)
 		}

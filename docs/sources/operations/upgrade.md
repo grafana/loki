@@ -243,7 +243,7 @@ One possible upgrade path would look like this:
 
 If I were running Loki with this command `docker run -d --name=loki --mount source=loki-data,target=/tmp/loki -p 3100:3100 grafana/loki:1.4.0`
 
-This would mount a docker volume named `loki-data` to the `/temp/loki` folder which is where Loki will persist the `index` and `chunks` folder in 1.4.0
+This would mount a docker volume named `loki-data` to the `/tmp/loki` folder which is where Loki will persist the `index` and `chunks` folder in 1.4.0
 
 To move to 1.5.0 I can do the following (please note that your container names and paths and volumes etc may be different):
 
@@ -333,13 +333,13 @@ kvstore:
   store: <string>
 ```
 
-* Running without using a shared ring (inmemory): No action required
-* Running with a shared ring and upgrading from v1.3.0 -> v1.4.0: No action required
-* Running with a shared ring and upgrading from any version less than v1.3.0 (e.g. v1.2.0) -> v1.4.0: **ACTION REQUIRED**
+- Running without using a shared ring (inmemory): No action required
+- Running with a shared ring and upgrading from v1.3.0 -> v1.4.0: No action required
+- Running with a shared ring and upgrading from any version less than v1.3.0 (e.g. v1.2.0) -> v1.4.0: **ACTION REQUIRED**
 
 There are two options for upgrade if you are not on version 1.3.0 and are using a shared ring:
 
-* Upgrade first to v1.3.0 **BEFORE** upgrading to v1.4.0
+- Upgrade first to v1.3.0 **BEFORE** upgrading to v1.4.0
 
 OR
 
@@ -350,7 +350,7 @@ OR
 1. Proceed with upgrading to v1.4.0
 1. Remove the config option (only do this after everything is running v1.4.0)
 
-**Note:** It's also possible to enable this flag via config file, see the [docs](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config)
+**Note:** It's also possible to enable this flag via config file, see the [`lifecycler_config`](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config) configuration option.
 
 If using the Helm Loki chart:
 

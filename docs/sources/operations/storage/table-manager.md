@@ -193,7 +193,7 @@ to `0`.
 The Table Manager can be executed in two ways:
 
 1. Implicitly executed when Loki runs in monolithic mode (single process)
-2. Explicitly executed when Loki runs in microservices mode
+1. Explicitly executed when Loki runs in microservices mode
 
 
 ### Monolithic mode

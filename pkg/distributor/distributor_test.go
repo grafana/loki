@@ -337,3 +337,9 @@ func (r mockRing) HasInstance(instanceID string) bool {
 	}
 	return false
 }
+
+func (r mockRing) ShuffleShard(identifier string, size int) ring.ReadRing {
+	// take advantage of pass by value to bound to size:
+	r.ingesters = r.ingesters[:size]
+	return r
+}

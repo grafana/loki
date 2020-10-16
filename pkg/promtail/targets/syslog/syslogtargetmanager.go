@@ -12,6 +12,7 @@ import (
 )
 
 // SyslogTargetManager manages a series of SyslogTargets.
+// nolint:golint
 type SyslogTargetManager struct {
 	logger  log.Logger
 	targets map[string]*SyslogTarget

@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"sort"
 	"time"
 )
 
@@ -14,17 +15,15 @@ type ReplicationSet struct {
 
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise.
-func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*IngesterDesc) (interface{}, error)) ([]interface{}, error) {
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *IngesterDesc) (interface{}, error)) ([]interface{}, error) {
 	var (
 		errs        = make(chan error, len(r.Ingesters))
 		resultsChan = make(chan interface{}, len(r.Ingesters))
 		minSuccess  = len(r.Ingesters) - r.MaxErrors
-		done        = make(chan struct{})
 		forceStart  = make(chan struct{}, r.MaxErrors)
 	)
-	defer func() {
-		close(done)
-	}()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	for i := range r.Ingesters {
 		go func(i int, ing *IngesterDesc) {
@@ -33,13 +32,13 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*Ing
 				after := time.NewTimer(delay)
 				defer after.Stop()
 				select {
-				case <-done:
+				case <-ctx.Done():
 					return
 				case <-forceStart:
 				case <-after.C:
 				}
 			}
-			result, err := f(ing)
+			result, err := f(ctx, ing)
 			if err != nil {
 				errs <- err
 			} else {
@@ -79,6 +78,35 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*Ing
 func (r ReplicationSet) Includes(addr string) bool {
 	for _, instance := range r.Ingesters {
 		if instance.GetAddr() == addr {
+			return true
+		}
+	}
+
+	return false
+}
+
+// HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),
+// false if they differ in any way (number of instances, instance states, tokens, zones, ...).
+func HasReplicationSetChanged(before, after ReplicationSet) bool {
+	beforeInstances := before.Ingesters
+	afterInstances := after.Ingesters
+
+	if len(beforeInstances) != len(afterInstances) {
+		return true
+	}
+
+	sort.Sort(ByAddr(beforeInstances))
+	sort.Sort(ByAddr(afterInstances))
+
+	for i := 0; i < len(beforeInstances); i++ {
+		b := beforeInstances[i]
+		a := afterInstances[i]
+
+		// Exclude the heartbeat timestamp from the comparison.
+		b.Timestamp = 0
+		a.Timestamp = 0
+
+		if !b.Equal(a) {
 			return true
 		}
 	}

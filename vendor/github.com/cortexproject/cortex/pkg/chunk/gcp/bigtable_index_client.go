@@ -47,7 +47,7 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Project, "bigtable.project", "", "Bigtable project ID.")
-	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
+	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID. Please refer to https://cloud.google.com/docs/authentication/production for more information about how to configure authentication.")
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 

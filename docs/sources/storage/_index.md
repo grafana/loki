@@ -113,7 +113,7 @@ table_manager:
   retention_period: 2520h
 ```
 
-For more information, see the table manager [doc](../operations/storage/table-manager/).
+For more information, see the [table manager](../operations/storage/table-manager/) documentation.
 
 ### Provisioning
 
@@ -132,7 +132,7 @@ table_manager:
     inactive_read_throughput: <int> | Default = 300
 ```
 
-Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [docs](../configuration/#provision_config) for more information.
+Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration](../configuration/#provision_config) documentation for more information.
 
 ## Upgrading Schemas
 
@@ -168,7 +168,7 @@ With the exception of the `filesystem` chunk store, Loki will not delete old chu
 
 We're interested in adding targeted deletion in future Loki releases (think tenant or stream level granularity) and may include other strategies as well.
 
-For more information, see the configuration [docs](../operations/storage/retention/).
+For more information, see the [retention configuration](../operations/storage/retention/) documentation.
 
 
 ## Examples

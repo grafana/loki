@@ -64,7 +64,7 @@ func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc 
 }
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
-func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) *MultiTenantManager {
+func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) ruler.MultiTenantManager {
 	return &MultiTenantManager{mgr}
 }
 
@@ -75,7 +75,7 @@ type MultiTenantManager struct {
 
 // ValidateRuleGroup validates a rulegroup
 func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
-	return validateGroups(grp)
+	return ValidateGroups(grp)
 }
 
 func MemstoreTenantManager(
@@ -84,13 +84,13 @@ func MemstoreTenantManager(
 ) ruler.ManagerFactory {
 	var metrics *Metrics
 
-	return func(
+	return ruler.ManagerFactory(func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
 		logger log.Logger,
 		reg prometheus.Registerer,
-	) *rules.Manager {
+	) ruler.RulesManager {
 
 		// We'll ignore the passed registere and use the default registerer to avoid prefix issues and other weirdness.
 		// This closure prevents re-registering.
@@ -120,7 +120,7 @@ func MemstoreTenantManager(
 		memStore.Start(mgr)
 
 		return mgr
-	}
+	})
 }
 
 type GroupLoader struct{}
@@ -163,10 +163,10 @@ func (GroupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
 		return nil, errs
 	}
 
-	return &groups, validateGroups(groups.Groups...)
+	return &groups, ValidateGroups(groups.Groups...)
 }
 
-func validateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
+func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 	set := map[string]struct{}{}
 
 	for i, g := range grps {

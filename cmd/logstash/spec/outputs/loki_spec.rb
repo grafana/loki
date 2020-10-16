@@ -95,7 +95,7 @@ describe LogStash::Outputs::Loki do
     it 'should send entry if batch size reached with no tenant' do
       loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5,'batch_size'=>10}))
       loki.register
-      sent = Concurrent::Channel.new(capacity: 3)
+      sent = Queue.new
       allow(loki).to receive(:send) do |batch|
         Thread.new do
           sent << batch
@@ -103,14 +103,14 @@ describe LogStash::Outputs::Loki do
       end
       loki.receive(event)
       loki.receive(event)
+      sent.deq
+      sent.deq
       loki.close
-      ~sent
-      ~sent
     end
     it 'should send entry while closing' do
       loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>10,'batch_size'=>10}))
       loki.register
-      sent = Concurrent::Channel.new(capacity: 3)
+      sent = Queue.new
       allow(loki).to receive(:send) do | batch|
         Thread.new  do
           sent << batch
@@ -118,20 +118,21 @@ describe LogStash::Outputs::Loki do
       end
       loki.receive(event)
       loki.close
-      ~sent
+      sent.deq
     end
     it 'should send entry when batch is expiring' do
       loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5,'batch_size'=>10}))
       loki.register
-      sent = Concurrent::Channel.new(capacity: 3)
+      sent = Queue.new
       allow(loki).to receive(:send) do | batch|
         Thread.new  do
           sent << batch
         end
       end
       loki.receive(event)
-      ~sent
-      expect(loki.batch).to be_nil
+      sent.deq
+      sleep(0.01) # Adding a minimal sleep. In few cases @batch=nil might happen after evaluating for nil
+      expect(loki.batch).to be_nil 
       loki.close
     end
   end

@@ -169,6 +169,16 @@ func TestTimestampValidation(t *testing.T) {
 			},
 			err: fmt.Errorf(ErrInvalidActionOnFailure, TimestampActionOnFailureOptions),
 		},
+		"fallback formats contains the format": {
+			config: &TimestampConfig{
+				Source:          "source1",
+				Format:          "UnixMs",
+				FallbackFormats: []string{"2006-01-02 03:04:05.000000000 +0000 UTC", time.RFC3339},
+			},
+			err:          nil,
+			testString:   "2012-11-01T22:08:41-04:00",
+			expectedTime: time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)),
+		},
 	}
 	for name, test := range tests {
 		test := test

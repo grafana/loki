@@ -9,27 +9,5 @@ metadata:
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
 spec:
-  privileged: false
-  allowPrivilegeEscalation: false
-  volumes:
-    - 'secret'
-    - 'configMap'
-    - 'hostPath'
-    - 'projected'
-    - 'downwardAPI'
-    - 'emptyDir'
-  hostNetwork: false
-  hostIPC: false
-  hostPID: false
-  runAsUser:
-    rule: 'RunAsAny'
-  seLinux:
-    rule: 'RunAsAny'
-  supplementalGroups:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-  readOnlyRootFilesystem: true
-  requiredDropCapabilities:
-    - ALL
-  {{- end }}
+  {{- toYaml .Values.podSecurityPolicy | nindent 2 }}
+{{- end }}

@@ -78,9 +78,7 @@ func (f *fixture) Clients() (
 	}
 
 	if f.gcsObjectClient {
-		cClient = objectclient.NewClient(newGCSObjectClient(GCSConfig{
-			BucketName: "chunks",
-		}, f.gcssrv.Client(), chunk.DirDelim), nil)
+		cClient = objectclient.NewClient(newGCSObjectClient(GCSConfig{BucketName: "chunks"}, f.gcssrv.Client()), nil)
 	} else {
 		cClient = newBigtableObjectClient(Config{}, schemaConfig, client)
 	}

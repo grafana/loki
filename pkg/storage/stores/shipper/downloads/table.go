@@ -15,6 +15,7 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
@@ -25,6 +26,7 @@ import (
 const (
 	downloadTimeout     = 5 * time.Minute
 	downloadParallelism = 50
+	delimiter           = "/"
 )
 
 type BoltDBIndexClient interface {
@@ -33,7 +35,7 @@ type BoltDBIndexClient interface {
 
 type StorageClient interface {
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
-	List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error)
+	List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error)
 }
 
 type downloadedFile struct {
@@ -98,7 +100,7 @@ func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient
 
 // init downloads all the db files for the table from object storage.
 // it assumes the locking of mutex is taken care of by the caller.
-func (t *Table) init(ctx context.Context, spanLogger *spanlogger.SpanLogger) (err error) {
+func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -120,7 +122,9 @@ func (t *Table) init(ctx context.Context, spanLogger *spanlogger.SpanLogger) (er
 	startTime := time.Now()
 	totalFilesSize := int64(0)
 
-	objects, _, err := t.storageClient.List(ctx, t.name+"/")
+	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
+	// This is due to the object stores not having a concept of directories.
+	objects, _, err := t.storageClient.List(ctx, t.name+delimiter, delimiter)
 	if err != nil {
 		return
 	}
@@ -198,8 +202,8 @@ func (t *Table) Close() {
 	t.dbs = map[string]*downloadedFile{}
 }
 
-// Queries all the dbs for index.
-func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+// MultiQueries runs multiple queries without having to take lock multiple times for each query.
+func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	// let us check if table is ready for use while also honoring the context timeout
 	select {
 	case <-ctx.Done():
@@ -216,10 +220,18 @@ func (t *Table) Query(ctx context.Context, query chunk.IndexQuery, callback chun
 
 	t.lastUsedAt = time.Now()
 
-	for _, db := range t.dbs {
-		if err := t.boltDBIndexClient.QueryDB(ctx, db.boltdb, query, callback); err != nil {
-			return err
+	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Table.MultiQueries")
+	defer log.Span.Finish()
+
+	level.Debug(log).Log("table-name", t.name, "query-count", len(queries))
+
+	for name, db := range t.dbs {
+		for _, query := range queries {
+			if err := t.boltDBIndexClient.QueryDB(ctx, db.boltdb, query, callback); err != nil {
+				return err
+			}
 		}
+		level.Debug(log).Log("queried-db", name)
 	}
 
 	return nil
@@ -300,7 +312,10 @@ func (t *Table) Sync(ctx context.Context) error {
 func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.StorageObject, toDelete []string, err error) {
 	// listing tables from store
 	var objects []chunk.StorageObject
-	objects, _, err = t.storageClient.List(ctx, t.name+"/")
+
+	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
+	// This is due to the object stores not having a concept of directories.
+	objects, _, err = t.storageClient.List(ctx, t.name+delimiter, delimiter)
 	if err != nil {
 		return
 	}
@@ -395,7 +410,7 @@ func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
 }
 
 func getDBNameFromObjectKey(objectKey string) (string, error) {
-	ss := strings.Split(objectKey, "/")
+	ss := strings.Split(objectKey, delimiter)
 
 	if len(ss) != 2 {
 		return "", fmt.Errorf("invalid object key: %v", objectKey)
@@ -440,7 +455,6 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 			}
 
 			incomingErrors <- err
-			return
 		}()
 	}
 

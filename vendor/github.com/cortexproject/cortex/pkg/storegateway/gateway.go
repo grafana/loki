@@ -135,7 +135,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		logger:     logger,
 		bucketSync: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_storegateway_bucket_sync_total",
-			Help: "Total number of times the bucket sync operation trigged.",
+			Help: "Total number of times the bucket sync operation triggered.",
 		}, []string{"reason"}),
 	}
 
@@ -289,7 +289,7 @@ func (g *StoreGateway) running(ctx context.Context) error {
 			// replication set which we use to compare with the previous state.
 			currRingState, _ := g.ring.GetAll(ring.BlocksSync) // nolint:errcheck
 
-			if hasRingTopologyChanged(ringLastState, currRingState) {
+			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
 				g.syncStores(ctx, syncReasonRingChange)
 			}

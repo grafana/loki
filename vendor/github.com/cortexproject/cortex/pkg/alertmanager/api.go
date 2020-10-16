@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/template"
@@ -95,7 +96,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 	}
 
 	cfgDesc := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
-	if err := validateUserConfig(cfgDesc); err != nil {
+	if err := validateUserConfig(logger, cfgDesc); err != nil {
 		level.Warn(logger).Log("msg", errValidatingConfig, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errValidatingConfig, err.Error()), http.StatusBadRequest)
 		return
@@ -130,8 +131,16 @@ func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *ht
 	w.WriteHeader(http.StatusOK)
 }
 
-func validateUserConfig(cfg alerts.AlertConfigDesc) error {
-	// Validation copied from: https://github.com/prometheus/alertmanager/blob/8e861c646bf67599a1704fc843c6a94d519ce312/cli/check_config.go#L65-L96
+// Partially copied from: https://github.com/prometheus/alertmanager/blob/8e861c646bf67599a1704fc843c6a94d519ce312/cli/check_config.go#L65-L96
+func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
+	// We don't have a valid use case for empty configurations. If a tenant does not have a
+	// configuration set and issue a request to the Alertmanager, we'll a) upload an empty
+	// config and b) immediately start an Alertmanager instance for them if a fallback
+	// configuration is provisioned.
+	if cfg.RawConfig == "" {
+		return fmt.Errorf("configuration provided is empty, if you'd like to remove your configuration please use the delete configuration endpoint")
+	}
+
 	amCfg, err := config.Load(cfg.RawConfig)
 	if err != nil {
 		return err
@@ -151,7 +160,8 @@ func validateUserConfig(cfg alerts.AlertConfigDesc) error {
 	for _, tmpl := range cfg.Templates {
 		_, err := createTemplateFile(tmpDir, cfg.User, tmpl.Filename, tmpl.Body)
 		if err != nil {
-			return err
+			level.Error(logger).Log("msg", "unable to create template file", "err", err, "user", cfg.User)
+			return fmt.Errorf("unable to create template file '%s'", tmpl.Filename)
 		}
 	}
 

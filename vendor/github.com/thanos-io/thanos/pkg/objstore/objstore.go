@@ -258,6 +258,7 @@ func BucketWithMetrics(name string, b Bucket, reg prometheus.Registerer) *metric
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 		}, []string{"operation"}),
+
 		lastSuccessfulUploadTime: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "thanos_objstore_bucket_last_successful_upload_time",
 			Help: "Second timestamp of the last successful upload to the bucket.",
@@ -311,8 +312,10 @@ func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string)
 	b.ops.WithLabelValues(op).Inc()
 
 	err := b.bkt.Iter(ctx, dir, f)
-	if err != nil && !b.isOpFailureExpected(err) {
-		b.opsFailures.WithLabelValues(op).Inc()
+	if err != nil {
+		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.opsFailures.WithLabelValues(op).Inc()
+		}
 	}
 	return err
 }
@@ -324,7 +327,7 @@ func (b *metricBucket) Attributes(ctx context.Context, name string) (ObjectAttri
 	start := time.Now()
 	attrs, err := b.bkt.Attributes(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) {
+		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return attrs, err
@@ -339,7 +342,7 @@ func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 
 	rc, err := b.bkt.Get(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) {
+		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return nil, err
@@ -359,7 +362,7 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 
 	rc, err := b.bkt.GetRange(ctx, name, off, length)
 	if err != nil {
-		if !b.isOpFailureExpected(err) {
+		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return nil, err
@@ -380,7 +383,7 @@ func (b *metricBucket) Exists(ctx context.Context, name string) (bool, error) {
 	start := time.Now()
 	ok, err := b.bkt.Exists(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) {
+		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return false, err
@@ -395,7 +398,7 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 
 	start := time.Now()
 	if err := b.bkt.Upload(ctx, name, r); err != nil {
-		if !b.isOpFailureExpected(err) {
+		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err
@@ -411,7 +414,7 @@ func (b *metricBucket) Delete(ctx context.Context, name string) error {
 
 	start := time.Now()
 	if err := b.bkt.Delete(ctx, name); err != nil {
-		if !b.isOpFailureExpected(err) {
+		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err

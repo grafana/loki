@@ -28,7 +28,7 @@ func NewMulti(logger log.Logger, externalLabels flagext.LabelSet, cfgs ...Config
 		// which exist in both the command line arguments as well as the yaml, and while this is
 		// not typically the order of precedence, the assumption here is someone providing a specific config in
 		// yaml is doing so explicitly to make a key specific to a client.
-		cfg.ExternalLabels = flagext.LabelSet{externalLabels.Merge(cfg.ExternalLabels.LabelSet)}
+		cfg.ExternalLabels = flagext.LabelSet{LabelSet: externalLabels.Merge(cfg.ExternalLabels.LabelSet)}
 		client, err := New(cfg, logger)
 		if err != nil {
 			return nil, err

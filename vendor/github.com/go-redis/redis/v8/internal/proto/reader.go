@@ -181,7 +181,7 @@ func (r *Reader) ReadArrayReply(m MultiBulkParse) (interface{}, error) {
 	}
 }
 
-func (r *Reader) ReadArrayLen() (int64, error) {
+func (r *Reader) ReadArrayLen() (int, error) {
 	line, err := r.ReadLine()
 	if err != nil {
 		return 0, err
@@ -190,7 +190,11 @@ func (r *Reader) ReadArrayLen() (int64, error) {
 	case ErrorReply:
 		return 0, ParseErrorReply(line)
 	case ArrayReply:
-		return parseArrayLen(line)
+		n, err := parseArrayLen(line)
+		if err != nil {
+			return 0, err
+		}
+		return int(n), nil
 	default:
 		return 0, fmt.Errorf("redis: can't parse array reply: %.100q", line)
 	}
@@ -216,7 +220,8 @@ func (r *Reader) ReadScanReply() ([]string, uint64, error) {
 	}
 
 	keys := make([]string, n)
-	for i := int64(0); i < n; i++ {
+
+	for i := 0; i < n; i++ {
 		key, err := r.ReadString()
 		if err != nil {
 			return nil, 0, err

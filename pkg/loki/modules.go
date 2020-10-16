@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/loki/pkg/ruler/manager"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -170,6 +171,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
+		serverutil.ResponseJSONMiddleware(),
 	)
 	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
@@ -319,9 +321,15 @@ func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
+// Placeholder limits type to pass to cortex frontend
+type disabledShuffleShardingLimits struct{}
+
+func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { return 0 }
+
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
+
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
-	t.frontend, err = frontend.New(t.cfg.Frontend.Config, util.Logger, prometheus.DefaultRegisterer)
+	t.frontend, err = frontend.New(t.cfg.Frontend.Config, disabledShuffleShardingLimits{}, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -346,18 +354,19 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	frontendHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
-		queryrange.StatsHTTPMiddleware,
 		t.httpAuthMiddleware,
+		queryrange.StatsHTTPMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
+		serverutil.ResponseJSONMiddleware(),
 	).Wrap(t.frontend.Handler())
 
 	var defaultHandler http.Handler
-	if t.cfg.Frontend.TailProxyUrl != "" {
+	if t.cfg.Frontend.TailProxyURL != "" {
 		httpMiddleware := middleware.Merge(
 			t.httpAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
 		)
-		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyUrl)
+		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyURL)
 		if err != nil {
 			return nil, err
 		}
@@ -400,7 +409,13 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		return
 	}
 
-	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig)
+	// Loki doesn't support the configdb backend, but without excessive mangling/refactoring
+	// it's hard to enforce this at validation time. Therefore detect this and fail early.
+	if t.cfg.Ruler.StoreConfig.Type == "configdb" {
+		return nil, errors.New("configdb is not supported as a Loki rules backend type")
+	}
+
+	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig, manager.GroupLoader{})
 
 	return
 }

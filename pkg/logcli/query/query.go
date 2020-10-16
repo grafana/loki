@@ -84,7 +84,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		if q.Limit < q.BatchSize {
 			q.BatchSize = q.Limit
 		}
-		resultLength := q.BatchSize
+		resultLength := 0
 		total := 0
 		start := q.Start
 		end := q.End
@@ -114,7 +114,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 				break
 			}
 			// Also no result, wouldn't expect to hit this.
-			if lastEntry == nil || len(lastEntry) == 0 {
+			if len(lastEntry) == 0 {
 				break
 			}
 			// Can only happen if all the results return in one request
@@ -321,7 +321,7 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 	printed := 0
 	for _, e := range allEntries {
 		// Skip the last entry if it overlaps, this happens because batching includes the last entry from the last batch
-		if lastEntry != nil && len(lastEntry) > 0 && e.entry.Timestamp == lastEntry[0].Timestamp {
+		if len(lastEntry) > 0 && e.entry.Timestamp == lastEntry[0].Timestamp {
 			skip := false
 			// Because many logs can share a timestamp in the unlucky event a batch ends with a timestamp
 			// shared by multiple entries we have to check all that were stored to see if we've already

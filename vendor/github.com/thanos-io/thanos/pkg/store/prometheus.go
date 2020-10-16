@@ -23,6 +23,8 @@ import (
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -49,6 +51,8 @@ type PrometheusStore struct {
 	timestamps     func() (mint int64, maxt int64)
 
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
+
+	framesRead prometheus.Histogram
 }
 
 const initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size for sync pool size.
@@ -58,6 +62,7 @@ const initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size
 // It attaches the provided external labels to all results.
 func NewPrometheusStore(
 	logger log.Logger,
+	reg prometheus.Registerer,
 	client *promclient.Client,
 	baseURL *url.URL,
 	component component.StoreAPI,
@@ -79,6 +84,13 @@ func NewPrometheusStore(
 			b := make([]byte, 0, initialBufSize)
 			return &b
 		}},
+		framesRead: promauto.With(reg).NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "prometheus_store_received_frames",
+				Help:    "Number of frames received per streamed response.",
+				Buckets: prometheus.ExponentialBuckets(10, 10, 5),
+			},
+		),
 	}
 	return p, nil
 }
@@ -259,20 +271,16 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(s storepb.Store_Serie
 	level.Debug(p.logger).Log("msg", "started handling ReadRequest_STREAMED_XOR_CHUNKS streamed read response.")
 
 	framesNum := 0
-	seriesNum := 0
 
 	defer func() {
+		p.framesRead.Observe(float64(framesNum))
 		querySpan.SetTag("frames", framesNum)
-		querySpan.SetTag("series", seriesNum)
 		querySpan.Finish()
 	}()
 	defer runutil.CloseWithLogOnErr(p.logger, httpResp.Body, "prom series request body")
 
 	var (
-		lastSeries string
-		currSeries string
-		tmp        []string
-		data       = p.getBuffer()
+		data = p.getBuffer()
 	)
 	defer p.putBuffer(data)
 
@@ -294,19 +302,6 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(s storepb.Store_Serie
 
 		framesNum++
 		for _, series := range res.ChunkedSeries {
-			{
-				// Calculate hash of series for counting.
-				tmp = tmp[:0]
-				for _, l := range series.Labels {
-					tmp = append(tmp, l.String())
-				}
-				currSeries = strings.Join(tmp, ";")
-				if currSeries != lastSeries {
-					seriesNum++
-					lastSeries = currSeries
-				}
-			}
-
 			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
 			for i, chk := range series.Chunks {
 				thanosChks[i] = storepb.AggrChunk{
@@ -332,7 +327,7 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(s storepb.Store_Serie
 			}
 		}
 	}
-	level.Debug(p.logger).Log("msg", "handled ReadRequest_STREAMED_XOR_CHUNKS request.", "frames", framesNum, "series", seriesNum)
+	level.Debug(p.logger).Log("msg", "handled ReadRequest_STREAMED_XOR_CHUNKS request.", "frames", framesNum)
 	return nil
 }
 
