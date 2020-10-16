@@ -1,6 +1,6 @@
-# lambda-promtail
+# lambda-promtail for AWS Cloudwatch (CloudBridge) events
 
-This is a sample template for lambda-promtail - Below is a brief explanation of what we have generated for you:
+This is a sample template for lambda-promtail for AWS CloudWatch (CloudBridge)  events - Below is a brief explanation of what we have generated for you:
 
 ```bash
 .
@@ -48,7 +48,7 @@ make build
 ```
 
 To deploy your application for the first time, first make sure you've set the following parameters in the template:
-- `LogGroup`
+- `EventSources`
 - `PromtailAddress`
 - `ReservedConcurrency`
 
@@ -67,7 +67,7 @@ Also, if your deployment requires a VPC configuration, make sure to edit the `Vp
 Then run the following in your shell:
 
 ```bash
-sam deploy --guided --capabilities CAPABILITY_IAM,CAPABILITY_NAMED_IAM --parameter-overrides PromtailAddress=<>,LogGroup=<>
+sam deploy --guided --capabilities CAPABILITY_IAM,CAPABILITY_NAMED_IAM --parameter-overrides PromtailAddress=<>,EventSources=<>
 ```
 
 The command will package and deploy your application to AWS, with a series of prompts:
