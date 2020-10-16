@@ -268,7 +268,10 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
 					MaxSizeBytes: "200 MB",
-					// We snapshot the index in ingesters every minute for reads so reduce the index cache validity by a minute
+					// We snapshot the index in ingesters every minute for reads so reduce the index cache validity by a minute.
+					// This is usually set in StorageConfig.IndexCacheValidity but since this is exclusively used for caching the index entries,
+					// I(Sandeep) am setting it here which also helps reduce some CPU cycles and allocations required for
+					// unmarshalling the cached data to check the expiry.
 					Validity: t.cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
