@@ -22,8 +22,8 @@ type LazyChunk struct {
 
 	// cache of overlapping block.
 	// We use the offset of the block as key since it's unique per chunk.
-	overlappingBlocks       map[int]*cachedIterator
-	overlappingSampleBlocks map[int]*cachedSampleIterator
+	overlappingBlocks       map[int]iter.CacheEntryIterator
+	overlappingSampleBlocks map[int]iter.CacheSampleIterator
 }
 
 // Iterator returns an entry iterator.
@@ -52,18 +52,17 @@ func (c *LazyChunk) Iterator(
 	for _, b := range blocks {
 		// if we have already processed and cache block let's use it.
 		if cache, ok := c.overlappingBlocks[b.Offset()]; ok {
-			clone := *cache
-			clone.reset()
-			its = append(its, &clone)
+			cache.Reset()
+			its = append(its, cache)
 			continue
 		}
 		// if the block is overlapping cache it with the next chunk boundaries.
 		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, direction) {
 			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
-			it := newCachedIterator(b.Iterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), pipeline), b.Entries())
+			it := iter.NewCachedIterator(b.Iterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), pipeline), b.Entries())
 			its = append(its, it)
 			if c.overlappingBlocks == nil {
-				c.overlappingBlocks = make(map[int]*cachedIterator)
+				c.overlappingBlocks = make(map[int]iter.CacheEntryIterator)
 			}
 			c.overlappingBlocks[b.Offset()] = it
 			continue
@@ -114,18 +113,17 @@ func (c *LazyChunk) SampleIterator(
 	for _, b := range blocks {
 		// if we have already processed and cache block let's use it.
 		if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
-			clone := *cache
-			clone.reset()
-			its = append(its, &clone)
+			cache.Reset()
+			its = append(its, cache)
 			continue
 		}
 		// if the block is overlapping cache it with the next chunk boundaries.
 		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
 			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
-			it := newCachedSampleIterator(b.SampleIterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), extractor), b.Entries())
+			it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), extractor), b.Entries())
 			its = append(its, it)
 			if c.overlappingSampleBlocks == nil {
-				c.overlappingSampleBlocks = make(map[int]*cachedSampleIterator)
+				c.overlappingSampleBlocks = make(map[int]iter.CacheSampleIterator)
 			}
 			c.overlappingSampleBlocks[b.Offset()] = it
 			continue

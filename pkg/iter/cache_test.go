@@ -1,4 +1,4 @@
-package storage
+package iter
 
 import (
 	"errors"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -20,12 +19,11 @@ func Test_CachedIterator(t *testing.T) {
 			{Timestamp: time.Unix(0, 3), Line: "3"},
 		},
 	}
-	c := newCachedIterator(iter.NewStreamIterator(stream), 3)
+	c := NewCachedIterator(NewStreamIterator(stream), 3)
 
 	assert := func() {
-		// we should crash for call of entry without next although that's not expected.
-		require.Equal(t, stream.Labels, c.Labels())
-		require.Equal(t, stream.Entries[0], c.Entry())
+		require.Equal(t, "", c.Labels())
+		require.Equal(t, logproto.Entry{}, c.Entry())
 		require.Equal(t, true, c.Next())
 		require.Equal(t, stream.Entries[0], c.Entry())
 		require.Equal(t, true, c.Next())
@@ -48,7 +46,7 @@ func Test_CachedIterator(t *testing.T) {
 
 func Test_EmptyCachedIterator(t *testing.T) {
 
-	c := newCachedIterator(iter.NoopIterator, 0)
+	c := NewCachedIterator(NoopIterator, 0)
 
 	require.Equal(t, "", c.Labels())
 	require.Equal(t, logproto.Entry{}, c.Entry())
@@ -68,7 +66,7 @@ func Test_EmptyCachedIterator(t *testing.T) {
 
 func Test_ErrorCachedIterator(t *testing.T) {
 
-	c := newCachedIterator(&errorIter{}, 0)
+	c := NewCachedIterator(&errorIter{}, 0)
 
 	require.Equal(t, false, c.Next())
 	require.Equal(t, "", c.Labels())
@@ -86,12 +84,11 @@ func Test_CachedSampleIterator(t *testing.T) {
 			{Timestamp: time.Unix(0, 3).UnixNano(), Hash: 3, Value: 3.},
 		},
 	}
-	c := newCachedSampleIterator(iter.NewSeriesIterator(series), 3)
+	c := NewCachedSampleIterator(NewSeriesIterator(series), 3)
 
 	assert := func() {
-		// we should crash for call of entry without next although that's not expected.
-		require.Equal(t, series.Labels, c.Labels())
-		require.Equal(t, series.Samples[0], c.Sample())
+		require.Equal(t, "", c.Labels())
+		require.Equal(t, logproto.Sample{}, c.Sample())
 		require.Equal(t, true, c.Next())
 		require.Equal(t, series.Samples[0], c.Sample())
 		require.Equal(t, true, c.Next())
@@ -114,7 +111,7 @@ func Test_CachedSampleIterator(t *testing.T) {
 
 func Test_EmptyCachedSampleIterator(t *testing.T) {
 
-	c := newCachedSampleIterator(iter.NoopIterator, 0)
+	c := NewCachedSampleIterator(NoopIterator, 0)
 
 	require.Equal(t, "", c.Labels())
 	require.Equal(t, logproto.Sample{}, c.Sample())
@@ -134,7 +131,7 @@ func Test_EmptyCachedSampleIterator(t *testing.T) {
 
 func Test_ErrorCachedSampleIterator(t *testing.T) {
 
-	c := newCachedSampleIterator(&errorIter{}, 0)
+	c := NewCachedSampleIterator(&errorIter{}, 0)
 
 	require.Equal(t, false, c.Next())
 	require.Equal(t, "", c.Labels())
