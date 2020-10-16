@@ -263,13 +263,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		case Ingester:
 			// We do not want ingester to unnecessarily keep downloading files
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
-			// Do not cache index from Ingester.
-			t.cfg.StorageConfig.IndexCacheValidity = 4 * time.Minute
+			// Use fifo cache for caching index in memory.
 			t.cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
-					MaxSizeBytes:   "200 MB",
-					DeprecatedSize: 0,
+					MaxSizeBytes: "200 MB",
+					// We snapshot the index in ingesters every minute for reads so reduce the index cache validity by a minute
+					Validity: t.cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
 		case Querier:
