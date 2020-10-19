@@ -147,14 +147,36 @@ func TestBinary_Filter(t *testing.T) {
 				{Name: "method", Value: "POST"},
 			},
 		},
-		{
+	}
+	for _, tt := range tests {
+		t.Run(tt.f.String(), func(t *testing.T) {
+			sort.Sort(tt.lbs)
+			b := NewLabelsBuilder()
+			b.Reset(tt.lbs)
+			_, got := tt.f.Process(nil, b)
+			require.Equal(t, tt.want, got)
+			sort.Sort(tt.wantLbs)
+			require.Equal(t, tt.wantLbs, b.Labels())
+		})
+	}
+}
 
+func TestErrorFiltering(t *testing.T) {
+	tests := []struct {
+		f   LabelFilterer
+		lbs labels.Labels
+		err string
+
+		want    bool
+		wantLbs labels.Labels
+	}{
+		{
 			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, ErrorLabel, errJSON)),
 			labels.Labels{
-				{Name: ErrorLabel, Value: errJSON},
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
 			},
+			errJSON,
 			false,
 			labels.Labels{
 				{Name: ErrorLabel, Value: errJSON},
@@ -166,10 +188,10 @@ func TestBinary_Filter(t *testing.T) {
 
 			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".+")),
 			labels.Labels{
-				{Name: ErrorLabel, Value: "foo"},
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
 			},
+			"foo",
 			false,
 			labels.Labels{
 				{Name: ErrorLabel, Value: "foo"},
@@ -184,6 +206,7 @@ func TestBinary_Filter(t *testing.T) {
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
 			},
+			"",
 			true,
 			labels.Labels{
 				{Name: "status", Value: "200"},
@@ -197,6 +220,7 @@ func TestBinary_Filter(t *testing.T) {
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
 			},
+			"",
 			true,
 			labels.Labels{
 				{Name: "status", Value: "200"},
@@ -209,6 +233,7 @@ func TestBinary_Filter(t *testing.T) {
 			sort.Sort(tt.lbs)
 			b := NewLabelsBuilder()
 			b.Reset(tt.lbs)
+			b.SetErr(tt.err)
 			_, got := tt.f.Process(nil, b)
 			require.Equal(t, tt.want, got)
 			sort.Sort(tt.wantLbs)

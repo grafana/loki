@@ -37,6 +37,11 @@ func (b *LabelsBuilder) SetErr(err string) *LabelsBuilder {
 	return b
 }
 
+// GetErr return the current error label value.
+func (b *LabelsBuilder) GetErr() string {
+	return b.err
+}
+
 // HasErr tells if the error label has been set.
 func (b *LabelsBuilder) HasErr() bool {
 	return b.err != ""

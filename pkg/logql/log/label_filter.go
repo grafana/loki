@@ -305,6 +305,9 @@ func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
 }
 
 func (s *StringLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if s.Name == ErrorLabel {
+		return line, s.Matches(lbs.GetErr())
+	}
 	v, _ := lbs.Get(s.Name)
 	return line, s.Matches(v)
 }
