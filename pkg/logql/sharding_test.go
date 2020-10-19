@@ -37,9 +37,12 @@ func TestMappingEquivalence(t *testing.T) {
 		{`{a="1"} |= "number: 10"`, false},
 		{`rate({a=~".*"}[1s])`, false},
 		{`sum by (a) (rate({a=~".*"}[1s]))`, false},
+		{`sum(rate({a=~".*"}[1s]))`, false},
+
 		{`max without (a) (rate({a=~".*"}[1s]))`, false},
 		{`count(rate({a=~".*"}[1s]))`, false},
 		{`avg(rate({a=~".*"}[1s]))`, true},
+		{`avg(rate({a=~".*"}[1s])) by (a)`, true},
 		{`1 + sum by (cluster) (rate({a=~".*"}[1s]))`, false},
 		{`sum(max(rate({a=~".*"}[1s])))`, false},
 		{`max(count(rate({a=~".*"}[1s])))`, false},

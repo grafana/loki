@@ -78,6 +78,68 @@ type LogSelectorExpr interface {
 	Expr
 }
 
+// Type alias for backward compatibility
+type Pipeline = log.Pipeline
+type SampleExtractor = log.SampleExtractor
+
+var (
+	NoopPipeline = log.NoopPipeline
+)
+
+// PipelineExpr is an expression defining a log pipeline.
+type PipelineExpr interface {
+	Pipeline() (Pipeline, error)
+	Expr
+}
+
+// StageExpr is an expression defining a single step into a log pipeline
+type StageExpr interface {
+	Stage() (log.Stage, error)
+	Expr
+}
+
+// MultiStageExpr is multiple stages which implement a PipelineExpr.
+type MultiStageExpr []StageExpr
+
+func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
+	stages, err := m.stages()
+	if err != nil {
+		return nil, err
+	}
+	if len(stages) == 0 {
+		return log.NoopPipeline, nil
+	}
+	return log.NewPipeline(stages), nil
+}
+
+func (m MultiStageExpr) stages() ([]log.Stage, error) {
+	c := make([]log.Stage, 0, len(m))
+	for _, e := range m {
+		p, err := e.Stage()
+		if err != nil {
+			return nil, err
+		}
+		if p == log.NoopStage {
+			continue
+		}
+		c = append(c, p)
+	}
+	return c, nil
+}
+
+func (m MultiStageExpr) String() string {
+	var sb strings.Builder
+	for i, e := range m {
+		sb.WriteString(e.String())
+		if i+1 != len(m) {
+			sb.WriteString(" ")
+		}
+	}
+	return sb.String()
+}
+
+func (MultiStageExpr) logQLExpr() {}
+
 type matchersExpr struct {
 	matchers []*labels.Matcher
 	implicit
@@ -364,7 +426,12 @@ func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.Selector()
 }
 
-func (e *vectorAggregationExpr) Extractor() (SampleExtractor, error) {
+func (e *vectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
+	// inject in the range vector extractor the outer groups to improve performance.
+	// This is only possible if the operation is a sum. Anything else needs all labels.
+	if r, ok := e.left.(*rangeAggregationExpr); ok && e.operation == OpTypeSum {
+		return r.extractor(e.grouping, true)
+	}
 	return e.left.Extractor()
 }
 

@@ -192,7 +192,7 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 // Evaluator returns a StepEvaluator for a given SampleExpr
 func (ev *DownstreamEvaluator) StepEvaluator(
 	ctx context.Context,
-	nextEv Evaluator,
+	nextEv SampleEvaluator,
 	expr SampleExpr,
 	params Params,
 ) (StepEvaluator, error) {

@@ -3,7 +3,8 @@ package logql
 import (
 	"context"
 	"fmt"
-	"log"
+	logger "log"
+	"sort"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -108,6 +109,62 @@ outer:
 	}
 
 	return iter.NewHeapIterator(ctx, streamIters, req.Direction), nil
+}
+
+func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Stream {
+	resByStream := map[string]*logproto.Stream{}
+
+	for _, stream := range in {
+		for _, e := range stream.Entries {
+			if l, out, ok := pipeline.Process([]byte(e.Line), mustParseLabels(stream.Labels)); ok {
+				var s *logproto.Stream
+				var found bool
+				s, found = resByStream[out.String()]
+				if !found {
+					s = &logproto.Stream{Labels: out.String()}
+					resByStream[out.String()] = s
+				}
+				s.Entries = append(s.Entries, logproto.Entry{
+					Timestamp: e.Timestamp,
+					Line:      string(l),
+				})
+			}
+		}
+	}
+	streams := []logproto.Stream{}
+	for _, stream := range resByStream {
+		streams = append(streams, *stream)
+	}
+	return streams
+}
+
+func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Series {
+	resBySeries := map[string]*logproto.Series{}
+
+	for _, stream := range in {
+		for _, e := range stream.Entries {
+			if f, lbs, ok := ex.Process([]byte(e.Line), mustParseLabels(stream.Labels)); ok {
+				var s *logproto.Series
+				var found bool
+				s, found = resBySeries[lbs.String()]
+				if !found {
+					s = &logproto.Series{Labels: lbs.String()}
+					resBySeries[lbs.String()] = s
+				}
+				s.Samples = append(s.Samples, logproto.Sample{
+					Timestamp: e.Timestamp.UnixNano(),
+					Value:     f,
+					Hash:      xxhash.Sum64([]byte(e.Line)),
+				})
+			}
+		}
+	}
+	series := []logproto.Series{}
+	for _, s := range resBySeries {
+		sort.Sort(s)
+		series = append(series, *s)
+	}
+	return series
 }
 
 func (q MockQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) (iter.SampleIterator, error) {

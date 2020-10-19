@@ -9,6 +9,7 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -619,33 +620,10 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, filte
 	if len(samples) == 0 {
 		return iter.NoopIterator
 	}
-
-	return iter.NewSeriesIterator(logproto.Series{Samples: samples})
-}
-
-var emptyIterator = &listIterator{}
-
-type listIterator struct {
-	entries []entry
-	cur     int
-}
-
-func (li *listIterator) Next() bool {
-	li.cur++
-
-	return li.cur < len(li.entries)
-}
-
-func (li *listIterator) Entry() logproto.Entry {
-	if li.cur < 0 || li.cur >= len(li.entries) {
-		return logproto.Entry{}
-	}
-
-	cur := li.entries[li.cur]
-
-	return logproto.Entry{
-		Timestamp: time.Unix(0, cur.t),
-		Line:      cur.s,
+	seriesRes := make([]logproto.Series, 0, len(series))
+	for _, s := range series {
+		sort.Sort(s)
+		seriesRes = append(seriesRes, *s)
 	}
 }
 
