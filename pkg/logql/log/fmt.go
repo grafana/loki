@@ -51,10 +51,10 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	}, nil
 }
 
-func (lf *LineFormatter) Process(_ []byte, lbs Labels) ([]byte, bool) {
+func (lf *LineFormatter) Process(_ []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
 	// todo(cyriltovena): handle error
-	_ = lf.Template.Execute(lf.buf, lbs)
+	_ = lf.Template.Execute(lf.buf, lbs.Labels().Map())
 	// todo(cyriltovena): we might want to reuse the input line or a bytes buffer.
 	res := make([]byte, len(lf.buf.Bytes()))
 	copy(res, lf.buf.Bytes())
@@ -138,17 +138,24 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
-func (lf *LabelsFormatter) Process(l []byte, lbs Labels) ([]byte, bool) {
+func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	var data interface{}
 	for _, f := range lf.formats {
 		if f.Rename {
-			lbs[f.Name] = lbs[f.Value]
-			delete(lbs, f.Value)
+			v, ok := lbs.Get(f.Value)
+			if ok {
+				lbs.Set(f.Name, v)
+				lbs.Del(f.Value)
+			}
 			continue
 		}
 		lf.buf.Reset()
 		//todo (cyriltovena): handle error
-		_ = f.tmpl.Execute(lf.buf, lbs)
-		lbs[f.Name] = lf.buf.String()
+		if data == nil {
+			data = lbs.Labels().Map()
+		}
+		_ = f.tmpl.Execute(lf.buf, data)
+		lbs.Set(f.Name, lf.buf.String())
 	}
 	return l, true
 }

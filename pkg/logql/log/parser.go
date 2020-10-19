@@ -26,19 +26,13 @@ var (
 	errMissingCapture = errors.New("at least one named capture must be supplied")
 )
 
-func addLabel(lbs Labels) func(key, value string) {
-	unique := map[string]struct{}{}
+func addLabel(lbs *LabelsBuilder) func(key, value string) {
 	return func(key, value string) {
-		_, ok := unique[key]
-		if ok {
-			return
-		}
-		unique[key] = struct{}{}
 		key = sanitizeKey(key)
-		if lbs.Has(key) {
+		if lbs.Base().Has(key) {
 			key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 		}
-		lbs[key] = value
+		lbs.Set(key, value)
 	}
 }
 
@@ -65,11 +59,11 @@ func NewJSONParser() *JSONParser {
 	return &JSONParser{}
 }
 
-func (j *JSONParser) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	data := map[string]interface{}{}
 	err := jsoniter.ConfigFastest.Unmarshal(line, &data)
 	if err != nil {
-		lbs.SetError(errJSON)
+		lbs.SetErr(errJSON)
 		return line, true
 	}
 	parseMap("", data, addLabel(lbs))
@@ -143,7 +137,7 @@ func mustNewRegexParser(re string) *RegexpParser {
 	return r
 }
 
-func (r *RegexpParser) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (r *RegexpParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	add := addLabel(lbs)
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
@@ -165,7 +159,7 @@ func NewLogfmtParser() *LogfmtParser {
 	}
 }
 
-func (l *LogfmtParser) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	l.dec.Reset(line)
 	add := addLabel(lbs)
 	for l.dec.ScanKeyval() {
@@ -174,7 +168,7 @@ func (l *LogfmtParser) Process(line []byte, lbs Labels) ([]byte, bool) {
 		add(key, val)
 	}
 	if l.dec.Err() != nil {
-		lbs.SetError(errLogfmt)
+		lbs.SetErr(errLogfmt)
 		return line, true
 	}
 	return line, true

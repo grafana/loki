@@ -16,7 +16,7 @@ func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
-	stages := log.MultiStage{}
+	var stages []log.Stage
 	if p, ok := r.left.left.(*pipelineExpr); ok {
 		// if the expression is a pipeline then take all stages into account first.
 		st, err := p.pipeline.stages()
@@ -40,18 +40,18 @@ func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 			groups = r.grouping.groups
 			without = r.grouping.without
 		}
-		return stages.WithLabelExtractor(
+		return log.LabelExtractorWithStages(
 			r.left.unwrap.identifier,
-			convOp, groups, without,
+			convOp, groups, without, stages,
 			log.ReduceAndLabelFilter(r.left.unwrap.postFilters),
 		)
 	}
 	// otherwise we extract metrics from the log line.
 	switch r.operation {
 	case OpRangeTypeRate, OpRangeTypeCount:
-		return stages.WithLineExtractor(log.CountExtractor)
+		return log.LineExtractorWithStages(log.CountExtractor, stages)
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
-		return stages.WithLineExtractor(log.BytesExtractor)
+		return log.LineExtractorWithStages(log.BytesExtractor, stages)
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}

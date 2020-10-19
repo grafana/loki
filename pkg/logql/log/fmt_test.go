@@ -1,8 +1,10 @@
 package log
 
 import (
+	"sort"
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -10,38 +12,40 @@ func Test_lineFormatter_Format(t *testing.T) {
 	tests := []struct {
 		name  string
 		fmter *LineFormatter
-		lbs   map[string]string
+		lbs   labels.Labels
 
 		want    []byte
-		wantLbs map[string]string
+		wantLbs labels.Labels
 	}{
 		{
 			"combining",
 			newMustLineFormatter("foo{{.foo}}buzz{{  .bar  }}"),
-			map[string]string{"foo": "blip", "bar": "blop"},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			[]byte("fooblipbuzzblop"),
-			map[string]string{"foo": "blip", "bar": "blop"},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 		},
 		{
 			"missing",
 			newMustLineFormatter("foo {{.foo}}buzz{{  .bar  }}"),
-			map[string]string{"bar": "blop"},
+			labels.Labels{{Name: "bar", Value: "blop"}},
 			[]byte("foo buzzblop"),
-			map[string]string{"bar": "blop"},
+			labels.Labels{{Name: "bar", Value: "blop"}},
 		},
 		{
 			"function",
 			newMustLineFormatter("foo {{.foo | ToUpper }} buzz{{  .bar  }}"),
-			map[string]string{"foo": "blip", "bar": "blop"},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			[]byte("foo BLIP buzzblop"),
-			map[string]string{"foo": "blip", "bar": "blop"},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			outLine, _ := tt.fmter.Process(nil, tt.lbs)
+			b := NewLabelsBuilder()
+			b.Reset(tt.lbs)
+			outLine, _ := tt.fmter.Process(nil, b)
 			require.Equal(t, tt.want, outLine)
-			require.Equal(t, tt.wantLbs, tt.lbs)
+			require.Equal(t, tt.wantLbs, b.Labels())
 		})
 	}
 }
@@ -59,14 +63,14 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		name  string
 		fmter *LabelsFormatter
 
-		in   Labels
-		want Labels
+		in   labels.Labels
+		want labels.Labels
 	}{
 		{
 			"combined with template",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
-			map[string]string{"foo": "blip", "bar": "blop"},
-			map[string]string{"foo": "blip and blop", "bar": "blop"},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "foo", Value: "blip and blop"}, {Name: "bar", Value: "blop"}},
 		},
 		{
 			"combined with template and rename",
@@ -74,8 +78,8 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				NewTemplateLabelFmt("blip", "{{.foo}} and {{.bar}}"),
 				NewRenameLabelFmt("bar", "foo"),
 			}),
-			map[string]string{"foo": "blip", "bar": "blop"},
-			map[string]string{"blip": "blip and blop", "bar": "blip"},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "blip", Value: "blip and blop"}, {Name: "bar", Value: "blip"}},
 		},
 		{
 			"fn",
@@ -83,14 +87,18 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				NewTemplateLabelFmt("blip", "{{.foo | ToUpper }} and {{.bar}}"),
 				NewRenameLabelFmt("bar", "foo"),
 			}),
-			map[string]string{"foo": "blip", "bar": "blop"},
-			map[string]string{"blip": "BLIP and blop", "bar": "blip"},
+			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: "blip", Value: "BLIP and blop"}, {Name: "bar", Value: "blip"}},
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _ = tt.fmter.Process(nil, tt.in)
-			require.Equal(t, tt.want, tt.in)
+			b := NewLabelsBuilder()
+			b.Reset(tt.in)
+			_, _ = tt.fmter.Process(nil, b)
+			sort.Sort(tt.want)
+			require.Equal(t, tt.want, b.Labels())
 		})
 	}
 }

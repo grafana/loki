@@ -43,24 +43,26 @@ var (
 type lineSampleExtractor struct {
 	Stage
 	LineExtractor
+
+	builder *LabelsBuilder
 }
 
 func (l lineSampleExtractor) Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
-	labelmap := lbs.Map()
-	line, ok := l.Stage.Process(line, labelmap)
+	l.builder.Reset(lbs)
+	line, ok := l.Stage.Process(line, l.builder)
 	if !ok {
 		return 0, nil, false
 	}
-	return l.LineExtractor(line), labels.FromMap(labelmap), true
+	return l.LineExtractor(line), l.builder.Labels(), true
 }
 
-// WithLineExtractor creates a SampleExtractor from a LineExtractor.
+// LineExtractorWithStages creates a SampleExtractor from a LineExtractor.
 // Multiple log stages are run before converting the log line.
-func (m MultiStage) WithLineExtractor(ex LineExtractor) (SampleExtractor, error) {
-	if len(m) == 0 {
+func LineExtractorWithStages(ex LineExtractor, stages []Stage) (SampleExtractor, error) {
+	if len(stages) == 0 {
 		return ex.ToSampleExtractor(), nil
 	}
-	return lineSampleExtractor{Stage: m.Reduce(), LineExtractor: ex}, nil
+	return lineSampleExtractor{Stage: ReduceStages(stages), LineExtractor: ex, builder: NewLabelsBuilder()}, nil
 }
 
 type convertionFn func(value string) (float64, error)
@@ -68,6 +70,7 @@ type convertionFn func(value string) (float64, error)
 type labelSampleExtractor struct {
 	preStage   Stage
 	postFilter Stage
+	builder    *LabelsBuilder
 
 	labelName    string
 	conversionFn convertionFn
@@ -75,12 +78,13 @@ type labelSampleExtractor struct {
 	without      bool
 }
 
-// WithLabelExtractor creates a SampleExtractor that will extract metrics from a labels.
+// LabelExtractorWithStages creates a SampleExtractor that will extract metrics from a labels.
 // A set of log stage is executed before the conversion. A Filtering stage is executed after the conversion allowing
 // to remove sample containing the __error__ label.
-func (m MultiStage) WithLabelExtractor(
+func LabelExtractorWithStages(
 	labelName, conversion string,
 	groups []string, without bool,
+	preStages []Stage,
 	postFilter Stage,
 ) (SampleExtractor, error) {
 	var convFn convertionFn
@@ -93,44 +97,45 @@ func (m MultiStage) WithLabelExtractor(
 		return nil, errors.Errorf("unsupported conversion operation %s", conversion)
 	}
 	return &labelSampleExtractor{
-		preStage:     m.Reduce(),
+		preStage:     ReduceStages(preStages),
 		conversionFn: convFn,
 		groups:       groups,
 		labelName:    labelName,
 		postFilter:   postFilter,
 		without:      without,
+		builder:      NewLabelsBuilder(),
 	}, nil
 }
 
 func (l *labelSampleExtractor) Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
 	// Apply the pipeline first.
-	labelmap := Labels(lbs.Map())
-	line, ok := l.preStage.Process(line, labelmap)
+	l.builder.Reset(lbs)
+	line, ok := l.preStage.Process(line, l.builder)
 	if !ok {
 		return 0, nil, false
 	}
 	// convert the label value.
 	var v float64
-	stringValue := labelmap[l.labelName]
+	stringValue, _ := l.builder.Get(l.labelName)
 	if stringValue == "" {
-		labelmap.SetError(errSampleExtraction)
+		l.builder.SetErr(errSampleExtraction)
 	} else {
 		var err error
 		v, err = l.conversionFn(stringValue)
 		if err != nil {
-			labelmap.SetError(errSampleExtraction)
+			l.builder.SetErr(errSampleExtraction)
 		}
 	}
 	// post filters
-	if _, ok = l.postFilter.Process(line, labelmap); !ok {
+	if _, ok = l.postFilter.Process(line, l.builder); !ok {
 		return 0, nil, false
 	}
-	if labelmap.HasError() {
+	if l.builder.HasErr() {
 		// we still have an error after post filtering.
 		// We need to return now before applying grouping otherwise the error might get lost.
-		return v, labels.FromMap(labelmap), true
+		return v, l.builder.Labels(), true
 	}
-	return v, l.groupLabels(labels.FromMap(labelmap)), true
+	return v, l.groupLabels(l.builder.Labels()), true
 }
 
 func (l *labelSampleExtractor) groupLabels(lbs labels.Labels) labels.Labels {
