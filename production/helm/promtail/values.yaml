@@ -44,6 +44,13 @@ nodeSelector: {}
 pipelineStages:
 - docker: {}
 
+# extraRelabelConfigs:
+#   - action: drop
+#    source_labels:
+#    - filename
+#    - pod
+#    - pod_template_hash
+
 ## Pod Labels
 podLabels: {}
 

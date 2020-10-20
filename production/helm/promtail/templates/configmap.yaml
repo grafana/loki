@@ -52,6 +52,9 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container
+      {{- if .Values.extraRelabelConfigs }}
+      {{- toYaml .Values.extraRelabelConfigs | nindent 6 }}
+      {{- end }}
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -99,6 +102,9 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container
+      {{- if .Values.extraRelabelConfigs }}
+      {{- toYaml .Values.extraRelabelConfigs | nindent 6 }}
+      {{- end }}
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -152,6 +158,9 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container
+      {{- if .Values.extraRelabelConfigs }}
+      {{- toYaml .Values.extraRelabelConfigs | nindent 6 }}
+      {{- end }}
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -207,6 +216,9 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container
+      {{- if .Values.extraRelabelConfigs }}
+      {{- toYaml .Values.extraRelabelConfigs | nindent 6 }}
+      {{- end }}
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -255,6 +267,9 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container
+      {{- if .Values.extraRelabelConfigs }}
+      {{- toYaml .Values.extraRelabelConfigs | nindent 6 }}
+      {{- end }}
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
