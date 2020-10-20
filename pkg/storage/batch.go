@@ -73,15 +73,6 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 	}
 }
 
-type genericIterator interface {
-	Next() bool
-	Labels() string
-	Error() error
-	Close() error
-}
-
-type chunksIteratorFactory func(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error)
-
 // batchChunkIterator is an EntryIterator that iterates through chunks by batch of `batchSize`.
 // Since chunks can overlap across batches for each iteration the iterator will keep all overlapping
 // chunks with the next chunk from the next batch and added it to the next iteration. In this case the boundaries of the batch
@@ -89,20 +80,15 @@ type chunksIteratorFactory func(chunks []*LazyChunk, from, through time.Time, ne
 type batchChunkIterator struct {
 	chunks          lazyChunks
 	batchSize       int
-	err             error
-	curr            genericIterator
 	lastOverlapping []*LazyChunk
-	iterFactory     chunksIteratorFactory
+	metrics         *ChunkMetrics
+	matchers        []*labels.Matcher
 
 	begun      bool
 	ctx        context.Context
-	cancel     context.CancelFunc
 	start, end time.Time
 	direction  logproto.Direction
-	next       chan *struct {
-		iter genericIterator
-		err  error
-	}
+	next       chan *chunkBatch
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
@@ -112,24 +98,23 @@ func newBatchChunkIterator(
 	batchSize int,
 	direction logproto.Direction,
 	start, end time.Time,
-	iterFactory chunksIteratorFactory,
+	metrics *ChunkMetrics,
+	matchers []*labels.Matcher,
 ) *batchChunkIterator {
-
-	ctx, cancel := context.WithCancel(ctx)
+	// __name__ is not something we filter by because it's a constant in loki
+	// and only used for upstream compatibility; therefore remove it.
+	// The same applies to the sharding label which is injected by the cortex storage code.
+	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
 	res := &batchChunkIterator{
 		batchSize: batchSize,
-
-		start:       start,
-		end:         end,
-		direction:   direction,
-		ctx:         ctx,
-		cancel:      cancel,
-		iterFactory: iterFactory,
-		chunks:      lazyChunks{direction: direction, chunks: chunks},
-		next: make(chan *struct {
-			iter genericIterator
-			err  error
-		}),
+		metrics:   metrics,
+		matchers:  matchers,
+		start:     start,
+		end:       end,
+		direction: direction,
+		ctx:       ctx,
+		chunks:    lazyChunks{direction: direction, chunks: chunks},
+		next:      make(chan *chunkBatch),
 	}
 	sort.Sort(res.chunks)
 	return res
@@ -149,54 +134,21 @@ func (it *batchChunkIterator) loop(ctx context.Context) {
 			close(it.next)
 			return
 		}
-		next, err := it.nextBatch()
 		select {
 		case <-ctx.Done():
 			close(it.next)
-			// next can be nil if we are waiting to return that the nextBatch was empty and the context is closed
-			// or if another error occurred reading nextBatch
-			if next == nil {
-				return
-			}
-			err = next.Close()
-			if err != nil {
-				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "Failed to close the pre-fetched iterator when pre-fetching was canceled", "err", err)
-			}
 			return
-		case it.next <- &struct {
-			iter genericIterator
-			err  error
-		}{next, err}:
+		case it.next <- it.nextBatch():
 		}
 	}
 }
 
-func (it *batchChunkIterator) Next() bool {
+func (it *batchChunkIterator) Next() *chunkBatch {
 	it.Start() // Ensure the iterator has started.
-
-	var err error
-	// for loop to avoid recursion
-	for {
-		if it.curr != nil && it.curr.Next() {
-			return true
-		}
-		// close previous iterator
-		if it.curr != nil {
-			it.err = it.curr.Close()
-		}
-		next := <-it.next
-		if next == nil {
-			return false
-		}
-		it.curr = next.iter
-		if next.err != nil {
-			it.err = err
-			return false
-		}
-	}
+	return <-it.next
 }
 
-func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
+func (it *batchChunkIterator) nextBatch() *chunkBatch {
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
 	from, through := it.start, it.end
@@ -306,38 +258,35 @@ func (it *batchChunkIterator) nextBatch() (genericIterator, error) {
 			}
 		}
 	}
-	// create the new chunks iterator from the current batch.
-	return it.iterFactory(batch, from, through, nextChunk)
+	// download chunk for this batch.
+	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, batch, it.matchers)
+	if err != nil {
+		return &chunkBatch{err: err}
+	}
+	return &chunkBatch{
+		chunksBySeries: chksBySeries,
+		err:            err,
+		from:           from,
+		through:        through,
+		nextChunk:      nextChunk,
+	}
 }
 
-func (it *batchChunkIterator) Labels() string {
-	return it.curr.Labels()
-}
+type chunkBatch struct {
+	chunksBySeries map[model.Fingerprint][][]*LazyChunk
+	err            error
 
-func (it *batchChunkIterator) Error() error {
-	if it.err != nil {
-		return it.err
-	}
-	if it.curr != nil {
-		return it.curr.Error()
-	}
-	return nil
-}
-
-func (it *batchChunkIterator) Close() error {
-	it.cancel()
-	if it.curr != nil {
-		return it.curr.Close()
-	}
-	return nil
+	from, through time.Time
+	nextChunk     *LazyChunk
 }
 
 type logBatchIterator struct {
 	*batchChunkIterator
+	curr iter.EntryIterator
+	err  error
 
 	ctx      context.Context
-	metrics  *ChunkMetrics
-	matchers []*labels.Matcher
+	cancel   context.CancelFunc
 	pipeline logql.Pipeline
 }
 
@@ -351,37 +300,71 @@ func newLogBatchIterator(
 	direction logproto.Direction,
 	start, end time.Time,
 ) (iter.EntryIterator, error) {
-	// __name__ is not something we filter by because it's a constant in loki
-	// and only used for upstream compatibility; therefore remove it.
-	// The same applies to the sharding label which is injected by the cortex storage code.
-	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
-	logbatch := &logBatchIterator{
-		matchers: matchers,
-		pipeline: pipeline,
-		metrics:  metrics,
-		ctx:      ctx,
-	}
+	ctx, cancel := context.WithCancel(ctx)
+	return &logBatchIterator{
+		pipeline:           pipeline,
+		ctx:                ctx,
+		cancel:             cancel,
+		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, metrics, matchers),
+	}, nil
+}
 
-	batch := newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, logbatch.newChunksIterator)
-	// Important: since the batchChunkIterator is bound to the LogBatchIterator,
-	// ensure embedded fields are present before it's started.
-	logbatch.batchChunkIterator = batch
-	batch.Start()
-	return logbatch, nil
+func (it *logBatchIterator) Labels() string {
+	return it.curr.Labels()
+}
+
+func (it *logBatchIterator) Error() error {
+	if it.err != nil {
+		return it.err
+	}
+	if it.curr != nil {
+		return it.curr.Error()
+	}
+	return nil
+}
+
+func (it *logBatchIterator) Close() error {
+	it.cancel()
+	if it.curr != nil {
+		return it.curr.Close()
+	}
+	return nil
 }
 
 func (it *logBatchIterator) Entry() logproto.Entry {
-	return it.curr.(iter.EntryIterator).Entry()
+	return it.curr.Entry()
+}
+
+func (it *logBatchIterator) Next() bool {
+	// for loop to avoid recursion
+	for {
+		if it.curr != nil && it.curr.Next() {
+			return true
+		}
+		// close previous iterator
+		if it.curr != nil {
+			it.err = it.curr.Close()
+		}
+		next := it.batchChunkIterator.Next()
+		if next == nil {
+			return false
+		}
+		if next.err != nil {
+			it.err = next.err
+			return false
+		}
+		var err error
+		it.curr, err = it.newChunksIterator(next)
+		if err != nil {
+			it.err = err
+			return false
+		}
+	}
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
-func (it *logBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
-	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, chunks, it.matchers)
-	if err != nil {
-		return nil, err
-	}
-
-	iters, err := it.buildIterators(chksBySeries, from, through, nextChunk)
+func (it *logBatchIterator) newChunksIterator(b *chunkBatch) (iter.EntryIterator, error) {
+	iters, err := it.buildIterators(b.chunksBySeries, b.from, b.through, b.nextChunk)
 	if err != nil {
 		return nil, err
 	}
@@ -432,10 +415,11 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 
 type sampleBatchIterator struct {
 	*batchChunkIterator
+	curr iter.SampleIterator
+	err  error
 
 	ctx       context.Context
-	metrics   *ChunkMetrics
-	matchers  []*labels.Matcher
+	cancel    context.CancelFunc
 	extractor logql.SampleExtractor
 }
 
@@ -448,37 +432,72 @@ func newSampleBatchIterator(
 	extractor logql.SampleExtractor,
 	start, end time.Time,
 ) (iter.SampleIterator, error) {
-	// __name__ is not something we filter by because it's a constant in loki
-	// and only used for upstream compatibility; therefore remove it.
-	// The same applies to the sharding label which is injected by the cortex storage code.
-	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
+	ctx, cancel := context.WithCancel(ctx)
+	return &sampleBatchIterator{
+		extractor:          extractor,
+		ctx:                ctx,
+		cancel:             cancel,
+		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers),
+	}, nil
+}
 
-	samplebatch := &sampleBatchIterator{
-		matchers:  matchers,
-		extractor: extractor,
-		metrics:   metrics,
-		ctx:       ctx,
+func (it *sampleBatchIterator) Labels() string {
+	return it.curr.Labels()
+}
+
+func (it *sampleBatchIterator) Error() error {
+	if it.err != nil {
+		return it.err
 	}
-	batch := newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, samplebatch.newChunksIterator)
+	if it.curr != nil {
+		return it.curr.Error()
+	}
+	return nil
+}
 
-	// Important: since the batchChunkIterator is bound to the SampleBatchIterator,
-	// ensure embedded fields are present before it's started.
-	samplebatch.batchChunkIterator = batch
-	batch.Start()
-	return samplebatch, nil
+func (it *sampleBatchIterator) Close() error {
+	it.cancel()
+	if it.curr != nil {
+		return it.curr.Close()
+	}
+	return nil
 }
 
 func (it *sampleBatchIterator) Sample() logproto.Sample {
-	return it.curr.(iter.SampleIterator).Sample()
+	return it.curr.Sample()
+}
+
+func (it *sampleBatchIterator) Next() bool {
+	// for loop to avoid recursion
+	for {
+		if it.curr != nil && it.curr.Next() {
+			return true
+		}
+		// close previous iterator
+		if it.curr != nil {
+			it.err = it.curr.Close()
+		}
+		next := it.batchChunkIterator.Next()
+		if next == nil {
+			return false
+		}
+		if next.err != nil {
+			it.err = next.err
+			return false
+		}
+		var err error
+		it.curr, err = it.newChunksIterator(next)
+		if err != nil {
+			it.err = err
+			return false
+		}
+	}
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
-func (it *sampleBatchIterator) newChunksIterator(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
-	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, chunks, it.matchers)
-	if err != nil {
-		return nil, err
-	}
-	iters, err := it.buildIterators(chksBySeries, from, through, nextChunk)
+func (it *sampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIterator, error) {
+
+	iters, err := it.buildIterators(b.chunksBySeries, b.from, b.through, b.nextChunk)
 	if err != nil {
 		return nil, err
 	}
