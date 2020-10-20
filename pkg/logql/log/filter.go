@@ -1,4 +1,4 @@
-package logql
+package log
 
 import (
 	"bytes"
@@ -9,50 +9,58 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-// LineFilter is a interface to filter log lines.
-type LineFilter interface {
+// Filterer is a interface to filter log lines.
+type Filterer interface {
 	Filter(line []byte) bool
+	ToStage() Stage
 }
 
 // LineFilterFunc is a syntax sugar for creating line filter from a function
-type LineFilterFunc func(line []byte) bool
+type FiltererFunc func(line []byte) bool
 
-func (f LineFilterFunc) Filter(line []byte) bool {
+func (f FiltererFunc) Filter(line []byte) bool {
 	return f(line)
 }
 
 type trueFilter struct{}
 
 func (trueFilter) Filter(_ []byte) bool { return true }
+func (trueFilter) ToStage() Stage       { return NoopStage }
 
 // TrueFilter is a filter that returns and matches all log lines whatever their content.
 var TrueFilter = trueFilter{}
 
 type notFilter struct {
-	LineFilter
+	Filterer
 }
 
 func (n notFilter) Filter(line []byte) bool {
-	return !n.LineFilter.Filter(line)
+	return !n.Filterer.Filter(line)
+}
+
+func (n notFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, n.Filter(line)
+	})
 }
 
 // newNotFilter creates a new filter which matches only if the base filter doesn't match.
 // If the base filter is a `or` it will recursively simplify with `and` operations.
-func newNotFilter(base LineFilter) LineFilter {
+func newNotFilter(base Filterer) Filterer {
 	// not(a|b) = not(a) and not(b) , and operation can't benefit from this optimization because both legs always needs to be executed.
 	if or, ok := base.(orFilter); ok {
-		return newAndFilter(newNotFilter(or.left), newNotFilter(or.right))
+		return NewAndFilter(newNotFilter(or.left), newNotFilter(or.right))
 	}
-	return notFilter{LineFilter: base}
+	return notFilter{Filterer: base}
 }
 
 type andFilter struct {
-	left  LineFilter
-	right LineFilter
+	left  Filterer
+	right Filterer
 }
 
-// newAndFilter creates a new filter which matches only if left and right matches.
-func newAndFilter(left LineFilter, right LineFilter) LineFilter {
+// NewAndFilter creates a new filter which matches only if left and right matches.
+func NewAndFilter(left Filterer, right Filterer) Filterer {
 	// Make sure we take care of panics in case a nil or noop filter is passed.
 	if right == nil || right == TrueFilter {
 		return left
@@ -72,13 +80,19 @@ func (a andFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) && a.right.Filter(line)
 }
 
+func (a andFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
+}
+
 type orFilter struct {
-	left  LineFilter
-	right LineFilter
+	left  Filterer
+	right Filterer
 }
 
 // newOrFilter creates a new filter which matches only if left or right matches.
-func newOrFilter(left LineFilter, right LineFilter) LineFilter {
+func newOrFilter(left Filterer, right Filterer) Filterer {
 	if left == nil || left == TrueFilter {
 		return right
 	}
@@ -94,7 +108,7 @@ func newOrFilter(left LineFilter, right LineFilter) LineFilter {
 }
 
 // chainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
-func chainOrFilter(curr, new LineFilter) LineFilter {
+func chainOrFilter(curr, new Filterer) Filterer {
 	if curr == nil {
 		return new
 	}
@@ -105,13 +119,19 @@ func (a orFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) || a.right.Filter(line)
 }
 
+func (a orFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
+}
+
 type regexpFilter struct {
 	*regexp.Regexp
 }
 
 // newRegexpFilter creates a new line filter for a given regexp.
 // If match is false the filter is the negation of the regexp.
-func newRegexpFilter(re string, match bool) (LineFilter, error) {
+func newRegexpFilter(re string, match bool) (Filterer, error) {
 	reg, err := regexp.Compile(re)
 	if err != nil {
 		return nil, err
@@ -127,6 +147,12 @@ func (r regexpFilter) Filter(line []byte) bool {
 	return r.Match(line)
 }
 
+func (r regexpFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, r.Filter(line)
+	})
+}
+
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
@@ -139,11 +165,18 @@ func (l containsFilter) Filter(line []byte) bool {
 	return bytes.Contains(line, l.match)
 }
 
+func (l containsFilter) ToStage() Stage {
+	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+		return line, l.Filter(line)
+	})
+}
+
 func (l containsFilter) String() string {
 	return string(l.match)
 }
 
-func newContainsFilter(match []byte, caseInsensitive bool) LineFilter {
+// newContainsFilter creates a contains filter that checks if a log line contains a match.
+func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	if len(match) == 0 {
 		return TrueFilter
 	}
@@ -156,8 +189,8 @@ func newContainsFilter(match []byte, caseInsensitive bool) LineFilter {
 	}
 }
 
-// newFilter creates a new line filter from a match string and type.
-func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
+// NewFilter creates a new line filter from a match string and type.
+func NewFilter(match string, mt labels.MatchType) (Filterer, error) {
 	switch mt {
 	case labels.MatchRegexp:
 		return parseRegexpFilter(match, true)
@@ -174,7 +207,7 @@ func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 
 // parseRegexpFilter parses a regexp and attempt to simplify it with only literal filters.
 // If not possible it will returns the original regexp filter.
-func parseRegexpFilter(re string, match bool) (LineFilter, error) {
+func parseRegexpFilter(re string, match bool) (Filterer, error) {
 	reg, err := syntax.Parse(re, syntax.Perl)
 	if err != nil {
 		return nil, err
@@ -194,7 +227,7 @@ func parseRegexpFilter(re string, match bool) (LineFilter, error) {
 
 // simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
 // For example `(foo|bar)` will be replaced by  `containsFilter(foo) or containsFilter(bar)`
-func simplify(reg *syntax.Regexp) (LineFilter, bool) {
+func simplify(reg *syntax.Regexp) (Filterer, bool) {
 	switch reg.Op {
 	case syntax.OpAlternate:
 		return simplifyAlternate(reg)
@@ -230,7 +263,7 @@ func clearCapture(regs ...*syntax.Regexp) {
 
 // simplifyAlternate simplifies, when possible, alternate regexp expressions such as:
 // (foo|bar) or (foo|(bar|buzz)).
-func simplifyAlternate(reg *syntax.Regexp) (LineFilter, bool) {
+func simplifyAlternate(reg *syntax.Regexp) (Filterer, bool) {
 	clearCapture(reg.Sub...)
 	// attempt to simplify the first leg
 	f, ok := simplify(reg.Sub[0])
@@ -253,7 +286,7 @@ func simplifyAlternate(reg *syntax.Regexp) (LineFilter, bool) {
 // which is a literalFilter.
 // Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
 // Anything else is rejected.
-func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
+func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 	clearCapture(reg.Sub...)
 	// we support only simplication of concat operation with 3 sub expressions.
 	// for instance .*foo.*bar contains 4 subs (.*+foo+.*+bar) and can't be simplified.
@@ -261,7 +294,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 		return nil, false
 	}
 
-	var curr LineFilter
+	var curr Filterer
 	var ok bool
 	literals := 0
 	for _, sub := range reg.Sub {
@@ -304,7 +337,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 // A concat alternate is found when a concat operation has a sub alternate and is preceded by a literal.
 // For instance bar|b|buzz is expressed as b(ar|(?:)|uzz) => b concat alternate(ar,(?:),uzz).
 // (?:) being an OpEmptyMatch and b being the literal to concat all alternates (ar,(?:),uzz) with.
-func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr LineFilter) (LineFilter, bool) {
+func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer) (Filterer, bool) {
 	for _, alt := range reg.Sub {
 		switch alt.Op {
 		case syntax.OpEmptyMatch:

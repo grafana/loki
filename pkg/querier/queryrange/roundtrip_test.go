@@ -384,7 +384,7 @@ func TestRegexpParamsSupport(t *testing.T) {
 	count, h := promqlResult(streams)
 	rt.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		// the query params should contain the filter.
-		require.Contains(t, r.URL.Query().Get("query"), `|~"foo"`)
+		require.Contains(t, r.URL.Query().Get("query"), `|~ "foo"`)
 		h.ServeHTTP(rw, r)
 	}))
 	_, err = tpw(rt).RoundTrip(req)

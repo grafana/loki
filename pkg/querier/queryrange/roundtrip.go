@@ -122,14 +122,14 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		case logql.SampleExpr:
 			return r.metric.RoundTrip(req)
 		case logql.LogSelectorExpr:
-			filter, err := transformRegexQuery(req, e).Filter()
+			expr, err := transformRegexQuery(req, e)
 			if err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 			if err := validateLimits(req, rangeQuery.Limit, r.limits); err != nil {
 				return nil, err
 			}
-			if filter == nil {
+			if !expr.HasFilter() {
 				return r.next.RoundTrip(req)
 			}
 			return r.log.RoundTrip(req)
@@ -155,18 +155,22 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // transformRegexQuery backport the old regexp params into the v1 query format
-func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) logql.LogSelectorExpr {
+func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) (logql.LogSelectorExpr, error) {
 	regexp := req.Form.Get("regexp")
 	if regexp != "" {
-		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, regexp)
+		filterExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, regexp)
+		if err != nil {
+			return nil, err
+		}
 		params := req.URL.Query()
-		params.Set("query", expr.String())
+		params.Set("query", filterExpr.String())
 		req.URL.RawQuery = params.Encode()
 		// force the form and query to be parsed again.
 		req.Form = nil
 		req.PostForm = nil
+		return filterExpr, nil
 	}
-	return expr
+	return expr, nil
 }
 
 // validates log entries limits

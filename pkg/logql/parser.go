@@ -12,6 +12,8 @@ import (
 func init() {
 	// Improve the error messages coming out of yacc.
 	exprErrorVerbose = true
+	// uncomment when you need to understand yacc rule tree.
+	// exprDebug = 3
 	for str, tok := range tokens {
 		exprToknames[tok-exprPrivate+1] = str
 	}

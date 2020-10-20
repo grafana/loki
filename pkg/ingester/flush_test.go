@@ -319,12 +319,12 @@ func (s *testStore) getChunksForUser(userID string) []chunk.Chunk {
 	return s.chunks[userID]
 }
 
-func buildStreamsFromChunk(t *testing.T, labels string, chk chunkenc.Chunk) logproto.Stream {
-	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, nil)
+func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logproto.Stream {
+	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, labels.Labels{}, logql.NoopPipeline)
 	require.NoError(t, err)
 
 	stream := logproto.Stream{
-		Labels: labels,
+		Labels: lbs,
 	}
 	for it.Next() {
 		stream.Entries = append(stream.Entries, it.Entry())

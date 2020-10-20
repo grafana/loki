@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -95,9 +96,9 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 		}
 	}
 
-	filter, err := selector.Filter()
+	pipeline, err := selector.Pipeline()
 	if err != nil {
-		return nil, errors.Wrap(err, "error parsing filter")
+		return nil, errors.Wrap(err, "error parsing pipeline")
 	}
 
 	dropReason := "match_stage"
@@ -108,9 +109,9 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 	return &matcherStage{
 		dropReason: dropReason,
 		matchers:   selector.Matchers(),
-		pipeline:   pl,
+		stage:      pl,
 		action:     cfg.Action,
-		filter:     filter,
+		pipeline:   pipeline,
 	}, nil
 }
 
@@ -118,25 +119,33 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 type matcherStage struct {
 	dropReason string
 	matchers   []*labels.Matcher
-	filter     logql.LineFilter
-	pipeline   Stage
+	pipeline   logql.Pipeline
+	stage      Stage
 	action     string
 }
 
 // Process implements Stage
-func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (m *matcherStage) Process(lbs model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for _, filter := range m.matchers {
-		if !filter.Matches(string(labels[model.LabelName(filter.Name)])) {
+		if !filter.Matches(string(lbs[model.LabelName(filter.Name)])) {
 			return
 		}
 	}
-	if m.filter == nil || m.filter.Filter([]byte(*entry)) {
+
+	if newLine, newLabels, ok := m.pipeline.Process([]byte(*entry), labels.FromMap(util.ModelLabelSetToMap(lbs))); ok {
 		switch m.action {
 		case MatchActionDrop:
 			// Adds the drop label to not be sent by the api.EntryHandler
-			labels[dropLabel] = model.LabelValue(m.dropReason)
+			lbs[dropLabel] = model.LabelValue(m.dropReason)
 		case MatchActionKeep:
-			m.pipeline.Process(labels, extracted, t, entry)
+			*entry = string(newLine)
+			for k := range lbs {
+				delete(lbs, k)
+			}
+			for _, l := range newLabels {
+				lbs[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+			}
+			m.stage.Process(lbs, extracted, t, entry)
 		}
 	}
 }

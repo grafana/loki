@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 func TestMaxReturnedStreamsErrors(t *testing.T) {
@@ -119,7 +120,7 @@ func TestStreamIterator(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(chunks*entries - 1)
 				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, nil)
+				iter, err := s.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, logql.NoopPipeline)
 				require.NotNil(t, iter)
 				require.NoError(t, err)
 				testIteratorForward(t, iter, int64(from), int64(from+len))
@@ -129,7 +130,7 @@ func TestStreamIterator(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(entries - 1)
 				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, nil)
+				iter, err := s.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, logql.NoopPipeline)
 				require.NotNil(t, iter)
 				require.NoError(t, err)
 				testIteratorBackward(t, iter, int64(from), int64(from+len))
