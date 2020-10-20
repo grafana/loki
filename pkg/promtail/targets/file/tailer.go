@@ -133,25 +133,24 @@ func (t *tailer) readLines() {
 	}()
 
 	for {
-		select {
-		case line, ok := <-t.tail.Lines:
-			if !ok {
-				level.Info(t.logger).Log("msg", "tail routine: tail channel closed, stopping tailer", "path", t.path)
-				return
-			}
-
-			// Note currently the tail implementation hardcodes Err to nil, this should never hit.
-			if line.Err != nil {
-				level.Error(t.logger).Log("msg", "tail routine: error reading line", "path", t.path, "error", line.Err)
-				continue
-			}
-
-			readLines.WithLabelValues(t.path).Inc()
-			logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(line.Text)))
-			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
-				level.Error(t.logger).Log("msg", "tail routine: error handling line", "path", t.path, "error", err)
-			}
+		line, ok := <-t.tail.Lines
+		if !ok {
+			level.Info(t.logger).Log("msg", "tail routine: tail channel closed, stopping tailer", "path", t.path)
+			return
 		}
+
+		// Note currently the tail implementation hardcodes Err to nil, this should never hit.
+		if line.Err != nil {
+			level.Error(t.logger).Log("msg", "tail routine: error reading line", "path", t.path, "error", line.Err)
+			continue
+		}
+
+		readLines.WithLabelValues(t.path).Inc()
+		logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(line.Text)))
+		if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
+			level.Error(t.logger).Log("msg", "tail routine: error handling line", "path", t.path, "error", err)
+		}
+
 	}
 }
 
@@ -204,7 +203,6 @@ func (t *tailer) stop() {
 		<-t.done
 		level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 	})
-	return
 }
 
 func (t *tailer) isRunning() bool {

@@ -434,6 +434,6 @@ func nextBackoff(w io.Writer, statusCode int, backoff *util.Backoff) time.Time {
 	} else {
 		next = time.Now().Add(backoff.NextDelay())
 	}
-	fmt.Fprintf(w, "Loki returned an error code: %v, waiting %v before next query.", statusCode, next.Sub(time.Now()))
+	fmt.Fprintf(w, "Loki returned an error code: %v, waiting %v before next query.", statusCode, time.Until(next))
 	return next
 }

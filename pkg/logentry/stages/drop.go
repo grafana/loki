@@ -182,12 +182,12 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, the provided regular expression did not match the value found in the extracted map for source key: %v", *m.cfg.Source))
 					}
 					return
-				} else {
-					// regex match, will be dropped
-					if Debug {
-						level.Debug(m.logger).Log("msg", "line met drop criteria, regex matched the value in the extracted map source key")
-					}
 				}
+				// regex match, will be dropped
+				if Debug {
+					level.Debug(m.logger).Log("msg", "line met drop criteria, regex matched the value in the extracted map source key")
+				}
+
 			} else {
 				// Not found in extact map, don't drop
 				if Debug {
@@ -204,11 +204,11 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 						level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
 					}
 					return
-				} else {
-					if Debug {
-						level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
-					}
 				}
+				if Debug {
+					level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
+				}
+
 			} else {
 				// Not a match to entry was nil, do not drop
 				if Debug {

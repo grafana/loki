@@ -11,13 +11,13 @@ const (
 )
 
 type metrics struct {
-	compactTablesOperationTotal *prometheus.CounterVec
+	compactTablesOperationTotal           *prometheus.CounterVec
 	compactTablesOperationDurationSeconds prometheus.Gauge
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
 	m := metrics{
-		compactTablesOperationTotal:           promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		compactTablesOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "compact_tables_operation_total",
 			Help:      "Total number of tables compaction done by status",

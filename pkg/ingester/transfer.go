@@ -244,7 +244,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 					return err
 				}
 
-				chunks := make([]*logproto.Chunk, 1, 1)
+				chunks := make([]*logproto.Chunk, 1)
 				chunks[0] = &logproto.Chunk{
 					Data: bb,
 				}

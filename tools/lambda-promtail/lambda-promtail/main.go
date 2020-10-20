@@ -16,8 +16,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (

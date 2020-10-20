@@ -164,12 +164,12 @@ func Test_batch(t *testing.T) {
 		{
 			name: "super simple forward",
 			streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Labels: "{test=\"simple\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"}, // End timestamp is exclusive
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"}, // End timestamp is exclusive
 					},
 				},
 			},
@@ -188,12 +188,12 @@ func Test_batch(t *testing.T) {
 		{
 			name: "super simple backward",
 			streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Labels: "{test=\"simple\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"}, // End timestamp is exclusive
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"}, // End timestamp is exclusive
 					},
 				},
 			},
@@ -212,19 +212,19 @@ func Test_batch(t *testing.T) {
 		{
 			name: "single stream forward batch",
 			streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Labels: "{test=\"simple\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"},
-						logproto.Entry{Timestamp: time.Unix(4, 0), Line: "line4"},
-						logproto.Entry{Timestamp: time.Unix(5, 0), Line: "line5"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6"},
-						logproto.Entry{Timestamp: time.Unix(7, 0), Line: "line7"},
-						logproto.Entry{Timestamp: time.Unix(8, 0), Line: "line8"},
-						logproto.Entry{Timestamp: time.Unix(9, 0), Line: "line9"},
-						logproto.Entry{Timestamp: time.Unix(10, 0), Line: "line10"},
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"},
+						{Timestamp: time.Unix(4, 0), Line: "line4"},
+						{Timestamp: time.Unix(5, 0), Line: "line5"},
+						{Timestamp: time.Unix(6, 0), Line: "line6"},
+						{Timestamp: time.Unix(7, 0), Line: "line7"},
+						{Timestamp: time.Unix(8, 0), Line: "line8"},
+						{Timestamp: time.Unix(9, 0), Line: "line9"},
+						{Timestamp: time.Unix(10, 0), Line: "line10"},
 					},
 				},
 			},
@@ -252,19 +252,19 @@ func Test_batch(t *testing.T) {
 		{
 			name: "single stream backward batch",
 			streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Labels: "{test=\"simple\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"},
-						logproto.Entry{Timestamp: time.Unix(4, 0), Line: "line4"},
-						logproto.Entry{Timestamp: time.Unix(5, 0), Line: "line5"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6"},
-						logproto.Entry{Timestamp: time.Unix(7, 0), Line: "line7"},
-						logproto.Entry{Timestamp: time.Unix(8, 0), Line: "line8"},
-						logproto.Entry{Timestamp: time.Unix(9, 0), Line: "line9"},
-						logproto.Entry{Timestamp: time.Unix(10, 0), Line: "line10"},
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"},
+						{Timestamp: time.Unix(4, 0), Line: "line4"},
+						{Timestamp: time.Unix(5, 0), Line: "line5"},
+						{Timestamp: time.Unix(6, 0), Line: "line6"},
+						{Timestamp: time.Unix(7, 0), Line: "line7"},
+						{Timestamp: time.Unix(8, 0), Line: "line8"},
+						{Timestamp: time.Unix(9, 0), Line: "line9"},
+						{Timestamp: time.Unix(10, 0), Line: "line10"},
 					},
 				},
 			},
@@ -282,34 +282,34 @@ func Test_batch(t *testing.T) {
 		{
 			name: "two streams forward batch",
 			streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Labels: "{test=\"one\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"},
-						logproto.Entry{Timestamp: time.Unix(4, 0), Line: "line4"},
-						logproto.Entry{Timestamp: time.Unix(5, 0), Line: "line5"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6"},
-						logproto.Entry{Timestamp: time.Unix(7, 0), Line: "line7"},
-						logproto.Entry{Timestamp: time.Unix(8, 0), Line: "line8"},
-						logproto.Entry{Timestamp: time.Unix(9, 0), Line: "line9"},
-						logproto.Entry{Timestamp: time.Unix(10, 0), Line: "line10"},
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"},
+						{Timestamp: time.Unix(4, 0), Line: "line4"},
+						{Timestamp: time.Unix(5, 0), Line: "line5"},
+						{Timestamp: time.Unix(6, 0), Line: "line6"},
+						{Timestamp: time.Unix(7, 0), Line: "line7"},
+						{Timestamp: time.Unix(8, 0), Line: "line8"},
+						{Timestamp: time.Unix(9, 0), Line: "line9"},
+						{Timestamp: time.Unix(10, 0), Line: "line10"},
 					},
 				},
-				logproto.Stream{
+				{
 					Labels: "{test=\"two\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 1000), Line: "s2line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 1000), Line: "s2line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 1000), Line: "s2line3"},
-						logproto.Entry{Timestamp: time.Unix(4, 1000), Line: "s2line4"},
-						logproto.Entry{Timestamp: time.Unix(5, 1000), Line: "s2line5"},
-						logproto.Entry{Timestamp: time.Unix(6, 1000), Line: "s2line6"},
-						logproto.Entry{Timestamp: time.Unix(7, 1000), Line: "s2line7"},
-						logproto.Entry{Timestamp: time.Unix(8, 1000), Line: "s2line8"},
-						logproto.Entry{Timestamp: time.Unix(9, 1000), Line: "s2line9"},
-						logproto.Entry{Timestamp: time.Unix(10, 1000), Line: "s2line10"},
+						{Timestamp: time.Unix(1, 1000), Line: "s2line1"},
+						{Timestamp: time.Unix(2, 1000), Line: "s2line2"},
+						{Timestamp: time.Unix(3, 1000), Line: "s2line3"},
+						{Timestamp: time.Unix(4, 1000), Line: "s2line4"},
+						{Timestamp: time.Unix(5, 1000), Line: "s2line5"},
+						{Timestamp: time.Unix(6, 1000), Line: "s2line6"},
+						{Timestamp: time.Unix(7, 1000), Line: "s2line7"},
+						{Timestamp: time.Unix(8, 1000), Line: "s2line8"},
+						{Timestamp: time.Unix(9, 1000), Line: "s2line9"},
+						{Timestamp: time.Unix(10, 1000), Line: "s2line10"},
 					},
 				},
 			},
@@ -334,34 +334,34 @@ func Test_batch(t *testing.T) {
 		{
 			name: "two streams backward batch",
 			streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Labels: "{test=\"one\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"},
-						logproto.Entry{Timestamp: time.Unix(4, 0), Line: "line4"},
-						logproto.Entry{Timestamp: time.Unix(5, 0), Line: "line5"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6"},
-						logproto.Entry{Timestamp: time.Unix(7, 0), Line: "line7"},
-						logproto.Entry{Timestamp: time.Unix(8, 0), Line: "line8"},
-						logproto.Entry{Timestamp: time.Unix(9, 0), Line: "line9"},
-						logproto.Entry{Timestamp: time.Unix(10, 0), Line: "line10"},
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"},
+						{Timestamp: time.Unix(4, 0), Line: "line4"},
+						{Timestamp: time.Unix(5, 0), Line: "line5"},
+						{Timestamp: time.Unix(6, 0), Line: "line6"},
+						{Timestamp: time.Unix(7, 0), Line: "line7"},
+						{Timestamp: time.Unix(8, 0), Line: "line8"},
+						{Timestamp: time.Unix(9, 0), Line: "line9"},
+						{Timestamp: time.Unix(10, 0), Line: "line10"},
 					},
 				},
-				logproto.Stream{
+				{
 					Labels: "{test=\"two\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 1000), Line: "s2line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 1000), Line: "s2line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 1000), Line: "s2line3"},
-						logproto.Entry{Timestamp: time.Unix(4, 1000), Line: "s2line4"},
-						logproto.Entry{Timestamp: time.Unix(5, 1000), Line: "s2line5"},
-						logproto.Entry{Timestamp: time.Unix(6, 1000), Line: "s2line6"},
-						logproto.Entry{Timestamp: time.Unix(7, 1000), Line: "s2line7"},
-						logproto.Entry{Timestamp: time.Unix(8, 1000), Line: "s2line8"},
-						logproto.Entry{Timestamp: time.Unix(9, 1000), Line: "s2line9"},
-						logproto.Entry{Timestamp: time.Unix(10, 1000), Line: "s2line10"},
+						{Timestamp: time.Unix(1, 1000), Line: "s2line1"},
+						{Timestamp: time.Unix(2, 1000), Line: "s2line2"},
+						{Timestamp: time.Unix(3, 1000), Line: "s2line3"},
+						{Timestamp: time.Unix(4, 1000), Line: "s2line4"},
+						{Timestamp: time.Unix(5, 1000), Line: "s2line5"},
+						{Timestamp: time.Unix(6, 1000), Line: "s2line6"},
+						{Timestamp: time.Unix(7, 1000), Line: "s2line7"},
+						{Timestamp: time.Unix(8, 1000), Line: "s2line8"},
+						{Timestamp: time.Unix(9, 1000), Line: "s2line9"},
+						{Timestamp: time.Unix(10, 1000), Line: "s2line10"},
 					},
 				},
 			},
@@ -379,20 +379,20 @@ func Test_batch(t *testing.T) {
 		{
 			name: "single stream forward batch identical timestamps",
 			streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Labels: "{test=\"simple\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"},
-						logproto.Entry{Timestamp: time.Unix(4, 0), Line: "line4"},
-						logproto.Entry{Timestamp: time.Unix(5, 0), Line: "line5"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6a"},
-						logproto.Entry{Timestamp: time.Unix(7, 0), Line: "line7"},
-						logproto.Entry{Timestamp: time.Unix(8, 0), Line: "line8"},
-						logproto.Entry{Timestamp: time.Unix(9, 0), Line: "line9"},
-						logproto.Entry{Timestamp: time.Unix(10, 0), Line: "line10"},
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"},
+						{Timestamp: time.Unix(4, 0), Line: "line4"},
+						{Timestamp: time.Unix(5, 0), Line: "line5"},
+						{Timestamp: time.Unix(6, 0), Line: "line6"},
+						{Timestamp: time.Unix(6, 0), Line: "line6a"},
+						{Timestamp: time.Unix(7, 0), Line: "line7"},
+						{Timestamp: time.Unix(8, 0), Line: "line8"},
+						{Timestamp: time.Unix(9, 0), Line: "line9"},
+						{Timestamp: time.Unix(10, 0), Line: "line10"},
 					},
 				},
 			},
@@ -415,21 +415,21 @@ func Test_batch(t *testing.T) {
 		{
 			name: "single stream backward batch identical timestamps",
 			streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Labels: "{test=\"simple\"}",
 					Entries: []logproto.Entry{
-						logproto.Entry{Timestamp: time.Unix(1, 0), Line: "line1"},
-						logproto.Entry{Timestamp: time.Unix(2, 0), Line: "line2"},
-						logproto.Entry{Timestamp: time.Unix(3, 0), Line: "line3"},
-						logproto.Entry{Timestamp: time.Unix(4, 0), Line: "line4"},
-						logproto.Entry{Timestamp: time.Unix(5, 0), Line: "line5"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6a"},
-						logproto.Entry{Timestamp: time.Unix(6, 0), Line: "line6b"},
-						logproto.Entry{Timestamp: time.Unix(7, 0), Line: "line7"},
-						logproto.Entry{Timestamp: time.Unix(8, 0), Line: "line8"},
-						logproto.Entry{Timestamp: time.Unix(9, 0), Line: "line9"},
-						logproto.Entry{Timestamp: time.Unix(10, 0), Line: "line10"},
+						{Timestamp: time.Unix(1, 0), Line: "line1"},
+						{Timestamp: time.Unix(2, 0), Line: "line2"},
+						{Timestamp: time.Unix(3, 0), Line: "line3"},
+						{Timestamp: time.Unix(4, 0), Line: "line4"},
+						{Timestamp: time.Unix(5, 0), Line: "line5"},
+						{Timestamp: time.Unix(6, 0), Line: "line6"},
+						{Timestamp: time.Unix(6, 0), Line: "line6a"},
+						{Timestamp: time.Unix(6, 0), Line: "line6b"},
+						{Timestamp: time.Unix(7, 0), Line: "line7"},
+						{Timestamp: time.Unix(8, 0), Line: "line8"},
+						{Timestamp: time.Unix(9, 0), Line: "line9"},
+						{Timestamp: time.Unix(10, 0), Line: "line10"},
 					},
 				},
 			},
