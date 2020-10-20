@@ -8,16 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
-
-	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-
-	"github.com/grafana/loki/pkg/ingester/client"
-
-	"github.com/grafana/loki/pkg/storage"
-
-	"github.com/grafana/loki/pkg/logql"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -25,10 +15,15 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 

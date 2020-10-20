@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -191,8 +194,12 @@ func TestHeapIteratorPrefetch(t *testing.T) {
 type generator func(i int64) logproto.Entry
 
 func mkStreamIterator(f generator, labels string) EntryIterator {
+	return mkStreamIteratorForInterval(f, labels, int64(0), testSize)
+}
+
+func mkStreamIteratorForInterval(f generator, labels string, start, end int64) EntryIterator {
 	entries := []logproto.Entry{}
-	for i := int64(0); i < testSize; i++ {
+	for i := start; i < end; i++ {
 		entries = append(entries, f(i))
 	}
 	return NewStreamIterator(logproto.Stream{
@@ -599,4 +606,223 @@ func Test_timeRangedIterator_Next(t *testing.T) {
 			require.NoError(t, it.Close())
 		})
 	}
+}
+
+type mockTombstonesSet struct {
+	deletedIntervalsByLabels map[string][]model.Interval
+}
+
+func (m mockTombstonesSet) GetDeletedIntervals(lbls labels.Labels, _, _ model.Time) []model.Interval {
+	metric, err := parser.ParseMetric(lbls.String())
+	if err != nil {
+		panic(err)
+	}
+
+	return m.deletedIntervalsByLabels[metric.WithoutLabels(labels.MetricName).String()]
+}
+
+func TestDeletedEntryIterator(t *testing.T) {
+	buildStream := func(labels string, start, end int64, reverse bool) EntryIterator {
+		ei := mkStreamIteratorForInterval(identity, labels, start, end)
+		if reverse {
+			ei = mustReverseStreamIterator(ei)
+		}
+
+		return ei
+	}
+
+	otherLabels := "{foobar=\"bazbar\"}"
+	for _, direction := range []logproto.Direction{
+		logproto.FORWARD,
+		logproto.BACKWARD,
+	} {
+		for _, tc := range []struct {
+			name             string
+			srcIterator      EntryIterator
+			expectedIterator EntryIterator
+			tombstonesSet    tombstonesSet
+		}{
+			{
+				name:             "nothing deleted",
+				srcIterator:      buildStream(defaultLabels, 0, 10, direction == logproto.BACKWARD),
+				expectedIterator: buildStream(defaultLabels, 0, 10, direction == logproto.BACKWARD),
+				tombstonesSet:    mockTombstonesSet{},
+			},
+			{
+				name:             "one partially deleted stream",
+				srcIterator:      buildStream(defaultLabels, 0, 10, direction == logproto.BACKWARD),
+				expectedIterator: buildStream(defaultLabels, 6, 10, direction == logproto.BACKWARD),
+				tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+					defaultLabels: {{
+						Start: 0,
+						End:   model.Time(secondsToMilliseconds(5)),
+					}},
+				}},
+			},
+			{
+				name: "one partially deleted stream, one not deleted stream",
+				srcIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(defaultLabels, 0, 10, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 0, 10, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				expectedIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(defaultLabels, 6, 10, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 0, 10, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+					defaultLabels: {{
+						Start: 0,
+						End:   model.Time(secondsToMilliseconds(5)),
+					}},
+				}},
+			},
+			{
+				name: "two partially deleted streams",
+				srcIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(defaultLabels, 0, 10, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 0, 10, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				expectedIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(defaultLabels, 6, 10, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 0, 5, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+					defaultLabels: {{
+						Start: 0,
+						End:   model.Time(secondsToMilliseconds(5)),
+					}},
+					otherLabels: {{
+						Start: model.Time(secondsToMilliseconds(5)),
+						End:   model.Time(secondsToMilliseconds(10)),
+					}},
+				}},
+			},
+			{
+				name: "one completely deleted and one non-deleted stream",
+				srcIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(defaultLabels, 0, 10, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 0, 10, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				expectedIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(otherLabels, 0, 10, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+					defaultLabels: {{
+						Start: 0,
+						End:   model.Time(secondsToMilliseconds(10)),
+					}},
+				}},
+			},
+			{
+				name: "two completely deleted streams",
+				srcIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(defaultLabels, 0, 10, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 0, 10, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				expectedIterator: NoopIterator,
+				tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+					defaultLabels: {{
+						Start: 0,
+						End:   model.Time(secondsToMilliseconds(10)),
+					}},
+					otherLabels: {{
+						Start: model.Time(secondsToMilliseconds(0)),
+						End:   model.Time(secondsToMilliseconds(10)),
+					}},
+				}},
+			},
+			{
+				name: "two streams with multiple deleted intervals",
+				srcIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(defaultLabels, 0, 30, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 0, 30, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				expectedIterator: NewHeapIterator(
+					context.Background(),
+					[]EntryIterator{
+						buildStream(defaultLabels, 6, 10, direction == logproto.BACKWARD),
+						buildStream(defaultLabels, 16, 30, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 0, 10, direction == logproto.BACKWARD),
+						buildStream(otherLabels, 16, 20, direction == logproto.BACKWARD),
+					},
+					direction,
+				),
+				tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+					defaultLabels: {
+						{
+							Start: 0,
+							End:   model.Time(secondsToMilliseconds(5)),
+						},
+						{
+							Start: model.Time(secondsToMilliseconds(10)),
+							End:   model.Time(secondsToMilliseconds(15)),
+						},
+					},
+					otherLabels: {
+						{
+							Start: model.Time(secondsToMilliseconds(10)),
+							End:   model.Time(secondsToMilliseconds(15)),
+						},
+						{
+							Start: model.Time(secondsToMilliseconds(20)),
+							End:   model.Time(secondsToMilliseconds(30)),
+						},
+					},
+				}},
+			},
+		} {
+			t.Run(fmt.Sprintf("%s - %s", tc.name, direction), func(t *testing.T) {
+				deletedEntryIterator := NewDeletedEntryIterator(tc.srcIterator, tc.tombstonesSet, direction, model.Interval{})
+				for tc.expectedIterator.Next() {
+					require.True(t, deletedEntryIterator.Next())
+
+					require.Equal(t, tc.expectedIterator.Entry(), deletedEntryIterator.Entry())
+					require.Equal(t, tc.expectedIterator.Labels(), deletedEntryIterator.Labels())
+				}
+
+				require.False(t, deletedEntryIterator.Next())
+				require.NoError(t, tc.expectedIterator.Error())
+				require.NoError(t, deletedEntryIterator.Error())
+
+				require.NoError(t, tc.expectedIterator.Close())
+				require.NoError(t, deletedEntryIterator.Close())
+			})
+		}
+	}
+}
+
+func secondsToMilliseconds(t int64) time.Duration {
+	return (time.Duration(t) * time.Second) / time.Millisecond
 }

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -192,4 +194,201 @@ func TestReadSampleBatch(t *testing.T) {
 	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
+}
+
+func mkSampleIteratorForInterval(labels string, start, end int64) SampleIterator {
+	var samples []logproto.Sample
+	for i := start; i < end; i++ {
+		ts := time.Unix(i, 0).UnixNano()
+		samples = append(samples,
+			logproto.Sample{
+				Timestamp: ts,
+				Hash:      uint64(ts),
+				Value:     float64(1),
+			})
+	}
+	return NewSeriesIterator(logproto.Series{
+		Samples: samples,
+		Labels:  labels,
+	})
+}
+
+func TestDeletedSampleIterator(t *testing.T) {
+	otherLabels := "{foobar=\"bazbar\"}"
+
+	for _, tc := range []struct {
+		name             string
+		srcIterator      SampleIterator
+		expectedIterator SampleIterator
+		tombstonesSet    tombstonesSet
+	}{
+		{
+			name:             "nothing deleted",
+			srcIterator:      mkSampleIteratorForInterval(defaultLabels, 0, 10),
+			expectedIterator: mkSampleIteratorForInterval(defaultLabels, 0, 10),
+			tombstonesSet:    mockTombstonesSet{},
+		},
+		{
+			name:             "one partially deleted stream",
+			srcIterator:      mkSampleIteratorForInterval(defaultLabels, 0, 10),
+			expectedIterator: mkSampleIteratorForInterval(defaultLabels, 6, 10),
+			tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+				defaultLabels: {{
+					Start: 0,
+					End:   model.Time(secondsToMilliseconds(5)),
+				}},
+			}},
+		},
+		{
+			name: "one partially deleted stream, one not deleted stream",
+			srcIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(defaultLabels, 0, 10),
+					mkSampleIteratorForInterval(otherLabels, 0, 10),
+				},
+			),
+			expectedIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(defaultLabels, 6, 10),
+					mkSampleIteratorForInterval(otherLabels, 0, 10),
+				},
+			),
+			tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+				defaultLabels: {{
+					Start: 0,
+					End:   model.Time(secondsToMilliseconds(5)),
+				}},
+			}},
+		},
+		{
+			name: "two partially deleted streams",
+			srcIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(defaultLabels, 0, 10),
+					mkSampleIteratorForInterval(otherLabels, 0, 10),
+				},
+			),
+			expectedIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(defaultLabels, 6, 10),
+					mkSampleIteratorForInterval(otherLabels, 0, 5),
+				},
+			),
+			tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+				defaultLabels: {{
+					Start: 0,
+					End:   model.Time(secondsToMilliseconds(5)),
+				}},
+				otherLabels: {{
+					Start: model.Time(secondsToMilliseconds(5)),
+					End:   model.Time(secondsToMilliseconds(10)),
+				}},
+			}},
+		},
+		{
+			name: "one completely deleted and one non-deleted stream",
+			srcIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(defaultLabels, 0, 10),
+					mkSampleIteratorForInterval(otherLabels, 0, 10),
+				},
+			),
+			expectedIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(otherLabels, 0, 10),
+				},
+			),
+			tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+				defaultLabels: {{
+					Start: 0,
+					End:   model.Time(secondsToMilliseconds(10)),
+				}},
+			}},
+		},
+		{
+			name: "two completely deleted streams",
+			srcIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(defaultLabels, 0, 10),
+					mkSampleIteratorForInterval(otherLabels, 0, 10),
+				},
+			),
+			expectedIterator: NoopIterator,
+			tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+				defaultLabels: {{
+					Start: 0,
+					End:   model.Time(secondsToMilliseconds(10)),
+				}},
+				otherLabels: {{
+					Start: model.Time(secondsToMilliseconds(0)),
+					End:   model.Time(secondsToMilliseconds(10)),
+				}},
+			}},
+		},
+		{
+			name: "two streams with multiple deleted intervals",
+			srcIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(defaultLabels, 0, 30),
+					mkSampleIteratorForInterval(otherLabels, 0, 30),
+				},
+			),
+			expectedIterator: NewHeapSampleIterator(
+				context.Background(),
+				[]SampleIterator{
+					mkSampleIteratorForInterval(defaultLabels, 6, 10),
+					mkSampleIteratorForInterval(defaultLabels, 16, 30),
+					mkSampleIteratorForInterval(otherLabels, 0, 10),
+					mkSampleIteratorForInterval(otherLabels, 16, 20),
+				},
+			),
+			tombstonesSet: mockTombstonesSet{deletedIntervalsByLabels: map[string][]model.Interval{
+				defaultLabels: {
+					{
+						Start: 0,
+						End:   model.Time(secondsToMilliseconds(5)),
+					},
+					{
+						Start: model.Time(secondsToMilliseconds(10)),
+						End:   model.Time(secondsToMilliseconds(15)),
+					},
+				},
+				otherLabels: {
+					{
+						Start: model.Time(secondsToMilliseconds(10)),
+						End:   model.Time(secondsToMilliseconds(15)),
+					},
+					{
+						Start: model.Time(secondsToMilliseconds(20)),
+						End:   model.Time(secondsToMilliseconds(30)),
+					},
+				},
+			}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deletedSampleIterator := NewDeletedSampleIterator(tc.srcIterator, tc.tombstonesSet, model.Interval{})
+			for tc.expectedIterator.Next() {
+				require.True(t, deletedSampleIterator.Next())
+
+				require.Equal(t, tc.expectedIterator.Sample(), deletedSampleIterator.Sample())
+				require.Equal(t, tc.expectedIterator.Labels(), deletedSampleIterator.Labels())
+			}
+
+			require.False(t, deletedSampleIterator.Next())
+			require.NoError(t, tc.expectedIterator.Error())
+			require.NoError(t, deletedSampleIterator.Error())
+
+			require.NoError(t, tc.expectedIterator.Close())
+			require.NoError(t, deletedSampleIterator.Close())
+		})
+	}
 }
