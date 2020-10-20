@@ -73,7 +73,7 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 	}
 }
 
-// batchChunkIterator is an EntryIterator that iterates through chunks by batch of `batchSize`.
+// batchChunkIterator iterates through chunks by batch of `batchSize`.
 // Since chunks can overlap across batches for each iteration the iterator will keep all overlapping
 // chunks with the next chunk from the next batch and added it to the next iteration. In this case the boundaries of the batch
 // is reduced to non-overlapping chunks boundaries.
@@ -129,6 +129,12 @@ func (it *batchChunkIterator) Start() {
 }
 
 func (it *batchChunkIterator) loop(ctx context.Context) {
+	defer func() {
+		if p := recover(); p != nil {
+			it.next <- &chunkBatch{err: errors.Errorf("panic while fecthing chunks %+v", p)}
+			close(it.next)
+		}
+	}()
 	for {
 		if it.chunks.Len() == 0 {
 			close(it.next)
