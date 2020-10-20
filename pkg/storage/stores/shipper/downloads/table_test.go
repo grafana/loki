@@ -238,3 +238,53 @@ func TestTable_doParallelDownload(t *testing.T) {
 		})
 	}
 }
+
+func TestTable_DuplicateIndex(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "table-writes")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(tempDir))
+	}()
+
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+
+	testDBs := map[string]testutil.DBRecords{
+		"db1": {
+			Start:      0,
+			NumRecords: 10,
+		},
+		"duplicate_db1": {
+			Start:      0,
+			NumRecords: 10,
+		},
+		"db2": {
+			Start:      10,
+			NumRecords: 10,
+		},
+		"partially_duplicate_db2": {
+			Start:      10,
+			NumRecords: 5,
+		},
+		"db3": {
+			Start:      20,
+			NumRecords: 10,
+		},
+	}
+
+	testutil.SetupDBTablesAtPath(t, "test", objectStoragePath, testDBs, true)
+
+	table, _, stopFunc := buildTestTable(t, "test", tempDir)
+	defer func() {
+		stopFunc()
+	}()
+
+	// build queries each looking for specific value from all the dbs
+	var queries []chunk.IndexQuery
+	for i := 5; i < 25; i++ {
+		queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+	}
+
+	// query the loaded table to see if it has right data.
+	testutil.TestSingleTableQuery(t, queries, table, 5, 20)
+}

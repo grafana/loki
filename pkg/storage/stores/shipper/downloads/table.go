@@ -29,8 +29,10 @@ const (
 	delimiter           = "/"
 )
 
+var bucketName = []byte("index")
+
 type BoltDBIndexClient interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 }
 
 type StorageClient interface {
@@ -225,12 +227,30 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 	level.Debug(log).Log("table-name", t.name, "query-count", len(queries))
 
+	id := shipper_util.NewIndexDeduper(callback)
+
 	for name, db := range t.dbs {
-		for _, query := range queries {
-			if err := t.boltDBIndexClient.QueryDB(ctx, db.boltdb, query, callback); err != nil {
-				return err
+		err := db.boltdb.View(func(tx *bbolt.Tx) error {
+			bucket := tx.Bucket(bucketName)
+			if bucket == nil {
+				return nil
 			}
+
+			for _, query := range queries {
+				if err := t.boltDBIndexClient.QueryWithCursor(ctx, bucket.Cursor(), query, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+					return id.Callback(query, batch)
+				}); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return err
 		}
+
 		level.Debug(log).Log("queried-db", name)
 	}
 

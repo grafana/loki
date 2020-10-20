@@ -21,27 +21,34 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 const (
 	// create a new db sharded by time based on when write request is received
 	shardDBsByDuration = 15 * time.Minute
 
-	// retain dbs for specified duration after they are modified to avoid keeping them locally forever.
-	// this period should be big enough than shardDBsByDuration to avoid any conflicts
-	dbRetainPeriod = time.Hour
+	// a temp file is created during uploads with name of the db + tempFileSuffix
+	tempFileSuffix = ".temp"
 
-	// a snapshot file is created during uploads with name of the db + snapshotFileSuffix
-	snapshotFileSuffix = ".temp"
+	// a snapshot file is created with name of the db + snapshotFileSuffix periodically for read operation.
+	snapshotFileSuffix = ".snapshot"
 )
 
+var bucketName = []byte("index")
+
 type BoltDBIndexClient interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
 }
 
 type StorageClient interface {
 	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
+}
+
+type dbSnapshot struct {
+	boltdb      *bbolt.DB
+	writesCount int
 }
 
 // Table is a collection of multiple dbs created for a same table by the ingester.
@@ -56,9 +63,12 @@ type Table struct {
 	dbs    map[string]*bbolt.DB
 	dbsMtx sync.RWMutex
 
-	uploadedDBsMtime    map[string]time.Time
-	uploadedDBsMtimeMtx sync.RWMutex
-	modifyShardsSince   int64
+	dbSnapshots    map[string]*dbSnapshot
+	dbSnapshotsMtx sync.RWMutex
+
+	modifyShardsSince int64
+	dbUploadTime      map[string]time.Time
+	dbUploadTimeMtx   sync.RWMutex
 }
 
 // NewTable create a new Table without looking for any existing local dbs belonging to the table.
@@ -93,21 +103,113 @@ func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageCli
 		storageClient:     storageClient,
 		boltdbIndexClient: boltdbIndexClient,
 		dbs:               dbs,
-		uploadedDBsMtime:  map[string]time.Time{},
+		dbSnapshots:       map[string]*dbSnapshot{},
+		dbUploadTime:      map[string]time.Time{},
 		modifyShardsSince: time.Now().Unix(),
 	}, nil
 }
 
-// MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (lt *Table) Snapshot() error {
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
 
-	for _, db := range lt.dbs {
-		for _, query := range queries {
-			if err := lt.boltdbIndexClient.QueryDB(ctx, db, query, callback); err != nil {
+	lt.dbSnapshotsMtx.Lock()
+	defer lt.dbSnapshotsMtx.Unlock()
+
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("snapshotting table %s", lt.name))
+
+	for name, db := range lt.dbs {
+		level.Debug(util.Logger).Log("msg", fmt.Sprintf("checking db %s for snapshot", name))
+		srcWriteCount := 0
+		err := db.View(func(tx *bbolt.Tx) error {
+			srcWriteCount = db.Stats().TxStats.Write
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		snapshot, ok := lt.dbSnapshots[name]
+		filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, snapshotFileSuffix))
+
+		if !ok {
+			snapshot = &dbSnapshot{}
+		} else if snapshot.writesCount == srcWriteCount {
+			continue
+		} else {
+			if err := snapshot.boltdb.Close(); err != nil {
 				return err
 			}
+
+			if err := os.Remove(filePath); err != nil {
+				return err
+			}
+		}
+
+		f, err := os.Create(filePath)
+		if err != nil {
+			return err
+		}
+
+		err = db.View(func(tx *bbolt.Tx) (err error) {
+			_, err = tx.WriteTo(f)
+			return
+		})
+		if err != nil {
+			return err
+		}
+
+		// flush the file to disk.
+		if err := f.Sync(); err != nil {
+			return err
+		}
+
+		if err := f.Close(); err != nil {
+			return err
+		}
+
+		snapshot.boltdb, err = local.OpenBoltdbFile(filePath)
+		if err != nil {
+			return err
+		}
+
+		snapshot.writesCount = srcWriteCount
+		lt.dbSnapshots[name] = snapshot
+
+		level.Debug(util.Logger).Log("msg", fmt.Sprintf("finished snaphotting db %s", name))
+	}
+
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("finished snapshotting table %s", lt.name))
+
+	return nil
+}
+
+// MultiQueries runs multiple queries without having to take lock multiple times for each query.
+func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+	lt.dbSnapshotsMtx.RLock()
+	defer lt.dbSnapshotsMtx.RUnlock()
+
+	id := shipper_util.NewIndexDeduper(callback)
+
+	for _, db := range lt.dbSnapshots {
+		err := db.boltdb.View(func(tx *bbolt.Tx) error {
+			bucket := tx.Bucket(bucketName)
+			if bucket == nil {
+				return nil
+			}
+
+			for _, query := range queries {
+				if err := lt.boltdbIndexClient.QueryWithCursor(ctx, bucket.Cursor(), query, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+					return id.Callback(query, batch)
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+
+		if err != nil {
+			return err
 		}
 	}
 
@@ -192,7 +294,30 @@ func (lt *Table) RemoveDB(name string) error {
 
 	delete(lt.dbs, name)
 
+	lt.dbUploadTimeMtx.Lock()
+	delete(lt.dbUploadTime, name)
+	lt.dbUploadTimeMtx.Unlock()
+
 	return os.Remove(filepath.Join(lt.path, name))
+}
+
+func (lt *Table) RemoveSnapshotDB(name string) error {
+	lt.dbSnapshotsMtx.Lock()
+	defer lt.dbSnapshotsMtx.Unlock()
+
+	db, ok := lt.dbSnapshots[name]
+	if !ok {
+		return nil
+	}
+
+	err := db.boltdb.Close()
+	if err != nil {
+		return err
+	}
+
+	delete(lt.dbSnapshots, name)
+
+	return os.Remove(filepath.Join(lt.path, fmt.Sprintf("%s%s", name, snapshotFileSuffix)))
 }
 
 // Upload uploads all the dbs which are never uploaded or have been modified since the last batch was uploaded.
@@ -219,16 +344,13 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 		if !force && filenameWithEpochRe.MatchString(name) && name >= uploadShardsBefore {
 			continue
 		}
-		stat, err := os.Stat(db.Path())
-		if err != nil {
-			return err
-		}
 
-		lt.uploadedDBsMtimeMtx.RLock()
-		uploadedDBMtime, ok := lt.uploadedDBsMtime[name]
-		lt.uploadedDBsMtimeMtx.RUnlock()
+		// if the file is uploaded already do not upload it again.
+		lt.dbUploadTimeMtx.RLock()
+		_, ok := lt.dbUploadTime[name]
+		lt.dbUploadTimeMtx.RUnlock()
 
-		if ok && !uploadedDBMtime.Before(stat.ModTime()) {
+		if ok {
 			continue
 		}
 
@@ -237,9 +359,9 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 			return err
 		}
 
-		lt.uploadedDBsMtimeMtx.Lock()
-		lt.uploadedDBsMtime[name] = stat.ModTime()
-		lt.uploadedDBsMtimeMtx.Unlock()
+		lt.dbUploadTimeMtx.Lock()
+		lt.dbUploadTime[name] = time.Now()
+		lt.dbUploadTimeMtx.Unlock()
 	}
 
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("finished uploading table %s", lt.name))
@@ -250,7 +372,7 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
 
-	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, snapshotFileSuffix))
+	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, tempFileSuffix))
 	f, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -299,7 +421,7 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 
 // Cleanup removes dbs which are already uploaded and have not been modified for period longer than dbRetainPeriod.
 // This is to avoid keeping all the files forever in the ingesters.
-func (lt *Table) Cleanup() error {
+func (lt *Table) Cleanup(dbRetainPeriod time.Duration) error {
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted dbs from table %s", lt.name))
 
 	var filesToCleanup []string
@@ -307,18 +429,13 @@ func (lt *Table) Cleanup() error {
 
 	lt.dbsMtx.RLock()
 
-	for name, db := range lt.dbs {
-		stat, err := os.Stat(db.Path())
-		if err != nil {
-			return err
-		}
-
-		lt.uploadedDBsMtimeMtx.RLock()
-		uploadedDBMtime, ok := lt.uploadedDBsMtime[name]
-		lt.uploadedDBsMtimeMtx.RUnlock()
+	for name := range lt.dbs {
+		lt.dbUploadTimeMtx.RLock()
+		dbUploadTime, ok := lt.dbUploadTime[name]
+		lt.dbUploadTimeMtx.RUnlock()
 
 		// consider files which are already uploaded and have mod time before cutoff time to retain files.
-		if ok && !uploadedDBMtime.Before(stat.ModTime()) && stat.ModTime().Before(cutoffTime) {
+		if ok && dbUploadTime.Before(cutoffTime) {
 			filesToCleanup = append(filesToCleanup, name)
 		}
 	}
@@ -330,6 +447,10 @@ func (lt *Table) Cleanup() error {
 
 		if err := lt.RemoveDB(filesToCleanup[i]); err != nil {
 			return err
+		}
+
+		if err := lt.RemoveSnapshotDB(filesToCleanup[i]); err != nil {
+			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to remove snapshot db %s", filesToCleanup[i]))
 		}
 	}
 
@@ -360,7 +481,7 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 			continue
 		}
 
-		if strings.HasSuffix(fileInfo.Name(), snapshotFileSuffix) {
+		if strings.HasSuffix(fileInfo.Name(), tempFileSuffix) || strings.HasSuffix(fileInfo.Name(), snapshotFileSuffix) {
 			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
 			// Cleaning up those temp files to avoid problems.
 			if err := os.Remove(filepath.Join(dir, fileInfo.Name())); err != nil {

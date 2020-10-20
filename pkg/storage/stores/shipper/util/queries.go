@@ -2,6 +2,8 @@ package util
 
 import (
 	"context"
+	"sync"
+	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -47,4 +49,83 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 	}
 
 	return lastErr
+}
+
+// IndexDeduper should always be used on table level not the whole query level because it just looks at range values which can be repeated across tables
+//Cortex anyways dedupes entries accross tables
+type IndexDeduper struct {
+	callback        chunk_util.Callback
+	seenRangeValues map[string]map[string]struct{}
+	mtx             sync.Mutex
+}
+
+func NewIndexDeduper(callback chunk_util.Callback) *IndexDeduper {
+	return &IndexDeduper{
+		callback:        callback,
+		seenRangeValues: map[string]map[string]struct{}{},
+	}
+}
+
+func (i *IndexDeduper) Callback(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	return i.callback(query, &filteringBatch{
+		query:     query,
+		ReadBatch: batch,
+		isSeen:    i.isSeen,
+	})
+}
+
+func (i *IndexDeduper) isSeen(hashValue string, rangeValue []byte) bool {
+	i.mtx.Lock()
+	defer i.mtx.Unlock()
+
+	// index entries are never modified during query processing so it should be safe to reference a byte slice as a string.
+	rangeValueStr := yoloString(rangeValue)
+	if _, ok := i.seenRangeValues[hashValue]; !ok {
+		i.seenRangeValues[hashValue] = map[string]struct{}{}
+	}
+
+	if _, ok := i.seenRangeValues[hashValue][rangeValueStr]; ok {
+		return true
+	}
+
+	i.seenRangeValues[hashValue][rangeValueStr] = struct{}{}
+	return false
+}
+
+type isSeen func(hashValue string, rangeValue []byte) bool
+
+type filteringBatch struct {
+	query chunk.IndexQuery
+	chunk.ReadBatch
+	isSeen isSeen
+}
+
+func (f *filteringBatch) Iterator() chunk.ReadBatchIterator {
+	return &filteringBatchIter{
+		query:             f.query,
+		ReadBatchIterator: f.ReadBatch.Iterator(),
+		isSeen:            f.isSeen,
+	}
+}
+
+type filteringBatchIter struct {
+	query chunk.IndexQuery
+	chunk.ReadBatchIterator
+	isSeen isSeen
+}
+
+func (f *filteringBatchIter) Next() bool {
+	for f.ReadBatchIterator.Next() {
+		if f.isSeen(f.query.HashValue, f.ReadBatchIterator.RangeValue()) {
+			continue
+		}
+
+		return true
+	}
+
+	return false
+}
+
+func yoloString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

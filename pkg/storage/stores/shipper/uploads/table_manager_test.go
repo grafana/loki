@@ -138,6 +138,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 	require.Len(t, tm.tables, len(tc))
 
 	for tableName, expectedIndex := range tc {
+		require.NoError(t, tm.tables[tableName].Snapshot())
 		testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
@@ -173,6 +174,10 @@ func TestTableManager_QueryPages(t *testing.T) {
 	queries = append(queries, chunk.IndexQuery{TableName: "non-existent"})
 
 	require.NoError(t, tm.BatchWrite(context.Background(), writeBatch))
+
+	for _, table := range tm.tables {
+		require.NoError(t, table.Snapshot())
+	}
 
 	testutil.TestMultiTableQuery(t, queries, tm, 0, 30)
 }
