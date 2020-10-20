@@ -157,12 +157,10 @@ func (t *table) compact() error {
 
 	// read all the errors
 	for i := 0; i < n; i++ {
-		select {
-		case err := <-errChan:
-			if err != nil && firstErr == nil {
-				firstErr = err
-				close(t.quit)
-			}
+		err := <-errChan
+		if err != nil && firstErr == nil {
+			firstErr = err
+			close(t.quit)
 		}
 	}
 

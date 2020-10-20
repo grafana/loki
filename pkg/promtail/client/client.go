@@ -274,7 +274,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					}
 				}
 				if lblSet != nil {
-					streamLag.With(lblSet).Set(time.Now().Sub(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
+					streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
 				}
 			}
 			return

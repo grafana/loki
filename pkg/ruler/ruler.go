@@ -6,10 +6,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	cRules "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler/manager"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/ruler/manager"
 )
 
 type Config struct {

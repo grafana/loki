@@ -41,12 +41,13 @@ const (
 
 	StorageKeyPrefix = "index/"
 
-	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
-	UploadInterval = 15 * time.Minute
+	// UploadInterval defines interval for when we check if there are new index files to upload.
+	// It's also used to snapshot the currently written index tables so the snapshots can be used for reads.
+	UploadInterval = 1 * time.Minute
 )
 
 type boltDBIndexClient interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 	NewWriteBatch() chunk.WriteBatch
 	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
 	Stop()
@@ -124,6 +125,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			Uploader:       uploader,
 			IndexDir:       s.cfg.ActiveIndexDirectory,
 			UploadInterval: UploadInterval,
+			DBRetainPeriod: s.cfg.ResyncInterval + 2*time.Minute,
 		}
 		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
 		if err != nil {

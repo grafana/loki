@@ -2,11 +2,11 @@ package querier
 
 import (
 	"context"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

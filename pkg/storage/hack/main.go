@@ -51,7 +51,7 @@ func getStore() (lstore.Store, error) {
 	}
 
 	schemaCfg := lstore.SchemaConfig{
-		chunk.SchemaConfig{
+		SchemaConfig: chunk.SchemaConfig{
 			Configs: []chunk.PeriodConfig{
 				{
 					From:       chunk.DayTime{Time: start},

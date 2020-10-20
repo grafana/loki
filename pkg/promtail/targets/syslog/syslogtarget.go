@@ -48,6 +48,7 @@ var (
 )
 
 // SyslogTarget listens to syslog messages.
+// nolint:golint
 type SyslogTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
