@@ -101,7 +101,10 @@ func newBatchChunkIterator(
 	metrics *ChunkMetrics,
 	matchers []*labels.Matcher,
 ) *batchChunkIterator {
-
+	// __name__ is not something we filter by because it's a constant in loki
+	// and only used for upstream compatibility; therefore remove it.
+	// The same applies to the sharding label which is injected by the cortex storage code.
+	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
 	res := &batchChunkIterator{
 		batchSize: batchSize,
 		metrics:   metrics,
@@ -304,17 +307,12 @@ func newLogBatchIterator(
 	start, end time.Time,
 ) (iter.EntryIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	// __name__ is not something we filter by because it's a constant in loki
-	// and only used for upstream compatibility; therefore remove it.
-	// The same applies to the sharding label which is injected by the cortex storage code.
-	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
-	logbatch := &logBatchIterator{
+	return &logBatchIterator{
 		pipeline:           pipeline,
 		ctx:                ctx,
 		cancel:             cancel,
 		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, metrics, matchers),
-	}
-	return logbatch, nil
+	}, nil
 }
 
 func (it *logBatchIterator) Labels() string {
@@ -441,20 +439,12 @@ func newSampleBatchIterator(
 	start, end time.Time,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
-
-	// __name__ is not something we filter by because it's a constant in loki
-	// and only used for upstream compatibility; therefore remove it.
-	// The same applies to the sharding label which is injected by the cortex storage code.
-	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
-
-	samplebatch := &sampleBatchIterator{
+	return &sampleBatchIterator{
 		extractor:          extractor,
 		ctx:                ctx,
 		cancel:             cancel,
 		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers),
-	}
-
-	return samplebatch, nil
+	}, nil
 }
 
 func (it *sampleBatchIterator) Labels() string {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"strings"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
@@ -27,8 +26,6 @@ import (
 func init() {
 	prometheus.MustRegister(version.NewCollector("loki"))
 }
-
-var lineReplacer = strings.NewReplacer("\n", "\\n  ")
 
 type Config struct {
 	loki.Config  `yaml:",inline"`

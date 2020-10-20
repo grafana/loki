@@ -15,6 +15,7 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
@@ -99,7 +100,7 @@ func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient
 
 // init downloads all the db files for the table from object storage.
 // it assumes the locking of mutex is taken care of by the caller.
-func (t *Table) init(ctx context.Context, spanLogger *spanlogger.SpanLogger) (err error) {
+func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -454,7 +455,6 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 			}
 
 			incomingErrors <- err
-			return
 		}()
 	}
 
