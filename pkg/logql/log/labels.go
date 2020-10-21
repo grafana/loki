@@ -135,3 +135,13 @@ Outer:
 
 	return res
 }
+
+func (b *LabelsBuilder) WithoutLabels(names ...string) labels.Labels {
+	// naive implementation for now.
+	return b.Labels().WithoutLabels(names...)
+}
+
+func (b *LabelsBuilder) WithLabels(names ...string) labels.Labels {
+	// naive implementation for now.
+	return b.Labels().WithLabels(names...)
+}

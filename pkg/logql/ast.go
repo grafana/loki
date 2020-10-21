@@ -86,7 +86,6 @@ type SampleExtractor = log.SampleExtractor
 
 var (
 	NoopPipeline = log.NoopPipeline
-	ExtractCount = log.CountExtractor.ToSampleExtractor()
 )
 
 // PipelineExpr is an expression defining a log pipeline.
@@ -716,6 +715,11 @@ func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 }
 
 func (e *vectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
+	// inject in the range vector extractor the outer groups to improve performance.
+	// This is only possible if the operation is a sum. Anything else needs all labels.
+	if r, ok := e.left.(*rangeAggregationExpr); ok && e.operation == OpTypeSum {
+		return r.extractor(e.grouping, true)
+	}
 	return e.left.Extractor()
 }
 

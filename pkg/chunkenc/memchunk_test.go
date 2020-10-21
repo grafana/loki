@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
@@ -128,7 +129,7 @@ func TestBlock(t *testing.T) {
 			require.NoError(t, it.Close())
 			require.Equal(t, len(cases), idx)
 
-			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, log.CountExtractor.ToSampleExtractor(nil, false, false))
 			idx = 0
 			for sampleIt.Next() {
 				s := sampleIt.Sample()
@@ -276,7 +277,7 @@ func TestSerialization(t *testing.T) {
 			}
 			require.NoError(t, it.Error())
 
-			sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, log.CountExtractor.ToSampleExtractor(nil, false, false))
 			for i := 0; i < numSamples; i++ {
 				require.True(t, sampleIt.Next(), i)
 

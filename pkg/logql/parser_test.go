@@ -22,909 +22,909 @@ func TestParse(t *testing.T) {
 		exp Expr
 		err error
 	}{
-		// {
-		// 	// raw string
-		// 	in: "count_over_time({foo=~`bar\\w+`}[12h] |~ `error\\`)",
-		// 	exp: &rangeAggregationExpr{
-		// 		operation: "count_over_time",
-		// 		left: &logRange{
-		// 			left: &pipelineExpr{
-		// 				pipeline: MultiStageExpr{
-		// 					newLineFilterExpr(nil, labels.MatchRegexp, "error\\"),
-		// 				},
-		// 				left: &matchersExpr{
-		// 					matchers: []*labels.Matcher{
-		// 						mustNewMatcher(labels.MatchRegexp, "foo", "bar\\w+"),
-		// 					},
-		// 				},
-		// 			},
-		// 			interval: 12 * time.Hour,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	// test [12h] before filter expr
-		// 	in: `count_over_time({foo="bar"}[12h] |= "error")`,
-		// 	exp: &rangeAggregationExpr{
-		// 		operation: "count_over_time",
-		// 		left: &logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(nil, labels.MatchEqual, "error"),
-		// 				},
-		// 			),
-		// 			interval: 12 * time.Hour,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	// test [12h] after filter expr
-		// 	in: `count_over_time({foo="bar"} |= "error" [12h])`,
-		// 	exp: &rangeAggregationExpr{
-		// 		operation: "count_over_time",
-		// 		left: &logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
-		// 				MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "error")},
-		// 			),
-		// 			interval: 12 * time.Hour,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	in:  `{foo="bar"}`,
-		// 	exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-		// },
-		// {
-		// 	in:  `{ foo = "bar" }`,
-		// 	exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-		// },
-		// {
-		// 	in:  `{ foo != "bar" }`,
-		// 	exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
-		// },
-		// {
-		// 	in:  `{ foo =~ "bar" }`,
-		// 	exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
-		// },
-		// {
-		// 	in:  `{ foo !~ "bar" }`,
-		// 	exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// },
-		// {
-		// 	in: `count_over_time({ foo !~ "bar" }[12m])`,
-		// 	exp: &rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 12 * time.Minute,
-		// 		},
-		// 		operation: "count_over_time",
-		// 	},
-		// },
-		// {
-		// 	in: `bytes_over_time({ foo !~ "bar" }[12m])`,
-		// 	exp: &rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 12 * time.Minute,
-		// 		},
-		// 		operation: OpRangeTypeBytes,
-		// 	},
-		// },
-		// {
-		// 	in: `bytes_rate({ foo !~ "bar" }[12m])`,
-		// 	exp: &rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 12 * time.Minute,
-		// 		},
-		// 		operation: OpRangeTypeBytesRate,
-		// 	},
-		// },
-		// {
-		// 	in: `rate({ foo !~ "bar" }[5h])`,
-		// 	exp: &rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 5 * time.Hour,
-		// 		},
-		// 		operation: "rate",
-		// 	},
-		// },
-		// {
-		// 	in: `rate({ foo !~ "bar" }[5d])`,
-		// 	exp: &rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 5 * 24 * time.Hour,
-		// 		},
-		// 		operation: "rate",
-		// 	},
-		// },
-		// {
-		// 	in: `count_over_time({ foo !~ "bar" }[1w])`,
-		// 	exp: &rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 7 * 24 * time.Hour,
-		// 		},
-		// 		operation: "count_over_time",
-		// 	},
-		// },
-		// {
-		// 	in: `sum(rate({ foo !~ "bar" }[5h]))`,
-		// 	exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 5 * time.Hour,
-		// 		},
-		// 		operation: "rate",
-		// 	}, "sum", nil, nil),
-		// },
-		// {
-		// 	in: `sum(rate({ foo !~ "bar" }[1y]))`,
-		// 	exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 365 * 24 * time.Hour,
-		// 		},
-		// 		operation: "rate",
-		// 	}, "sum", nil, nil),
-		// },
-		// {
-		// 	in: `avg(count_over_time({ foo !~ "bar" }[5h])) by (bar,foo)`,
-		// 	exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 5 * time.Hour,
-		// 		},
-		// 		operation: "count_over_time",
-		// 	}, "avg", &grouping{
-		// 		without: false,
-		// 		groups:  []string{"bar", "foo"},
-		// 	}, nil),
-		// },
-		// {
-		// 	in: `max without (bar) (count_over_time({ foo !~ "bar" }[5h]))`,
-		// 	exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 5 * time.Hour,
-		// 		},
-		// 		operation: "count_over_time",
-		// 	}, "max", &grouping{
-		// 		without: true,
-		// 		groups:  []string{"bar"},
-		// 	}, nil),
-		// },
-		// {
-		// 	in: `topk(10,count_over_time({ foo !~ "bar" }[5h])) without (bar)`,
-		// 	exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 5 * time.Hour,
-		// 		},
-		// 		operation: "count_over_time",
-		// 	}, "topk", &grouping{
-		// 		without: true,
-		// 		groups:  []string{"bar"},
-		// 	}, NewStringLabelFilter("10")),
-		// },
-		// {
-		// 	in: `bottomk(30 ,sum(rate({ foo !~ "bar" }[5h])) by (foo))`,
-		// 	exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 5 * time.Hour,
-		// 		},
-		// 		operation: "rate",
-		// 	}, "sum", &grouping{
-		// 		groups:  []string{"foo"},
-		// 		without: false,
-		// 	}, nil), "bottomk", nil,
-		// 		NewStringLabelFilter("30")),
-		// },
-		// {
-		// 	in: `max( sum(count_over_time({ foo !~ "bar" }[5h])) without (foo,bar) ) by (foo)`,
-		// 	exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&rangeAggregationExpr{
-		// 		left: &logRange{
-		// 			left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		// 			interval: 5 * time.Hour,
-		// 		},
-		// 		operation: "count_over_time",
-		// 	}, "sum", &grouping{
-		// 		groups:  []string{"foo", "bar"},
-		// 		without: true,
-		// 	}, nil), "max", &grouping{
-		// 		groups:  []string{"foo"},
-		// 		without: false,
-		// 	}, nil),
-		// },
-		// {
-		// 	in: `unk({ foo !~ "bar" }[5m])`,
-		// 	err: ParseError{
-		// 		msg:  "syntax error: unexpected IDENTIFIER",
-		// 		line: 1,
-		// 		col:  1,
-		// 	},
-		// },
-		// {
-		// 	in: `rate({ foo !~ "bar" }[5minutes])`,
-		// 	err: ParseError{
-		// 		msg:  `not a valid duration string: "5minutes"`,
-		// 		line: 0,
-		// 		col:  22,
-		// 	},
-		// },
-		// {
-		// 	in: `rate({ foo !~ "bar" }[5)`,
-		// 	err: ParseError{
-		// 		msg:  "missing closing ']' in duration",
-		// 		line: 0,
-		// 		col:  22,
-		// 	},
-		// },
-		// {
-		// 	in: `min({ foo !~ "bar" }[5m])`,
-		// 	err: ParseError{
-		// 		msg:  "syntax error: unexpected RANGE",
-		// 		line: 0,
-		// 		col:  21,
-		// 	},
-		// },
-		// {
-		// 	in: `sum(3 ,count_over_time({ foo !~ "bar" }[5h]))`,
-		// 	err: ParseError{
-		// 		msg:  "unsupported parameter for operation sum(3,",
-		// 		line: 0,
-		// 		col:  0,
-		// 	},
-		// },
-		// {
-		// 	in: `topk(count_over_time({ foo !~ "bar" }[5h]))`,
-		// 	err: ParseError{
-		// 		msg:  "parameter required for operation topk",
-		// 		line: 0,
-		// 		col:  0,
-		// 	},
-		// },
-		// {
-		// 	in: `bottomk(he,count_over_time({ foo !~ "bar" }[5h]))`,
-		// 	err: ParseError{
-		// 		msg:  "syntax error: unexpected IDENTIFIER",
-		// 		line: 1,
-		// 		col:  9,
-		// 	},
-		// },
-		// {
-		// 	in: `bottomk(1.2,count_over_time({ foo !~ "bar" }[5h]))`,
-		// 	err: ParseError{
-		// 		msg:  "invalid parameter bottomk(1.2,",
-		// 		line: 0,
-		// 		col:  0,
-		// 	},
-		// },
-		// {
-		// 	in: `stddev({ foo !~ "bar" })`,
-		// 	err: ParseError{
-		// 		msg:  "syntax error: unexpected )",
-		// 		line: 1,
-		// 		col:  24,
-		// 	},
-		// },
-		// {
-		// 	in: `{ foo = "bar", bar != "baz" }`,
-		// 	exp: &matchersExpr{matchers: []*labels.Matcher{
-		// 		mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 		mustNewMatcher(labels.MatchNotEqual, "bar", "baz"),
-		// 	}},
-		// },
-		// {
-		// 	in: `{foo="bar"} |= "baz"`,
-		// 	exp: newPipelineExpr(
-		// 		newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 		MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "baz")},
-		// 	),
-		// },
-		// {
-		// 	in: `{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`,
-		// 	exp: newPipelineExpr(
-		// 		newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 		MultiStageExpr{
-		// 			newLineFilterExpr(
-		// 				newLineFilterExpr(
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 						labels.MatchRegexp, "blip"),
-		// 					labels.MatchNotEqual, "flip"),
-		// 				labels.MatchNotRegexp, "flap"),
-		// 		},
-		// 	),
-		// },
-		// {
-		// 	in: `count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
-		// 	exp: newRangeAggregationExpr(
-		// 		&logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 								labels.MatchRegexp, "blip"),
-		// 							labels.MatchNotEqual, "flip"),
-		// 						labels.MatchNotRegexp, "flap"),
-		// 				},
-		// 			),
-		// 			interval: 5 * time.Minute,
-		// 		}, OpRangeTypeCount, nil, nil),
-		// },
-		// {
-		// 	in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
-		// 	exp: newRangeAggregationExpr(
-		// 		&logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 								labels.MatchRegexp, "blip"),
-		// 							labels.MatchNotEqual, "flip"),
-		// 						labels.MatchNotRegexp, "flap"),
-		// 				},
-		// 			),
-		// 			interval: 5 * time.Minute,
-		// 		}, OpRangeTypeBytes, nil, nil),
-		// },
-		// {
-		// 	in: `sum(count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
-		// 	exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 		&logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 								labels.MatchRegexp, "blip"),
-		// 							labels.MatchNotEqual, "flip"),
-		// 						labels.MatchNotRegexp, "flap"),
-		// 				},
-		// 			),
-		// 			interval: 5 * time.Minute,
-		// 		}, OpRangeTypeCount, nil, nil),
-		// 		"sum",
-		// 		&grouping{
-		// 			without: false,
-		// 			groups:  []string{"foo"},
-		// 		},
-		// 		nil),
-		// },
-		// {
-		// 	in: `sum(bytes_rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
-		// 	exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 		&logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 								labels.MatchRegexp, "blip"),
-		// 							labels.MatchNotEqual, "flip"),
-		// 						labels.MatchNotRegexp, "flap"),
-		// 				},
-		// 			),
-		// 			interval: 5 * time.Minute,
-		// 		}, OpRangeTypeBytesRate, nil, nil),
-		// 		"sum",
-		// 		&grouping{
-		// 			without: false,
-		// 			groups:  []string{"foo"},
-		// 		},
-		// 		nil),
-		// },
-		// {
-		// 	in: `topk(5,count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) without (foo)`,
-		// 	exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 		&logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 								labels.MatchRegexp, "blip"),
-		// 							labels.MatchNotEqual, "flip"),
-		// 						labels.MatchNotRegexp, "flap"),
-		// 				},
-		// 			),
-		// 			interval: 5 * time.Minute,
-		// 		}, OpRangeTypeCount, nil, nil),
-		// 		"topk",
-		// 		&grouping{
-		// 			without: true,
-		// 			groups:  []string{"foo"},
-		// 		},
-		// 		NewStringLabelFilter("5")),
-		// },
-		// {
-		// 	in: `topk(5,sum(rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (app))`,
-		// 	exp: mustNewVectorAggregationExpr(
-		// 		mustNewVectorAggregationExpr(
-		// 			newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: newPipelineExpr(
-		// 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 						MultiStageExpr{
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(
-		// 									newLineFilterExpr(
-		// 										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 										labels.MatchRegexp, "blip"),
-		// 									labels.MatchNotEqual, "flip"),
-		// 								labels.MatchNotRegexp, "flap"),
-		// 						},
-		// 					),
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeRate, nil, nil),
-		// 			"sum",
-		// 			&grouping{
-		// 				without: false,
-		// 				groups:  []string{"app"},
-		// 			},
-		// 			nil),
-		// 		"topk",
-		// 		nil,
-		// 		NewStringLabelFilter("5")),
-		// },
-		// {
-		// 	in: `count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")`,
-		// 	exp: newRangeAggregationExpr(
-		// 		&logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 								labels.MatchRegexp, "blip"),
-		// 							labels.MatchNotEqual, "flip"),
-		// 						labels.MatchNotRegexp, "flap"),
-		// 				},
-		// 			),
-		// 			interval: 5 * time.Minute,
-		// 		}, OpRangeTypeCount, nil, nil),
-		// },
-		// {
-		// 	in: `sum(count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (foo)`,
-		// 	exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 		&logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 								labels.MatchRegexp, "blip"),
-		// 							labels.MatchNotEqual, "flip"),
-		// 						labels.MatchNotRegexp, "flap"),
-		// 				},
-		// 			),
-		// 			interval: 5 * time.Minute,
-		// 		}, OpRangeTypeCount, nil, nil),
-		// 		"sum",
-		// 		&grouping{
-		// 			without: false,
-		// 			groups:  []string{"foo"},
-		// 		},
-		// 		nil),
-		// },
-		// {
-		// 	in: `topk(5,count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) without (foo)`,
-		// 	exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 		&logRange{
-		// 			left: newPipelineExpr(
-		// 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 				MultiStageExpr{
-		// 					newLineFilterExpr(
-		// 						newLineFilterExpr(
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 								labels.MatchRegexp, "blip"),
-		// 							labels.MatchNotEqual, "flip"),
-		// 						labels.MatchNotRegexp, "flap"),
-		// 				},
-		// 			),
-		// 			interval: 5 * time.Minute,
-		// 		}, OpRangeTypeCount, nil, nil),
-		// 		"topk",
-		// 		&grouping{
-		// 			without: true,
-		// 			groups:  []string{"foo"},
-		// 		},
-		// 		NewStringLabelFilter("5")),
-		// },
-		// {
-		// 	in: `topk(5,sum(rate({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (app))`,
-		// 	exp: mustNewVectorAggregationExpr(
-		// 		mustNewVectorAggregationExpr(
-		// 			newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: newPipelineExpr(
-		// 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		// 						MultiStageExpr{
-		// 							newLineFilterExpr(
-		// 								newLineFilterExpr(
-		// 									newLineFilterExpr(
-		// 										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-		// 										labels.MatchRegexp, "blip"),
-		// 									labels.MatchNotEqual, "flip"),
-		// 								labels.MatchNotRegexp, "flap"),
-		// 						},
-		// 					),
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeRate, nil, nil),
-		// 			"sum",
-		// 			&grouping{
-		// 				without: false,
-		// 				groups:  []string{"app"},
-		// 			},
-		// 			nil),
-		// 		"topk",
-		// 		nil,
-		// 		NewStringLabelFilter("5")),
-		// },
-		// {
-		// 	in: `{foo="bar}`,
-		// 	err: ParseError{
-		// 		msg:  "literal not terminated",
-		// 		line: 1,
-		// 		col:  6,
-		// 	},
-		// },
-		// {
-		// 	in: `{foo="bar"`,
-		// 	err: ParseError{
-		// 		msg:  "syntax error: unexpected $end, expecting } or ,",
-		// 		line: 1,
-		// 		col:  11,
-		// 	},
-		// },
+		{
+			// raw string
+			in: "count_over_time({foo=~`bar\\w+`}[12h] |~ `error\\`)",
+			exp: &rangeAggregationExpr{
+				operation: "count_over_time",
+				left: &logRange{
+					left: &pipelineExpr{
+						pipeline: MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchRegexp, "error\\"),
+						},
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchRegexp, "foo", "bar\\w+"),
+							},
+						},
+					},
+					interval: 12 * time.Hour,
+				},
+			},
+		},
+		{
+			// test [12h] before filter expr
+			in: `count_over_time({foo="bar"}[12h] |= "error")`,
+			exp: &rangeAggregationExpr{
+				operation: "count_over_time",
+				left: &logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
+						MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "error"),
+						},
+					),
+					interval: 12 * time.Hour,
+				},
+			},
+		},
+		{
+			// test [12h] after filter expr
+			in: `count_over_time({foo="bar"} |= "error" [12h])`,
+			exp: &rangeAggregationExpr{
+				operation: "count_over_time",
+				left: &logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
+						MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "error")},
+					),
+					interval: 12 * time.Hour,
+				},
+			},
+		},
+		{
+			in:  `{foo="bar"}`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+		},
+		{
+			in:  `{ foo = "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+		},
+		{
+			in:  `{ foo != "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+		},
+		{
+			in:  `{ foo =~ "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
+		},
+		{
+			in:  `{ foo !~ "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+		},
+		{
+			in: `count_over_time({ foo !~ "bar" }[12m])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 12 * time.Minute,
+				},
+				operation: "count_over_time",
+			},
+		},
+		{
+			in: `bytes_over_time({ foo !~ "bar" }[12m])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 12 * time.Minute,
+				},
+				operation: OpRangeTypeBytes,
+			},
+		},
+		{
+			in: `bytes_rate({ foo !~ "bar" }[12m])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 12 * time.Minute,
+				},
+				operation: OpRangeTypeBytesRate,
+			},
+		},
+		{
+			in: `rate({ foo !~ "bar" }[5h])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "rate",
+			},
+		},
+		{
+			in: `rate({ foo !~ "bar" }[5d])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * 24 * time.Hour,
+				},
+				operation: "rate",
+			},
+		},
+		{
+			in: `count_over_time({ foo !~ "bar" }[1w])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 7 * 24 * time.Hour,
+				},
+				operation: "count_over_time",
+			},
+		},
+		{
+			in: `sum(rate({ foo !~ "bar" }[5h]))`,
+			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "rate",
+			}, "sum", nil, nil),
+		},
+		{
+			in: `sum(rate({ foo !~ "bar" }[1y]))`,
+			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 365 * 24 * time.Hour,
+				},
+				operation: "rate",
+			}, "sum", nil, nil),
+		},
+		{
+			in: `avg(count_over_time({ foo !~ "bar" }[5h])) by (bar,foo)`,
+			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "count_over_time",
+			}, "avg", &grouping{
+				without: false,
+				groups:  []string{"bar", "foo"},
+			}, nil),
+		},
+		{
+			in: `max without (bar) (count_over_time({ foo !~ "bar" }[5h]))`,
+			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "count_over_time",
+			}, "max", &grouping{
+				without: true,
+				groups:  []string{"bar"},
+			}, nil),
+		},
+		{
+			in: `topk(10,count_over_time({ foo !~ "bar" }[5h])) without (bar)`,
+			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "count_over_time",
+			}, "topk", &grouping{
+				without: true,
+				groups:  []string{"bar"},
+			}, NewStringLabelFilter("10")),
+		},
+		{
+			in: `bottomk(30 ,sum(rate({ foo !~ "bar" }[5h])) by (foo))`,
+			exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "rate",
+			}, "sum", &grouping{
+				groups:  []string{"foo"},
+				without: false,
+			}, nil), "bottomk", nil,
+				NewStringLabelFilter("30")),
+		},
+		{
+			in: `max( sum(count_over_time({ foo !~ "bar" }[5h])) without (foo,bar) ) by (foo)`,
+			exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "count_over_time",
+			}, "sum", &grouping{
+				groups:  []string{"foo", "bar"},
+				without: true,
+			}, nil), "max", &grouping{
+				groups:  []string{"foo"},
+				without: false,
+			}, nil),
+		},
+		{
+			in: `unk({ foo !~ "bar" }[5m])`,
+			err: ParseError{
+				msg:  "syntax error: unexpected IDENTIFIER",
+				line: 1,
+				col:  1,
+			},
+		},
+		{
+			in: `rate({ foo !~ "bar" }[5minutes])`,
+			err: ParseError{
+				msg:  `not a valid duration string: "5minutes"`,
+				line: 0,
+				col:  22,
+			},
+		},
+		{
+			in: `rate({ foo !~ "bar" }[5)`,
+			err: ParseError{
+				msg:  "missing closing ']' in duration",
+				line: 0,
+				col:  22,
+			},
+		},
+		{
+			in: `min({ foo !~ "bar" }[5m])`,
+			err: ParseError{
+				msg:  "syntax error: unexpected RANGE",
+				line: 0,
+				col:  21,
+			},
+		},
+		{
+			in: `sum(3 ,count_over_time({ foo !~ "bar" }[5h]))`,
+			err: ParseError{
+				msg:  "unsupported parameter for operation sum(3,",
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `topk(count_over_time({ foo !~ "bar" }[5h]))`,
+			err: ParseError{
+				msg:  "parameter required for operation topk",
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `bottomk(he,count_over_time({ foo !~ "bar" }[5h]))`,
+			err: ParseError{
+				msg:  "syntax error: unexpected IDENTIFIER",
+				line: 1,
+				col:  9,
+			},
+		},
+		{
+			in: `bottomk(1.2,count_over_time({ foo !~ "bar" }[5h]))`,
+			err: ParseError{
+				msg:  "invalid parameter bottomk(1.2,",
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `stddev({ foo !~ "bar" })`,
+			err: ParseError{
+				msg:  "syntax error: unexpected )",
+				line: 1,
+				col:  24,
+			},
+		},
+		{
+			in: `{ foo = "bar", bar != "baz" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+				mustNewMatcher(labels.MatchNotEqual, "bar", "baz"),
+			}},
+		},
+		{
+			in: `{foo="bar"} |= "baz"`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "baz")},
+			),
+		},
+		{
+			in: `{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLineFilterExpr(
+						newLineFilterExpr(
+							newLineFilterExpr(
+								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+								labels.MatchRegexp, "blip"),
+							labels.MatchNotEqual, "flip"),
+						labels.MatchNotRegexp, "flap"),
+				},
+			),
+		},
+		{
+			in: `count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
+			exp: newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeCount, nil, nil),
+		},
+		{
+			in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
+			exp: newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeBytes, nil, nil),
+		},
+		{
+			in: `sum(count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeCount, nil, nil),
+				"sum",
+				&grouping{
+					without: false,
+					groups:  []string{"foo"},
+				},
+				nil),
+		},
+		{
+			in: `sum(bytes_rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeBytesRate, nil, nil),
+				"sum",
+				&grouping{
+					without: false,
+					groups:  []string{"foo"},
+				},
+				nil),
+		},
+		{
+			in: `topk(5,count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) without (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeCount, nil, nil),
+				"topk",
+				&grouping{
+					without: true,
+					groups:  []string{"foo"},
+				},
+				NewStringLabelFilter("5")),
+		},
+		{
+			in: `topk(5,sum(rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (app))`,
+			exp: mustNewVectorAggregationExpr(
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&logRange{
+							left: newPipelineExpr(
+								newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+								MultiStageExpr{
+									newLineFilterExpr(
+										newLineFilterExpr(
+											newLineFilterExpr(
+												newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+												labels.MatchRegexp, "blip"),
+											labels.MatchNotEqual, "flip"),
+										labels.MatchNotRegexp, "flap"),
+								},
+							),
+							interval: 5 * time.Minute,
+						}, OpRangeTypeRate, nil, nil),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"app"},
+					},
+					nil),
+				"topk",
+				nil,
+				NewStringLabelFilter("5")),
+		},
+		{
+			in: `count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")`,
+			exp: newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeCount, nil, nil),
+		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeCount, nil, nil),
+				"sum",
+				&grouping{
+					without: false,
+					groups:  []string{"foo"},
+				},
+				nil),
+		},
+		{
+			in: `topk(5,count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) without (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeCount, nil, nil),
+				"topk",
+				&grouping{
+					without: true,
+					groups:  []string{"foo"},
+				},
+				NewStringLabelFilter("5")),
+		},
+		{
+			in: `topk(5,sum(rate({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (app))`,
+			exp: mustNewVectorAggregationExpr(
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&logRange{
+							left: newPipelineExpr(
+								newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+								MultiStageExpr{
+									newLineFilterExpr(
+										newLineFilterExpr(
+											newLineFilterExpr(
+												newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+												labels.MatchRegexp, "blip"),
+											labels.MatchNotEqual, "flip"),
+										labels.MatchNotRegexp, "flap"),
+								},
+							),
+							interval: 5 * time.Minute,
+						}, OpRangeTypeRate, nil, nil),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"app"},
+					},
+					nil),
+				"topk",
+				nil,
+				NewStringLabelFilter("5")),
+		},
+		{
+			in: `{foo="bar}`,
+			err: ParseError{
+				msg:  "literal not terminated",
+				line: 1,
+				col:  6,
+			},
+		},
+		{
+			in: `{foo="bar"`,
+			err: ParseError{
+				msg:  "syntax error: unexpected $end, expecting } or ,",
+				line: 1,
+				col:  11,
+			},
+		},
 
-		// {
-		// 	in: `{foo="bar"} |~`,
-		// 	err: ParseError{
-		// 		msg:  "syntax error: unexpected $end, expecting STRING",
-		// 		line: 1,
-		// 		col:  15,
-		// 	},
-		// },
+		{
+			in: `{foo="bar"} |~`,
+			err: ParseError{
+				msg:  "syntax error: unexpected $end, expecting STRING",
+				line: 1,
+				col:  15,
+			},
+		},
 
-		// {
-		// 	in: `{foo="bar"} "foo"`,
-		// 	err: ParseError{
-		// 		msg:  "syntax error: unexpected STRING",
-		// 		line: 1,
-		// 		col:  13,
-		// 	},
-		// },
-		// {
-		// 	in: `{foo="bar"} foo`,
-		// 	err: ParseError{
-		// 		msg:  "syntax error: unexpected IDENTIFIER",
-		// 		line: 1,
-		// 		col:  13,
-		// 	},
-		// },
-		// {
-		// 	// require left associativity
-		// 	in: `
-		// 	sum(count_over_time({foo="bar"}[5m])) by (foo) /
-		// 	sum(count_over_time({foo="bar"}[5m])) by (foo) /
-		// 	sum(count_over_time({foo="bar"}[5m])) by (foo)
-		// 	`,
-		// 	exp: mustNewBinOpExpr(
-		// 		OpTypeDiv,
-		// 		BinOpOptions{},
-		// 		mustNewBinOpExpr(
-		// 			OpTypeDiv,
-		// 			BinOpOptions{},
-		// 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 				"sum",
-		// 				&grouping{
-		// 					without: false,
-		// 					groups:  []string{"foo"},
-		// 				},
-		// 				nil,
-		// 			),
-		// 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 				"sum",
-		// 				&grouping{
-		// 					without: false,
-		// 					groups:  []string{"foo"},
-		// 				},
-		// 				nil,
-		// 			),
-		// 		),
-		// 		mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 			&logRange{
-		// 				left: &matchersExpr{
-		// 					matchers: []*labels.Matcher{
-		// 						mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 					},
-		// 				},
-		// 				interval: 5 * time.Minute,
-		// 			}, OpRangeTypeCount, nil, nil),
-		// 			"sum",
-		// 			&grouping{
-		// 				without: false,
-		// 				groups:  []string{"foo"},
-		// 			},
-		// 			nil,
-		// 		),
-		// 	),
-		// },
-		// {
-		// 	in: `
-		// 			sum(count_over_time({foo="bar"}[5m])) by (foo) ^
-		// 			sum(count_over_time({foo="bar"}[5m])) by (foo) /
-		// 			sum(count_over_time({foo="bar"}[5m])) by (foo)
-		// 			`,
-		// 	exp: mustNewBinOpExpr(
-		// 		OpTypeDiv,
-		// 		BinOpOptions{},
-		// 		mustNewBinOpExpr(
-		// 			OpTypePow,
-		// 			BinOpOptions{},
-		// 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 				"sum",
-		// 				&grouping{
-		// 					without: false,
-		// 					groups:  []string{"foo"},
-		// 				},
-		// 				nil,
-		// 			),
-		// 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 				"sum",
-		// 				&grouping{
-		// 					without: false,
-		// 					groups:  []string{"foo"},
-		// 				},
-		// 				nil,
-		// 			),
-		// 		),
-		// 		mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 			&logRange{
-		// 				left: &matchersExpr{
-		// 					matchers: []*labels.Matcher{
-		// 						mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 					},
-		// 				},
-		// 				interval: 5 * time.Minute,
-		// 			}, OpRangeTypeCount, nil, nil),
-		// 			"sum",
-		// 			&grouping{
-		// 				without: false,
-		// 				groups:  []string{"foo"},
-		// 			},
-		// 			nil,
-		// 		),
-		// 	),
-		// },
-		// {
-		// 	// operator precedence before left associativity
-		// 	in: `
-		// 			sum(count_over_time({foo="bar"}[5m])) by (foo) +
-		// 			sum(count_over_time({foo="bar"}[5m])) by (foo) /
-		// 			sum(count_over_time({foo="bar"}[5m])) by (foo)
-		// 			`,
-		// 	exp: mustNewBinOpExpr(
-		// 		OpTypeAdd,
-		// 		BinOpOptions{},
-		// 		mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 			&logRange{
-		// 				left: &matchersExpr{
-		// 					matchers: []*labels.Matcher{
-		// 						mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 					},
-		// 				},
-		// 				interval: 5 * time.Minute,
-		// 			}, OpRangeTypeCount, nil, nil),
-		// 			"sum",
-		// 			&grouping{
-		// 				without: false,
-		// 				groups:  []string{"foo"},
-		// 			},
-		// 			nil,
-		// 		),
-		// 		mustNewBinOpExpr(
-		// 			OpTypeDiv,
-		// 			BinOpOptions{},
-		// 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 				"sum",
-		// 				&grouping{
-		// 					without: false,
-		// 					groups:  []string{"foo"},
-		// 				},
-		// 				nil,
-		// 			),
-		// 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 				"sum",
-		// 				&grouping{
-		// 					without: false,
-		// 					groups:  []string{"foo"},
-		// 				},
-		// 				nil,
-		// 			),
-		// 		),
-		// 	),
-		// },
-		// {
-		// 	in: `sum by (job) (
-		// 					count_over_time({namespace="tns"} |= "level=error"[5m])
-		// 				/
-		// 					count_over_time({namespace="tns"}[5m])
-		// 				)`,
-		// 	exp: mustNewVectorAggregationExpr(
-		// 		mustNewBinOpExpr(OpTypeDiv,
-		// 			BinOpOptions{},
-		// 			newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: newPipelineExpr(
-		// 						newMatcherExpr([]*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
-		// 						}),
-		// 						MultiStageExpr{
-		// 							newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
-		// 						}),
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 			newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
-		// },
-		// {
-		// 	in: `sum by (job) (
-		// 					count_over_time({namespace="tns"} |= "level=error"[5m])
-		// 				/
-		// 					count_over_time({namespace="tns"}[5m])
-		// 				) * 100`,
-		// 	exp: mustNewBinOpExpr(OpTypeMul, BinOpOptions{}, mustNewVectorAggregationExpr(
-		// 		mustNewBinOpExpr(OpTypeDiv,
-		// 			BinOpOptions{},
-		// 			newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: newPipelineExpr(
-		// 						newMatcherExpr([]*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
-		// 						}),
-		// 						MultiStageExpr{
-		// 							newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
-		// 						}),
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 			newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
-		// 		mustNewLiteralExpr("100", false),
-		// 	),
-		// },
-		// {
-		// 	// reduces binop with two literalExprs
-		// 	in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 / 2`,
-		// 	exp: mustNewBinOpExpr(
-		// 		OpTypeAdd,
-		// 		BinOpOptions{},
-		// 		mustNewVectorAggregationExpr(
-		// 			newRangeAggregationExpr(
-		// 				&logRange{
-		// 					left: &matchersExpr{
-		// 						matchers: []*labels.Matcher{
-		// 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-		// 						},
-		// 					},
-		// 					interval: 5 * time.Minute,
-		// 				}, OpRangeTypeCount, nil, nil),
-		// 			"sum",
-		// 			&grouping{
-		// 				without: false,
-		// 				groups:  []string{"foo"},
-		// 			},
-		// 			nil,
-		// 		),
-		// 		&literalExpr{value: 0.5},
-		// 	),
-		// },
-		// {
-		// 	// test signs
-		// 	in: `1 + -2 / 1`,
-		// 	exp: mustNewBinOpExpr(
-		// 		OpTypeAdd,
-		// 		BinOpOptions{},
-		// 		&literalExpr{value: 1},
-		// 		mustNewBinOpExpr(OpTypeDiv, BinOpOptions{}, &literalExpr{value: -2}, &literalExpr{value: 1}),
-		// 	),
-		// },
-		// {
-		// 	// test signs/ops with equal associativity
-		// 	in: `1 + 1 - -1`,
-		// 	exp: mustNewBinOpExpr(
-		// 		OpTypeSub,
-		// 		BinOpOptions{},
-		// 		mustNewBinOpExpr(OpTypeAdd, BinOpOptions{}, &literalExpr{value: 1}, &literalExpr{value: 1}),
-		// 		&literalExpr{value: -1},
-		// 	),
-		// },
+		{
+			in: `{foo="bar"} "foo"`,
+			err: ParseError{
+				msg:  "syntax error: unexpected STRING",
+				line: 1,
+				col:  13,
+			},
+		},
+		{
+			in: `{foo="bar"} foo`,
+			err: ParseError{
+				msg:  "syntax error: unexpected IDENTIFIER",
+				line: 1,
+				col:  13,
+			},
+		},
+		{
+			// require left associativity
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeDiv,
+				BinOpOptions{},
+				mustNewBinOpExpr(
+					OpTypeDiv,
+					BinOpOptions{},
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpRangeTypeCount, nil, nil),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+			),
+		},
+		{
+			in: `
+					sum(count_over_time({foo="bar"}[5m])) by (foo) ^
+					sum(count_over_time({foo="bar"}[5m])) by (foo) /
+					sum(count_over_time({foo="bar"}[5m])) by (foo)
+					`,
+			exp: mustNewBinOpExpr(
+				OpTypeDiv,
+				BinOpOptions{},
+				mustNewBinOpExpr(
+					OpTypePow,
+					BinOpOptions{},
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpRangeTypeCount, nil, nil),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+			),
+		},
+		{
+			// operator precedence before left associativity
+			in: `
+					sum(count_over_time({foo="bar"}[5m])) by (foo) +
+					sum(count_over_time({foo="bar"}[5m])) by (foo) /
+					sum(count_over_time({foo="bar"}[5m])) by (foo)
+					`,
+			exp: mustNewBinOpExpr(
+				OpTypeAdd,
+				BinOpOptions{},
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpRangeTypeCount, nil, nil),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+				mustNewBinOpExpr(
+					OpTypeDiv,
+					BinOpOptions{},
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+			),
+		},
+		{
+			in: `sum by (job) (
+							count_over_time({namespace="tns"} |= "level=error"[5m])
+						/
+							count_over_time({namespace="tns"}[5m])
+						)`,
+			exp: mustNewVectorAggregationExpr(
+				mustNewBinOpExpr(OpTypeDiv,
+					BinOpOptions{},
+					newRangeAggregationExpr(
+						&logRange{
+							left: newPipelineExpr(
+								newMatcherExpr([]*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								}),
+								MultiStageExpr{
+									newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+								}),
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+		},
+		{
+			in: `sum by (job) (
+							count_over_time({namespace="tns"} |= "level=error"[5m])
+						/
+							count_over_time({namespace="tns"}[5m])
+						) * 100`,
+			exp: mustNewBinOpExpr(OpTypeMul, BinOpOptions{}, mustNewVectorAggregationExpr(
+				mustNewBinOpExpr(OpTypeDiv,
+					BinOpOptions{},
+					newRangeAggregationExpr(
+						&logRange{
+							left: newPipelineExpr(
+								newMatcherExpr([]*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								}),
+								MultiStageExpr{
+									newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+								}),
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+				mustNewLiteralExpr("100", false),
+			),
+		},
+		{
+			// reduces binop with two literalExprs
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 / 2`,
+			exp: mustNewBinOpExpr(
+				OpTypeAdd,
+				BinOpOptions{},
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpRangeTypeCount, nil, nil),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+				&literalExpr{value: 0.5},
+			),
+		},
+		{
+			// test signs
+			in: `1 + -2 / 1`,
+			exp: mustNewBinOpExpr(
+				OpTypeAdd,
+				BinOpOptions{},
+				&literalExpr{value: 1},
+				mustNewBinOpExpr(OpTypeDiv, BinOpOptions{}, &literalExpr{value: -2}, &literalExpr{value: 1}),
+			),
+		},
+		{
+			// test signs/ops with equal associativity
+			in: `1 + 1 - -1`,
+			exp: mustNewBinOpExpr(
+				OpTypeSub,
+				BinOpOptions{},
+				mustNewBinOpExpr(OpTypeAdd, BinOpOptions{}, &literalExpr{value: 1}, &literalExpr{value: 1}),
+				&literalExpr{value: -1},
+			),
+		},
 		{
 			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)`,
 			exp: &pipelineExpr{

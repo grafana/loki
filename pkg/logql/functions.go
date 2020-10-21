@@ -13,9 +13,30 @@ import (
 const unsupportedErr = "unsupported range vector aggregation operation: %s"
 
 func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
+	return r.extractor(nil, false)
+}
+
+func (r rangeAggregationExpr) extractor(gr *grouping, all bool) (log.SampleExtractor, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
+	var groups []string
+	var without bool
+
+	// fallback to parents grouping
+	if gr != nil {
+		groups = gr.groups
+		without = gr.without
+	}
+
+	// range aggregation grouping takes priority
+	if r.grouping != nil {
+		groups = r.grouping.groups
+		without = r.grouping.without
+	}
+
+	sort.Strings(groups)
+
 	var stages []log.Stage
 	if p, ok := r.left.left.(*pipelineExpr); ok {
 		// if the expression is a pipeline then take all stages into account first.
@@ -28,30 +49,25 @@ func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	// unwrap...means we want to extract metrics from labels.
 	if r.left.unwrap != nil {
 		var convOp string
-		var groups []string
-		var without bool
 		switch r.left.unwrap.operation {
 		case OpConvDuration, OpConvDurationSeconds:
 			convOp = log.ConvertDuration
 		default:
 			convOp = log.ConvertFloat
 		}
-		if r.grouping != nil {
-			groups = r.grouping.groups
-			without = r.grouping.without
-		}
+
 		return log.LabelExtractorWithStages(
 			r.left.unwrap.identifier,
-			convOp, groups, without, stages,
+			convOp, groups, without, all, stages,
 			log.ReduceAndLabelFilter(r.left.unwrap.postFilters),
 		)
 	}
 	// otherwise we extract metrics from the log line.
 	switch r.operation {
 	case OpRangeTypeRate, OpRangeTypeCount:
-		return log.LineExtractorWithStages(log.CountExtractor, stages)
+		return log.LineExtractorWithStages(log.CountExtractor, stages, groups, without, all)
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
-		return log.LineExtractorWithStages(log.BytesExtractor, stages)
+		return log.LineExtractorWithStages(log.BytesExtractor, stages, groups, without, all)
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}

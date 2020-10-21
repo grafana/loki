@@ -1,6 +1,7 @@
 package log
 
 import (
+	"sort"
 	"strconv"
 	"time"
 
@@ -29,8 +30,14 @@ type LineExtractor func([]byte) float64
 
 // ToSampleExtractor transform a LineExtractor into a SampleExtractor.
 // Useful for metric conversion without log Pipeline.
-func (l LineExtractor) ToSampleExtractor() SampleExtractor {
+func (l LineExtractor) ToSampleExtractor(groups []string, without bool, noLabels bool) SampleExtractor {
 	return SampleExtractorFunc(func(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
+		// todo(cyriltovena) grouping should be done once per stream/chunk not for everyline.
+		// so for now we'll cover just vector without grouping. This requires changes to SampleExtractor interface.
+		// For another day !
+		if len(groups) == 0 && noLabels {
+			return l(line), labels.Labels{}, true
+		}
 		return l(line), lbs, true
 	})
 }
@@ -44,7 +51,10 @@ type lineSampleExtractor struct {
 	Stage
 	LineExtractor
 
-	builder *LabelsBuilder
+	groups   []string
+	without  bool
+	noLabels bool
+	builder  *LabelsBuilder
 }
 
 func (l lineSampleExtractor) Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
@@ -53,16 +63,33 @@ func (l lineSampleExtractor) Process(line []byte, lbs labels.Labels) (float64, l
 	if !ok {
 		return 0, nil, false
 	}
+	if len(l.groups) != 0 {
+		if l.without {
+			return l.LineExtractor(line), l.builder.WithoutLabels(l.groups...), true
+		}
+		return l.LineExtractor(line), l.builder.WithLabels(l.groups...), true
+	}
+	if l.noLabels {
+		// no grouping but it was a vector operation so we return a single vector
+		return l.LineExtractor(line), labels.Labels{}, true
+	}
 	return l.LineExtractor(line), l.builder.Labels(), true
 }
 
 // LineExtractorWithStages creates a SampleExtractor from a LineExtractor.
 // Multiple log stages are run before converting the log line.
-func LineExtractorWithStages(ex LineExtractor, stages []Stage) (SampleExtractor, error) {
+func LineExtractorWithStages(ex LineExtractor, stages []Stage, groups []string, without bool, noLabels bool) (SampleExtractor, error) {
 	if len(stages) == 0 {
-		return ex.ToSampleExtractor(), nil
+		return ex.ToSampleExtractor(groups, without, noLabels), nil
 	}
-	return lineSampleExtractor{Stage: ReduceStages(stages), LineExtractor: ex, builder: NewLabelsBuilder()}, nil
+	return lineSampleExtractor{
+		Stage:         ReduceStages(stages),
+		LineExtractor: ex,
+		builder:       NewLabelsBuilder(),
+		groups:        groups,
+		without:       without,
+		noLabels:      noLabels,
+	}, nil
 }
 
 type convertionFn func(value string) (float64, error)
@@ -76,6 +103,7 @@ type labelSampleExtractor struct {
 	conversionFn convertionFn
 	groups       []string
 	without      bool
+	noLabels     bool
 }
 
 // LabelExtractorWithStages creates a SampleExtractor that will extract metrics from a labels.
@@ -83,7 +111,7 @@ type labelSampleExtractor struct {
 // to remove sample containing the __error__ label.
 func LabelExtractorWithStages(
 	labelName, conversion string,
-	groups []string, without bool,
+	groups []string, without bool, noLabels bool,
 	preStages []Stage,
 	postFilter Stage,
 ) (SampleExtractor, error) {
@@ -96,6 +124,10 @@ func LabelExtractorWithStages(
 	default:
 		return nil, errors.Errorf("unsupported conversion operation %s", conversion)
 	}
+	if len(groups) != 0 && without {
+		groups = append(groups, labelName)
+		sort.Strings(groups)
+	}
 	return &labelSampleExtractor{
 		preStage:     ReduceStages(preStages),
 		conversionFn: convFn,
@@ -104,6 +136,7 @@ func LabelExtractorWithStages(
 		postFilter:   postFilter,
 		without:      without,
 		builder:      NewLabelsBuilder(),
+		noLabels:     noLabels,
 	}, nil
 }
 
@@ -135,15 +168,18 @@ func (l *labelSampleExtractor) Process(line []byte, lbs labels.Labels) (float64,
 		// We need to return now before applying grouping otherwise the error might get lost.
 		return v, l.builder.Labels(), true
 	}
-	return v, l.groupLabels(l.builder.Labels()), true
+	return v, l.groupLabels(l.builder), true
 }
 
-func (l *labelSampleExtractor) groupLabels(lbs labels.Labels) labels.Labels {
-	if l.groups != nil {
+func (l *labelSampleExtractor) groupLabels(lbs *LabelsBuilder) labels.Labels {
+	if len(l.groups) != 0 {
 		if l.without {
-			return lbs.WithoutLabels(append(l.groups, l.labelName)...)
+			return lbs.WithoutLabels(l.groups...)
 		}
 		return lbs.WithLabels(l.groups...)
+	}
+	if l.noLabels {
+		return labels.Labels{}
 	}
 	return lbs.WithoutLabels(l.labelName)
 }

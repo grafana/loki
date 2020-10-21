@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	logger "log"
+	"sort"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -133,12 +135,14 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 				s.Samples = append(s.Samples, logproto.Sample{
 					Timestamp: e.Timestamp.UnixNano(),
 					Value:     f,
+					Hash:      xxhash.Sum64([]byte(e.Line)),
 				})
 			}
 		}
 	}
 	series := []logproto.Series{}
 	for _, s := range resBySeries {
+		sort.Sort(s)
 		series = append(series, *s)
 	}
 	return series

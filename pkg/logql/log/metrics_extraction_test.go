@@ -20,7 +20,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			"convert float",
 			mustSampleExtractor(LabelExtractorWithStages(
-				"foo", ConvertFloat, nil, false, nil, NoopStage,
+				"foo", ConvertFloat, nil, false, false, nil, NoopStage,
 			)),
 			labels.Labels{labels.Label{Name: "foo", Value: "15.0"}},
 			15,
@@ -28,9 +28,19 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			true,
 		},
 		{
+			"convert float as vector with no grouping",
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertFloat, nil, false, true, nil, NoopStage,
+			)),
+			labels.Labels{labels.Label{Name: "foo", Value: "15.0"}, labels.Label{Name: "bar", Value: "buzz"}},
+			15,
+			labels.Labels{},
+			true,
+		},
+		{
 			"convert float without",
 			mustSampleExtractor(LabelExtractorWithStages(
-				"foo", ConvertFloat, []string{"bar", "buzz"}, true, nil, NoopStage,
+				"foo", ConvertFloat, []string{"bar", "buzz"}, true, false, nil, NoopStage,
 			)),
 			labels.Labels{
 				{Name: "foo", Value: "10"},
@@ -47,7 +57,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			"convert float with",
 			mustSampleExtractor(LabelExtractorWithStages(
-				"foo", ConvertFloat, []string{"bar", "buzz"}, false, nil, NoopStage,
+				"foo", ConvertFloat, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
 			labels.Labels{
 				{Name: "foo", Value: "0.6"},
@@ -65,7 +75,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			"convert duration with",
 			mustSampleExtractor(LabelExtractorWithStages(
-				"foo", ConvertDuration, []string{"bar", "buzz"}, false, nil, NoopStage,
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
 			labels.Labels{
 				{Name: "foo", Value: "500ms"},

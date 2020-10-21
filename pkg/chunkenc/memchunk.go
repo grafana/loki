@@ -9,6 +9,7 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -646,6 +647,7 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, lbs l
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
+		sort.Sort(s)
 		seriesRes = append(seriesRes, *s)
 	}
 	return iter.NewMultiSeriesIterator(ctx, seriesRes)
