@@ -95,6 +95,7 @@ func (c *Compactor) Run(ctx context.Context) error {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
 		if status == statusSuccess {
 			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
+			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 		}
 	}()
 
