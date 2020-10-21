@@ -38,6 +38,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 					},
+					interval: 12 * time.Hour,
 				},
 			},
 		},
@@ -940,24 +941,24 @@ func TestParse(t *testing.T) {
 							),
 						),
 					},
-					interval: 12 * time.Hour,
 				},
 			},
 		},
 		{
-			// test [12h] before filter expr
-			in: `count_over_time({foo="bar"}[12h] |= "error")`,
-			exp: &rangeAggregationExpr{
-				operation: "count_over_time",
-				left: &logRange{
-					left: &filterExpr{
-						ty:    labels.MatchEqual,
-						match: "error",
-						left: &matchersExpr{
-							matchers: []*labels.Matcher{
-								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-							},
-						},
+			in: `{app="foo"} |= "bar" | json | (duration > 1s or status!= 200) and method!="POST"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewAndLabelFilter(
+							log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "duration", 1*time.Second),
+								log.NewNumericLabelFilter(log.LabelFilterNotEqual, "status", 200.0),
+							),
+							log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotEqual, "method", "POST")),
+						),
 					},
 				},
 			},
