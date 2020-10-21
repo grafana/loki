@@ -2,6 +2,7 @@ package scrapeconfig
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/prometheus/common/model"

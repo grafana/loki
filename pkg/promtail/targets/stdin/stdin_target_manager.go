@@ -108,14 +108,11 @@ func newReaderTarget(logger log.Logger, in io.Reader, client api.EntryHandler, c
 		return nil, err
 	}
 	lbs := model.LabelSet{}
-	if tgs, ok := cfg.Config.(discovery.StaticConfig); ok {
-		for _, static := range tgs {
-			if static != nil && static.Labels != nil {
-				lbs = lbs.Merge(static.Labels)
-			}
+	for _, static := range cfg.ServiceDiscoveryConfig.StaticConfigs {
+		if static != nil && static.Labels != nil {
+			lbs = lbs.Merge(static.Labels)
 		}
 	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &readerTarget{
 		in:     bufio.NewReaderSize(in, bufferSize),
