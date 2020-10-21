@@ -68,7 +68,7 @@ func TestJSONLOutput_Format(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			writer := &bytes.Buffer{}
-			out := &JSONLOutput{writer,testData.options}
+			out := &JSONLOutput{writer, testData.options}
 			out.FormatAndPrintln(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
 
 			actual := writer.String()

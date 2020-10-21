@@ -58,14 +58,14 @@ func (b *LabelsBuilder) Get(key string) (string, bool) {
 			return a.Value, true
 		}
 	}
-Outer:
+	for _, d := range b.del {
+		if d == key {
+			return "", false
+		}
+	}
+
 	for _, l := range b.base {
 		if l.Name == key {
-			for _, d := range b.del {
-				if d == key {
-					continue Outer
-				}
-			}
 			return l.Value, true
 		}
 	}

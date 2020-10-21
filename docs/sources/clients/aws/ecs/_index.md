@@ -83,7 +83,7 @@ aws iam attach-role-policy --role-name ecsTaskExecutionRole --policy-arn "arn:aw
 
 Amazon [Firelens][Firelens] is a log router (usually `fluentd` or `fluentbit`) you run along the same task definition next to your application containers to route their logs to Loki.
 
-In this example we will use [fluentbit][fluentbit] (with the [Loki plugin][fluentbit loki] installed) but if you prefer [fluentd][fluentd] make sure to check the [documentation][fluentd loki].
+In this example we will use [fluentbit][fluentbit] (with the [Loki plugin][fluentbit loki] installed) but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
 
 > We recommend you to use [fluentbit][fluentbit] as it's less resources consuming than [fluentd][fluentd].
 
@@ -163,7 +163,7 @@ All `options` of the `logConfiguration` will be automatically translated into [f
     LineFormat key_value
 ```
 
-This `OUTPUT` config will forward logs to [GrafanaCloud][GrafanaCloud] Loki, to learn more about those options make sure to read the [documentation of the Loki output][fluentbit loki].
+This `OUTPUT` config will forward logs to [GrafanaCloud][GrafanaCloud] Loki, to learn more about those options make sure to read the [fluentbit output plugin][fluentbit loki] documentation.
 We've kept some interesting and useful labels such as `container_name`, `ecs_task_definition` , `source` and `ecs_cluster` but you can statically add more via the `Labels` option.
 
 > If you want run multiple containers in your task, all of them needs a `logConfiguration` section, this give you the opportunity to add different labels depending on the container.

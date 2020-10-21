@@ -113,7 +113,7 @@ func QueryType(query string) (string, error) {
 		return QueryTypeMetric, nil
 	case *matchersExpr:
 		return QueryTypeLimited, nil
-	case *filterExpr:
+	case *pipelineExpr:
 		return QueryTypeFilter, nil
 	default:
 		return "", nil

@@ -73,6 +73,11 @@ var (
 		Name:      "request_duration_seconds",
 		Help:      "Duration of send requests.",
 	}, []string{"status_code", HostLabel})
+	batchRetries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "batch_retries_total",
+		Help:      "Number of times batches has had to be retried.",
+	}, []string{HostLabel})
 	streamLag *metric.Gauges
 
 	countersWithHost = []*prometheus.CounterVec{
@@ -89,6 +94,7 @@ func init() {
 	prometheus.MustRegister(sentEntries)
 	prometheus.MustRegister(droppedEntries)
 	prometheus.MustRegister(requestDuration)
+	prometheus.MustRegister(batchRetries)
 	var err error
 	streamLag, err = metric.NewGauges("promtail_stream_lag_seconds",
 		"Difference between current time and last batch timestamp for successful sends",
@@ -268,7 +274,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 					}
 				}
 				if lblSet != nil {
-					streamLag.With(lblSet).Set(time.Now().Sub(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
+					streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
 				}
 			}
 			return
@@ -280,6 +286,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		}
 
 		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
+		batchRetries.WithLabelValues(c.cfg.URL.Host).Inc()
 		backoff.Wait()
 	}
 

@@ -44,7 +44,7 @@ For further details on the Table Manager internals, refer to the
 
 ## Example Configuration
 
-Example configuration with GCS with a 30 day retention:
+Example configuration with GCS with a 28 day retention:
 
 ```yaml
 schema_config:
@@ -65,9 +65,9 @@ storage_config:
     bucket_name: GCS_BUCKET_NAME
 
 chunk_store_config:
-  max_look_back_period: 720h
+  max_look_back_period: 672h
 
 table_manager:
   retention_deletes_enabled: true
-  retention_period: 720h
+  retention_period: 672h
 ```

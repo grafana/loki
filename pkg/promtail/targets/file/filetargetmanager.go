@@ -46,6 +46,7 @@ var (
 )
 
 // FileTargetManager manages a set of targets.
+// nolint:golint
 type FileTargetManager struct {
 	log     log.Logger
 	quit    context.CancelFunc
@@ -124,7 +125,7 @@ func NewFileTargetManager(
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
-		configs[cfg.JobName] = discovery.Configs{cfg.Config}
+		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
 	}
 
 	go tm.run()

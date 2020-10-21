@@ -26,6 +26,7 @@ type Config struct {
 	Uploader       string
 	IndexDir       string
 	UploadInterval time.Duration
+	DBRetainPeriod time.Duration
 }
 
 type TableManager struct {
@@ -66,6 +67,8 @@ func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClien
 func (tm *TableManager) loop() {
 	tm.wg.Add(1)
 	defer tm.wg.Done()
+
+	tm.uploadTables(context.Background(), false)
 
 	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
 	defer syncTicker.Stop()
@@ -169,7 +172,13 @@ func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 
 	status := statusSuccess
 	for _, table := range tm.tables {
-		err := table.Upload(ctx, force)
+		err := table.Snapshot()
+		if err != nil {
+			// we do not want to stop uploading of dbs due to failures in snapshotting them so logging just the error here.
+			level.Error(pkg_util.Logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
+		}
+
+		err = table.Upload(ctx, force)
 		if err != nil {
 			// continue uploading other tables while skipping cleanup for a failed one.
 			status = statusFailure
@@ -178,7 +187,7 @@ func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 		}
 
 		// cleanup unwanted dbs from the table
-		err = table.Cleanup()
+		err = table.Cleanup(tm.cfg.DBRetainPeriod)
 		if err != nil {
 			// we do not want to stop uploading of dbs due to failures in cleaning them up so logging just the error here.
 			level.Error(pkg_util.Logger).Log("msg", "failed to cleanup uploaded dbs past their retention period", "table", table.name, "err", err)
@@ -242,6 +251,12 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 				level.Error(pkg_util.Logger).Log("msg", "failed to remove empty table folder", "table", fileInfo.Name(), "err", err)
 			}
 			continue
+		}
+
+		// Queries are only done against table snapshots so it's important we snapshot as soon as the table is loaded.
+		err = table.Snapshot()
+		if err != nil {
+			return nil, err
 		}
 
 		localTables[fileInfo.Name()] = table

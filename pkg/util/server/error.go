@@ -30,7 +30,7 @@ func WriteError(err error, w http.ResponseWriter) {
 		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
 	case errors.As(err, &queryErr):
 		http.Error(w, err.Error(), http.StatusBadRequest)
-	case logql.IsParseError(err):
+	case logql.IsParseError(err) || logql.IsPipelineError(err):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {

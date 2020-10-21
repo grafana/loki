@@ -336,7 +336,11 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		query = logql.NewFilterExpr(expr, labels.MatchRegexp, regexp).String()
+		newExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, regexp)
+		if err != nil {
+			return "", err
+		}
+		query = newExpr.String()
 	}
 	return query, nil
 }

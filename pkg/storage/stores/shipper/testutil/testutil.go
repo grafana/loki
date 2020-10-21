@@ -38,8 +38,6 @@ func AddRecordsToBatch(batch chunk.WriteBatch, tableName string, start, numRecor
 		rec := []byte(strconv.Itoa(start + i))
 		batch.Add(tableName, "", rec, rec)
 	}
-
-	return
 }
 
 type SingleTableQuerier interface {

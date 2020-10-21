@@ -25,20 +25,20 @@ For more information:
 
 The following are supported for the index:
 
-* [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-* [Google Bigtable](https://cloud.google.com/bigtable)
-* [Apache Cassandra](https://cassandra.apache.org)
-* [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
-* [BoltDB Shipper](boltdb-shipper/) EXPERIMENTAL index store which stores boltdb index files in the object store
+- [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+- [Google Bigtable](https://cloud.google.com/bigtable)
+- [Apache Cassandra](https://cassandra.apache.org)
+- [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
+- [BoltDB Shipper](boltdb-shipper/) EXPERIMENTAL index store which stores boltdb index files in the object store
 
 The following are supported for the chunks:
 
-* [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-* [Google Bigtable](https://cloud.google.com/bigtable)
-* [Apache Cassandra](https://cassandra.apache.org)
-* [Amazon S3](https://aws.amazon.com/s3)
-* [Google Cloud Storage](https://cloud.google.com/storage/)
-* [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
+- [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+- [Google Bigtable](https://cloud.google.com/bigtable)
+- [Apache Cassandra](https://cassandra.apache.org)
+- [Amazon S3](https://aws.amazon.com/s3)
+- [Google Cloud Storage](https://cloud.google.com/storage/)
+- [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
 
 ## Cloud Storage Permissions
 
@@ -46,9 +46,9 @@ The following are supported for the chunks:
 
 When using S3 as object storage, the following permissions are needed:
 
-* `s3:ListBucket`
-* `s3:PutObject`
-* `s3:GetObject`
+- `s3:ListBucket`
+- `s3:PutObject`
+- `s3:GetObject`
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 
@@ -56,24 +56,24 @@ Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 
 When using DynamoDB for the index, the following permissions are needed:
 
-* `dynamodb:BatchGetItem`
-* `dynamodb:BatchWriteItem`
-* `dynamodb:DeleteItem`
-* `dynamodb:DescribeTable`
-* `dynamodb:GetItem`
-* `dynamodb:ListTagsOfResource`
-* `dynamodb:PutItem`
-* `dynamodb:Query`
-* `dynamodb:TagResource`
-* `dynamodb:UntagResource`
-* `dynamodb:UpdateItem`
-* `dynamodb:UpdateTable`
-* `dynamodb:CreateTable`
-* `dynamodb:DeleteTable` (if `table_manager.retention_period` is more than 0s)
+- `dynamodb:BatchGetItem`
+- `dynamodb:BatchWriteItem`
+- `dynamodb:DeleteItem`
+- `dynamodb:DescribeTable`
+- `dynamodb:GetItem`
+- `dynamodb:ListTagsOfResource`
+- `dynamodb:PutItem`
+- `dynamodb:Query`
+- `dynamodb:TagResource`
+- `dynamodb:UntagResource`
+- `dynamodb:UpdateItem`
+- `dynamodb:UpdateTable`
+- `dynamodb:CreateTable`
+- `dynamodb:DeleteTable` (if `table_manager.retention_period` is more than 0s)
 
 Resources: `arn:aws:dynamodb:<aws_region>:<aws_account_id>:table/<prefix>*`
 
-* `dynamodb:ListTables`
+- `dynamodb:ListTables`
 
 Resources: `*`
 
@@ -83,19 +83,19 @@ If you enable autoscaling from table manager, the following permissions are need
 
 ##### Application Autoscaling
 
-* `application-autoscaling:DescribeScalableTargets`
-* `application-autoscaling:DescribeScalingPolicies`
-* `application-autoscaling:RegisterScalableTarget`
-* `application-autoscaling:DeregisterScalableTarget`
-* `application-autoscaling:PutScalingPolicy`
-* `application-autoscaling:DeleteScalingPolicy`
+- `application-autoscaling:DescribeScalableTargets`
+- `application-autoscaling:DescribeScalingPolicies`
+- `application-autoscaling:RegisterScalableTarget`
+- `application-autoscaling:DeregisterScalableTarget`
+- `application-autoscaling:PutScalingPolicy`
+- `application-autoscaling:DeleteScalingPolicy`
 
 Resources: `*`
 
 ##### IAM
 
-* `iam:GetRole`
-* `iam:PassRole`
+- `iam:GetRole`
+- `iam:PassRole`
 
 Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 

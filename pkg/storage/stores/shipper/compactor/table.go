@@ -93,7 +93,7 @@ func (t *table) compact() error {
 	readObjectChan := make(chan string)
 	n := util.Min(len(objects), readDBsParallelism)
 
-	// read files parallely
+	// read files parallelly
 	for i := 0; i < n; i++ {
 		go func() {
 			var err error
@@ -157,12 +157,10 @@ func (t *table) compact() error {
 
 	// read all the errors
 	for i := 0; i < n; i++ {
-		select {
-		case err := <-errChan:
-			if err != nil && firstErr == nil {
-				firstErr = err
-				close(t.quit)
-			}
+		err := <-errChan
+		if err != nil && firstErr == nil {
+			firstErr = err
+			close(t.quit)
 		}
 	}
 

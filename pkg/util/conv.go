@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
@@ -36,13 +37,38 @@ func ToClientLabels(labels string) ([]client.LabelAdapter, error) {
 	return result, nil
 }
 
+// ParseLabels parses labels from a string using logql parser.
+func ParseLabels(lbs string) (labels.Labels, error) {
+	matchers, err := logql.ParseMatchers(lbs)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(labels.Labels, 0, len(matchers))
+	for _, m := range matchers {
+		result = append(result, labels.Label{
+			Name:  m.Name,
+			Value: m.Value,
+		})
+	}
+	sort.Sort(result)
+	return result, nil
+}
+
 // ModelLabelSetToMap convert a model.LabelSet to a map[string]string
 func ModelLabelSetToMap(m model.LabelSet) map[string]string {
-	result := map[string]string{}
-	for k, v := range m {
-		result[string(k)] = string(v)
+	if len(m) == 0 {
+		return map[string]string{}
 	}
-	return result
+	return *(*map[string]string)(unsafe.Pointer(&m))
+}
+
+// MapToModelLabelSet converts a map into a model.LabelSet
+func MapToModelLabelSet(m map[string]string) model.LabelSet {
+	if len(m) == 0 {
+		return model.LabelSet{}
+	}
+	return *(*map[model.LabelName]model.LabelValue)(unsafe.Pointer(&m))
 }
 
 // RoundToMilliseconds returns milliseconds precision time from nanoseconds.

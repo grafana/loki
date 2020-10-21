@@ -13,7 +13,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/discovery"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
@@ -37,9 +37,11 @@ var (
 	// defaultStdInCfg is the default config for stdin target if none provided.
 	defaultStdInCfg = scrapeconfig.Config{
 		JobName: "stdin",
-		Config: discovery.StaticConfig{
-			{Labels: model.LabelSet{"job": "stdin"}},
-			{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},
+		ServiceDiscoveryConfig: scrapeconfig.ServiceDiscoveryConfig{
+			StaticConfigs: []*targetgroup.Group{
+				{Labels: model.LabelSet{"job": "stdin"}},
+				{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},
+			},
 		},
 	}
 )
@@ -48,17 +50,18 @@ type Shutdownable interface {
 	Shutdown()
 }
 
-type stdinTargetManager struct {
+// nolint:golint
+type StdinTargetManager struct {
 	*readerTarget
 	app Shutdownable
 }
 
-func NewStdinTargetManager(log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*stdinTargetManager, error) {
+func NewStdinTargetManager(log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*StdinTargetManager, error) {
 	reader, err := newReaderTarget(log, stdIn, client, getStdinConfig(log, configs))
 	if err != nil {
 		return nil, err
 	}
-	stdinManager := &stdinTargetManager{
+	stdinManager := &StdinTargetManager{
 		readerTarget: reader,
 		app:          app,
 	}
@@ -82,12 +85,12 @@ func getStdinConfig(log log.Logger, configs []scrapeconfig.Config) scrapeconfig.
 	return cfg
 }
 
-func (t *stdinTargetManager) Ready() bool {
+func (t *StdinTargetManager) Ready() bool {
 	return t.ctx.Err() == nil
 }
-func (t *stdinTargetManager) Stop()                                     { t.cancel() }
-func (t *stdinTargetManager) ActiveTargets() map[string][]target.Target { return nil }
-func (t *stdinTargetManager) AllTargets() map[string][]target.Target    { return nil }
+func (t *StdinTargetManager) Stop()                                     { t.cancel() }
+func (t *StdinTargetManager) ActiveTargets() map[string][]target.Target { return nil }
+func (t *StdinTargetManager) AllTargets() map[string][]target.Target    { return nil }
 
 type readerTarget struct {
 	in     *bufio.Reader

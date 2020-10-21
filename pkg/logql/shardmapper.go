@@ -129,7 +129,7 @@ func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
 	switch e := expr.(type) {
 	case *literalExpr:
 		return e, nil
-	case *matchersExpr, *filterExpr:
+	case *matchersExpr, *pipelineExpr:
 		return m.mapLogSelectorExpr(e.(LogSelectorExpr), r), nil
 	case *vectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, r)
@@ -278,6 +278,13 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 }
 
 func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr, r *shardRecorder) SampleExpr {
+	if hasLabelModifier(expr) {
+		// if an expr can modify labels this means multiple shards can returns the same labelset.
+		// When this happens the merge strategy needs to be different than a simple concatenation.
+		// For instance for rates we need to sum data from different shards but same series.
+		// Since we currently support only concatenation as merge strategy, we skip those queries.
+		return expr
+	}
 	switch expr.operation {
 	case OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeBytesRate, OpRangeTypeBytes:
 		// count_over_time(x) -> count_over_time(x, shard=1) ++ count_over_time(x, shard=2)...
@@ -287,6 +294,22 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr, r *shar
 	default:
 		return expr
 	}
+}
+
+// hasLabelModifier tells if an expression contains pipelines that can modify stream labels
+// parsers introduce new labels but does not alter original one for instance.
+func hasLabelModifier(expr *rangeAggregationExpr) bool {
+	switch ex := expr.left.left.(type) {
+	case *matchersExpr:
+		return false
+	case *pipelineExpr:
+		for _, p := range ex.pipeline {
+			if _, ok := p.(*labelFmtExpr); ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // isShardable returns false if any of the listed operation types are not shardable and true otherwise
@@ -328,6 +351,9 @@ var shardableOps = map[string]bool{
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,
 	OpRangeTypeBytesRate: true,
+	OpRangeTypeSum:       true,
+	OpRangeTypeMax:       true,
+	OpRangeTypeMin:       true,
 
 	// binops - arith
 	OpTypeAdd: true,

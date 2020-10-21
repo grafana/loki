@@ -160,6 +160,7 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		Host:   r.addr,
 		Path:   "/loki/api/v1/query",
 		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("count_over_time({%v=\"%v\",%v=\"%v\"}[%s])", r.sName, r.sValue, r.lName, r.lVal, queryRange)) +
+			fmt.Sprintf("&time=%d", time.Now().UnixNano()) +
 			"&limit=1000",
 	}
 	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v\n", u.String())
@@ -433,6 +434,6 @@ func nextBackoff(w io.Writer, statusCode int, backoff *util.Backoff) time.Time {
 	} else {
 		next = time.Now().Add(backoff.NextDelay())
 	}
-	fmt.Fprintf(w, "Loki returned an error code: %v, waiting %v before next query.", statusCode, next.Sub(time.Now()))
+	fmt.Fprintf(w, "Loki returned an error code: %v, waiting %v before next query.", statusCode, time.Until(next))
 	return next
 }

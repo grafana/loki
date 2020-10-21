@@ -35,21 +35,24 @@ module Fluent
 
       DEFAULT_BUFFER_TYPE = 'memory'
 
-      desc 'url of loki server'
+      desc 'Loki API base URL'
       config_param :url, :string, default: 'https://logs-prod-us-central1.grafana.net'
 
-      desc 'BasicAuth credentials'
+      desc 'Authentication: basic auth credentials'
       config_param :username, :string, default: nil
       config_param :password, :string, default: nil, secret: true
 
-      desc 'Client certificate'
+      desc 'Authentication: Authorization header with Bearer token scheme'
+      config_param :bearer_token_file, :string, default: nil
+
+      desc 'TLS: parameters for presenting a client certificate'
       config_param :cert, :string, default: nil
       config_param :key, :string, default: nil
 
-      desc 'TLS'
+      desc 'TLS: CA certificate file for server certificate verification'
       config_param :ca_cert, :string, default: nil
 
-      desc 'Disable server certificate verification'
+      desc 'TLS: disable server certificate verification'
       config_param :insecure_tls, :bool, default: false
 
       desc 'Loki tenant id'
@@ -80,7 +83,7 @@ module Fluent
         super
         @uri = URI.parse(@url + '/loki/api/v1/push')
         unless @uri.is_a?(URI::HTTP) || @uri.is_a?(URI::HTTPS)
-          raise Fluent::ConfigError, 'url parameter must be valid HTTP'
+          raise Fluent::ConfigError, 'URL parameter must have HTTP/HTTPS scheme'
         end
 
         @record_accessors = {}
@@ -96,24 +99,42 @@ module Fluent
           @remove_keys_accessors.push(record_accessor_create(key))
         end
 
-        if ssl_cert?
-          load_ssl
-          validate_ssl_key
+        # If configured, load and validate client certificate (and corresponding key)
+        if client_cert_configured?
+          load_client_cert
+          validate_client_cert_key
         end
+
+        raise "bearer_token_file #{@bearer_token_file} not found" if !@bearer_token_file.nil? && !File.exist?(@bearer_token_file)
+
+        @auth_token_bearer = nil
+        if !@bearer_token_file.nil?
+          if !File.exist?(@bearer_token_file)
+            raise "bearer_token_file #{@bearer_token_file} not found"
+          end
+
+          # Read the file once, assume long-lived authentication token.
+          @auth_token_bearer = File.read(@bearer_token_file)
+          if @auth_token_bearer.empty?
+            raise "bearer_token_file #{@bearer_token_file} is empty"
+          end
+          log.info "will use Bearer token from bearer_token_file #{@bearer_token_file} in Authorization header"
+        end
+
 
         raise "CA certificate file #{@ca_cert} not found" if !@ca_cert.nil? && !File.exist?(@ca_cert)
       end
 
-      def ssl_cert?
+      def client_cert_configured?
         !@key.nil? && !@cert.nil?
       end
 
-      def load_ssl
+      def load_client_cert
         @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
         @key = OpenSSL::PKey.read(File.read(@key)) if @key
       end
 
-      def validate_ssl_key
+      def validate_client_cert_key
         if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
           raise "Unsupported private key type #{key.class}"
         end
@@ -121,13 +142,6 @@ module Fluent
 
       def multi_workers_ready?
         true
-      end
-
-      def http_opts(uri)
-        opts = {
-          use_ssl: uri.scheme == 'https'
-        }
-        opts
       end
 
       # flush a chunk to loki
@@ -141,7 +155,10 @@ module Fluent
         # add ingest path to loki url
         res = loki_http_request(body, tenant)
 
-        return if res.is_a?(Net::HTTPSuccess)
+        if res.is_a?(Net::HTTPSuccess)
+          log.debug "POST request was responded to with status code #{res.code}"
+          return
+        end
 
         res_summary = "#{res.code} #{res.message} #{res.body}"
         log.warn "failed to write post to #{@uri} (#{res_summary})"
@@ -151,19 +168,19 @@ module Fluent
         raise(LogPostError, res_summary) if res.is_a?(Net::HTTPTooManyRequests) || res.is_a?(Net::HTTPServerError)
       end
 
-      def ssl_opts(uri)
+      def http_request_opts(uri)
         opts = {
           use_ssl: uri.scheme == 'https'
         }
 
-        # Disable server TLS certificate verification
+        # Optionally disable server server certificate verification.
         if @insecure_tls
           opts = opts.merge(
             verify_mode: OpenSSL::SSL::VERIFY_NONE
           )
         end
 
-        # Verify client TLS certificate
+        # Optionally present client certificate
         if !@cert.nil? && !@key.nil?
           opts = opts.merge(
             cert: @cert,
@@ -171,7 +188,8 @@ module Fluent
           )
         end
 
-        # Specify custom certificate authority
+        # For server certificate verification: set custom CA bundle.
+        # Only takes effect when `insecure_tls` is not set.
         unless @ca_cert.nil?
           opts = opts.merge(
             ca_file: @ca_cert
@@ -194,11 +212,12 @@ module Fluent
           @uri.request_uri
         )
         req.add_field('Content-Type', 'application/json')
+        req.add_field('Authorization', "Bearer #{@auth_token_bearer}") if !@auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant
         req.body = Yajl.dump(body)
         req.basic_auth(@username, @password) if @username
 
-        opts = ssl_opts(@uri)
+        opts = http_request_opts(@uri)
 
         msg = "sending #{req.body.length} bytes to loki"
         msg += " (tenant: \"#{tenant}\")" if tenant

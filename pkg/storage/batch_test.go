@@ -9,7 +9,6 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -43,27 +42,16 @@ func Test_batchIterSafeStart(t *testing.T) {
 		newLazyChunk(stream),
 	}
 
-	var ok bool
-
-	batch := newBatchChunkIterator(context.Background(), chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), func(chunks []*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (genericIterator, error) {
-		if !ok {
-			panic("unexpected")
-		}
-
-		// we don't care about the actual data for this test, just give it an iterator.
-		return iter.NewStreamIterator(stream), nil
-	})
+	batch := newBatchChunkIterator(context.Background(), chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{})
 
 	// if it was started already, we should see a panic before this
 	time.Sleep(time.Millisecond)
-	ok = true
 
 	// ensure idempotency
 	batch.Start()
 	batch.Start()
 
-	ok = batch.Next()
-	require.Equal(t, true, ok)
+	require.NotNil(t, batch.Next())
 
 }
 
@@ -958,7 +946,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, tt.direction, tt.start, tt.end)
+			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), logql.NoopPipeline, tt.direction, tt.start, tt.end)
 			require.NoError(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
@@ -1450,8 +1438,8 @@ func TestBuildHeapIterator(t *testing.T) {
 				batchChunkIterator: &batchChunkIterator{
 					direction: logproto.FORWARD,
 				},
-				ctx:    ctx,
-				labels: map[model.Fingerprint]string{},
+				ctx:      ctx,
+				pipeline: logql.NoopPipeline,
 			}
 			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), nil)
 			if err != nil {
