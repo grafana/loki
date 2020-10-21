@@ -112,11 +112,11 @@ func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
 	if len(stages) == 0 {
 		return log.NoopPipeline, nil
 	}
-	return stages, nil
+	return log.NewPipeline(stages), nil
 }
 
-func (m MultiStageExpr) stages() (log.MultiStage, error) {
-	c := make(log.MultiStage, 0, len(m))
+func (m MultiStageExpr) stages() ([]log.Stage, error) {
+	c := make([]log.Stage, 0, len(m))
 	for _, e := range m {
 		p, err := e.Stage()
 		if err != nil {

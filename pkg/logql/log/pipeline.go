@@ -11,7 +11,7 @@ type Pipeline interface {
 
 // Stage is a single step of a Pipeline.
 type Stage interface {
-	Process(line []byte, lbs Labels) ([]byte, bool)
+	Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 }
 
 var (
@@ -27,45 +27,53 @@ func (noopPipeline) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labe
 
 type noopStage struct{}
 
-func (noopStage) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (noopStage) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
 
-type StageFunc func(line []byte, lbs Labels) ([]byte, bool)
+type StageFunc func(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 
-func (fn StageFunc) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (fn StageFunc) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return fn(line, lbs)
 }
 
-// MultiStage is a combinations of multiple stages. Which implement Pipeline
-// or can be reduced into a single stage for convenience.
-type MultiStage []Stage
+// pipeline is a combinations of multiple stages.
+// It can also be reduced into a single stage for convenience.
+type pipeline struct {
+	stages  []Stage
+	builder *LabelsBuilder
+}
 
-func (m MultiStage) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
+func NewPipeline(stages []Stage) Pipeline {
+	return &pipeline{
+		stages:  stages,
+		builder: NewLabelsBuilder(),
+	}
+}
+
+func (p *pipeline) Process(line []byte, lbs labels.Labels) ([]byte, labels.Labels, bool) {
 	var ok bool
-	if len(m) == 0 {
+	if len(p.stages) == 0 {
 		return line, lbs, true
 	}
-	// todo(cyriltovena): this should be deferred within a specific Labels type.
-	// Not all stages will need to access the labels map (e.g line filter).
-	// This could optimize queries that uses only those stages.
-	labelmap := lbs.Map()
-	for _, p := range m {
-		line, ok = p.Process(line, labelmap)
+	p.builder.Reset(lbs)
+	for _, s := range p.stages {
+		line, ok = s.Process(line, p.builder)
 		if !ok {
 			return nil, nil, false
 		}
 	}
-	return line, labels.FromMap(labelmap), true
+	return line, p.builder.Labels(), true
 }
 
-func (m MultiStage) Reduce() Stage {
-	if len(m) == 0 {
+// ReduceStages reduces multiple stages into one.
+func ReduceStages(stages []Stage) Stage {
+	if len(stages) == 0 {
 		return NoopStage
 	}
-	return StageFunc(func(line []byte, lbs Labels) ([]byte, bool) {
+	return StageFunc(func(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		var ok bool
-		for _, p := range m {
+		for _, p := range stages {
 			line, ok = p.Process(line, lbs)
 			if !ok {
 				return nil, false

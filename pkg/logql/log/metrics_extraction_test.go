@@ -19,8 +19,8 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	}{
 		{
 			"convert float",
-			mustSampleExtractor(MultiStage{}.WithLabelExtractor(
-				"foo", ConvertFloat, nil, false, NoopStage,
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertFloat, nil, false, nil, NoopStage,
 			)),
 			labels.Labels{labels.Label{Name: "foo", Value: "15.0"}},
 			15,
@@ -29,8 +29,8 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		},
 		{
 			"convert float without",
-			mustSampleExtractor(MultiStage{}.WithLabelExtractor(
-				"foo", ConvertFloat, []string{"bar", "buzz"}, true, NoopStage,
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertFloat, []string{"bar", "buzz"}, true, nil, NoopStage,
 			)),
 			labels.Labels{
 				{Name: "foo", Value: "10"},
@@ -46,8 +46,8 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		},
 		{
 			"convert float with",
-			mustSampleExtractor(MultiStage{}.WithLabelExtractor(
-				"foo", ConvertFloat, []string{"bar", "buzz"}, false, NoopStage,
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertFloat, []string{"bar", "buzz"}, false, nil, NoopStage,
 			)),
 			labels.Labels{
 				{Name: "foo", Value: "0.6"},
@@ -64,8 +64,8 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		},
 		{
 			"convert duration with",
-			mustSampleExtractor(MultiStage{}.WithLabelExtractor(
-				"foo", ConvertDuration, []string{"bar", "buzz"}, false, NoopStage,
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, nil, NoopStage,
 			)),
 			labels.Labels{
 				{Name: "foo", Value: "500ms"},

@@ -82,7 +82,7 @@ func NewOrLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilte
 	}
 }
 
-func (b *BinaryLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
+func (b *BinaryLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	line, lok := b.Left.Process(line, lbs)
 	if !b.and && lok {
 		return line, true
@@ -110,8 +110,8 @@ func (b *BinaryLabelFilter) String() string {
 
 type noopLabelFilter struct{}
 
-func (noopLabelFilter) String() string                                 { return "" }
-func (noopLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) { return line, true }
+func (noopLabelFilter) String() string                                         { return "" }
+func (noopLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) { return line, true }
 
 // ReduceAndLabelFilter Reduces multiple label filterer into one using binary and operation.
 func ReduceAndLabelFilter(filters []LabelFilterer) LabelFilterer {
@@ -144,19 +144,19 @@ func NewBytesLabelFilter(t LabelFilterType, name string, b uint64) *BytesLabelFi
 	}
 }
 
-func (d *BytesLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
-	if lbs.HasError() {
+func (d *BytesLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter it out.
 		return line, true
 	}
-	v, ok := lbs[d.Name]
+	v, ok := lbs.Get(d.Name)
 	if !ok {
 		// we have not found this label.
 		return line, false
 	}
 	value, err := humanize.ParseBytes(v)
 	if err != nil {
-		lbs.SetError(errLabelFilter)
+		lbs.SetErr(errLabelFilter)
 		return line, true
 	}
 	switch d.Type {
@@ -173,7 +173,7 @@ func (d *BytesLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
 	case LabelFilterLesserThanOrEqual:
 		return line, value <= d.Value
 	default:
-		lbs.SetError(errLabelFilter)
+		lbs.SetErr(errLabelFilter)
 		return line, true
 	}
 }
@@ -198,19 +198,19 @@ func NewDurationLabelFilter(t LabelFilterType, name string, d time.Duration) *Du
 	}
 }
 
-func (d *DurationLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
-	if lbs.HasError() {
+func (d *DurationLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter out.
 		return line, true
 	}
-	v, ok := lbs[d.Name]
+	v, ok := lbs.Get(d.Name)
 	if !ok {
 		// we have not found this label.
 		return line, false
 	}
 	value, err := time.ParseDuration(v)
 	if err != nil {
-		lbs.SetError(errLabelFilter)
+		lbs.SetErr(errLabelFilter)
 		return line, true
 	}
 	switch d.Type {
@@ -227,7 +227,7 @@ func (d *DurationLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
 	case LabelFilterLesserThanOrEqual:
 		return line, value <= d.Value
 	default:
-		lbs.SetError(errLabelFilter)
+		lbs.SetErr(errLabelFilter)
 		return line, true
 	}
 }
@@ -252,23 +252,19 @@ func NewNumericLabelFilter(t LabelFilterType, name string, v float64) *NumericLa
 	}
 }
 
-func (n *NumericLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
-	if lbs.HasError() {
+func (n *NumericLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.HasErr() {
 		// if there's an error only the string matchers can filter out.
 		return line, true
 	}
-	if lbs.HasError() {
-		// if there's an error only the string matchers can filter out.
-		return line, true
-	}
-	v, ok := lbs[n.Name]
+	v, ok := lbs.Get(n.Name)
 	if !ok {
 		// we have not found this label.
 		return line, false
 	}
 	value, err := strconv.ParseFloat(v, 64)
 	if err != nil {
-		lbs.SetError(errLabelFilter)
+		lbs.SetErr(errLabelFilter)
 		return line, true
 	}
 	switch n.Type {
@@ -285,7 +281,7 @@ func (n *NumericLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
 	case LabelFilterLesserThanOrEqual:
 		return line, value <= n.Value
 	default:
-		lbs.SetError(errLabelFilter)
+		lbs.SetErr(errLabelFilter)
 		return line, true
 	}
 
@@ -308,6 +304,10 @@ func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
 	}
 }
 
-func (s *StringLabelFilter) Process(line []byte, lbs Labels) ([]byte, bool) {
-	return line, s.Matches(lbs[s.Name])
+func (s *StringLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if s.Name == ErrorLabel {
+		return line, s.Matches(lbs.GetErr())
+	}
+	v, _ := lbs.Get(s.Name)
+	return line, s.Matches(v)
 }
