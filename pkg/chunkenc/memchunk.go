@@ -481,17 +481,30 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		its = append(its, c.head.iterator(ctx, direction, mint, maxt, lbs, pipeline))
 	}
 
-	iterForward := iter.NewTimeRangedIterator(
-		iter.NewNonOverlappingIterator(its, ""),
-		time.Unix(0, mint),
-		time.Unix(0, maxt),
-	)
-
 	if direction == logproto.FORWARD {
-		return iterForward, nil
+		return iter.NewTimeRangedIterator(
+			iter.NewNonOverlappingIterator(its, ""),
+			time.Unix(0, mint),
+			time.Unix(0, maxt),
+		), nil
+	}
+	for i, it := range its {
+		r, err := iter.NewEntryReversedIter(
+			iter.NewTimeRangedIterator(it,
+				time.Unix(0, mint),
+				time.Unix(0, maxt),
+			))
+		if err != nil {
+			return nil, err
+		}
+		its[i] = r
 	}
 
-	return iter.NewEntryReversedIter(iterForward)
+	for i, j := 0, len(its)-1; i < j; i, j = i+1, j-1 {
+		its[i], its[j] = its[j], its[i]
+	}
+
+	return iter.NewNonOverlappingIterator(its, ""), nil
 }
 
 // Iterator implements Chunk.
