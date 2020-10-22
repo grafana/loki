@@ -11,25 +11,39 @@ LogQL uses labels and operators for filtering.
 There are two types of LogQL queries:
 
 - *Log queries* return the contents of log lines.
-- *Metric queries* extend log queries and calculate values based on the counts of logs from a log query.
+- *Metric queries* extend log queries and calculate sample values based on the content of logs from a log query.
+
+## Log Queries
 
 A basic log query consists of two parts:
 
 - **log stream selector**
-- **filter expression**
+- **log pipeline**
 
-Due to Loki's design, all LogQL queries must contain a log stream selector.
+Due to Loki's design, all LogQL queries must contain a **log stream selector**.
 
 The log stream selector determines how many log streams (unique sources of log content, such as files) will be searched.
 A more granular log stream selector then reduces the number of searched streams to a manageable volume.
 This means that the labels passed to the log stream selector will affect the relative performance of the query's execution.
-The filter expression is then used to do a distributed `grep` over the aggregated logs from the matching log streams.
 
-To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
+**Optionally** the log stream selector can be followed by a **log pipeline**. A log pipeline is a set of stage expressions chained together and applied to the selected log streams. Each expressions can filter out, parse and mutate log lines and their respective labels.
+
+The following example shows a full log query in action:
+
+```logql
+{container="query-frontend",namespace="tempo-dev"} |= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500
+```
+
+The query is composed of:
+
+- a log stream selector `{container="query-frontend",namespace="loki-dev"}` which targets the `query-frontend` container  in the `loki-dev`namespace.
+- a log pipeline `|= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500` which will filter out log that doesn't contains the word `metrics.go`, then parses each log line to extract more labels and filter with them.
+
+> To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
 For example `` `\w+` `` is the same as `"\\w+"`.
 This is specially useful when writing a regular expression which contains multiple backslashes that require escaping.
 
-## Log Stream Selector
+### Log Stream Selector
 
 The log stream selector determines which log streams should be included in your query results.
 The stream selector is comprised of one or more key-value pairs, where each key is a **log label** and each value is that **label's value**.
@@ -60,7 +74,24 @@ Examples:
 
 The same rules that apply for [Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Loki log stream selectors.
 
-### Filter Expression
+### Log Pipeline
+
+A log pipeline can be appended to a log stream selector to further process and filter log streams. It usually is composed of one or multiple expressions, each expressions is executed in sequence for each log line. If an expression filters out a log line, the pipeline will stop at this point and start processing the next line.
+
+Some expressions can mutate the log content and respective labels (e.g `| line_format "{{.status_code}}"`), which will be then available for further filtering and processing following expressions or metric queries.
+
+A log pipeline can be composed of:
+
+- [Line Filter Expression](#Line-Filter-Expression).
+- [Parser Expression](#Parser-Expression)
+- [Label Filter Expression](#Label-Filter-Expression)
+- [Line Format Expression](#Line-Format-Expression)
+- [Labels Format Expression](#Labels-Format-Expression)
+- [Unwrap Expression](#Unwrap-Expression)
+
+#### Line Filter Expression
+
+The line filter expression is used to do a distributed `grep` over the aggregated logs from the matching log streams.
 
 After writing the log stream selector, the resulting set of logs can be further filtered with a search expression.
 The search expression can be just text or regex:
@@ -86,6 +117,181 @@ Filter operators can be chained and will sequentially filter down the expression
 
 When using `|~` and `!~`, Go (as in [Golang](https://golang.org/)) [RE2 syntax](https://github.com/google/re2/wiki/Syntax) regex may be used.
 The matching is case-sensitive by default and can be switched to case-insensitive prefixing the regex with `(?i)`.
+
+While line filter expressions could be placed anywhere in a pipeline, it is almost always better to have them at the beginning. This ways it will improve the performance of the query doing further processing only when a line matches.
+
+For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line "{{.err}}"` will always run faster than  `{job="mysql"} | json | line "{{.message}}"` |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
+
+#### Parser Expression
+
+Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#Label-Filter-Expression) or for [metric aggregations](#Metric-Queries).
+
+Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
+
+In case of errors, for instance if the line is not in the expected format, log line won't be filtered but instead will get a new `__error__` label added.
+
+If an extracted label key name already exist in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#Labels-Format-Expression). However if an extracted key appears twice, only the latest label value will be kept.
+
+We support currently support json, logfmt and regexp parsers.
+
+The **json** parsers take no parameters and can be added using the expression `| json` in your pipeline. It will extract all json properties as labels if the log line is a valid json document. Nested properties are flattened into label keys using the `_` separator. **Arrays are skipped**.
+
+For example the json parsers will extract from the following document:
+
+```json
+{
+	"protocol": "HTTP/2.0",
+	"servers": ["129.0.1.1","10.2.1.3"],
+	"request": {
+		"time": "6.032",
+		"method": "GET",
+		"host": "foo.grafana.net",
+		"size": "55",
+	},
+	"response": {
+		"status": 401,
+		"size": "228",
+		"latency_seconds": "6.031"
+	}
+}
+```
+
+The following list of labels:
+
+```kv
+"protocol" => "HTTP/2.0"
+"request_time" => "6.032"
+"request_method" => "GET"
+"request_host" => "foo.grafana.net"
+"request_size" => "55"
+"response_status" => "401"
+"response_size" => "228"
+"response_size" => "228"
+```
+
+The **logfmt** parser can be added using the `| logfmt` and will extract all keys and values from the [logfmt](https://brandur.org/logfmt) formatted log line.
+
+For example the following log line:
+
+```logfmt
+at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" connect=4ms service=8ms status=200
+```
+
+will get those labels extracted:
+
+```kv
+"at" => "info"
+"method" => "GET"
+"path" => "/"
+"host" => "grafana.net"
+"fwd" => "124.133.124.161"
+"service" => "8ms"
+"status" => "200"
+```
+
+Unlike the logfmt and json, which extract implicitly all values and takes no parameters, the **regexp** parser takes a single parameter `| regexp "<re>"` which is the regular expression using the [Golang](https://golang.org/) [RE2 syntax](https://github.com/google/re2/wiki/Syntax).
+
+The regular expression must contain a least one named sub-match (e.g `(?P<name>re)`), each sub-match will extract a different label.
+
+For example the parser `| regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"` will extract from the following line:
+
+```log
+POST /api/prom/api/v1/query_range (200) 1.5s
+```
+
+those labels:
+
+```kv
+"method" => "POST"
+"path" => "/api/prom/api/v1/query_range"
+"status" => "200"
+"duration" => "1.5s"
+```
+
+You should use json and logfmt when possible and then use regexp when the log line is not in those specific formats. Multiple parsers can be used during the same log pipeline, this is useful when you want to parse complex log line. ([see examples](#Multiple-parsers))
+
+#### Label Filter Expression
+
+Label filter expression allows to filter log line using their original and extracted labels. It can contains multiple predicates.
+
+A predicate contains a **label identifier**, an **operation** and a **value** to compare the label with.
+
+For example with `cluster="namespace"` the cluster is the label identifier, the operation is `=` and the value is "namespace". The label identifier is always on the right side of the operation.
+
+We support multiple **value** types which are automatically inferred from the query input.
+
+- **String** is double quoted or backticked such as `"200"` or \``us-central1`\`.
+- [Duration](https://golang.org/pkg/time/#ParseDuration) is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+- Number are floating-point number (64bits), such as`250`, `89.923`.
+- Bytes is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5Kib" or "20b". Valid bytes units are "b", "kib", "kb", "mib", "mb", "gib",  "gb", "tib", "tb", "pib", "pb", "eib", "eb".
+
+String type work exactly like Prometheus label matchers use in [log stream selector](#Log-Stream-Selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
+
+> The string type is the only one that can filter out a log line with a label `__error__`.
+
+Duration, Number and Bytes required the label value to be converted before evaluation and support a different set of numerical operation such as:
+
+- `==` or `=` for equality.
+- `!=` for inequality.
+- `>` and `>=` for greater than and greater than or equal.
+- `<` and `<=` for lesser than and lesser than or equal.
+
+If the conversion of the label value fail, the log line is not filtered and an `__error__` label is added. To filters those errors see [pipeline errors](#Pipeline-Errors) section.
+
+You can chain multiple predicate using `and` and `or` which respectively express and and or binary operation. `and` can also simply be replaced by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
+
+This means that all the following expressions are equivalent:
+
+```logql
+| duration >= 20ms or size == 20kb and method!~"2.."
+| duration >= 20ms or size == 20kb | method!~"2.."
+| duration >= 20ms or size == 20kb , method!~"2.."
+| duration >= 20ms or size == 20kb  method!~"2.."
+
+```
+
+By default the precedence of multiple predicates is right to left. You can wrap predicates with parenthesis to force a different precedence left to right.
+
+For example the following are equivalent.
+
+```logql
+| duration >= 20ms or method="GET" and size <= 20KB
+| ((duration >= 20ms or method="GET") and size <= 20KB)
+```
+
+It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `method="GET" and size <= 20KB`, make sure to use proper parenthesis as shown below.
+
+```logql
+| duration >= 20ms or (method="GET" and size <= 20KB)
+```
+
+> Label filter expressions are the only expression allowed after the [unwrap expression](#Unwrap-Expression). This is mainly to allow filtering errors from the metric extraction (see [errors](#Pipeline-Errors)).
+
+#### Line Format Expression
+
+#### Labels Format Expression
+
+#### Unwrap Expression
+
+#### Pipeline Errors
+
+### Examples
+
+#### Multiple parsers
+
+To extract the method and the path of the following logfmt log line:
+
+```log
+level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"
+```
+
+You can use multiple parsers (logfmt and regexp) like this.
+
+```logql
+{job="cortex-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"`
+```
+
+This is possible because the `| line_format` reformats the log line to become `POST /api/prom/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
 
 ## Metric Queries
 
