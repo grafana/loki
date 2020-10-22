@@ -163,9 +163,19 @@ func (tm *TableManager) getOrCreateTable(spanCtx context.Context, tableName stri
 	return table
 }
 
-func (tm *TableManager) syncTables(ctx context.Context) error {
+func (tm *TableManager) syncTables(ctx context.Context) (err error) {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
+
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+
+		}
+
+		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
+	}()
 
 	level.Info(pkg_util.Logger).Log("msg", "syncing tables")
 
@@ -176,7 +186,7 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return
 }
 
 func (tm *TableManager) cleanupCache() error {
