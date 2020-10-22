@@ -118,7 +118,7 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 				}
 			}
 		}
-		t.metrics.filesDownloadOperationTotal.WithLabelValues(status).Inc()
+		t.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
 	}()
 
 	startTime := time.Now()
@@ -174,8 +174,8 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 	}
 
 	duration := time.Since(startTime).Seconds()
-	t.metrics.filesDownloadDurationSeconds.add(t.name, duration)
-	t.metrics.filesDownloadSizeBytes.add(t.name, totalFilesSize)
+	t.metrics.tablesDownloadDurationSeconds.add(t.name, duration)
+	t.metrics.tablesDownloadSizeBytes.add(t.name, totalFilesSize)
 	level.Debug(spanLogger).Log("total-files-size", totalFilesSize)
 
 	return
