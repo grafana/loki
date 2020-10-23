@@ -89,6 +89,8 @@ A log pipeline can be composed of:
 - [Labels Format Expression](#Labels-Format-Expression)
 - [Unwrap Expression](#Unwrap-Expression)
 
+The [unwrap Expression](#Unwrap-Expression) is a special expression that should only be used within metric queries.
+
 #### Line Filter Expression
 
 The line filter expression is used to do a distributed `grep` over the aggregated logs from the matching log streams.
@@ -269,13 +271,118 @@ It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `me
 
 #### Line Format Expression
 
+The line format expression can rewrite the log line content by using the [text/template](https://golang.org/pkg/text/template/) format.
+It takes a single string parameter `| line_format "{{.label_name}}"`, which is the template format. All labels are injected as data variable into the template and are available to use with the `{{.label_name}}` notation.
+
+For example the following expression:
+
+```logql
+{container="frontend"} | logfmt | line_format "{{.query}} {{.duration}}"
+```
+
+Will extract and rewrite the log line to only contains the query and the duration of a request.
+
+You can use double quoted string for the template or single backtick \``\{{.label_name}}`\` to avoid the need to escape special characters.
+
+See [functions](#Template-functions) to learn about available functions in the template format.
+
 #### Labels Format Expression
 
-#### Unwrap Expression
+The `| label_format` expression can renamed, modify or add labels. It takes as parameter a comma separated list of equality operation, this means you can perform multiple operation at once.
 
-#### Pipeline Errors
+When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
+
+We also support the left side of the equality as a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value will be replace by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, this mean labels are available as variables and you can use the same list of [functions](#Template-functions).
+
+In both case if the destination label doesn't exist a new one will be created.
+
+> A single label name can only appear once per expression this means `| label_format foo=bar,foo="new"` is not allowed but you can use instead two expressions `| label_format foo=bar | label_format foo="new"`
+
+#### Template functions
+
+The text template format used in `| line_format` and `| label_format` support functions the following list of functions.
+
+##### ToLower & ToUpper
+
+Convert the entire string to lowercase or uppercase:
+
+Examples:
+
+```template
+"{{.request_method | ToLower}}"
+"{{.request_method | ToUpper}}"
+`ToLower "This is a string"`
+```
+
+##### Replace
+
+Perform simple string replacement.
+
+It takes three arguments:
+
+- string to replace
+- string to replace with
+- source string
+
+Example:
+
+```template
+`"This is a string" | Replace " " "-"`
+```
+
+The above will produce `This-is-a-string`
+
+##### Trim
+
+`Trim` returns a slice of the string s with all leading and
+trailing Unicode code points contained in cutset removed.
+
+`TrimLeft` and `TrimRight` are the same as `Trim` except that it respectively trim only leading and trailing characters.
+
+```template
+`{{ Trim .query ",. " }}`
+`{{ TrimLeft .uri ":" }}`
+`{{ TrimRight .path "/" }}`
+```
+
+`TrimSpace` TrimSpace returns a slice of the string s, with all leading
+and trailing white space removed, as defined by Unicode.
+
+```template
+{{ TrimSpace .latency }}
+```
+
+`TrimPrefix` and `TrimSuffix` will trim respectively the prefix or suffix supplied.
+
+```template
+{{ TrimPrefix .path "/" }}
+```
+
+##### Regex
+
+`regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match.
+
+```template
+`{{ regexReplaceAllLiteral "(a*)bc" .some_label "{1}a" }}`
+```
+
+`regexReplaceAllLiteral` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement The replacement string is substituted directly, without using Expand.
+
+```template
+`{{ regexReplaceAllLiteral "(ts=)" .timestamp "timestamp=" }}`
+```
+
+You can combine multiple function using pipe, for example if you want to strip out spaces and make the request method in capital you would write the following template `{{ .request_method | TrimSpace | ToUpper }}`.
 
 ### Examples
+
+#### Multiple filtering
+
+Filtering should be done first using label matchers, then line filters (when possible) and finally using label filters. The following query demonstrate this.
+
+```logql
+{cluster="ops-tools1", namespace="loki-dev", job="loki-dev/query-frontend"} |= "metrics.go" !="out of order" | logfmt | duration > 30s or status_code!="200"
+```
 
 #### Multiple parsers
 
@@ -335,6 +442,8 @@ rate({job="mysql"} |= "error" != "timeout" [5m])
 rate({job="mysql"}[5m] |= "error" != "timeout")
 ```
 
+#### Unwrap Expression
+
 ### Aggregation operators
 
 Like [PromQL](https://prometheus.io/docs/prometheus/latest/querying/operators/#aggregation-operators), LogQL supports a subset of built-in aggregation operators that can be used to aggregate the element of a single vector, resulting in a new vector of fewer elements but with aggregated values:
@@ -382,6 +491,7 @@ Get the rate of HTTP GET requests from NGINX logs:
 ```logql
 avg(rate(({job="nginx"} |= "GET")[10s])) by (region)
 ```
+
 
 ### Binary Operators
 
@@ -511,3 +621,5 @@ More details can be found in the [Golang language documentation](https://golang.
 `1 + 2 / 3` is equal to `1 + ( 2 / 3 )`.
 
 `2 * 3 % 2` is evaluated as `(2 * 3) % 2`.
+
+### Pipeline Errors
