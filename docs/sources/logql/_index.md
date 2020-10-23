@@ -400,6 +400,18 @@ You can use multiple parsers (logfmt and regexp) like this.
 
 This is possible because the `| line_format` reformats the log line to become `POST /api/prom/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
 
+#### Formatting
+
+
+```logql
+{cluster="ops-tools1", name="querier", namespace="tempo-dev"}
+  |= "metrics.go" != "loki-canary"
+  | logfmt
+  | query != ""
+  | label_format query="{{ Replace .query \"\\n\" \"\" -1 }}"
+  | line_format "{{ .ts}}\t{{.duration}}\ttraceID = {{.traceID}}\t{{ printf \"%-100.100s\" .query }} "
+```
+
 ## Metric Queries
 
 LogQL also supports wrapping a log query with functions that allows for counting entries per stream.
