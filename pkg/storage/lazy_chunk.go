@@ -74,18 +74,30 @@ func (c *LazyChunk) Iterator(
 		its = append(its, b.Iterator(ctx, dropLabels(c.Chunk.Metric, labels.MetricName), pipeline))
 	}
 
-	// build the final iterator bound to the requested time range.
-	iterForward := iter.NewTimeRangedIterator(
-		iter.NewNonOverlappingIterator(its, ""),
-		from,
-		through,
-	)
-
 	if direction == logproto.FORWARD {
-		return iterForward, nil
+		return iter.NewTimeRangedIterator(
+			iter.NewNonOverlappingIterator(its, ""),
+			from,
+			through,
+		), nil
+	}
+	for i, it := range its {
+		r, err := iter.NewEntryReversedIter(
+			iter.NewTimeRangedIterator(it,
+				from,
+				through,
+			))
+		if err != nil {
+			return nil, err
+		}
+		its[i] = r
 	}
 
-	return iter.NewEntryReversedIter(iterForward)
+	for i, j := 0, len(its)-1; i < j; i, j = i+1, j-1 {
+		its[i], its[j] = its[j], its[i]
+	}
+
+	return iter.NewNonOverlappingIterator(its, ""), nil
 }
 
 // SampleIterator returns an sample iterator.
