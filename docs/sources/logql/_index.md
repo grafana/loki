@@ -374,7 +374,7 @@ and trailing white space removed, as defined by Unicode.
 
 You can combine multiple function using pipe, for example if you want to strip out spaces and make the request method in capital you would write the following template `{{ .request_method | TrimSpace | ToUpper }}`.
 
-### Examples
+### Log Queries Examples
 
 #### Multiple filtering
 
@@ -402,9 +402,10 @@ This is possible because the `| line_format` reformats the log line to become `P
 
 #### Formatting
 
+The following query shows how you can reformat a log line to make it more easier to read on screen.
 
 ```logql
-{cluster="ops-tools1", name="querier", namespace="tempo-dev"}
+{cluster="ops-tools1", name="querier", namespace="loki-dev"}
   |= "metrics.go" != "loki-canary"
   | logfmt
   | query != ""
@@ -412,25 +413,50 @@ This is possible because the `| line_format` reformats the log line to become `P
   | line_format "{{ .ts}}\t{{.duration}}\ttraceID = {{.traceID}}\t{{ printf \"%-100.100s\" .query }} "
 ```
 
+Label formatting is used to sanitize the query while the line format reduce the amount of information and creates a tabular output.
+
+For those given log line:
+
+```log
+level=info ts=2020-10-23T20:32:18.094668233Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"cortex-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=650.22401ms status=200 throughput_mb=1.529717 total_bytes_mb=0.994659
+level=info ts=2020-10-23T20:32:18.068866235Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"cortex-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=624.008132ms status=200 throughput_mb=0.693449 total_bytes_mb=0.432718
+```
+
+The result would be:
+
+```log
+2020-10-23T20:32:18.094668233Z	650.22401ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
+2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
+```
+
 ## Metric Queries
 
-LogQL also supports wrapping a log query with functions that allows for counting entries per stream.
+LogQL also supports wrapping a log query with functions that allows for creating metrics out of the logs.
 
 Metric queries can be used to calculate things such as the rate of error messages, or the top N log sources with the most amount of logs over the last 3 hours.
 
+Combined with log [parsers](#Parser-Expression), metrics queries can also be used to calculate metrics from a sample value within the log line such latencies, requests size.
+Furthermore all labels, including extracted ones, will be available for aggregations and generation of new series.
+
 ### Range Vector aggregation
 
-LogQL shares the same [range vector](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors) concept from Prometheus, except the selected range of samples include a value of 1 for each log entry.
-An aggregation can be applied over the selected range to transform it into an instance vector.
+LogQL shares the same [range vector](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors) concept from Prometheus, except the selected range of samples is a range of selected log or label values.
+A range aggregation can be applied over the selected range to transform it into an instance vector.
 
-The currently supported functions for operating over are:
+Loki supports two types of range aggregation. Log range and unwrapped range aggregations.
 
-- `rate`: calculates the number of entries per second
-- `count_over_time`: counts the entries for each log stream within the given range.
-- `bytes_rate`: calculates the number of bytes per second for each stream.
-- `bytes_over_time`: counts the amount of bytes used by each log stream for a given range.
+#### Log Range Aggregations
 
-#### Examples
+A log range is a log query (with or without a log pipeline) followed by the range notation e.g [1m]. It should be noted that the range notation `[5m]` can be placed at end of the log pipeline or right after the log stream matcher.
+
+The first type uses log entries to compute values and supported functions for operating over are:
+
+- `rate(log-range)`: calculates the number of entries per second
+- `count_over_time(log-range)`: counts the entries for each log stream within the given range.
+- `bytes_rate(log-range)`: calculates the number of bytes per second for each stream.
+- `bytes_over_time(log-range)`: counts the amount of bytes used by each log stream for a given range.
+
+##### Log  Examples
 
 ```logql
 count_over_time({job="mysql"}[5m])
@@ -439,22 +465,66 @@ count_over_time({job="mysql"}[5m])
 This example counts all the log lines within the last five minutes for the MySQL job.
 
 ```logql
-rate({job="mysql"} |= "error" != "timeout" [10s] )
+sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
 ```
 
-This example demonstrates that a fully LogQL query can be wrapped in the aggregation syntax, including filter expressions.
-This example gets the per-second rate of all non-timeout errors within the last ten seconds for the MySQL job.
+This example demonstrates that a fully LogQL query can be wrapped in the aggregation syntax, including filter and parsers.
+This example gets the per-second rate of all non-timeout errors within the last minutes per host for the MySQL job and only includes errors whose duration is above ten seconds.
 
-It should be noted that the range notation `[5m]` can be placed at end of the log stream filter or right after the log stream matcher.
-For example, the two syntaxes below are equivalent:
+#### Unwrapped Range Aggregations
+
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be use within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#Pipeline-Errors).
+
+The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
+
+Since label values are string, by default a conversion into a float (64bits) will be attempted, in case of failure the `__error__` label is added to the sample.
+Optionally the label identifier can be wrapped by a conversion function `| unwrap <function>(label_identifier)`, which will attempt to convert the label value from a specific format.
+
+We currently support only the function `duration_seconds` (or its short equivalent `duration`) which will convert the label value in seconds from the [go duration format](https://golang.org/pkg/time/#ParseDuration) (e.g `5m`, `24s30ms`).
+
+Supported function for operating over unwrapped ranges are:
+
+- `sum_over_time(unwrapped-range)`: the sum of all values in the specified interval.
+- `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
+- `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
+- `min_over_time(unwrapped-range)`: the minimum value of all points in the specified interval
+- `stdvar_over_time(unwrapped-range)`: the population standard variance of the values in the specified interval.
+- `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
+- `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
+
+Except for `sum_over_time`, `min_over_time` and `max_over_time` unwrapped range aggregations support grouping.
 
 ```logql
-rate({job="mysql"} |= "error" != "timeout" [5m])
-
-rate({job="mysql"}[5m] |= "error" != "timeout")
+<aggr-op>([parameter,] <unwrapped-range>) [without|by (<label list>)]
 ```
 
-#### Unwrap Expression
+Which can be used to aggregate over distinct labels dimensions by including a `without` or `by` clause.
+
+`without` removes the listed labels from the result vector, while all other labels are preserved the output. `by` does the opposite and drops labels that are not listed in the `by` clause, even if their label values are identical between all elements of the vector.
+
+#### Unwrapped Examples
+
+```logql
+quantile_over_time(0.99,
+  {cluster="ops-tools1",container="ingress-nginx"}
+    | json
+    | __error__ = ""
+    | unwrap request_time [1m])) by (path)
+```
+
+This example calculates the p99 of the nginx-ingress latency by path.
+
+```logql
+sum by (org_id) (
+  sum_over_time(
+  {cluster="ops-tools1",container="loki-dev"}
+      |= "metrics.go"
+      | logfmt
+      | unwrap bytes_processed [1m])
+  )
+```
+
+This calculates the amount of bytes processed per organization id.
 
 ### Aggregation operators
 
@@ -483,7 +553,7 @@ The aggregation operators can either be used to aggregate over all label values 
 The `without` clause removes the listed labels from the resulting vector, keeping all others.
 The `by` clause does the opposite, dropping labels that are not listed in the clause, even if their label values are identical between all elements of the vector.
 
-#### Examples
+#### Vector Aggregations Examples
 
 Get the top 10 applications by the highest log throughput:
 
@@ -498,12 +568,11 @@ by level:
 sum(count_over_time({job="mysql"}[5m])) by (level)
 ```
 
-Get the rate of HTTP GET requests from NGINX logs:
+Get the rate of HTTP GET of /home requests from NGINX logs by region:
 
 ```logql
-avg(rate(({job="nginx"} |= "GET")[10s])) by (region)
+avg(rate(({job="nginx"} |= "GET" | json | path="/home")[10s])) by (region)
 ```
-
 
 ### Binary Operators
 
@@ -530,7 +599,7 @@ The result is propagated into the result vector with the grouping labels becomin
 
 Pay special attention to [operator order](#operator-order) when chaining arithmetic operators.
 
-##### Examples
+##### Arithmetic Examples
 
 Implement a health check with a simple query:
 
@@ -566,7 +635,7 @@ Other elements are dropped.
 `vector1 unless vector2` results in a vector consisting of the elements of vector1 for which there are no elements in vector2 with exactly matching label sets.
 All matching elements in both vectors are dropped.
 
-##### Examples
+##### Binary Operators Examples
 
 This contrived query will return the intersection of these queries, effectively `rate({app="bar"})`:
 
@@ -635,3 +704,36 @@ More details can be found in the [Golang language documentation](https://golang.
 `2 * 3 % 2` is evaluated as `(2 * 3) % 2`.
 
 ### Pipeline Errors
+
+There's multiple reasons for failures while Loki processes a log pipeline or a metric query such as:
+
+- a numeric label filter expressions could fail to turn label value into a number
+- a metric conversion for a label value fail.
+- a log line is not a valid json document.
+- etc...
+
+When those failures happen, Loki won't filter out those log lines, instead they are passed down into the next stage of the pipeline with a new system label named `__error__`. The only way to filter out errors is by using a label filter expressions. The `__error__` label can't be renamed via the language.
+
+For example to remove json errors:
+
+```logql
+  {cluster="ops-tools1",container="ingress-nginx"}
+    | json
+    | __error__ != "JSONParserErr"
+```
+
+Alternatively you can remove all error using a catch all matcher such as `__error__ = ""` or even show only errors using `__error__ != ""`.
+
+The filter should be placed after the stage that generated this error. This means if you need to remove errors from an unwrap expression it needs to be placed after the unwrap.
+
+```logql
+quantile_over_time(
+	0.99,
+	{container="ingress-nginx",service="hosted-grafana"}
+	| json
+	| unwrap response_latency_seconds
+	| __error__=""[1m]
+	) by (cluster)
+```
+
+>Metric queries cannot contains errors, in case errors are found during execution, a bad request status code will be returned by Loki.
