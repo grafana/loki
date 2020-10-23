@@ -782,9 +782,10 @@ func (cg *Group) compact(ctx context.Context, dir string, comp tsdb.Compactor) (
 	index := filepath.Join(bdir, block.IndexFilename)
 
 	newMeta, err := metadata.InjectThanos(cg.logger, bdir, metadata.Thanos{
-		Labels:     cg.labels.Map(),
-		Downsample: metadata.ThanosDownsample{Resolution: cg.resolution},
-		Source:     metadata.CompactorSource,
+		Labels:       cg.labels.Map(),
+		Downsample:   metadata.ThanosDownsample{Resolution: cg.resolution},
+		Source:       metadata.CompactorSource,
+		SegmentFiles: block.GetSegmentFiles(bdir),
 	}, nil)
 	if err != nil {
 		return false, ulid.ULID{}, errors.Wrapf(err, "failed to finalize the block %s", bdir)

@@ -6,8 +6,11 @@ import (
 	"io/ioutil"
 	"path"
 
+	"github.com/thanos-io/thanos/pkg/runutil"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // Object Alert Storage Schema
@@ -52,12 +55,14 @@ func (a *AlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.Al
 }
 
 func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alerts.AlertConfigDesc, error) {
-	reader, err := a.client.GetObject(ctx, key)
+	readCloser, err := a.client.GetObject(ctx, key)
 	if err != nil {
 		return alerts.AlertConfigDesc{}, err
 	}
 
-	buf, err := ioutil.ReadAll(reader)
+	defer runutil.CloseWithLogOnErr(util.Logger, readCloser, "close alert config reader")
+
+	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
 		return alerts.AlertConfigDesc{}, err
 	}

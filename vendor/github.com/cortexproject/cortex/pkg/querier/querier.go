@@ -64,10 +64,13 @@ type Config struct {
 
 	SecondStoreEngine        string       `yaml:"second_store_engine"`
 	UseSecondStoreBeforeTime flagext.Time `yaml:"use_second_store_before_time"`
+
+	ShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period"`
 }
 
 var (
-	errBadLookbackConfigs = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
+	errBadLookbackConfigs                             = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
+	errShuffleShardingLookbackLessThanQueryStoreAfter = errors.New("the shuffle-sharding lookback period should be greater or equal than the configured 'query store after'")
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -88,15 +91,21 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	f.StringVar(&cfg.SecondStoreEngine, "querier.second-store-engine", "", "Second store engine to use for querying. Empty = disabled.")
 	f.Var(&cfg.UseSecondStoreBeforeTime, "querier.use-second-store-before-time", "If specified, second store is only used for queries before this timestamp. Default value 0 means secondary store is always queried.")
+	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
 }
 
 // Validate the config
 func (cfg *Config) Validate() error {
-
 	// Ensure the config wont create a situation where no queriers are returned.
 	if cfg.QueryIngestersWithin != 0 && cfg.QueryStoreAfter != 0 {
 		if cfg.QueryStoreAfter >= cfg.QueryIngestersWithin {
 			return errBadLookbackConfigs
+		}
+	}
+
+	if cfg.ShuffleShardingIngestersLookbackPeriod > 0 {
+		if cfg.ShuffleShardingIngestersLookbackPeriod < cfg.QueryStoreAfter {
+			return errShuffleShardingLookbackLessThanQueryStoreAfter
 		}
 	}
 
@@ -272,8 +281,10 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
 	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
 	// querying the long-term storage.
-	if sp == nil {
-		return q.metadataQuerier.Select(true, nil, matchers...)
+	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
+	// See: https://github.com/prometheus/prometheus/pull/8050
+	if sp == nil || sp.Func == "series" {
+		return q.metadataQuerier.Select(true, sp, matchers...)
 	}
 
 	userID, err := user.ExtractOrgID(ctx)

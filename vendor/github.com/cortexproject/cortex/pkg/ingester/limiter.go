@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -18,24 +19,36 @@ const (
 // to count members
 type RingCount interface {
 	HealthyInstancesCount() int
+	ZonesCount() int
 }
 
 // Limiter implements primitives to get the maximum number of series
 // an ingester can handle for a specific tenant
 type Limiter struct {
-	limits            *validation.Overrides
-	ring              RingCount
-	replicationFactor int
-	shardByAllLabels  bool
+	limits                 *validation.Overrides
+	ring                   RingCount
+	replicationFactor      int
+	shuffleShardingEnabled bool
+	shardByAllLabels       bool
+	zoneAwarenessEnabled   bool
 }
 
 // NewLimiter makes a new in-memory series limiter
-func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor int, shardByAllLabels bool) *Limiter {
+func NewLimiter(
+	limits *validation.Overrides,
+	ring RingCount,
+	shardingStrategy string,
+	shardByAllLabels bool,
+	replicationFactor int,
+	zoneAwarenessEnabled bool,
+) *Limiter {
 	return &Limiter{
-		limits:            limits,
-		ring:              ring,
-		replicationFactor: replicationFactor,
-		shardByAllLabels:  shardByAllLabels,
+		limits:                 limits,
+		ring:                   ring,
+		replicationFactor:      replicationFactor,
+		shuffleShardingEnabled: shardingStrategy == util.ShardingStrategyShuffle,
+		shardByAllLabels:       shardByAllLabels,
+		zoneAwarenessEnabled:   zoneAwarenessEnabled,
 	}
 }
 
@@ -110,7 +123,7 @@ func (l *Limiter) maxSeriesPerMetric(userID string) int {
 		if l.shardByAllLabels {
 			// We can assume that series are evenly distributed across ingesters
 			// so we do convert the global limit into a local limit
-			localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
+			localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(userID, globalLimit))
 		} else {
 			// Given a metric is always pushed to the same set of ingesters (based on
 			// the replication factor), we can configure the per-ingester local limit
@@ -134,7 +147,7 @@ func (l *Limiter) maxMetadataPerMetric(userID string) int {
 
 	if globalLimit > 0 {
 		if l.shardByAllLabels {
-			localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
+			localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(userID, globalLimit))
 		} else {
 			localLimit = minNonZero(localLimit, globalLimit)
 		}
@@ -173,7 +186,7 @@ func (l *Limiter) maxByLocalAndGlobal(userID string, localLimitFn, globalLimitFn
 		// We can assume that series/metadata are evenly distributed across ingesters
 		// so we do convert the global limit into a local limit
 		globalLimit := globalLimitFn(userID)
-		localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
+		localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(userID, globalLimit))
 	}
 
 	// If both the local and global limits are disabled, we just
@@ -185,7 +198,7 @@ func (l *Limiter) maxByLocalAndGlobal(userID string, localLimitFn, globalLimitFn
 	return localLimit
 }
 
-func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {
+func (l *Limiter) convertGlobalToLocalLimit(userID string, globalLimit int) int {
 	if globalLimit == 0 {
 		return 0
 	}
@@ -198,11 +211,34 @@ func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {
 
 	// May happen because the number of ingesters is asynchronously updated.
 	// If happens, we just temporarily ignore the global limit.
-	if numIngesters > 0 {
-		return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+	if numIngesters == 0 {
+		return 0
 	}
 
-	return 0
+	// If the number of available ingesters is greater than the tenant's shard
+	// size, then we should honor the shard size because series/metadata won't
+	// be written to more ingesters than it.
+	if shardSize := l.getShardSize(userID); shardSize > 0 {
+		// We use Min() to protect from the case the expected shard size is > available ingesters.
+		numIngesters = util.Min(numIngesters, util.ShuffleShardExpectedInstances(shardSize, l.getNumZones()))
+	}
+
+	return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+}
+
+func (l *Limiter) getShardSize(userID string) int {
+	if !l.shuffleShardingEnabled {
+		return 0
+	}
+
+	return l.limits.IngestionTenantShardSize(userID)
+}
+
+func (l *Limiter) getNumZones() int {
+	if l.zoneAwarenessEnabled {
+		return util.Max(l.ring.ZonesCount(), 1)
+	}
+	return 1
 }
 
 func minNonZero(first, second int) int {

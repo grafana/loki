@@ -1,5 +1,13 @@
 package util
 
+// Max returns the maximum of two ints
+func Max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // Min returns the minimum of two ints
 func Min(a, b int) int {
 	if a < b {

@@ -85,6 +85,16 @@ func (r ReplicationSet) Includes(addr string) bool {
 	return false
 }
 
+// GetAddresses returns the addresses of all instances within the replication set. Returned slice
+// order is not guaranteed.
+func (r ReplicationSet) GetAddresses() []string {
+	addrs := make([]string, 0, len(r.Ingesters))
+	for _, desc := range r.Ingesters {
+		addrs = append(addrs, desc.Addr)
+	}
+	return addrs
+}
+
 // HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),
 // false if they differ in any way (number of instances, instance states, tokens, zones, ...).
 func HasReplicationSetChanged(before, after ReplicationSet) bool {
