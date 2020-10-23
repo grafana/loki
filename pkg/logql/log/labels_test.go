@@ -28,3 +28,21 @@ func TestLabelsBuilder_Get(t *testing.T) {
 	_, ok = b.Get("already")
 	require.False(t, ok)
 }
+
+func TestLabelsBuilder_LabelsError(t *testing.T) {
+	lbs := labels.Labels{labels.Label{Name: "already", Value: "in"}}
+	b := NewLabelsBuilder()
+	b.Reset(lbs)
+	b.SetErr("err")
+	lbsWithErr := b.Labels()
+	require.Equal(
+		t,
+		labels.Labels{
+			labels.Label{Name: ErrorLabel, Value: "err"},
+			labels.Label{Name: "already", Value: "in"},
+		},
+		lbsWithErr,
+	)
+	// make sure the original labels is unchanged.
+	require.Equal(t, labels.Labels{labels.Label{Name: "already", Value: "in"}}, lbs)
+}

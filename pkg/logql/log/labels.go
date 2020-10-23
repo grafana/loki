@@ -105,7 +105,7 @@ func (b *LabelsBuilder) Labels() labels.Labels {
 		if b.err == "" {
 			return b.base
 		}
-		res := append(b.base, labels.Label{Name: ErrorLabel, Value: b.err})
+		res := append(b.base.Copy(), labels.Label{Name: ErrorLabel, Value: b.err})
 		sort.Sort(res)
 		return res
 	}
