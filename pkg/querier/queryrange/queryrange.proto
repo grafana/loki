@@ -31,6 +31,7 @@ message LokiResponse {
   uint32 limit = 6;
   uint32 version = 7;
   stats.Result statistics = 8 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "statistics"];
+  repeated queryrange.PrometheusResponseHeader Headers = 9 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
 }
 
 message LokiSeriesRequest {
@@ -44,6 +45,7 @@ message LokiSeriesResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   repeated logproto.SeriesIdentifier Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
   uint32 version = 3;
+  repeated queryrange.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
 }
 
 message LokiLabelNamesRequest {
@@ -56,6 +58,7 @@ message LokiLabelNamesResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
   uint32 version = 3;
+  repeated queryrange.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
 }
 
 message LokiData {

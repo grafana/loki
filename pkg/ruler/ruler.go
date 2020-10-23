@@ -28,6 +28,10 @@ func (cfg *Config) Validate() error {
 // Loki does not yet support shuffle sharding or per tenant evaluation delays, so implement what cortex expects.
 type passthroughLimits struct{ Config }
 
+func (cfg passthroughLimits) RulerMaxRuleGroupsPerTenant(_ string) int { return 0 }
+
+func (cfg passthroughLimits) RulerMaxRulesPerRuleGroup(_ string) int { return 0 }
+
 func (cfg passthroughLimits) EvaluationDelay(_ string) time.Duration {
 	return cfg.Config.EvaluationDelay
 }

@@ -311,7 +311,7 @@ func createServerHandler(receivedReqsChan chan receivedReq, status int) http.Han
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		// Parse the request
 		var pushReq logproto.PushRequest
-		if _, err := util.ParseProtoReader(req.Context(), req.Body, int(req.ContentLength), math.MaxInt32, &pushReq, util.RawSnappy); err != nil {
+		if err := util.ParseProtoReader(req.Context(), req.Body, int(req.ContentLength), math.MaxInt32, &pushReq, util.RawSnappy); err != nil {
 			rw.WriteHeader(500)
 			return
 		}

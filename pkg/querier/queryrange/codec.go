@@ -306,6 +306,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path)),
 			Data:    data,
+			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
 	case *LokiLabelNamesRequest:
 		var resp loghttp.LabelResponse
@@ -316,6 +317,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path)),
 			Data:    resp.Data,
+			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
 	default:
 		var resp loghttp.QueryResponse
@@ -331,6 +333,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 						ResultType: loghttp.ResultTypeMatrix,
 						Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
 					},
+					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
@@ -345,6 +348,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 					ResultType: loghttp.ResultTypeStream,
 					Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
 				},
+				Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 			}, nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "unsupported response type")
@@ -417,6 +421,8 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 	return &resp, nil
 }
 
+// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
+// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
 func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Response, error) {
 	if len(responses) == 0 {
 		return nil, errors.New("merging responses requires at least one response")
@@ -667,4 +673,13 @@ func (p paramsWrapper) Direction() logproto.Direction {
 func (p paramsWrapper) Limit() uint32 { return p.LokiRequest.Limit }
 func (p paramsWrapper) Shards() []string {
 	return p.LokiRequest.Shards
+}
+
+func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrange.PrometheusResponseHeader {
+	var promHeaders []queryrange.PrometheusResponseHeader
+	for h, hv := range httpHeaders {
+		promHeaders = append(promHeaders, queryrange.PrometheusResponseHeader{Name: h, Values: hv})
+	}
+
+	return promHeaders
 }

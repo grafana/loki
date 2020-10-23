@@ -60,6 +60,9 @@ func NewTripperware(
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
+	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
 	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
