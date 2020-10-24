@@ -122,7 +122,7 @@ The matching is case-sensitive by default and can be switched to case-insensitiv
 
 While line filter expressions could be placed anywhere in a pipeline, it is almost always better to have them at the beginning. This ways it will improve the performance of the query doing further processing only when a line matches.
 
-For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line "{{.err}}"` will always run faster than  `{job="mysql"} | json | line "{{.message}}"` |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
+For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line_format "{{.err}}"` will always run faster than  `{job="mysql"} | json | line_format "{{.message}}"` |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
 
 #### Parser Expression
 
@@ -130,9 +130,18 @@ Parser expression can parse and extract labels from the log content. Those extra
 
 Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
 
-In case of errors, for instance if the line is not in the expected format, log line won't be filtered but instead will get a new `__error__` label added.
+For instance, the pipeline `| json` will produce the following mapping:
+```json
+{ "a.b": {c: "d"}, e: "f" }
+```
+->
+```
+{a_b_c="d", e="f"}
+```
 
-If an extracted label key name already exist in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#Labels-Format-Expression). However if an extracted key appears twice, only the latest label value will be kept.
+In case of errors, for instance if the line is not in the expected format, the log line won't be filtered but instead will get a new `__error__` label added.
+
+If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#Labels-Format-Expression). However if an extracted key appears twice, only the latest label value will be kept.
 
 We support currently support json, logfmt and regexp parsers.
 
@@ -210,11 +219,11 @@ those labels:
 "duration" => "1.5s"
 ```
 
-You should use json and logfmt when possible and then use regexp when the log line is not in those specific formats. Multiple parsers can be used during the same log pipeline, this is useful when you want to parse complex log line. ([see examples](#Multiple-parsers))
+It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#Multiple-parsers))
 
 #### Label Filter Expression
 
-Label filter expression allows to filter log line using their original and extracted labels. It can contains multiple predicates.
+Label filter expression allows filtering log line using their original and extracted labels. It can contains multiple predicates.
 
 A predicate contains a **label identifier**, an **operation** and a **value** to compare the label with.
 
@@ -223,24 +232,26 @@ For example with `cluster="namespace"` the cluster is the label identifier, the 
 We support multiple **value** types which are automatically inferred from the query input.
 
 - **String** is double quoted or backticked such as `"200"` or \``us-central1`\`.
-- [Duration](https://golang.org/pkg/time/#ParseDuration) is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
-- Number are floating-point number (64bits), such as`250`, `89.923`.
-- Bytes is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5Kib" or "20b". Valid bytes units are "b", "kib", "kb", "mib", "mb", "gib",  "gb", "tib", "tb", "pib", "pb", "eib", "eb".
+- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+- **Number** are floating-point number (64bits), such as`250`, `89.923`.
+- **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5Kib" or "20b". Valid bytes units are "b", "kib", "kb", "mib", "mb", "gib",  "gb", "tib", "tb", "pib", "pb", "eib", "eb".
 
 String type work exactly like Prometheus label matchers use in [log stream selector](#Log-Stream-Selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
 
 > The string type is the only one that can filter out a log line with a label `__error__`.
 
-Duration, Number and Bytes required the label value to be converted before evaluation and support a different set of numerical operation such as:
+Using Duration, Number and Bytes will convert the label value prior to comparision and support the following comparators:
 
 - `==` or `=` for equality.
 - `!=` for inequality.
 - `>` and `>=` for greater than and greater than or equal.
 - `<` and `<=` for lesser than and lesser than or equal.
 
-If the conversion of the label value fail, the log line is not filtered and an `__error__` label is added. To filters those errors see [pipeline errors](#Pipeline-Errors) section.
+For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-You can chain multiple predicate using `and` and `or` which respectively express and and or binary operation. `and` can also simply be replaced by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](#Pipeline-Errors) section.
+
+You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
 This means that all the following expressions are equivalent:
 
@@ -272,7 +283,7 @@ It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `me
 #### Line Format Expression
 
 The line format expression can rewrite the log line content by using the [text/template](https://golang.org/pkg/text/template/) format.
-It takes a single string parameter `| line_format "{{.label_name}}"`, which is the template format. All labels are injected as data variable into the template and are available to use with the `{{.label_name}}` notation.
+It takes a single string parameter `| line_format "{{.label_name}}"`, which is the template format. All labels are injected variables into the template and are available to use with the `{{.label_name}}` notation.
 
 For example the following expression:
 
@@ -288,15 +299,17 @@ See [functions](#Template-functions) to learn about available functions in the t
 
 #### Labels Format Expression
 
-The `| label_format` expression can renamed, modify or add labels. It takes as parameter a comma separated list of equality operation, this means you can perform multiple operation at once.
+The `| label_format` expression can renamed, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 
-We also support the left side of the equality as a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value will be replace by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, this mean labels are available as variables and you can use the same list of [functions](#Template-functions).
+The left side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value will be replace by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, this mean labels are available as variables and you can use the same list of [functions](#Template-functions).
 
 In both case if the destination label doesn't exist a new one will be created.
 
-> A single label name can only appear once per expression this means `| label_format foo=bar,foo="new"` is not allowed but you can use instead two expressions `| label_format foo=bar | label_format foo="new"`
+The renaming form `dst=src` will _drop_ the `src` label after remapping it to the `dst` label. However, the _template_ form will preserve the referenced labels, such that  `dst="{{.src}}"` results in both `dst` and `src` having the same value.
+
+> A single label name can only appear once per expression. This means `| label_format foo=bar,foo="new"` is not allowed but you can use two expressions for the desired effect: `| label_format foo=bar | label_format foo="new"`
 
 #### Template functions
 
@@ -311,7 +324,7 @@ Examples:
 ```template
 "{{.request_method | ToLower}}"
 "{{.request_method | ToUpper}}"
-`ToLower "This is a string"`
+`{{ToUpper "This is a string" | ToLower}}`
 ```
 
 ##### Replace
@@ -345,7 +358,7 @@ trailing Unicode code points contained in cutset removed.
 `{{ TrimRight .path "/" }}`
 ```
 
-`TrimSpace` TrimSpace returns a slice of the string s, with all leading
+`TrimSpace` TrimSpace returns string s with all leading
 and trailing white space removed, as defined by Unicode.
 
 ```template
@@ -360,7 +373,7 @@ and trailing white space removed, as defined by Unicode.
 
 ##### Regex
 
-`regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match.
+`regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [docs](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for detailed examples.
 
 ```template
 `{{ regexReplaceAllLiteral "(a*)bc" .some_label "{1}a" }}`
@@ -402,7 +415,7 @@ This is possible because the `| line_format` reformats the log line to become `P
 
 #### Formatting
 
-The following query shows how you can reformat a log line to make it more easier to read on screen.
+The following query shows how you can reformat a log line to make it easier to read on screen.
 
 ```logql
 {cluster="ops-tools1", name="querier", namespace="loki-dev"}
@@ -425,25 +438,24 @@ level=info ts=2020-10-23T20:32:18.068866235Z caller=metrics.go:81 org_id=29 trac
 The result would be:
 
 ```log
-2020-10-23T20:32:18.094668233Z	650.22401ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
+2020-10-23T20:32:18.094668233Z	650.22401ms	    traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
 2020-10-23T20:32:18.068866235Z	624.008132ms	traceID = 1980d41501b57b68	{cluster="ops-tools1", job="cortex-ops/query-frontend"} |= "query_range"
 ```
 
 ## Metric Queries
 
-LogQL also supports wrapping a log query with functions that allows for creating metrics out of the logs.
+LogQL also supports wrapping a log query with functions that allow for creating metrics out of the logs.
 
 Metric queries can be used to calculate things such as the rate of error messages, or the top N log sources with the most amount of logs over the last 3 hours.
 
-Combined with log [parsers](#Parser-Expression), metrics queries can also be used to calculate metrics from a sample value within the log line such latencies, requests size.
+Combined with log [parsers](#Parser-Expression), metrics queries can also be used to calculate metrics from a sample value within the log line such latency or request size.
 Furthermore all labels, including extracted ones, will be available for aggregations and generation of new series.
 
 ### Range Vector aggregation
 
 LogQL shares the same [range vector](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors) concept from Prometheus, except the selected range of samples is a range of selected log or label values.
-A range aggregation can be applied over the selected range to transform it into an instance vector.
 
-Loki supports two types of range aggregation. Log range and unwrapped range aggregations.
+Loki supports two types of range aggregations. Log range and unwrapped range aggregations.
 
 #### Log Range Aggregations
 
@@ -468,8 +480,8 @@ This example counts all the log lines within the last five minutes for the MySQL
 sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
 ```
 
-This example demonstrates that a fully LogQL query can be wrapped in the aggregation syntax, including filter and parsers.
-This example gets the per-second rate of all non-timeout errors within the last minutes per host for the MySQL job and only includes errors whose duration is above ten seconds.
+This example demonstrates a LogQL aggregation which includes filters and parsers.
+It returns the per-second rate of all non-timeout errors within the last minutes per host for the MySQL job and only includes errors whose duration is above ten seconds.
 
 #### Unwrapped Range Aggregations
 
