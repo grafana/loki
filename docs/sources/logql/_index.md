@@ -376,7 +376,7 @@ and trailing white space removed, as defined by Unicode.
 `regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [docs](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for detailed examples.
 
 ```template
-`{{ regexReplaceAllLiteral "(a*)bc" .some_label "{1}a" }}`
+`{{ regexReplaceAllLiteral "(a*)bc" .some_label "${1}a" }}`
 ```
 
 `regexReplaceAllLiteral` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement The replacement string is substituted directly, without using Expand.
@@ -717,14 +717,14 @@ More details can be found in the [Golang language documentation](https://golang.
 
 ### Pipeline Errors
 
-There's multiple reasons for failures while Loki processes a log pipeline or a metric query such as:
+There are multiple reasons which cause pipeline processing errors, such as:
 
-- a numeric label filter expressions could fail to turn label value into a number
-- a metric conversion for a label value fail.
-- a log line is not a valid json document.
+- A numeric label filter may fail to turn a label value into a number
+- A metric conversion for a label may fail.
+- A log line is not a valid json document.
 - etc...
 
-When those failures happen, Loki won't filter out those log lines, instead they are passed down into the next stage of the pipeline with a new system label named `__error__`. The only way to filter out errors is by using a label filter expressions. The `__error__` label can't be renamed via the language.
+When those failures happen, Loki won't filter out those log lines. Instead they are passed into the next stage of the pipeline with a new system label named `__error__`. The only way to filter out errors is by using a label filter expressions. The `__error__` label can't be renamed via the language.
 
 For example to remove json errors:
 
@@ -748,4 +748,4 @@ quantile_over_time(
 	) by (cluster)
 ```
 
->Metric queries cannot contains errors, in case errors are found during execution, a bad request status code will be returned by Loki.
+>Metric queries cannot contains errors, in case errors are found during execution, Loki will return an error and appropriate status code.
