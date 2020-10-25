@@ -656,6 +656,7 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
 			if err != nil {
+				level.Error(util.Logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
 					level.Error(util.Logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
 					errChan <- nil
