@@ -428,7 +428,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	}
 
 	// Make sure storage directory exists if using filesystem store
-	if t.cfg.Ruler.StoreConfig.Local.Directory != "" {
+	if t.cfg.Ruler.StoreConfig.Type == "local" && t.cfg.Ruler.StoreConfig.Local.Directory != "" {
 		err := chunk_util.EnsureDirectory(t.cfg.Ruler.StoreConfig.Local.Directory)
 		if err != nil {
 			return nil, err
@@ -444,14 +444,6 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	if t.RulerStorage == nil {
 		level.Info(util.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
-	}
-
-	// Make sure the prometheus rules temp directory exists
-	if t.cfg.Ruler.RulePath != "" {
-		err := chunk_util.EnsureDirectory(t.cfg.Ruler.RulePath)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	t.cfg.Ruler.Ring.ListenPort = t.cfg.Server.GRPCListenPort
