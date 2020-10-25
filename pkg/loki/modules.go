@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -426,6 +427,14 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		return nil, errors.New("configdb is not supported as a Loki rules backend type")
 	}
 
+	// Make sure storage directory exists if using filesystem store
+	if t.cfg.Ruler.StoreConfig.Local.Directory != "" {
+		err := chunk_util.EnsureDirectory(t.cfg.Ruler.StoreConfig.Local.Directory)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig, manager.GroupLoader{})
 
 	return
@@ -435,6 +444,14 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	if t.RulerStorage == nil {
 		level.Info(util.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
+	}
+
+	// Make sure the prometheus rules temp directory exists
+	if t.cfg.Ruler.RulePath != "" {
+		err := chunk_util.EnsureDirectory(t.cfg.Ruler.RulePath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	t.cfg.Ruler.Ring.ListenPort = t.cfg.Server.GRPCListenPort

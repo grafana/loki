@@ -36,6 +36,10 @@ storage_config:
   filesystem:
     directory: /tmp/loki/chunks
 
+compactor:
+  working_directory: /tmp/loki/boltdb-shipper-compactor
+  shared_store: filesystem
+
 limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
@@ -51,9 +55,9 @@ ruler:
   storage:
     type: local
     local:
-      directory: /tmp/rules
-  rule_path: /tmp/scratch
-  alertmanager_url: http://localhost
+      directory: /tmp/loki/rules
+  rule_path: /tmp/loki/rules-temp
+  alertmanager_url: http://localhost:9093
   ring:
     kvstore:
       store: inmemory

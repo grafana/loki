@@ -52,8 +52,8 @@ ruler:
     type: local
     local:
       directory: /loki/rules
-  rule_path: /loki/tmprules
-  alertmanager_url: http://localhost
+  rule_path: /loki/rules-temp
+  alertmanager_url: http://localhost:9093
   ring:
     kvstore:
       store: inmemory
