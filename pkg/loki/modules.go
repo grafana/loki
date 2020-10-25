@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -424,6 +425,14 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// it's hard to enforce this at validation time. Therefore detect this and fail early.
 	if t.cfg.Ruler.StoreConfig.Type == "configdb" {
 		return nil, errors.New("configdb is not supported as a Loki rules backend type")
+	}
+
+	// Make sure storage directory exists if using filesystem store
+	if t.cfg.Ruler.StoreConfig.Type == "local" && t.cfg.Ruler.StoreConfig.Local.Directory != "" {
+		err := chunk_util.EnsureDirectory(t.cfg.Ruler.StoreConfig.Local.Directory)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig, manager.GroupLoader{})
