@@ -1729,7 +1729,7 @@ The `provision_config` block configures provisioning capacity for DynamoDB.
 
 # DynamoDB table default write throughput.
 # CLI flag: -<prefix>.write-throughput
-[provisioned_write_throughput: <int> | default = 3000]
+[provisioned_write_throughput: <int> | default = 1000]
 
 # DynamoDB table default read throughput.
 # CLI flag: -<prefix>.read-throughput
