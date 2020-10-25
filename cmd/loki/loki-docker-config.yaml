@@ -36,6 +36,10 @@ storage_config:
   filesystem:
     directory: /loki/chunks
 
+compactor:
+  working_directory: /loki/boltdb-shipper-compactor
+  shared_store: filesystem
+
 limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
