@@ -41,9 +41,9 @@ Promtail can also be configured to receive logs from another Promtail or any Lok
 
 There are a few instances where this might be helpful:
 
-* complex network infrastructures where many machines having egress is not desirable.
-* using the Docker Logging Driver and wanting to provide a complex pipeline or to extract metrics from logs.
-* serverless setups where many ephemeral log sources want to send to Loki, sending to a Promtail instance with `use_incoming_timestamp` == false can avoid out of order errors and avoid having to use high cardinality labels.
+- complex network infrastructures where many machines having egress is not desirable.
+- using the Docker Logging Driver and wanting to provide a complex pipeline or to extract metrics from logs.
+- serverless setups where many ephemeral log sources want to send to Loki, sending to a Promtail instance with `use_incoming_timestamp` == false can avoid out of order errors and avoid having to use high cardinality labels.
 
 ## Receiving logs From Syslog
 

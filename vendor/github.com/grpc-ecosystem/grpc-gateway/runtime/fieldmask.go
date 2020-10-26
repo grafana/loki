@@ -58,11 +58,18 @@ func FieldMaskFromRequestBody(r io.Reader, md *descriptor.DescriptorProto) (*fie
 				if subMsg, ok := v.(descriptor2.Message); ok {
 					_, subMd = descriptor2.ForMessage(subMsg)
 				}
-				queue = append(queue, fieldMaskPathItem{path: append(item.path, protoName), node: v, md: subMd})
+
+				var path string
+				if item.path == "" {
+					path = protoName
+				} else {
+					path = item.path + "." + protoName
+				}
+				queue = append(queue, fieldMaskPathItem{path: path, node: v, md: subMd})
 			}
 		} else if len(item.path) > 0 {
 			// otherwise, it's a leaf node so print its path
-			fm.Paths = append(fm.Paths, strings.Join(item.path, "."))
+			fm.Paths = append(fm.Paths, item.path)
 		}
 	}
 
@@ -71,8 +78,8 @@ func FieldMaskFromRequestBody(r io.Reader, md *descriptor.DescriptorProto) (*fie
 
 // fieldMaskPathItem stores a in-progress deconstruction of a path for a fieldmask
 type fieldMaskPathItem struct {
-	// the list of prior fields leading up to node
-	path []string
+	// the list of prior fields leading up to node connected by dots
+	path string
 
 	// a generic decoded json object the current item to inspect for further path extraction
 	node interface{}

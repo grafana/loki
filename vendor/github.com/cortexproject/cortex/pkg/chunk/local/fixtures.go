@@ -38,9 +38,7 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	oClient, err := NewFSObjectClient(FSConfig{
-		Directory: f.dirname,
-	})
+	oClient, err := NewFSObjectClient(FSConfig{Directory: f.dirname})
 	if err != nil {
 		return
 	}

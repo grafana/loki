@@ -50,7 +50,7 @@ processes with the following limitations:
    monolithic mode with more than one replica, as each replica must be able to
    access the same storage backend, and local storage is not safe for concurrent
    access.
-2. Individual components cannot be scaled independently, so it is not possible
+1. Individual components cannot be scaled independently, so it is not possible
    to have more read components than write components.
 
 ## Components
@@ -117,17 +117,17 @@ the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
 1. `PENDING` is an Ingester's state when it is waiting for a handoff from
    another ingester that is `LEAVING`.
 
-2. `JOINING` is an Ingester's state when it is currently inserting its tokens
+1. `JOINING` is an Ingester's state when it is currently inserting its tokens
    into the ring and initializing itself. It may receive write requests for
    tokens it owns.
 
-3. `ACTIVE` is an Ingester's state when it is fully initialized. It may receive
+1. `ACTIVE` is an Ingester's state when it is fully initialized. It may receive
    both write and read requests for tokens it owns.
 
-4. `LEAVING` is an Ingester's state when it is shutting down. It may receive
+1. `LEAVING` is an Ingester's state when it is shutting down. It may receive
    read requests for data it still has in memory.
 
-5. `UNHEALTHY` is an Ingester's state when it has failed to heartbeat to
+1. `UNHEALTHY` is an Ingester's state when it has failed to heartbeat to
    Consul. `UNHEALTHY` is set by the distributor when it periodically checks the ring.
 
 Each log stream that an ingester receives is built up into a set of many
@@ -137,8 +137,8 @@ interval.
 Chunks are compressed and marked as read-only when:
 
 1. The current chunk has reached capacity (a configurable value).
-2. Too much time has passed without the current chunk being updated
-3. A flush occurs.
+1. Too much time has passed without the current chunk being updated
+1. A flush occurs.
 
 Whenever a chunk is compressed and marked as read-only, a writable chunk takes
 its place.
@@ -186,9 +186,9 @@ Query frontends are **stateless**. However, due to how the internal queue works,
 
 The query frontend queuing mechanism is used to:
 
-* Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
-* Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
-* Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.
+- Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
+- Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
+- Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.
 
 #### Splitting
 
@@ -277,16 +277,16 @@ The **chunk store** is Loki's long-term data store, designed to support
 interactive querying and sustained writing without the need for background
 maintenance tasks. It consists of:
 
-* An index for the chunks. This index can be backed by:
-    * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    * [Google Bigtable](https://cloud.google.com/bigtable)
-    * [Apache Cassandra](https://cassandra.apache.org)
-* A key-value (KV) store for the chunk data itself, which can be:
-    * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    * [Google Bigtable](https://cloud.google.com/bigtable)
-    * [Apache Cassandra](https://cassandra.apache.org)
-    * [Amazon S3](https://aws.amazon.com/s3)
-    * [Google Cloud Storage](https://cloud.google.com/storage/)
+- An index for the chunks. This index can be backed by:
+    - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+    - [Google Bigtable](https://cloud.google.com/bigtable)
+    - [Apache Cassandra](https://cassandra.apache.org)
+- A key-value (KV) store for the chunk data itself, which can be:
+    - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+    - [Google Bigtable](https://cloud.google.com/bigtable)
+    - [Apache Cassandra](https://cassandra.apache.org)
+    - [Amazon S3](https://aws.amazon.com/s3)
+    - [Google Cloud Storage](https://cloud.google.com/storage/)
 
 > Unlike the other core components of Loki, the chunk store is not a separate
 > service, job, or process, but rather a library embedded in the two services
@@ -297,16 +297,16 @@ The chunk store relies on a unified interface to the
 Cassandra) that can be used to back the chunk store index. This interface
 assumes that the index is a collection of entries keyed by:
 
-* A **hash key**. This is required for *all* reads and writes.
-* A **range key**. This is required for writes and can be omitted for reads,
+- A **hash key**. This is required for *all* reads and writes.
+- A **range key**. This is required for writes and can be omitted for reads,
 which can be queried by prefix or range.
 
 The interface works somewhat differently across the supported databases:
 
-* DynamoDB supports range and hash keys natively. Index entries are thus
+- DynamoDB supports range and hash keys natively. Index entries are thus
   modelled directly as DynamoDB entries, with the hash key as the distribution
   key and the range as the DynamoDB range key.
-* For Bigtable and Cassandra, index entries are modelled as individual column
+- For Bigtable and Cassandra, index entries are modelled as individual column
   values. The hash key becomes the row key and the range key becomes the column
   key.
 
@@ -320,12 +320,12 @@ writes and improve query performance.
 To summarize, the read path works as follows:
 
 1. The querier receives an HTTP/1 request for data.
-2. The querier passes the query to all ingesters for in-memory data.
-3. The ingesters receive the read request and return data matching the query, if
+1. The querier passes the query to all ingesters for in-memory data.
+1. The ingesters receive the read request and return data matching the query, if
    any.
-4. The querier lazily loads data from the backing store and runs the query
+1. The querier lazily loads data from the backing store and runs the query
    against it if no ingesters returned data.
-5. The querier iterates over all received data and deduplicates, returning a
+1. The querier iterates over all received data and deduplicates, returning a
    final set of data over the HTTP/1 connection.
 
 ## Write Path
@@ -335,9 +335,9 @@ To summarize, the read path works as follows:
 To summarize, the write path works as follows:
 
 1. The distributor receives an HTTP/1 request to store data for streams.
-2. Each stream is hashed using the hash ring.
-3. The distributor sends each stream to the appropriate ingesters and their
+1. Each stream is hashed using the hash ring.
+1. The distributor sends each stream to the appropriate ingesters and their
    replicas (based on the configured replication factor).
-4. Each ingester will create a chunk or append to an existing chunk for the
+1. Each ingester will create a chunk or append to an existing chunk for the
    stream's data. A chunk is unique per tenant and per labelset.
-5. The distributor responds with a success code over the HTTP/1 connection.
+1. The distributor responds with a success code over the HTTP/1 connection.

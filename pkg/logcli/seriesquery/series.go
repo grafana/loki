@@ -43,7 +43,7 @@ func (q *SeriesQuery) DoSeries(c client.Client) {
 					labelMap[labelName] = &labelDetails{
 						name:       labelName,
 						inStreams:  1,
-						uniqueVals: map[string]struct{}{labelValue: struct{}{}},
+						uniqueVals: map[string]struct{}{labelValue: {}},
 					}
 				}
 			}

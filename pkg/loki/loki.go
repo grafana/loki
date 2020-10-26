@@ -147,6 +147,7 @@ type Loki struct {
 	frontend        *frontend.Frontend
 	ruler           *cortex_ruler.Ruler
 	RulerStorage    rules.RuleStore
+	rulerAPI        *cortex_ruler.API
 	stopper         queryrange.Stopper
 	runtimeConfig   *runtimeconfig.Manager
 	memberlistKV    *memberlist.KVInitService

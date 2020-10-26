@@ -67,7 +67,7 @@ func TestRawOutput_Format(t *testing.T) {
 			t.Parallel()
 
 			writer := &bytes.Buffer{}
-			out := &RawOutput{writer,testData.options}
+			out := &RawOutput{writer, testData.options}
 			out.FormatAndPrintln(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
 
 			assert.Equal(t, testData.expected, writer.String())

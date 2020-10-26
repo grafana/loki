@@ -52,32 +52,32 @@ func (m *downloadTableBytesMetric) add(period string, downloadedBytes int64) {
 
 type metrics struct {
 	// metrics for measuring performance of downloading of files per period initially i.e for the first time
-	filesDownloadDurationSeconds *downloadTableDurationMetric
-	filesDownloadSizeBytes       *downloadTableBytesMetric
+	tablesDownloadDurationSeconds *downloadTableDurationMetric
+	tablesDownloadSizeBytes       *downloadTableBytesMetric
 
-	filesDownloadOperationTotal *prometheus.CounterVec
+	tablesSyncOperationTotal *prometheus.CounterVec
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
 	m := &metrics{
-		filesDownloadDurationSeconds: &downloadTableDurationMetric{
+		tablesDownloadDurationSeconds: &downloadTableDurationMetric{
 			periods: map[string]float64{},
 			gauge: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 				Namespace: "loki_boltdb_shipper",
-				Name:      "initial_files_download_duration_seconds",
+				Name:      "initial_tables_download_duration_seconds",
 				Help:      "Time (in seconds) spent in downloading of files per table, initially i.e for the first time",
 			})},
-		filesDownloadSizeBytes: &downloadTableBytesMetric{
+		tablesDownloadSizeBytes: &downloadTableBytesMetric{
 			periods: map[string]int64{},
 			gauge: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 				Namespace: "loki_boltdb_shipper",
-				Name:      "initial_files_download_size_bytes",
+				Name:      "initial_tables_download_size_bytes",
 				Help:      "Size of files (in bytes) downloaded per table, initially i.e for the first time",
 			})},
-		filesDownloadOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		tablesSyncOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
-			Name:      "files_download_operation_total",
-			Help:      "Total number of download operations done by status",
+			Name:      "tables_sync_operation_total",
+			Help:      "Total number of tables sync operations done by status",
 		}, []string{"status"}),
 	}
 

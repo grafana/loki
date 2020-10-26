@@ -98,9 +98,9 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 
 	cfg.InfNames = []string{"eth0", "en0"}
 	f.Var((*flagext.StringSlice)(&cfg.InfNames), prefix+"lifecycler.interface", "Name of network interface to read address from.")
-	f.StringVar(&cfg.Addr, prefix+"lifecycler.addr", "", "IP address to advertise in consul.")
+	f.StringVar(&cfg.Addr, prefix+"lifecycler.addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
-	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
+	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register in the ring.")
 	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone where this instance is running.")
 }
 
@@ -124,11 +124,12 @@ type Lifecycler struct {
 	// Whether to flush if transfer fails on shutdown.
 	flushOnShutdown *atomic.Bool
 
-	// We need to remember the ingester state just in case consul goes away and comes
-	// back empty.  And it changes during lifecycle of ingester.
-	stateMtx sync.RWMutex
-	state    IngesterState
-	tokens   Tokens
+	// We need to remember the ingester state, tokens and registered timestamp just in case the KV store
+	// goes away and comes back empty. The state changes during lifecycle of instance.
+	stateMtx     sync.RWMutex
+	state        IngesterState
+	tokens       Tokens
+	registeredAt time.Time
 
 	// Controls the ready-reporting
 	readyLock sync.Mutex
@@ -138,6 +139,7 @@ type Lifecycler struct {
 	// Keeps stats updated at every heartbeat period
 	countersLock          sync.RWMutex
 	healthyInstancesCount int
+	zonesCount            int
 }
 
 // NewLifecycler creates new Lifecycler. It must be started via StartAsync.
@@ -298,6 +300,18 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 	}
 }
 
+func (i *Lifecycler) getRegisteredAt() time.Time {
+	i.stateMtx.RLock()
+	defer i.stateMtx.RUnlock()
+	return i.registeredAt
+}
+
+func (i *Lifecycler) setRegisteredAt(registeredAt time.Time) {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+	i.registeredAt = registeredAt
+}
+
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
 //
 // For this method to work correctly (especially when using gossiping), source ingester (specified by
@@ -338,13 +352,22 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	return <-errCh
 }
 
-// HealthyInstancesCount returns the number of healthy instances in the ring, updated
-// during the last heartbeat period
+// HealthyInstancesCount returns the number of healthy instances for the Write operation
+// in the ring, updated during the last heartbeat period.
 func (i *Lifecycler) HealthyInstancesCount() int {
 	i.countersLock.RLock()
 	defer i.countersLock.RUnlock()
 
 	return i.healthyInstancesCount
+}
+
+// ZonesCount returns the number of zones for which there's at least 1 instance registered
+// in the ring.
+func (i *Lifecycler) ZonesCount() int {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+
+	return i.zonesCount
 }
 
 func (i *Lifecycler) loop(ctx context.Context) error {
@@ -504,22 +527,31 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
+			// The instance doesn't exist in the ring, so it's safe to set the registered timestamp
+			// as of now.
+			registeredAt := time.Now()
+			i.setRegisteredAt(registeredAt)
+
 			// We use the tokens from the file only if it does not exist in the ring yet.
 			if len(tokensFromFile) > 0 {
 				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 				if len(tokensFromFile) >= i.cfg.NumTokens {
 					i.setState(ACTIVE)
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState())
+				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState(), registeredAt)
 				i.setTokens(tokensFromFile)
 				return ringDesc, true, nil
 			}
 
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "instance not found in ring, adding with no tokens", "ring", i.RingName)
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, []uint32{}, i.GetState())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, []uint32{}, i.GetState(), registeredAt)
 			return ringDesc, true, nil
 		}
+
+		// The instance already exists in the ring, so we can't change the registered timestamp (even if it's zero)
+		// but we need to update the local state accordingly.
+		i.setRegisteredAt(ingesterDesc.GetRegisteredAt())
 
 		// If the ingester is in the JOINING state this means it crashed due to
 		// a failed token transfer or some other reason during startup. We want
@@ -583,7 +615,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			ringTokens = append(ringTokens, newTokens...)
 			sort.Sort(ringTokens)
 
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, ringTokens, i.GetState())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, ringTokens, i.GetState(), i.getRegisteredAt())
 
 			i.setTokens(ringTokens)
 
@@ -645,7 +677,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 		sort.Sort(myTokens)
 		i.setTokens(myTokens)
 
-		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState())
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
 
 		return ringDesc, true, nil
 	})
@@ -674,12 +706,13 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens", "ring", i.RingName)
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()
 			ingesterDesc.Addr = i.Addr
 			ingesterDesc.Zone = i.Zone
+			ingesterDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()
 			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 
@@ -713,11 +746,14 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 }
 
 func (i *Lifecycler) updateCounters(ringDesc *Desc) {
-	// Count the number of healthy instances for Write operation
 	healthyInstancesCount := 0
+	zones := map[string]struct{}{}
 
 	if ringDesc != nil {
 		for _, ingester := range ringDesc.Ingesters {
+			zones[ingester.Zone] = struct{}{}
+
+			// Count the number of healthy instances for Write operation.
 			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
 				healthyInstancesCount++
 			}
@@ -727,6 +763,7 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	// Update counters
 	i.countersLock.Lock()
 	i.healthyInstancesCount = healthyInstancesCount
+	i.zonesCount = len(zones)
 	i.countersLock.Unlock()
 }
 

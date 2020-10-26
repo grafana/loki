@@ -10,7 +10,7 @@
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
     // flag for tuning things when boltdb-shipper is current or upcoming index type.
-    using_boltdb_shipper: false,
+    using_boltdb_shipper: true,
 
     // flags for running ingesters/queriers as a statefulset instead of deployment type.
     stateful_ingesters: false,
@@ -112,7 +112,7 @@
     ],
 
     table_prefix: $._config.namespace,
-    index_period_hours: 168,  // 1 week
+    index_period_hours: 24,  // 1 day
 
     ruler_enabled: false,
     ruler_storage: 'gcs',
@@ -355,7 +355,7 @@
         max_look_back_period: 0,
       },
 
-      // Default schema config is bigtable/gcs, this will need to be overridden for other stores
+      // Default schema config is boltdb-shipper/gcs, this will need to be overridden for other stores
       schema_config: {
         configs: [{
           from: '%s' % $._config.schema_start_date,

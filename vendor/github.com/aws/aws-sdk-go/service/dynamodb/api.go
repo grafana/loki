@@ -162,9 +162,9 @@ func (c *DynamoDB) BatchGetItemRequest(input *BatchGetItemInput) (req *request.R
 //   might not be specified correctly, or its status might not be ACTIVE.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -408,9 +408,9 @@ func (c *DynamoDB) BatchWriteItemRequest(input *BatchWriteItemInput) (req *reque
 //   that have one or more local secondary indexes.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -570,7 +570,7 @@ func (c *DynamoDB) CreateBackupRequest(input *CreateBackupInput) (req *request.R
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -731,7 +731,7 @@ func (c *DynamoDB) CreateGlobalTableRequest(input *CreateGlobalTableInput) (req 
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -875,7 +875,7 @@ func (c *DynamoDB) CreateTableRequest(input *CreateTableInput) (req *request.Req
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1002,7 +1002,7 @@ func (c *DynamoDB) DeleteBackupRequest(input *DeleteBackupInput) (req *request.R
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1144,9 +1144,9 @@ func (c *DynamoDB) DeleteItemRequest(input *DeleteItemInput) (req *request.Reque
 //   Operation was rejected because there is an ongoing transaction for the item.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1290,7 +1290,7 @@ func (c *DynamoDB) DeleteTableRequest(input *DeleteTableInput) (req *request.Req
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -2067,27 +2067,27 @@ func (c *DynamoDB) DescribeLimitsRequest(input *DescribeLimitsInput) (req *reque
 
 // DescribeLimits API operation for Amazon DynamoDB.
 //
-// Returns the current provisioned-capacity limits for your AWS account in a
+// Returns the current provisioned-capacity quotas for your AWS account in a
 // Region, both for the Region as a whole and for any one DynamoDB table that
 // you create there.
 //
-// When you establish an AWS account, the account has initial limits on the
+// When you establish an AWS account, the account has initial quotas on the
 // maximum read capacity units and write capacity units that you can provision
 // across all of your DynamoDB tables in a given Region. Also, there are per-table
-// limits that apply when you create a table there. For more information, see
-// Limits (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+// quotas that apply when you create a table there. For more information, see
+// Service, Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 // page in the Amazon DynamoDB Developer Guide.
 //
-// Although you can increase these limits by filing a case at AWS Support Center
+// Although you can increase these quotas by filing a case at AWS Support Center
 // (https://console.aws.amazon.com/support/home#/), obtaining the increase is
 // not instantaneous. The DescribeLimits action lets you write code to compare
-// the capacity you are currently using to those limits imposed by your account
-// so that you have enough time to apply for an increase before you hit a limit.
+// the capacity you are currently using to those quotas imposed by your account
+// so that you have enough time to apply for an increase before you hit a quota.
 //
 // For example, you could use one of the AWS SDKs to do the following:
 //
 // Call DescribeLimits for a particular Region to obtain your current account
-// limits on provisioned capacity there.
+// quotas on provisioned capacity there.
 //
 // Create a variable to hold the aggregate read capacity units provisioned for
 // all your tables in that Region, and one to hold the aggregate write capacity
@@ -2106,20 +2106,20 @@ func (c *DynamoDB) DescribeLimitsRequest(input *DescribeLimitsInput) (req *reque
 //    these GSIs and add their provisioned capacity values to your variables
 //    as well.
 //
-// Report the account limits for that Region returned by DescribeLimits, along
+// Report the account quotas for that Region returned by DescribeLimits, along
 // with the total current provisioned capacity levels you have calculated.
 //
 // This will let you see whether you are getting close to your account-level
-// limits.
+// quotas.
 //
-// The per-table limits apply only when you are creating a new table. They restrict
+// The per-table quotas apply only when you are creating a new table. They restrict
 // the sum of the provisioned capacity of the new table itself and all its global
 // secondary indexes.
 //
 // For existing tables and their GSIs, DynamoDB doesn't let you increase provisioned
-// capacity extremely rapidly. But the only upper limit that applies is that
-// the aggregate provisioned capacity over all your tables and GSIs cannot exceed
-// either of the per-account limits.
+// capacity extremely rapidly, but the only quota that applies is that the aggregate
+// provisioned capacity over all your tables and GSIs cannot exceed either of
+// the per-account quotas.
 //
 // DescribeLimits should only be called periodically. You can expect throttling
 // errors if you call it more than once in a minute.
@@ -2568,9 +2568,9 @@ func (c *DynamoDB) GetItemRequest(input *GetItemInput) (req *request.Request, ou
 //   might not be specified correctly, or its status might not be ACTIVE.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -2668,11 +2668,11 @@ func (c *DynamoDB) ListBackupsRequest(input *ListBackupsInput) (req *request.Req
 //
 // List backups associated with an AWS account. To list backups for a given
 // table, specify TableName. ListBackups returns a paginated list of results
-// with at most 1 MB worth of items in a page. You can also specify a limit
-// for the maximum number of entries to be returned in a page.
+// with at most 1 MB worth of items in a page. You can also specify a maximum
+// number of entries to be returned in a page.
 //
 // In the request, start time is inclusive, but end time is exclusive. Note
-// that these limits are for the time at which the original backup was requested.
+// that these boundaries are for the time at which the original backup was requested.
 //
 // You can call ListBackups a maximum of five times per second.
 //
@@ -3385,9 +3385,9 @@ func (c *DynamoDB) PutItemRequest(input *PutItemInput) (req *request.Request, ou
 //   Operation was rejected because there is an ongoing transaction for the item.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -3559,9 +3559,9 @@ func (c *DynamoDB) QueryRequest(input *QueryInput) (req *request.Request, output
 //   might not be specified correctly, or its status might not be ACTIVE.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -3761,7 +3761,7 @@ func (c *DynamoDB) RestoreTableFromBackupRequest(input *RestoreTableFromBackupIn
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -3924,7 +3924,7 @@ func (c *DynamoDB) RestoreTableToPointInTimeRequest(input *RestoreTableToPointIn
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InvalidRestoreTimeException
 //   An invalid restore time was specified. RestoreDateTime must be between EarliestRestorableDateTime
@@ -4083,9 +4083,9 @@ func (c *DynamoDB) ScanRequest(input *ScanInput) (req *request.Request, output *
 //   might not be specified correctly, or its status might not be ACTIVE.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -4262,7 +4262,7 @@ func (c *DynamoDB) TagResourceRequest(input *TagResourceInput) (req *request.Req
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * ResourceNotFoundException
 //   The operation tried to access a nonexistent table or index. The resource
@@ -4496,9 +4496,9 @@ func (c *DynamoDB) TransactGetItemsRequest(input *TransactGetItemsInput) (req *r
 //   in the Amazon DynamoDB Developer Guide.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -4764,9 +4764,9 @@ func (c *DynamoDB) TransactWriteItemsRequest(input *TransactWriteItemsInput) (re
 //   in the Amazon DynamoDB Developer Guide.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -4889,7 +4889,7 @@ func (c *DynamoDB) UntagResourceRequest(input *UntagResourceInput) (req *request
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * ResourceNotFoundException
 //   The operation tried to access a nonexistent table or index. The resource
@@ -5365,7 +5365,7 @@ func (c *DynamoDB) UpdateGlobalTableSettingsRequest(input *UpdateGlobalTableSett
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * ResourceInUseException
 //   The operation conflicts with the resource's availability. For example, you
@@ -5506,9 +5506,9 @@ func (c *DynamoDB) UpdateItemRequest(input *UpdateItemInput) (req *request.Reque
 //   Operation was rejected because there is an ongoing transaction for the item.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -5652,7 +5652,7 @@ func (c *DynamoDB) UpdateTableRequest(input *UpdateTableInput) (req *request.Req
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -5757,7 +5757,7 @@ func (c *DynamoDB) UpdateTableReplicaAutoScalingRequest(input *UpdateTableReplic
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -5911,7 +5911,7 @@ func (c *DynamoDB) UpdateTimeToLiveRequest(input *UpdateTimeToLiveInput) (req *r
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -8212,8 +8212,8 @@ type CreateGlobalSecondaryIndexAction struct {
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
 }
@@ -8615,8 +8615,8 @@ type CreateTableInput struct {
 	// If you set BillingMode as PROVISIONED, you must specify this property. If
 	// you set BillingMode as PAY_PER_REQUEST, you cannot specify this property.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
 
@@ -10820,8 +10820,8 @@ type GlobalSecondaryIndex struct {
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
 }
@@ -11029,8 +11029,8 @@ type GlobalSecondaryIndexDescription struct {
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughputDescription `type:"structure"`
 }
@@ -12118,7 +12118,7 @@ func (s *KeysAndAttributes) SetProjectionExpression(v string) *KeysAndAttributes
 // if the table or index specifications are complex, DynamoDB might temporarily
 // reduce the number of concurrent operations.
 //
-// There is a soft account limit of 256 tables.
+// There is a soft account quota of 256 tables.
 type LimitExceededException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
@@ -13094,8 +13094,8 @@ type Projection struct {
 	//
 	//    * KEYS_ONLY - Only the index and primary keys are projected into the index.
 	//
-	//    * INCLUDE - Only the specified table attributes are projected into the
-	//    index. The list of projected attributes is in NonKeyAttributes.
+	//    * INCLUDE - In addition to the attributes described in KEYS_ONLY, the
+	//    secondary index will include other non-key attributes that you specify.
 	//
 	//    * ALL - All of the table attributes are projected into the index.
 	ProjectionType *string `type:"string" enum:"ProjectionType"`
@@ -13139,8 +13139,8 @@ func (s *Projection) SetProjectionType(v string) *Projection {
 // Represents the provisioned throughput settings for a specified table or index.
 // The settings can be modified using the UpdateTable operation.
 //
-// For current minimum and maximum provisioned throughput values, see Limits
-// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+// For current minimum and maximum provisioned throughput values, see Service,
+// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 // in the Amazon DynamoDB Developer Guide.
 type ProvisionedThroughput struct {
 	_ struct{} `type:"structure"`
@@ -13223,7 +13223,7 @@ type ProvisionedThroughputDescription struct {
 
 	// The number of provisioned throughput decreases for this table during this
 	// UTC calendar day. For current maximums on provisioned throughput decreases,
-	// see Limits (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// see Service, Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	NumberOfDecreasesToday *int64 `min:"1" type:"long"`
 
@@ -14596,6 +14596,10 @@ type ReplicaDescription struct {
 	// The name of the Region.
 	RegionName *string `type:"string"`
 
+	// The time at which the replica was first detected as inaccessible. To determine
+	// cause of inaccessibility check the ReplicaStatus property.
+	ReplicaInaccessibleDateTime *time.Time `type:"timestamp"`
+
 	// The current state of the replica:
 	//
 	//    * CREATING - The replica is being created.
@@ -14605,6 +14609,12 @@ type ReplicaDescription struct {
 	//    * DELETING - The replica is being deleted.
 	//
 	//    * ACTIVE - The replica is ready for use.
+	//
+	//    * REGION_DISABLED - The replica is inaccessible because the AWS Region
+	//    has been disabled. If the AWS Region remains inaccessible for more than
+	//    20 hours, DynamoDB will remove this replica from the replication group.
+	//    The replica will not be deleted and replication will stop from and to
+	//    this region.
 	ReplicaStatus *string `type:"string" enum:"ReplicaStatus"`
 
 	// Detailed information about the replica status.
@@ -14646,6 +14656,12 @@ func (s *ReplicaDescription) SetProvisionedThroughputOverride(v *ProvisionedThro
 // SetRegionName sets the RegionName field's value.
 func (s *ReplicaDescription) SetRegionName(v string) *ReplicaDescription {
 	s.RegionName = &v
+	return s
+}
+
+// SetReplicaInaccessibleDateTime sets the ReplicaInaccessibleDateTime field's value.
+func (s *ReplicaDescription) SetReplicaInaccessibleDateTime(v time.Time) *ReplicaDescription {
+	s.ReplicaInaccessibleDateTime = &v
 	return s
 }
 
@@ -15416,9 +15432,9 @@ func (s *ReplicationGroupUpdate) SetUpdate(v *UpdateReplicationGroupMemberAction
 	return s
 }
 
-// Throughput exceeds the current throughput limit for your account. Please
+// Throughput exceeds the current throughput quota for your account. Please
 // contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-// a limit increase.
+// a quota increase.
 type RequestLimitExceeded struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
@@ -16977,14 +16993,14 @@ type TableDescription struct {
 	//    and index key attributes, which are automatically projected. Each attribute
 	//    specification is composed of: ProjectionType - One of the following: KEYS_ONLY
 	//    - Only the index and primary keys are projected into the index. INCLUDE
-	//    - Only the specified table attributes are projected into the index. The
-	//    list of projected attributes is in NonKeyAttributes. ALL - All of the
-	//    table attributes are projected into the index. NonKeyAttributes - A list
-	//    of one or more non-key attribute names that are projected into the secondary
-	//    index. The total count of attributes provided in NonKeyAttributes, summed
-	//    across all of the secondary indexes, must not exceed 20. If you project
-	//    the same attribute into two different indexes, this counts as two distinct
-	//    attributes when determining the total.
+	//    - In addition to the attributes described in KEYS_ONLY, the secondary
+	//    index will include other non-key attributes that you specify. ALL - All
+	//    of the table attributes are projected into the index. NonKeyAttributes
+	//    - A list of one or more non-key attribute names that are projected into
+	//    the secondary index. The total count of attributes provided in NonKeyAttributes,
+	//    summed across all of the secondary indexes, must not exceed 20. If you
+	//    project the same attribute into two different indexes, this counts as
+	//    two distinct attributes when determining the total.
 	//
 	//    * ProvisionedThroughput - The provisioned throughput settings for the
 	//    global secondary index, consisting of read and write capacity units, along
@@ -18645,8 +18661,8 @@ type UpdateGlobalSecondaryIndexAction struct {
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	//
 	// ProvisionedThroughput is a required field
@@ -19885,6 +19901,15 @@ const (
 	AttributeActionDelete = "DELETE"
 )
 
+// AttributeAction_Values returns all elements of the AttributeAction enum
+func AttributeAction_Values() []string {
+	return []string{
+		AttributeActionAdd,
+		AttributeActionPut,
+		AttributeActionDelete,
+	}
+}
+
 const (
 	// BackupStatusCreating is a BackupStatus enum value
 	BackupStatusCreating = "CREATING"
@@ -19896,6 +19921,15 @@ const (
 	BackupStatusAvailable = "AVAILABLE"
 )
 
+// BackupStatus_Values returns all elements of the BackupStatus enum
+func BackupStatus_Values() []string {
+	return []string{
+		BackupStatusCreating,
+		BackupStatusDeleted,
+		BackupStatusAvailable,
+	}
+}
+
 const (
 	// BackupTypeUser is a BackupType enum value
 	BackupTypeUser = "USER"
@@ -19906,6 +19940,15 @@ const (
 	// BackupTypeAwsBackup is a BackupType enum value
 	BackupTypeAwsBackup = "AWS_BACKUP"
 )
+
+// BackupType_Values returns all elements of the BackupType enum
+func BackupType_Values() []string {
+	return []string{
+		BackupTypeUser,
+		BackupTypeSystem,
+		BackupTypeAwsBackup,
+	}
+}
 
 const (
 	// BackupTypeFilterUser is a BackupTypeFilter enum value
@@ -19921,6 +19964,16 @@ const (
 	BackupTypeFilterAll = "ALL"
 )
 
+// BackupTypeFilter_Values returns all elements of the BackupTypeFilter enum
+func BackupTypeFilter_Values() []string {
+	return []string{
+		BackupTypeFilterUser,
+		BackupTypeFilterSystem,
+		BackupTypeFilterAwsBackup,
+		BackupTypeFilterAll,
+	}
+}
+
 const (
 	// BillingModeProvisioned is a BillingMode enum value
 	BillingModeProvisioned = "PROVISIONED"
@@ -19928,6 +19981,14 @@ const (
 	// BillingModePayPerRequest is a BillingMode enum value
 	BillingModePayPerRequest = "PAY_PER_REQUEST"
 )
+
+// BillingMode_Values returns all elements of the BillingMode enum
+func BillingMode_Values() []string {
+	return []string{
+		BillingModeProvisioned,
+		BillingModePayPerRequest,
+	}
+}
 
 const (
 	// ComparisonOperatorEq is a ComparisonOperator enum value
@@ -19970,6 +20031,25 @@ const (
 	ComparisonOperatorBeginsWith = "BEGINS_WITH"
 )
 
+// ComparisonOperator_Values returns all elements of the ComparisonOperator enum
+func ComparisonOperator_Values() []string {
+	return []string{
+		ComparisonOperatorEq,
+		ComparisonOperatorNe,
+		ComparisonOperatorIn,
+		ComparisonOperatorLe,
+		ComparisonOperatorLt,
+		ComparisonOperatorGe,
+		ComparisonOperatorGt,
+		ComparisonOperatorBetween,
+		ComparisonOperatorNotNull,
+		ComparisonOperatorNull,
+		ComparisonOperatorContains,
+		ComparisonOperatorNotContains,
+		ComparisonOperatorBeginsWith,
+	}
+}
+
 const (
 	// ConditionalOperatorAnd is a ConditionalOperator enum value
 	ConditionalOperatorAnd = "AND"
@@ -19977,6 +20057,14 @@ const (
 	// ConditionalOperatorOr is a ConditionalOperator enum value
 	ConditionalOperatorOr = "OR"
 )
+
+// ConditionalOperator_Values returns all elements of the ConditionalOperator enum
+func ConditionalOperator_Values() []string {
+	return []string{
+		ConditionalOperatorAnd,
+		ConditionalOperatorOr,
+	}
+}
 
 const (
 	// ContinuousBackupsStatusEnabled is a ContinuousBackupsStatus enum value
@@ -19986,6 +20074,14 @@ const (
 	ContinuousBackupsStatusDisabled = "DISABLED"
 )
 
+// ContinuousBackupsStatus_Values returns all elements of the ContinuousBackupsStatus enum
+func ContinuousBackupsStatus_Values() []string {
+	return []string{
+		ContinuousBackupsStatusEnabled,
+		ContinuousBackupsStatusDisabled,
+	}
+}
+
 const (
 	// ContributorInsightsActionEnable is a ContributorInsightsAction enum value
 	ContributorInsightsActionEnable = "ENABLE"
@@ -19993,6 +20089,14 @@ const (
 	// ContributorInsightsActionDisable is a ContributorInsightsAction enum value
 	ContributorInsightsActionDisable = "DISABLE"
 )
+
+// ContributorInsightsAction_Values returns all elements of the ContributorInsightsAction enum
+func ContributorInsightsAction_Values() []string {
+	return []string{
+		ContributorInsightsActionEnable,
+		ContributorInsightsActionDisable,
+	}
+}
 
 const (
 	// ContributorInsightsStatusEnabling is a ContributorInsightsStatus enum value
@@ -20011,6 +20115,17 @@ const (
 	ContributorInsightsStatusFailed = "FAILED"
 )
 
+// ContributorInsightsStatus_Values returns all elements of the ContributorInsightsStatus enum
+func ContributorInsightsStatus_Values() []string {
+	return []string{
+		ContributorInsightsStatusEnabling,
+		ContributorInsightsStatusEnabled,
+		ContributorInsightsStatusDisabling,
+		ContributorInsightsStatusDisabled,
+		ContributorInsightsStatusFailed,
+	}
+}
+
 const (
 	// GlobalTableStatusCreating is a GlobalTableStatus enum value
 	GlobalTableStatusCreating = "CREATING"
@@ -20024,6 +20139,16 @@ const (
 	// GlobalTableStatusUpdating is a GlobalTableStatus enum value
 	GlobalTableStatusUpdating = "UPDATING"
 )
+
+// GlobalTableStatus_Values returns all elements of the GlobalTableStatus enum
+func GlobalTableStatus_Values() []string {
+	return []string{
+		GlobalTableStatusCreating,
+		GlobalTableStatusActive,
+		GlobalTableStatusDeleting,
+		GlobalTableStatusUpdating,
+	}
+}
 
 const (
 	// IndexStatusCreating is a IndexStatus enum value
@@ -20039,6 +20164,16 @@ const (
 	IndexStatusActive = "ACTIVE"
 )
 
+// IndexStatus_Values returns all elements of the IndexStatus enum
+func IndexStatus_Values() []string {
+	return []string{
+		IndexStatusCreating,
+		IndexStatusUpdating,
+		IndexStatusDeleting,
+		IndexStatusActive,
+	}
+}
+
 const (
 	// KeyTypeHash is a KeyType enum value
 	KeyTypeHash = "HASH"
@@ -20047,6 +20182,14 @@ const (
 	KeyTypeRange = "RANGE"
 )
 
+// KeyType_Values returns all elements of the KeyType enum
+func KeyType_Values() []string {
+	return []string{
+		KeyTypeHash,
+		KeyTypeRange,
+	}
+}
+
 const (
 	// PointInTimeRecoveryStatusEnabled is a PointInTimeRecoveryStatus enum value
 	PointInTimeRecoveryStatusEnabled = "ENABLED"
@@ -20054,6 +20197,14 @@ const (
 	// PointInTimeRecoveryStatusDisabled is a PointInTimeRecoveryStatus enum value
 	PointInTimeRecoveryStatusDisabled = "DISABLED"
 )
+
+// PointInTimeRecoveryStatus_Values returns all elements of the PointInTimeRecoveryStatus enum
+func PointInTimeRecoveryStatus_Values() []string {
+	return []string{
+		PointInTimeRecoveryStatusEnabled,
+		PointInTimeRecoveryStatusDisabled,
+	}
+}
 
 const (
 	// ProjectionTypeAll is a ProjectionType enum value
@@ -20065,6 +20216,15 @@ const (
 	// ProjectionTypeInclude is a ProjectionType enum value
 	ProjectionTypeInclude = "INCLUDE"
 )
+
+// ProjectionType_Values returns all elements of the ProjectionType enum
+func ProjectionType_Values() []string {
+	return []string{
+		ProjectionTypeAll,
+		ProjectionTypeKeysOnly,
+		ProjectionTypeInclude,
+	}
+}
 
 const (
 	// ReplicaStatusCreating is a ReplicaStatus enum value
@@ -20081,7 +20241,22 @@ const (
 
 	// ReplicaStatusActive is a ReplicaStatus enum value
 	ReplicaStatusActive = "ACTIVE"
+
+	// ReplicaStatusRegionDisabled is a ReplicaStatus enum value
+	ReplicaStatusRegionDisabled = "REGION_DISABLED"
 )
+
+// ReplicaStatus_Values returns all elements of the ReplicaStatus enum
+func ReplicaStatus_Values() []string {
+	return []string{
+		ReplicaStatusCreating,
+		ReplicaStatusCreationFailed,
+		ReplicaStatusUpdating,
+		ReplicaStatusDeleting,
+		ReplicaStatusActive,
+		ReplicaStatusRegionDisabled,
+	}
+}
 
 // Determines the level of detail about provisioned throughput consumption that
 // is returned in the response:
@@ -20107,6 +20282,15 @@ const (
 	ReturnConsumedCapacityNone = "NONE"
 )
 
+// ReturnConsumedCapacity_Values returns all elements of the ReturnConsumedCapacity enum
+func ReturnConsumedCapacity_Values() []string {
+	return []string{
+		ReturnConsumedCapacityIndexes,
+		ReturnConsumedCapacityTotal,
+		ReturnConsumedCapacityNone,
+	}
+}
+
 const (
 	// ReturnItemCollectionMetricsSize is a ReturnItemCollectionMetrics enum value
 	ReturnItemCollectionMetricsSize = "SIZE"
@@ -20114,6 +20298,14 @@ const (
 	// ReturnItemCollectionMetricsNone is a ReturnItemCollectionMetrics enum value
 	ReturnItemCollectionMetricsNone = "NONE"
 )
+
+// ReturnItemCollectionMetrics_Values returns all elements of the ReturnItemCollectionMetrics enum
+func ReturnItemCollectionMetrics_Values() []string {
+	return []string{
+		ReturnItemCollectionMetricsSize,
+		ReturnItemCollectionMetricsNone,
+	}
+}
 
 const (
 	// ReturnValueNone is a ReturnValue enum value
@@ -20132,6 +20324,17 @@ const (
 	ReturnValueUpdatedNew = "UPDATED_NEW"
 )
 
+// ReturnValue_Values returns all elements of the ReturnValue enum
+func ReturnValue_Values() []string {
+	return []string{
+		ReturnValueNone,
+		ReturnValueAllOld,
+		ReturnValueUpdatedOld,
+		ReturnValueAllNew,
+		ReturnValueUpdatedNew,
+	}
+}
+
 const (
 	// ReturnValuesOnConditionCheckFailureAllOld is a ReturnValuesOnConditionCheckFailure enum value
 	ReturnValuesOnConditionCheckFailureAllOld = "ALL_OLD"
@@ -20139,6 +20342,14 @@ const (
 	// ReturnValuesOnConditionCheckFailureNone is a ReturnValuesOnConditionCheckFailure enum value
 	ReturnValuesOnConditionCheckFailureNone = "NONE"
 )
+
+// ReturnValuesOnConditionCheckFailure_Values returns all elements of the ReturnValuesOnConditionCheckFailure enum
+func ReturnValuesOnConditionCheckFailure_Values() []string {
+	return []string{
+		ReturnValuesOnConditionCheckFailureAllOld,
+		ReturnValuesOnConditionCheckFailureNone,
+	}
+}
 
 const (
 	// SSEStatusEnabling is a SSEStatus enum value
@@ -20157,6 +20368,17 @@ const (
 	SSEStatusUpdating = "UPDATING"
 )
 
+// SSEStatus_Values returns all elements of the SSEStatus enum
+func SSEStatus_Values() []string {
+	return []string{
+		SSEStatusEnabling,
+		SSEStatusEnabled,
+		SSEStatusDisabling,
+		SSEStatusDisabled,
+		SSEStatusUpdating,
+	}
+}
+
 const (
 	// SSETypeAes256 is a SSEType enum value
 	SSETypeAes256 = "AES256"
@@ -20164,6 +20386,14 @@ const (
 	// SSETypeKms is a SSEType enum value
 	SSETypeKms = "KMS"
 )
+
+// SSEType_Values returns all elements of the SSEType enum
+func SSEType_Values() []string {
+	return []string{
+		SSETypeAes256,
+		SSETypeKms,
+	}
+}
 
 const (
 	// ScalarAttributeTypeS is a ScalarAttributeType enum value
@@ -20175,6 +20405,15 @@ const (
 	// ScalarAttributeTypeB is a ScalarAttributeType enum value
 	ScalarAttributeTypeB = "B"
 )
+
+// ScalarAttributeType_Values returns all elements of the ScalarAttributeType enum
+func ScalarAttributeType_Values() []string {
+	return []string{
+		ScalarAttributeTypeS,
+		ScalarAttributeTypeN,
+		ScalarAttributeTypeB,
+	}
+}
 
 const (
 	// SelectAllAttributes is a Select enum value
@@ -20190,6 +20429,16 @@ const (
 	SelectCount = "COUNT"
 )
 
+// Select_Values returns all elements of the Select enum
+func Select_Values() []string {
+	return []string{
+		SelectAllAttributes,
+		SelectAllProjectedAttributes,
+		SelectSpecificAttributes,
+		SelectCount,
+	}
+}
+
 const (
 	// StreamViewTypeNewImage is a StreamViewType enum value
 	StreamViewTypeNewImage = "NEW_IMAGE"
@@ -20203,6 +20452,16 @@ const (
 	// StreamViewTypeKeysOnly is a StreamViewType enum value
 	StreamViewTypeKeysOnly = "KEYS_ONLY"
 )
+
+// StreamViewType_Values returns all elements of the StreamViewType enum
+func StreamViewType_Values() []string {
+	return []string{
+		StreamViewTypeNewImage,
+		StreamViewTypeOldImage,
+		StreamViewTypeNewAndOldImages,
+		StreamViewTypeKeysOnly,
+	}
+}
 
 const (
 	// TableStatusCreating is a TableStatus enum value
@@ -20227,6 +20486,19 @@ const (
 	TableStatusArchived = "ARCHIVED"
 )
 
+// TableStatus_Values returns all elements of the TableStatus enum
+func TableStatus_Values() []string {
+	return []string{
+		TableStatusCreating,
+		TableStatusUpdating,
+		TableStatusDeleting,
+		TableStatusActive,
+		TableStatusInaccessibleEncryptionCredentials,
+		TableStatusArchiving,
+		TableStatusArchived,
+	}
+}
+
 const (
 	// TimeToLiveStatusEnabling is a TimeToLiveStatus enum value
 	TimeToLiveStatusEnabling = "ENABLING"
@@ -20240,3 +20512,13 @@ const (
 	// TimeToLiveStatusDisabled is a TimeToLiveStatus enum value
 	TimeToLiveStatusDisabled = "DISABLED"
 )
+
+// TimeToLiveStatus_Values returns all elements of the TimeToLiveStatus enum
+func TimeToLiveStatus_Values() []string {
+	return []string{
+		TimeToLiveStatusEnabling,
+		TimeToLiveStatusDisabling,
+		TimeToLiveStatusEnabled,
+		TimeToLiveStatusDisabled,
+	}
+}

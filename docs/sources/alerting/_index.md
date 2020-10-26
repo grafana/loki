@@ -7,7 +7,7 @@ weight: 700
 
 Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and then alerting when certain conditions happen, e.g. a high percentage of error logs.
 
-First, ensure the Ruler component is enabled. The following is a basic configuration which loads rules from configuration files (it requires `/tmp/rules` and `/tmp/scratch` exist):
+First, ensure the Ruler component is enabled. The following is a basic configuration which loads rules from configuration files:
 
 ```yaml
 ruler:
@@ -26,7 +26,7 @@ ruler:
 
 ## Prometheus Compatible
 
-When running the Ruler (which runs by default in the single binary), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), with the exception that the rules specified are in LogQL.
+When running the Ruler (which runs by default in the single binary), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus' Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), except that the rules specified are in LogQL.
 
 Let's see what that looks like:
 
@@ -63,7 +63,7 @@ rules:
 
 ### `<rule>`
 
-The syntax for alerting rules is (see the LogQL [docs](https://grafana.com/docs/loki/latest/logql/#metric-queries) for more details):
+The syntax for alerting rules is (see the LogQL [Metric Queries](https://grafana.com/docs/loki/latest/logql/#metric-queries) for more details):
 
 ```yaml
 # The name of the alert. Must be a valid label value.
@@ -137,7 +137,7 @@ Many nascent projects, apps, or even companies may not have a metrics backend ye
 
 We don't always control the source code of applications we run. Think load balancers and the myriad components (both open source and closed third-party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively? Alerting based on logs is a great answer for these problems.
 
-For a sneak peek of how to combine this with the upcoming LogQL v2 functionality, take a look at Ward Bekker's [video](https://www.youtube.com/watch?v=RwQlR3D4Km4) which builds a robust nginx monitoring dashboard entirely from nginx logs.
+For a sneak peek of how to combine this with the upcoming LogQL v2 functionality, take a look at Ward Bekker's video [Grafana Loki sneak peek: Generate Ad-hoc metrics from your NGINX Logs](https://www.youtube.com/watch?v=RwQlR3D4Km4) which builds a robust nginx monitoring dashboard entirely from nginx logs.
 
 ### Event alerting
 
@@ -168,9 +168,14 @@ Because the rule files are identical to Prometheus rule files, we can interact w
 
 > **Note:** Not all commands in cortextool currently support Loki.
 
+> **Note:** cortextool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `CORTEX_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake` (yes we know this might seem alarming but it's totally fine, no it can't be changed) 
+
 An example workflow is included below:
 
 ```sh
+# lint the rules.yaml file ensuring it's valid and reformatting it if necessary
+cortextool rules lint --backend=loki ./output/rules.yaml
+
 # diff rules against the currently managed ruleset in Loki
 cortextool rules diff --rule-dirs=./output --backend=loki
 
@@ -199,22 +204,27 @@ jobs:
   sync-loki-alerts:
     runs-on: ubuntu-18.04
     steps:
+      - name: Lint Rules
+        uses: grafana/cortex-rules-action@v0.3.1
+        env:
+          ACTION: 'lint'
+        with:
+          args: --backend=loki
       - name: Diff rules
-        id: diff-rules
-        uses: grafana/cortex-rules-action@v0.3.0
+        uses: grafana/cortex-rules-action@v0.3.1
         env:
           ACTION: 'diff'
         with:
           args: --backend=loki
       - name: Sync rules
         if: ${{ !contains(steps.diff-rules.outputs.detailed, 'no changes detected') }}
-        uses: grafana/cortex-rules-action@v0.3.0
+        uses: grafana/cortex-rules-action@v0.3.1
         env:
           ACTION: 'sync'
         with:
           args: --backend=loki
       - name: Print rules
-        uses: grafana/cortex-rules-action@v0.3.0
+        uses: grafana/cortex-rules-action@v0.3.1
         env:
           ACTION: 'print'
 ```
@@ -223,12 +233,12 @@ jobs:
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the configuration [docs](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.Ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.Ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 
 ```yaml
-Ruler:
+ruler:
     alertmanager_url: <alertmanager_endpoint>
     enable_alertmanager_v2: true
     enable_api: true
@@ -248,12 +258,12 @@ Ruler:
 
 The Ruler supports six kinds of storage: configdb, azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded Ruler configuration in an obvious way, i.e. configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read only backend that does not support the creation and deletion of rules through [the API](https://grafana.com/docs/loki/latest/api/#Ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](https://grafana.com/docs/loki/latest/api/#Ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```
-  -Ruler.storage.type=local
-  -Ruler.storage.local.directory=/tmp/loki/rules
+  -ruler.storage.type=local
+  -ruler.storage.local.directory=/tmp/loki/rules
 ```
 
 With the above configuration, the Ruler would expect the following layout:
@@ -261,7 +271,7 @@ With the above configuration, the Ruler would expect the following layout:
 /tmp/loki/rules/<tenant id>/rules1.yaml
                            /rules2.yaml
 ```
-Yaml files are expected to be in the [Prometheus format](#Prometheus_Compatible) but include LogQL expressions as specified in the beginning of this doc.
+Yaml files are expected to be [Prometheus compatible](#Prometheus_Compatible) but include LogQL expressions as specified in the beginning of this doc.
 
 ## Future improvements
 

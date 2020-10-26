@@ -4,8 +4,6 @@ package ring
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
@@ -54,6 +52,10 @@ type ReadRing interface {
 	// and size (number of instances).
 	ShuffleShard(identifier string, size int) ReadRing
 
+	// ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes
+	// all instances that have been part of the identifier's shard since "now - lookbackPeriod".
+	ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing
+
 	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
 	HasInstance(instanceID string) bool
 }
@@ -72,6 +74,8 @@ const (
 
 	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
 	BlocksRead
+
+	Ruler // Used for distributing rule groups between rulers.
 )
 
 var (
@@ -119,15 +123,27 @@ type Ring struct {
 	ringTokens       []TokenDesc
 	ringTokensByZone map[string][]TokenDesc
 
+	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
+	lastTopologyChange time.Time
+
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
 	// to be sorted alphabetically.
 	ringZones []string
+
+	// Cache of shuffle-sharded subrings per identifier. Invalidated when topology changes.
+	// If set to nil, no caching is done (used by tests, and subrings).
+	shuffledSubringCache map[subringCacheKey]*Ring
 
 	memberOwnershipDesc *prometheus.Desc
 	numMembersDesc      *prometheus.Desc
 	totalTokensDesc     *prometheus.Desc
 	numTokensDesc       *prometheus.Desc
 	oldestTimestampDesc *prometheus.Desc
+}
+
+type subringCacheKey struct {
+	identifier string
+	shardSize  int
 }
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
@@ -152,11 +168,12 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 	}
 
 	r := &Ring{
-		key:      key,
-		cfg:      cfg,
-		KVClient: store,
-		strategy: strategy,
-		ringDesc: &Desc{},
+		key:                  key,
+		cfg:                  cfg,
+		KVClient:             store,
+		strategy:             strategy,
+		ringDesc:             &Desc{},
+		shuffledSubringCache: map[subringCacheKey]*Ring{},
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
 			"The percent ownership of the ring by member",
@@ -196,11 +213,28 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 func (r *Ring) loop(ctx context.Context) error {
 	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
 		if value == nil {
-			level.Info(util.Logger).Log("msg", "ring doesn't exist in consul yet")
+			level.Info(util.Logger).Log("msg", "ring doesn't exist in KV store yet")
 			return true
 		}
 
 		ringDesc := value.(*Desc)
+
+		r.mtx.RLock()
+		prevRing := r.ringDesc
+		r.mtx.RUnlock()
+
+		rc := prevRing.RingCompare(ringDesc)
+		if rc == Equal || rc == EqualButStatesAndTimestamps {
+			// No need to update tokens or zones. Only states and timestamps
+			// have changed. (If Equal, nothing has changed, but that doesn't happen
+			// when watching the ring for updates).
+			r.mtx.Lock()
+			r.ringDesc = ringDesc
+			r.mtx.Unlock()
+			return true
+		}
+
+		now := time.Now()
 		ringTokens := ringDesc.getTokens()
 		ringTokensByZone := ringDesc.getTokensByZone()
 		ringZones := getZones(ringTokensByZone)
@@ -211,6 +245,11 @@ func (r *Ring) loop(ctx context.Context) error {
 		r.ringTokens = ringTokens
 		r.ringTokensByZone = ringTokensByZone
 		r.ringZones = ringZones
+		r.lastTopologyChange = now
+		if r.shuffledSubringCache != nil {
+			// Invalidate all cached subrings.
+			r.shuffledSubringCache = make(map[subringCacheKey]*Ring)
+		}
 		return true
 	})
 	return nil
@@ -432,16 +471,34 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		return r
 	}
 
-	// Use the identifier to compute an hash we'll use to seed the random.
-	hasher := md5.New()
-	hasher.Write([]byte(identifier)) // nolint:errcheck
-	checksum := hasher.Sum(nil)
+	if cached := r.getCachedShuffledSubring(identifier, size); cached != nil {
+		return cached
+	}
 
-	// Generate the seed based on the first 64 bits of the checksum.
-	seed := int64(binary.BigEndian.Uint64(checksum))
+	result := r.shuffleShard(identifier, size, 0, time.Now())
 
-	// Initialise the random generator used to select instances in the ring.
-	random := rand.New(rand.NewSource(seed))
+	r.setCachedShuffledSubring(identifier, size, result)
+	return result
+}
+
+// ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes all instances
+// that have been part of the identifier's shard since "now - lookbackPeriod".
+//
+// The returned subring may be unbalanced with regard to zones and should never be used for write
+// operations (read only).
+//
+// This function doesn't support caching.
+func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
+	// Nothing to do if the shard size is not smaller then the actual ring.
+	if size <= 0 || r.IngesterCount() <= size {
+		return r
+	}
+
+	return r.shuffleShard(identifier, size, lookbackPeriod, now)
+}
+
+func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) *Ring {
+	lookbackUntil := now.Add(-lookbackPeriod).Unix()
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -450,10 +507,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	var actualZones []string
 
 	if r.cfg.ZoneAwarenessEnabled {
-		// When zone-awareness is enabled, we expect the shard size to be divisible
-		// by the number of zones, in order to have nodes balanced across zones.
-		// If it's not, we do round up.
-		numInstancesPerZone = int(math.Ceil(float64(size) / float64(len(r.ringZones))))
+		numInstancesPerZone = util.ShuffleShardExpectedInstancesPerZone(size, len(r.ringZones))
 		actualZones = r.ringZones
 	} else {
 		numInstancesPerZone = size
@@ -474,6 +528,12 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 			tokens = r.ringTokens
 		}
 
+		// Initialise the random generator used to select instances in the ring.
+		// Since we consider each zone like an independent ring, we have to use dedicated
+		// pseudo-random generator for each zone, in order to guarantee the "consistency"
+		// property when the shard size changes or a new zone is added.
+		random := rand.New(rand.NewSource(util.ShuffleShardSeed(identifier, zone)))
+
 		// To select one more instance while guaranteeing the "consistency" property,
 		// we do pick a random value from the generator and resolve uniqueness collisions
 		// (if any) continuing walking the ring.
@@ -493,7 +553,16 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 					continue
 				}
 
-				shard[tokens[p].Ingester] = r.ringDesc.Ingesters[tokens[p].Ingester]
+				instance := r.ringDesc.Ingesters[tokens[p].Ingester]
+
+				// If the lookback is enabled and this instance has been registered within the lookback period
+				// then we should include it in the subring but continuing selecting instances.
+				if lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil {
+					shard[tokens[p].Ingester] = instance
+					continue
+				}
+
+				shard[tokens[p].Ingester] = instance
 				found = true
 				break
 			}
@@ -518,6 +587,9 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		ringTokens:       shardDesc.getTokens(),
 		ringTokensByZone: shardTokensByZone,
 		ringZones:        getZones(shardTokensByZone),
+
+		// For caching to work, remember these values.
+		lastTopologyChange: r.lastTopologyChange,
 	}
 }
 
@@ -544,4 +616,44 @@ func (r *Ring) HasInstance(instanceID string) bool {
 	instances := r.ringDesc.GetIngesters()
 	_, ok := instances[instanceID]
 	return ok
+}
+
+func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	// if shuffledSubringCache map is nil, reading it returns default value (nil pointer).
+	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}]
+	if cached == nil {
+		return nil
+	}
+
+	cached.mtx.Lock()
+	defer cached.mtx.Unlock()
+
+	// Update instance states and timestamps. We know that the topology is the same,
+	// so zones and tokens are equal.
+	for name, cachedIng := range cached.ringDesc.Ingesters {
+		ing := r.ringDesc.Ingesters[name]
+		cachedIng.State = ing.State
+		cachedIng.Timestamp = ing.Timestamp
+		cached.ringDesc.Ingesters[name] = cachedIng
+	}
+	return cached
+}
+
+func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ring) {
+	if subring == nil {
+		return
+	}
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	// Only cache if *this* ring hasn't changed since computing result
+	// (which can happen between releasing the read lock and getting read-write lock).
+	// Note that shuffledSubringCache can be only nil when set by test.
+	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
+		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
+	}
 }

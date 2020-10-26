@@ -1,10 +1,10 @@
 package frontend
 
 import (
-	"crypto/md5"
-	"encoding/binary"
 	"math/rand"
 	"sort"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // This struct holds user queues for pending requests. It also keeps track of connected queriers,
@@ -89,7 +89,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan *request {
 	if uq == nil {
 		uq = &userQueue{
 			ch:    make(chan *request, q.maxUserQueueSize),
-			seed:  getSeedForUser(userID),
+			seed:  util.ShuffleShardSeed(userID, ""),
 			index: -1,
 		}
 		q.userQueues[userID] = uq
@@ -221,11 +221,4 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 	}
 
 	return result
-}
-
-func getSeedForUser(user string) int64 {
-	d := md5.New()
-	_, _ = d.Write([]byte(user))
-	buf := d.Sum(nil)
-	return int64(binary.BigEndian.Uint64(buf))
 }

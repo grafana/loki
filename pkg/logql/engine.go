@@ -146,7 +146,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	status := "200"
 	if err != nil {
 		status = "500"
-		if IsParseError(err) {
+		if IsParseError(err) || IsPipelineError(err) {
 			status = "400"
 		}
 	}
@@ -204,7 +204,9 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
-
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
 	if GetRangeType(q.params) == InstantType {
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
@@ -237,6 +239,9 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 			})
 		}
 		next, ts, vec = stepEvaluator.Next()
+		if stepEvaluator.Error() != nil {
+			return nil, stepEvaluator.Error()
+		}
 	}
 
 	series := make([]promql.Series, 0, len(seriesIndex))
@@ -246,8 +251,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 	result := promql.Matrix(series)
 	sort.Sort(result)
 
-	err = stepEvaluator.Error()
-	return result, err
+	return result, stepEvaluator.Error()
 }
 
 func (q *query) evalLiteral(_ context.Context, expr *literalExpr) (parser.Value, error) {

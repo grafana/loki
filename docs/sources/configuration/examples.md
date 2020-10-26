@@ -179,7 +179,7 @@ storage_config:
 
 This is a configuration to deploy Loki depending only on storage solution, e.g. an
 S3-compatible API like minio. The ring configuration is based on the gossip memberlist
-and the index is shipped to storage via [boltdb-shipper](../../operations/storage/boltdb-shipper/).
+and the index is shipped to storage via [Single Store (boltdb-shipper)](../../operations/storage/boltdb-shipper/).
 
 ```yaml
 auth_enabled: false

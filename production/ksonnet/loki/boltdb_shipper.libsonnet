@@ -48,14 +48,14 @@
     pvc.mixin.spec.resources.withRequests({ storage: $._config.compactor_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName('fast')
-    else {},
+  else {},
 
   compactor_args:: if $._config.using_boltdb_shipper then {
-      'config.file': '/etc/loki/config/config.yaml',
-      'boltdb.shipper.compactor.working-directory': '/data/compactor',
-      'boltdb.shipper.compactor.shared-store': $._config.boltdb_shipper_shared_store,
-      target: 'compactor',
-    } else {},
+    'config.file': '/etc/loki/config/config.yaml',
+    'boltdb.shipper.compactor.working-directory': '/data/compactor',
+    'boltdb.shipper.compactor.shared-store': $._config.boltdb_shipper_shared_store,
+    target: 'compactor',
+  } else {},
 
   local compactor_ports =
     [
@@ -83,5 +83,5 @@
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
-    else {}
+  else {},
 }

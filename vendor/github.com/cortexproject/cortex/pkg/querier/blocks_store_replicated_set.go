@@ -90,7 +90,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 	// If shuffle sharding is enabled, we should build a subring for the user,
 	// otherwise we just use the full ring.
 	var userRing ring.ReadRing
-	if s.shardingStrategy == storegateway.ShardingStrategyShuffle {
+	if s.shardingStrategy == util.ShardingStrategyShuffle {
 		userRing = storegateway.GetShuffleShardingSubring(s.storesRing, userID, s.limits)
 	} else {
 		userRing = s.storesRing

@@ -3,6 +3,7 @@ package compactor
 import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -29,11 +30,11 @@ type syncerMetrics struct {
 func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 	var m syncerMetrics
 
-	m.metaSync = prometheus.NewCounter(prometheus.CounterOpts{
+	m.metaSync = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_meta_syncs_total",
 		Help: "Total blocks metadata synchronization attempts.",
 	})
-	m.metaSyncFailures = prometheus.NewCounter(prometheus.CounterOpts{
+	m.metaSyncFailures = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_meta_sync_failures_total",
 		Help: "Total blocks metadata synchronization failures.",
 	})
@@ -41,16 +42,16 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 		"cortex_compactor_meta_sync_duration_seconds",
 		"Duration of the blocks metadata synchronization in seconds.",
 		nil, nil))
-	m.metaSyncConsistencyDelay = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.metaSyncConsistencyDelay = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_compactor_meta_sync_consistency_delay_seconds",
 		Help: "Configured consistency delay in seconds.",
 	})
 
-	m.garbageCollections = prometheus.NewCounter(prometheus.CounterOpts{
+	m.garbageCollections = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collection_total",
 		Help: "Total number of garbage collection operations.",
 	})
-	m.garbageCollectionFailures = prometheus.NewCounter(prometheus.CounterOpts{
+	m.garbageCollectionFailures = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collection_failures_total",
 		Help: "Total number of failed garbage collection operations.",
 	})
@@ -59,43 +60,31 @@ func newSyncerMetrics(reg prometheus.Registerer) *syncerMetrics {
 		"Time it took to perform garbage collection iteration.",
 		nil, nil))
 
-	m.compactions = prometheus.NewCounter(prometheus.CounterOpts{
+	m.compactions = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compactions_total",
 		Help: "Total number of group compaction attempts that resulted in a new block.",
 	})
-	m.compactionRunsStarted = prometheus.NewCounter(prometheus.CounterOpts{
+	m.compactionRunsStarted = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compaction_runs_started_total",
 		Help: "Total number of group compaction attempts.",
 	})
-	m.compactionRunsCompleted = prometheus.NewCounter(prometheus.CounterOpts{
+	m.compactionRunsCompleted = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compaction_runs_completed_total",
 		Help: "Total number of group completed compaction runs. This also includes compactor group runs that resulted with no compaction.",
 	})
-	m.compactionFailures = prometheus.NewCounter(prometheus.CounterOpts{
+	m.compactionFailures = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_compactions_failures_total",
 		Help: "Total number of failed group compactions.",
 	})
-	m.verticalCompactions = prometheus.NewCounter(prometheus.CounterOpts{
+	m.verticalCompactions = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_compactor_group_vertical_compactions_total",
 		Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
 	})
 
 	if reg != nil {
-		reg.MustRegister(
-			m.metaSync,
-			m.metaSyncFailures,
-			m.metaSyncDuration,
-			m.metaSyncConsistencyDelay,
-			m.garbageCollections,
-			m.garbageCollectionFailures,
-			m.garbageCollectionDuration,
-			m.compactions,
-			m.compactionRunsStarted,
-			m.compactionRunsCompleted,
-			m.compactionFailures,
-			m.verticalCompactions,
-		)
+		reg.MustRegister(m.metaSyncDuration, m.garbageCollectionDuration)
 	}
+
 	return &m
 }
 

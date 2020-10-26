@@ -246,7 +246,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "aws", "s3":
-		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, chunk.DirDelim))
+		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config))
 	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -257,15 +257,15 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case "azure":
-		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim))
+		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig))
 	case "gcp":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim))
+		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig))
 	case "swift":
-		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim))
+		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift))
 	case "cassandra":
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case "filesystem":
@@ -334,13 +334,13 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
 	switch name {
 	case "aws", "s3":
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, chunk.DirDelim)
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config)
 	case "gcs":
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim)
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
 	case "azure":
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim)
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig)
 	case "swift":
-		return openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim)
+		return openstack.NewSwiftObjectClient(cfg.Swift)
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "filesystem":

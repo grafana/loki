@@ -5,5 +5,5 @@ weight: 1100
 # Community
 
 1. [Governance](governance/)
-2. [Getting in Touch](getting-in-touch/)
-3. [Contributing](contributing/)
+1. [Getting in Touch](getting-in-touch/)
+1. [Contributing](contributing/)

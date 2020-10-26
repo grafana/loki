@@ -23,9 +23,12 @@ import (
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -49,6 +52,8 @@ type PrometheusStore struct {
 	timestamps     func() (mint int64, maxt int64)
 
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
+
+	framesRead prometheus.Histogram
 }
 
 const initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size for sync pool size.
@@ -58,6 +63,7 @@ const initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size
 // It attaches the provided external labels to all results.
 func NewPrometheusStore(
 	logger log.Logger,
+	reg prometheus.Registerer,
 	client *promclient.Client,
 	baseURL *url.URL,
 	component component.StoreAPI,
@@ -79,6 +85,13 @@ func NewPrometheusStore(
 			b := make([]byte, 0, initialBufSize)
 			return &b
 		}},
+		framesRead: promauto.With(reg).NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "prometheus_store_received_frames",
+				Help:    "Number of frames received per streamed response.",
+				Buckets: prometheus.ExponentialBuckets(10, 10, 5),
+			},
+		),
 	}
 	return p, nil
 }
@@ -91,23 +104,18 @@ func (p *PrometheusStore) Info(_ context.Context, _ *storepb.InfoRequest) (*stor
 	mint, maxt := p.timestamps()
 
 	res := &storepb.InfoResponse{
-		Labels:    make([]storepb.Label, 0, len(lset)),
+		Labels:    make([]labelpb.ZLabel, 0, len(lset)),
 		StoreType: p.component.ToProto(),
 		MinTime:   mint,
 		MaxTime:   maxt,
 	}
-	for _, l := range lset {
-		res.Labels = append(res.Labels, storepb.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
-	}
+	res.Labels = append(res.Labels, labelpb.ZLabelsFromPromLabels(lset)...)
 
 	// Until we deprecate the single labels in the reply, we just duplicate
 	// them here for migration/compatibility purposes.
-	res.LabelSets = []storepb.LabelSet{}
+	res.LabelSets = []labelpb.ZLabelSet{}
 	if len(res.Labels) > 0 {
-		res.LabelSets = append(res.LabelSets, storepb.LabelSet{
+		res.LabelSets = append(res.LabelSets, labelpb.ZLabelSet{
 			Labels: res.Labels,
 		})
 	}
@@ -152,11 +160,11 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 			return err
 		}
 		for _, lbm := range labelMaps {
-			lset := make([]storepb.Label, 0, len(lbm)+len(externalLabels))
+			lset := make([]labelpb.ZLabel, 0, len(lbm)+len(externalLabels))
 			for k, v := range lbm {
-				lset = append(lset, storepb.Label{Name: k, Value: v})
+				lset = append(lset, labelpb.ZLabel{Name: k, Value: v})
 			}
-			lset = append(lset, storepb.PromLabelsToLabelsUnsafe(externalLabels)...)
+			lset = append(lset, labelpb.ZLabelsFromPromLabels(externalLabels)...)
 			sort.Slice(lset, func(i, j int) bool {
 				return lset[i].Name < lset[j].Name
 			})
@@ -224,8 +232,7 @@ func (p *PrometheusStore) handleSampledPrometheusResponse(s storepb.Store_Series
 	span.SetTag("series_count", len(resp.Results[0].Timeseries))
 
 	for _, e := range resp.Results[0].Timeseries {
-		lset := p.translateAndExtendLabels(e.Labels, externalLabels)
-
+		lset := labelpb.ExtendLabels(labelpb.ZLabelsToPromLabels(e.Labels), externalLabels)
 		if len(e.Samples) == 0 {
 			// As found in https://github.com/thanos-io/thanos/issues/381
 			// Prometheus can give us completely empty time series. Ignore these with log until we figure out that
@@ -245,7 +252,7 @@ func (p *PrometheusStore) handleSampledPrometheusResponse(s storepb.Store_Series
 		}
 
 		if err := s.Send(storepb.NewSeriesResponse(&storepb.Series{
-			Labels: lset,
+			Labels: labelpb.ZLabelsFromPromLabels(lset),
 			Chunks: aggregatedChunks,
 		})); err != nil {
 			return err
@@ -259,20 +266,16 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(s storepb.Store_Serie
 	level.Debug(p.logger).Log("msg", "started handling ReadRequest_STREAMED_XOR_CHUNKS streamed read response.")
 
 	framesNum := 0
-	seriesNum := 0
 
 	defer func() {
+		p.framesRead.Observe(float64(framesNum))
 		querySpan.SetTag("frames", framesNum)
-		querySpan.SetTag("series", seriesNum)
 		querySpan.Finish()
 	}()
 	defer runutil.CloseWithLogOnErr(p.logger, httpResp.Body, "prom series request body")
 
 	var (
-		lastSeries string
-		currSeries string
-		tmp        []string
-		data       = p.getBuffer()
+		data = p.getBuffer()
 	)
 	defer p.putBuffer(data)
 
@@ -294,19 +297,6 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(s storepb.Store_Serie
 
 		framesNum++
 		for _, series := range res.ChunkedSeries {
-			{
-				// Calculate hash of series for counting.
-				tmp = tmp[:0]
-				for _, l := range series.Labels {
-					tmp = append(tmp, l.String())
-				}
-				currSeries = strings.Join(tmp, ";")
-				if currSeries != lastSeries {
-					seriesNum++
-					lastSeries = currSeries
-				}
-			}
-
 			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
 			for i, chk := range series.Chunks {
 				thanosChks[i] = storepb.AggrChunk{
@@ -325,14 +315,16 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(s storepb.Store_Serie
 			}
 
 			if err := s.Send(storepb.NewSeriesResponse(&storepb.Series{
-				Labels: p.translateAndExtendLabels(series.Labels, externalLabels),
+				Labels: labelpb.ZLabelsFromPromLabels(
+					labelpb.ExtendLabels(labelpb.ZLabelsToPromLabels(series.Labels), externalLabels),
+				),
 				Chunks: thanosChks,
 			})); err != nil {
 				return err
 			}
 		}
 	}
-	level.Debug(p.logger).Log("msg", "handled ReadRequest_STREAMED_XOR_CHUNKS request.", "frames", framesNum, "series", seriesNum)
+	level.Debug(p.logger).Log("msg", "handled ReadRequest_STREAMED_XOR_CHUNKS request.", "frames", framesNum)
 	return nil
 }
 
@@ -449,18 +441,18 @@ func matchesExternalLabels(ms []storepb.LabelMatcher, externalLabels labels.Labe
 		return true, ms, nil
 	}
 
-	var newMatcher []storepb.LabelMatcher
-	for _, m := range ms {
-		// Validate all matchers.
-		tm, err := promclient.TranslateMatcher(m)
-		if err != nil {
-			return false, nil, err
-		}
+	tms, err := storepb.TranslateFromPromMatchers(ms...)
+	if err != nil {
+		return false, nil, err
+	}
 
-		extValue := externalLabels.Get(m.Name)
+	var newMatcher []storepb.LabelMatcher
+	for i, tm := range tms {
+		// Validate all matchers.
+		extValue := externalLabels.Get(tm.Name)
 		if extValue == "" {
 			// Agnostic to external labels.
-			newMatcher = append(newMatcher, m)
+			newMatcher = append(newMatcher, ms[i])
 			continue
 		}
 
@@ -487,35 +479,6 @@ func (p *PrometheusStore) encodeChunk(ss []prompb.Sample) (storepb.Chunk_Encodin
 		a.Append(s.Timestamp, s.Value)
 	}
 	return storepb.Chunk_XOR, c.Bytes(), nil
-}
-
-// translateAndExtendLabels transforms a metrics into a protobuf label set. It additionally
-// attaches the given labels to it, overwriting existing ones on collision.
-// Both input labels are expected to be sorted.
-//
-// NOTE(bwplotka): Don't use modify passed slices as we reuse underlying memory.
-func (p *PrometheusStore) translateAndExtendLabels(m []prompb.Label, extend labels.Labels) []storepb.Label {
-	pbLabels := storepb.PrompbLabelsToLabelsUnsafe(m)
-	pbExtend := storepb.PromLabelsToLabelsUnsafe(extend)
-
-	lset := make([]storepb.Label, 0, len(m)+len(extend))
-	ei := 0
-
-Outer:
-	for _, l := range pbLabels {
-		for ei < len(pbExtend) {
-			if l.Name < pbExtend[ei].Name {
-				break
-			}
-			lset = append(lset, pbExtend[ei])
-			ei++
-			if l.Name == pbExtend[ei-1].Name {
-				continue Outer
-			}
-		}
-		lset = append(lset, l)
-	}
-	return storepb.ExtendLabels(lset, extend)
 }
 
 // LabelNames returns all known label names.

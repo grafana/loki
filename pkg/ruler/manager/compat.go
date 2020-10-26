@@ -64,7 +64,7 @@ func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc 
 }
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
-func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) *MultiTenantManager {
+func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) ruler.MultiTenantManager {
 	return &MultiTenantManager{mgr}
 }
 
@@ -84,13 +84,13 @@ func MemstoreTenantManager(
 ) ruler.ManagerFactory {
 	var metrics *Metrics
 
-	return func(
+	return ruler.ManagerFactory(func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
 		logger log.Logger,
 		reg prometheus.Registerer,
-	) *rules.Manager {
+	) ruler.RulesManager {
 
 		// We'll ignore the passed registere and use the default registerer to avoid prefix issues and other weirdness.
 		// This closure prevents re-registering.
@@ -120,7 +120,7 @@ func MemstoreTenantManager(
 		memStore.Start(mgr)
 
 		return mgr
-	}
+	})
 }
 
 type GroupLoader struct{}

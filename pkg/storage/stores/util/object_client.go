@@ -21,8 +21,8 @@ func (p PrefixedObjectClient) GetObject(ctx context.Context, objectKey string) (
 	return p.downstreamClient.GetObject(ctx, p.prefix+objectKey)
 }
 
-func (p PrefixedObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
-	objects, commonPrefixes, err := p.downstreamClient.List(ctx, p.prefix+prefix)
+func (p PrefixedObjectClient) List(ctx context.Context, prefix, delimeter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+	objects, commonPrefixes, err := p.downstreamClient.List(ctx, p.prefix+prefix, delimeter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -45,11 +45,6 @@ func (p PrefixedObjectClient) DeleteObject(ctx context.Context, objectKey string
 func (p PrefixedObjectClient) Stop() {
 	p.downstreamClient.Stop()
 }
-
-func (p PrefixedObjectClient) PathSeparator() string {
-	return p.downstreamClient.PathSeparator()
-}
-
 func NewPrefixedObjectClient(downstreamClient chunk.ObjectClient, prefix string) chunk.ObjectClient {
 	return PrefixedObjectClient{downstreamClient: downstreamClient, prefix: prefix}
 }

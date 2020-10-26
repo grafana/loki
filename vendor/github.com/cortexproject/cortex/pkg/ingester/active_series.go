@@ -5,12 +5,13 @@ import (
 	"math"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/cespare/xxhash"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -69,17 +70,13 @@ func fingerprint(series labels.Labels) uint64 {
 
 	sum.Reset()
 	for _, label := range series {
-		_, _ = sum.Write(yoloBuf(label.Name))
+		_, _ = sum.Write(util.YoloBuf(label.Name))
 		_, _ = sum.Write(sep)
-		_, _ = sum.Write(yoloBuf(label.Value))
+		_, _ = sum.Write(util.YoloBuf(label.Value))
 		_, _ = sum.Write(sep)
 	}
 
 	return sum.Sum64()
-}
-
-func yoloBuf(s string) []byte {
-	return *((*[]byte)(unsafe.Pointer(&s)))
 }
 
 // Purge removes expired entries from the cache. This function should be called

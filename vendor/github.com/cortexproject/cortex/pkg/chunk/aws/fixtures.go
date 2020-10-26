@@ -44,10 +44,7 @@ var Fixtures = []testutils.Fixture{
 				schemaCfg:               schemaConfig,
 				metrics:                 newMetrics(nil),
 			}
-			object := objectclient.NewClient(&S3ObjectClient{
-				S3:        newMockS3(),
-				delimiter: chunk.DirDelim,
-			}, nil)
+			object := objectclient.NewClient(&S3ObjectClient{S3: newMockS3()}, nil)
 			return index, object, table, schemaConfig, testutils.CloserFunc(func() error {
 				table.Stop()
 				index.Stop()

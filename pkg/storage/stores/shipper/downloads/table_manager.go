@@ -167,10 +167,21 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
+	var err error
+
+	defer func() {
+		status := statusSuccess
+		if err != nil {
+			status = statusFailure
+		}
+
+		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
+	}()
+
 	level.Info(pkg_util.Logger).Log("msg", "syncing tables")
 
 	for _, table := range tm.tables {
-		err := table.Sync(ctx)
+		err = table.Sync(ctx)
 		if err != nil {
 			return err
 		}

@@ -13,6 +13,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
+const (
+	delimiter = "/"
+)
+
 type boltDBShipperTableClient struct {
 	objectClient chunk.ObjectClient
 }
@@ -22,14 +26,14 @@ func NewBoltDBShipperTableClient(objectClient chunk.ObjectClient) chunk.TableCli
 }
 
 func (b *boltDBShipperTableClient) ListTables(ctx context.Context) ([]string, error) {
-	_, dirs, err := b.objectClient.List(ctx, "")
+	_, dirs, err := b.objectClient.List(ctx, "", delimiter)
 	if err != nil {
 		return nil, err
 	}
 
 	tables := make([]string, len(dirs))
 	for i, dir := range dirs {
-		tables[i] = strings.TrimSuffix(string(dir), "/")
+		tables[i] = strings.TrimSuffix(string(dir), delimiter)
 	}
 
 	return tables, nil
@@ -44,7 +48,7 @@ func (b *boltDBShipperTableClient) Stop() {
 }
 
 func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, name string) error {
-	objects, dirs, err := b.objectClient.List(ctx, name)
+	objects, dirs, err := b.objectClient.List(ctx, name, delimiter)
 	if err != nil {
 		return err
 	}

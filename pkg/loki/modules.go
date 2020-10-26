@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/cortex"
 	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -263,8 +264,18 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		case Ingester:
 			// We do not want ingester to unnecessarily keep downloading files
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
-			// Do not cache index from Ingester.
-			t.cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{}
+			// Use fifo cache for caching index in memory.
+			t.cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
+				EnableFifoCache: true,
+				Fifocache: cache.FifoCacheConfig{
+					MaxSizeBytes: "200 MB",
+					// We snapshot the index in ingesters every minute for reads so reduce the index cache validity by a minute.
+					// This is usually set in StorageConfig.IndexCacheValidity but since this is exclusively used for caching the index entries,
+					// I(Sandeep) am setting it here which also helps reduce some CPU cycles and allocations required for
+					// unmarshalling the cached data to check the expiry.
+					Validity: t.cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
+				},
+			}
 		case Querier:
 			// We do not want query to do any updates to index
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
@@ -293,7 +304,8 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			if t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx].IndexType != shipper.BoltDBShipperType {
 				boltdbShipperConfigIdx++
 			}
-			mlb, err := calculateMaxLookBack(t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx], t.cfg.Ingester.QueryStoreMaxLookBackPeriod, t.cfg.Ingester.MaxChunkAge)
+			mlb, err := calculateMaxLookBack(t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx], t.cfg.Ingester.QueryStoreMaxLookBackPeriod,
+				t.cfg.Ingester.MaxChunkAge, t.cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval)
 			if err != nil {
 				return nil, err
 			}
@@ -354,19 +366,19 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	frontendHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
-		queryrange.StatsHTTPMiddleware,
 		t.httpAuthMiddleware,
+		queryrange.StatsHTTPMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
 	).Wrap(t.frontend.Handler())
 
 	var defaultHandler http.Handler
-	if t.cfg.Frontend.TailProxyUrl != "" {
+	if t.cfg.Frontend.TailProxyURL != "" {
 		httpMiddleware := middleware.Merge(
 			t.httpAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
 		)
-		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyUrl)
+		tailURL, err := url.Parse(t.cfg.Frontend.TailProxyURL)
 		if err != nil {
 			return nil, err
 		}
@@ -415,6 +427,14 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		return nil, errors.New("configdb is not supported as a Loki rules backend type")
 	}
 
+	// Make sure storage directory exists if using filesystem store
+	if t.cfg.Ruler.StoreConfig.Type == "local" && t.cfg.Ruler.StoreConfig.Local.Directory != "" {
+		err := chunk_util.EnsureDirectory(t.cfg.Ruler.StoreConfig.Local.Directory)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig, manager.GroupLoader{})
 
 	return
@@ -447,6 +467,8 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return
 	}
 
+	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage)
+
 	// Expose HTTP endpoints.
 	if t.cfg.Ruler.EnableAPI {
 
@@ -454,22 +476,22 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		cortex_ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
-		t.server.HTTP.Path("/prometheus/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.PrometheusRules)))
-		t.server.HTTP.Path("/prometheus/api/v1/alerts").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.PrometheusAlerts)))
+		t.server.HTTP.Path("/prometheus/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusRules)))
+		t.server.HTTP.Path("/prometheus/api/v1/alerts").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusAlerts)))
 
 		// Ruler Legacy API Routes
-		t.server.HTTP.Path("/api/prom/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.GetRuleGroup)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.CreateRuleGroup)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.DeleteRuleGroup)))
+		t.server.HTTP.Path("/api/prom/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 
 		// Ruler API Routes
-		t.server.HTTP.Path("/loki/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.ListRules)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.GetRuleGroup)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.CreateRuleGroup)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.ruler.DeleteRuleGroup)))
+		t.server.HTTP.Path("/loki/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 	}
 
 	return t.ruler, nil
@@ -495,12 +517,12 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	return t.compactor, nil
 }
 
-func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge time.Duration) (time.Duration, error) {
+func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge, querierResyncInterval time.Duration) (time.Duration, error) {
 	if pc.ObjectType != shipper.FilesystemObjectStoreType && maxLookBackConfig.Nanoseconds() != 0 {
 		return 0, errors.New("it is an error to specify a non zero `query_store_max_look_back_period` value when using any object store other than `filesystem`")
 	}
 	// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
-	defaultMaxLookBack := maxChunkAge + shipper.UploadInterval + (15 * time.Minute)
+	defaultMaxLookBack := maxChunkAge + shipper.UploadInterval + querierResyncInterval + (15 * time.Minute)
 
 	if maxLookBackConfig == 0 {
 		// If the QueryStoreMaxLookBackPeriod is still it's default value of 0, set it to the default calculated value.

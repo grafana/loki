@@ -16,8 +16,8 @@ supports the specific CRI log format. CRI specifies log lines log lines as
 space-delimited values with the following components:
 
 1. `time`: The timestamp string of the log
-2. `stream`: Either stdout or stderr
-3. `log`: The contents of the log line
+1. `stream`: Either stdout or stderr
+1. `log`: The contents of the log line
 
 No whitespace is permitted between the components. In the following example,
 only the first log line can be properly formatted using the `cri` stage:

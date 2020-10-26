@@ -3,8 +3,8 @@ package local
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -58,8 +58,8 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 // GetObject from the store
-func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
-	fl, err := os.Open(filepath.Join(f.cfg.Directory, objectKey))
+func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, error) {
+	fl, err := os.Open(filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey)))
 	if err != nil && os.IsNotExist(err) {
 		return nil, chunk.ErrStorageObjectNotFound
 	}
@@ -68,8 +68,8 @@ func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 }
 
 // PutObject into the store
-func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	fullPath := filepath.Join(f.cfg.Directory, objectKey)
+func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
+	fullPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
 	err := util.EnsureDirectory(filepath.Dir(fullPath))
 	if err != nil {
 		return err
@@ -95,53 +95,74 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 	return fl.Close()
 }
 
-// List objects and common-prefixes i.e directories from the store non-recursively
-func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+// List implements chunk.ObjectClient.
+// FSObjectClient assumes that prefix is a directory, and only supports "" and "/" delimiters.
+func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+	if delimiter != "" && delimiter != "/" {
+		return nil, nil, fmt.Errorf("unsupported delimiter: %q", delimiter)
+	}
+
+	folderPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(prefix))
+
+	info, err := os.Stat(folderPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	if !info.IsDir() {
+		// When listing single file, return this file only.
+		return []chunk.StorageObject{{Key: info.Name(), ModifiedAt: info.ModTime()}}, nil, nil
+	}
+
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
 
-	folderPath := filepath.Join(f.cfg.Directory, prefix)
-
-	_, err := os.Stat(folderPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return storageObjects, commonPrefixes, nil
+	err = filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
 		}
-		return nil, nil, err
-	}
 
-	filesInfo, err := ioutil.ReadDir(folderPath)
-	if err != nil {
-		return nil, nil, err
-	}
+		// Ignore starting folder itself.
+		if path == folderPath {
+			return nil
+		}
 
-	for _, fileInfo := range filesInfo {
-		nameWithPrefix := filepath.Join(prefix, fileInfo.Name())
+		relPath, err := filepath.Rel(f.cfg.Directory, path)
+		if err != nil {
+			return err
+		}
 
-		if fileInfo.IsDir() {
-			empty, err := isDirEmpty(filepath.Join(folderPath, fileInfo.Name()))
+		relPath = filepath.ToSlash(relPath)
+
+		if info.IsDir() {
+			if delimiter == "" {
+				// Go into directory
+				return nil
+			}
+
+			empty, err := isDirEmpty(path)
 			if err != nil {
-				return nil, nil, err
+				return err
 			}
 
-			// add the directory only if it is not empty
 			if !empty {
-				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(nameWithPrefix+f.pathSeparator))
+				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(relPath+delimiter))
 			}
-			continue
+			return filepath.SkipDir
 		}
-		storageObjects = append(storageObjects, chunk.StorageObject{
-			Key:        nameWithPrefix,
-			ModifiedAt: fileInfo.ModTime(),
-		})
-	}
 
-	return storageObjects, commonPrefixes, nil
+		storageObjects = append(storageObjects, chunk.StorageObject{Key: relPath, ModifiedAt: info.ModTime()})
+		return nil
+	})
+
+	return storageObjects, commonPrefixes, err
 }
 
 func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
 	// inspired from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L195
-	file := filepath.Join(f.cfg.Directory, objectKey)
+	file := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
 
 	for file != f.cfg.Directory {
 		if err := os.Remove(file); err != nil {
@@ -173,10 +194,6 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 		}
 		return nil
 	})
-}
-
-func (f *FSObjectClient) PathSeparator() string {
-	return f.pathSeparator
 }
 
 // copied from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L181

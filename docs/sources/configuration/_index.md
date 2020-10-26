@@ -66,15 +66,15 @@ non-list parameters the value is set to the specified default.
 
 Generic placeholders are defined as follows:
 
-* `<boolean>` : a boolean that can take the values `true` or `false`
-* `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
-* `<duration>` : a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
-* `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
-* `<labelvalue>` : a string of unicode characters
-* `<filename>` : a valid path relative to current working directory or an absolute path.
-* `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
-* `<string>` : a regular string
-* `<secret>` : a regular string that is a secret, such as a password
+- `<boolean>` : a boolean that can take the values `true` or `false`
+- `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
+- `<duration>` : a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
+- `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
+- `<labelvalue>` : a string of unicode characters
+- `<filename>` : a valid path relative to current working directory or an absolute path.
+- `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
+- `<string>` : a regular string
+- `<secret>` : a regular string that is a secret, such as a password
 
 Supported contents and default values of `loki.yaml`:
 
@@ -201,7 +201,7 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 
 # Base path to serve all API routes from (e.g., /v1/).
 # CLI flag: -server.path-prefix
-[http_path_prefix: <string>]
+[http_prefix: <string> | default = "/api/prom"]
 ```
 
 ## distributor_config
@@ -1408,9 +1408,14 @@ memcached_client:
   [consistent_hash: <bool>]
 
 redis:
-  # Redis service endpoint to use when caching chunks. If empty, no redis will be used.
+  # Redis Server endpoint to use for caching. A comma-separated list of endpoints
+  # for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
   # CLI flag: -<prefix>.redis.endpoint
   [endpoint: <string>]
+
+  # Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.
+  # CLI flag: -<prefix>.redis.master-name
+  [master_name: <string>]
 
   # Maximum time to wait before giving up on redis requests.
   # CLI flag: -<prefix>.redis.timeout
@@ -1420,13 +1425,13 @@ redis:
   # CLI flag: -<prefix>.redis.expiration
   [expiration: <duration> | default = 0s]
 
-  # Maximum number of idle connections in pool.
-  # CLI flag: -<prefix>.redis.max-idle-conns
-  [max_idle_conns: <int> | default = 80]
+  # Database index.
+  # CLI flag: -<prefix>.redis.db
+  [db: <int>]
 
-  # Maximum number of active connections in pool.
-  # CLI flag: -<prefix>.redis.max-active-conns
-  [max_active_conns: <int> | default = 0]
+  # Maximum number of connections in the pool.
+  # CLI flag: -<prefix>.redis.pool-size
+  [pool_size: <int> | default = 0]
 
   # Password to use when connecting to redis.
   # CLI flag: -<prefix>.redis.password
@@ -1435,6 +1440,16 @@ redis:
   # Enables connecting to redis with TLS.
   # CLI flag: -<prefix>.redis.enable-tls
   [enable_tls: <boolean> | default = false]
+
+  # Close connections after remaining idle for this duration.
+  # If the value is zero, then idle connections are not closed.
+  # CLI flag: -<prefix>.redis.idle-timeout
+  [idle_timeout: <duration> | default = 0s]
+
+  # Close connections older than this duration. If the value is zero, then
+  # the pool does not close connections based on age.
+  # CLI flag: -<prefix>.redis.max-connection-age
+  [max_connection_age: <duration> | default = 0s]
 
 fifocache:
   # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be

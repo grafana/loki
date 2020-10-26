@@ -37,6 +37,9 @@ type BucketStoreMetrics struct {
 	cachedPostingsCompressionTimeSeconds *prometheus.Desc
 	cachedPostingsOriginalSizeBytes      *prometheus.Desc
 	cachedPostingsCompressedSizeBytes    *prometheus.Desc
+
+	seriesFetchDuration   *prometheus.Desc
+	postingsFetchDuration *prometheus.Desc
 }
 
 func NewBucketStoreMetrics() *BucketStoreMetrics {
@@ -125,6 +128,15 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_cached_postings_compressed_size_bytes_total",
 			"Compressed size of postings stored into cache.",
 			nil, nil),
+
+		seriesFetchDuration: prometheus.NewDesc(
+			"cortex_bucket_store_cached_series_fetch_duration_seconds",
+			"Time it takes to fetch series to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.",
+			nil, nil),
+		postingsFetchDuration: prometheus.NewDesc(
+			"cortex_bucket_store_cached_postings_fetch_duration_seconds",
+			"Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.",
+			nil, nil),
 	}
 }
 
@@ -168,6 +180,9 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.cachedPostingsCompressionTimeSeconds
 	out <- m.cachedPostingsOriginalSizeBytes
 	out <- m.cachedPostingsCompressedSizeBytes
+
+	out <- m.seriesFetchDuration
+	out <- m.postingsFetchDuration
 }
 
 func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
@@ -197,4 +212,7 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressionTimeSeconds, "thanos_bucket_store_cached_postings_compression_time_seconds_total", "op")
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsOriginalSizeBytes, "thanos_bucket_store_cached_postings_original_size_bytes_total")
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressedSizeBytes, "thanos_bucket_store_cached_postings_compressed_size_bytes_total")
+
+	data.SendSumOfHistograms(out, m.seriesFetchDuration, "thanos_bucket_store_cached_series_fetch_duration_seconds")
+	data.SendSumOfHistograms(out, m.postingsFetchDuration, "thanos_bucket_store_cached_postings_fetch_duration_seconds")
 }

@@ -22,7 +22,7 @@ type tailer struct {
 	id       uint32
 	orgID    string
 	matchers []*labels.Matcher
-	filter   logql.LineFilter
+	pipeline logql.Pipeline
 	expr     logql.Expr
 
 	sendChan chan *logproto.Stream
@@ -44,7 +44,7 @@ func newTailer(orgID, query string, conn logproto.Querier_TailServer) (*tailer, 
 	if err != nil {
 		return nil, err
 	}
-	filter, err := expr.Filter()
+	pipeline, err := expr.Pipeline()
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func newTailer(orgID, query string, conn logproto.Querier_TailServer) (*tailer, 
 	return &tailer{
 		orgID:          orgID,
 		matchers:       matchers,
-		filter:         filter,
+		pipeline:       pipeline,
 		sendChan:       make(chan *logproto.Stream, bufferSizeForTailResponse),
 		conn:           conn,
 		droppedStreams: []*logproto.DroppedStream{},
@@ -103,47 +103,71 @@ func (t *tailer) loop() {
 	}
 }
 
-func (t *tailer) send(stream logproto.Stream) {
+func (t *tailer) send(stream logproto.Stream) error {
 	if t.isClosed() {
-		return
+		return nil
 	}
 
 	// if we are already dropping streams due to blocked connection, drop new streams directly to save some effort
 	if blockedSince := t.blockedSince(); blockedSince != nil {
 		if blockedSince.Before(time.Now().Add(-time.Second * 15)) {
 			t.close()
-			return
+			return nil
 		}
 		t.dropStream(stream)
-		return
+		return nil
 	}
 
-	t.filterEntriesInStream(&stream)
-
-	if len(stream.Entries) == 0 {
-		return
+	streams, err := t.processStream(stream)
+	if err != nil {
+		return err
 	}
-
-	select {
-	case t.sendChan <- &stream:
-	default:
-		t.dropStream(stream)
+	if len(streams) == 0 {
+		return nil
 	}
+	for _, s := range streams {
+		select {
+		case t.sendChan <- &logproto.Stream{Labels: s.Labels, Entries: s.Entries}:
+		default:
+			t.dropStream(s)
+		}
+	}
+	return nil
 }
 
-func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
+func (t *tailer) processStream(stream logproto.Stream) ([]logproto.Stream, error) {
 	// Optimization: skip filtering entirely, if no filter is set
-	if t.filter == nil {
-		return
+	if t.pipeline == logql.NoopPipeline {
+		return []logproto.Stream{stream}, nil
 	}
-
-	var filteredEntries []logproto.Entry
+	streams := map[uint64]*logproto.Stream{}
+	lbs, err := util.ParseLabels(stream.Labels)
+	if err != nil {
+		return nil, err
+	}
 	for _, e := range stream.Entries {
-		if t.filter.Filter([]byte(e.Line)) {
-			filteredEntries = append(filteredEntries, e)
+		newLine, parsedLbs, ok := t.pipeline.Process([]byte(e.Line), lbs)
+		if !ok {
+			continue
 		}
+		var stream *logproto.Stream
+		lhash := parsedLbs.Hash()
+		if stream, ok = streams[lhash]; !ok {
+			stream = &logproto.Stream{
+				Labels: parsedLbs.String(),
+			}
+			streams[lhash] = stream
+		}
+		stream.Entries = append(stream.Entries, logproto.Entry{
+			Timestamp: e.Timestamp,
+			Line:      string(newLine),
+		})
 	}
-	stream.Entries = filteredEntries
+	streamsResult := make([]logproto.Stream, 0, len(streams))
+	for _, stream := range streams {
+		streamsResult = append(streamsResult, *stream)
+	}
+	return streamsResult, nil
 }
 
 // Returns true if tailer is interested in the passed labelset

@@ -83,9 +83,8 @@ func TestDefaultOutput_Format(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
-
 			writer := &bytes.Buffer{}
-			out := &DefaultOutput{writer,testData.options}
+			out := &DefaultOutput{writer, testData.options}
 			out.FormatAndPrintln(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
 
 			assert.Equal(t, testData.expected, writer.String())
@@ -114,7 +113,7 @@ func TestDefaultOutput_FormatLabelsPadding(t *testing.T) {
 	maxLabelsLen := findMaxLabelsLength(labelsList)
 	options := &LogOutputOptions{Timezone: time.UTC, NoLabels: false}
 	writer := &bytes.Buffer{}
-	out := &DefaultOutput{writer,options}
+	out := &DefaultOutput{writer, options}
 
 	// Format the same log line with different labels
 	formattedEntries := make([]string, 0, len(labelsList))

@@ -92,7 +92,7 @@ const (
 	// if the table or index specifications are complex, DynamoDB might temporarily
 	// reduce the number of concurrent operations.
 	//
-	// There is a soft account limit of 256 tables.
+	// There is a soft account quota of 256 tables.
 	ErrCodeLimitExceededException = "LimitExceededException"
 
 	// ErrCodePointInTimeRecoveryUnavailableException for service response error code
@@ -127,9 +127,9 @@ const (
 	// ErrCodeRequestLimitExceeded for service response error code
 	// "RequestLimitExceeded".
 	//
-	// Throughput exceeds the current throughput limit for your account. Please
+	// Throughput exceeds the current throughput quota for your account. Please
 	// contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-	// a limit increase.
+	// a quota increase.
 	ErrCodeRequestLimitExceeded = "RequestLimitExceeded"
 
 	// ErrCodeResourceInUseException for service response error code

@@ -222,3 +222,21 @@ func IsBlockDir(path string) (id ulid.ULID, ok bool) {
 	id, err := ulid.Parse(filepath.Base(path))
 	return id, err == nil
 }
+
+// GetSegmentFiles returns list of segment files for given block. Paths are relative to the chunks directory.
+// In case of errors, nil is returned.
+func GetSegmentFiles(blockDir string) []string {
+	chunksDir := filepath.Join(blockDir, ChunksDirname)
+
+	files, err := ioutil.ReadDir(chunksDir)
+	if err != nil {
+		return nil
+	}
+
+	// ReadDir returns files in sorted order already.
+	var result []string
+	for _, f := range files {
+		result = append(result, f.Name())
+	}
+	return result
+}

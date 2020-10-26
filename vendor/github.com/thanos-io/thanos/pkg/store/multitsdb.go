@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/go-kit/kit/log"
@@ -13,12 +14,16 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
+	"github.com/thanos-io/thanos/pkg/runutil"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/thanos-io/thanos/pkg/component"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/tracing"
 )
@@ -77,7 +82,7 @@ func (s *MultiTSDBStore) Info(ctx context.Context, req *storepb.InfoRequest) (*s
 
 	// We can rely on every underlying TSDB to only have one labelset, so this
 	// will always allocate the correct length immediately.
-	resp.LabelSets = make([]storepb.LabelSet, 0, len(infos))
+	resp.LabelSets = make([]labelpb.ZLabelSet, 0, len(infos))
 	for _, info := range infos {
 		resp.LabelSets = append(resp.LabelSets, info.LabelSets...)
 	}
@@ -96,6 +101,8 @@ type tenantSeriesSetServer struct {
 
 	err    error
 	tenant string
+
+	closers []io.Closer
 }
 
 // TODO(bwplotka): Remove tenant awareness; keep it simple with single functionality.
@@ -156,16 +163,28 @@ func (s *tenantSeriesSetServer) Send(r *storepb.SeriesResponse) error {
 	}
 }
 
+func (s *tenantSeriesSetServer) Delegate(closer io.Closer) {
+	s.closers = append(s.closers, closer)
+}
+
+func (s *tenantSeriesSetServer) Close() error {
+	var merr tsdb_errors.MultiError
+	for _, c := range s.closers {
+		merr.Add(c.Close())
+	}
+	return merr.Err()
+}
+
 func (s *tenantSeriesSetServer) Next() (ok bool) {
 	s.cur, ok = <-s.recv
 	return ok
 }
 
-func (s *tenantSeriesSetServer) At() ([]storepb.Label, []storepb.AggrChunk) {
+func (s *tenantSeriesSetServer) At() (labels.Labels, []storepb.AggrChunk) {
 	if s.cur == nil {
 		return nil, nil
 	}
-	return s.cur.Labels, s.cur.Chunks
+	return s.cur.PromLabels(), s.cur.Chunks
 }
 
 func (s *tenantSeriesSetServer) Err() error { return s.err }
@@ -188,6 +207,7 @@ func (s *MultiTSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_Seri
 	// Each might be quite large (multi chunk long series given by sidecar).
 	respSender, respCh := newCancelableRespChannel(gctx, 10)
 
+	var closers []io.Closer
 	g.Go(func() error {
 		// This go routine is responsible for calling store's Series concurrently. Merged results
 		// are passed to respCh and sent concurrently to client (if buffer of 10 have room).
@@ -216,14 +236,18 @@ func (s *MultiTSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_Seri
 				defer wg.Done()
 				ss.Series(store, r)
 			}()
+
+			closers = append(closers, ss)
 			seriesSet = append(seriesSet, ss)
 		}
 
 		mergedSet := storepb.MergeSeriesSets(seriesSet...)
 		for mergedSet.Next() {
-			var series storepb.Series
-			series.Labels, series.Chunks = mergedSet.At()
-			respSender.send(storepb.NewSeriesResponse(&series))
+			lset, chks := mergedSet.At()
+			respSender.send(storepb.NewSeriesResponse(&storepb.Series{
+				Labels: labelpb.ZLabelsFromPromLabels(lset),
+				Chunks: chks,
+			}))
 		}
 		return mergedSet.Err()
 	})
@@ -237,7 +261,12 @@ func (s *MultiTSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_Seri
 		}
 		return nil
 	})
-	return g.Wait()
+	err := g.Wait()
+	for _, c := range closers {
+		runutil.CloseWithLogOnErr(s.logger, c, "close tenant series request")
+	}
+	return err
+
 }
 
 // LabelNames returns all known label names.

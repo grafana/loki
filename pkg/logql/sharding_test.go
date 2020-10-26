@@ -37,9 +37,12 @@ func TestMappingEquivalence(t *testing.T) {
 		{`{a="1"} |= "number: 10"`, false},
 		{`rate({a=~".*"}[1s])`, false},
 		{`sum by (a) (rate({a=~".*"}[1s]))`, false},
+		{`sum(rate({a=~".*"}[1s]))`, false},
+
 		{`max without (a) (rate({a=~".*"}[1s]))`, false},
 		{`count(rate({a=~".*"}[1s]))`, false},
 		{`avg(rate({a=~".*"}[1s]))`, true},
+		{`avg(rate({a=~".*"}[1s])) by (a)`, true},
 		{`1 + sum by (cluster) (rate({a=~".*"}[1s]))`, false},
 		{`sum(max(rate({a=~".*"}[1s])))`, false},
 		{`max(count(rate({a=~".*"}[1s])))`, false},
@@ -71,12 +74,19 @@ func TestMappingEquivalence(t *testing.T) {
 				nil,
 			)
 			qry := regular.Query(params)
-			shardedQry := sharded.Query(params, shards)
+			ctx := context.Background()
 
-			res, err := qry.Exec(context.Background())
+			mapper, err := NewShardMapper(shards, nilMetrics)
+			require.Nil(t, err)
+			_, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
-			shardedRes, err := shardedQry.Exec(context.Background())
+			shardedQry := sharded.Query(params, mapped)
+
+			res, err := qry.Exec(ctx)
+			require.Nil(t, err)
+
+			shardedRes, err := shardedQry.Exec(ctx)
 			require.Nil(t, err)
 
 			if tc.approximate {

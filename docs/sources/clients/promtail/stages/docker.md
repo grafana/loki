@@ -17,8 +17,8 @@ only supports the specific Docker log format. Each log line from Docker is
 written as JSON with the following keys:
 
 1. `log`: The content of log line
-2. `stream`: Either `stdout` or `stderr`
-3. `time`: The timestamp string of the log line
+1. `stream`: Either `stdout` or `stderr`
+1. `time`: The timestamp string of the log line
 
 ## Examples
 
