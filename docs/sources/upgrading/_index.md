@@ -58,7 +58,7 @@ There are three places we have hard coded the schema definition:
 
 Helm has shipped with the same internal schema in the values.yaml file for a very long time.
 
-If you are providing your own values.yaml file then there is no _required_ action because you will already have a schema definition.
+If you are providing your own values.yaml file then there is no _required_ action because you already have a schema definition.
 
 **If you are not providing your own values.yaml file, you will need to make one!**
 
