@@ -201,8 +201,8 @@ For more information, see the [retention configuration](../operations/storage/re
 ```yaml
 storage_config:
   boltdb_shipper:
-    active_index_directory: /tmp/loki/boltdb-shipper-active
-    cache_location: /tmp/loki/boltdb-shipper-cache
+    active_index_directory: /loki/boltdb-shipper-active
+    cache_location: /loki/boltdb-shipper-cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
     shared_store: gcs
   gcs:
@@ -292,8 +292,8 @@ storage_config:
     s3: http<s>://<username>:<secret>@<fqdn>:<port>
     s3forcepathstyle: true
   boltdb_shipper:
-    active_index_directory: /tmp/loki/boltdb-shipper-active
-    cache_location: /tmp/loki/boltdb-shipper-cache
+    active_index_directory: /loki/boltdb-shipper-active
+    cache_location: /loki/boltdb-shipper-cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
     shared_store: s3
 
