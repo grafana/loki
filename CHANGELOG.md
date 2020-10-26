@@ -203,6 +203,10 @@ Thank you @dlemel8 for this PR! Now you can start Loki with `-verify-config` to 
 #### Docker Logging Driver
 * [2459](https://github.com/grafana/loki/pull/2459) **RaitoBezarius**: Docker logging driver: Add a keymod for the extra attributes from the Docker logging driver
 
+### Dependencies
+
+* Go Version:     1.14.2
+* Cortex Version: 85942c5703cf22b64cecfd291e7e7c42d1b8c30c
 
 ## 1.6.1 (2020-08-24)
 
