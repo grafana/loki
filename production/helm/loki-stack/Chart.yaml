@@ -1,7 +1,7 @@
 apiVersion: "v1"
 name: loki-stack
-version: 0.41.2
-appVersion: v1.6.0
+version: 2.0.0
+appVersion: v2.0.0
 kubeVersion: "^1.10.0-0"
 description: "Loki: like Prometheus, but for logs."
 home: https://grafana.com/loki
