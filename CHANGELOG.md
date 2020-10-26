@@ -10,11 +10,11 @@ Thanks again for the many incredible contributions and improvements from the won
 
 **Please Note** There are several changes in this release which require your attention!
 
-* Anyone using a docker image please go read the [upgrade guide](https://github.com/grafana/loki/blob/master/docs/upgrading/_index.md#200)!! There is one important consideration around a potentially breaking schema change depending on your configuration.
-* MAJOR changes have been made to the boltdb-shipper index, breaking changes are not expected but extra precautions are highly recommended, more details in the [upgrade guide](https://github.com/grafana/loki/blob/master/docs/upgrading/_index.md#200).
+* Anyone using a docker image please go read the [upgrade guide](https://github.com/grafana/loki/blob/master/docs/sources/upgrading/_index.md#200)!! There is one important consideration around a potentially breaking schema change depending on your configuration.
+* MAJOR changes have been made to the boltdb-shipper index, breaking changes are not expected but extra precautions are highly recommended, more details in the [upgrade guide](https://github.com/grafana/loki/blob/master/docs/sources/upgrading/_index.md#200).
 * The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#pipeline_stages) instead.
 
-Check the [upgrade guide](https://github.com/grafana/loki/blob/master/docs/upgrading/_index.md#200) for detailed information on all these changes.
+Check the [upgrade guide](https://github.com/grafana/loki/blob/master/docs/sources/upgrading/_index.md#200) for detailed information on all these changes.
 
 ### 2.0!!!!
 
