@@ -91,7 +91,7 @@ Next we'll download, install and give executable right to [Promtail](../../promt
 
 ```bash
 mkdir /opt/promtail && cd /opt/promtail
-curl -O -L "https://github.com/grafana/loki/releases/download/v1.6.0/promtail-linux-amd64.zip"
+curl -O -L "https://github.com/grafana/loki/releases/download/v2.0.0/promtail-linux-amd64.zip"
 unzip "promtail-linux-amd64.zip"
 chmod a+x "promtail-linux-amd64"
 ```
