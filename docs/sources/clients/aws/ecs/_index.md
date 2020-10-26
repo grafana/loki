@@ -98,7 +98,7 @@ curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/
 ```json
  {
     "essential": true,
-    "image": "grafana/fluent-bit-plugin-loki:1.6.0-amd64",
+    "image": "grafana/fluent-bit-plugin-loki:2.0.0-amd64",
     "name": "log_router",
     "firelensConfiguration": {
         "type": "fluentbit",
