@@ -3,7 +3,7 @@ title: Storage
 ---
 # Loki Storage
 
-[High level storage over view here]({{< relref "../../storage/_index.md" >}})
+[High level storage overview here]({{< relref "../../storage/_index.md" >}})
 
 Loki needs to store two different types of data: **chunks** and **indexes**.
 

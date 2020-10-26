@@ -12,7 +12,7 @@ Unfortunately Loki is software and software is hard and sometimes we are forced 
 If we have any expectation of difficulty upgrading we will document it here.
 
 As more versions are released it becomes more likely unexpected problems arise moving between multiple versions at once. 
-If possible try to stay current and do sequential updates, if you want to skip versions maybe don't yolo it in prod.
+If possible try to stay current and do sequential updates. If you want to skip versions, try it in a development environment before attempting to upgrade production.
 
 
 ## Master / Unreleased
@@ -85,6 +85,7 @@ This likely only affects a small portion of tanka users because the default sche
 ```jsonnet
 {
   _config+:: {
+    using_boltdb_shipper: false,
     loki+: {
       schema_config+: {
         configs: [{
@@ -94,7 +95,7 @@ This likely only affects a small portion of tanka users because the default sche
           schema: 'v11',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
-            period: '%dh' % $._config.index_period_hours,        
+            period: '168h',        
           },
         }],
       },    
@@ -102,6 +103,14 @@ This likely only affects a small portion of tanka users because the default sche
   }
 }
 ```
+
+>**NOTE** If you had set `index_period_hours` to a value other than 168h (the previous default) you must update this in the above config `period:` to match what you chose.
+
+>**NOTE** We have changed the default index store to `boltdb-shipper` it's important to add `using_boltdb_shipper: false,` until you are ready to change (if you want to change)
+
+Changing the jsonnet config to use the `boltdb-shipper` type is the same as [below](#upgrading-schema-to-use-boltdb-shipper-andor-v11-schema) where you need to add a new schema section.
+
+**HOWEVER** Be aware when you change `using_boltdb_shipper: true` the deployment type for the ingesters and queriers will change to statefulsets! Statefulsets are required for the ingester and querier using boltdb-shipper. 
 
 ##### Docker (e.g. docker-compose)
 
@@ -138,6 +147,14 @@ The second part is important because 1.6.0 does not understand how to read the g
 _THIS BEING SAID_ we are not expecting problems, our testing so far has not uncovered any problems, but some extra precaution might save data loss!
 
 Please report any problems via GitHub issues or reach us on the #loki slack channel.
+
+**Note if are using boltdb-shipper and were running with high availability and separate filesystems**
+
+This was a poorly documented and even more experimental mode we toyed with using boltdb-shipper. For now we removed the documentation and also any kind of support for this mode.
+
+To use boltdb-shipper in 2.0 you need a shared storage (S3, GCS, etc), the mode of running with separate filesystem stores in HA using a ring is not officially supported.
+
+We didn't do anything explicitly to limit this functionality however we have not had any time to actually test this which is why we removed the docs and are listing it as not supported.
 
 #### If running in microservices, deploy ingesters before queriers
 
