@@ -7,7 +7,7 @@ weight: 700
 
 Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and then alerting when certain conditions happen, e.g. a high percentage of error logs.
 
-First, ensure the Ruler component is enabled. The following is a basic configuration which loads rules from configuration files (it requires `/tmp/rules` and `/tmp/scratch` exist):
+First, ensure the Ruler component is enabled. The following is a basic configuration which loads rules from configuration files:
 
 ```yaml
 ruler:
@@ -167,6 +167,8 @@ Creating these alerts in LogQL is attractive because these metrics can be extrac
 Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortex-tool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but works alongside both Loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with Loki.
 
 > **Note:** Not all commands in cortextool currently support Loki.
+
+> **Note:** cortextool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `CORTEX_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake` (yes we know this might seem alarming but it's totally fine, no it can't be changed) 
 
 An example workflow is included below:
 
