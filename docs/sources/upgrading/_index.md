@@ -144,7 +144,7 @@ There are 2 significant changes warranting the backup of this data because they 
 
 The second part is important because 1.6.0 does not understand how to read the gzipped files, so any new files uploaded or any files compacted become unreadable to 1.6.0 or ealier.
 
-_THIS BEING SAID_ we are not expecting problems, our testing so far has not uncovered any problems, but some extra precaution might save data loss!
+_THIS BEING SAID_ we are not expecting problems, our testing so far has not uncovered any problems, but some extra precaution might save data loss in unforeseen circumstances!
 
 Please report any problems via GitHub issues or reach us on the #loki slack channel.
 
