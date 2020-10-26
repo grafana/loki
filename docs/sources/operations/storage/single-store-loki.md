@@ -1,12 +1,10 @@
 ---
-title: BoltDB Shipper
+title: Single Store Loki
 ---
-# Loki with BoltDB Shipper
+# Single Store Loki
 
-:warning: BoltDB Shipper is still an experimental feature. It is not recommended to be used in production environments.
-
-BoltDB Shipper lets you run Loki without any dependency on NoSQL stores for storing index.
-It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
+Single Store Loki runs without any dependency on NoSQL stores for storing index. To run Loki with Single Store, you need to use `boltdb-shipper` store.
+It locally stores the index in BoltDB files and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
 It also keeps syncing BoltDB files from shared object store to a configured local directory for getting index entries created by other services of same Loki cluster.
 This helps run Loki with one less dependency and also saves costs in storage since object stores are likely to be much cheaper compared to cost of a hosted NoSQL store or running a self hosted instance of Cassandra.
 
