@@ -58,23 +58,15 @@ There are three places we have hard coded the schema definition:
 
 Helm has shipped with the same internal schema in the values.yaml file for a very long time.
 
-If you are providing your own values.yaml file then there is no _required_ action because you will already have a fixed schema version.
+If you are providing your own values.yaml file then there is no _required_ action because you already have a schema definition.
 
-**If you are not providing your own values.yaml file, you will need to make one! and at a minimum it will need this config:**
+**If you are not providing your own values.yaml file, you will need to make one!**
 
-```yaml
-schema_config:
-  configs:
-    - from: 2018-04-15
-      store: boltdb
-      object_store: filesystem
-      schema: v9
-      index:
-        prefix: index_
-        period: 168h
-```
+We suggest using the included [values.yaml file from the 1.6.0 tag](https://raw.githubusercontent.com/grafana/loki/v1.6.0/production/helm/loki/values.yaml)
 
 This matches what the default values.yaml file had prior to 2.0 and is necessary for Loki to work post 2.0 
+
+As mentioned above, you should also consider looking at moving to the v11 schema and boltdb-shipper [see below](#upgrading-schema-to-use-boltdb-shipper-andor-v11-schema) for more information.
 
 ##### Tanka
 
@@ -203,7 +195,7 @@ schema_config:
 ④ Make sure this matches your existing config (e.g. maybe you were using gcs for your object_store)  
 ⑤ 24h is required for boltdb-shipper  
  
-There are more examples on the [Storage description page]({{< relref "../storage/_index.md#examples" >}})
+There are more examples on the [Storage description page]({{< relref "../storage/_index.md#examples" >}}) including the information you need to setup the `storage` section for boltdb-shipper.
 
 
 ## 1.6.0
