@@ -1,9 +1,7 @@
 ---
-title: BoltDB Shipper
+title: Single Store (boltdb-shipper)
 ---
-# Loki with BoltDB Shipper
-
-:warning: BoltDB Shipper is still an experimental feature. It is not recommended to be used in production environments.
+# Single Store Loki (boltdb-shipper index type)
 
 BoltDB Shipper lets you run Loki without any dependency on NoSQL stores for storing index.
 It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
