@@ -119,7 +119,7 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 	for _, e := range m {
 		p, err := e.Stage()
 		if err != nil {
-			return nil, err
+			return nil, newStageError(e, err)
 		}
 		if p == log.NoopStage {
 			continue
