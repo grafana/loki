@@ -198,7 +198,7 @@ schema_config:
         period: 24h              ⑤
 ```
 ① Make sure all of these match your current schema config  
-② Make sure this matches your previoius schema version, Helm for example is likely v9  
+② Make sure this matches your previous schema version, Helm for example is likely v9  
 ③ Make sure this is a date in the **FUTURE** keep in mind Loki only knows UTC so make sure it's a future UTC date  
 ④ Make sure this matches your existing config (e.g. maybe you were using gcs for your object_store)  
 ⑤ 24h is required for boltdb-shipper  
