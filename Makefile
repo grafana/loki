@@ -106,7 +106,7 @@ RM := --rm
 TTY := --tty
 
 DOCKER_BUILDKIT=1
-OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
+OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7 --platform=linux/ppc64le
 BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
 ifeq ($(CI), true)
 	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
@@ -233,10 +233,10 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 dist: clean
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
-	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/promtail
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm linux/ppc64le darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm linux/ppc64le darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm linux/ppc64le darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm linux/ppc64le darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
