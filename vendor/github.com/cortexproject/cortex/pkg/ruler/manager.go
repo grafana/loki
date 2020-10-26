@@ -20,7 +20,6 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type DefaultMultiTenantManager struct {
@@ -205,7 +204,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
 			return ctxhttp.Do(ctx, client, req)
 		},
-	}, util.Logger)
+	}, log.With(r.logger, "user", userID))
 
 	go n.run()
 

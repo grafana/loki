@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -22,7 +23,12 @@ import (
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	var matrix model.Matrix
 	err := instrument.CollectedRequest(ctx, "Distributor.Query", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
+		req, err := ingester_client.ToQueryRequest(from, to, matchers)
+		if err != nil {
+			return err
+		}
+
+		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
 		if err != nil {
 			return err
 		}
@@ -44,7 +50,12 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
 	var result *ingester_client.QueryStreamResponse
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
+		req, err := ingester_client.ToQueryRequest(from, to, matchers)
+		if err != nil {
+			return err
+		}
+
+		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
 		if err != nil {
 			return err
 		}
@@ -62,26 +73,57 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 	return result, err
 }
 
-func (d *Distributor) queryPrep(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (ring.ReplicationSet, *client.QueryRequest, error) {
-	var replicationSet ring.ReplicationSet
+// GetIngestersForQuery returns a replication set including all ingesters that should be queried
+// to fetch series matching input label matchers.
+func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return replicationSet, nil, err
+		return ring.ReplicationSet{}, err
 	}
 
-	req, err := ingester_client.ToQueryRequest(from, to, matchers)
+	// If shuffle sharding is enabled we should only query ingesters which are
+	// part of the tenant's subring.
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		shardSize := d.limits.IngestionTenantShardSize(userID)
+		lookbackPeriod := d.cfg.ShuffleShardingLookbackPeriod
+
+		if shardSize > 0 && lookbackPeriod > 0 {
+			return d.ingestersRing.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, time.Now()).GetAll(ring.Read)
+		}
+	}
+
+	// If "shard by all labels" is disabled, we can get ingesters by metricName if exists.
+	if !d.cfg.ShardByAllLabels {
+		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
+
+		if ok && metricNameMatcher.Type == labels.MatchEqual {
+			return d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
+		}
+	}
+
+	return d.ingestersRing.GetAll(ring.Read)
+}
+
+// GetIngestersForMetadata returns a replication set including all ingesters that should be queried
+// to fetch metadata (eg. label names/values or series).
+func (d *Distributor) GetIngestersForMetadata(ctx context.Context) (ring.ReplicationSet, error) {
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return replicationSet, nil, err
+		return ring.ReplicationSet{}, err
 	}
 
-	// Get ingesters by metricName if one exists, otherwise get all ingesters
-	metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
-	if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
-		replicationSet, err = d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
-	} else {
-		replicationSet, err = d.ingestersRing.GetAll(ring.Read)
+	// If shuffle sharding is enabled we should only query ingesters which are
+	// part of the tenant's subring.
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		shardSize := d.limits.IngestionTenantShardSize(userID)
+		lookbackPeriod := d.cfg.ShuffleShardingLookbackPeriod
+
+		if shardSize > 0 && lookbackPeriod > 0 {
+			return d.ingestersRing.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, time.Now()).GetAll(ring.Read)
+		}
 	}
-	return replicationSet, req, err
+
+	return d.ingestersRing.GetAll(ring.Read)
 }
 
 // queryIngesters queries the ingesters via the older, sample-based API.

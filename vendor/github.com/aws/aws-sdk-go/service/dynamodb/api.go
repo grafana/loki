@@ -162,9 +162,9 @@ func (c *DynamoDB) BatchGetItemRequest(input *BatchGetItemInput) (req *request.R
 //   might not be specified correctly, or its status might not be ACTIVE.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -408,9 +408,9 @@ func (c *DynamoDB) BatchWriteItemRequest(input *BatchWriteItemInput) (req *reque
 //   that have one or more local secondary indexes.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -570,7 +570,7 @@ func (c *DynamoDB) CreateBackupRequest(input *CreateBackupInput) (req *request.R
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -731,7 +731,7 @@ func (c *DynamoDB) CreateGlobalTableRequest(input *CreateGlobalTableInput) (req 
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -875,7 +875,7 @@ func (c *DynamoDB) CreateTableRequest(input *CreateTableInput) (req *request.Req
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1002,7 +1002,7 @@ func (c *DynamoDB) DeleteBackupRequest(input *DeleteBackupInput) (req *request.R
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1144,9 +1144,9 @@ func (c *DynamoDB) DeleteItemRequest(input *DeleteItemInput) (req *request.Reque
 //   Operation was rejected because there is an ongoing transaction for the item.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -1290,7 +1290,7 @@ func (c *DynamoDB) DeleteTableRequest(input *DeleteTableInput) (req *request.Req
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -2067,27 +2067,27 @@ func (c *DynamoDB) DescribeLimitsRequest(input *DescribeLimitsInput) (req *reque
 
 // DescribeLimits API operation for Amazon DynamoDB.
 //
-// Returns the current provisioned-capacity limits for your AWS account in a
+// Returns the current provisioned-capacity quotas for your AWS account in a
 // Region, both for the Region as a whole and for any one DynamoDB table that
 // you create there.
 //
-// When you establish an AWS account, the account has initial limits on the
+// When you establish an AWS account, the account has initial quotas on the
 // maximum read capacity units and write capacity units that you can provision
 // across all of your DynamoDB tables in a given Region. Also, there are per-table
-// limits that apply when you create a table there. For more information, see
-// Limits (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+// quotas that apply when you create a table there. For more information, see
+// Service, Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 // page in the Amazon DynamoDB Developer Guide.
 //
-// Although you can increase these limits by filing a case at AWS Support Center
+// Although you can increase these quotas by filing a case at AWS Support Center
 // (https://console.aws.amazon.com/support/home#/), obtaining the increase is
 // not instantaneous. The DescribeLimits action lets you write code to compare
-// the capacity you are currently using to those limits imposed by your account
-// so that you have enough time to apply for an increase before you hit a limit.
+// the capacity you are currently using to those quotas imposed by your account
+// so that you have enough time to apply for an increase before you hit a quota.
 //
 // For example, you could use one of the AWS SDKs to do the following:
 //
 // Call DescribeLimits for a particular Region to obtain your current account
-// limits on provisioned capacity there.
+// quotas on provisioned capacity there.
 //
 // Create a variable to hold the aggregate read capacity units provisioned for
 // all your tables in that Region, and one to hold the aggregate write capacity
@@ -2106,20 +2106,20 @@ func (c *DynamoDB) DescribeLimitsRequest(input *DescribeLimitsInput) (req *reque
 //    these GSIs and add their provisioned capacity values to your variables
 //    as well.
 //
-// Report the account limits for that Region returned by DescribeLimits, along
+// Report the account quotas for that Region returned by DescribeLimits, along
 // with the total current provisioned capacity levels you have calculated.
 //
 // This will let you see whether you are getting close to your account-level
-// limits.
+// quotas.
 //
-// The per-table limits apply only when you are creating a new table. They restrict
+// The per-table quotas apply only when you are creating a new table. They restrict
 // the sum of the provisioned capacity of the new table itself and all its global
 // secondary indexes.
 //
 // For existing tables and their GSIs, DynamoDB doesn't let you increase provisioned
-// capacity extremely rapidly. But the only upper limit that applies is that
-// the aggregate provisioned capacity over all your tables and GSIs cannot exceed
-// either of the per-account limits.
+// capacity extremely rapidly, but the only quota that applies is that the aggregate
+// provisioned capacity over all your tables and GSIs cannot exceed either of
+// the per-account quotas.
 //
 // DescribeLimits should only be called periodically. You can expect throttling
 // errors if you call it more than once in a minute.
@@ -2568,9 +2568,9 @@ func (c *DynamoDB) GetItemRequest(input *GetItemInput) (req *request.Request, ou
 //   might not be specified correctly, or its status might not be ACTIVE.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -2668,11 +2668,11 @@ func (c *DynamoDB) ListBackupsRequest(input *ListBackupsInput) (req *request.Req
 //
 // List backups associated with an AWS account. To list backups for a given
 // table, specify TableName. ListBackups returns a paginated list of results
-// with at most 1 MB worth of items in a page. You can also specify a limit
-// for the maximum number of entries to be returned in a page.
+// with at most 1 MB worth of items in a page. You can also specify a maximum
+// number of entries to be returned in a page.
 //
 // In the request, start time is inclusive, but end time is exclusive. Note
-// that these limits are for the time at which the original backup was requested.
+// that these boundaries are for the time at which the original backup was requested.
 //
 // You can call ListBackups a maximum of five times per second.
 //
@@ -3385,9 +3385,9 @@ func (c *DynamoDB) PutItemRequest(input *PutItemInput) (req *request.Request, ou
 //   Operation was rejected because there is an ongoing transaction for the item.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -3559,9 +3559,9 @@ func (c *DynamoDB) QueryRequest(input *QueryInput) (req *request.Request, output
 //   might not be specified correctly, or its status might not be ACTIVE.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -3761,7 +3761,7 @@ func (c *DynamoDB) RestoreTableFromBackupRequest(input *RestoreTableFromBackupIn
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -3924,7 +3924,7 @@ func (c *DynamoDB) RestoreTableToPointInTimeRequest(input *RestoreTableToPointIn
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InvalidRestoreTimeException
 //   An invalid restore time was specified. RestoreDateTime must be between EarliestRestorableDateTime
@@ -4083,9 +4083,9 @@ func (c *DynamoDB) ScanRequest(input *ScanInput) (req *request.Request, output *
 //   might not be specified correctly, or its status might not be ACTIVE.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -4262,7 +4262,7 @@ func (c *DynamoDB) TagResourceRequest(input *TagResourceInput) (req *request.Req
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * ResourceNotFoundException
 //   The operation tried to access a nonexistent table or index. The resource
@@ -4496,9 +4496,9 @@ func (c *DynamoDB) TransactGetItemsRequest(input *TransactGetItemsInput) (req *r
 //   in the Amazon DynamoDB Developer Guide.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -4764,9 +4764,9 @@ func (c *DynamoDB) TransactWriteItemsRequest(input *TransactWriteItemsInput) (re
 //   in the Amazon DynamoDB Developer Guide.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -4889,7 +4889,7 @@ func (c *DynamoDB) UntagResourceRequest(input *UntagResourceInput) (req *request
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * ResourceNotFoundException
 //   The operation tried to access a nonexistent table or index. The resource
@@ -5365,7 +5365,7 @@ func (c *DynamoDB) UpdateGlobalTableSettingsRequest(input *UpdateGlobalTableSett
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * ResourceInUseException
 //   The operation conflicts with the resource's availability. For example, you
@@ -5506,9 +5506,9 @@ func (c *DynamoDB) UpdateItemRequest(input *UpdateItemInput) (req *request.Reque
 //   Operation was rejected because there is an ongoing transaction for the item.
 //
 //   * RequestLimitExceeded
-//   Throughput exceeds the current throughput limit for your account. Please
+//   Throughput exceeds the current throughput quota for your account. Please
 //   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-//   a limit increase.
+//   a quota increase.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -5652,7 +5652,7 @@ func (c *DynamoDB) UpdateTableRequest(input *UpdateTableInput) (req *request.Req
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -5757,7 +5757,7 @@ func (c *DynamoDB) UpdateTableReplicaAutoScalingRequest(input *UpdateTableReplic
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -5911,7 +5911,7 @@ func (c *DynamoDB) UpdateTimeToLiveRequest(input *UpdateTimeToLiveInput) (req *r
 //   if the table or index specifications are complex, DynamoDB might temporarily
 //   reduce the number of concurrent operations.
 //
-//   There is a soft account limit of 256 tables.
+//   There is a soft account quota of 256 tables.
 //
 //   * InternalServerError
 //   An error occurred on the server side.
@@ -8212,8 +8212,8 @@ type CreateGlobalSecondaryIndexAction struct {
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
 }
@@ -8615,8 +8615,8 @@ type CreateTableInput struct {
 	// If you set BillingMode as PROVISIONED, you must specify this property. If
 	// you set BillingMode as PAY_PER_REQUEST, you cannot specify this property.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
 
@@ -10820,8 +10820,8 @@ type GlobalSecondaryIndex struct {
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
 }
@@ -11029,8 +11029,8 @@ type GlobalSecondaryIndexDescription struct {
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughputDescription `type:"structure"`
 }
@@ -12118,7 +12118,7 @@ func (s *KeysAndAttributes) SetProjectionExpression(v string) *KeysAndAttributes
 // if the table or index specifications are complex, DynamoDB might temporarily
 // reduce the number of concurrent operations.
 //
-// There is a soft account limit of 256 tables.
+// There is a soft account quota of 256 tables.
 type LimitExceededException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
@@ -13094,8 +13094,8 @@ type Projection struct {
 	//
 	//    * KEYS_ONLY - Only the index and primary keys are projected into the index.
 	//
-	//    * INCLUDE - Only the specified table attributes are projected into the
-	//    index. The list of projected attributes is in NonKeyAttributes.
+	//    * INCLUDE - In addition to the attributes described in KEYS_ONLY, the
+	//    secondary index will include other non-key attributes that you specify.
 	//
 	//    * ALL - All of the table attributes are projected into the index.
 	ProjectionType *string `type:"string" enum:"ProjectionType"`
@@ -13139,8 +13139,8 @@ func (s *Projection) SetProjectionType(v string) *Projection {
 // Represents the provisioned throughput settings for a specified table or index.
 // The settings can be modified using the UpdateTable operation.
 //
-// For current minimum and maximum provisioned throughput values, see Limits
-// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+// For current minimum and maximum provisioned throughput values, see Service,
+// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 // in the Amazon DynamoDB Developer Guide.
 type ProvisionedThroughput struct {
 	_ struct{} `type:"structure"`
@@ -13223,7 +13223,7 @@ type ProvisionedThroughputDescription struct {
 
 	// The number of provisioned throughput decreases for this table during this
 	// UTC calendar day. For current maximums on provisioned throughput decreases,
-	// see Limits (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// see Service, Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	NumberOfDecreasesToday *int64 `min:"1" type:"long"`
 
@@ -14596,6 +14596,10 @@ type ReplicaDescription struct {
 	// The name of the Region.
 	RegionName *string `type:"string"`
 
+	// The time at which the replica was first detected as inaccessible. To determine
+	// cause of inaccessibility check the ReplicaStatus property.
+	ReplicaInaccessibleDateTime *time.Time `type:"timestamp"`
+
 	// The current state of the replica:
 	//
 	//    * CREATING - The replica is being created.
@@ -14605,6 +14609,12 @@ type ReplicaDescription struct {
 	//    * DELETING - The replica is being deleted.
 	//
 	//    * ACTIVE - The replica is ready for use.
+	//
+	//    * REGION_DISABLED - The replica is inaccessible because the AWS Region
+	//    has been disabled. If the AWS Region remains inaccessible for more than
+	//    20 hours, DynamoDB will remove this replica from the replication group.
+	//    The replica will not be deleted and replication will stop from and to
+	//    this region.
 	ReplicaStatus *string `type:"string" enum:"ReplicaStatus"`
 
 	// Detailed information about the replica status.
@@ -14646,6 +14656,12 @@ func (s *ReplicaDescription) SetProvisionedThroughputOverride(v *ProvisionedThro
 // SetRegionName sets the RegionName field's value.
 func (s *ReplicaDescription) SetRegionName(v string) *ReplicaDescription {
 	s.RegionName = &v
+	return s
+}
+
+// SetReplicaInaccessibleDateTime sets the ReplicaInaccessibleDateTime field's value.
+func (s *ReplicaDescription) SetReplicaInaccessibleDateTime(v time.Time) *ReplicaDescription {
+	s.ReplicaInaccessibleDateTime = &v
 	return s
 }
 
@@ -15416,9 +15432,9 @@ func (s *ReplicationGroupUpdate) SetUpdate(v *UpdateReplicationGroupMemberAction
 	return s
 }
 
-// Throughput exceeds the current throughput limit for your account. Please
+// Throughput exceeds the current throughput quota for your account. Please
 // contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-// a limit increase.
+// a quota increase.
 type RequestLimitExceeded struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
@@ -16977,14 +16993,14 @@ type TableDescription struct {
 	//    and index key attributes, which are automatically projected. Each attribute
 	//    specification is composed of: ProjectionType - One of the following: KEYS_ONLY
 	//    - Only the index and primary keys are projected into the index. INCLUDE
-	//    - Only the specified table attributes are projected into the index. The
-	//    list of projected attributes is in NonKeyAttributes. ALL - All of the
-	//    table attributes are projected into the index. NonKeyAttributes - A list
-	//    of one or more non-key attribute names that are projected into the secondary
-	//    index. The total count of attributes provided in NonKeyAttributes, summed
-	//    across all of the secondary indexes, must not exceed 20. If you project
-	//    the same attribute into two different indexes, this counts as two distinct
-	//    attributes when determining the total.
+	//    - In addition to the attributes described in KEYS_ONLY, the secondary
+	//    index will include other non-key attributes that you specify. ALL - All
+	//    of the table attributes are projected into the index. NonKeyAttributes
+	//    - A list of one or more non-key attribute names that are projected into
+	//    the secondary index. The total count of attributes provided in NonKeyAttributes,
+	//    summed across all of the secondary indexes, must not exceed 20. If you
+	//    project the same attribute into two different indexes, this counts as
+	//    two distinct attributes when determining the total.
 	//
 	//    * ProvisionedThroughput - The provisioned throughput settings for the
 	//    global secondary index, consisting of read and write capacity units, along
@@ -18645,8 +18661,8 @@ type UpdateGlobalSecondaryIndexAction struct {
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
-	// For current minimum and maximum provisioned throughput values, see Limits
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
+	// For current minimum and maximum provisioned throughput values, see Service,
+	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	//
 	// ProvisionedThroughput is a required field
@@ -20225,6 +20241,9 @@ const (
 
 	// ReplicaStatusActive is a ReplicaStatus enum value
 	ReplicaStatusActive = "ACTIVE"
+
+	// ReplicaStatusRegionDisabled is a ReplicaStatus enum value
+	ReplicaStatusRegionDisabled = "REGION_DISABLED"
 )
 
 // ReplicaStatus_Values returns all elements of the ReplicaStatus enum
@@ -20235,6 +20254,7 @@ func ReplicaStatus_Values() []string {
 		ReplicaStatusUpdating,
 		ReplicaStatusDeleting,
 		ReplicaStatusActive,
+		ReplicaStatusRegionDisabled,
 	}
 }
 

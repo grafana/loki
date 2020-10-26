@@ -203,6 +203,7 @@ func (w *streamedBlockWriter) syncDir() (err error) {
 func (w *streamedBlockWriter) writeMetaFile() error {
 	w.meta.Version = metadata.MetaVersion1
 	w.meta.Thanos.Source = metadata.CompactorSource
+	w.meta.Thanos.SegmentFiles = block.GetSegmentFiles(w.blockDir)
 	w.meta.Stats.NumChunks = w.totalChunks
 	w.meta.Stats.NumSamples = w.totalSamples
 	w.meta.Stats.NumSeries = w.seriesRefs

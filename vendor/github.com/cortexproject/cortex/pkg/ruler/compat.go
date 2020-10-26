@@ -76,6 +76,8 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 type RulesLimits interface {
 	EvaluationDelay(userID string) time.Duration
 	RulerTenantShardSize(userID string) int
+	RulerMaxRuleGroupsPerTenant(userID string) int
+	RulerMaxRulesPerRuleGroup(userID string) int
 }
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function

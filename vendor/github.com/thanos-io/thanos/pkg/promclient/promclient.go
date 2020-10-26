@@ -636,11 +636,7 @@ func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []sto
 	u.Path = path.Join(u.Path, "/api/v1/series")
 	q := u.Query()
 
-	matcher, err := MatchersToString(matchers)
-	if err != nil {
-		return nil, errors.Wrap(err, "invalid matchers")
-	}
-	q.Add("match[]", matcher)
+	q.Add("match[]", storepb.MatchersToString(matchers...))
 	q.Add("start", formatTime(timestamp.Time(startTime)))
 	q.Add("end", formatTime(timestamp.Time(endTime)))
 	u.RawQuery = q.Encode()

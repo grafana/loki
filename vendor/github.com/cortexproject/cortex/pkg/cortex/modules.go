@@ -169,6 +169,7 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Distributor.ShuffleShardingLookbackPeriod = t.Cfg.Querier.ShuffleShardingIngestersLookbackPeriod
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -317,7 +318,8 @@ func (t *Cortex) tsdbIngesterConfig() {
 func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Ingester.ShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
+	t.Cfg.Ingester.DistributorShardingStrategy = t.Cfg.Distributor.ShardingStrategy
+	t.Cfg.Ingester.DistributorShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
 	t.tsdbIngesterConfig()
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Overrides, t.Store, prometheus.DefaultRegisterer)
@@ -547,8 +549,13 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		return
 	}
 
-	// Expose HTTP endpoints.
-	t.API.RegisterRuler(t.Ruler, t.Cfg.Ruler.EnableAPI)
+	// Expose HTTP/GRPC endpoints for the Ruler service
+	t.API.RegisterRuler(t.Ruler)
+
+	// If the API is enabled, register the Ruler API
+	if t.Cfg.Ruler.EnableAPI {
+		t.API.RegisterRulerAPI(ruler.NewAPI(t.Ruler, t.RulerStorage))
+	}
 
 	return t.Ruler, nil
 }

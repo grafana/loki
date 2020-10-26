@@ -7,19 +7,19 @@ import (
 	"context"
 	"io"
 	"math"
-	"sort"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	storetestutil "github.com/thanos-io/thanos/pkg/store/storepb/testutil"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/thanos-io/thanos/pkg/component"
-	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
@@ -38,6 +38,12 @@ type TSDBStore struct {
 	component        component.StoreAPI
 	externalLabels   labels.Labels
 	maxBytesPerFrame int
+}
+
+func RegisterWritableStoreServer(storeSrv storepb.WriteableStoreServer) func(*grpc.Server) {
+	return func(s *grpc.Server) {
+		storepb.RegisterWriteableStoreServer(s, storeSrv)
+	}
 }
 
 // ReadWriteTSDBStore is a TSDBStore that can also be written to.
@@ -68,23 +74,17 @@ func (s *TSDBStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.In
 	}
 
 	res := &storepb.InfoResponse{
-		Labels:    make([]storepb.Label, 0, len(s.externalLabels)),
+		Labels:    labelpb.ZLabelsFromPromLabels(s.externalLabels),
 		StoreType: s.component.ToProto(),
 		MinTime:   minTime,
 		MaxTime:   math.MaxInt64,
 	}
-	for _, l := range s.externalLabels {
-		res.Labels = append(res.Labels, storepb.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
-	}
 
 	// Until we deprecate the single labels in the reply, we just duplicate
 	// them here for migration/compatibility purposes.
-	res.LabelSets = []storepb.LabelSet{}
+	res.LabelSets = []labelpb.ZLabelSet{}
 	if len(res.Labels) > 0 {
-		res.LabelSets = append(res.LabelSets, storepb.LabelSet{
+		res.LabelSets = append(res.LabelSets, labelpb.ZLabelSet{
 			Labels: res.Labels,
 		})
 	}
@@ -113,7 +113,7 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 		return status.Error(codes.InvalidArgument, errors.New("no matchers specified (excluding external labels)").Error())
 	}
 
-	matchers, err := promclient.TranslateMatchers(newMatchers)
+	matchers, err := storepb.TranslateFromPromMatchers(newMatchers...)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -134,7 +134,7 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 	// Stream at most one series per frame; series may be split over multiple frames according to maxBytesInFrame.
 	for set.Next() {
 		series := set.At()
-		seriesLabels := storepb.Series{Labels: s.translateAndExtendLabels(series.Labels(), s.externalLabels)}
+		seriesLabels := storepb.Series{Labels: labelpb.ZLabelsFromPromLabels(labelpb.ExtendLabels(series.Labels(), s.externalLabels))}
 		if r.SkipChunks {
 			if err := srv.Send(storepb.NewSeriesResponse(&seriesLabels)); err != nil {
 				return status.Error(codes.Aborted, err.Error())
@@ -196,32 +196,6 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 		}
 	}
 	return nil
-}
-
-// translateAndExtendLabels transforms a metrics into a protobuf label set. It additionally
-// attaches the given labels to it, overwriting existing ones on collision.
-func (s *TSDBStore) translateAndExtendLabels(m, extend labels.Labels) []storepb.Label {
-	lset := make([]storepb.Label, 0, len(m)+len(extend))
-
-	for _, l := range m {
-		if extend.Get(l.Name) != "" {
-			continue
-		}
-		lset = append(lset, storepb.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
-	}
-	for _, l := range extend {
-		lset = append(lset, storepb.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
-	}
-	sort.Slice(lset, func(i, j int) bool {
-		return lset[i].Name < lset[j].Name
-	})
-	return lset
 }
 
 // LabelNames returns all known label names.

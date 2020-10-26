@@ -82,7 +82,8 @@ type Config struct {
 
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
-	ShardByAllLabels bool `yaml:"-"`
+	DistributorShardingStrategy string `yaml:"-"`
+	DistributorShardByAllLabels bool   `yaml:"-"`
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
@@ -216,7 +217,15 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	if err != nil {
 		return nil, err
 	}
-	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+
+	i.limiter = NewLimiter(
+		limits,
+		i.lifecycler,
+		cfg.DistributorShardingStrategy,
+		cfg.DistributorShardByAllLabels,
+		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
+		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled)
+
 	i.subservicesWatcher = services.NewFailureWatcher()
 	i.subservicesWatcher.WatchService(i.lifecycler)
 

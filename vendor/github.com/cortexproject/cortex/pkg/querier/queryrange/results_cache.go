@@ -255,14 +255,12 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool 
 }
 
 func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
-	if promResp, ok := r.(*PrometheusResponse); ok {
-		for _, hv := range promResp.Headers {
-			if hv.GetName() != headerName {
-				continue
-			}
-
-			headerValues = append(headerValues, hv.GetValues()...)
+	for _, hv := range r.GetHeaders() {
+		if hv.GetName() != headerName {
+			continue
 		}
+
+		headerValues = append(headerValues, hv.GetValues()...)
 	}
 
 	return

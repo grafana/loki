@@ -22,6 +22,7 @@ import (
 
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/runutil"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
 
@@ -67,8 +68,8 @@ func NewLocalStoreFromJSONMmappableFile(
 		extLabels: extLabels,
 		c:         f,
 		info: &storepb.InfoResponse{
-			LabelSets: []storepb.LabelSet{
-				{Labels: storepb.PromLabelsToLabelsUnsafe(extLabels)},
+			LabelSets: []labelpb.ZLabelSet{
+				{Labels: labelpb.ZLabelsFromPromLabels(extLabels)},
 			},
 			StoreType: component.ToProto(),
 			MinTime:   math.MaxInt64,
@@ -168,7 +169,7 @@ func (s *LocalStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 
 	var chosen []int
 	for si, series := range s.series {
-		lbls := storepb.LabelsToPromLabelsUnsafe(series.Labels)
+		lbls := labelpb.ZLabelsToPromLabels(series.Labels)
 		var noMatch bool
 		for _, m := range matchers {
 			extValue := lbls.Get(m.Name)
@@ -236,7 +237,7 @@ func (s *LocalStore) LabelValues(_ context.Context, r *storepb.LabelValuesReques
 ) {
 	vals := map[string]struct{}{}
 	for _, series := range s.series {
-		lbls := storepb.LabelsToPromLabelsUnsafe(series.Labels)
+		lbls := labelpb.ZLabelsToPromLabels(series.Labels)
 		val := lbls.Get(r.Label)
 		if val == "" {
 			continue

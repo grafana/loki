@@ -52,6 +52,10 @@ type ReadRing interface {
 	// and size (number of instances).
 	ShuffleShard(identifier string, size int) ReadRing
 
+	// ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes
+	// all instances that have been part of the identifier's shard since "now - lookbackPeriod".
+	ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing
+
 	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
 	HasInstance(instanceID string) bool
 }
@@ -471,15 +475,30 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		return cached
 	}
 
-	var result *Ring
+	result := r.shuffleShard(identifier, size, 0, time.Now())
 
-	// This deferred function will store newly computed ring into cache.
-	// This needs to happen *after* releasing Read lock (otherwise we get a deadlock).
-	defer func() {
-		// We cannot defer setCachedShuffledSubring directly, as result is still nil at this point,
-		// and that would be passed to the function, instead of updated value.
-		r.setCachedShuffledSubring(identifier, size, result)
-	}()
+	r.setCachedShuffledSubring(identifier, size, result)
+	return result
+}
+
+// ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes all instances
+// that have been part of the identifier's shard since "now - lookbackPeriod".
+//
+// The returned subring may be unbalanced with regard to zones and should never be used for write
+// operations (read only).
+//
+// This function doesn't support caching.
+func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
+	// Nothing to do if the shard size is not smaller then the actual ring.
+	if size <= 0 || r.IngesterCount() <= size {
+		return r
+	}
+
+	return r.shuffleShard(identifier, size, lookbackPeriod, now)
+}
+
+func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) *Ring {
+	lookbackUntil := now.Add(-lookbackPeriod).Unix()
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -488,10 +507,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	var actualZones []string
 
 	if r.cfg.ZoneAwarenessEnabled {
-		// When zone-awareness is enabled, we expect the shard size to be divisible
-		// by the number of zones, in order to have nodes balanced across zones.
-		// If it's not, we do round up.
-		numInstancesPerZone = int(math.Ceil(float64(size) / float64(len(r.ringZones))))
+		numInstancesPerZone = util.ShuffleShardExpectedInstancesPerZone(size, len(r.ringZones))
 		actualZones = r.ringZones
 	} else {
 		numInstancesPerZone = size
@@ -537,7 +553,16 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 					continue
 				}
 
-				shard[tokens[p].Ingester] = r.ringDesc.Ingesters[tokens[p].Ingester]
+				instance := r.ringDesc.Ingesters[tokens[p].Ingester]
+
+				// If the lookback is enabled and this instance has been registered within the lookback period
+				// then we should include it in the subring but continuing selecting instances.
+				if lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil {
+					shard[tokens[p].Ingester] = instance
+					continue
+				}
+
+				shard[tokens[p].Ingester] = instance
 				found = true
 				break
 			}
@@ -555,7 +580,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	shardDesc := &Desc{Ingesters: shard}
 	shardTokensByZone := shardDesc.getTokensByZone()
 
-	result = &Ring{
+	return &Ring{
 		cfg:              r.cfg,
 		strategy:         r.strategy,
 		ringDesc:         shardDesc,
@@ -566,8 +591,6 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		// For caching to work, remember these values.
 		lastTopologyChange: r.lastTopologyChange,
 	}
-
-	return result
 }
 
 // GetInstanceState returns the current state of an instance or an error if the

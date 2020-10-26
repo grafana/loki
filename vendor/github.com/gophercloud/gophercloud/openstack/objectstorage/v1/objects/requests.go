@@ -153,8 +153,8 @@ type CreateOpts struct {
 	ContentLength      int64  `h:"Content-Length"`
 	ContentType        string `h:"Content-Type"`
 	CopyFrom           string `h:"X-Copy-From"`
-	DeleteAfter        int    `h:"X-Delete-After"`
-	DeleteAt           int    `h:"X-Delete-At"`
+	DeleteAfter        int64  `h:"X-Delete-After"`
+	DeleteAt           int64  `h:"X-Delete-At"`
 	DetectContentType  string `h:"X-Detect-Content-Type"`
 	ETag               string `h:"ETag"`
 	IfNoneMatch        string `h:"If-None-Match"`
@@ -391,8 +391,8 @@ type UpdateOpts struct {
 	ContentDisposition string `h:"Content-Disposition"`
 	ContentEncoding    string `h:"Content-Encoding"`
 	ContentType        string `h:"Content-Type"`
-	DeleteAfter        int    `h:"X-Delete-After"`
-	DeleteAt           int    `h:"X-Delete-At"`
+	DeleteAfter        int64  `h:"X-Delete-After"`
+	DeleteAt           int64  `h:"X-Delete-At"`
 	DetectContentType  bool   `h:"X-Detect-Content-Type"`
 }
 
@@ -454,6 +454,9 @@ type CreateTempURLOpts struct {
 	// the object path is used in the hash, the object URL needs to be parsed. If
 	// empty, the default OpenStack URL split point will be used ("/v1/").
 	Split string
+
+	// Timestamp is a timestamp to calculate Temp URL signature. Optional.
+	Timestamp time.Time
 }
 
 // CreateTempURL is a function for creating a temporary URL for an object. It
@@ -463,8 +466,17 @@ func CreateTempURL(c *gophercloud.ServiceClient, containerName, objectName strin
 	if opts.Split == "" {
 		opts.Split = "/v1/"
 	}
+
+	// Initialize time if it was not passed as opts
+	var date time.Time
+	if opts.Timestamp.IsZero() {
+		date = time.Now().UTC()
+	} else {
+		date = opts.Timestamp
+	}
+
 	duration := time.Duration(opts.TTL) * time.Second
-	expiry := time.Now().Add(duration).Unix()
+	expiry := date.Add(duration).Unix()
 	getHeader, err := containers.Get(c, url.QueryEscape(containerName), nil).Extract()
 	if err != nil {
 		return "", err
@@ -479,7 +491,7 @@ func CreateTempURL(c *gophercloud.ServiceClient, containerName, objectName strin
 		tempURLKey = getHeader.TempURLKey
 	}
 	secretKey := []byte(tempURLKey)
-	url := getURL(c, url.QueryEscape(containerName), url.QueryEscape(objectName))
+	url := getURL(c, containerName, objectName)
 	splitPath := strings.Split(url, opts.Split)
 	baseURL, objectPath := splitPath[0], splitPath[1]
 	objectPath = opts.Split + objectPath

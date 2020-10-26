@@ -67,6 +67,7 @@ type InstrumentedBucket interface {
 type BucketReader interface {
 	// Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 	// object name including the prefix of the inspected directory.
+	// Entries are passed to function in sorted order.
 	Iter(ctx context.Context, dir string, f func(string) error) error
 
 	// Get returns a reader for the given object name.

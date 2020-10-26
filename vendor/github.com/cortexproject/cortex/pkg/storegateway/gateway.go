@@ -38,14 +38,10 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
-
-	// Supported sharding strategies.
-	ShardingStrategyDefault = "default"
-	ShardingStrategyShuffle = "shuffle-sharding"
 )
 
 var (
-	supportedShardingStrategies = []string{ShardingStrategyDefault, ShardingStrategyShuffle}
+	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
@@ -64,7 +60,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ShardingRing.RegisterFlags(f)
 
 	f.BoolVar(&cfg.ShardingEnabled, "store-gateway.sharding-enabled", false, "Shard blocks across multiple store gateway instances."+sharedOptionWithQuerier)
-	f.StringVar(&cfg.ShardingStrategy, "store-gateway.sharding-strategy", ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
+	f.StringVar(&cfg.ShardingStrategy, "store-gateway.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 }
 
 // Validate the Config.
@@ -74,7 +70,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 			return errInvalidShardingStrategy
 		}
 
-		if cfg.ShardingStrategy == ShardingStrategyShuffle && limits.StoreGatewayTenantShardSize <= 0 {
+		if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.StoreGatewayTenantShardSize <= 0 {
 			return errInvalidTenantShardSize
 		}
 	}
@@ -177,9 +173,9 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 
 		// Instance the right strategy.
 		switch gatewayCfg.ShardingStrategy {
-		case ShardingStrategyDefault:
+		case util.ShardingStrategyDefault:
 			shardingStrategy = NewDefaultShardingStrategy(g.ring, lifecyclerCfg.Addr, logger)
-		case ShardingStrategyShuffle:
+		case util.ShardingStrategyShuffle:
 			shardingStrategy = NewShuffleShardingStrategy(g.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger)
 		default:
 			return nil, errInvalidShardingStrategy
