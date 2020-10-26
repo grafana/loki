@@ -72,7 +72,7 @@ You may use any substitutable services, such as those that implement the S3 API 
 
 Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki.
 
-As of 2.0, this is the recommended index storage type, performance should be nearly as good as the dedicated index types while providing a much less expensive and less complicated deployment.
+As of 2.0, this is the recommended index storage type, performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
 
 ### Cassandra
 
