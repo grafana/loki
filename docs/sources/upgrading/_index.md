@@ -154,6 +154,10 @@ Ingesters now expose a new RPC method that queriers use when the index type is `
 Queriers generally roll out faster than ingesters, so if new queriers query older ingesters using the new RPC, the queries would fail.
 To avoid any query downtime during the upgrade, rollout ingesters before queriers.
 
+#### If running the compactor, ensure it has delete permissions for the object storage.
+
+The compactor is an optional but suggested component combines and deduplicates the boltdb-shipper index files. In the course of compacting these, it writes a new file and deletes the unoptimized ones. Therefore, ensure the compactor has appropriate permissions for deleting files in this bucket, such as `s3:DeleteObject` for AWS S3.
+
 ### IMPORTANT: `results_cache.max_freshness` removed from YAML config
 
 The `max_freshness` config from `results_cache` has been removed in favour of another flag called `max_cache_freshness_per_query` in `limits_config` which has the same effect.
