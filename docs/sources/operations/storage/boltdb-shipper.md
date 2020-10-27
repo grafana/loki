@@ -113,6 +113,10 @@ We recommend running a Compactor since a single Ingester creates 96 files per da
 
 Example compactor configuration with GCS:
 
+#### Delete Permissions
+
+In the course of compacting index files, the compactor writes a new file and deletes the unoptimized ones. Therefore, ensure the compactor has appropriate permissions for deleting files, such as `s3:DeleteObject` for AWS S3.
+
 ```yaml
 compactor:
   working_directory: /loki/compactor
