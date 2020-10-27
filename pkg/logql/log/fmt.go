@@ -14,6 +14,7 @@ var (
 
 	// Available map of functions for the text template engine.
 	functionMap = template.FuncMap{
+		// olds function deprecated.
 		"ToLower":    strings.ToLower,
 		"ToUpper":    strings.ToUpper,
 		"Replace":    strings.Replace,
@@ -23,6 +24,26 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
+
+		// new function ported from https://github.com/Masterminds/sprig/
+		"lower":     strings.ToLower,
+		"upper":     strings.ToUpper,
+		"title":     strings.Title,
+		"trunc":     trunc,
+		"substr":    substring,
+		"contains":  func(substr string, str string) bool { return strings.Contains(str, substr) },
+		"hasPrefix": func(substr string, str string) bool { return strings.HasPrefix(str, substr) },
+		"hasSuffix": func(substr string, str string) bool { return strings.HasSuffix(str, substr) },
+		"indent":    indent,
+		"nindent":   nindent,
+		"replace":   replace,
+		"repeat":    func(count int, str string) string { return strings.Repeat(str, count) },
+		"trim":      strings.TrimSpace,
+		// Switch order so that "$foo" | trimall "$"
+		"trimAll":    func(a, b string) string { return strings.Trim(b, a) },
+		"trimSuffix": func(a, b string) string { return strings.TrimSuffix(b, a) },
+		"trimPrefix": func(a, b string) string { return strings.TrimPrefix(b, a) },
+
 		"regexReplaceAll": func(regex string, s string, repl string) string {
 			r := regexp.MustCompile(regex)
 			return r.ReplaceAllString(s, repl)
@@ -51,10 +72,12 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	}, nil
 }
 
-func (lf *LineFormatter) Process(_ []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
-	// todo(cyriltovena): handle error
-	_ = lf.Template.Execute(lf.buf, lbs.Labels().Map())
+	if err := lf.Template.Execute(lf.buf, lbs.Labels().Map()); err != nil {
+		lbs.SetErr(errTemplateFormat)
+		return line, true
+	}
 	// todo(cyriltovena): we might want to reuse the input line or a bytes buffer.
 	res := make([]byte, len(lf.buf.Bytes()))
 	copy(res, lf.buf.Bytes())
@@ -150,12 +173,54 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 			continue
 		}
 		lf.buf.Reset()
-		//todo (cyriltovena): handle error
 		if data == nil {
 			data = lbs.Labels().Map()
 		}
-		_ = f.tmpl.Execute(lf.buf, data)
+		if err := f.tmpl.Execute(lf.buf, data); err != nil {
+			lbs.SetErr(errTemplateFormat)
+			continue
+		}
 		lbs.Set(f.Name, lf.buf.String())
 	}
 	return l, true
+}
+
+func trunc(c int, s string) string {
+	if c < 0 && len(s)+c > 0 {
+		return s[len(s)+c:]
+	}
+	if c >= 0 && len(s) > c {
+		return s[:c]
+	}
+	return s
+}
+
+// substring creates a substring of the given string.
+//
+// If start is < 0, this calls string[:end].
+//
+// If start is >= 0 and end < 0 or end bigger than s length, this calls string[start:]
+//
+// Otherwise, this calls string[start, end].
+func substring(start, end int, s string) string {
+	if start < 0 {
+		return s[:end]
+	}
+	if end < 0 || end > len(s) {
+		return s[start:]
+	}
+	return s[start:end]
+}
+
+func replace(old, new, src string) string {
+	return strings.Replace(src, old, new, -1)
+}
+
+func indent(spaces int, v string) string {
+	pad := strings.Repeat(" ", spaces)
+	return pad + strings.Replace(v, "\n", "\n"+pad, -1)
+}
+
+func nindent(spaces int, v string) string {
+	return "\n" + indent(spaces, v)
 }
