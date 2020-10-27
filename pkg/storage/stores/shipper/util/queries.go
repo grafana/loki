@@ -52,7 +52,7 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 }
 
 // IndexDeduper should always be used on table level not the whole query level because it just looks at range values which can be repeated across tables
-//Cortex anyways dedupes entries across tables
+// Cortex anyways dedupes entries across tables
 type IndexDeduper struct {
 	callback        chunk_util.Callback
 	seenRangeValues map[string]map[string]struct{}

@@ -3,9 +3,9 @@ package logql
 import (
 	"fmt"
 
-	"github.com/grafana/loki/pkg/logql/log"
-
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 // ParseError is what is returned when we failed to parse.
