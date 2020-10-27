@@ -113,6 +113,10 @@ We recommend running a Compactor since a single Ingester creates 96 files per da
 
 Example compactor configuration with GCS:
 
+#### Delete Permissions
+
+The compactor is an optional but suggested component that combines and deduplicates the boltdb-shipper index files. When compacting index files, the compactor writes a new file and deletes unoptimized files. Ensure that the compactor has appropriate permissions for deleting files, for example, s3:DeleteObject permission for AWS S3.
+
 ```yaml
 compactor:
   working_directory: /loki/compactor
