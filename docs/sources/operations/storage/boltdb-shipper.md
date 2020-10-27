@@ -115,7 +115,7 @@ Example compactor configuration with GCS:
 
 #### Delete Permissions
 
-In the course of compacting index files, the compactor writes a new file and deletes the unoptimized ones. Therefore, ensure the compactor has appropriate permissions for deleting files, such as `s3:DeleteObject` for AWS S3.
+The compactor is an optional but suggested component that combines and deduplicates the boltdb-shipper index files. When compacting index files, the compactor writes a new file and deletes unoptimized files. Ensure that the compactor has appropriate permissions for deleting files, for example, s3:DeleteObject permission for AWS S3.
 
 ```yaml
 compactor:

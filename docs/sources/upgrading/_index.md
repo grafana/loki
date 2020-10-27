@@ -156,7 +156,7 @@ To avoid any query downtime during the upgrade, rollout ingesters before querier
 
 #### If running the compactor, ensure it has delete permissions for the object storage.
 
-The compactor is an optional but suggested component combines and deduplicates the boltdb-shipper index files. In the course of compacting these, it writes a new file and deletes the unoptimized ones. Therefore, ensure the compactor has appropriate permissions for deleting files in this bucket, such as `s3:DeleteObject` for AWS S3.
+The compactor is an optional but suggested component that combines and deduplicates the boltdb-shipper index files. When compacting index files, the compactor writes a new file and deletes unoptimized files. Ensure that the compactor has appropriate permissions for deleting files, for example, s3:DeleteObject permission for AWS S3.
 
 ### IMPORTANT: `results_cache.max_freshness` removed from YAML config
 
