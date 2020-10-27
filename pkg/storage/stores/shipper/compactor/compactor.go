@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -32,6 +33,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 2*time.Hour, "Interval at which to re-run the compaction operation.")
+}
+
+func (cfg *Config) IsDefaults() bool {
+	cpy := &Config{}
+	cpy.RegisterFlags(flag.NewFlagSet("defaults", flag.ContinueOnError))
+	return reflect.DeepEqual(cfg, cpy)
 }
 
 type Compactor struct {
