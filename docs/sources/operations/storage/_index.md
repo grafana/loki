@@ -51,6 +51,7 @@ When using S3 as object storage, the following permissions are needed:
 - `s3:ListBucket`
 - `s3:PutObject`
 - `s3:GetObject`
+- `s3:DeleteObject` (if running the compactor)
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 
