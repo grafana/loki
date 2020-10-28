@@ -60,7 +60,7 @@ func buildTestTable(t *testing.T, tableName, path string) (*Table, *local.BoltIn
 }
 
 func TestTable_MultiQueries(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-writes")
+	tempDir, err := ioutil.TempDir("", "table-downloads-multi-queries")
 	require.NoError(t, err)
 
 	defer func() {
@@ -102,7 +102,7 @@ func TestTable_MultiQueries(t *testing.T) {
 }
 
 func TestTable_Sync(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-writes")
+	tempDir, err := ioutil.TempDir("", "table-sync")
 	require.NoError(t, err)
 
 	defer func() {
@@ -178,7 +178,7 @@ func TestTable_Sync(t *testing.T) {
 }
 
 func TestTable_LastUsedAt(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-writes")
+	tempDir, err := ioutil.TempDir("", "table-last-used-at")
 	require.NoError(t, err)
 
 	table, _, stopFunc := buildTestTable(t, "test", tempDir)
@@ -240,7 +240,7 @@ func TestTable_doParallelDownload(t *testing.T) {
 }
 
 func TestTable_DuplicateIndex(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-writes")
+	tempDir, err := ioutil.TempDir("", "table-duplicate-index")
 	require.NoError(t, err)
 
 	defer func() {
