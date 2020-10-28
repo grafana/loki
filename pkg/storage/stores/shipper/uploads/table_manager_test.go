@@ -38,7 +38,7 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, *local.
 }
 
 func TestLoadTables(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "cleanup")
+	testDir, err := ioutil.TempDir("", "load-tables")
 	require.NoError(t, err)
 
 	defer func() {
