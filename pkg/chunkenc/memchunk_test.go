@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -776,4 +777,102 @@ func TestBytesWith(t *testing.T) {
 	require.Nil(t, err)
 
 	require.Equal(t, exp, out)
+}
+
+var streams = []logproto.Stream{}
+var series = []logproto.Series{}
+
+func BenchmarkBufferedIteratorLabels(b *testing.B) {
+	c := NewMemChunk(EncSnappy, testBlockSize, testTargetSize)
+	_ = fillChunk(c)
+	labelsSet := []labels.Labels{
+		{
+			{Name: "cluster", Value: "us-central1"},
+			{Name: "stream", Value: "stdout"},
+			{Name: "filename", Value: "/var/log/pods/loki-prod_query-frontend-6894f97b98-89q2n_eac98024-f60f-44af-a46f-d099bc99d1e7/query-frontend/0.log"},
+			{Name: "namespace", Value: "loki-dev"},
+			{Name: "job", Value: "loki-prod/query-frontend"},
+			{Name: "container", Value: "query-frontend"},
+			{Name: "pod", Value: "query-frontend-6894f97b98-89q2n"},
+		},
+		{
+			{Name: "cluster", Value: "us-central2"},
+			{Name: "stream", Value: "stderr"},
+			{Name: "filename", Value: "/var/log/pods/loki-prod_querier-6894f97b98-89q2n_eac98024-f60f-44af-a46f-d099bc99d1e7/query-frontend/0.log"},
+			{Name: "namespace", Value: "loki-dev"},
+			{Name: "job", Value: "loki-prod/querier"},
+			{Name: "container", Value: "querier"},
+			{Name: "pod", Value: "querier-6894f97b98-89q2n"},
+		},
+	}
+	for _, test := range []string{
+		`{app="foo"}`,
+		`{app="foo"} != "foo"`,
+		`{app="foo"} != "foo" | logfmt `,
+		`{app="foo"} != "foo" | logfmt | duration > 10ms`,
+		`{app="foo"} != "foo" | logfmt | duration > 10ms and component="tsdb"`,
+	} {
+		b.Run(test, func(b *testing.B) {
+			b.ReportAllocs()
+			expr, err := logql.ParseLogSelector(test)
+			if err != nil {
+				b.Fatal(err)
+			}
+			p, err := expr.Pipeline()
+			if err != nil {
+				b.Fatal(err)
+			}
+			var iters []iter.EntryIterator
+			for _, lbs := range labelsSet {
+				it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, lbs, p)
+				if err != nil {
+					b.Fatal(err)
+				}
+				iters = append(iters, it)
+			}
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				for _, it := range iters {
+					for it.Next() {
+						streams = append(streams, logproto.Stream{Labels: it.Labels(), Entries: []logproto.Entry{it.Entry()}})
+					}
+				}
+			}
+			streams = streams[:0]
+		})
+	}
+
+	for _, test := range []string{
+		`rate({app="foo"}[1m])`,
+		`sum by (cluster) (rate({app="foo"}[10s]))`,
+		`sum by (cluster) (rate({app="foo"} != "foo" | logfmt[10s]))`,
+		`sum by (caller) (rate({app="foo"} != "foo" | logfmt[10s]))`,
+		`sum by (cluster) (rate({app="foo"} != "foo" | logfmt | duration > 10ms[10s]))`,
+		`sum by (cluster) (rate({app="foo"} != "foo" | logfmt | duration > 10ms and component="tsdb"[1m]))`,
+	} {
+		b.Run(test, func(b *testing.B) {
+			b.ReportAllocs()
+			expr, err := logql.ParseSampleExpr(test)
+			if err != nil {
+				b.Fatal(err)
+			}
+			ex, err := expr.Extractor()
+			if err != nil {
+				b.Fatal(err)
+			}
+			var iters []iter.SampleIterator
+			for _, lbs := range labelsSet {
+				iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), lbs, ex))
+			}
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				for _, it := range iters {
+					for it.Next() {
+						series = append(series, logproto.Series{Labels: it.Labels(), Samples: []logproto.Sample{it.Sample()}})
+					}
+				}
+			}
+			series = series[:0]
+		})
+	}
 }
