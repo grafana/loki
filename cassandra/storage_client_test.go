@@ -75,6 +75,48 @@ func TestConfig_setClusterConfig_authWithPasswordAndPasswordFile(t *testing.T) {
 	assert.Error(t, cfg.Validate())
 }
 
+func TestConfig_setClusterConfig_clientSSL(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SSL = true
+	cfg.CAPath = "testdata/example.com.ca.pem"
+	cfg.CertPath = "testdata/example.com.pem"
+	cfg.KeyPath = "testdata/example.com-key.pem"
+	require.NoError(t, cfg.Validate())
+
+	cqlCfg := gocql.NewCluster()
+	err := cfg.setClusterConfig(cqlCfg)
+	require.NoError(t, err)
+	assert.NotNil(t, cqlCfg.SslOpts)
+	assert.Len(t, cqlCfg.SslOpts.Certificates, 1)
+}
+
+func TestConfig_setClusterConfig_clientSSLWithOnlyCertificatePath(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SSL = true
+	cfg.CAPath = "testdata/example.com.ca.pem"
+	cfg.CertPath = "testdata/example.com.pem"
+	assert.Error(t, cfg.Validate(), "TLS certificate specified, but private key configuration is missing.")
+}
+
+func TestConfig_setClusterConfig_clientSSLWithOnlyKeyPath(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SSL = true
+	cfg.CAPath = "testdata/example.com.ca.pem"
+	cfg.KeyPath = "testdata/example.com-key.pem"
+	assert.Error(t, cfg.Validate(), "TLS private key specified, but certificate configuration is missing.")
+}
+
+func TestConfig_setClusterConfig_clientSSLWithInvalidParameters(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SSL = true
+	cfg.CAPath = "testdata/example.com.ca.pem"
+	cfg.CertPath = "testdata/example.com-key.pem"
+	cfg.KeyPath = "testdata/example.com.pem"
+
+	cluster := gocql.NewCluster()
+	assert.Error(t, cfg.setClusterConfig(cluster), "Unable to load TLS certificate and private key.")
+}
+
 func TestConfig_setClusterConfig_consistency(t *testing.T) {
 	tests := map[string]struct {
 		cfg                 Config
