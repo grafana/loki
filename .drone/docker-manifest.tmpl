@@ -22,3 +22,7 @@ manifests:
       architecture: arm
       os: linux
       variant: v7
+  - image: grafana/{{config.target}}:{{#if build.tag}}{{trimPrefix "v" build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}-ppc64le
+    platform:
+      architecture: ppc64le
+      os: linux

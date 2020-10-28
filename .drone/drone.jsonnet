@@ -1,5 +1,5 @@
-local apps = ['loki', 'loki-canary', 'promtail','logcli'];
-local archs = ['amd64', 'arm64', 'arm'];
+local apps = ['loki', 'loki-canary', 'promtail', 'logcli'];
+local archs = ['amd64', 'arm64', 'arm', 'ppc64le'];
 
 local build_image_version = std.extVar('__build-image-version');
 
