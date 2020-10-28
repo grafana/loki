@@ -1,6 +1,10 @@
 package ingester
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/grafana/loki/pkg/logproto"
+)
 
 /*
 need to rebuild
@@ -22,7 +26,7 @@ Error conditions to test:
 */
 
 var (
-	// shared pool for WALRecords
+	// shared rPool for WALRecords
 	recordPool = newRecordPool()
 )
 
@@ -40,24 +44,38 @@ func (noopWAL) Log(*WALRecord) error { return nil }
 func (noopWAL) Stop()                {}
 
 type resettingPool struct {
-	pool *sync.Pool
+	rPool *sync.Pool
+	ePool *sync.Pool
 }
 
 func (p *resettingPool) GetRecord() *WALRecord {
-	rec := p.pool.Get().(*WALRecord)
+	rec := p.rPool.Get().(*WALRecord)
 	rec.Reset()
 	return rec
 }
 
 func (p *resettingPool) PutRecord(r *WALRecord) {
-	p.pool.Put(r)
+	p.rPool.Put(r)
+}
+
+func (p *resettingPool) GetEntries() []logproto.Entry {
+	return p.ePool.Get().([]logproto.Entry)
+}
+
+func (p *resettingPool) PutEntries(es []logproto.Entry) {
+	p.rPool.Put(es[:0])
 }
 
 func newRecordPool() *resettingPool {
 	return &resettingPool{
-		&sync.Pool{
+		rPool: &sync.Pool{
 			New: func() interface{} {
 				return &WALRecord{}
+			},
+		},
+		ePool: &sync.Pool{
+			New: func() interface{} {
+				return make([]logproto.Entry, 0, 512)
 			},
 		},
 	}

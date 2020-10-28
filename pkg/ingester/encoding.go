@@ -41,6 +41,9 @@ func (r *WALRecord) Reset() {
 		r.Series = r.Series[:0]
 	}
 
+	for _, ref := range r.RefEntries {
+		recordPool.PutEntries(ref.Entries)
+	}
 	r.RefEntries = r.RefEntries[:0]
 	r.entryIndexMap = make(map[uint64]int)
 }
@@ -50,24 +53,24 @@ type RefEntries struct {
 	Entries []logproto.Entry
 }
 
-func (record *WALRecord) encodeSeries(b []byte) []byte {
+func (r *WALRecord) encodeSeries(b []byte) []byte {
 	buf := EncWith(b)
 	buf.PutByte(byte(WALRecordSeries))
-	buf.PutUvarintStr(record.UserID)
+	buf.PutUvarintStr(r.UserID)
 
 	var enc tsdb_record.Encoder
 	// The 'encoded' already has the type header and userID here, hence re-using
 	// the remaining part of the slice (i.e. encoded[len(encoded):])) to encode the series.
 	encoded := buf.Get()
-	encoded = append(encoded, enc.Series(record.Series, encoded[len(encoded):])...)
+	encoded = append(encoded, enc.Series(r.Series, encoded[len(encoded):])...)
 
 	return encoded
 }
 
-func (record *WALRecord) encodeEntries(b []byte) []byte {
+func (r *WALRecord) encodeEntries(b []byte) []byte {
 	buf := EncWith(b)
 	buf.PutByte(byte(WALRecordEntries))
-	buf.PutUvarintStr(record.UserID)
+	buf.PutUvarintStr(r.UserID)
 
 	// Placeholder for the first timestamp of any sample encountered.
 	// All others in this record will store their timestamps as diffs relative to this
@@ -75,7 +78,7 @@ func (record *WALRecord) encodeEntries(b []byte) []byte {
 	var first int64
 
 outer:
-	for _, ref := range record.RefEntries {
+	for _, ref := range r.RefEntries {
 		for _, entry := range ref.Entries {
 			first = entry.Timestamp.UnixNano()
 			buf.PutBE64int64(first)
@@ -83,7 +86,7 @@ outer:
 		}
 	}
 
-	for _, ref := range record.RefEntries {
+	for _, ref := range r.RefEntries {
 		// ignore refs with 0 entries
 		if len(ref.Entries) < 1 {
 			continue
@@ -113,11 +116,15 @@ func decodeEntries(b []byte, rec *WALRecord) error {
 
 	for len(dec.B) > 0 && dec.Err() == nil {
 		refEntries := RefEntries{
-			Ref: dec.Be64(),
+			Ref:     dec.Be64(),
+			Entries: recordPool.GetEntries(),
 		}
 
-		totalRefEntries := dec.Uvarint()
-		rem := totalRefEntries
+		nEntries := dec.Uvarint()
+		rem := nEntries
+		if cap(refEntries.Entries) < nEntries {
+			refEntries.Entries = make([]logproto.Entry, 0, nEntries)
+		}
 		for ; dec.Err() == nil && rem > 0; rem-- {
 			timeOffset := dec.Varint64()
 			lineLength := dec.Uvarint()
@@ -130,7 +137,7 @@ func decodeEntries(b []byte, rec *WALRecord) error {
 		}
 
 		if dec.Err() != nil {
-			return errors.Wrapf(dec.Err(), "entry decode error after %d RefEntries", totalRefEntries-rem)
+			return errors.Wrapf(dec.Err(), "entry decode error after %d RefEntries", nEntries-rem)
 		}
 
 		rec.RefEntries = append(rec.RefEntries, refEntries)
