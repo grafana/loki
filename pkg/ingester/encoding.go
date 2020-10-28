@@ -30,6 +30,18 @@ type WALRecord struct {
 	RefEntries RefEntries
 }
 
+func (r *WALRecord) Reset() {
+	r.UserID = ""
+	if len(r.Series) > 0 {
+		r.Series = r.Series[:0]
+	}
+	r.RefEntries.Ref = 0
+	if len(r.RefEntries.Entries) > 0 {
+		r.RefEntries.Entries = r.RefEntries.Entries[:0]
+	}
+
+}
+
 type RefEntries struct {
 	Ref     uint64
 	Entries []logproto.Entry
