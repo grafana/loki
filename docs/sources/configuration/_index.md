@@ -310,6 +310,7 @@ The queryrange_config configures the query splitting and caching in the Loki que
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+# Deprecated: Split queries by day and execute in parallel. Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
 [split_queries_by_day: <boolean> | default = false]
 
