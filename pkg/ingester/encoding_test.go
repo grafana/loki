@@ -12,7 +12,8 @@ import (
 
 func Test_Encoding_Series(t *testing.T) {
 	record := &WALRecord{
-		UserID: "123",
+		entryIndexMap: make(map[uint64]int),
+		UserID:        "123",
 		Series: []record.RefSeries{
 			{
 				Ref: 456,
@@ -42,17 +43,33 @@ func Test_Encoding_Series(t *testing.T) {
 
 func Test_Encoding_Entries(t *testing.T) {
 	record := &WALRecord{
-		UserID: "123",
-		RefEntries: RefEntries{
-			Ref: 456,
-			Entries: []logproto.Entry{
-				{
-					Timestamp: time.Unix(1000, 0),
-					Line:      "first",
+		entryIndexMap: make(map[uint64]int),
+		UserID:        "123",
+		RefEntries: []RefEntries{
+			{
+				Ref: 456,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(1000, 0),
+						Line:      "first",
+					},
+					{
+						Timestamp: time.Unix(2000, 0),
+						Line:      "second",
+					},
 				},
-				{
-					Timestamp: time.Unix(2000, 0),
-					Line:      "second",
+			},
+			{
+				Ref: 789,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(3000, 0),
+						Line:      "third",
+					},
+					{
+						Timestamp: time.Unix(4000, 0),
+						Line:      "fourth",
+					},
 				},
 			},
 		},

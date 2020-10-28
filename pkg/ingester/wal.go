@@ -23,7 +23,7 @@ Error conditions to test:
 
 var (
 	// shared pool for WALRecords
-	inProcessRecords = newRecordPool()
+	recordPool = newRecordPool()
 )
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
@@ -39,26 +39,21 @@ type noopWAL struct{}
 func (noopWAL) Log(*WALRecord) error { return nil }
 func (noopWAL) Stop()                {}
 
-type RecordPool interface {
-	GetRecord() *WALRecord
-	PutRecord(*WALRecord)
-}
-
 type resettingPool struct {
-	*sync.Pool
+	pool *sync.Pool
 }
 
 func (p *resettingPool) GetRecord() *WALRecord {
-	rec := p.Get().(*WALRecord)
+	rec := p.pool.Get().(*WALRecord)
 	rec.Reset()
 	return rec
 }
 
 func (p *resettingPool) PutRecord(r *WALRecord) {
-	p.Put(r)
+	p.pool.Put(r)
 }
 
-func newRecordPool() RecordPool {
+func newRecordPool() *resettingPool {
 	return &resettingPool{
 		&sync.Pool{
 			New: func() interface{} {
