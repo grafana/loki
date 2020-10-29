@@ -122,6 +122,9 @@ type Ingester struct {
 
 	limiter *Limiter
 	factory func() chunkenc.Chunk
+
+	// WAL
+	wal WAL
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -155,6 +158,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		factory: func() chunkenc.Chunk {
 			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
+		wal: noopWAL{},
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
@@ -276,7 +280,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization)
+		inst = newInstance(&i.cfg, instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization, i.wal)
 		i.instances[instanceID] = inst
 	}
 	return inst

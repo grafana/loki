@@ -111,7 +111,13 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	return nil
 }
 
-func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
+func (s *stream) Push(
+	ctx context.Context,
+	entries []logproto.Entry,
+	synchronizePeriod time.Duration,
+	minUtilization float64,
+	record *WALRecord,
+) error {
 	var lastChunkTimestamp time.Time
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
@@ -173,6 +179,11 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronize
 	}
 
 	if len(storedEntries) != 0 {
+		// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
+		if record != nil {
+			record.AddEntries(uint64(s.fp), storedEntries...)
+		}
+
 		go func() {
 			stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
 

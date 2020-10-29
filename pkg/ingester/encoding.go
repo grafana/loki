@@ -35,6 +35,10 @@ type WALRecord struct {
 	RefEntries    []RefEntries
 }
 
+func (r *WALRecord) IsEmpty() bool {
+	return len(r.Series) == 0 && len(r.RefEntries) == 0
+}
+
 func (r *WALRecord) Reset() {
 	r.UserID = ""
 	if len(r.Series) > 0 {
@@ -46,6 +50,19 @@ func (r *WALRecord) Reset() {
 	}
 	r.RefEntries = r.RefEntries[:0]
 	r.entryIndexMap = make(map[uint64]int)
+}
+
+func (r *WALRecord) AddEntries(fp uint64, entries ...logproto.Entry) {
+	if idx, ok := r.entryIndexMap[fp]; ok {
+		r.RefEntries[idx].Entries = append(r.RefEntries[idx].Entries, entries...)
+		return
+	}
+
+	r.entryIndexMap[fp] = len(r.RefEntries)
+	r.RefEntries = append(r.RefEntries, RefEntries{
+		Ref:     fp,
+		Entries: entries,
+	})
 }
 
 type RefEntries struct {

@@ -28,7 +28,7 @@ func TestLabelsCollisions(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0)
+	i := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0, noopWAL{})
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -55,7 +55,7 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	inst := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0)
+	inst := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0, noopWAL{})
 
 	const (
 		concurrent          = 10
@@ -113,7 +113,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst := newInstance(&Config{}, "test", defaultFactory, limiter, syncPeriod, minUtil)
+	inst := newInstance(&Config{}, "test", defaultFactory, limiter, syncPeriod, minUtil, noopWAL{})
 	lbls := makeRandomLabels()
 
 	tt := time.Now()
@@ -128,7 +128,7 @@ func TestSyncPeriod(t *testing.T) {
 	require.NoError(t, err)
 
 	// let's verify results
-	s, err := inst.getOrCreateStream(pr.Streams[0])
+	s, err := inst.getOrCreateStream(pr.Streams[0], recordPool.GetRecord())
 	require.NoError(t, err)
 
 	// make sure each chunk spans max 'sync period' time
@@ -152,7 +152,7 @@ func Test_SeriesQuery(t *testing.T) {
 	syncPeriod := 1 * time.Minute
 	minUtil := 0.20
 
-	instance := newInstance(&Config{}, "test", defaultFactory, limiter, syncPeriod, minUtil)
+	instance := newInstance(&Config{}, "test", defaultFactory, limiter, syncPeriod, minUtil, noopWAL{})
 
 	currentTime := time.Now()
 
@@ -162,7 +162,7 @@ func Test_SeriesQuery(t *testing.T) {
 	}
 
 	for _, testStream := range testStreams {
-		stream, err := instance.getOrCreateStream(testStream)
+		stream, err := instance.getOrCreateStream(testStream, recordPool.GetRecord())
 		require.NoError(t, err)
 		chunk := defaultFactory()
 		for _, entry := range testStream.Entries {

@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -77,9 +78,20 @@ type instance struct {
 	// sync
 	syncPeriod  time.Duration
 	syncMinUtil float64
+
+	// WAL
+	wal WAL
 }
 
-func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, limiter *Limiter, syncPeriod time.Duration, syncMinUtil float64) *instance {
+func newInstance(
+	cfg *Config,
+	instanceID string,
+	factory func() chunkenc.Chunk,
+	limiter *Limiter,
+	syncPeriod time.Duration,
+	syncMinUtil float64,
+	wal WAL,
+) *instance {
 	i := &instance{
 		cfg:        cfg,
 		streams:    map[model.Fingerprint]*stream{},
@@ -95,6 +107,8 @@ func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, 
 
 		syncPeriod:  syncPeriod,
 		syncMinUtil: syncMinUtil,
+
+		wal: wal,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -128,20 +142,23 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 }
 
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	record := recordPool.GetRecord()
+	defer recordPool.PutRecord(record)
+
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
 	var appendErr error
 	for _, s := range req.Streams {
 
-		stream, err := i.getOrCreateStream(s)
+		stream, err := i.getOrCreateStream(s, record)
 		if err != nil {
 			appendErr = err
 			continue
 		}
 
 		prevNumChunks := len(stream.chunks)
-		if err := stream.Push(ctx, s.Entries, i.syncPeriod, i.syncMinUtil); err != nil {
+		if err := stream.Push(ctx, s.Entries, i.syncPeriod, i.syncMinUtil, record); err != nil {
 			appendErr = err
 			continue
 		}
@@ -149,10 +166,14 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		memoryChunks.Add(float64(len(stream.chunks) - prevNumChunks))
 	}
 
+	if !record.IsEmpty() {
+		i.wal.Log(record)
+	}
+
 	return appendErr
 }
 
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
 	labels, err := util.ToClientLabels(pushReqStream.Labels)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -179,6 +200,15 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 	sortedLabels := i.index.Add(labels, fp)
 	stream = newStream(i.cfg, fp, sortedLabels, i.factory)
 	i.streams[fp] = stream
+
+	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
+	if record != nil {
+		record.Series = append(record.Series, tsdb_record.RefSeries{
+			Ref:    uint64(fp),
+			Labels: sortedLabels,
+		})
+	}
+
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)

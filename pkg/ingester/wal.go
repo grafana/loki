@@ -22,11 +22,15 @@ After recovering from a checkpoint, all flushed chunks that are now passed the r
 
 Error conditions to test:
 - stream limited by limiter should not apply during wal replay. Can be hacked by setting an unlimited limiter then overriding after wal replay.
--
+- corrupted segments/records?
+
+Keep in mind:
+- should we keep memory ballast to prevent alloc-ooming during checkpointing?
+- helpful operator errors for remediation actions
 */
 
 var (
-	// shared rPool for WALRecords
+	// shared pool for WALRecords and []logproto.Entries
 	recordPool = newRecordPool()
 )
 
@@ -63,7 +67,7 @@ func (p *resettingPool) GetEntries() []logproto.Entry {
 }
 
 func (p *resettingPool) PutEntries(es []logproto.Entry) {
-	p.rPool.Put(es[:0])
+	p.ePool.Put(es[:0])
 }
 
 func newRecordPool() *resettingPool {
