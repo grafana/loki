@@ -64,7 +64,30 @@ command line. The file is written in [YAML format](https://en.wikipedia.org/wiki
 defined by the scheme below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
-Generic placeholders are defined as follows:
+### Use environment variables in the configuration
+
+You can use environment variable references in the config file to set values that need to be configurable during deployment.
+To do this, use:
+
+```
+${VAR}
+```
+
+Where VAR is the name of the environment variable.
+
+Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
+
+To specify a default value, use:
+
+```
+${VAR:default_value}
+```
+
+Where default_value is the value to use if the environment variable is undefined.
+
+### Generic placeholders:
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
 - `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
@@ -76,7 +99,7 @@ Generic placeholders are defined as follows:
 - `<string>` : a regular string
 - `<secret>` : a regular string that is a secret, such as a password
 
-Supported contents and default values of `loki.yaml`:
+### Supported contents and default values of `loki.yaml`:
 
 ```yaml
 # The module to run Loki with. Supported values
@@ -1850,3 +1873,4 @@ multi_kv_config:
     mirror-enabled: false
     primary: consul
 ```
+### Generic placeholders

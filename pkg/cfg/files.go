@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 
+	"github.com/drone/envsubst"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 )
@@ -36,13 +38,19 @@ func dJSON(y []byte) Source {
 }
 
 // YAML returns a Source that opens the supplied `.yaml` file and loads it.
-func YAML(f string) Source {
+func YAML(f string, envSubst bool) Source {
 	return func(dst Cloneable) error {
 		y, err := ioutil.ReadFile(f)
 		if err != nil {
 			return err
 		}
-
+		if envSubst {
+			s, err := envsubst.EvalEnv(string(y))
+			if err != nil {
+				return err
+			}
+			y = []byte(s)
+		}
 		err = dYAML(y)(dst)
 		return errors.Wrap(err, f)
 	}
@@ -82,8 +90,13 @@ func YAMLFlag(args []string, name string) Source {
 		if f == nil || f.Value.String() == "" {
 			return nil
 		}
+		expandEnv := false
+		expandEnvFlag := freshFlags.Lookup("config.expand-env")
+		if expandEnvFlag != nil {
+			expandEnv, _ = strconv.ParseBool(expandEnvFlag.Value.String()) // Can ignore error as false returned
+		}
 
-		return YAML(f.Value.String())(dst)
+		return YAML(f.Value.String(), expandEnv)(dst)
 
 	}
 }
