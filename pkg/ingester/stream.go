@@ -64,7 +64,6 @@ type stream struct {
 	fp           model.Fingerprint // possibly remapped fingerprint, used in the streams map
 	labels       labels.Labels
 	labelsString string
-	factory      func() chunkenc.Chunk
 	lastLine     line
 
 	tailers   map[uint32]*tailer
@@ -85,13 +84,12 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, factory func() chunkenc.Chunk) *stream {
+func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels) *stream {
 	return &stream{
 		cfg:          cfg,
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
-		factory:      factory,
 		tailers:      map[uint32]*tailer{},
 	}
 }
@@ -111,17 +109,19 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	return nil
 }
 
+func (s *stream) NewChunk() chunkenc.Chunk {
+	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+}
+
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
-	synchronizePeriod time.Duration,
-	minUtilization float64,
 	record *WALRecord,
 ) error {
 	var lastChunkTimestamp time.Time
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
-			chunk: s.factory(),
+			chunk: s.NewChunk(),
 		})
 		chunksCreatedTotal.Inc()
 	} else {
@@ -147,7 +147,7 @@ func (s *stream) Push(
 		}
 
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk, synchronizePeriod, minUtilization) {
+		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 			err := chunk.chunk.Close()
 			if err != nil {
@@ -162,7 +162,7 @@ func (s *stream) Push(
 			chunksCreatedTotal.Inc()
 
 			s.chunks = append(s.chunks, chunkDesc{
-				chunk: s.factory(),
+				chunk: s.NewChunk(),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
 			lastChunkTimestamp = time.Time{}

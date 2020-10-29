@@ -50,15 +50,16 @@ type Config struct {
 	// Config for transferring chunks.
 	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
 
-	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
-	FlushCheckPeriod  time.Duration `yaml:"flush_check_period"`
-	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
-	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
-	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
-	BlockSize         int           `yaml:"chunk_block_size"`
-	TargetChunkSize   int           `yaml:"chunk_target_size"`
-	ChunkEncoding     string        `yaml:"chunk_encoding"`
-	MaxChunkAge       time.Duration `yaml:"max_chunk_age"`
+	ConcurrentFlushes int               `yaml:"concurrent_flushes"`
+	FlushCheckPeriod  time.Duration     `yaml:"flush_check_period"`
+	FlushOpTimeout    time.Duration     `yaml:"flush_op_timeout"`
+	RetainPeriod      time.Duration     `yaml:"chunk_retain_period"`
+	MaxChunkIdle      time.Duration     `yaml:"chunk_idle_period"`
+	BlockSize         int               `yaml:"chunk_block_size"`
+	TargetChunkSize   int               `yaml:"chunk_target_size"`
+	ChunkEncoding     string            `yaml:"chunk_encoding"`
+	parsedEncoding    chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
+	MaxChunkAge       time.Duration     `yaml:"max_chunk_age"`
 
 	// Synchronization settings. Used to make sure that ingesters cut their chunks at the same moments.
 	SyncPeriod         time.Duration `yaml:"sync_period"`
@@ -91,6 +92,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
+}
+
+func (cfg *Config) Validate() error {
+	enc, err := chunkenc.ParseEncoding(cfg.ChunkEncoding)
+	if err != nil {
+		return err
+	}
+	cfg.parsedEncoding = enc
+	return nil
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -141,10 +151,6 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
-	enc, err := chunkenc.ParseEncoding(cfg.ChunkEncoding)
-	if err != nil {
-		return nil, err
-	}
 
 	i := &Ingester{
 		cfg:             cfg,
@@ -155,12 +161,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		loopQuit:        make(chan struct{}),
 		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		tailersQuit:     make(chan struct{}),
-		factory: func() chunkenc.Chunk {
-			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
-		},
-		wal: noopWAL{},
+		wal:             noopWAL{},
 	}
 
+	var err error
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
 	if err != nil {
 		return nil, err
@@ -280,7 +284,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization, i.wal)
+		inst = newInstance(&i.cfg, instanceID, i.limiter, i.wal)
 		i.instances[instanceID] = inst
 	}
 	return inst

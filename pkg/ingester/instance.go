@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -75,10 +74,6 @@ type instance struct {
 	limiter *Limiter
 	factory func() chunkenc.Chunk
 
-	// sync
-	syncPeriod  time.Duration
-	syncMinUtil float64
-
 	// WAL
 	wal WAL
 }
@@ -86,10 +81,7 @@ type instance struct {
 func newInstance(
 	cfg *Config,
 	instanceID string,
-	factory func() chunkenc.Chunk,
 	limiter *Limiter,
-	syncPeriod time.Duration,
-	syncMinUtil float64,
 	wal WAL,
 ) *instance {
 	i := &instance{
@@ -101,12 +93,8 @@ func newInstance(
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
-		factory: factory,
 		tailers: map[uint32]*tailer{},
 		limiter: limiter,
-
-		syncPeriod:  syncPeriod,
-		syncMinUtil: syncMinUtil,
 
 		wal: wal,
 	}
@@ -126,7 +114,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	stream, ok := i.streams[fp]
 	if !ok {
 		sortedLabels := i.index.Add(labels, fp)
-		stream = newStream(i.cfg, fp, sortedLabels, i.factory)
+		stream = newStream(i.cfg, fp, sortedLabels)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Inc()
@@ -158,7 +146,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 
 		prevNumChunks := len(stream.chunks)
-		if err := stream.Push(ctx, s.Entries, i.syncPeriod, i.syncMinUtil, record); err != nil {
+		if err := stream.Push(ctx, s.Entries, record); err != nil {
 			appendErr = err
 			continue
 		}
@@ -198,7 +186,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALR
 	}
 
 	sortedLabels := i.index.Add(labels, fp)
-	stream = newStream(i.cfg, fp, sortedLabels, i.factory)
+	stream = newStream(i.cfg, fp, sortedLabels)
 	i.streams[fp] = stream
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).

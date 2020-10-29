@@ -33,18 +33,19 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultConfig()
+			cfg.MaxReturnedErrors = tc.limit
 			s := newStream(
-				&Config{MaxReturnedErrors: tc.limit},
+				cfg,
 				model.Fingerprint(0),
 				labels.Labels{
 					{Name: "foo", Value: "bar"},
 				},
-				defaultFactory,
 			)
 
 			err := s.Push(context.Background(), []logproto.Entry{
 				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
-			}, 0, 0, recordPool.GetRecord())
+			}, recordPool.GetRecord())
 			require.NoError(t, err)
 
 			newLines := make([]logproto.Entry, numLogs)
@@ -63,7 +64,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			fmt.Fprintf(&expected, "total ignored: %d out of %d", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
-			err = s.Push(context.Background(), newLines, 0, 0, recordPool.GetRecord())
+			err = s.Push(context.Background(), newLines, recordPool.GetRecord())
 			require.Error(t, err)
 			require.Equal(t, expectErr.Error(), err.Error())
 		})
@@ -72,19 +73,18 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 
 func TestPushDeduplication(t *testing.T) {
 	s := newStream(
-		&Config{},
+		defaultConfig(),
 		model.Fingerprint(0),
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
-		defaultFactory,
 	)
 
 	err := s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, 0, 0, recordPool.GetRecord())
+	}, recordPool.GetRecord())
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
