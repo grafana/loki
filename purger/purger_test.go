@@ -359,9 +359,6 @@ func TestPurger_Restarts(t *testing.T) {
 	// load in process delete requests by calling Run
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), newPurger))
 
-	// there must be 1 pending delete request
-	require.Equal(t, float64(1), testutil.ToFloat64(newPurger.metrics.pendingDeleteRequestsCount))
-
 	defer newPurger.StopAsync()
 
 	test.Poll(t, time.Minute, 0, func() interface{} {
