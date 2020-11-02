@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
 
@@ -469,7 +470,7 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
 	numFailures := 0
-	merr := util.NewMultiError()
+	merr := tsdb_errors.NewMulti()
 
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
@@ -486,7 +487,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 
 func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDesc) error {
 	numFailures := 0
-	merr := util.NewMultiError()
+	merr := tsdb_errors.NewMulti()
 
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
