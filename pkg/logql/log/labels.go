@@ -54,18 +54,6 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 	return hash
 }
 
-func (h *hasher) hashWithoutLabels(lbs labels.Labels, groups ...string) uint64 {
-	var hash uint64
-	hash, h.buf = lbs.HashWithoutLabels(h.buf, groups...)
-	return hash
-}
-
-func (h *hasher) hashForLabels(lbs labels.Labels, groups ...string) uint64 {
-	var hash uint64
-	hash, h.buf = lbs.HashForLabels(h.buf, groups...)
-	return hash
-}
-
 type BaseLabelsBuilder struct {
 	// the current base
 	base labels.Labels
