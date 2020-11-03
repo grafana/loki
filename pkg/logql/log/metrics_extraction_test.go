@@ -112,10 +112,11 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sort.Sort(tt.in)
-			outval, outlbs, ok := tt.ex.Process([]byte(""), tt.in)
+
+			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process([]byte(""))
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
-			require.Equal(t, tt.wantLbs, outlbs)
+			require.Equal(t, tt.wantLbs, outlbs.Labels())
 		})
 	}
 }

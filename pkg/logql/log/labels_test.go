@@ -8,8 +8,9 @@ import (
 )
 
 func TestLabelsBuilder_Get(t *testing.T) {
-	b := NewLabelsBuilder()
-	b.Reset(labels.Labels{labels.Label{Name: "already", Value: "in"}})
+	lbs := labels.Labels{labels.Label{Name: "already", Value: "in"}}
+	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b.Reset()
 	b.Set("foo", "bar")
 	b.Set("bar", "buzz")
 	b.Del("foo")
@@ -31,8 +32,8 @@ func TestLabelsBuilder_Get(t *testing.T) {
 
 func TestLabelsBuilder_LabelsError(t *testing.T) {
 	lbs := labels.Labels{labels.Label{Name: "already", Value: "in"}}
-	b := NewLabelsBuilder()
-	b.Reset(lbs)
+	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b.Reset()
 	b.SetErr("err")
 	lbsWithErr := b.Labels()
 	require.Equal(
