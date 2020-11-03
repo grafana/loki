@@ -85,6 +85,7 @@ type BaseLabelsBuilder struct {
 type LabelsBuilder struct {
 	currentLabels labels.Labels
 	currentResult LabelsResult
+	groupedResult LabelsResult
 
 	*BaseLabelsBuilder
 }
@@ -303,7 +304,7 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 		if len(b.groups) == 0 {
 			return b.currentResult
 		}
-		return b.toGroup(b.currentLabels)
+		return b.toBaseGroup()
 	}
 
 	if b.without {
@@ -375,23 +376,17 @@ OuterAdd:
 	return b.toResult(res)
 }
 
-func (b *LabelsBuilder) toGroup(from labels.Labels) LabelsResult {
-	var hash uint64
-	if b.without {
-		hash = b.hasher.hashWithoutLabels(from, b.groups...)
-	} else {
-		hash = b.hasher.hashForLabels(from, b.groups...)
-	}
-	if cached, ok := b.resultCache[hash]; ok {
-		return cached
+func (b *LabelsBuilder) toBaseGroup() LabelsResult {
+	if b.groupedResult != nil {
+		return b.groupedResult
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = from.WithoutLabels(b.groups...)
+		lbs = b.currentLabels.WithoutLabels(b.groups...)
 	} else {
-		lbs = from.WithLabels(b.groups...)
+		lbs = b.currentLabels.WithLabels(b.groups...)
 	}
-	res := NewLabelsResult(lbs, hash)
-	b.resultCache[hash] = res
+	res := NewLabelsResult(lbs, lbs.Hash())
+	b.groupedResult = res
 	return res
 }
