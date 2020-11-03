@@ -82,7 +82,7 @@ from scraped targets, see [Pipelines](../pipelines/).
 
 ### Use environment variables in the configuration
 
-You can use environment variable references in the config file to set values that need to be configurable during deployment.
+You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
 To do this, use:
 
 ```

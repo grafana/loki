@@ -38,13 +38,15 @@ func dJSON(y []byte) Source {
 }
 
 // YAML returns a Source that opens the supplied `.yaml` file and loads it.
-func YAML(f string, envSubst bool) Source {
+// When expandEnvVars is true, variables in the supplied '.yaml\ file are expanded
+// using https://pkg.go.dev/github.com/drone/envsubst?tab=overview
+func YAML(f string, expandEnvVars bool) Source {
 	return func(dst Cloneable) error {
 		y, err := ioutil.ReadFile(f)
 		if err != nil {
 			return err
 		}
-		if envSubst {
+		if expandEnvVars {
 			s, err := envsubst.EvalEnv(string(y))
 			if err != nil {
 				return err
