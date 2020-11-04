@@ -814,11 +814,11 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 		},
 	}
 	for _, test := range []string{
-		`{app="foo"}`,
+		// `{app="foo"}`,
 		`{app="foo"} != "foo"`,
-		`{app="foo"} != "foo" | logfmt `,
-		`{app="foo"} != "foo" | logfmt | duration > 10ms`,
-		`{app="foo"} != "foo" | logfmt | duration > 10ms and component="tsdb"`,
+		// `{app="foo"} != "foo" | logfmt `,
+		// `{app="foo"} != "foo" | logfmt | duration > 10ms`,
+		// `{app="foo"} != "foo" | logfmt | duration > 10ms and component="tsdb"`,
 	} {
 		b.Run(test, func(b *testing.B) {
 			b.ReportAllocs()
@@ -851,12 +851,13 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 	}
 
 	for _, test := range []string{
-		`rate({app="foo"}[1m])`,
-		`sum by (cluster) (rate({app="foo"}[10s]))`,
-		`sum by (cluster) (rate({app="foo"} != "foo" | logfmt[10s]))`,
-		`sum by (caller) (rate({app="foo"} != "foo" | logfmt[10s]))`,
-		`sum by (cluster) (rate({app="foo"} != "foo" | logfmt | duration > 10ms[10s]))`,
-		`sum by (cluster) (rate({app="foo"} != "foo" | logfmt | duration > 10ms and component="tsdb"[1m]))`,
+		// `rate({app="foo"}[1m])`,
+		// `sum by (cluster) (rate({app="foo"}[10s]))`,
+		// `sum by (cluster) (rate({app="foo"} != "foo" [10s]))`,
+		// `sum by (cluster) (rate({app="foo"} != "foo" | logfmt[10s]))`,
+		// `sum by (caller) (rate({app="foo"} != "foo" | logfmt[10s]))`,
+		// `sum by (cluster) (rate({app="foo"} != "foo" | logfmt | duration > 10ms[10s]))`,
+		// `sum by (cluster) (rate({app="foo"} != "foo" | logfmt | duration > 10ms and component="tsdb"[1m]))`,
 	} {
 		b.Run(test, func(b *testing.B) {
 			b.ReportAllocs()

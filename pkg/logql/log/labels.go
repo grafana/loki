@@ -10,12 +10,15 @@ var (
 	emptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
 )
 
+// LabelsResult is a computed labels result that contains the labels set with associated string and hash.
+// The is mainly used for caching and returning labels computations out of pipelines and stages.
 type LabelsResult interface {
 	String() string
 	Labels() labels.Labels
 	Hash() uint64
 }
 
+// NewLabelsResult creates a new LabelsResult from a labels set and a hash.
 func NewLabelsResult(lbs labels.Labels, hash uint64) LabelsResult {
 	return &labelsResult{lbs: lbs, s: lbs.String(), h: hash}
 }
@@ -42,24 +45,25 @@ type hasher struct {
 	buf []byte // buffer for computing hash without bytes slice allocation.
 }
 
+// newHasher allow to compute hashes for labels by reusing the same buffer.
 func newHasher() *hasher {
 	return &hasher{
 		buf: make([]byte, 0, 1024),
 	}
 }
 
+// Hash hashes the labels
 func (h *hasher) Hash(lbs labels.Labels) uint64 {
 	var hash uint64
 	hash, h.buf = lbs.HashWithoutLabels(h.buf, []string(nil)...)
 	return hash
 }
 
+// BaseLabelsBuilder is a label builder used by pipeline and stages.
+// Only one base builder is used and it contains cache for each LabelsBuilders.
 type BaseLabelsBuilder struct {
-	// the current base
-	base labels.Labels
-	del  []string
-	add  []labels.Label
-
+	del []string
+	add []labels.Label
 	err string
 
 	groups            []string
@@ -71,13 +75,14 @@ type BaseLabelsBuilder struct {
 
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
-	currentLabels labels.Labels
+	base          labels.Labels
 	currentResult LabelsResult
 	groupedResult LabelsResult
 
 	*BaseLabelsBuilder
 }
 
+// NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
 func NewBaseLabelsBuilderWithGrouping(groups []string, without, noLabels bool) *BaseLabelsBuilder {
 	return &BaseLabelsBuilder{
 		del:         make([]string, 0, 5),
@@ -90,15 +95,17 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, without, noLabels bool) *
 	}
 }
 
-// NewLabelsBuilder creates a new labels builder.
+// NewLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 	return NewBaseLabelsBuilderWithGrouping(nil, false, false)
 }
 
+// ForLabels creates a labels builder for a given labels set as base.
+// The labels cache is shared across all created LabelsBuilders.
 func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBuilder {
 	if labelResult, ok := b.resultCache[hash]; ok {
 		res := &LabelsBuilder{
-			currentLabels:     lbs,
+			base:              lbs,
 			currentResult:     labelResult,
 			BaseLabelsBuilder: b,
 		}
@@ -107,7 +114,7 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 	labelResult := NewLabelsResult(lbs, hash)
 	b.resultCache[hash] = labelResult
 	res := &LabelsBuilder{
-		currentLabels:     lbs,
+		base:              lbs,
 		currentResult:     labelResult,
 		BaseLabelsBuilder: b,
 	}
@@ -116,7 +123,6 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 
 // Reset clears all current state for the builder.
 func (b *LabelsBuilder) Reset() {
-	b.base = b.currentLabels
 	b.del = b.del[:0]
 	b.add = b.add[:0]
 	b.err = ""
@@ -143,6 +149,7 @@ func (b *LabelsBuilder) BaseHas(key string) bool {
 	return b.base.Has(key)
 }
 
+// Get returns the value of a labels key if it exists.
 func (b *LabelsBuilder) Get(key string) (string, bool) {
 	for _, a := range b.add {
 		if a.Name == key {
@@ -227,8 +234,8 @@ Outer:
 	return res
 }
 
-// Labels returns the labels from the builder. If no modifications
-// were made, the original labels are returned.
+// LabelsResult returns the LabelsResult from the builder.
+// No grouping is applied and the cache is used when possible.
 func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// unchanged path.
 	if len(b.del) == 0 && len(b.add) == 0 {
@@ -277,8 +284,8 @@ func (b *BaseLabelsBuilder) toResult(lbs labels.Labels) LabelsResult {
 	return res
 }
 
-// Labels returns the labels from the builder. If no modifications
-// were made, the original labels are returned.
+// GroupedLabels returns the LabelsResult from the builder.
+// Groups are applied and the cache is used when possible.
 func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 	if b.err != "" {
 		// We need to return now before applying grouping otherwise the error might get lost.
@@ -370,9 +377,9 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = b.currentLabels.WithoutLabels(b.groups...)
+		lbs = b.base.WithoutLabels(b.groups...)
 	} else {
-		lbs = b.currentLabels.WithLabels(b.groups...)
+		lbs = b.base.WithLabels(b.groups...)
 	}
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res

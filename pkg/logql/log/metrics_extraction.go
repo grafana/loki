@@ -25,11 +25,12 @@ var (
 	BytesExtractor LineExtractor = func(line []byte) float64 { return float64(len(line)) }
 )
 
-// SampleExtractor extracts sample for a log line.
+// SampleExtractor creates StreamSampleExtractor that can extract samples for a given log stream.
 type SampleExtractor interface {
 	ForStream(labels labels.Labels) StreamSampleExtractor
 }
 
+// StreamSampleExtractor extracts sample for a log line.
 type StreamSampleExtractor interface {
 	Process(line []byte) (float64, LabelsResult, bool)
 }
@@ -75,6 +76,10 @@ type streamLineSampleExtractor struct {
 }
 
 func (l *streamLineSampleExtractor) Process(line []byte) (float64, LabelsResult, bool) {
+	// short circuit.
+	if l.Stage == NoopStage {
+		return l.LineExtractor(line), l.builder.GroupedLabels(), true
+	}
 	l.builder.Reset()
 	line, ok := l.Stage.Process(line, l.builder)
 	if !ok {

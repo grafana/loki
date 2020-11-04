@@ -127,3 +127,33 @@ func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
 	}
 	return ex
 }
+
+func TestNewLineSampleExtractor(t *testing.T) {
+
+	se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
+	require.NoError(t, err)
+	lbs := labels.Labels{
+		{Name: "namespace", Value: "dev"},
+		{Name: "cluster", Value: "us-central1"},
+	}
+	sort.Sort(lbs)
+	sse := se.ForStream(lbs)
+	f, l, ok := sse.Process([]byte(`foo`))
+	require.True(t, ok)
+	require.Equal(t, 1., f)
+	assertLabelResult(t, lbs, l)
+
+	filter, err := NewFilter("foo", labels.MatchEqual)
+	require.NoError(t, err)
+
+	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{filter.ToStage()}, []string{"namespace"}, false, false)
+	require.NoError(t, err)
+	sse = se.ForStream(lbs)
+	f, l, ok = sse.Process([]byte(`foo`))
+	require.True(t, ok)
+	require.Equal(t, 3., f)
+	assertLabelResult(t, labels.Labels{labels.Label{Name: "namespace", Value: "dev"}}, l)
+	sse = se.ForStream(lbs)
+	_, _, ok = sse.Process([]byte(`nope`))
+	require.False(t, ok)
+}

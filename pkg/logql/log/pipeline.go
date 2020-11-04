@@ -5,14 +5,16 @@ import (
 )
 
 var (
+	// NoopStage is a stage that doesn't process a log line.
 	NoopStage Stage = &noopStage{}
 )
 
-// Pipeline transform and filter log lines and labels.
+// Pipeline can create pipelines for each log stream.
 type Pipeline interface {
 	ForStream(labels labels.Labels) StreamPipeline
 }
 
+// StreamPipeline transform and filter log lines and labels.
 type StreamPipeline interface {
 	Process(line []byte) ([]byte, LabelsResult, bool)
 }
@@ -22,6 +24,7 @@ type Stage interface {
 	Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 }
 
+// NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
 func NewNoopPipeline() Pipeline {
 	return &noopPipeline{
 		cache: map[uint64]*noopStreamPipeline{},
@@ -71,6 +74,7 @@ type pipeline struct {
 	streamPipelines map[uint64]StreamPipeline
 }
 
+// NewPipeline creates a new pipeline for a given set of stages.
 func NewPipeline(stages []Stage) Pipeline {
 	if len(stages) == 0 {
 		return NewNoopPipeline()
