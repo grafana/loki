@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 

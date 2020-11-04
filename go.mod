@@ -1,6 +1,6 @@
 module github.com/grafana/loki
 
-go 1.14
+go 1.15
 
 require (
 	github.com/aws/aws-lambda-go v1.17.0

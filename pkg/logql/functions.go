@@ -6,8 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 const unsupportedErr = "unsupported range vector aggregation operation: %s"
