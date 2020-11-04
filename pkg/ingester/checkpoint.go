@@ -7,6 +7,7 @@ import (
 )
 
 // The passed wireChunks slice is for re-use.
+// nolint(deadcode)
 func toWireChunks(descs []*chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 	if cap(wireChunks) < len(descs) {
 		wireChunks = make([]Chunk, len(descs))
@@ -38,6 +39,7 @@ func toWireChunks(descs []*chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 	return wireChunks, nil
 }
 
+// nolint(deadcode)
 func fromWireChunks(conf *Config, wireChunks []Chunk) ([]*chunkDesc, error) {
 	descs := make([]*chunkDesc, 0, len(wireChunks))
 	for _, c := range wireChunks {

@@ -15,6 +15,7 @@ import (
 )
 
 // JournalTargetManager manages a series of JournalTargets.
+// nolint(golint)
 type JournalTargetManager struct {
 	logger  log.Logger
 	targets map[string]*JournalTarget
