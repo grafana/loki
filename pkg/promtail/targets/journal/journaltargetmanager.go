@@ -13,6 +13,7 @@ import (
 )
 
 // JournalTargetManager manages a series of JournalTargets.
+// nolint:golint
 type JournalTargetManager struct{}
 
 // NewJournalTargetManager returns nil as JournalTargets are not supported

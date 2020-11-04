@@ -69,7 +69,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 
 	// The number of concurrent queries against the tenants BucketStores are limited.
 	queryGateReg := extprom.WrapRegistererWithPrefix("cortex_bucket_stores_", reg)
-	queryGate := gate.NewKeeper(queryGateReg).NewGate(cfg.BucketStore.MaxConcurrent)
+	queryGate := gate.New(queryGateReg, cfg.BucketStore.MaxConcurrent)
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_bucket_stores_gate_queries_concurrent_max",
 		Help: "Number of maximum concurrent queries allowed.",

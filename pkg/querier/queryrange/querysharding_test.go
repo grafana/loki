@@ -159,6 +159,29 @@ func Test_astMapper(t *testing.T) {
 
 }
 
+func Test_ShardingByPass(t *testing.T) {
+	called := 0
+	handler := queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+		called++
+		return nil, nil
+	})
+
+	mware := newASTMapperware(
+		queryrange.ShardingConfigs{
+			chunk.PeriodConfig{
+				RowShards: 2,
+			},
+		},
+		handler,
+		log.NewNopLogger(),
+		nilShardingMetrics,
+	)
+
+	_, err := mware.Do(context.Background(), defaultReq().WithQuery(`1+1`))
+	require.Nil(t, err)
+	require.Equal(t, called, 1)
+}
+
 func Test_hasShards(t *testing.T) {
 	for i, tc := range []struct {
 		input    queryrange.ShardingConfigs

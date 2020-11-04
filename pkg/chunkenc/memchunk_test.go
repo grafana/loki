@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
@@ -112,7 +114,7 @@ func TestBlock(t *testing.T) {
 				}
 			}
 
-			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil, logql.NoopPipeline)
 			require.NoError(t, err)
 
 			idx := 0
@@ -127,7 +129,7 @@ func TestBlock(t *testing.T) {
 			require.NoError(t, it.Close())
 			require.Equal(t, len(cases), idx)
 
-			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, log.CountExtractor.ToSampleExtractor(nil, false, false))
 			idx = 0
 			for sampleIt.Next() {
 				s := sampleIt.Sample()
@@ -142,7 +144,7 @@ func TestBlock(t *testing.T) {
 			require.Equal(t, len(cases), idx)
 
 			t.Run("bounded-iteration", func(t *testing.T) {
-				it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, nil)
+				it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, nil, logql.NoopPipeline)
 				require.NoError(t, err)
 
 				idx := 2
@@ -175,7 +177,7 @@ func TestReadFormatV1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	it, err := r.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+	it, err := r.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil, logql.NoopPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +204,7 @@ func TestRoundtripV2(t *testing.T) {
 
 			assertLines := func(c *MemChunk) {
 				require.Equal(t, enc, c.Encoding())
-				it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+				it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil, logql.NoopPipeline)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -255,7 +257,7 @@ func TestSerialization(t *testing.T) {
 			numSamples := 50000
 
 			for i := 0; i < numSamples; i++ {
-				require.NoError(t, chk.Append(logprotoEntry(int64(i), string(i))))
+				require.NoError(t, chk.Append(logprotoEntry(int64(i), strconv.Itoa(i))))
 			}
 
 			byt, err := chk.Bytes()
@@ -264,18 +266,18 @@ func TestSerialization(t *testing.T) {
 			bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
 			require.NoError(t, err)
 
-			it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+			it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil, logql.NoopPipeline)
 			require.NoError(t, err)
 			for i := 0; i < numSamples; i++ {
 				require.True(t, it.Next())
 
 				e := it.Entry()
 				require.Equal(t, int64(i), e.Timestamp.UnixNano())
-				require.Equal(t, string(i), e.Line)
+				require.Equal(t, strconv.Itoa(i), e.Line)
 			}
 			require.NoError(t, it.Error())
 
-			sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, logql.ExtractCount)
+			sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), nil, log.CountExtractor.ToSampleExtractor(nil, false, false))
 			for i := 0; i < numSamples; i++ {
 				require.True(t, sampleIt.Next(), i)
 
@@ -318,7 +320,7 @@ func TestChunkFilling(t *testing.T) {
 
 			require.Equal(t, int64(lines), i)
 
-			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil)
+			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil, logql.NoopPipeline)
 			require.NoError(t, err)
 			i = 0
 			for it.Next() {
@@ -461,7 +463,7 @@ func TestChunkStats(t *testing.T) {
 	expectedSize := (inserted * len(entry.Line)) + (inserted * 2 * binary.MaxVarintLen64)
 	ctx := stats.NewContext(context.Background())
 
-	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, logql.LineFilterFunc(func(line []byte) bool { return false }))
+	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, nil, logql.NoopPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +492,7 @@ func TestChunkStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx = stats.NewContext(context.Background())
-	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, logql.LineFilterFunc(func(line []byte) bool { return false }))
+	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, nil, logql.NoopPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +540,7 @@ func TestIteratorClose(t *testing.T) {
 			} {
 				c := NewMemChunk(enc, testBlockSize, testTargetSize)
 				inserted := fillChunk(c)
-				iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, nil)
+				iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, nil, logql.NoopPipeline)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -582,14 +584,14 @@ func BenchmarkWrite(b *testing.B) {
 func BenchmarkRead(b *testing.B) {
 	for _, enc := range testEncoding {
 		b.Run(enc.String(), func(b *testing.B) {
-			chunks, size := generateData(enc)
+			chunks, size := generateData(enc, 5)
 			b.ResetTimer()
 			bytesRead := uint64(0)
 			now := time.Now()
 			for n := 0; n < b.N; n++ {
 				for _, c := range chunks {
 					// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-					iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, nil)
+					iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, nil, logql.NoopPipeline)
 					if err != nil {
 						panic(err)
 					}
@@ -614,7 +616,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 	_ = fillChunk(c)
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
+		iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil, logql.NoopPipeline)
 		if err != nil {
 			panic(err)
 		}
@@ -630,14 +632,12 @@ func BenchmarkBackwardIterator(b *testing.B) {
 func TestGenerateDataSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chunks, size := generateData(enc)
+			chunks, size := generateData(enc, 50)
 
 			bytesRead := uint64(0)
 			for _, c := range chunks {
 				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, logql.LineFilterFunc(func(line []byte) bool {
-					return true // return all
-				}))
+				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, nil, logql.NoopPipeline)
 				if err != nil {
 					panic(err)
 				}
@@ -671,7 +671,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				iter := h.iterator(context.Background(), 0, math.MaxInt64, nil)
+				iter := h.iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, nil, logql.NoopPipeline)
 
 				for iter.Next() {
 					_ = iter.Entry()
@@ -730,7 +730,7 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 				c := createChunk()
 
 				// testing headchunk
-				it, err := c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, nil)
+				it, err := c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, nil, logql.NoopPipeline)
 				require.NoError(t, err)
 				for i := range tt.expect {
 					require.Equal(t, tt.expect[i], it.Next())
@@ -739,7 +739,7 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 
 				// testing chunk blocks
 				require.NoError(t, c.cut())
-				it, err = c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, nil)
+				it, err = c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, nil, logql.NoopPipeline)
 				require.NoError(t, err)
 				for i := range tt.expect {
 					require.Equal(t, tt.expect[i], it.Next())
@@ -758,7 +758,7 @@ func TestMemchunkLongLine(t *testing.T) {
 			for i := 1; i <= 10; i++ {
 				require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: strings.Repeat("e", 200000)}))
 			}
-			it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil)
+			it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil, logql.NoopPipeline)
 			require.NoError(t, err)
 			for i := 1; i <= 10; i++ {
 				require.True(t, it.Next())

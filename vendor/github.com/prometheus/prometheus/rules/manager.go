@@ -63,6 +63,7 @@ type Metrics struct {
 	groupLastEvalTime   *prometheus.GaugeVec
 	groupLastDuration   *prometheus.GaugeVec
 	groupRules          *prometheus.GaugeVec
+	groupSamples        *prometheus.GaugeVec
 }
 
 // NewGroupMetrics creates a new instance of Metrics and registers it with the provided registerer,
@@ -146,6 +147,14 @@ func NewGroupMetrics(reg prometheus.Registerer) *Metrics {
 			},
 			[]string{"rule_group"},
 		),
+		groupSamples: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "rule_group_last_evaluation_samples",
+				Help:      "The number of samples returned during the last rule group evaluation.",
+			},
+			[]string{"rule_group"},
+		),
 	}
 
 	if reg != nil {
@@ -160,6 +169,7 @@ func NewGroupMetrics(reg prometheus.Registerer) *Metrics {
 			m.groupLastEvalTime,
 			m.groupLastDuration,
 			m.groupRules,
+			m.groupSamples,
 		)
 	}
 
@@ -237,8 +247,8 @@ type Group struct {
 	staleSeries          []labels.Labels
 	opts                 *ManagerOptions
 	mtx                  sync.Mutex
-	evaluationDuration   time.Duration
-	evaluationTimestamp  time.Time
+	evaluationTime       time.Duration
+	lastEvaluation       time.Time
 
 	shouldRestore bool
 
@@ -276,6 +286,7 @@ func NewGroup(o GroupOptions) *Group {
 	metrics.groupLastEvalTime.WithLabelValues(key)
 	metrics.groupLastDuration.WithLabelValues(key)
 	metrics.groupRules.WithLabelValues(key).Set(float64(len(o.Rules)))
+	metrics.groupSamples.WithLabelValues(key)
 	metrics.groupInterval.WithLabelValues(key).Set(o.Interval.Seconds())
 
 	return &Group{
@@ -332,8 +343,8 @@ func (g *Group) run(ctx context.Context) {
 		timeSinceStart := time.Since(start)
 
 		g.metrics.iterationDuration.Observe(timeSinceStart.Seconds())
-		g.setEvaluationDuration(timeSinceStart)
-		g.setEvaluationTimestamp(start)
+		g.setEvaluationTime(timeSinceStart)
+		g.setLastEvaluation(start)
 	}
 
 	// The assumption here is that since the ticker was started after having
@@ -454,36 +465,36 @@ func (g *Group) HasAlertingRules() bool {
 	return false
 }
 
-// GetEvaluationDuration returns the time in seconds it took to evaluate the rule group.
-func (g *Group) GetEvaluationDuration() time.Duration {
+// GetEvaluationTime returns the time in seconds it took to evaluate the rule group.
+func (g *Group) GetEvaluationTime() time.Duration {
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
-	return g.evaluationDuration
+	return g.evaluationTime
 }
 
-// setEvaluationDuration sets the time in seconds the last evaluation took.
-func (g *Group) setEvaluationDuration(dur time.Duration) {
+// setEvaluationTime sets the time in seconds the last evaluation took.
+func (g *Group) setEvaluationTime(dur time.Duration) {
 	g.metrics.groupLastDuration.WithLabelValues(groupKey(g.file, g.name)).Set(dur.Seconds())
 
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
-	g.evaluationDuration = dur
+	g.evaluationTime = dur
 }
 
-// GetEvaluationTimestamp returns the time the last evaluation of the rule group took place.
-func (g *Group) GetEvaluationTimestamp() time.Time {
+// GetLastEvaluation returns the time the last evaluation of the rule group took place.
+func (g *Group) GetLastEvaluation() time.Time {
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
-	return g.evaluationTimestamp
+	return g.lastEvaluation
 }
 
-// setEvaluationTimestamp updates evaluationTimestamp to the timestamp of when the rule group was last evaluated.
-func (g *Group) setEvaluationTimestamp(ts time.Time) {
+// setLastEvaluation updates lastEvaluation to the timestamp of when the rule group was last evaluated.
+func (g *Group) setLastEvaluation(ts time.Time) {
 	g.metrics.groupLastEvalTime.WithLabelValues(groupKey(g.file, g.name)).Set(float64(ts.UnixNano()) / 1e9)
 
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
-	g.evaluationTimestamp = ts
+	g.lastEvaluation = ts
 }
 
 // evalTimestamp returns the immediately preceding consistently slotted evaluation time.
@@ -507,8 +518,8 @@ func nameAndLabels(rule Rule) string {
 // Rules are matched based on their name and labels. If there are duplicates, the
 // first is matched with the first, second with the second etc.
 func (g *Group) CopyState(from *Group) {
-	g.evaluationDuration = from.evaluationDuration
-	g.evaluationTimestamp = from.evaluationTimestamp
+	g.evaluationTime = from.evaluationTime
+	g.lastEvaluation = from.lastEvaluation
 
 	ruleMap := make(map[string][]int, len(from.rules))
 
@@ -557,6 +568,7 @@ func (g *Group) CopyState(from *Group) {
 
 // Eval runs a single evaluation cycle in which all rules are evaluated sequentially.
 func (g *Group) Eval(ctx context.Context, ts time.Time) {
+	var samplesTotal float64
 	for i, rule := range g.rules {
 		select {
 		case <-g.done:
@@ -590,6 +602,7 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				g.metrics.evalFailures.WithLabelValues(groupKey(g.File(), g.Name())).Inc()
 				return
 			}
+			samplesTotal += float64(len(vector))
 
 			if ar, ok := rule.(*AlertingRule); ok {
 				ar.sendAlerts(ctx, ts, g.opts.ResendDelay, g.interval, g.opts.NotifyFunc)
@@ -646,6 +659,9 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 				}
 			}
 		}(i, rule)
+	}
+	if g.metrics != nil {
+		g.metrics.groupSamples.WithLabelValues(groupKey(g.File(), g.Name())).Set(samplesTotal)
 	}
 	g.cleanupStaleSeries(ctx, ts)
 }
@@ -954,14 +970,12 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 				oldg.stop()
 				newg.CopyState(oldg)
 			}
-			go func() {
-				// Wait with starting evaluation until the rule manager
-				// is told to run. This is necessary to avoid running
-				// queries against a bootstrapping storage.
-				<-m.block
-				newg.run(m.opts.Context)
-			}()
 			wg.Done()
+			// Wait with starting evaluation until the rule manager
+			// is told to run. This is necessary to avoid running
+			// queries against a bootstrapping storage.
+			<-m.block
+			newg.run(m.opts.Context)
 		}(newg)
 	}
 
@@ -980,6 +994,7 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 				m.groupLastEvalTime.DeleteLabelValues(n)
 				m.groupLastDuration.DeleteLabelValues(n)
 				m.groupRules.DeleteLabelValues(n)
+				m.groupSamples.DeleteLabelValues((n))
 			}
 			wg.Done()
 		}(n, oldg)
@@ -1109,9 +1124,6 @@ func (m *Manager) Rules() []Rule {
 
 // AlertingRules returns the list of the manager's alerting rules.
 func (m *Manager) AlertingRules() []*AlertingRule {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
-
 	alerts := []*AlertingRule{}
 	for _, rule := range m.Rules() {
 		if alertingRule, ok := rule.(*AlertingRule); ok {

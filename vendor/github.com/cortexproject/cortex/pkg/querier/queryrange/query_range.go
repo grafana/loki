@@ -87,6 +87,8 @@ type Request interface {
 // Response represents a query range response.
 type Response interface {
 	proto.Message
+	// GetHeaders returns the HTTP headers in the response.
+	GetHeaders() []*PrometheusResponseHeader
 }
 
 type prometheusCodec struct{}

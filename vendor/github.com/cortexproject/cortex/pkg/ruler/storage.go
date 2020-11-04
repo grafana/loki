@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
@@ -62,9 +63,13 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 }
 
 // NewRuleStorage returns a new rule storage backend poller and store
-func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
+func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader) (rules.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
+	}
+
+	if loader == nil {
+		loader = promRules.FileLoader{}
 	}
 
 	switch cfg.Type {
@@ -77,15 +82,15 @@ func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
 
 		return rules.NewConfigRuleStore(c), nil
 	case "azure":
-		return newObjRuleStore(azure.NewBlobStorage(&cfg.Azure, ""))
+		return newObjRuleStore(azure.NewBlobStorage(&cfg.Azure))
 	case "gcs":
-		return newObjRuleStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS, ""))
+		return newObjRuleStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
 	case "s3":
-		return newObjRuleStore(aws.NewS3ObjectClient(cfg.S3, ""))
+		return newObjRuleStore(aws.NewS3ObjectClient(cfg.S3))
 	case "swift":
-		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift, ""))
+		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift))
 	case "local":
-		return local.NewLocalRulesClient(cfg.Local)
+		return local.NewLocalRulesClient(cfg.Local, loader)
 	default:
 		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
 	}
@@ -95,5 +100,5 @@ func newObjRuleStore(client chunk.ObjectClient, err error) (rules.RuleStore, err
 	if err != nil {
 		return nil, err
 	}
-	return objectclient.NewRuleStore(client), nil
+	return objectclient.NewRuleStore(client, loadRulesConcurrency), nil
 }

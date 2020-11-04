@@ -147,6 +147,7 @@ type Loki struct {
 	frontend        *frontend.Frontend
 	ruler           *cortex_ruler.Ruler
 	RulerStorage    rules.RuleStore
+	rulerAPI        *cortex_ruler.API
 	stopper         queryrange.Stopper
 	runtimeConfig   *runtimeconfig.Manager
 	memberlistKV    *memberlist.KVInitService
@@ -349,7 +350,7 @@ func (t *Loki) setupModuleManager() error {
 		TableManager:    {Server},
 		Compactor:       {Server},
 		IngesterQuerier: {Ring},
-		All:             {Querier, Ingester, Distributor, TableManager},
+		All:             {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.

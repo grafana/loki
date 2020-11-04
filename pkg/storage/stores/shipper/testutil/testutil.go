@@ -38,20 +38,18 @@ func AddRecordsToBatch(batch chunk.WriteBatch, tableName string, start, numRecor
 		rec := []byte(strconv.Itoa(start + i))
 		batch.Add(tableName, "", rec, rec)
 	}
-
-	return
 }
 
 type SingleTableQuerier interface {
-	Query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error
+	MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error
 }
 
-func TestSingleQuery(t *testing.T, query chunk.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
+func TestSingleTableQuery(t *testing.T, queries []chunk.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
 
-	err := querier.Query(context.Background(), query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+	err := querier.MultiQueries(context.Background(), queries, makeTestCallback(t, minValue, maxValue, fetchedRecords))
 
 	require.NoError(t, err)
 	require.Len(t, fetchedRecords, numRecords)

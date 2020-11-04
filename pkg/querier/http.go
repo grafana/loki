@@ -42,7 +42,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
+	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -82,7 +82,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
+	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -139,7 +139,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
+	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -336,15 +336,29 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		query = logql.NewFilterExpr(expr, labels.MatchRegexp, regexp).String()
+		newExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, regexp)
+		if err != nil {
+			return "", err
+		}
+		query = newExpr.String()
 	}
 	return query, nil
 }
 
-func (q *Querier) validateEntriesLimits(ctx context.Context, limit uint32) error {
+func (q *Querier) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	expr, err := logql.ParseExpr(query)
+	if err != nil {
+		return err
+	}
+
+	// entry limit does not apply to metric queries.
+	if _, ok := expr.(logql.SampleExpr); ok {
+		return nil
 	}
 
 	maxEntriesLimit := q.limits.MaxEntriesLimitPerQuery(userID)

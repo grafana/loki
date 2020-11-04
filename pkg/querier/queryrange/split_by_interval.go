@@ -83,7 +83,8 @@ func (h *splitByInterval) Process(
 	parallelism int,
 	threshold int64,
 	input []*lokiResult,
-) (responses []queryrange.Response, err error) {
+) ([]queryrange.Response, error) {
+	var responses []queryrange.Response
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -111,7 +112,7 @@ func (h *splitByInterval) Process(
 			return nil, ctx.Err()
 		case data := <-x.ch:
 			if data.err != nil {
-				return nil, err
+				return nil, data.err
 			}
 
 			responses = append(responses, data.resp)

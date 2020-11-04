@@ -67,7 +67,7 @@ func NewLogOutput(w io.Writer, mode string, options *LogOutputOptions) (LogOutpu
 
 func getColor(labels string) *color.Color {
 	hash := fnv.New32()
-	hash.Write([]byte(labels))
+	_, _ = hash.Write([]byte(labels))
 	id := hash.Sum32() % uint32(len(colorList))
 	color := colorList[id]
 	return color

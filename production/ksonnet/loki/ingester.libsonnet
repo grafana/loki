@@ -8,11 +8,11 @@
     $._config.commonArgs {
       target: 'ingester',
     } + if $._config.stateful_ingesters then
-    {
-      // Disable chunk transfer when using statefulset since ingester which is going down won't find another
-      // ingester which is joining the ring for transferring chunks.
-      'ingester.max-transfer-retries': 0,
-    } else {},
+      {
+        // Disable chunk transfer when using statefulset since ingester which is going down won't find another
+        // ingester which is joining the ring for transferring chunks.
+        'ingester.max-transfer-retries': 0,
+      } else {},
 
   ingester_container::
     container.new('ingester', $._images.ingester) +
@@ -25,9 +25,9 @@
     $.util.resourcesRequests('1', '5Gi') +
     $.util.resourcesLimits('2', '10Gi') +
     if $._config.stateful_ingesters then
-        container.withVolumeMountsMixin([
-          volumeMount.new('ingester-data', '/data'),
-        ]) else {},
+      container.withVolumeMountsMixin([
+        volumeMount.new('ingester-data', '/data'),
+      ]) else {},
 
   local deployment = $.apps.v1.deployment,
 
@@ -43,14 +43,14 @@
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(0) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1) +
     deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800)
-    else {},
+  else {},
 
   ingester_data_pvc:: if $._config.stateful_ingesters then
     pvc.new('ingester-data') +
     pvc.mixin.spec.resources.withRequests({ storage: '10Gi' }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName('fast')
-    else {},
+  else {},
 
   ingester_statefulset: if $._config.stateful_ingesters then
     statefulSet.new('ingester', 3, [$.ingester_container], $.ingester_data_pvc) +
@@ -62,7 +62,7 @@
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001) +  // 10001 is the group ID assigned to Loki in the Dockerfile
     statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800)
-    else {},
+  else {},
 
   ingester_service:
     if !$._config.stateful_ingesters then

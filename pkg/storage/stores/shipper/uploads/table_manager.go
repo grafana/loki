@@ -18,12 +18,15 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 type Config struct {
 	Uploader       string
 	IndexDir       string
 	UploadInterval time.Duration
+	DBRetainPeriod time.Duration
 }
 
 type TableManager struct {
@@ -65,6 +68,8 @@ func (tm *TableManager) loop() {
 	tm.wg.Add(1)
 	defer tm.wg.Done()
 
+	tm.uploadTables(context.Background(), false)
+
 	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
 	defer syncTicker.Stop()
 
@@ -88,22 +93,30 @@ func (tm *TableManager) Stop() {
 }
 
 func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
-	return chunk_util.DoParallelQueries(ctx, tm.query, queries, callback)
+	queriesByTable := util.QueriesByTable(queries)
+	for tableName, queries := range queriesByTable {
+		err := tm.query(ctx, tableName, queries, callback)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
 	log, ctx := spanlogger.New(ctx, "Shipper.Uploads.Query")
 	defer log.Span.Finish()
 
-	table, ok := tm.tables[query.TableName]
+	table, ok := tm.tables[tableName]
 	if !ok {
 		return nil
 	}
 
-	return table.Query(ctx, query, callback)
+	return util.DoParallelQueries(ctx, table, queries, callback)
 }
 
 func (tm *TableManager) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
@@ -159,7 +172,13 @@ func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 
 	status := statusSuccess
 	for _, table := range tm.tables {
-		err := table.Upload(ctx, force)
+		err := table.Snapshot()
+		if err != nil {
+			// we do not want to stop uploading of dbs due to failures in snapshotting them so logging just the error here.
+			level.Error(pkg_util.Logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
+		}
+
+		err = table.Upload(ctx, force)
 		if err != nil {
 			// continue uploading other tables while skipping cleanup for a failed one.
 			status = statusFailure
@@ -168,7 +187,7 @@ func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 		}
 
 		// cleanup unwanted dbs from the table
-		err = table.Cleanup()
+		err = table.Cleanup(tm.cfg.DBRetainPeriod)
 		if err != nil {
 			// we do not want to stop uploading of dbs due to failures in cleaning them up so logging just the error here.
 			level.Error(pkg_util.Logger).Log("msg", "failed to cleanup uploaded dbs past their retention period", "table", table.name, "err", err)
@@ -232,6 +251,12 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 				level.Error(pkg_util.Logger).Log("msg", "failed to remove empty table folder", "table", fileInfo.Name(), "err", err)
 			}
 			continue
+		}
+
+		// Queries are only done against table snapshots so it's important we snapshot as soon as the table is loaded.
+		err = table.Snapshot()
+		if err != nil {
+			return nil, err
 		}
 
 		localTables[fileInfo.Name()] = table

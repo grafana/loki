@@ -133,6 +133,16 @@ func (l *BasicLifecycler) GetTokens() Tokens {
 	return l.currInstanceDesc.GetTokens()
 }
 
+// GetRegisteredAt returns the timestamp when the instance has been registered to the ring
+// or a zero value if the lifecycler hasn't been started yet or was already registered and its
+// timestamp is unknown.
+func (l *BasicLifecycler) GetRegisteredAt() time.Time {
+	l.currState.RLock()
+	defer l.currState.RUnlock()
+
+	return l.currInstanceDesc.GetRegisteredAt()
+}
+
 // IsRegistered returns whether the instance is currently registered within the ring.
 func (l *BasicLifecycler) IsRegistered() bool {
 	l.currState.RLock()
@@ -237,7 +247,7 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 		var exists bool
 		instanceDesc, exists = ringDesc.Ingesters[l.cfg.ID]
 		if exists {
-			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()))
+			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()), "registered_at", instanceDesc.GetRegisteredAt().String())
 		} else {
 			level.Info(l.logger).Log("msg", "instance not found in the ring", "instance", l.cfg.ID, "ring", l.ringName)
 		}
@@ -248,15 +258,25 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 		// Ensure tokens are sorted.
 		sort.Sort(tokens)
 
+		// If the instance didn't already exist, then we can safely set the registered timestamp to "now",
+		// otherwise we have to honor the previous value (even if it was zero, because means it was unknown
+		// but it's definitely not "now").
+		var registeredAt time.Time
+		if exists {
+			registeredAt = instanceDesc.GetRegisteredAt()
+		} else {
+			registeredAt = time.Now()
+		}
+
 		if !exists {
-			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state)
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state, registeredAt)
 			return ringDesc, true, nil
 		}
 
 		// Always overwrite the instance in the ring (even if already exists) because some properties
 		// may have changed (stated, tokens, zone, address) and even if they didn't the heartbeat at
 		// least did.
-		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state)
+		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state, registeredAt)
 		return ringDesc, true, nil
 	})
 
@@ -378,7 +398,7 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(*Desc,
 		// or the instance has been forgotten. In this case, we do re-insert it.
 		if !ok {
 			level.Warn(l.logger).Log("msg", "instance missing in the ring, adding it back", "ring", l.ringName)
-			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState())
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), l.GetRegisteredAt())
 		}
 
 		prevTimestamp := instanceDesc.Timestamp

@@ -8,9 +8,11 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
-func newString(s string) *string {
+func NewStringLabelFilter(s string) *string {
 	return &s
 }
 
@@ -26,9 +28,10 @@ func TestParse(t *testing.T) {
 			exp: &rangeAggregationExpr{
 				operation: "count_over_time",
 				left: &logRange{
-					left: &filterExpr{
-						ty:    labels.MatchRegexp,
-						match: "error\\",
+					left: &pipelineExpr{
+						pipeline: MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchRegexp, "error\\"),
+						},
 						left: &matchersExpr{
 							matchers: []*labels.Matcher{
 								mustNewMatcher(labels.MatchRegexp, "foo", "bar\\w+"),
@@ -45,15 +48,12 @@ func TestParse(t *testing.T) {
 			exp: &rangeAggregationExpr{
 				operation: "count_over_time",
 				left: &logRange{
-					left: &filterExpr{
-						ty:    labels.MatchEqual,
-						match: "error",
-						left: &matchersExpr{
-							matchers: []*labels.Matcher{
-								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-							},
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
+						MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "error"),
 						},
-					},
+					),
 					interval: 12 * time.Hour,
 				},
 			},
@@ -64,15 +64,10 @@ func TestParse(t *testing.T) {
 			exp: &rangeAggregationExpr{
 				operation: "count_over_time",
 				left: &logRange{
-					left: &filterExpr{
-						ty:    labels.MatchEqual,
-						match: "error",
-						left: &matchersExpr{
-							matchers: []*labels.Matcher{
-								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-							},
-						},
-					},
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
+						MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "error")},
+					),
 					interval: 12 * time.Hour,
 				},
 			},
@@ -214,7 +209,7 @@ func TestParse(t *testing.T) {
 			}, "topk", &grouping{
 				without: true,
 				groups:  []string{"bar"},
-			}, newString("10")),
+			}, NewStringLabelFilter("10")),
 		},
 		{
 			in: `bottomk(30 ,sum(rate({ foo !~ "bar" }[5h])) by (foo))`,
@@ -228,7 +223,7 @@ func TestParse(t *testing.T) {
 				groups:  []string{"foo"},
 				without: false,
 			}, nil), "bottomk", nil,
-				newString("30")),
+				NewStringLabelFilter("30")),
 		},
 		{
 			in: `max( sum(count_over_time({ foo !~ "bar" }[5h])) without (foo,bar) ) by (foo)`,
@@ -273,7 +268,7 @@ func TestParse(t *testing.T) {
 		{
 			in: `min({ foo !~ "bar" }[5m])`,
 			err: ParseError{
-				msg:  "syntax error: unexpected DURATION",
+				msg:  "syntax error: unexpected RANGE",
 				line: 0,
 				col:  21,
 			},
@@ -327,103 +322,82 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `{foo="bar"} |= "baz"`,
-			exp: &filterExpr{
-				left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-				ty:    labels.MatchEqual,
-				match: "baz",
-			},
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "baz")},
+			),
 		},
 		{
 			in: `{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`,
-			exp: &filterExpr{
-				left: &filterExpr{
-					left: &filterExpr{
-						left: &filterExpr{
-							left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-							ty:    labels.MatchEqual,
-							match: "baz",
-						},
-						ty:    labels.MatchRegexp,
-						match: "blip",
-					},
-					ty:    labels.MatchNotEqual,
-					match: "flip",
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLineFilterExpr(
+						newLineFilterExpr(
+							newLineFilterExpr(
+								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+								labels.MatchRegexp, "blip"),
+							labels.MatchNotEqual, "flip"),
+						labels.MatchNotRegexp, "flap"),
 				},
-				ty:    labels.MatchNotRegexp,
-				match: "flap",
-			},
+			),
 		},
 		{
 			in: `count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
 			exp: newRangeAggregationExpr(
 				&logRange{
-					left: &filterExpr{
-						left: &filterExpr{
-							left: &filterExpr{
-								left: &filterExpr{
-									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-									ty:    labels.MatchEqual,
-									match: "baz",
-								},
-								ty:    labels.MatchRegexp,
-								match: "blip",
-							},
-							ty:    labels.MatchNotEqual,
-							match: "flip",
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
 						},
-						ty:    labels.MatchNotRegexp,
-						match: "flap",
-					},
+					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 		},
 		{
 			in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
 			exp: newRangeAggregationExpr(
 				&logRange{
-					left: &filterExpr{
-						left: &filterExpr{
-							left: &filterExpr{
-								left: &filterExpr{
-									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-									ty:    labels.MatchEqual,
-									match: "baz",
-								},
-								ty:    labels.MatchRegexp,
-								match: "blip",
-							},
-							ty:    labels.MatchNotEqual,
-							match: "flip",
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
 						},
-						ty:    labels.MatchNotRegexp,
-						match: "flap",
-					},
+					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeBytes),
+				}, OpRangeTypeBytes, nil, nil),
 		},
 		{
 			in: `sum(count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
 			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
 				&logRange{
-					left: &filterExpr{
-						left: &filterExpr{
-							left: &filterExpr{
-								left: &filterExpr{
-									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-									ty:    labels.MatchEqual,
-									match: "baz",
-								},
-								ty:    labels.MatchRegexp,
-								match: "blip",
-							},
-							ty:    labels.MatchNotEqual,
-							match: "flip",
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
 						},
-						ty:    labels.MatchNotRegexp,
-						match: "flap",
-					},
+					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 				"sum",
 				&grouping{
 					without: false,
@@ -435,25 +409,20 @@ func TestParse(t *testing.T) {
 			in: `sum(bytes_rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
 			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
 				&logRange{
-					left: &filterExpr{
-						left: &filterExpr{
-							left: &filterExpr{
-								left: &filterExpr{
-									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-									ty:    labels.MatchEqual,
-									match: "baz",
-								},
-								ty:    labels.MatchRegexp,
-								match: "blip",
-							},
-							ty:    labels.MatchNotEqual,
-							match: "flip",
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
 						},
-						ty:    labels.MatchNotRegexp,
-						match: "flap",
-					},
+					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeBytesRate),
+				}, OpRangeTypeBytesRate, nil, nil),
 				"sum",
 				&grouping{
 					without: false,
@@ -465,31 +434,26 @@ func TestParse(t *testing.T) {
 			in: `topk(5,count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) without (foo)`,
 			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
 				&logRange{
-					left: &filterExpr{
-						left: &filterExpr{
-							left: &filterExpr{
-								left: &filterExpr{
-									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-									ty:    labels.MatchEqual,
-									match: "baz",
-								},
-								ty:    labels.MatchRegexp,
-								match: "blip",
-							},
-							ty:    labels.MatchNotEqual,
-							match: "flip",
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
 						},
-						ty:    labels.MatchNotRegexp,
-						match: "flap",
-					},
+					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 				"topk",
 				&grouping{
 					without: true,
 					groups:  []string{"foo"},
 				},
-				newString("5")),
+				NewStringLabelFilter("5")),
 		},
 		{
 			in: `topk(5,sum(rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (app))`,
@@ -497,25 +461,20 @@ func TestParse(t *testing.T) {
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						&logRange{
-							left: &filterExpr{
-								left: &filterExpr{
-									left: &filterExpr{
-										left: &filterExpr{
-											left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-											ty:    labels.MatchEqual,
-											match: "baz",
-										},
-										ty:    labels.MatchRegexp,
-										match: "blip",
-									},
-									ty:    labels.MatchNotEqual,
-									match: "flip",
+							left: newPipelineExpr(
+								newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+								MultiStageExpr{
+									newLineFilterExpr(
+										newLineFilterExpr(
+											newLineFilterExpr(
+												newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+												labels.MatchRegexp, "blip"),
+											labels.MatchNotEqual, "flip"),
+										labels.MatchNotRegexp, "flap"),
 								},
-								ty:    labels.MatchNotRegexp,
-								match: "flap",
-							},
+							),
 							interval: 5 * time.Minute,
-						}, OpRangeTypeRate),
+						}, OpRangeTypeRate, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -524,55 +483,45 @@ func TestParse(t *testing.T) {
 					nil),
 				"topk",
 				nil,
-				newString("5")),
+				NewStringLabelFilter("5")),
 		},
 		{
 			in: `count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")`,
 			exp: newRangeAggregationExpr(
 				&logRange{
-					left: &filterExpr{
-						left: &filterExpr{
-							left: &filterExpr{
-								left: &filterExpr{
-									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-									ty:    labels.MatchEqual,
-									match: "baz",
-								},
-								ty:    labels.MatchRegexp,
-								match: "blip",
-							},
-							ty:    labels.MatchNotEqual,
-							match: "flip",
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
 						},
-						ty:    labels.MatchNotRegexp,
-						match: "flap",
-					},
+					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 		},
 		{
 			in: `sum(count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (foo)`,
 			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
 				&logRange{
-					left: &filterExpr{
-						left: &filterExpr{
-							left: &filterExpr{
-								left: &filterExpr{
-									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-									ty:    labels.MatchEqual,
-									match: "baz",
-								},
-								ty:    labels.MatchRegexp,
-								match: "blip",
-							},
-							ty:    labels.MatchNotEqual,
-							match: "flip",
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
 						},
-						ty:    labels.MatchNotRegexp,
-						match: "flap",
-					},
+					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 				"sum",
 				&grouping{
 					without: false,
@@ -584,31 +533,26 @@ func TestParse(t *testing.T) {
 			in: `topk(5,count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) without (foo)`,
 			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
 				&logRange{
-					left: &filterExpr{
-						left: &filterExpr{
-							left: &filterExpr{
-								left: &filterExpr{
-									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-									ty:    labels.MatchEqual,
-									match: "baz",
-								},
-								ty:    labels.MatchRegexp,
-								match: "blip",
-							},
-							ty:    labels.MatchNotEqual,
-							match: "flip",
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
 						},
-						ty:    labels.MatchNotRegexp,
-						match: "flap",
-					},
+					),
 					interval: 5 * time.Minute,
-				}, OpRangeTypeCount),
+				}, OpRangeTypeCount, nil, nil),
 				"topk",
 				&grouping{
 					without: true,
 					groups:  []string{"foo"},
 				},
-				newString("5")),
+				NewStringLabelFilter("5")),
 		},
 		{
 			in: `topk(5,sum(rate({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (app))`,
@@ -616,25 +560,20 @@ func TestParse(t *testing.T) {
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						&logRange{
-							left: &filterExpr{
-								left: &filterExpr{
-									left: &filterExpr{
-										left: &filterExpr{
-											left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-											ty:    labels.MatchEqual,
-											match: "baz",
-										},
-										ty:    labels.MatchRegexp,
-										match: "blip",
-									},
-									ty:    labels.MatchNotEqual,
-									match: "flip",
+							left: newPipelineExpr(
+								newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+								MultiStageExpr{
+									newLineFilterExpr(
+										newLineFilterExpr(
+											newLineFilterExpr(
+												newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+												labels.MatchRegexp, "blip"),
+											labels.MatchNotEqual, "flip"),
+										labels.MatchNotRegexp, "flap"),
 								},
-								ty:    labels.MatchNotRegexp,
-								match: "flap",
-							},
+							),
 							interval: 5 * time.Minute,
-						}, OpRangeTypeRate),
+						}, OpRangeTypeRate, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -643,7 +582,7 @@ func TestParse(t *testing.T) {
 					nil),
 				"topk",
 				nil,
-				newString("5")),
+				NewStringLabelFilter("5")),
 		},
 		{
 			in: `{foo="bar}`,
@@ -708,7 +647,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -724,7 +663,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -741,7 +680,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpRangeTypeCount),
+					}, OpRangeTypeCount, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -771,7 +710,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -787,7 +726,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -804,7 +743,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpRangeTypeCount),
+					}, OpRangeTypeCount, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -832,7 +771,7 @@ func TestParse(t *testing.T) {
 							},
 						},
 						interval: 5 * time.Minute,
-					}, OpRangeTypeCount),
+					}, OpRangeTypeCount, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -851,7 +790,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -867,7 +806,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 						"sum",
 						&grouping{
 							without: false,
@@ -889,17 +828,15 @@ func TestParse(t *testing.T) {
 					BinOpOptions{},
 					newRangeAggregationExpr(
 						&logRange{
-							left: &filterExpr{
-								left: &matchersExpr{
-									matchers: []*labels.Matcher{
-										mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
-									},
-								},
-								match: "level=error",
-								ty:    labels.MatchEqual,
-							},
+							left: newPipelineExpr(
+								newMatcherExpr([]*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								}),
+								MultiStageExpr{
+									newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+								}),
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 					newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -908,7 +845,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+						}, OpRangeTypeCount, nil, nil)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
 		},
 		{
 			in: `sum by (job) (
@@ -921,17 +858,15 @@ func TestParse(t *testing.T) {
 					BinOpOptions{},
 					newRangeAggregationExpr(
 						&logRange{
-							left: &filterExpr{
-								left: &matchersExpr{
-									matchers: []*labels.Matcher{
-										mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
-									},
-								},
-								match: "level=error",
-								ty:    labels.MatchEqual,
-							},
+							left: newPipelineExpr(
+								newMatcherExpr([]*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								}),
+								MultiStageExpr{
+									newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+								}),
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 					newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{
@@ -940,7 +875,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+						}, OpRangeTypeCount, nil, nil)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
 				mustNewLiteralExpr("100", false),
 			),
 		},
@@ -959,7 +894,7 @@ func TestParse(t *testing.T) {
 								},
 							},
 							interval: 5 * time.Minute,
-						}, OpRangeTypeCount),
+						}, OpRangeTypeCount, nil, nil),
 					"sum",
 					&grouping{
 						without: false,
@@ -988,6 +923,785 @@ func TestParse(t *testing.T) {
 				BinOpOptions{},
 				mustNewBinOpExpr(OpTypeAdd, BinOpOptions{}, &literalExpr{value: 1}, &literalExpr{value: 1}),
 				&literalExpr{value: -1},
+			),
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewOrLabelFilter(
+							log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+							),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | (duration > 1s or status!= 200) and method!="POST"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewAndLabelFilter(
+							log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "duration", 1*time.Second),
+								log.NewNumericLabelFilter(log.LabelFilterNotEqual, "status", 200.0),
+							),
+							log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotEqual, "method", "POST")),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | ( status_code < 500 and status_code > 200) or latency >= 250ms `,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewOrLabelFilter(
+							log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+							),
+							log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | ( status_code < 500 or status_code > 200) and latency >= 250ms `,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewAndLabelFilter(
+							log.NewOrLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+							),
+							log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json |  status_code < 500 or status_code > 200 and latency >= 250ms `,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewOrLabelFilter(
+							log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+							log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+				| foo="bar" buzz!="blip", blop=~"boop" or fuzz==5`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewOrLabelFilter(
+							log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+							),
+						),
+					},
+					&labelFilterExpr{
+						LabelFilterer: log.NewAndLabelFilter(
+							log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "foo", "bar")),
+							log.NewAndLabelFilter(
+								log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotEqual, "buzz", "blip")),
+								log.NewOrLabelFilter(
+									log.NewStringLabelFilter(mustNewMatcher(labels.MatchRegexp, "blop", "boop")),
+									log.NewNumericLabelFilter(log.LabelFilterEqual, "fuzz", 5),
+								),
+							),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | line_format "blip{{ .foo }}blop"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFmtExpr("blip{{ .foo }}blop"),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewOrLabelFilter(
+							log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+							),
+						),
+					},
+					newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewOrLabelFilter(
+							log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+							),
+						),
+					},
+					newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+					newLabelFmtExpr([]log.LabelFmt{
+						log.NewRenameLabelFmt("foo", "bar"),
+						log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+					}),
+				},
+			},
+		},
+		{
+			in: `count_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}"[5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								log.NewAndLabelFilter(
+									log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+									log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]log.LabelFmt{
+							log.NewRenameLabelFmt("foo", "bar"),
+							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					nil),
+				OpRangeTypeCount,
+				nil, nil,
+			),
+		},
+		{
+			in: `sum_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}"[5m])`,
+			exp: nil,
+			err: ParseError{msg: "invalid aggregation sum_over_time without unwrap"},
+		},
+		{
+			in:  `count_over_time({app="foo"} |= "foo" | json | unwrap foo [5m])`,
+			exp: nil,
+			err: ParseError{msg: "invalid aggregation count_over_time with unwrap"},
+		},
+		{
+			in: `{app="foo"} |= "bar" | json |  status_code < 500 or status_code > 200 and size >= 2.5KiB `,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewOrLabelFilter(
+							log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+							log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, "size", 2560),
+							),
+						),
+					},
+				},
+			},
+		},
+		{
+			in: `stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								log.NewAndLabelFilter(
+									log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+									log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]log.LabelFmt{
+							log.NewRenameLabelFmt("foo", "bar"),
+							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", "")),
+				OpRangeTypeStdvar, nil, nil,
+			),
+		}, {
+			in: `stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration(foo) [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								log.NewAndLabelFilter(
+									log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+									log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]log.LabelFmt{
+							log.NewRenameLabelFmt("foo", "bar"),
+							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", OpConvDuration)),
+				OpRangeTypeStdvar, nil, nil,
+			),
+		},
+		{
+			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap bytes(foo) [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, "foo", 5),
+								log.NewDurationLabelFilter(log.LabelFilterLesserThan, "bar", 25*time.Millisecond),
+							),
+						},
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", OpConvBytes)),
+				OpRangeTypeSum, nil, nil,
+			),
+		},
+		{
+			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, "foo", 5),
+								log.NewDurationLabelFilter(log.LabelFilterLesserThan, "bar", 25*time.Millisecond),
+							),
+						},
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("latency", "")),
+				OpRangeTypeSum, nil, nil,
+			),
+		},
+		{
+			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo==5,bar<25ms| unwrap latency [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterEqual, "foo", 5),
+								log.NewDurationLabelFilter(log.LabelFilterLesserThan, "bar", 25*time.Millisecond),
+							),
+						},
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("latency", "")),
+				OpRangeTypeSum, nil, nil,
+			),
+		},
+		{
+			in: `stddev_over_time({app="foo"} |= "bar" | unwrap bar [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("bar", "")),
+				OpRangeTypeStddev, nil, nil,
+			),
+		},
+		{
+			in: `min_over_time({app="foo"} | unwrap bar [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar", "")),
+				OpRangeTypeMin, nil, nil,
+			),
+		},
+		{
+			in: `max_over_time(({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo )[5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								log.NewAndLabelFilter(
+									log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+									log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]log.LabelFmt{
+							log.NewRenameLabelFmt("foo", "bar"),
+							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", "")),
+				OpRangeTypeMax, nil, nil,
+			),
+		},
+		{
+			in: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								log.NewAndLabelFilter(
+									log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+									log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]log.LabelFmt{
+							log.NewRenameLabelFmt("foo", "bar"),
+							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", "")),
+				OpRangeTypeQuantile, nil, NewStringLabelFilter("0.99998"),
+			),
+		},
+		{
+			in: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]) by (namespace,instance)`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								log.NewAndLabelFilter(
+									log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+									log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]log.LabelFmt{
+							log.NewRenameLabelFmt("foo", "bar"),
+							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", "")),
+				OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+			),
+		},
+		{
+			in: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo | __error__ !~".+"[5m]) by (namespace,instance)`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								log.NewAndLabelFilter(
+									log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+									log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+								),
+							),
+						},
+						newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+						newLabelFmtExpr([]log.LabelFmt{
+							log.NewRenameLabelFmt("foo", "bar"),
+							log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+						}),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", "").addPostFilter(log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotRegexp, log.ErrorLabel, ".+")))),
+				OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+			),
+		},
+		{
+			in: `sum without (foo) (
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								LabelFilterer: log.NewOrLabelFilter(
+									log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									log.NewAndLabelFilter(
+										log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+										log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]log.LabelFmt{
+								log.NewRenameLabelFmt("foo", "bar"),
+								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo", "")),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+				),
+				OpTypeSum,
+				&grouping{without: true, groups: []string{"foo"}},
+				nil,
+			),
+		},
+		{
+			in: `sum without (foo) (
+			quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+				| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration(foo) [5m]
+							) by (namespace,instance)
+				)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								LabelFilterer: log.NewOrLabelFilter(
+									log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									log.NewAndLabelFilter(
+										log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+										log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]log.LabelFmt{
+								log.NewRenameLabelFmt("foo", "bar"),
+								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo", OpConvDuration)),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+				),
+				OpTypeSum,
+				&grouping{without: true, groups: []string{"foo"}},
+				nil,
+			),
+		},
+		{
+			in: `sum without (foo) (
+			quantile_over_time(.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+				| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration(foo) [5m]
+							) by (namespace,instance)
+				)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								LabelFilterer: log.NewOrLabelFilter(
+									log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									log.NewAndLabelFilter(
+										log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+										log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]log.LabelFmt{
+								log.NewRenameLabelFmt("foo", "bar"),
+								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo", OpConvDuration)),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter(".99998"),
+				),
+				OpTypeSum,
+				&grouping{without: true, groups: []string{"foo"}},
+				nil,
+			),
+		},
+		{
+			in: `sum without (foo) (
+			quantile_over_time(.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+				| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration_seconds(foo) [5m]
+							) by (namespace,instance)
+				)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								LabelFilterer: log.NewOrLabelFilter(
+									log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									log.NewAndLabelFilter(
+										log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+										log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]log.LabelFmt{
+								log.NewRenameLabelFmt("foo", "bar"),
+								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo", OpConvDurationSeconds)),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter(".99998"),
+				),
+				OpTypeSum,
+				&grouping{without: true, groups: []string{"foo"}},
+				nil,
+			),
+		},
+		{
+			in: `topk(10,
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)`,
+			exp: mustNewVectorAggregationExpr(
+				newRangeAggregationExpr(
+					newLogRange(&pipelineExpr{
+						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+						pipeline: MultiStageExpr{
+							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLabelParserExpr(OpParserTypeJSON, ""),
+							&labelFilterExpr{
+								LabelFilterer: log.NewOrLabelFilter(
+									log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+									log.NewAndLabelFilter(
+										log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+										log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+									),
+								),
+							},
+							newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+							newLabelFmtExpr([]log.LabelFmt{
+								log.NewRenameLabelFmt("foo", "bar"),
+								log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+							}),
+						},
+					},
+						5*time.Minute,
+						newUnwrapExpr("foo", "")),
+					OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+				),
+				OpTypeTopK,
+				nil,
+				NewStringLabelFilter("10"),
+			),
+		},
+		{
+			in: `
+			sum by (foo,bar) (
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)
+					+
+					avg(
+						avg_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+							| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+										) by (namespace,instance)
+							) by (foo,bar)
+					`,
+			exp: mustNewBinOpExpr(OpTypeAdd, BinOpOptions{ReturnBool: false},
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&pipelineExpr{
+							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							pipeline: MultiStageExpr{
+								newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&labelFilterExpr{
+									LabelFilterer: log.NewOrLabelFilter(
+										log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										log.NewAndLabelFilter(
+											log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+											log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]log.LabelFmt{
+									log.NewRenameLabelFmt("foo", "bar"),
+									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo", "")),
+						OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+					),
+					OpTypeSum,
+					&grouping{groups: []string{"foo", "bar"}},
+					nil,
+				),
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&pipelineExpr{
+							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							pipeline: MultiStageExpr{
+								newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&labelFilterExpr{
+									LabelFilterer: log.NewOrLabelFilter(
+										log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										log.NewAndLabelFilter(
+											log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+											log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]log.LabelFmt{
+									log.NewRenameLabelFmt("foo", "bar"),
+									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo", "")),
+						OpRangeTypeAvg, &grouping{without: false, groups: []string{"namespace", "instance"}}, nil,
+					),
+					OpTypeAvg,
+					&grouping{groups: []string{"foo", "bar"}},
+					nil,
+				),
 			),
 		},
 		{
@@ -1162,6 +1876,22 @@ func TestParse(t *testing.T) {
 				col:  1,
 			},
 		},
+		{
+			in:  `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m]) by (foo)`,
+			err: ParseError{msg: "grouping not allowed for sum_over_time aggregation"},
+		},
+		{
+			in:  `sum_over_time(50,{namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
+			err: ParseError{msg: "parameter 50 not supported for operation sum_over_time"},
+		},
+		{
+			in:  `quantile_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
+			err: ParseError{msg: "parameter required for operation quantile_over_time"},
+		},
+		{
+			in:  `quantile_over_time(foo,{namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
+			err: ParseError{msg: "syntax error: unexpected IDENTIFIER, expecting NUMBER or { or (", line: 1, col: 20},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
@@ -1250,4 +1980,23 @@ func TestIsParseError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_PipelineCombined(t *testing.T) {
+	query := `{job="cortex-ops/query-frontend"} |= "logging.go" | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)" | (duration > 1s or status==200) and method="POST" | line_format "{{.duration}}|{{.method}}|{{.status}}"`
+
+	expr, err := ParseLogSelector(query)
+	require.Nil(t, err)
+
+	p, err := expr.Pipeline()
+	require.Nil(t, err)
+
+	line, lbs, ok := p.Process([]byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`), labels.Labels{})
+	require.True(t, ok)
+	require.Equal(
+		t,
+		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		lbs,
+	)
+	require.Equal(t, string([]byte(`1.5s|POST|200`)), string(line))
 }

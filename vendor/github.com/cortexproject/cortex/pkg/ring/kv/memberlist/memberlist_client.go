@@ -359,8 +359,6 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 }
 
 func (m *KV) starting(_ context.Context) error {
-	util.WarnExperimentalUse("Gossip memberlist ring")
-
 	mlCfg, err := m.buildMemberlistConfig()
 	if err != nil {
 		return err
@@ -458,7 +456,7 @@ func (m *KV) JoinMembers(members []string) (int, error) {
 }
 
 func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
-	reached, err := m.memberlist.Join(m.cfg.JoinMembers)
+	reached, err := m.memberlist.Join(members)
 	if err == nil {
 		level.Info(m.logger).Log("msg", "joined memberlist cluster", "reached_nodes", reached)
 		return nil

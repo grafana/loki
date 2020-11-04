@@ -9,6 +9,12 @@ import (
 	"github.com/go-redis/redis/v8/internal"
 )
 
+// KeepTTL is an option for Set command to keep key's existing TTL.
+// For example:
+//
+//    rdb.Set(ctx, key, value, redis.KeepTTL)
+const KeepTTL = -1
+
 func usePrecise(dur time.Duration) bool {
 	return dur < time.Second || dur%time.Second != 0
 }
@@ -213,6 +219,7 @@ type Cmdable interface {
 	XTrim(ctx context.Context, key string, maxLen int64) *IntCmd
 	XTrimApprox(ctx context.Context, key string, maxLen int64) *IntCmd
 	XInfoGroups(ctx context.Context, key string) *XInfoGroupsCmd
+	XInfoStream(ctx context.Context, key string) *XInfoStreamCmd
 
 	BZPopMax(ctx context.Context, timeout time.Duration, keys ...string) *ZWithKeyCmd
 	BZPopMin(ctx context.Context, timeout time.Duration, keys ...string) *ZWithKeyCmd
@@ -753,9 +760,10 @@ func (c cmdable) MSetNX(ctx context.Context, values ...interface{}) *BoolCmd {
 }
 
 // Redis `SET key value [expiration]` command.
-//
 // Use expiration for `SETEX`-like behavior.
+//
 // Zero expiration means the key has no expiration time.
+// KeepTTL(-1) expiration is a Redis KEEPTTL option to keep existing TTL.
 func (c cmdable) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *StatusCmd {
 	args := make([]interface{}, 3, 5)
 	args[0] = "set"
@@ -767,7 +775,10 @@ func (c cmdable) Set(ctx context.Context, key string, value interface{}, expirat
 		} else {
 			args = append(args, "ex", formatSec(ctx, expiration))
 		}
+	} else if expiration == KeepTTL {
+		args = append(args, "keepttl")
 	}
+
 	cmd := NewStatusCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
@@ -776,18 +787,23 @@ func (c cmdable) Set(ctx context.Context, key string, value interface{}, expirat
 // Redis `SET key value [expiration] NX` command.
 //
 // Zero expiration means the key has no expiration time.
+// KeepTTL(-1) expiration is a Redis KEEPTTL option to keep existing TTL.
 func (c cmdable) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *BoolCmd {
 	var cmd *BoolCmd
-	if expiration == 0 {
+	switch expiration {
+	case 0:
 		// Use old `SETNX` to support old Redis versions.
 		cmd = NewBoolCmd(ctx, "setnx", key, value)
-	} else {
+	case KeepTTL:
+		cmd = NewBoolCmd(ctx, "set", key, value, "keepttl", "nx")
+	default:
 		if usePrecise(expiration) {
 			cmd = NewBoolCmd(ctx, "set", key, value, "px", formatMs(ctx, expiration), "nx")
 		} else {
 			cmd = NewBoolCmd(ctx, "set", key, value, "ex", formatSec(ctx, expiration), "nx")
 		}
 	}
+
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -795,17 +811,22 @@ func (c cmdable) SetNX(ctx context.Context, key string, value interface{}, expir
 // Redis `SET key value [expiration] XX` command.
 //
 // Zero expiration means the key has no expiration time.
+// KeepTTL(-1) expiration is a Redis KEEPTTL option to keep existing TTL.
 func (c cmdable) SetXX(ctx context.Context, key string, value interface{}, expiration time.Duration) *BoolCmd {
 	var cmd *BoolCmd
-	if expiration == 0 {
+	switch expiration {
+	case 0:
 		cmd = NewBoolCmd(ctx, "set", key, value, "xx")
-	} else {
+	case KeepTTL:
+		cmd = NewBoolCmd(ctx, "set", key, value, "keepttl", "xx")
+	default:
 		if usePrecise(expiration) {
 			cmd = NewBoolCmd(ctx, "set", key, value, "px", formatMs(ctx, expiration), "xx")
 		} else {
 			cmd = NewBoolCmd(ctx, "set", key, value, "ex", formatSec(ctx, expiration), "xx")
 		}
 	}
+
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -1484,16 +1505,20 @@ type XReadArgs struct {
 func (c cmdable) XRead(ctx context.Context, a *XReadArgs) *XStreamSliceCmd {
 	args := make([]interface{}, 0, 5+len(a.Streams))
 	args = append(args, "xread")
+
+	keyPos := int8(1)
 	if a.Count > 0 {
 		args = append(args, "count")
 		args = append(args, a.Count)
+		keyPos += 2
 	}
 	if a.Block >= 0 {
 		args = append(args, "block")
 		args = append(args, int64(a.Block/time.Millisecond))
+		keyPos += 2
 	}
-
 	args = append(args, "streams")
+	keyPos++
 	for _, s := range a.Streams {
 		args = append(args, s)
 	}
@@ -1502,6 +1527,7 @@ func (c cmdable) XRead(ctx context.Context, a *XReadArgs) *XStreamSliceCmd {
 	if a.Block >= 0 {
 		cmd.setReadTimeout(a.Block)
 	}
+	cmd.setFirstKeyPos(keyPos)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -1555,16 +1581,22 @@ type XReadGroupArgs struct {
 func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSliceCmd {
 	args := make([]interface{}, 0, 8+len(a.Streams))
 	args = append(args, "xreadgroup", "group", a.Group, a.Consumer)
+
+	keyPos := int8(1)
 	if a.Count > 0 {
 		args = append(args, "count", a.Count)
+		keyPos += 2
 	}
 	if a.Block >= 0 {
 		args = append(args, "block", int64(a.Block/time.Millisecond))
+		keyPos += 2
 	}
 	if a.NoAck {
 		args = append(args, "noack")
+		keyPos++
 	}
 	args = append(args, "streams")
+	keyPos++
 	for _, s := range a.Streams {
 		args = append(args, s)
 	}
@@ -1573,6 +1605,7 @@ func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSlic
 	if a.Block >= 0 {
 		cmd.setReadTimeout(a.Block)
 	}
+	cmd.setFirstKeyPos(keyPos)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -1663,6 +1696,12 @@ func (c cmdable) XTrimApprox(ctx context.Context, key string, maxLen int64) *Int
 
 func (c cmdable) XInfoGroups(ctx context.Context, key string) *XInfoGroupsCmd {
 	cmd := NewXInfoGroupsCmd(ctx, key)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) XInfoStream(ctx context.Context, key string) *XInfoStreamCmd {
+	cmd := NewXInfoStreamCmd(ctx, key)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -1851,6 +1890,7 @@ func (c cmdable) ZInterStore(ctx context.Context, destination string, store *ZSt
 		args = append(args, "aggregate", store.Aggregate)
 	}
 	cmd := NewIntCmd(ctx, args...)
+	cmd.setFirstKeyPos(3)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -2085,7 +2125,9 @@ func (c cmdable) ZUnionStore(ctx context.Context, dest string, store *ZStore) *I
 	if store.Aggregate != "" {
 		args = append(args, "aggregate", store.Aggregate)
 	}
+
 	cmd := NewIntCmd(ctx, args...)
+	cmd.setFirstKeyPos(3)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -2306,8 +2348,10 @@ func (c cmdable) SlaveOf(ctx context.Context, host, port string) *StatusCmd {
 	return cmd
 }
 
-func (c cmdable) SlowLog(ctx context.Context) {
-	panic("not implemented")
+func (c cmdable) SlowLogGet(ctx context.Context, num int64) *SlowLogCmd {
+	cmd := NewSlowLogCmd(context.Background(), "slowlog", "get", num)
+	_ = c(ctx, cmd)
+	return cmd
 }
 
 func (c cmdable) Sync(ctx context.Context) {

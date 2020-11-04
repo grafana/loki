@@ -8,7 +8,7 @@ containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or [Grafana Cloud](https://grafana.com/oss/loki).
 
 > Docker plugins are not yet supported on Windows; see the
-> [Docker docs](https://docs.docker.com/engine/extend) for more information.
+> [Docker Engine managed plugin system](https://docs.docker.com/engine/extend) documentation for more information.
 
 Documentation on configuring the Loki Docker Driver can be found on the
 [configuration page](./configuration).
@@ -35,7 +35,7 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once the plugin is installed it can be [configured](../../configuration/).
+Once the plugin is installed it can be [configured](./configuration).
 
 ## Upgrading
 
@@ -43,8 +43,8 @@ The upgrade process involves disabling the existing plugin, upgrading, then
 re-enabling and restarting Docker:
 
 ```bash
-docker plugin disable loki
-docker plugin upgrade loki grafana/loki-docker-driver:latest
+docker plugin disable loki --force
+docker plugin upgrade loki grafana/loki-docker-driver:latest --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```
@@ -54,6 +54,6 @@ systemctl restart docker
 To cleanly uninstall the plugin, disable and remove it:
 
 ```bash
-docker plugin disable loki
+docker plugin disable loki --force
 docker plugin rm loki
 ```

@@ -29,6 +29,10 @@ const (
 	tailerWaitEntryThrottle = time.Second / 2
 )
 
+type interval struct {
+	start, end time.Time
+}
+
 // Config for a querier.
 type Config struct {
 	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
@@ -80,51 +84,40 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		return nil, err
 	}
 
-	var chunkStoreIter iter.EntryIterator
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
-	if q.cfg.IngesterQueryStoreMaxLookback == 0 {
-		// IngesterQueryStoreMaxLookback is zero, the default state, query the store normally
-		chunkStoreIter, err = q.store.SelectLogs(ctx, params)
+	iters := []iter.EntryIterator{}
+	if ingesterQueryInterval != nil {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+		queryRequestCopy := *params.QueryRequest
+		newParams := logql.SelectLogParams{
+			QueryRequest: &queryRequestCopy,
+		}
+		newParams.Start = ingesterQueryInterval.start
+		newParams.End = ingesterQueryInterval.end
+
+		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
 		}
-	} else if q.cfg.IngesterQueryStoreMaxLookback > 0 {
-		// IngesterQueryStoreMaxLookback is greater than zero
-		// Adjust the store query range to only query for data ingesters are not already querying for
-		adjustedEnd := params.End.Add(-q.cfg.IngesterQueryStoreMaxLookback)
-		if params.Start.After(adjustedEnd) {
-			chunkStoreIter = iter.NoopIterator
-		} else {
-			// Make a copy of the request before modifying
-			// because the initial request is used below to query ingesters
-			queryRequestCopy := *params.QueryRequest
-			newParams := logql.SelectLogParams{
-				QueryRequest: &queryRequestCopy,
-			}
-			newParams.End = adjustedEnd
-			chunkStoreIter, err = q.store.SelectLogs(ctx, newParams)
-			if err != nil {
-				return nil, err
-			}
+
+		iters = append(iters, ingesterIters...)
+	}
+
+	if storeQueryInterval != nil {
+		params.Start = storeQueryInterval.start
+		params.End = storeQueryInterval.end
+
+		storeIter, err := q.store.SelectLogs(ctx, params)
+		if err != nil {
+			return nil, err
 		}
-	} else {
-		// IngesterQueryStoreMaxLookback is less than zero
-		// ingesters will be querying all the way back in time so there is no reason to query the store
-		chunkStoreIter = iter.NoopIterator
+
+		iters = append(iters, storeIter)
 	}
 
-	// skip ingester queries only when QueryIngestersWithin is enabled (not the zero value) and
-	// the end of the query is earlier than the lookback
-	if !shouldQueryIngester(q.cfg, params) {
-		return chunkStoreIter, nil
-	}
-
-	iters, err := q.ingesterQuerier.SelectLogs(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return iter.NewHeapIterator(ctx, append(iters, chunkStoreIter), params.Direction), nil
+	return iter.NewHeapIterator(ctx, iters, params.Direction), nil
 }
 
 func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -133,52 +126,106 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 		return nil, err
 	}
 
-	var chunkStoreIter iter.SampleIterator
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
-	switch {
-	case q.cfg.IngesterQueryStoreMaxLookback == 0:
-		// IngesterQueryStoreMaxLookback is zero, the default state, query the store normally
-		chunkStoreIter, err = q.store.SelectSamples(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-	case q.cfg.IngesterQueryStoreMaxLookback > 0:
-		adjustedEnd := params.End.Add(-q.cfg.IngesterQueryStoreMaxLookback)
-		if params.Start.After(adjustedEnd) {
-			chunkStoreIter = iter.NoopIterator
-			break
-		}
+	iters := []iter.SampleIterator{}
+	if ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
-		// because the initial request is used below to query ingesters
+		// because the initial request is used below to query stores
 		queryRequestCopy := *params.SampleQueryRequest
 		newParams := logql.SelectSampleParams{
 			SampleQueryRequest: &queryRequestCopy,
 		}
-		newParams.End = adjustedEnd
-		chunkStoreIter, err = q.store.SelectSamples(ctx, newParams)
+		newParams.Start = ingesterQueryInterval.start
+		newParams.End = ingesterQueryInterval.end
+
+		ingesterIters, err := q.ingesterQuerier.SelectSample(ctx, newParams)
 		if err != nil {
 			return nil, err
 		}
-	default:
-		chunkStoreIter = iter.NoopIterator
 
-	}
-	// skip ingester queries only when QueryIngestersWithin is enabled (not the zero value) and
-	// the end of the query is earlier than the lookback
-	if !shouldQueryIngester(q.cfg, params) {
-		return chunkStoreIter, nil
+		iters = append(iters, ingesterIters...)
 	}
 
-	iters, err := q.ingesterQuerier.SelectSample(ctx, params)
-	if err != nil {
-		return nil, err
+	if storeQueryInterval != nil {
+		params.Start = storeQueryInterval.start
+		params.End = storeQueryInterval.end
+
+		storeIter, err := q.store.SelectSamples(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		iters = append(iters, storeIter)
 	}
-	return iter.NewHeapSampleIterator(ctx, append(iters, chunkStoreIter)), nil
+	return iter.NewHeapSampleIterator(ctx, iters), nil
 }
 
-func shouldQueryIngester(cfg Config, params logql.QueryParams) bool {
-	lookback := time.Now().Add(-cfg.QueryIngestersWithin)
-	return !(cfg.QueryIngestersWithin != 0 && params.GetEnd().Before(lookback))
+func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
+	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
+	limitQueryInterval := false
+	// ingesterMLB having -1 means query ingester for whole duration.
+	ingesterMLB := time.Duration(-1)
+	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
+		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
+		limitQueryInterval = true
+		ingesterMLB = q.cfg.IngesterQueryStoreMaxLookback
+	} else if q.cfg.QueryIngestersWithin != 0 {
+		ingesterMLB = q.cfg.QueryIngestersWithin
+	}
+
+	// query ingester for whole duration.
+	if ingesterMLB == -1 {
+		i := &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}
+
+		if limitQueryInterval {
+			// query only ingesters.
+			return i, nil
+		}
+
+		// query both stores and ingesters without limiting the query interval.
+		return i, i
+	}
+
+	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.
+	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
+	if queryEnd.Before(ingesterOldestStartTime) {
+		return nil, &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}
+	}
+
+	// if there is an overlap and we are not limiting the query interval then do both store and ingester query for whole query interval.
+	if !limitQueryInterval {
+		i := &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}
+		return i, i
+	}
+
+	// limit the start of ingester query interval to ingesterOldestStartTime.
+	ingesterQueryInterval := &interval{
+		start: ingesterOldestStartTime,
+		end:   queryEnd,
+	}
+
+	// limit the end of ingester query interval to ingesterOldestStartTime.
+	storeQueryInterval := &interval{
+		start: queryStart,
+		end:   ingesterOldestStartTime,
+	}
+
+	// query touches only ingester query interval so do not do store query.
+	if storeQueryInterval.start.After(storeQueryInterval.end) {
+		storeQueryInterval = nil
+	}
+
+	return ingesterQueryInterval, storeQueryInterval
 }
 
 // Label does the heavy lifting for a Label query.
@@ -256,6 +303,9 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 	defer cancelQuery()
 
 	tailClients, err := q.ingesterQuerier.Tail(tailCtx, req)
+	if err != nil {
+		return nil, err
+	}
 
 	histIterators, err := q.SelectLogs(queryCtx, histReq)
 	if err != nil {

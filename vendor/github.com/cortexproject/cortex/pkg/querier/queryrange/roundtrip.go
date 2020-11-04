@@ -82,7 +82,7 @@ func (cfg *Config) Validate(log log.Logger) error {
 		if cfg.SplitQueriesByInterval <= 0 {
 			return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
 		}
-		if err := cfg.ResultsCacheConfig.CacheConfig.Validate(); err != nil {
+		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
 			return errors.Wrap(err, "invalid ResultsCache config")
 		}
 	}

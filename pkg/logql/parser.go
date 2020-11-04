@@ -2,7 +2,6 @@ package logql
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"text/scanner"
 
@@ -12,6 +11,8 @@ import (
 func init() {
 	// Improve the error messages coming out of yacc.
 	exprErrorVerbose = true
+	// uncomment when you need to understand yacc rule tree.
+	// exprDebug = 3
 	for str, tok := range tokens {
 		exprToknames[tok-exprPrivate+1] = str
 	}
@@ -83,31 +84,4 @@ func ParseLogSelector(input string) (LogSelectorExpr, error) {
 		return nil, errors.New("only log selector is supported")
 	}
 	return logSelector, nil
-}
-
-// ParseError is what is returned when we failed to parse.
-type ParseError struct {
-	msg       string
-	line, col int
-}
-
-func (p ParseError) Error() string {
-	if p.col == 0 && p.line == 0 {
-		return fmt.Sprintf("parse error : %s", p.msg)
-	}
-	return fmt.Sprintf("parse error at line %d, col %d: %s", p.line, p.col, p.msg)
-}
-
-func newParseError(msg string, line, col int) ParseError {
-	return ParseError{
-		msg:  msg,
-		line: line,
-		col:  col,
-	}
-}
-
-// IsParseError returns true if the err is a ast parsing error.
-func IsParseError(err error) bool {
-	_, ok := err.(ParseError)
-	return ok
 }

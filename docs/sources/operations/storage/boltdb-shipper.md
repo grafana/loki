@@ -1,9 +1,7 @@
 ---
-title: BoltDB Shipper
+title: Single Store (boltdb-shipper)
 ---
-# Loki with BoltDB Shipper
-
-:warning: BoltDB Shipper is still an experimental feature. It is not recommended to be used in production environments.
+# Single Store Loki (boltdb-shipper index type)
 
 BoltDB Shipper lets you run Loki without any dependency on NoSQL stores for storing index.
 It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
@@ -114,6 +112,10 @@ We recommend running a Compactor since a single Ingester creates 96 files per da
 **Note:** There should be only 1 compactor instance running at a time that otherwise could create problems and may lead to data loss.
 
 Example compactor configuration with GCS:
+
+#### Delete Permissions
+
+The compactor is an optional but suggested component that combines and deduplicates the boltdb-shipper index files. When compacting index files, the compactor writes a new file and deletes unoptimized files. Ensure that the compactor has appropriate permissions for deleting files, for example, s3:DeleteObject permission for AWS S3.
 
 ```yaml
 compactor:

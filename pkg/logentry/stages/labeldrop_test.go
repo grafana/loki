@@ -6,13 +6,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
 )
 
 func Test_dropLabelStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
-	cfg.LogLevel.Set("debug")
+	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util.InitLogger(cfg)
 	Debug = true
 

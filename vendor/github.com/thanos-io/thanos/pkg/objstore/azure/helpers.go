@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/Azure/azure-pipeline-go/pipeline"
 	blob "github.com/Azure/azure-storage-blob-go/azblob"
 )
 
@@ -34,6 +35,14 @@ func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error
 	p := blob.NewPipeline(c, blob.PipelineOptions{
 		Retry:     retryOptions,
 		Telemetry: blob.TelemetryOptions{Value: "Thanos"},
+		RequestLog: blob.RequestLogOptions{
+			// Log a warning if an operation takes longer than the specified duration.
+			// (-1=no logging; 0=default 3s threshold)
+			LogWarningIfTryOverThreshold: -1,
+		},
+		Log: pipeline.LogOptions{
+			ShouldLog: nil,
+		},
 	})
 	u, err := url.Parse(fmt.Sprintf("https://%s.%s", conf.StorageAccountName, conf.Endpoint))
 	if err != nil {

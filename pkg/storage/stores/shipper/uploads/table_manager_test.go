@@ -10,8 +10,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 func buildTestTableManager(t *testing.T, testDir string) (*TableManager, *local.BoltIndexClient, stopFunc) {
@@ -37,7 +38,7 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, *local.
 }
 
 func TestLoadTables(t *testing.T) {
-	testDir, err := ioutil.TempDir("", "cleanup")
+	testDir, err := ioutil.TempDir("", "load-tables")
 	require.NoError(t, err)
 
 	defer func() {
@@ -56,11 +57,11 @@ func TestLoadTables(t *testing.T) {
 
 	// table1 with 2 dbs
 	testutil.SetupDBTablesAtPath(t, "table1", indexPath, map[string]testutil.DBRecords{
-		"db1": testutil.DBRecords{
+		"db1": {
 			Start:      10,
 			NumRecords: 10,
 		},
-		"db2": testutil.DBRecords{
+		"db2": {
 			Start:      20,
 			NumRecords: 10,
 		},
@@ -68,11 +69,11 @@ func TestLoadTables(t *testing.T) {
 
 	// table2 with 2 dbs
 	testutil.SetupDBTablesAtPath(t, "table2", indexPath, map[string]testutil.DBRecords{
-		"db1": testutil.DBRecords{
+		"db1": {
 			Start:      30,
 			NumRecords: 10,
 		},
-		"db2": testutil.DBRecords{
+		"db2": {
 			Start:      40,
 			NumRecords: 10,
 		},
@@ -101,7 +102,7 @@ func TestLoadTables(t *testing.T) {
 	require.True(t, !stat.IsDir())
 
 	for tableName, expectedIndex := range expectedTables {
-		testutil.TestSingleQuery(t, chunk.IndexQuery{TableName: tableName}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -137,7 +138,8 @@ func TestTableManager_BatchWrite(t *testing.T) {
 	require.Len(t, tm.tables, len(tc))
 
 	for tableName, expectedIndex := range tc {
-		testutil.TestSingleQuery(t, chunk.IndexQuery{TableName: tableName}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
+		require.NoError(t, tm.tables[tableName].Snapshot())
+		testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{TableName: tableName}}, tm.tables[tableName], expectedIndex.start, expectedIndex.numRecords)
 	}
 }
 
@@ -172,6 +174,10 @@ func TestTableManager_QueryPages(t *testing.T) {
 	queries = append(queries, chunk.IndexQuery{TableName: "non-existent"})
 
 	require.NoError(t, tm.BatchWrite(context.Background(), writeBatch))
+
+	for _, table := range tm.tables {
+		require.NoError(t, table.Snapshot())
+	}
 
 	testutil.TestMultiTableQuery(t, queries, tm, 0, 30)
 }

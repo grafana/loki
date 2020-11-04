@@ -90,9 +90,11 @@ func FromProto(storeType storepb.StoreType) StoreAPI {
 
 var (
 	Bucket          = source{component: component{name: "bucket"}}
+	Cleanup         = source{component: component{name: "cleanup"}}
 	Compact         = source{component: component{name: "compact"}}
 	Downsample      = source{component: component{name: "downsample"}}
 	Replicate       = source{component: component{name: "replicate"}}
+	QueryFrontend   = source{component: component{name: "query-frontend"}}
 	Debug           = sourceStoreAPI{component: component{name: "debug"}}
 	Receive         = sourceStoreAPI{component: component{name: "receive"}}
 	Rule            = sourceStoreAPI{component: component{name: "rule"}}

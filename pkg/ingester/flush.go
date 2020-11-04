@@ -307,7 +307,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, streamsMtx *sync.RWMutex) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, streamsMtx sync.Locker) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err

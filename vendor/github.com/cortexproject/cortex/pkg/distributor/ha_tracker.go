@@ -273,9 +273,6 @@ func replicasNotMatchError(replica, elected string) error {
 	return httpgrpc.Errorf(http.StatusAccepted, "replicas did not mach, rejecting sample: replica=%s, elected=%s", replica, elected)
 }
 
-// Modifies the labels parameter in place, removing labels that match
-// the replica or cluster label and returning their values. Returns an error
-// if we find one but not both of the labels.
 func findHALabels(replicaLabel, clusterLabel string, labels []client.LabelAdapter) (string, string) {
 	var cluster, replica string
 	var pair client.LabelAdapter

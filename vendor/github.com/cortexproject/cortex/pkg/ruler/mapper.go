@@ -23,10 +23,34 @@ type mapper struct {
 }
 
 func newMapper(path string, logger log.Logger) *mapper {
-	return &mapper{
+	m := &mapper{
 		Path:   path,
 		FS:     afero.NewOsFs(),
 		logger: logger,
+	}
+	m.cleanup()
+
+	return m
+}
+
+// cleanup removes all of the user directories in the path of the mapper
+func (m *mapper) cleanup() {
+	level.Info(m.logger).Log("msg", "cleaning up mapped rules directory", "path", m.Path)
+
+	existingUsers, err := afero.ReadDir(m.FS, m.Path)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "unable to read rules directory", "path", m.Path, "err", err)
+		return
+	}
+
+	for _, u := range existingUsers {
+		if u.IsDir() {
+			dirPath := filepath.Join(m.Path, u.Name())
+			err = m.FS.RemoveAll(dirPath)
+			if err != nil {
+				level.Warn(m.logger).Log("msg", "unable to remove user directory", "path", dirPath, "err", err)
+			}
+		}
 	}
 }
 

@@ -239,6 +239,17 @@ func (b *BoltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 }
 
 func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+	return db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket(bucketName)
+		if bucket == nil {
+			return nil
+		}
+
+		return b.QueryWithCursor(ctx, bucket.Cursor(), query, callback)
+	})
+}
+
+func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	var start []byte
 	if len(query.RangeValuePrefix) > 0 {
 		start = []byte(query.HashValue + separator + string(query.RangeValuePrefix))
@@ -250,42 +261,35 @@ func (b *BoltIndexClient) QueryDB(ctx context.Context, db *bbolt.DB, query chunk
 
 	rowPrefix := []byte(query.HashValue + separator)
 
-	return db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(bucketName)
-		if b == nil {
-			return nil
+	var batch boltReadBatch
+
+	for k, v := c.Seek(start); k != nil; k, v = c.Next() {
+		if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
+			continue
 		}
 
-		var batch boltReadBatch
-		c := b.Cursor()
-		for k, v := c.Seek(start); k != nil; k, v = c.Next() {
-			if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
-				continue
-			}
-
-			if len(query.RangeValuePrefix) > 0 && !bytes.HasPrefix(k, start) {
-				break
-			}
-
-			if !bytes.HasPrefix(k, rowPrefix) {
-				break
-			}
-
-			// make a copy since k, v are only valid for the life of the transaction.
-			// See: https://godoc.org/github.com/boltdb/bolt#Cursor.Seek
-			batch.rangeValue = make([]byte, len(k)-len(rowPrefix))
-			copy(batch.rangeValue, k[len(rowPrefix):])
-
-			batch.value = make([]byte, len(v))
-			copy(batch.value, v)
-
-			if !callback(query, &batch) {
-				break
-			}
+		if len(query.RangeValuePrefix) > 0 && !bytes.HasPrefix(k, start) {
+			break
 		}
 
-		return nil
-	})
+		if !bytes.HasPrefix(k, rowPrefix) {
+			break
+		}
+
+		// make a copy since k, v are only valid for the life of the transaction.
+		// See: https://godoc.org/github.com/boltdb/bolt#Cursor.Seek
+		batch.rangeValue = make([]byte, len(k)-len(rowPrefix))
+		copy(batch.rangeValue, k[len(rowPrefix):])
+
+		batch.value = make([]byte, len(v))
+		copy(batch.value, v)
+
+		if !callback(query, &batch) {
+			break
+		}
+	}
+
+	return nil
 }
 
 type TableWrites struct {

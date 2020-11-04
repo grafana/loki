@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -31,8 +32,19 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// DirDelim is the delimiter used to model a directory structure in an object store bucket.
-const DirDelim = "/"
+const (
+	// DirDelim is the delimiter used to model a directory structure in an object store bucket.
+	DirDelim = "/"
+
+	// SSEKMS is the name of the SSE-KMS method for objectstore encryption.
+	SSEKMS = "SSE-KMS"
+
+	// SSEC is the name of the SSE-C method for objstore encryption.
+	SSEC = "SSE-C"
+
+	// SSES3 is the name of the SSE-S3 method for objstore encryption.
+	SSES3 = "SSE-S3"
+)
 
 var DefaultConfig = Config{
 	PutUserMetadata: map[string]string{},
@@ -53,13 +65,22 @@ type Config struct {
 	AccessKey       string            `yaml:"access_key"`
 	Insecure        bool              `yaml:"insecure"`
 	SignatureV2     bool              `yaml:"signature_version2"`
-	SSEEncryption   bool              `yaml:"encrypt_sse"`
 	SecretKey       string            `yaml:"secret_key"`
 	PutUserMetadata map[string]string `yaml:"put_user_metadata"`
 	HTTPConfig      HTTPConfig        `yaml:"http_config"`
 	TraceConfig     TraceConfig       `yaml:"trace"`
 	// PartSize used for multipart upload. Only used if uploaded object size is known and larger than configured PartSize.
-	PartSize uint64 `yaml:"part_size"`
+	PartSize  uint64    `yaml:"part_size"`
+	SSEConfig SSEConfig `yaml:"sse_config"`
+}
+
+// SSEConfig deals with the configuration of SSE for Minio. The following options are valid:
+// kmsencryptioncontext == https://docs.aws.amazon.com/kms/latest/developerguide/services-s3.html#s3-encryption-context
+type SSEConfig struct {
+	Type                 string            `yaml:"type"`
+	KMSKeyID             string            `yaml:"kms_key_id"`
+	KMSEncryptionContext map[string]string `yaml:"kms_encryption_context"`
+	EncryptionKey        string            `yaml:"encryption_key"`
 }
 
 type TraceConfig struct {
@@ -71,6 +92,41 @@ type HTTPConfig struct {
 	IdleConnTimeout       model.Duration `yaml:"idle_conn_timeout"`
 	ResponseHeaderTimeout model.Duration `yaml:"response_header_timeout"`
 	InsecureSkipVerify    bool           `yaml:"insecure_skip_verify"`
+
+	// Allow upstream callers to inject a round tripper
+	Transport http.RoundTripper `yaml:"-"`
+}
+
+// DefaultTransport - this default transport is based on the Minio
+// DefaultTransport up until the following commit:
+// https://github.com/minio/minio-go/commit/008c7aa71fc17e11bf980c209a4f8c4d687fc884
+// The values have since diverged.
+func DefaultTransport(config Config) *http.Transport {
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		IdleConnTimeout:       time.Duration(config.HTTPConfig.IdleConnTimeout),
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		// A custom ResponseHeaderTimeout was introduced
+		// to cover cases where the tcp connection works but
+		// the server never answers. Defaults to 2 minutes.
+		ResponseHeaderTimeout: time.Duration(config.HTTPConfig.ResponseHeaderTimeout),
+		// Set this value so that the underlying transport round-tripper
+		// doesn't try to auto decode the body of objects with
+		// content-encoding set to `gzip`.
+		//
+		// Refer: https://golang.org/src/net/http/transport.go?h=roundTrip#L1843.
+		DisableCompression: true,
+		TLSClientConfig:    &tls.Config{InsecureSkipVerify: config.HTTPConfig.InsecureSkipVerify},
+	}
 }
 
 // Bucket implements the store.Bucket interface against s3-compatible APIs.
@@ -86,7 +142,7 @@ type Bucket struct {
 // parseConfig unmarshals a buffer into a Config with default HTTPConfig values.
 func parseConfig(conf []byte) (Config, error) {
 	config := DefaultConfig
-	if err := yaml.Unmarshal(conf, &config); err != nil {
+	if err := yaml.UnmarshalStrict(conf, &config); err != nil {
 		return Config{}, err
 	}
 
@@ -136,36 +192,20 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		}
 	}
 
-	client, err := minio.New(config.Endpoint, &minio.Options{
-		Creds:  credentials.NewChainCredentials(chain),
-		Secure: !config.Insecure,
-		Region: config.Region,
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).DialContext,
+	// Check if a roundtripper has been set in the config
+	// otherwise build the default transport.
+	var rt http.RoundTripper
+	if config.HTTPConfig.Transport != nil {
+		rt = config.HTTPConfig.Transport
+	} else {
+		rt = DefaultTransport(config)
+	}
 
-			MaxIdleConns:          100,
-			MaxIdleConnsPerHost:   100,
-			IdleConnTimeout:       time.Duration(config.HTTPConfig.IdleConnTimeout),
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-			// The ResponseHeaderTimeout here is the only change
-			// from the default minio transport, it was introduced
-			// to cover cases where the tcp connection works but
-			// the server never answers. Defaults to 2 minutes.
-			ResponseHeaderTimeout: time.Duration(config.HTTPConfig.ResponseHeaderTimeout),
-			// Set this value so that the underlying transport round-tripper
-			// doesn't try to auto decode the body of objects with
-			// content-encoding set to `gzip`.
-			//
-			// Refer: https://golang.org/src/net/http/transport.go?h=roundTrip#L1843.
-			DisableCompression: true,
-			TLSClientConfig:    &tls.Config{InsecureSkipVerify: config.HTTPConfig.InsecureSkipVerify},
-		},
+	client, err := minio.New(config.Endpoint, &minio.Options{
+		Creds:     credentials.NewChainCredentials(chain),
+		Secure:    !config.Insecure,
+		Region:    config.Region,
+		Transport: rt,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "initialize s3 client")
@@ -173,8 +213,32 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 	client.SetAppInfo(fmt.Sprintf("thanos-%s", component), fmt.Sprintf("%s (%s)", version.Version, runtime.Version()))
 
 	var sse encrypt.ServerSide
-	if config.SSEEncryption {
-		sse = encrypt.NewSSE()
+	if config.SSEConfig.Type != "" {
+		switch config.SSEConfig.Type {
+		case SSEKMS:
+			sse, err = encrypt.NewSSEKMS(config.SSEConfig.KMSKeyID, config.SSEConfig.KMSEncryptionContext)
+			if err != nil {
+				return nil, errors.Wrap(err, "initialize s3 client SSE-KMS")
+			}
+
+		case SSEC:
+			key, err := ioutil.ReadFile(config.SSEConfig.EncryptionKey)
+			if err != nil {
+				return nil, err
+			}
+
+			sse, err = encrypt.NewSSEC(key)
+			if err != nil {
+				return nil, errors.Wrap(err, "initialize s3 client SSE-C")
+			}
+
+		case SSES3:
+			sse = encrypt.NewSSE()
+
+		default:
+			sseErrMsg := errors.Errorf("Unsupported type %q was provided. Supported types are SSE-S3, SSE-KMS, SSE-C", config.SSEConfig.Type)
+			return nil, errors.Wrap(sseErrMsg, "Initialize s3 client SSE Config")
+		}
 	}
 
 	if config.TraceConfig.Enable {
@@ -211,6 +275,15 @@ func validate(conf Config) error {
 	if conf.AccessKey != "" && conf.SecretKey == "" {
 		return errors.New("no s3 secret_key specified while access_key is present in config file; either both should be present in config or envvars/IAM should be used.")
 	}
+
+	if conf.SSEConfig.Type == SSEC && conf.SSEConfig.EncryptionKey == "" {
+		return errors.New("encryption_key must be set if sse_config.type is set to 'SSE-C'")
+	}
+
+	if conf.SSEConfig.Type == SSEKMS && conf.SSEConfig.KMSKeyID == "" {
+		return errors.New("kms_key_id must be set if sse_config.type is set to 'SSE-KMS'")
+	}
+
 	return nil
 }
 

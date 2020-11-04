@@ -6,6 +6,10 @@ title: Configuration
 The Docker daemon on each machine has a default logging driver and
 each container will use the default driver unless configured otherwise.
 
+## Installation
+
+Before configuring the plugin, [install or upgrade the Loki Docker Driver Client](../../docker-driver/)
+
 ## Change the logging driver for a container
 
 The `docker run` command can be configured to use a different logging driver

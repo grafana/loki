@@ -57,7 +57,7 @@ func (t ResolverType) ToResolver(logger log.Logger) ipLookupResolver {
 // If empty resolver type is net.DefaultResolver.
 func NewProvider(logger log.Logger, reg prometheus.Registerer, resolverType ResolverType) *Provider {
 	p := &Provider{
-		resolver: NewResolver(resolverType.ToResolver(logger)),
+		resolver: NewResolver(resolverType.ToResolver(logger), logger),
 		resolved: make(map[string][]string),
 		logger:   logger,
 		resolverAddrs: extprom.NewTxGaugeVec(reg, prometheus.GaugeOpts{

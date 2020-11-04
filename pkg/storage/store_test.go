@@ -728,7 +728,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ms, _, _, _, err := decodeReq(logql.SelectLogParams{QueryRequest: tt.req})
+			ms, _, _, err := decodeReq(logql.SelectLogParams{QueryRequest: tt.req})
 			if err != nil {
 				t.Errorf("store.GetSeries() error = %v", err)
 				return
@@ -810,11 +810,9 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		nil,
 		cortex_util.Logger,
 	)
-
+	require.NoError(t, err)
 	store, err := NewStore(config, schemaConfig, chunkStore, nil)
 	require.NoError(t, err)
-
-	defer store.Stop()
 
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
 	chunksToBuildForTimeRanges := []timeRange{
@@ -845,6 +843,24 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 		addedChunkIDs[chk.ExternalKey()] = struct{}{}
 	}
+
+	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
+	store.Stop()
+
+	chunkStore, err = storage.NewStore(
+		config.Config,
+		chunk.StoreConfig{},
+		schemaConfig.SchemaConfig,
+		limits,
+		nil,
+		nil,
+		cortex_util.Logger,
+	)
+
+	store, err = NewStore(config, schemaConfig, chunkStore, nil)
+	require.NoError(t, err)
+
+	defer store.Stop()
 
 	// get all the chunks from both the stores
 	chunks, err := store.Get(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName)...)
@@ -955,7 +971,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 		{
 			name:    "empty",
 			configs: []chunk.PeriodConfig{},
-			err:     zeroLengthConfigError,
+			err:     errZeroLengthConfig,
 		},
 		{
 			name: "NOT using boltdb-shipper",
@@ -978,7 +994,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					Period: 7 * 24 * time.Hour,
 				},
 			}},
-			err: currentBoltdbShipperNon24HoursErr,
+			err: errCurrentBoltdbShipperNon24Hours,
 		},
 		{
 			name: "current config boltdb-shipper with 1 day periodic config, without future index type changes",
@@ -1026,7 +1042,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					Period: 7 * 24 * time.Hour,
 				},
 			}},
-			err: upcomingBoltdbShipperNon24HoursErr,
+			err: errUpcomingBoltdbShipperNon24Hours,
 		},
 		{
 			name: "current config NOT boltdb-shipper, upcoming config boltdb-shipper with 7 days periodic config",
@@ -1045,7 +1061,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					Period: 7 * 24 * time.Hour,
 				},
 			}},
-			err: upcomingBoltdbShipperNon24HoursErr,
+			err: errUpcomingBoltdbShipperNon24Hours,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
