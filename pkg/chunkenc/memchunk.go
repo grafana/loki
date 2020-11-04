@@ -242,8 +242,8 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 	return bc, nil
 }
 
-// Bytes implements Chunk.
-func (c *MemChunk) Bytes() ([]byte, error) {
+// BytesWith uses a provided []byte for buffer instantiation
+func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
 	if c.head != nil {
 		// When generating the bytes, we need to flush the data held in-buffer.
 		if err := c.cut(); err != nil {
@@ -252,7 +252,7 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	}
 	crc32Hash := newCRC32()
 
-	buf := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(b[:0])
 	offset := 0
 
 	eb := encbuf{b: make([]byte, 0, 1<<10)}
@@ -317,6 +317,11 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Bytes implements Chunk.
+func (c *MemChunk) Bytes() ([]byte, error) {
+	return c.BytesWith(nil)
+}
+
 // Encoding implements Chunk.
 func (c *MemChunk) Encoding() Encoding {
 	return c.encoding
@@ -368,7 +373,7 @@ func (c *MemChunk) UncompressedSize() int {
 	return size
 }
 
-// CompressedSize implements Chunk
+// CompressedSize implements Chunk.
 func (c *MemChunk) CompressedSize() int {
 	size := 0
 	// Better to account for any uncompressed data than ignore it even though this isn't accurate.
