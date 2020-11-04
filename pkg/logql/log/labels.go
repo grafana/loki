@@ -64,6 +64,7 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 type BaseLabelsBuilder struct {
 	del []string
 	add []labels.Label
+	// nolint(structcheck) https://github.com/golangci/golangci-lint/issues/826
 	err string
 
 	groups            []string
@@ -238,40 +239,10 @@ Outer:
 // No grouping is applied and the cache is used when possible.
 func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// unchanged path.
-	if len(b.del) == 0 && len(b.add) == 0 {
-		if b.err == "" {
-			return b.currentResult
-		}
-		// unchanged but with error.
-		res := append(b.base.Copy(), labels.Label{Name: ErrorLabel, Value: b.err})
-		sort.Sort(res)
-		return b.toResult(res)
+	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
+		return b.currentResult
 	}
-
-	// In the general case, labels are removed, modified or moved
-	// rather than added.
-	res := make(labels.Labels, 0, len(b.base)+len(b.add))
-Outer:
-	for _, l := range b.base {
-		for _, n := range b.del {
-			if l.Name == n {
-				continue Outer
-			}
-		}
-		for _, la := range b.add {
-			if l.Name == la.Name {
-				continue Outer
-			}
-		}
-		res = append(res, l)
-	}
-	res = append(res, b.add...)
-	if b.err != "" {
-		res = append(res, labels.Label{Name: ErrorLabel, Value: b.err})
-	}
-	sort.Sort(res)
-
-	return b.toResult(res)
+	return b.toResult(b.Labels())
 }
 
 func (b *BaseLabelsBuilder) toResult(lbs labels.Labels) LabelsResult {
