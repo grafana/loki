@@ -90,6 +90,24 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			},
 			true,
 		},
+		{
+			"convert bytes",
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertBytes, []string{"bar", "buzz"}, false, false, nil, NoopStage,
+			)),
+			labels.Labels{
+				{Name: "foo", Value: "13 MiB"},
+				{Name: "bar", Value: "foo"},
+				{Name: "buzz", Value: "blip"},
+				{Name: "namespace", Value: "dev"},
+			},
+			13 * 1024 * 1024,
+			labels.Labels{
+				{Name: "bar", Value: "foo"},
+				{Name: "buzz", Value: "blip"},
+			},
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

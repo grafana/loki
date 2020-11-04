@@ -528,6 +528,7 @@ const (
 	OpUnwrap = "unwrap"
 
 	// conversion Op
+	OpConvBytes           = "bytes"
 	OpConvDuration        = "duration"
 	OpConvDurationSeconds = "duration_seconds"
 )

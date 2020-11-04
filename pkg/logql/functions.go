@@ -50,6 +50,8 @@ func (r rangeAggregationExpr) extractor(gr *grouping, all bool) (log.SampleExtra
 	if r.left.unwrap != nil {
 		var convOp string
 		switch r.left.unwrap.operation {
+		case OpConvBytes:
+			convOp = log.ConvertBytes
 		case OpConvDuration, OpConvDurationSeconds:
 			convOp = log.ConvertDuration
 		default:
