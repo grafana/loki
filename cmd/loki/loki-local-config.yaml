@@ -4,6 +4,9 @@ server:
   http_listen_port: 3100
 
 ingester:
+  wal:
+    enabled: true
+    dir: /tmp/wal
   lifecycler:
     address: 127.0.0.1
     ring:

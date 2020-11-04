@@ -72,11 +72,14 @@ type Config struct {
 
 	QueryStore                  bool          `yaml:"-"`
 	QueryStoreMaxLookBackPeriod time.Duration `yaml:"query_store_max_look_back_period"`
+
+	WAL WALConfig `yaml:"wal"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
+	cfg.WAL.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 16, "")
@@ -131,7 +134,6 @@ type Ingester struct {
 	flushQueuesDone sync.WaitGroup
 
 	limiter *Limiter
-	factory func() chunkenc.Chunk
 
 	// WAL
 	wal WAL
@@ -152,6 +154,11 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		cfg.ingesterClientFactory = client.New
 	}
 
+	wal, err := newWAL(cfg.WAL, registerer)
+	if err != nil {
+		return nil, err
+	}
+
 	i := &Ingester{
 		cfg:             cfg,
 		clientConfig:    clientConfig,
@@ -161,10 +168,9 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		loopQuit:        make(chan struct{}),
 		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		tailersQuit:     make(chan struct{}),
-		wal:             noopWAL{},
+		wal:             wal,
 	}
 
-	var err error
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
 	if err != nil {
 		return nil, err
@@ -230,6 +236,7 @@ func (i *Ingester) running(ctx context.Context) error {
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
+	i.wal.Stop()
 
 	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 
