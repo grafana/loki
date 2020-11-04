@@ -398,7 +398,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
 	if boltdbShipperMaxLookBack == 0 {
-		return nil, nil
+		return &logproto.GetChunkIDsResponse{}, nil
 	}
 
 	reqStart := req.Start

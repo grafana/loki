@@ -86,6 +86,7 @@ var functionTokens = map[string]int{
 	OpTypeTopK:    TOPK,
 
 	// conversion Op
+	OpConvBytes:           BYTES_CONV,
 	OpConvDuration:        DURATION_CONV,
 	OpConvDurationSeconds: DURATION_SECONDS_CONV,
 }

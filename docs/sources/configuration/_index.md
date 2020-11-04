@@ -310,6 +310,7 @@ The queryrange_config configures the query splitting and caching in the Loki que
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+# Deprecated: Split queries by day and execute in parallel. Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
 [split_queries_by_day: <boolean> | default = false]
 
@@ -1597,7 +1598,7 @@ logs in Loki.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <string> | default = none ]
 
-# Maximum number of log entries that will be returned for a query. 0 to disable.
+# Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]
 

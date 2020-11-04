@@ -1229,6 +1229,27 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap bytes(foo) [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, "foo", 5),
+								log.NewDurationLabelFilter(log.LabelFilterLesserThan, "bar", 25*time.Millisecond),
+							),
+						},
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", OpConvBytes)),
+				OpRangeTypeSum, nil, nil,
+			),
+		},
+		{
 			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
 			exp: newRangeAggregationExpr(
 				newLogRange(&pipelineExpr{

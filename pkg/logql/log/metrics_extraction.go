@@ -7,9 +7,12 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/dustin/go-humanize"
 )
 
 const (
+	ConvertBytes    = "bytes"
 	ConvertDuration = "duration"
 	ConvertFloat    = "float"
 )
@@ -117,6 +120,8 @@ func LabelExtractorWithStages(
 ) (SampleExtractor, error) {
 	var convFn convertionFn
 	switch conversion {
+	case ConvertBytes:
+		convFn = convertBytes
 	case ConvertDuration:
 		convFn = convertDuration
 	case ConvertFloat:
@@ -194,4 +199,12 @@ func convertDuration(v string) (float64, error) {
 		return 0, err
 	}
 	return d.Seconds(), nil
+}
+
+func convertBytes(v string) (float64, error) {
+	b, err := humanize.ParseBytes(v)
+	if err != nil {
+		return 0, err
+	}
+	return float64(b), nil
 }
