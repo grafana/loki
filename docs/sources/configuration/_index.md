@@ -1598,7 +1598,7 @@ logs in Loki.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <string> | default = none ]
 
-# Maximum number of log entries that will be returned for a query. 0 to disable.
+# Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]
 
