@@ -509,10 +509,6 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 
 func (t *Loki) initCompactor() (services.Service, error) {
 	var err error
-	if t.cfg.CompactorConfig.IsDefaults() {
-		return nil, errors.New("Must specify compactor config")
-	}
-
 	t.compactor, err = compactor.NewCompactor(t.cfg.CompactorConfig, t.cfg.StorageConfig.Config, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err

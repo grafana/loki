@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"path/filepath"
 	"reflect"
@@ -51,6 +52,10 @@ type Compactor struct {
 }
 
 func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registerer) (*Compactor, error) {
+	if cfg.IsDefaults() {
+		return nil, errors.New("Must specify compactor config")
+	}
+
 	objectClient, err := storage.NewObjectClient(cfg.SharedStoreType, storageConfig)
 	if err != nil {
 		return nil, err
