@@ -283,7 +283,7 @@ Examples:
 
 ## trimPrefix
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Trim just the prefix from a string.
 
