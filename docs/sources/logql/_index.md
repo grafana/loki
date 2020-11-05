@@ -305,7 +305,7 @@ When both side are label identifiers, for example `dst=src`, the operation will 
 
 The left side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value will be replace by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, which means labels are available as variables and you can use the same list of [functions](functions/).
 
-In both case if the destination label doesn't exist a new one will be created.
+In both case if the destination label doesn't exist, then a new one is created.
 
 The renaming form `dst=src` will _drop_ the `src` label after remapping it to the `dst` label. However, the _template_ form will preserve the referenced labels, such that  `dst="{{.src}}"` results in both `dst` and `src` having the same value.
 
