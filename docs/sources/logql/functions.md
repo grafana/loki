@@ -175,7 +175,7 @@ The last example will return `Hello World`.
 
 ## trunc
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Truncate a string (and add no suffix)
 
