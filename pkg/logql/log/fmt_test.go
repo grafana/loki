@@ -240,3 +240,52 @@ func Test_validate(t *testing.T) {
 		})
 	}
 }
+
+func Test_trunc(t *testing.T) {
+	tests := []struct {
+		s    string
+		c    int
+		want string
+	}{
+		{"Hello, 世界", -1, "界"},
+		{"Hello, 世界", 1, "H"},
+		{"Hello, 世界", 0, ""},
+		{"Hello, 世界", 20, "Hello, 世界"},
+		{"Hello, 世界", -20, "Hello, 世界"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.s, func(t *testing.T) {
+			if got := trunc(tt.c, tt.s); got != tt.want {
+				t.Errorf("trunc() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_substring(t *testing.T) {
+
+	tests := []struct {
+		start int
+		end   int
+		s     string
+		want  string
+	}{
+		{1, 8, "Hello, 世界", "ello, 世"},
+		{-10, 8, "Hello, 世界", "Hello, 世"},
+		{1, 10, "Hello, 世界", "ello, 世界"},
+		{-1, 10, "Hello, 世界", "Hello, 世界"},
+		{-1, 1, "Hello, 世界", "H"},
+		{-1, -1, "Hello, 世界", ""},
+		{20, -1, "Hello, 世界", ""},
+		{1, 1, "Hello, 世界", ""},
+		{5, 1, "Hello, 世界", ""},
+		{3, -1, "Hello, 世界", "lo, 世界"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.s, func(t *testing.T) {
+			if got := substring(tt.start, tt.end, tt.s); got != tt.want {
+				t.Errorf("substring() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

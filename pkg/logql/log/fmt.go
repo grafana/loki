@@ -25,25 +25,27 @@ var (
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
 
-		// new function ported from https://github.com/Masterminds/sprig/
-		"lower":     strings.ToLower,
-		"upper":     strings.ToUpper,
-		"title":     strings.Title,
-		"trunc":     trunc,
-		"substr":    substring,
-		"contains":  func(substr string, str string) bool { return strings.Contains(str, substr) },
-		"hasPrefix": func(substr string, str string) bool { return strings.HasPrefix(str, substr) },
-		"hasSuffix": func(substr string, str string) bool { return strings.HasSuffix(str, substr) },
-		"indent":    indent,
-		"nindent":   nindent,
-		"replace":   replace,
-		"repeat":    func(count int, str string) string { return strings.Repeat(str, count) },
-		"trim":      strings.TrimSpace,
-		// Switch order so that "$foo" | trimall "$"
-		"trimAll":    func(a, b string) string { return strings.Trim(b, a) },
-		"trimSuffix": func(a, b string) string { return strings.TrimSuffix(b, a) },
-		"trimPrefix": func(a, b string) string { return strings.TrimPrefix(b, a) },
+		// New function ported from https://github.com/Masterminds/sprig/
+		// Those function takes the string as the last parameter, allowing pipe chaining.
+		// Example: .mylabel | lower | substring 0 5
+		"lower":      strings.ToLower,
+		"upper":      strings.ToUpper,
+		"title":      strings.Title,
+		"trunc":      trunc,
+		"substr":     substring,
+		"contains":   contains,
+		"hasPrefix":  hasPrefix,
+		"hasSuffix":  hasSuffix,
+		"indent":     indent,
+		"nindent":    nindent,
+		"replace":    replace,
+		"repeat":     repeat,
+		"trim":       strings.TrimSpace,
+		"trimAll":    trimAll,
+		"trimSuffix": trimSuffix,
+		"trimPrefix": trimPrefix,
 
+		// regex functions
 		"regexReplaceAll": func(regex string, s string, repl string) string {
 			r := regexp.MustCompile(regex)
 			return r.ReplaceAllString(s, repl)
@@ -186,11 +188,13 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 }
 
 func trunc(c int, s string) string {
-	if c < 0 && len(s)+c > 0 {
-		return s[len(s)+c:]
+	runes := []rune(s)
+	l := len(s)
+	if c < 0 && l+c > 0 {
+		return string(runes[l+c:])
 	}
-	if c >= 0 && len(s) > c {
-		return s[:c]
+	if c >= 0 && l > c {
+		return string(runes[:c])
 	}
 	return s
 }
@@ -203,24 +207,40 @@ func trunc(c int, s string) string {
 //
 // Otherwise, this calls string[start, end].
 func substring(start, end int, s string) string {
+	runes := []rune(s)
+	l := len(runes)
+	if end > l {
+		end = l
+	}
+	if start > l {
+		start = l
+	}
 	if start < 0 {
-		return s[:end]
+		if end < 0 {
+			return ""
+		}
+		return string(runes[:end])
 	}
-	if end < 0 || end > len(s) {
-		return s[start:]
+	if end < 0 {
+		return string(runes[start:])
 	}
-	return s[start:end]
+	if start > end {
+		return ""
+	}
+	return string(runes[start:end])
 }
 
-func replace(old, new, src string) string {
-	return strings.Replace(src, old, new, -1)
-}
-
+func contains(substr string, str string) bool  { return strings.Contains(str, substr) }
+func hasPrefix(substr string, str string) bool { return strings.HasPrefix(str, substr) }
+func hasSuffix(substr string, str string) bool { return strings.HasSuffix(str, substr) }
+func repeat(count int, str string) string      { return strings.Repeat(str, count) }
+func replace(old, new, src string) string      { return strings.Replace(src, old, new, -1) }
+func trimAll(a, b string) string               { return strings.Trim(b, a) }
+func trimSuffix(a, b string) string            { return strings.TrimSuffix(b, a) }
+func trimPrefix(a, b string) string            { return strings.TrimPrefix(b, a) }
 func indent(spaces int, v string) string {
 	pad := strings.Repeat(" ", spaces)
 	return pad + strings.Replace(v, "\n", "\n"+pad, -1)
 }
 
-func nindent(spaces int, v string) string {
-	return "\n" + indent(spaces, v)
-}
+func nindent(spaces int, v string) string { return "\n" + indent(spaces, v) }
