@@ -296,6 +296,10 @@ The query_frontend_config configures the Loki query-frontend.
 # Set to < 0 to enable on all queries.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
+
+# URL of querier for tail proxy.
+# CLI flag: -frontend.tail-proxy-url
+[tail_proxy_url: <string> | default = ""]
 ```
 
 ## queryrange_config
