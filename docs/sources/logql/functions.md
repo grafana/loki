@@ -21,7 +21,7 @@ Example:
 
 ## ToLower & ToUpper
 
-Convert the entire string to lowercase or uppercase.
+This function converts the entire string to lowercase or uppercase.
 
 Signatures:
 
