@@ -42,7 +42,7 @@ $ export LOKI_ADDR=http://localhost:3100
 
 > Note: If you are running Loki behind a proxy server and you have
 > authentication configured, you will also have to pass in LOKI_USERNAME
-> and LOKI_PASSWORD accordingly.
+> and LOKI_PASSWORD, or LOKI_TOKEN accordingly.
 
 ```bash
 $ logcli labels job
@@ -111,6 +111,8 @@ Flags:
       --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
       --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
+      --token=""         adds Authorization header bearer to API requests for authentication purposes. Can also be set
+                         using LOKI_TOKEN env var.
 
 Commands:
   help [<command>...]
@@ -195,6 +197,8 @@ Flags:
       --key=""             Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
       --org-id=""          adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
                            bypassing an auth gateway.
+      --token=""           adds Authorization header bearer to API requests for authentication purposes. Can also be set
+                           using LOKI_TOKEN env var.
       --limit=30           Limit on number of entries to print.
       --since=1h           Lookback window.
       --from=FROM          Start looking for logs at this absolute time (inclusive).
@@ -243,6 +247,8 @@ Flags:
       --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
       --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
+      --token=""         adds Authorization header bearer to API requests for authentication purposes. Can also be set
+                         using LOKI_TOKEN env var.
       --since=1h         Lookback window.
       --from=FROM        Start looking for labels at this absolute time (inclusive).
       --to=TO            Stop looking for labels at this absolute time (exclusive).
@@ -274,6 +280,8 @@ Flags:
       --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
       --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
+      --token=""         adds Authorization header bearer to API requests for authentication purposes. Can also be set
+                         using LOKI_TOKEN env var.
       --since=1h         Lookback window.
       --from=FROM        Start looking for logs at this absolute time (inclusive).
       --to=TO            Stop looking for logs at this absolute time (exclusive).

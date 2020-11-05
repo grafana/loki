@@ -191,6 +191,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("cert", "Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.").Default("").Envar("LOKI_CLIENT_CERT_PATH").StringVar(&client.TLSConfig.CertFile)
 	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
 	app.Flag("org-id", "adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.").Default("").Envar("LOKI_ORG_ID").StringVar(&client.OrgID)
+	app.Flag("token", "adds Authorization header bearer to API requests for authentication purposes. Can also be set using LOKI_TOKEN env var.").Default("").Envar("LOKI_TOKEN").StringVar(&client.Token)
 
 	return client
 }

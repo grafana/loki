@@ -52,6 +52,7 @@ type DefaultClient struct {
 	Password  string
 	Address   string
 	OrgID     string
+	Token     string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -178,6 +179,12 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		req.Header.Set("X-Scope-OrgID", c.OrgID)
 	}
 
+	//The token presence overrides basic-auth authentication
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+		req.Header.Add("Accept", "application/json")
+	}
+
 	// Parse the URL to extract the host
 	clientConfig := config.HTTPClientConfig{
 		TLSConfig: c.TLSConfig,
@@ -230,6 +237,10 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 
 	if c.OrgID != "" {
 		h.Set("X-Scope-OrgID", c.OrgID)
+	}
+
+	if c.Token != "" {
+		h.Set("Authorization", "Bearer "+c.Token)
 	}
 
 	ws := websocket.Dialer{
