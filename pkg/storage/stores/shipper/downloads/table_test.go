@@ -116,7 +116,6 @@ func TestTable_Sync(t *testing.T) {
 	// list of dbs to create except newDB that would be added later as part of updates
 	deleteDB := "delete"
 	noUpdatesDB := "no-updates"
-	updateDB := "update"
 	newDB := "new"
 
 	testDBs := map[string]testutil.DBRecords{
@@ -126,10 +125,6 @@ func TestTable_Sync(t *testing.T) {
 		},
 		noUpdatesDB: {
 			Start:      10,
-			NumRecords: 10,
-		},
-		updateDB: {
-			Start:      20,
 			NumRecords: 10,
 		},
 	}
@@ -144,25 +139,23 @@ func TestTable_Sync(t *testing.T) {
 	}()
 
 	// query table to see it has expected records setup
-	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, 30)
+	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, 20)
 
 	// add a sleep since we are updating a file and CI is sometimes too fast to create a difference in mtime of files
 	time.Sleep(time.Second)
 
-	// remove deleteDB, update updateDB and add the newDB
+	// remove deleteDB and add the newDB
 	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, deleteDB)))
-	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, updateDB), boltdbClient, 30, 10)
-	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, newDB), boltdbClient, 40, 10)
+	testutil.AddRecordsToDB(t, filepath.Join(tablePathInStorage, newDB), boltdbClient, 20, 10)
 
 	// sync the table
 	require.NoError(t, table.Sync(context.Background()))
 
-	// query and verify table has expected records from new and updated db and the records from deleted db are gone
-	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 10, 40)
+	// query and verify table has expected records from new db and the records from deleted db are gone
+	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 10, 20)
 
 	// verify files in cache where dbs for the table are synced to double check.
 	expectedFilesInDir := map[string]struct{}{
-		updateDB:    {},
 		noUpdatesDB: {},
 		newDB:       {},
 	}
