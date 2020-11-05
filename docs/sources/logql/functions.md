@@ -326,7 +326,7 @@ The above will indent every line of text by 4 space characters and add a new lin
 
 ## repeat
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Repeat a string multiple times.
 
