@@ -40,7 +40,7 @@ Examples:
 
 ## Replace string
 
-> in Loki 2.1 [`replace`](#replace) (as opposed to `Replace`) is available with a different signature but easier to chain within pipeline.
+> **Note:** In Loki 2.1 [`replace`](#replace) (as opposed to `Replace`) is available with a different signature but easier to chain within pipeline.
 
 Perform simple string replacement.
 
