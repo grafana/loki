@@ -298,7 +298,7 @@ Examples:
 
 ## indent
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 The indent function indents every line in a given string to the specified indent width. This is useful when aligning multi-line strings.
 
