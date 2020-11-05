@@ -193,7 +193,7 @@ Examples:
 
 ## substr
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Get a substring from a string.
 
