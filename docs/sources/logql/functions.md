@@ -253,7 +253,7 @@ Examples:
 
 ## trimAll
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Remove given characters from the front or back of a string.
 
