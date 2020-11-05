@@ -118,7 +118,7 @@ type fakeStdin struct {
 	os.FileInfo
 }
 
-func newFakeStin(data string) *fakeStdin {
+func newFakeStdin(data string) *fakeStdin {
 	return &fakeStdin{
 		Reader: strings.NewReader(data),
 	}
@@ -127,7 +127,7 @@ func newFakeStin(data string) *fakeStdin {
 func (f fakeStdin) Stat() (os.FileInfo, error) { return f.FileInfo, nil }
 
 func Test_Shutdown(t *testing.T) {
-	stdIn = newFakeStin("line")
+	stdIn = newFakeStdin("line")
 	appMock := &mockShutdownable{called: make(chan bool, 1)}
 	recorder := &clientRecorder{}
 	manager, err := NewStdinTargetManager(util.Logger, appMock, recorder, []scrapeconfig.Config{{}})
