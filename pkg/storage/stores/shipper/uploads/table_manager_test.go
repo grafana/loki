@@ -41,16 +41,13 @@ func TestLoadTables(t *testing.T) {
 	testDir, err := ioutil.TempDir("", "load-tables")
 	require.NoError(t, err)
 
+	boltDBIndexClient, storageClient := buildTestClients(t, testDir)
 	defer func() {
+		boltDBIndexClient.Stop()
 		require.NoError(t, os.RemoveAll(testDir))
 	}()
 
-	boltDBIndexClient, storageClient := buildTestClients(t, testDir)
 	indexPath := filepath.Join(testDir, indexDirName)
-
-	defer func() {
-		boltDBIndexClient.Stop()
-	}()
 
 	// add a legacy db which is outside of table specific folder
 	testutil.AddRecordsToDB(t, filepath.Join(indexPath, "table0"), boltDBIndexClient, 0, 10)
