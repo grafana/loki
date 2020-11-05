@@ -73,7 +73,7 @@ type Config struct {
 	QueryStore                  bool          `yaml:"-"`
 	QueryStoreMaxLookBackPeriod time.Duration `yaml:"query_store_max_look_back_period"`
 
-	WAL WALConfig `yaml:"wal"`
+	WAL WALConfig `yaml:"wal,omitempty"`
 }
 
 // RegisterFlags registers the flags.

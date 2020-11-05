@@ -5,7 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/encoding"
-	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -26,7 +26,7 @@ const (
 // WALRecord is a struct combining the series and samples record.
 type WALRecord struct {
 	UserID string
-	Series []tsdb_record.RefSeries
+	Series []record.RefSeries
 
 	// entryIndexMap coordinates the RefEntries index associated with a particular fingerprint.
 	// This is helpful for constant time lookups during ingestion and is ignored when restoring
@@ -75,7 +75,7 @@ func (r *WALRecord) encodeSeries(b []byte) []byte {
 	buf.PutByte(byte(WALRecordSeries))
 	buf.PutUvarintStr(r.UserID)
 
-	var enc tsdb_record.Encoder
+	var enc record.Encoder
 	// The 'encoded' already has the type header and userID here, hence re-using
 	// the remaining part of the slice (i.e. encoded[len(encoded):])) to encode the series.
 	encoded := buf.Get()
@@ -174,8 +174,8 @@ func decodeEntries(b []byte, rec *WALRecord) error {
 func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 	var (
 		userID  string
-		dec     tsdb_record.Decoder
-		rSeries []tsdb_record.RefSeries
+		dec     record.Decoder
+		rSeries []record.RefSeries
 
 		decbuf = DecWith(b)
 		t      = RecordType(decbuf.Byte())
