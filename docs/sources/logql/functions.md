@@ -353,7 +353,7 @@ Examples:
 
 ## hasPrefix & hasSuffix
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 The `hasPrefix` and `hasSuffix` functions test whether a string has a given prefix or suffix.
 
