@@ -1,10 +1,12 @@
 package ingester
 
 import (
+	"context"
 	io "io"
 	"runtime"
 	"sync"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -75,24 +77,66 @@ func newWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) 
 
 type Recoverer interface {
 	NumWorkers() int
-	GetOrCreateStream(userID string, series record.RefSeries) error
+	SetStream(userID string, series record.RefSeries) error
 	Push(userID string, entries RefEntries) error
 	Close()
 	Done() <-chan struct{}
 }
 
 type ingesterRecoverer struct {
-	m    sync.Map
-	ing  *Ingester
-	done chan struct{}
+	// basically map[userID]map[fingerprint]*stream
+	users sync.Map
+	ing   *Ingester
+	done  chan struct{}
 }
 
 // Use all available cores
 func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
-func (r *ingesterRecoverer) GetOrCreateStream(userID string, series record.RefSeries) error {}
+// SetStream is responsible for setting the key path for userIDs -> fingerprints -> streams.
+// Internally, this uses nested sync.Maps due to their performance benefits for sets that only grow.
+// Using these also allows us to bypass the ingester -> instance -> stream heirarchy internally, which
+// may yield some performance gains, but is essential for the following:
+// Due to the use of the instance's fingerprint mapper, stream fingerprints ARE NOT necessarily
+// deterministic. The WAL uses the post-mapped fingerprint on the ingester that originally
+// created the stream and we ensure that said fingerprint maps correctly to the newly
+// created stream during WAL replay, even if the new in memory stream was assigned a different
+// fingerprint from the mapper. This is paramount because subsequent WAL records will use
+// the fingerprint reported in the WAL record, not the potentially differing one assigned during
+// stream creation.
+func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) error {
+	inst := r.ing.getOrCreateInstance(userID)
 
-func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {}
+	stream, err := inst.getOrCreateStream(
+		logproto.Stream{
+			Labels: series.Labels.String(),
+		},
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Now that we have the stream, ensure that the userID -> fingerprint -> stream
+	// path is set properly.
+	got, _ := r.users.LoadOrStore(userID, &sync.Map{})
+	streamsMap := got.(*sync.Map)
+	streamsMap.Store(series.Ref, stream)
+}
+
+func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
+	out, ok := r.users.Load(userID)
+	if !ok {
+		return errors.Errorf("user (%s) not set during WAL replay", userID)
+	}
+
+	s, ok := out.(*sync.Map).Load(entries.Ref)
+	if !ok {
+		return errors.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
+	}
+
+	return s.(*stream).Push(context.Background(), entries.Entries, nil)
+}
 
 func (r *ingesterRecoverer) Close() {
 	close(r.done)
@@ -149,7 +193,7 @@ outer:
 			default:
 			}
 
-			if lastErr = recoverer.GetOrCreateStream(rec.UserID, s); lastErr != nil {
+			if lastErr = recoverer.SetStream(rec.UserID, s); lastErr != nil {
 				break outer
 			}
 		}

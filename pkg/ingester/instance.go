@@ -17,7 +17,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/index"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -72,7 +71,6 @@ type instance struct {
 	tailerMtx sync.RWMutex
 
 	limiter *Limiter
-	factory func() chunkenc.Chunk
 
 	// WAL
 	wal WAL
@@ -174,7 +172,12 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALR
 		return stream, nil
 	}
 
-	err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
+	// reducing the stream limits, for instance.
+	if record != nil {
+		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+	}
+
 	if err != nil {
 		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
 		bytes := 0
