@@ -156,7 +156,7 @@ The last example will return `HELLO`.
 
 ## title
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Convert to title case.
 
