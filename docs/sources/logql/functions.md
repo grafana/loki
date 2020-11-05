@@ -100,7 +100,7 @@ Signature:
 {{ TrimPrefix .path "/" }}
 ```
 
-## regexReplaceAll & regexReplaceAllLiteral
+## regexReplaceAll and regexReplaceAllLiteral
 
 `regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [docs](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for detailed examples.
 
