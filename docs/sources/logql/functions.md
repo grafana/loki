@@ -217,7 +217,7 @@ Examples:
 
 > **Note:** Added in Loki 2.1.
 
-Perform simple string replacement.
+This function performs simple string replacement.
 
 Signature: `replace(old string, new string, src string) string`
 
