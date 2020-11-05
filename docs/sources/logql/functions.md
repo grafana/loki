@@ -338,7 +338,7 @@ Signature: `repeat(c int,value string) string`
 
 ## contains
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Test to see if one string is contained inside of another.
 
