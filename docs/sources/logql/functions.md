@@ -114,7 +114,7 @@ Signature:
 `{{ regexReplaceAllLiteral "(ts=)" .timestamp "timestamp=" }}`
 ```
 
-You can combine multiple function using pipe, for example if you want to strip out spaces and make the request method in capital you would write the following template `{{ .request_method | TrimSpace | ToUpper }}`.
+You can combine multiple function using pipe. For example, if you want to strip out spaces and make the request method in capital, then you would write the following template: `{{ .request_method | TrimSpace | ToUpper }}`.
 
 ## lower
 
