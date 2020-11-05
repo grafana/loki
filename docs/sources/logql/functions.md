@@ -215,7 +215,7 @@ Examples:
 
 ## replace
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Perform simple string replacement.
 
