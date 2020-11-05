@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 
@@ -254,7 +255,7 @@ func Test_trunc(t *testing.T) {
 		{"Hello, 世界", -20, "Hello, 世界"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.s, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s%d", tt.s, tt.c), func(t *testing.T) {
 			if got := trunc(tt.c, tt.s); got != tt.want {
 				t.Errorf("trunc() = %v, want %v", got, tt.want)
 			}

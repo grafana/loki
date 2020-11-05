@@ -189,7 +189,7 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 
 func trunc(c int, s string) string {
 	runes := []rune(s)
-	l := len(s)
+	l := len(runes)
 	if c < 0 && l+c > 0 {
 		return string(runes[l+c:])
 	}
