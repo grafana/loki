@@ -68,9 +68,9 @@ func (r rangeAggregationExpr) extractor(gr *grouping, all bool) (log.SampleExtra
 	// otherwise we extract metrics from the log line.
 	switch r.operation {
 	case OpRangeTypeRate, OpRangeTypeCount:
-		return log.LineExtractorWithStages(log.CountExtractor, stages, groups, without, all)
+		return log.NewLineSampleExtractor(log.CountExtractor, stages, groups, without, all)
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
-		return log.LineExtractorWithStages(log.BytesExtractor, stages, groups, without, all)
+		return log.NewLineSampleExtractor(log.BytesExtractor, stages, groups, without, all)
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}

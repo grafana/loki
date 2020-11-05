@@ -1231,7 +1231,10 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newSampleBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.CountExtractor.ToSampleExtractor(nil, false, false), tt.start, tt.end)
+			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+			require.NoError(t, err)
+
+			it, err := newSampleBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end)
 			require.NoError(t, err)
 			series, _, err := iter.ReadSampleBatch(it, 1000)
 			_ = it.Close()
@@ -1441,7 +1444,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				ctx:      ctx,
 				pipeline: logql.NoopPipeline,
 			}
-			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), nil)
+			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
 			if err != nil {
 				t.Errorf("buildHeapIterator error = %v", err)
 				return
@@ -1453,48 +1456,6 @@ func TestBuildHeapIterator(t *testing.T) {
 				t.Fatalf("error reading batch %s", err)
 			}
 			assertStream(t, tc.expected, streams.Streams)
-		})
-	}
-}
-
-func TestDropLabels(t *testing.T) {
-
-	for i, tc := range []struct {
-		ls       labels.Labels
-		drop     []string
-		expected labels.Labels
-	}{
-		{
-			ls: labels.Labels{
-				labels.Label{
-					Name:  "a",
-					Value: "1",
-				},
-				labels.Label{
-					Name:  "b",
-					Value: "2",
-				},
-				labels.Label{
-					Name:  "c",
-					Value: "3",
-				},
-			},
-			drop: []string{"b"},
-			expected: labels.Labels{
-				labels.Label{
-					Name:  "a",
-					Value: "1",
-				},
-				labels.Label{
-					Name:  "c",
-					Value: "3",
-				},
-			},
-		},
-	} {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			dropped := dropLabels(tc.ls, tc.drop...)
-			require.Equal(t, tc.expected, dropped)
 		})
 	}
 }

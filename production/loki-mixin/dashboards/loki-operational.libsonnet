@@ -60,13 +60,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
         },
       ],
     } + lokiOperational + {
-      annotations: {
-        local a = self,
-        list:
-          if dashboards['loki-operational.json'].showAnnotations then
-            a.list
-          else [],
-      },
+      annotations:
+        if dashboards['loki-operational.json'].showAnnotations
+        then super.annotations
+        else {},
 
       links:
         if dashboards['loki-operational.json'].showLinks then

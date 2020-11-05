@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
-// SyslogTargetManager manages a series of PushTargets.
+// PushTargetManager manages a series of PushTargets.
 type PushTargetManager struct {
 	logger  log.Logger
 	targets map[string]*PushTarget

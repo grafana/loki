@@ -41,6 +41,8 @@ Until this is fixed we recommend [building and running from source](#build-and-r
 
 For instructions on how to query Loki, see [our usage docs](https://grafana.com/docs/loki/latest/logql/).
 
+To deploy a cluster of loki locally, please refer to this [doc](./docker/)
+
 ## Using Helm to deploy on Kubernetes
 
 There is a [Helm chart](helm) to deploy Loki and Promtail to Kubernetes.

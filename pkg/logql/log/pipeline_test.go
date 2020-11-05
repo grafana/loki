@@ -10,7 +10,7 @@ import (
 var (
 	resOK   bool
 	resLine []byte
-	resLbs  labels.Labels
+	resLbs  LabelsResult
 )
 
 func Benchmark_Pipeline(b *testing.B) {
@@ -39,8 +39,9 @@ func Benchmark_Pipeline(b *testing.B) {
 		{Name: "pod_template_hash", Value: "5896759c79"},
 	}
 	b.ResetTimer()
+	sp := p.ForStream(lbs)
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resOK = p.Process(line, lbs)
+		resLine, resLbs, resOK = sp.Process(line)
 	}
 
 }

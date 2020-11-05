@@ -153,11 +153,11 @@ func Test_lineFormatter_Format(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sort.Sort(tt.lbs)
 			sort.Sort(tt.wantLbs)
-			b := NewLabelsBuilder()
-			b.Reset(tt.lbs)
-			outLine, _ := tt.fmter.Process(nil, b)
+			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			builder.Reset()
+			outLine, _ := tt.fmter.Process(nil, builder)
 			require.Equal(t, tt.want, outLine)
-			require.Equal(t, tt.wantLbs, b.Labels())
+			require.Equal(t, tt.wantLbs, builder.Labels())
 		})
 	}
 }
@@ -206,11 +206,11 @@ func Test_labelsFormatter_Format(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewLabelsBuilder()
-			b.Reset(tt.in)
-			_, _ = tt.fmter.Process(nil, b)
+			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
+			builder.Reset()
+			_, _ = tt.fmter.Process(nil, builder)
 			sort.Sort(tt.want)
-			require.Equal(t, tt.want, b.Labels())
+			require.Equal(t, tt.want, builder.Labels())
 		})
 	}
 }
