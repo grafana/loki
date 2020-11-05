@@ -36,7 +36,7 @@ Examples:
 `{{ToUpper "This is a string" | ToLower}}`
 ```
 
-> In Loki 2.1 you can also use respectively [`lower`](#lower) and [`upper`](#upper) shortcut, e.g `{{.request_method | lower }}`
+> **Note:** In Loki 2.1 you can also use respectively [`lower`](#lower) and [`upper`](#upper) shortcut, e.g `{{.request_method | lower }}`
 
 ## Replace string
 
