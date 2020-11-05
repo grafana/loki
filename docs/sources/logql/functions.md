@@ -351,7 +351,7 @@ Examples:
 {{ if contains "he" "hello" }} yes {{end}}
 ```
 
-## hasPrefix & hasSuffix
+## hasPrefix and hasSuffix
 
 > **Note:** Added in Loki 2.1.
 
