@@ -270,7 +270,7 @@ Examples:
 
 > **Note:** Added in Loki 2.1.
 
-Trim just the suffix from a string.
+Use this function to trim just the suffix from a string.
 
 Signature: `trimSuffix(suffix string, src string) string`
 
