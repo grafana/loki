@@ -126,16 +126,23 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 type multitenantAlertmanagerMetrics struct {
-	invalidConfig *prometheus.GaugeVec
+	lastReloadSuccessful          *prometheus.GaugeVec
+	lastReloadSuccessfulTimestamp *prometheus.GaugeVec
 }
 
 func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAlertmanagerMetrics {
 	m := &multitenantAlertmanagerMetrics{}
 
-	m.invalidConfig = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+	m.lastReloadSuccessful = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "alertmanager_config_invalid",
-		Help:      "Boolean set to 1 whenever the Alertmanager config is invalid for a user.",
+		Name:      "alertmanager_config_last_reload_successful",
+		Help:      "Boolean set to 1 whenever the last configuration reload attempt was successful.",
+	}, []string{"user"})
+
+	m.lastReloadSuccessfulTimestamp = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "alertmanager_config_last_reload_successful_seconds",
+		Help:      "Timestamp of the last successful configuration reload.",
 	}, []string{"user"})
 
 	return m
@@ -314,12 +321,13 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	for user, cfg := range cfgs {
 		err := am.setConfig(cfg)
 		if err != nil {
-			am.multitenantMetrics.invalidConfig.WithLabelValues(user).Set(float64(1))
+			am.multitenantMetrics.lastReloadSuccessful.WithLabelValues(user).Set(float64(0))
 			level.Warn(am.logger).Log("msg", "error applying config", "err", err)
 			continue
 		}
 
-		am.multitenantMetrics.invalidConfig.WithLabelValues(user).Set(float64(0))
+		am.multitenantMetrics.lastReloadSuccessful.WithLabelValues(user).Set(float64(1))
+		am.multitenantMetrics.lastReloadSuccessfulTimestamp.WithLabelValues(user).SetToCurrentTime()
 	}
 
 	am.alertmanagersMtx.Lock()
@@ -332,7 +340,8 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", user)
 			userAM.Pause()
 			delete(am.cfgs, user)
-			am.multitenantMetrics.invalidConfig.DeleteLabelValues(user)
+			am.multitenantMetrics.lastReloadSuccessful.DeleteLabelValues(user)
+			am.multitenantMetrics.lastReloadSuccessfulTimestamp.DeleteLabelValues(user)
 			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}

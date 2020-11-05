@@ -6,14 +6,13 @@ package rulespb
 import (
 	"encoding/json"
 	"math/big"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 )
 
 const (
@@ -72,22 +71,22 @@ func NewAlertingRule(a *Alert) *Rule {
 	}
 }
 
-func (r *Rule) GetLabels() []storepb.Label {
+func (r *Rule) GetLabels() labels.Labels {
 	switch {
 	case r.GetRecording() != nil:
-		return r.GetRecording().Labels.Labels
+		return r.GetRecording().Labels.PromLabels()
 	case r.GetAlert() != nil:
-		return r.GetAlert().Labels.Labels
+		return r.GetAlert().Labels.PromLabels()
 	default:
 		return nil
 	}
 }
 
-func (r *Rule) SetLabels(ls []storepb.Label) {
-	var result PromLabels
+func (r *Rule) SetLabels(ls labels.Labels) {
+	var result labelpb.ZLabelSet
 
 	if len(ls) > 0 {
-		result = PromLabels{Labels: ls}
+		result = labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(ls)}
 	}
 
 	switch {
@@ -160,7 +159,7 @@ func (r1 *Rule) Compare(r2 *Rule) int {
 		return d
 	}
 
-	if d := storepb.CompareLabels(r1.GetLabels(), r2.GetLabels()); d != 0 {
+	if d := labels.Compare(r1.GetLabels(), r2.GetLabels()); d != 0 {
 		return d
 	}
 
@@ -328,20 +327,4 @@ func (a1 *Alert) Compare(a2 *Alert) int {
 	}
 
 	return 0
-}
-
-func (m *PromLabels) UnmarshalJSON(entry []byte) error {
-	lbls := labels.Labels{}
-	if err := lbls.UnmarshalJSON(entry); err != nil {
-		return errors.Wrapf(err, "labels: labels field unmarshal: %v", string(entry))
-	}
-	m.Labels = storepb.PromLabelsToLabels(lbls)
-	sort.Slice(m.Labels, func(i, j int) bool {
-		return m.Labels[i].Name < m.Labels[j].Name
-	})
-	return nil
-}
-
-func (m *PromLabels) MarshalJSON() ([]byte, error) {
-	return storepb.LabelsToPromLabels(m.Labels).MarshalJSON()
 }

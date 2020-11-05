@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
@@ -107,6 +109,32 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 	}
+}
+
+// blocksToDelete filters the input blocks and returns the blocks which are safe to be deleted from the ingester.
+func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
+	if u.DB == nil {
+		return nil
+	}
+	deletable := tsdb.DefaultBlocksToDelete(u.DB)(blocks)
+	if u.shipper == nil {
+		return deletable
+	}
+
+	shipperMeta, err := shipper.ReadMetaFile(u.Dir())
+	if err != nil {
+		// If there is any issue with the shipper, we should be conservative and not delete anything.
+		level.Error(util.Logger).Log("msg", "failed to read shipper meta during deletion of blocks", "user", u.userID, "err", err)
+		return nil
+	}
+
+	result := map[ulid.ULID]struct{}{}
+	for _, shippedID := range shipperMeta.Uploaded {
+		if _, ok := deletable[shippedID]; ok {
+			result[shippedID] = struct{}{}
+		}
+	}
+	return result
 }
 
 func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
@@ -219,7 +247,14 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i.subservicesWatcher.WatchService(i.lifecycler)
 
 	// Init the limter and instantiate the user states which depend on it
-	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.limiter = NewLimiter(
+		limits,
+		i.lifecycler,
+		cfg.DistributorShardingStrategy,
+		cfg.DistributorShardByAllLabels,
+		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
+		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled)
+
 	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
@@ -253,6 +288,9 @@ func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, e
 
 func (i *Ingester) startingV2ForFlusher(ctx context.Context) error {
 	if err := i.openExistingTSDB(ctx); err != nil {
+		// Try to rollback and close opened TSDBs before halting the ingester.
+		i.closeAllTSDB()
+
 		return errors.Wrap(err, "opening existing TSDBs")
 	}
 
@@ -262,6 +300,9 @@ func (i *Ingester) startingV2ForFlusher(ctx context.Context) error {
 
 func (i *Ingester) startingV2(ctx context.Context) error {
 	if err := i.openExistingTSDB(ctx); err != nil {
+		// Try to rollback and close opened TSDBs before halting the ingester.
+		i.closeAllTSDB()
+
 		return errors.Wrap(err, "opening existing TSDBs")
 	}
 
@@ -965,6 +1006,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		StripeSize:              i.cfg.BlocksStorageConfig.TSDB.StripeSize,
 		WALCompression:          i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
 		SeriesLifecycleCallback: userDB,
+		BlocksToDelete:          userDB.blocksToDelete,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
@@ -1057,9 +1099,19 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 	wg := &sync.WaitGroup{}
 	openGate := gate.New(i.cfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup)
 
-	err := filepath.Walk(i.cfg.BlocksStorageConfig.TSDB.Dir, func(path string, info os.FileInfo, err error) error {
+	// Keep track of all errors that could occur.
+	errs := tsdb_errors.MultiError{}
+	errsMx := sync.Mutex{}
+
+	walkErr := filepath.Walk(i.cfg.BlocksStorageConfig.TSDB.Dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return filepath.SkipDir
+			// If the root directory doesn't exist, we're OK (not needed to be created upfront).
+			if os.IsNotExist(err) && path == i.cfg.BlocksStorageConfig.TSDB.Dir {
+				return filepath.SkipDir
+			}
+
+			level.Error(util.Logger).Log("msg", "an error occurred while iterating the filesystem storing TSDBs", "path", path, "err", err)
+			return errors.Wrapf(err, "an error occurred while iterating the filesystem storing TSDBs at %s", path)
 		}
 
 		// Skip root dir and all other files
@@ -1071,18 +1123,19 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		userID := info.Name()
 		f, err := os.Open(path)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "unable to open user TSDB dir", "err", err, "user", userID, "path", path)
-			return filepath.SkipDir
+			level.Error(util.Logger).Log("msg", "unable to open TSDB dir", "err", err, "user", userID, "path", path)
+			return errors.Wrapf(err, "unable to open TSDB dir %s for user %s", path, userID)
 		}
 		defer f.Close()
 
 		// If the dir is empty skip it
 		if _, err := f.Readdirnames(1); err != nil {
-			if err != io.EOF {
-				level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
+			if err == io.EOF {
+				return filepath.SkipDir
 			}
 
-			return filepath.SkipDir
+			level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
+			return errors.Wrapf(err, "unable to read TSDB dir %s for user %s", path, userID)
 		}
 
 		// Limit the number of TSDB's opening concurrently. Start blocks until there's a free spot available or the context is cancelled.
@@ -1100,7 +1153,11 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 
 			db, err := i.createTSDB(userID)
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)
+				errsMx.Lock()
+				errs.Add(errors.Wrapf(err, "unable to open TSDB for user %s", userID))
+				errsMx.Unlock()
+
+				level.Error(util.Logger).Log("msg", "unable to open TSDB", "err", err, "user", userID)
 				return
 			}
 
@@ -1114,14 +1171,23 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		return filepath.SkipDir // Don't descend into directories
 	})
 
+	if walkErr != nil {
+		errsMx.Lock()
+		errs.Add(errors.Wrapf(walkErr, "unable to walk directory %s containing existing TSDBs", i.cfg.BlocksStorageConfig.TSDB.Dir))
+		errsMx.Unlock()
+	}
+
 	// Wait for all opening routines to finish
 	wg.Wait()
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error while opening existing TSDBs")
-	} else {
+
+	// Ensure no error occurred.
+	if errs.Err() == nil {
 		level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
+		return nil
 	}
-	return err
+
+	level.Error(util.Logger).Log("msg", "error while opening existing TSDBs", "err", errs.Error())
+	return errs.Err()
 }
 
 // numSeriesInTSDB returns the total number of in-memory series across all open TSDBs.

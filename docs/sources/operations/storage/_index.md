@@ -3,6 +3,8 @@ title: Storage
 ---
 # Loki Storage
 
+[High level storage overview here]({{< relref "../../storage/_index.md" >}})
+
 Loki needs to store two different types of data: **chunks** and **indexes**.
 
 Loki receives logs in separate streams, where each stream is uniquely identified
@@ -25,11 +27,11 @@ For more information:
 
 The following are supported for the index:
 
+- [Single Store (boltdb-shipper) - Recommended for 2.0 and newer](boltdb-shipper/) index store which stores boltdb index files in the object store
 - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
 - [Google Bigtable](https://cloud.google.com/bigtable)
 - [Apache Cassandra](https://cassandra.apache.org)
 - [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
-- [BoltDB Shipper](boltdb-shipper/) EXPERIMENTAL index store which stores boltdb index files in the object store
 
 The following are supported for the chunks:
 
@@ -49,6 +51,7 @@ When using S3 as object storage, the following permissions are needed:
 - `s3:ListBucket`
 - `s3:PutObject`
 - `s3:GetObject`
+- `s3:DeleteObject` (if running the Single Store (boltdb-shipper) compactor)
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 

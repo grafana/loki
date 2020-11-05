@@ -856,6 +856,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		nil,
 		cortex_util.Logger,
 	)
+	require.NoError(t, err)
 
 	store, err = NewStore(config, schemaConfig, chunkStore, nil)
 	require.NoError(t, err)

@@ -2,8 +2,10 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -34,6 +36,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 2*time.Hour, "Interval at which to re-run the compaction operation.")
 }
 
+func (cfg *Config) IsDefaults() bool {
+	cpy := &Config{}
+	cpy.RegisterFlags(flag.NewFlagSet("defaults", flag.ContinueOnError))
+	return reflect.DeepEqual(cfg, cpy)
+}
+
 type Compactor struct {
 	services.Service
 
@@ -44,6 +52,10 @@ type Compactor struct {
 }
 
 func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registerer) (*Compactor, error) {
+	if cfg.IsDefaults() {
+		return nil, errors.New("Must specify compactor config")
+	}
+
 	objectClient, err := storage.NewObjectClient(cfg.SharedStoreType, storageConfig)
 	if err != nil {
 		return nil, err
@@ -95,6 +107,7 @@ func (c *Compactor) Run(ctx context.Context) error {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
 		if status == statusSuccess {
 			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
+			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 		}
 	}()
 

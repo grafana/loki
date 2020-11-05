@@ -77,8 +77,8 @@ func Test_jsonParser_Parse(t *testing.T) {
 	for _, tt := range tests {
 		j := NewJSONParser()
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewLabelsBuilder()
-			b.Reset(tt.lbs)
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
 			_, _ = j.Process(tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.Labels())
@@ -169,8 +169,8 @@ func Test_regexpParser_Parse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewLabelsBuilder()
-			b.Reset(tt.lbs)
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
 			_, _ = tt.parser.Process(tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.Labels())
@@ -281,8 +281,8 @@ func Test_logfmtParser_Parse(t *testing.T) {
 	p := NewLogfmtParser()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewLabelsBuilder()
-			b.Reset(tt.lbs)
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
 			_, _ = p.Process(tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.Labels())

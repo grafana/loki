@@ -97,7 +97,8 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 
 	for _, stream := range in {
 		for _, e := range stream.Entries {
-			if l, out, ok := pipeline.Process([]byte(e.Line), mustParseLabels(stream.Labels)); ok {
+			sp := pipeline.ForStream(mustParseLabels(stream.Labels))
+			if l, out, ok := sp.Process([]byte(e.Line)); ok {
 				var s *logproto.Stream
 				var found bool
 				s, found = resByStream[out.String()]
@@ -124,7 +125,8 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 
 	for _, stream := range in {
 		for _, e := range stream.Entries {
-			if f, lbs, ok := ex.Process([]byte(e.Line), mustParseLabels(stream.Labels)); ok {
+			exs := ex.ForStream(mustParseLabels(stream.Labels))
+			if f, lbs, ok := exs.Process([]byte(e.Line)); ok {
 				var s *logproto.Series
 				var found bool
 				s, found = resBySeries[lbs.String()]

@@ -446,7 +446,7 @@ type testServerHandler struct {
 
 func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req logproto.PushRequest
-	if _, err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
+	if err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

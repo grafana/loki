@@ -95,7 +95,7 @@ func TestTransferOut(t *testing.T) {
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,
-				logql.NoopPipeline,
+				logql.NoopPipeline.ForStream(stream.labels),
 			)
 			if !assert.NoError(t, err) {
 				continue

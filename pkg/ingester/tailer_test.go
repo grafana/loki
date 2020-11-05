@@ -34,7 +34,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 		go assert.NotPanics(t, func() {
 			defer routines.Done()
 			time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
-			tailer.send(stream)
+			_ = tailer.send(stream)
 		})
 
 		go assert.NotPanics(t, func() {

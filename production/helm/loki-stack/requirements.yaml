@@ -2,15 +2,15 @@ dependencies:
 - name: "loki"
   condition: loki.enabled
   repository: "file://../loki"
-  version: "^0.31.1"
+  version: "^2.0.0"
 - name: "promtail"
   condition: promtail.enabled
   repository: "file://../promtail"
-  version: "^0.25.1"
+  version: "^2.0.0"
 - name: "fluent-bit"
   condition: fluent-bit.enabled
   repository: "file://../fluent-bit"
-  version: "^0.3.1"
+  version: "^2.0.0"
 - name: "grafana"
   condition: grafana.enabled
   version: "~5.7.0"

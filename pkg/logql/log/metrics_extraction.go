@@ -7,103 +7,97 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/dustin/go-humanize"
 )
 
 const (
+	ConvertBytes    = "bytes"
 	ConvertDuration = "duration"
 	ConvertFloat    = "float"
 )
 
-// SampleExtractor extracts sample for a log line.
-type SampleExtractor interface {
-	Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool)
-}
-
-type SampleExtractorFunc func(line []byte, lbs labels.Labels) (float64, labels.Labels, bool)
-
-func (fn SampleExtractorFunc) Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
-	return fn(line, lbs)
-}
-
 // LineExtractor extracts a float64 from a log line.
 type LineExtractor func([]byte) float64
-
-// ToSampleExtractor transform a LineExtractor into a SampleExtractor.
-// Useful for metric conversion without log Pipeline.
-func (l LineExtractor) ToSampleExtractor(groups []string, without bool, noLabels bool) SampleExtractor {
-	return SampleExtractorFunc(func(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
-		// todo(cyriltovena) grouping should be done once per stream/chunk not for everyline.
-		// so for now we'll cover just vector without grouping. This requires changes to SampleExtractor interface.
-		// For another day !
-		if len(groups) == 0 && noLabels {
-			return l(line), labels.Labels{}, true
-		}
-		return l(line), lbs, true
-	})
-}
 
 var (
 	CountExtractor LineExtractor = func(line []byte) float64 { return 1. }
 	BytesExtractor LineExtractor = func(line []byte) float64 { return float64(len(line)) }
 )
 
+// SampleExtractor creates StreamSampleExtractor that can extract samples for a given log stream.
+type SampleExtractor interface {
+	ForStream(labels labels.Labels) StreamSampleExtractor
+}
+
+// StreamSampleExtractor extracts sample for a log line.
+type StreamSampleExtractor interface {
+	Process(line []byte) (float64, LabelsResult, bool)
+}
+
 type lineSampleExtractor struct {
 	Stage
 	LineExtractor
 
-	groups   []string
-	without  bool
-	noLabels bool
-	builder  *LabelsBuilder
+	baseBuilder      *BaseLabelsBuilder
+	streamExtractors map[uint64]StreamSampleExtractor
 }
 
-func (l lineSampleExtractor) Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
-	l.builder.Reset(lbs)
+// NewLineSampleExtractor creates a SampleExtractor from a LineExtractor.
+// Multiple log stages are run before converting the log line.
+func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without bool, noLabels bool) (SampleExtractor, error) {
+	return &lineSampleExtractor{
+		Stage:            ReduceStages(stages),
+		LineExtractor:    ex,
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, without, noLabels),
+		streamExtractors: make(map[uint64]StreamSampleExtractor),
+	}, nil
+}
+
+func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(labels)
+	if res, ok := l.streamExtractors[hash]; ok {
+		return res
+	}
+
+	res := &streamLineSampleExtractor{
+		Stage:         l.Stage,
+		LineExtractor: l.LineExtractor,
+		builder:       l.baseBuilder.ForLabels(labels, hash),
+	}
+	l.streamExtractors[hash] = res
+	return res
+}
+
+type streamLineSampleExtractor struct {
+	Stage
+	LineExtractor
+	builder *LabelsBuilder
+}
+
+func (l *streamLineSampleExtractor) Process(line []byte) (float64, LabelsResult, bool) {
+	// short circuit.
+	if l.Stage == NoopStage {
+		return l.LineExtractor(line), l.builder.GroupedLabels(), true
+	}
+	l.builder.Reset()
 	line, ok := l.Stage.Process(line, l.builder)
 	if !ok {
 		return 0, nil, false
 	}
-	if len(l.groups) != 0 {
-		if l.without {
-			return l.LineExtractor(line), l.builder.WithoutLabels(l.groups...), true
-		}
-		return l.LineExtractor(line), l.builder.WithLabels(l.groups...), true
-	}
-	if l.noLabels {
-		// no grouping but it was a vector operation so we return a single vector
-		return l.LineExtractor(line), labels.Labels{}, true
-	}
-	return l.LineExtractor(line), l.builder.Labels(), true
-}
-
-// LineExtractorWithStages creates a SampleExtractor from a LineExtractor.
-// Multiple log stages are run before converting the log line.
-func LineExtractorWithStages(ex LineExtractor, stages []Stage, groups []string, without bool, noLabels bool) (SampleExtractor, error) {
-	if len(stages) == 0 {
-		return ex.ToSampleExtractor(groups, without, noLabels), nil
-	}
-	return lineSampleExtractor{
-		Stage:         ReduceStages(stages),
-		LineExtractor: ex,
-		builder:       NewLabelsBuilder(),
-		groups:        groups,
-		without:       without,
-		noLabels:      noLabels,
-	}, nil
+	return l.LineExtractor(line), l.builder.GroupedLabels(), true
 }
 
 type convertionFn func(value string) (float64, error)
 
 type labelSampleExtractor struct {
-	preStage   Stage
-	postFilter Stage
-	builder    *LabelsBuilder
-
+	preStage     Stage
+	postFilter   Stage
 	labelName    string
 	conversionFn convertionFn
-	groups       []string
-	without      bool
-	noLabels     bool
+
+	baseBuilder      *BaseLabelsBuilder
+	streamExtractors map[uint64]StreamSampleExtractor
 }
 
 // LabelExtractorWithStages creates a SampleExtractor that will extract metrics from a labels.
@@ -117,6 +111,8 @@ func LabelExtractorWithStages(
 ) (SampleExtractor, error) {
 	var convFn convertionFn
 	switch conversion {
+	case ConvertBytes:
+		convFn = convertBytes
 	case ConvertDuration:
 		convFn = convertDuration
 	case ConvertFloat:
@@ -124,25 +120,43 @@ func LabelExtractorWithStages(
 	default:
 		return nil, errors.Errorf("unsupported conversion operation %s", conversion)
 	}
-	if len(groups) != 0 && without {
+	if len(groups) == 0 || without {
+		without = true
 		groups = append(groups, labelName)
 		sort.Strings(groups)
 	}
 	return &labelSampleExtractor{
-		preStage:     ReduceStages(preStages),
-		conversionFn: convFn,
-		groups:       groups,
-		labelName:    labelName,
-		postFilter:   postFilter,
-		without:      without,
-		builder:      NewLabelsBuilder(),
-		noLabels:     noLabels,
+		preStage:         ReduceStages(preStages),
+		conversionFn:     convFn,
+		labelName:        labelName,
+		postFilter:       postFilter,
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, without, noLabels),
+		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }
 
-func (l *labelSampleExtractor) Process(line []byte, lbs labels.Labels) (float64, labels.Labels, bool) {
+type streamLabelSampleExtractor struct {
+	*labelSampleExtractor
+	builder *LabelsBuilder
+}
+
+func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(labels)
+	if res, ok := l.streamExtractors[hash]; ok {
+		return res
+	}
+
+	res := &streamLabelSampleExtractor{
+		labelSampleExtractor: l,
+		builder:              l.baseBuilder.ForLabels(labels, hash),
+	}
+	l.streamExtractors[hash] = res
+	return res
+}
+
+func (l *streamLabelSampleExtractor) Process(line []byte) (float64, LabelsResult, bool) {
 	// Apply the pipeline first.
-	l.builder.Reset(lbs)
+	l.builder.Reset()
 	line, ok := l.preStage.Process(line, l.builder)
 	if !ok {
 		return 0, nil, false
@@ -163,25 +177,7 @@ func (l *labelSampleExtractor) Process(line []byte, lbs labels.Labels) (float64,
 	if _, ok = l.postFilter.Process(line, l.builder); !ok {
 		return 0, nil, false
 	}
-	if l.builder.HasErr() {
-		// we still have an error after post filtering.
-		// We need to return now before applying grouping otherwise the error might get lost.
-		return v, l.builder.Labels(), true
-	}
-	return v, l.groupLabels(l.builder), true
-}
-
-func (l *labelSampleExtractor) groupLabels(lbs *LabelsBuilder) labels.Labels {
-	if len(l.groups) != 0 {
-		if l.without {
-			return lbs.WithoutLabels(l.groups...)
-		}
-		return lbs.WithLabels(l.groups...)
-	}
-	if l.noLabels {
-		return labels.Labels{}
-	}
-	return lbs.WithoutLabels(l.labelName)
+	return v, l.builder.GroupedLabels(), true
 }
 
 func convertFloat(v string) (float64, error) {
@@ -194,4 +190,12 @@ func convertDuration(v string) (float64, error) {
 		return 0, err
 	}
 	return d.Seconds(), nil
+}
+
+func convertBytes(v string) (float64, error) {
+	b, err := humanize.ParseBytes(v)
+	if err != nil {
+		return 0, err
+	}
+	return float64(b), nil
 }

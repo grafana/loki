@@ -44,10 +44,10 @@ import (
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/pool"
-	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
@@ -226,13 +226,13 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 
 	m.seriesFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Name:    "thanos_bucket_store_cached_series_fetch_duration_seconds",
-		Help:    "Time it takes to fetch series from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
+		Help:    "The time it takes to fetch series to respond to a request sent to a store gateway. It includes both the time to fetch it from the cache and from storage in case of cache misses.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
 
 	m.postingsFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Name:    "thanos_bucket_store_cached_postings_fetch_duration_seconds",
-		Help:    "Time it takes to fetch postings from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
+		Help:    "The time it takes to fetch postings to respond to a request sent to a store gateway. It includes both the time to fetch it from the cache and from storage in case of cache misses.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
 
@@ -273,7 +273,7 @@ type BucketStore struct {
 	partitioner          partitioner
 
 	filterConfig             *FilterConfig
-	advLabelSets             []storepb.LabelSet
+	advLabelSets             []labelpb.ZLabelSet
 	enableCompatibilityLabel bool
 
 	// Reencode postings using diff+varint+snappy when storing to cache.
@@ -410,21 +410,17 @@ func (s *BucketStore) SyncBlocks(ctx context.Context) error {
 	}
 
 	// Sync advertise labels.
-	var storeLabels []storepb.Label
+	var storeLabels labels.Labels
 	s.mtx.Lock()
-	s.advLabelSets = s.advLabelSets[:0]
+	s.advLabelSets = make([]labelpb.ZLabelSet, 0, len(s.advLabelSets))
 	for _, bs := range s.blockSets {
-		storeLabels := storeLabels[:0]
-		for _, l := range bs.labels {
-			storeLabels = append(storeLabels, storepb.Label{Name: l.Name, Value: l.Value})
-		}
-		s.advLabelSets = append(s.advLabelSets, storepb.LabelSet{Labels: storeLabels})
+		storeLabels = storeLabels[:0]
+		s.advLabelSets = append(s.advLabelSets, labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(append(storeLabels, bs.labels...))})
 	}
 	sort.Slice(s.advLabelSets, func(i, j int) bool {
 		return strings.Compare(s.advLabelSets[i].String(), s.advLabelSets[j].String()) < 0
 	})
 	s.mtx.Unlock()
-
 	return nil
 }
 
@@ -602,14 +598,13 @@ func (s *BucketStore) Info(context.Context, *storepb.InfoRequest) (*storepb.Info
 	}
 
 	s.mtx.RLock()
-	// Should we clone?
 	res.LabelSets = s.advLabelSets
 	s.mtx.RUnlock()
 
 	if s.enableCompatibilityLabel && len(res.LabelSets) > 0 {
 		// This is for compatibility with Querier v0.7.0.
 		// See query.StoreCompatibilityTypeLabelName comment for details.
-		res.LabelSets = append(res.LabelSets, storepb.LabelSet{Labels: []storepb.Label{{Name: CompatibilityTypeLabelName, Value: "store"}}})
+		res.LabelSets = append(res.LabelSets, labelpb.ZLabelSet{Labels: []labelpb.ZLabel{{Name: CompatibilityTypeLabelName, Value: "store"}}})
 	}
 	return res, nil
 }
@@ -643,7 +638,7 @@ func (s *BucketStore) limitMaxTime(maxt int64) int64 {
 }
 
 type seriesEntry struct {
-	lset []storepb.Label
+	lset labels.Labels
 	refs []uint64
 	chks []storepb.AggrChunk
 }
@@ -669,7 +664,7 @@ func (s *bucketSeriesSet) Next() bool {
 	return true
 }
 
-func (s *bucketSeriesSet) At() ([]storepb.Label, []storepb.AggrChunk) {
+func (s *bucketSeriesSet) At() (labels.Labels, []storepb.AggrChunk) {
 	return s.set[s.i].lset, s.set[s.i].chks
 }
 
@@ -713,7 +708,7 @@ func blockSeries(
 			return nil, nil, errors.Wrap(err, "read series")
 		}
 		s := seriesEntry{
-			lset: make([]storepb.Label, 0, len(lset)+len(extLset)),
+			lset: make(labels.Labels, 0, len(lset)+len(extLset)),
 			refs: make([]uint64, 0, len(chks)),
 			chks: make([]storepb.AggrChunk, 0, len(chks)),
 		}
@@ -723,20 +718,12 @@ func blockSeries(
 			if extLset[l.Name] != "" {
 				continue
 			}
-			s.lset = append(s.lset, storepb.Label{
-				Name:  l.Name,
-				Value: l.Value,
-			})
+			s.lset = append(s.lset, l)
 		}
 		for ln, lv := range extLset {
-			s.lset = append(s.lset, storepb.Label{
-				Name:  ln,
-				Value: lv,
-			})
+			s.lset = append(s.lset, labels.Label{Name: ln, Value: lv})
 		}
-		sort.Slice(s.lset, func(i, j int) bool {
-			return s.lset[i].Name < s.lset[j].Name
-		})
+		sort.Sort(s.lset)
 
 		for _, meta := range chks {
 			if meta.MaxTime < req.MinTime {
@@ -881,7 +868,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		defer s.queryGate.Done()
 	}
 
-	matchers, err := promclient.TranslateMatchers(req.Matchers)
+	matchers, err := storepb.TranslateFromPromMatchers(req.Matchers...)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -905,7 +892,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 			return status.Error(codes.InvalidArgument, errors.Wrap(err, "unmarshal series request hints").Error())
 		}
 
-		reqBlockMatchers, err = promclient.TranslateMatchers(reqHints.BlockMatchers)
+		reqBlockMatchers, err = storepb.TranslateFromPromMatchers(reqHints.BlockMatchers...)
 		if err != nil {
 			return status.Error(codes.InvalidArgument, errors.Wrap(err, "translate request hints labels matchers").Error())
 		}
@@ -1019,15 +1006,16 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 			stats.mergedSeriesCount++
 
+			var lset labels.Labels
 			if req.SkipChunks {
-				series.Labels, _ = set.At()
+				lset, _ = set.At()
 			} else {
-				series.Labels, series.Chunks = set.At()
+				lset, series.Chunks = set.At()
 
 				stats.mergedChunksCount += len(series.Chunks)
 				s.metrics.chunkSizeBytes.Observe(float64(chunksSize(series.Chunks)))
 			}
-
+			series.Labels = labelpb.ZLabelsFromPromLabels(lset)
 			if err = srv.Send(storepb.NewSeriesResponse(&series)); err != nil {
 				err = status.Error(codes.Unknown, errors.Wrap(err, "send series response").Error())
 				return
@@ -1342,7 +1330,17 @@ func newBucketBlock(
 	})
 	sort.Sort(b.relabelLabels)
 
-	// Get object handles for all chunk files.
+	// Get object handles for all chunk files (segment files) from meta.json, if available.
+	if len(meta.Thanos.SegmentFiles) > 0 {
+		b.chunkObjs = make([]string, 0, len(meta.Thanos.SegmentFiles))
+
+		for _, sf := range meta.Thanos.SegmentFiles {
+			b.chunkObjs = append(b.chunkObjs, path.Join(meta.ULID.String(), block.ChunksDirname, sf))
+		}
+		return b, nil
+	}
+
+	// Get object handles for all chunk files from storage.
 	if err = bkt.Iter(ctx, path.Join(meta.ULID.String(), block.ChunksDirname), func(n string) error {
 		b.chunkObjs = append(b.chunkObjs, n)
 		return nil
@@ -1379,6 +1377,11 @@ func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length i
 	if err != nil {
 		return nil, errors.Wrap(err, "allocate chunk bytes")
 	}
+
+	if seq < 0 || seq >= len(b.chunkObjs) {
+		return nil, errors.Errorf("unknown segment file for index %d", seq)
+	}
+
 	buf := bytes.NewBuffer(*c)
 
 	r, err := b.bkt.GetRange(ctx, b.chunkObjs[seq], off, length)

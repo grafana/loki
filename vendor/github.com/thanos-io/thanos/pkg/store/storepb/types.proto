@@ -7,6 +7,7 @@ package thanos;
 option go_package = "storepb";
 
 import "gogoproto/gogo.proto";
+import "store/labelpb/types.proto";
 
 option (gogoproto.sizer_all) = true;
 option (gogoproto.marshaler_all) = true;
@@ -19,11 +20,6 @@ option (gogoproto.goproto_unkeyed_all) = false;
 option (gogoproto.goproto_unrecognized_all) = false;
 option (gogoproto.goproto_sizecache_all) = false;
 
-message Label {
-  string name  = 1;
-  string value = 2;
-}
-
 message Chunk {
   enum Encoding {
     XOR = 0;
@@ -33,8 +29,8 @@ message Chunk {
 }
 
 message Series {
-  repeated Label labels     = 1 [(gogoproto.nullable) = false];
-  repeated AggrChunk chunks = 2 [(gogoproto.nullable) = false];
+  repeated Label labels      = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
+  repeated AggrChunk chunks  = 2 [(gogoproto.nullable) = false];
 }
 
 message AggrChunk {

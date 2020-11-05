@@ -151,8 +151,8 @@ func TestBinary_Filter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
 			sort.Sort(tt.lbs)
-			b := NewLabelsBuilder()
-			b.Reset(tt.lbs)
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
 			_, got := tt.f.Process(nil, b)
 			require.Equal(t, tt.want, got)
 			sort.Sort(tt.wantLbs)
@@ -231,8 +231,8 @@ func TestErrorFiltering(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
 			sort.Sort(tt.lbs)
-			b := NewLabelsBuilder()
-			b.Reset(tt.lbs)
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
 			b.SetErr(tt.err)
 			_, got := tt.f.Process(nil, b)
 			require.Equal(t, tt.want, got)

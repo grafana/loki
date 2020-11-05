@@ -13,6 +13,7 @@ const (
 type metrics struct {
 	compactTablesOperationTotal           *prometheus.CounterVec
 	compactTablesOperationDurationSeconds prometheus.Gauge
+	compactTablesOperationLastSuccess     prometheus.Gauge
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -26,6 +27,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Namespace: "loki_boltdb_shipper",
 			Name:      "compact_tables_operation_duration_seconds",
 			Help:      "Time (in seconds) spent in compacting all the tables",
+		}),
+		compactTablesOperationLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "compact_tables_operation_last_successful_run_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful compaction run",
 		}),
 	}
 

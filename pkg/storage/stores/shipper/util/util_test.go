@@ -52,7 +52,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 }
 
 func Test_CompressFile(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-compaction")
+	tempDir, err := ioutil.TempDir("", "compress-file")
 	require.NoError(t, err)
 
 	defer func() {

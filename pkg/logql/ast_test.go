@@ -43,7 +43,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to get filter: %s", err)
 			}
-			require.Equal(t, tt.expectFilter, p != log.NoopPipeline)
+			require.Equal(t, tt.expectFilter, p != NoopPipeline)
 			if expr.String() != tt.selector {
 				t.Fatalf("error expected: %s got: %s", tt.selector, expr.String())
 			}
@@ -82,6 +82,11 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms|unwrap latency [5m])`,
 		`sum by (job) (
 			sum_over_time({namespace="tns"} |= "level=error" | json | foo=5 and bar<25ms | unwrap latency[5m])
+		/
+			count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
+		)`,
+		`sum by (job) (
+			sum_over_time({namespace="tns"} |= "level=error" | json | foo=5 and bar<25ms | unwrap bytes(latency)[5m])
 		/
 			count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
 		)`,
@@ -127,7 +132,7 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 
 			p, err := expr.Pipeline()
 			require.Nil(t, err)
-			_, _, ok := p.Process([]byte("bleepbloop"), labelBar)
+			_, _, ok := p.ForStream(labelBar).Process([]byte("bleepbloop"))
 
 			require.True(t, ok)
 		})
@@ -211,10 +216,11 @@ func Test_FilterMatcher(t *testing.T) {
 			p, err := expr.Pipeline()
 			assert.Nil(t, err)
 			if tt.lines == nil {
-				assert.Equal(t, p, log.NoopPipeline)
+				assert.Equal(t, p, NoopPipeline)
 			} else {
+				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {
-					_, _, ok := p.Process([]byte(lc.l), labelBar)
+					_, _, ok := sp.Process([]byte(lc.l))
 					assert.Equal(t, lc.e, ok)
 				}
 			}
@@ -276,8 +282,9 @@ func BenchmarkContainsFilter(b *testing.B) {
 
 	b.ResetTimer()
 
+	sp := p.ForStream(labelBar)
 	for i := 0; i < b.N; i++ {
-		if _, _, ok := p.Process(line, labelBar); !ok {
+		if _, _, ok := sp.Process(line); !ok {
 			b.Fatal("doesn't match")
 		}
 	}
