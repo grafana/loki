@@ -2,7 +2,7 @@
 title: Template functions
 ---
 
-The [text template](https://golang.org/pkg/text/template) format used in `| line_format` and `| label_format` support functions the usage of functions.
+The [text template](https://golang.org/pkg/text/template) format used in `| line_format` and `| label_format` support the usage of functions.
 
 All labels are added as variables in the template engine. They can be referenced using they label name prefixed by a `.`(e.g `.label_name`). For example the following template will output the value of the path label:
 
@@ -10,7 +10,7 @@ All labels are added as variables in the template engine. They can be referenced
 {{ .path }}
 ```
 
-You can take advantage of [pipeline](https://golang.org/pkg/text/template/#hdr-Pipelines) to chain multiple functions.
+You can take advantage of [pipeline](https://golang.org/pkg/text/template/#hdr-Pipelines) to join together multiple functions.
 In a chained pipeline, the result of each command is passed as the last argument of the following command.
 
 Example:
@@ -19,7 +19,7 @@ Example:
 {{ .path | replace " " "_" | trunc 5 | upper }}
 ```
 
-## ToLower & ToUpper
+## ToLower and ToUpper
 
 This function converts the entire string to lowercase or uppercase.
 
@@ -42,7 +42,7 @@ Examples:
 
 > **Note:** In Loki 2.1 [`replace`](#replace) (as opposed to `Replace`) is available with a different signature but easier to chain within pipeline.
 
-Perform simple string replacement.
+Use this function to perform a simple string replacement.
 
 Signature:
 
@@ -61,9 +61,9 @@ Example:
 `{{ Replace "This is a string" " " "-" -1 }}`
 ```
 
-The above will produce `This-is-a-string`.
+The results in `This-is-a-string`.
 
-## Trim, TrimLeft, TrimRight and TrimSpace
+## Trim, TrimLeft, TrimRight, and TrimSpace
 
 > **Note:** In Loki 2.1 [trim](#trim), [trimAll](#trimAll), [trimSuffix](#trimSuffix) and [trimPrefix](trimPrefix) have been added with a different signature for better pipeline chaining.
 
@@ -72,7 +72,7 @@ trailing Unicode code points contained in cutset removed.
 
 Signature: `Trim(value, cutset string) string`
 
-`TrimLeft` and `TrimRight` are the same as `Trim` except that it respectively trim only leading and trailing characters.
+`TrimLeft` and `TrimRight` are the same as `Trim` except that it trims only leading and trailing characters respectively.
 
 ```template
 `{{ Trim .query ",. " }}`
@@ -102,7 +102,7 @@ Signature:
 
 ## regexReplaceAll and regexReplaceAllLiteral
 
-`regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [Regexp.replaceAll documentation](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for detailed examples.
+`regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [Regexp.replaceAll documentation](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for more examples.
 
 ```template
 `{{ regexReplaceAllLiteral "(a*)bc" .some_label "${1}a" }}`
