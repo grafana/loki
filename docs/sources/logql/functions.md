@@ -65,7 +65,7 @@ The above will produce `This-is-a-string`
 
 ## Trim, TrimLeft, TrimRight and TrimSpace
 
-> In Loki 2.1 [trim](#trim), [trimAll](#trimAll), [trimSuffix](#trimSuffix) and [trimPrefix](trimPrefix) have been added with a different signature for better pipeline chaining.
+> **Note:** In Loki 2.1 [trim](#trim), [trimAll](#trimAll), [trimSuffix](#trimSuffix) and [trimPrefix](trimPrefix) have been added with a different signature for better pipeline chaining.
 
 `Trim` returns a slice of the string s with all leading and
 trailing Unicode code points contained in cutset removed.
