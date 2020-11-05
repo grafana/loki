@@ -61,7 +61,7 @@ Example:
 `{{ Replace "This is a string" " " "-" -1 }}`
 ```
 
-The above will produce `This-is-a-string`
+The above will produce `This-is-a-string`.
 
 ## Trim, TrimLeft, TrimRight and TrimSpace
 
