@@ -328,7 +328,7 @@ This will indent every line of text by 4 space characters and add a new line to 
 
 > **Note:** Added in Loki 2.1.
 
-Repeat a string multiple times.
+Use this function to repeat a string multiple times.
 
 Signature: `repeat(c int,value string) string`
 
@@ -340,7 +340,7 @@ Signature: `repeat(c int,value string) string`
 
 > **Note:** Added in Loki 2.1.
 
-Test to see if one string is contained inside of another.
+Use this function to test to see if one string is contained inside of another.
 
 Signature: `contains(s string, src string) bool`
 
