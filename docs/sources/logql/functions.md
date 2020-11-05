@@ -238,7 +238,7 @@ The last example will return `world world`.
 
 ## trim
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 The trim function removes space from either side of a string.
 
