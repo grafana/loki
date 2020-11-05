@@ -268,7 +268,7 @@ Examples:
 
 ## trimSuffix
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 Trim just the suffix from a string.
 
