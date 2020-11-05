@@ -26,14 +26,12 @@ var (
 	errMissingCapture = errors.New("at least one named capture must be supplied")
 )
 
-func addLabel(lbs *LabelsBuilder) func(key, value string) {
-	return func(key, value string) {
-		key = sanitizeKey(key)
-		if lbs.Base().Has(key) {
-			key = fmt.Sprintf("%s%s", key, duplicateSuffix)
-		}
-		lbs.Set(key, value)
+func addLabel(lbs *LabelsBuilder, key, value string) {
+	key = sanitizeKey(key)
+	if lbs.BaseHas(key) {
+		key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 	}
+	lbs.Set(key, value)
 }
 
 func sanitizeKey(key string) string {
@@ -66,20 +64,20 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		lbs.SetErr(errJSON)
 		return line, true
 	}
-	parseMap("", data, addLabel(lbs))
+	parseMap("", data, lbs)
 	return line, true
 }
 
-func parseMap(prefix string, data map[string]interface{}, add func(key, value string)) {
+func parseMap(prefix string, data map[string]interface{}, lbs *LabelsBuilder) {
 	for key, val := range data {
 		switch concrete := val.(type) {
 		case map[string]interface{}:
-			parseMap(jsonKey(prefix, key), concrete, add)
+			parseMap(jsonKey(prefix, key), concrete, lbs)
 		case string:
-			add(jsonKey(prefix, key), concrete)
+			addLabel(lbs, jsonKey(prefix, key), concrete)
 		case float64:
 			f := strconv.FormatFloat(concrete, 'f', -1, 64)
-			add(jsonKey(prefix, key), f)
+			addLabel(lbs, jsonKey(prefix, key), f)
 		}
 	}
 }
@@ -138,10 +136,9 @@ func mustNewRegexParser(re string) *RegexpParser {
 }
 
 func (r *RegexpParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	add := addLabel(lbs)
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
-			add(name, string(value))
+			addLabel(lbs, name, string(value))
 		}
 	}
 	return line, true
@@ -161,11 +158,11 @@ func NewLogfmtParser() *LogfmtParser {
 
 func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	l.dec.Reset(line)
-	add := addLabel(lbs)
+
 	for l.dec.ScanKeyval() {
 		key := string(l.dec.Key())
 		val := string(l.dec.Value())
-		add(key, val)
+		addLabel(lbs, key, val)
 	}
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)

@@ -145,18 +145,18 @@ func (t *tailer) processStream(stream logproto.Stream) ([]logproto.Stream, error
 	if err != nil {
 		return nil, err
 	}
+	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := t.pipeline.Process([]byte(e.Line), lbs)
+		newLine, parsedLbs, ok := sp.Process([]byte(e.Line))
 		if !ok {
 			continue
 		}
 		var stream *logproto.Stream
-		lhash := parsedLbs.Hash()
-		if stream, ok = streams[lhash]; !ok {
+		if stream, ok = streams[parsedLbs.Hash()]; !ok {
 			stream = &logproto.Stream{
 				Labels: parsedLbs.String(),
 			}
-			streams[lhash] = stream
+			streams[parsedLbs.Hash()] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp: e.Timestamp,
