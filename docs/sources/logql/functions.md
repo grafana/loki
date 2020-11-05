@@ -312,7 +312,7 @@ The following will indent by 4 spaces each lines contained in `.query`.
 
 ## nindent
 
-> Added in Loki 2.1
+> **Note:** Added in Loki 2.1.
 
 The nindent function is the same as the indent function, but prepends a new line to the beginning of the string.
 
