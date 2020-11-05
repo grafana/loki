@@ -108,19 +108,19 @@ Signature:
 `{{ regexReplaceAllLiteral "(a*)bc" .some_label "${1}a" }}`
 ```
 
-`regexReplaceAllLiteral` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement The replacement string is substituted directly, without using Expand.
+`regexReplaceAllLiteral` function returns a copy of the input string and replaces matches of the Regexp with the replacement string replacement. The replacement string is substituted directly, without using Expand.
 
 ```template
 `{{ regexReplaceAllLiteral "(ts=)" .timestamp "timestamp=" }}`
 ```
 
-You can combine multiple function using pipe. For example, if you want to strip out spaces and make the request method in capital, then you would write the following template: `{{ .request_method | TrimSpace | ToUpper }}`.
+You can combine multiple functions using pipe. For example, to strip out spaces and make the request method in capital, you would write the following template: `{{ .request_method | TrimSpace | ToUpper }}`.
 
 ## lower
 
 > Added in Loki 2.1
 
-Convert to lower case.
+Use this function to convert to lower case.
 
 Signature:
 
@@ -139,7 +139,7 @@ The last example will return `hello`.
 
 > Added in Loki 2.1
 
-Convert to upper case.
+Use this function to convert to upper case.
 
 Signature:
 
@@ -152,7 +152,7 @@ Examples:
 `{{ upper  "hello"}}`
 ```
 
-The last example will return `HELLO`.
+This results in `HELLO`.
 
 ## title
 
@@ -285,7 +285,7 @@ Examples:
 
 > **Note:** Added in Loki 2.1.
 
-Trim just the prefix from a string.
+Use this function to trim just the prefix from a string.
 
 Signature: `trimPrefix(suffix string, src string) string`
 
@@ -308,7 +308,7 @@ Signature: `indent(spaces int,src string) string`
 {{ indent 4 .query }}
 ```
 
-The following will indent by 4 spaces each lines contained in `.query`.
+This indents each line contained in the `.query` by four (4) spaces.
 
 ## nindent
 
@@ -322,7 +322,7 @@ Signature: `nindent(spaces int,src string) string`
 {{ nindent 4 .query }}
 ```
 
-The above will indent every line of text by 4 space characters and add a new line to the beginning.
+This will indent every line of text by 4 space characters and add a new line to the beginning.
 
 ## repeat
 
