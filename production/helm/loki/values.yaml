@@ -179,6 +179,7 @@ service:
   port: 3100
   annotations: {}
   labels: {}
+  targetPort: http-metrics
 
 serviceAccount:
   create: true
