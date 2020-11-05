@@ -18,29 +18,6 @@ type WALReader interface {
 	Record() []byte
 }
 
-type MemoryWALReader struct {
-	xs [][]byte
-}
-
-func NewMemoryWALReader(xs [][]byte) *MemoryWALReader {
-	return &MemoryWALReader{
-		xs: xs,
-	}
-}
-
-func (m *MemoryWALReader) Next() bool {
-	if len(m.xs) < 1 {
-		return false
-	}
-
-	m.xs = m.xs[1:]
-	return true
-}
-
-func (m *MemoryWALReader) Err() error { return nil }
-
-func (m *MemoryWALReader) Record() []byte { return m.xs[0] }
-
 // If startSegment is <0, it means all the segments.
 func newWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) {
 	var (
@@ -122,6 +99,7 @@ func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) er
 	got, _ := r.users.LoadOrStore(userID, &sync.Map{})
 	streamsMap := got.(*sync.Map)
 	streamsMap.Store(series.Ref, stream)
+	return nil
 }
 
 func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
@@ -147,6 +125,7 @@ func (r *ingesterRecoverer) Done() <-chan struct{} {
 }
 
 /*
+RecoverWAL recovers from WAL segments (not checkpoints).
 Recovery strategy:
 - loop over all records
   - create instance (user) if not exist
@@ -158,6 +137,7 @@ Recovery strategy:
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 	defer recoverer.Close()
 
+	var wg sync.WaitGroup
 	var lastErr error
 	nWorkers := recoverer.NumWorkers()
 
@@ -167,10 +147,11 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 
 	errCh := make(chan error)
 	inputs := make([]chan recoveryInput, 0, nWorkers)
+	wg.Add(nWorkers)
 	for i := 0; i < nWorkers; i++ {
 		inputs = append(inputs, make(chan recoveryInput))
 
-		go processEntries(recoverer, inputs[i], errCh)
+		go processEntries(recoverer, inputs[i], errCh, &wg)
 	}
 
 outer:
@@ -187,12 +168,6 @@ outer:
 
 		// First process all series to ensure we don't write entries to nonexistant series.
 		for _, s := range rec.Series {
-			select {
-			case <-recoverer.Done():
-				break outer
-			default:
-			}
-
 			if lastErr = recoverer.SetStream(rec.UserID, s); lastErr != nil {
 				break outer
 			}
@@ -203,14 +178,33 @@ outer:
 			select {
 			case lastErr = <-errCh:
 				break outer
-			case <-recoverer.Done():
-				break outer
+
 			case inputs[worker] <- recoveryInput{
 				userID:  rec.UserID,
 				entries: entries,
 			}:
 			}
 		}
+	}
+
+	for _, w := range inputs {
+		close(w)
+	}
+
+	// may have broken loop early
+	if lastErr != nil {
+		return lastErr
+	}
+
+	finished := make(chan struct{})
+	go func(finished chan<- struct{}) {
+		wg.Wait()
+		finished <- struct{}{}
+	}(finished)
+
+	select {
+	case <-finished:
+	case lastErr = <-errCh:
 	}
 
 	return lastErr
@@ -221,12 +215,16 @@ type recoveryInput struct {
 	entries RefEntries
 }
 
-func processEntries(recoverer Recoverer, input <-chan recoveryInput, errCh chan<- error) {
+func processEntries(recoverer Recoverer, input <-chan recoveryInput, errCh chan<- error, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		select {
 		case <-recoverer.Done():
 
-		case next := <-input:
+		case next, ok := <-input:
+			if !ok {
+				return
+			}
 			// Pass the error back, but respect the quit signal.
 			if err := recoverer.Push(next.userID, next.entries); err != nil {
 				select {
