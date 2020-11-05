@@ -383,6 +383,13 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 			return nil, err
 		}
 		tp := httputil.NewSingleHostReverseProxy(tailURL)
+
+		director := tp.Director
+		tp.Director = func(req *http.Request) {
+			director(req)
+			req.Host = tailURL.Host
+		}
+
 		defaultHandler = httpMiddleware.Wrap(tp)
 	} else {
 		defaultHandler = frontendHandler
