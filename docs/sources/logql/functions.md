@@ -177,7 +177,7 @@ The last example will return `Hello World`.
 
 > **Note:** Added in Loki 2.1.
 
-Truncate a string (and add no suffix)
+Truncate a string and add no suffix.
 
 Signature:
 
