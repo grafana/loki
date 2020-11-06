@@ -95,6 +95,8 @@ func TestLoadTables(t *testing.T) {
 
 	tm, err := NewTableManager(cfg, boltDBIndexClient, storageClient, nil)
 	require.NoError(t, err)
+	defer tm.Stop()
+
 	require.Len(t, tm.tables, len(expectedTables))
 
 	stat, err := os.Stat(filepath.Join(indexPath, "table0", "table0"))
