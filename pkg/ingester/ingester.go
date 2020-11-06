@@ -135,6 +135,8 @@ type Ingester struct {
 
 	limiter *Limiter
 
+	metrics *ingesterMetrics
+
 	// WAL
 	wal WAL
 }
@@ -175,6 +177,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		tailersQuit:     make(chan struct{}),
 		wal:             wal,
+		metrics:         newIngesterMetrics(registerer),
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
@@ -207,6 +210,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 			return errors.Wrap(err, "failed to recover from WAL")
 		}
 		elapsed := time.Since(start)
+		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 	}
 
