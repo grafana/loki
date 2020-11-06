@@ -493,6 +493,7 @@ func TestEntriesLimitWithZeroTripperware(t *testing.T) {
 type fakeLimits struct {
 	maxQueryParallelism     int
 	maxEntriesLimitPerQuery int
+	maxSeries               int
 	splits                  map[string]time.Duration
 }
 
@@ -515,6 +516,10 @@ func (f fakeLimits) MaxQueryParallelism(string) int {
 }
 
 func (f fakeLimits) MaxEntriesLimitPerQuery(string) int {
+	return f.maxEntriesLimitPerQuery
+}
+
+func (f fakeLimits) MaxQuerySeries(string) int {
 	return f.maxEntriesLimitPerQuery
 }
 

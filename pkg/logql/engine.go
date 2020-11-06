@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/prometheus/client_golang/prometheus"
@@ -86,14 +87,21 @@ func (opts *EngineOpts) applyDefault() {
 type Engine struct {
 	timeout   time.Duration
 	evaluator Evaluator
+	limits    Limits
+}
+
+// Limits allow the engine to fetch limits for a given users.
+type Limits interface {
+	MaxQuerySeries(userID string) int
 }
 
 // NewEngine creates a new LogQL Engine.
-func NewEngine(opts EngineOpts, q Querier) *Engine {
+func NewEngine(opts EngineOpts, q Querier, l Limits) *Engine {
 	opts.applyDefault()
 	return &Engine{
 		timeout:   opts.Timeout,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+		limits:    l,
 	}
 }
 
@@ -107,6 +115,7 @@ func (ng *Engine) Query(params Params) Query {
 			return ParseExpr(query)
 		},
 		record: true,
+		limits: ng.limits,
 	}
 }
 
@@ -120,6 +129,7 @@ type query struct {
 	timeout   time.Duration
 	params    Params
 	parse     func(context.Context, string) (Expr, error)
+	limits    Limits
 	evaluator Evaluator
 	record    bool
 }
@@ -146,7 +156,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	status := "200"
 	if err != nil {
 		status = "500"
-		if IsParseError(err) || IsPipelineError(err) {
+		if errors.Is(err, ErrParse) || errors.Is(err, ErrPipeline) || errors.Is(err, ErrLimit) {
 			status = "400"
 		}
 	}
@@ -195,6 +205,11 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 		return q.evalLiteral(ctx, lit)
 	}
 
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
@@ -202,11 +217,18 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 	defer helpers.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
 	seriesIndex := map[uint64]*promql.Series{}
+	maxSeries := q.limits.MaxQuerySeries(userID)
 
 	next, ts, vec := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
+
+	// fail fast for the first step or instant query
+	if len(vec) > maxSeries {
+		return nil, newSeriesLimitError(maxSeries)
+	}
+
 	if GetRangeType(q.params) == InstantType {
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
@@ -237,6 +259,10 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 				T: ts,
 				V: p.V,
 			})
+		}
+		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
+		if len(seriesIndex) > maxSeries {
+			return nil, newSeriesLimitError(maxSeries)
 		}
 		next, ts, vec = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {

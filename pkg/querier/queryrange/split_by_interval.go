@@ -143,6 +143,12 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult) {
 
 		resp, err := h.next.Do(ctx, data.req)
 
+		// check that we're not going over the series budget.
+		// if err == nil {
+		// 	if promRes, ok := resp.(*LokiPromResponse); ok {
+
+		// 	}
+		// }
 		select {
 		case <-ctx.Done():
 			sp.Finish()

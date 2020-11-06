@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -11,6 +12,7 @@ import (
 type Limits interface {
 	queryrange.Limits
 	QuerySplitDuration(string) time.Duration
+	MaxQuerySeries(string) int
 	MaxEntriesLimitPerQuery(string) int
 }
 
@@ -70,4 +72,28 @@ func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrange.Request) st
 	// include both the currentInterval and the split duration in key to ensure
 	// a cache key can't be reused when an interval changes
 	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, split)
+}
+
+type seriesLimiter struct {
+	hashes map[uint64]struct{}
+	rw     sync.RWMutex
+
+	maxSeries int
+}
+
+func newSeriesLimiter(maxSeries int) *seriesLimiter {
+	return *seriesLimiter{
+		hashes:    make(map[uint64]struct{}),
+		maxSeries: maxSeries,
+	}
+}
+
+func (sl *seriesLimiter) Add(res queryrange.Response) bool {
+	if sl.IsLimitReached() {
+		return true
+	}
+}
+
+func (sl *seriesLimiter) IsLimitReached() bool {
+
 }
