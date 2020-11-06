@@ -2,10 +2,17 @@ package queryrange
 
 import (
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/weaveworks/common/httpgrpc"
+)
+
+const (
+	limitErrTmpl = "maximum of series (%d) reached for a single query"
 )
 
 // Limits extends the cortex limits interface with support for per tenant splitby parameters
@@ -77,23 +84,52 @@ func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrange.Request) st
 type seriesLimiter struct {
 	hashes map[uint64]struct{}
 	rw     sync.RWMutex
+	buf    []byte
 
 	maxSeries int
 }
 
 func newSeriesLimiter(maxSeries int) *seriesLimiter {
-	return *seriesLimiter{
+	return &seriesLimiter{
 		hashes:    make(map[uint64]struct{}),
 		maxSeries: maxSeries,
+		buf:       make([]byte, 0, 1024),
 	}
 }
 
-func (sl *seriesLimiter) Add(res queryrange.Response) bool {
-	if sl.IsLimitReached() {
-		return true
+func (sl *seriesLimiter) Add(res queryrange.Response, resErr error) (queryrange.Response, error) {
+	if resErr != nil {
+		return res, resErr
 	}
+	promResponse, ok := res.(*LokiPromResponse)
+	if !ok {
+		return res, nil
+	}
+	if err := sl.IsLimitReached(); err != nil {
+		return nil, err
+	}
+	if promResponse.Response == nil {
+		return res, nil
+	}
+	sl.rw.Lock()
+	var hash uint64
+	for _, s := range promResponse.Response.Data.Result {
+		lbs := client.FromLabelAdaptersToLabels(s.Labels)
+		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
+		sl.hashes[hash] = struct{}{}
+	}
+	sl.rw.Unlock()
+	if err := sl.IsLimitReached(); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
-func (sl *seriesLimiter) IsLimitReached() bool {
-
+func (sl *seriesLimiter) IsLimitReached() error {
+	sl.rw.RLock()
+	defer sl.rw.RUnlock()
+	if len(sl.hashes) > sl.maxSeries {
+		return httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
+	}
+	return nil
 }
