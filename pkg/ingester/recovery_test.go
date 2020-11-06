@@ -152,9 +152,9 @@ func (r *MemRecoverer) Done() <-chan struct{} { return r.done }
 
 func Test_InMemorySegmentRecover(t *testing.T) {
 	var (
-		users            = 2
-		streamsCt        = 5
-		entriesPerStream = 2
+		users            = 10
+		streamsCt        = 1000
+		entriesPerStream = 50
 	)
 	reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream)
 

@@ -67,12 +67,19 @@ type ingesterRecoverer struct {
 	done  chan struct{}
 }
 
+func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
+	return &ingesterRecoverer{
+		ing:  i,
+		done: make(chan struct{}),
+	}
+}
+
 // Use all available cores
 func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
 // SetStream is responsible for setting the key path for userIDs -> fingerprints -> streams.
 // Internally, this uses nested sync.Maps due to their performance benefits for sets that only grow.
-// Using these also allows us to bypass the ingester -> instance -> stream heirarchy internally, which
+// Using these also allows us to bypass the ingester -> instance -> stream hierarchy internally, which
 // may yield some performance gains, but is essential for the following:
 // Due to the use of the instance's fingerprint mapper, stream fingerprints ARE NOT necessarily
 // deterministic. The WAL uses the post-mapped fingerprint on the ingester that originally

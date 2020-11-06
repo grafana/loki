@@ -2,25 +2,25 @@ package ingester
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/storage"
-
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/helpers"
@@ -159,6 +159,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		return nil, err
 	}
 
+	if cfg.WAL.Enabled {
+		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
 	i := &Ingester{
 		cfg:             cfg,
 		clientConfig:    clientConfig,
@@ -188,6 +194,22 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
+	if i.cfg.WAL.Recover {
+		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		start := time.Now()
+		reader, closer, err := newWalReader(i.cfg.WAL.Dir, -1)
+		if err != nil {
+			return err
+		}
+		defer closer.Close()
+		if err := RecoverWAL(reader, newIngesterRecoverer(i)); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+			return errors.Wrap(err, "failed to recover from WAL")
+		}
+		elapsed := time.Since(start)
+		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+	}
+
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)

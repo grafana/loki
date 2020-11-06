@@ -44,12 +44,14 @@ var (
 type WALConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Dir     string `yaml:"dir"`
+	Recover bool   `yaml:"recover"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
 	f.BoolVar(&cfg.Enabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
+	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
