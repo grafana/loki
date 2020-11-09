@@ -90,11 +90,6 @@ type Engine struct {
 	limits    Limits
 }
 
-// Limits allow the engine to fetch limits for a given users.
-type Limits interface {
-	MaxQuerySeries(userID string) int
-}
-
 // NewEngine creates a new LogQL Engine.
 func NewEngine(opts EngineOpts, q Querier, l Limits) *Engine {
 	opts.applyDefault()

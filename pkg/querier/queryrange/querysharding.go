@@ -24,7 +24,7 @@ func NewQueryShardMiddleware(
 	minShardingLookback time.Duration,
 	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
-	limits Limits,
+	limits logql.Limits,
 ) queryrange.Middleware {
 
 	noshards := !hasShards(confs)
@@ -61,7 +61,7 @@ func newASTMapperware(
 	next queryrange.Handler,
 	logger log.Logger,
 	metrics *logql.ShardingMetrics,
-	limits Limits,
+	limits logql.Limits,
 ) *astMapperware {
 
 	return &astMapperware{

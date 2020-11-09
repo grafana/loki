@@ -27,16 +27,7 @@ var (
 	testSize        = int64(300)
 	ErrMock         = errors.New("mock error")
 	ErrMockMultiple = errors.New("Multiple errors: [mock error mock error]")
-	NoLimits        = &fakeLimits{maxSeries: math.MaxInt32}
 )
-
-type fakeLimits struct {
-	maxSeries int
-}
-
-func (f fakeLimits) MaxQuerySeries(userID string) int {
-	return f.maxSeries
-}
 
 func TestEngine_LogsInstantQuery(t *testing.T) {
 	t.Parallel()
