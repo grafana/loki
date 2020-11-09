@@ -444,7 +444,8 @@ func TestChunkSize(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Log("Chunk size", humanize.Bytes(uint64(len(b))))
-			t.Log("characters ", inserted)
+			t.Log("characters ", humanize.Bytes(uint64(inserted)))
+			t.Log("Ratio", float64(inserted)/float64(len(b)))
 		})
 
 	}
