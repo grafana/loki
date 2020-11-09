@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -92,7 +93,7 @@ var (
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxSeries: math.MaxInt32}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -520,7 +521,7 @@ func (f fakeLimits) MaxEntriesLimitPerQuery(string) int {
 }
 
 func (f fakeLimits) MaxQuerySeries(string) int {
-	return f.maxEntriesLimitPerQuery
+	return f.maxSeries
 }
 
 func (f fakeLimits) MaxCacheFreshness(string) time.Duration {

@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -87,26 +88,39 @@ type seriesLimiter struct {
 	buf    []byte
 
 	maxSeries int
+	next      queryrange.Handler
 }
 
-func newSeriesLimiter(maxSeries int) *seriesLimiter {
+type seriesLimiterMiddleware int
+
+// newSeriesLimiter creates a new series limiter middleware for use for a single request.
+func newSeriesLimiter(maxSeries int) queryrange.Middleware {
+	return seriesLimiterMiddleware(maxSeries)
+}
+
+// Wrap wraps a global handler and returns a per request limited handler.
+// The handler returned is thread safe.
+func (slm seriesLimiterMiddleware) Wrap(next queryrange.Handler) queryrange.Handler {
 	return &seriesLimiter{
 		hashes:    make(map[uint64]struct{}),
-		maxSeries: maxSeries,
+		maxSeries: int(slm),
 		buf:       make([]byte, 0, 1024),
+		next:      next,
 	}
 }
 
-func (sl *seriesLimiter) Add(res queryrange.Response, resErr error) (queryrange.Response, error) {
-	if resErr != nil {
-		return res, resErr
+func (sl *seriesLimiter) Do(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+	// no need to fire a request if the limit is already reached.
+	if sl.isLimitReached() {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
+	}
+	res, err := sl.next.Do(ctx, req)
+	if err != nil {
+		return res, err
 	}
 	promResponse, ok := res.(*LokiPromResponse)
 	if !ok {
 		return res, nil
-	}
-	if err := sl.IsLimitReached(); err != nil {
-		return nil, err
 	}
 	if promResponse.Response == nil {
 		return res, nil
@@ -119,17 +133,14 @@ func (sl *seriesLimiter) Add(res queryrange.Response, resErr error) (queryrange.
 		sl.hashes[hash] = struct{}{}
 	}
 	sl.rw.Unlock()
-	if err := sl.IsLimitReached(); err != nil {
-		return nil, err
+	if sl.isLimitReached() {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 	}
 	return res, nil
 }
 
-func (sl *seriesLimiter) IsLimitReached() error {
+func (sl *seriesLimiter) isLimitReached() bool {
 	sl.rw.RLock()
 	defer sl.rw.RUnlock()
-	if len(sl.hashes) > sl.maxSeries {
-		return httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
-	}
-	return nil
+	return len(sl.hashes) > sl.maxSeries
 }
