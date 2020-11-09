@@ -460,7 +460,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	engine := logql.NewEngine(t.cfg.Querier.Engine, q,  t.overrides)
+	engine := logql.NewEngine(t.cfg.Querier.Engine, q, t.overrides)
 
 	t.ruler, err = ruler.NewRuler(
 		t.cfg.Ruler,
