@@ -130,6 +130,18 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	sort.Sort(expected)
 	assertLabelResult(t, expected, b.GroupedLabels())
 
+	b = NewBaseLabelsBuilderWithGrouping(nil, false, false).ForLabels(lbs, lbs.Hash())
+	b.Set("foo", "bar")
+	b.Set("job", "something")
+	expected = labels.Labels{
+		labels.Label{Name: "namespace", Value: "loki"},
+		labels.Label{Name: "job", Value: "something"},
+		labels.Label{Name: "cluster", Value: "us-central1"},
+		labels.Label{Name: "foo", Value: "bar"},
+	}
+	sort.Sort(expected)
+	assertLabelResult(t, expected, b.GroupedLabels())
+
 }
 
 func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {

@@ -272,6 +272,10 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 		}
 		return b.toBaseGroup()
 	}
+	// no grouping
+	if len(b.groups) == 0 {
+		return b.LabelsResult()
+	}
 
 	if b.without {
 		return b.withoutResult()
