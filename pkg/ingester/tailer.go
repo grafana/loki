@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -137,7 +138,7 @@ func (t *tailer) send(stream logproto.Stream) error {
 
 func (t *tailer) processStream(stream logproto.Stream) ([]logproto.Stream, error) {
 	// Optimization: skip filtering entirely, if no filter is set
-	if t.pipeline == logql.NoopPipeline {
+	if log.IsNoopPipeline(t.pipeline) {
 		return []logproto.Stream{stream}, nil
 	}
 	streams := map[uint64]*logproto.Stream{}

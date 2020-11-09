@@ -84,10 +84,6 @@ type LogSelectorExpr interface {
 type Pipeline = log.Pipeline
 type SampleExtractor = log.SampleExtractor
 
-var (
-	NoopPipeline = log.NewNoopPipeline()
-)
-
 // PipelineExpr is an expression defining a log pipeline.
 type PipelineExpr interface {
 	Pipeline() (Pipeline, error)
@@ -107,9 +103,6 @@ func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
 	stages, err := m.stages()
 	if err != nil {
 		return nil, err
-	}
-	if len(stages) == 0 {
-		return NoopPipeline, nil
 	}
 	return log.NewPipeline(stages), nil
 }
@@ -169,7 +162,7 @@ func (e *matchersExpr) String() string {
 }
 
 func (e *matchersExpr) Pipeline() (log.Pipeline, error) {
-	return NoopPipeline, nil
+	return log.NewNoopPipeline(), nil
 }
 
 func (e *matchersExpr) HasFilter() bool {
@@ -860,7 +853,7 @@ func (e *literalExpr) String() string {
 func (e *literalExpr) Selector() LogSelectorExpr               { return e }
 func (e *literalExpr) HasFilter() bool                         { return false }
 func (e *literalExpr) Operations() []string                    { return nil }
-func (e *literalExpr) Pipeline() (log.Pipeline, error)         { return NoopPipeline, nil }
+func (e *literalExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *literalExpr) Matchers() []*labels.Matcher             { return nil }
 func (e *literalExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 

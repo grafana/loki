@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func testIteratorForward(t *testing.T, iter iter.EntryIterator, from, through int64) {
@@ -64,7 +64,7 @@ func TestIterator(t *testing.T) {
 			for i := 0; i < entries; i++ {
 				from := rand.Intn(entries - 1)
 				len := rand.Intn(entries-from) + 1
-				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, logql.NoopPipeline.ForStream(labels.Labels{}))
+				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 				require.NoError(t, err)
 				testIteratorForward(t, iter, int64(from), int64(from+len))
 				_ = iter.Close()
@@ -73,7 +73,7 @@ func TestIterator(t *testing.T) {
 			for i := 0; i < entries; i++ {
 				from := rand.Intn(entries - 1)
 				len := rand.Intn(entries-from) + 1
-				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, logql.NoopPipeline.ForStream(labels.Labels{}))
+				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 				require.NoError(t, err)
 				testIteratorBackward(t, iter, int64(from), int64(from+len))
 				_ = iter.Close()
