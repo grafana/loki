@@ -156,7 +156,8 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		cfg.ingesterClientFactory = client.New
 	}
 
-	wal, err := newWAL(cfg.WAL, registerer)
+	metrics := newIngesterMetrics(registerer)
+	wal, err := newWAL(cfg.WAL, registerer, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +178,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		tailersQuit:     make(chan struct{}),
 		wal:             wal,
-		metrics:         newIngesterMetrics(registerer),
+		metrics:         metrics,
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)

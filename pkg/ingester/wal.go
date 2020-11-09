@@ -7,7 +7,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -42,9 +41,10 @@ var (
 )
 
 type WALConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Dir     string `yaml:"dir"`
-	Recover bool   `yaml:"recover"`
+	Enabled    bool   `yaml:"enabled"`
+	Dir        string `yaml:"dir"`
+	Recover    bool   `yaml:"recover"`
+	Checkpoint bool   `yaml:"checkpoint"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -52,6 +52,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
 	f.BoolVar(&cfg.Enabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
+	f.BoolVar(&cfg.Checkpoint, "ingester.checkpoint-enabled", true, "Enable checkpointing of in-memory chunks. It should always be true when using normally. Set it to false if you are doing some small tests as there is no mechanism to delete the old WAL yet if checkpoint is disabled.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
@@ -71,81 +72,37 @@ type walWrapper struct {
 	cfg       WALConfig
 	wal       *wal.WAL
 	bytesPool sync.Pool
+	metrics   *ingesterMetrics
 
 	wait sync.WaitGroup
 	quit chan struct{}
 
 	// Metrics.
-	checkpointDeleteFail       prometheus.Counter
-	checkpointDeleteTotal      prometheus.Counter
-	checkpointCreationFail     prometheus.Counter
-	checkpointCreationTotal    prometheus.Counter
-	checkpointDuration         prometheus.Summary
-	checkpointLoggedBytesTotal prometheus.Counter
-	walLoggedBytesTotal        prometheus.Counter
-	walRecordsLogged           prometheus.Counter
+
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
-func newWAL(cfg WALConfig, registerer prometheus.Registerer) (WAL, error) {
+func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMetrics) (WAL, error) {
 	if !cfg.Enabled {
 		return noopWAL{}, nil
 	}
 
-	var walRegistry prometheus.Registerer
-	if registerer != nil {
-		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, registerer)
-	}
-
-	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize*4, false)
+	tsdbWAL, err := wal.NewSize(util.Logger, registerer, cfg.Dir, wal.DefaultSegmentSize*4, false)
 	if err != nil {
 		return nil, err
 	}
 
 	w := &walWrapper{
-		cfg:  cfg,
-		quit: make(chan struct{}),
-		wal:  tsdbWAL,
+		cfg:     cfg,
+		quit:    make(chan struct{}),
+		wal:     tsdbWAL,
+		metrics: metrics,
 		bytesPool: sync.Pool{
 			New: func() interface{} {
 				return make([]byte, 0, 1<<10) // 1kb
 			},
 		},
 	}
-
-	w.checkpointDeleteFail = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_checkpoint_deletions_failed_total",
-		Help: "Total number of checkpoint deletions that failed.",
-	})
-	w.checkpointDeleteTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_checkpoint_deletions_total",
-		Help: "Total number of checkpoint deletions attempted.",
-	})
-	w.checkpointCreationFail = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_checkpoint_creations_failed_total",
-		Help: "Total number of checkpoint creations that failed.",
-	})
-	w.checkpointCreationTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_checkpoint_creations_total",
-		Help: "Total number of checkpoint creations attempted.",
-	})
-	w.checkpointDuration = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-		Name:       "loki_ingester_checkpoint_duration_seconds",
-		Help:       "Time taken to create a checkpoint.",
-		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
-	})
-	w.walRecordsLogged = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_wal_records_logged_total",
-		Help: "Total number of WAL records logged.",
-	})
-	w.checkpointLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_checkpoint_logged_bytes_total",
-		Help: "Total number of bytes written to disk for checkpointing.",
-	})
-	w.walLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_wal_logged_bytes_total",
-		Help: "Total number of bytes written to disk for WAL records.",
-	})
 
 	w.wait.Add(1)
 	go w.run()
@@ -171,8 +128,8 @@ func (w *walWrapper) Log(record *WALRecord) error {
 			if err := w.wal.Log(buf); err != nil {
 				return err
 			}
-			w.walRecordsLogged.Inc()
-			w.walLoggedBytesTotal.Add(float64(len(buf)))
+			w.metrics.walRecordsLogged.Inc()
+			w.metrics.walLoggedBytesTotal.Add(float64(len(buf)))
 			buf = buf[:0]
 		}
 		if len(record.RefEntries) > 0 {
@@ -180,12 +137,13 @@ func (w *walWrapper) Log(record *WALRecord) error {
 			if err := w.wal.Log(buf); err != nil {
 				return err
 			}
-			w.walRecordsLogged.Inc()
-			w.walLoggedBytesTotal.Add(float64(len(buf)))
+			w.metrics.walRecordsLogged.Inc()
+			w.metrics.walLoggedBytesTotal.Add(float64(len(buf)))
 		}
 		return nil
 	}
 }
+
 func (w *walWrapper) Stop() {
 	close(w.quit)
 	w.wait.Wait()
