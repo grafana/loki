@@ -81,7 +81,7 @@ func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 // Internally, this uses nested sync.Maps due to their performance benefits for sets that only grow.
 // Using these also allows us to bypass the ingester -> instance -> stream hierarchy internally, which
 // may yield some performance gains, but is essential for the following:
-// Due to the use of the instance's fingerprint mapper, stream fingerprints ARE NOT necessarily
+// Due to the use of the instance's fingerprint mapper, stream fingerprints are NOT necessarily
 // deterministic. The WAL uses the post-mapped fingerprint on the ingester that originally
 // created the stream and we ensure that said fingerprint maps correctly to the newly
 // created stream during WAL replay, even if the new in memory stream was assigned a different
@@ -95,6 +95,7 @@ func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) er
 		logproto.Stream{
 			Labels: series.Labels.String(),
 		},
+		true,
 		nil,
 	)
 	if err != nil {

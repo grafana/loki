@@ -137,7 +137,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	var appendErr error
 	for _, s := range req.Streams {
 
-		stream, err := i.getOrCreateStream(s, record)
+		stream, err := i.getOrCreateStream(s, false, record)
 		if err != nil {
 			appendErr = err
 			continue
@@ -159,7 +159,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
+// getOrCreateStream returns the stream or creates it. Must hold streams mutex.
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, record *WALRecord) (*stream, error) {
+	if lock {
+		i.streamsMtx.Lock()
+		defer i.streamsMtx.Unlock()
+	}
 	labels, err := util.ToClientLabels(pushReqStream.Labels)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())

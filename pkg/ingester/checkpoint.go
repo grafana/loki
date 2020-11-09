@@ -3,6 +3,9 @@ package ingester
 import (
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 )
 
@@ -56,4 +59,24 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]*chunkDesc, error) {
 		descs = append(descs, desc)
 	}
 	return descs, nil
+}
+
+func decodeCheckpointRecord(rec []byte, s *Series) error {
+	switch RecordType(rec[0]) {
+	case CheckpointRecord:
+		return proto.Unmarshal(rec[1:], s)
+	default:
+		return errors.Errorf("unexpected record type: %d", rec[0])
+	}
+}
+
+func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, error) {
+	buf, err := proto.Marshal(m)
+	if err != nil {
+		return b, err
+	}
+
+	b = append(b[:0], byte(typ))
+	b = append(b, buf...)
+	return b, nil
 }

@@ -21,6 +21,7 @@ message Chunk {
 // Series is a {de,}serializable intermediate type for Series.
 message Series {
   string userID = 1;
+  // post mapped fingerprint is necessary because subsequent wal writes will reference it.
   uint64 fingerprint = 2;
   repeated cortex.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
