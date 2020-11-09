@@ -35,6 +35,12 @@ type noopPipeline struct {
 	cache map[uint64]*noopStreamPipeline
 }
 
+// IsNoopPipeline tells if a pipeline is a Noop.
+func IsNoopPipeline(p Pipeline) bool {
+	_, ok := p.(*noopPipeline)
+	return ok
+}
+
 type noopStreamPipeline struct {
 	LabelsResult
 }

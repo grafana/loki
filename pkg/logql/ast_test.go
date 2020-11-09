@@ -43,7 +43,9 @@ func Test_logSelectorExpr_String(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to get filter: %s", err)
 			}
-			require.Equal(t, tt.expectFilter, p != NoopPipeline)
+			if !tt.expectFilter {
+				require.Equal(t, log.NewNoopPipeline(), p)
+			}
 			if expr.String() != tt.selector {
 				t.Fatalf("error expected: %s got: %s", tt.selector, expr.String())
 			}
@@ -216,7 +218,7 @@ func Test_FilterMatcher(t *testing.T) {
 			p, err := expr.Pipeline()
 			assert.Nil(t, err)
 			if tt.lines == nil {
-				assert.Equal(t, p, NoopPipeline)
+				assert.Equal(t, p, log.NewNoopPipeline())
 			} else {
 				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {

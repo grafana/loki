@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -320,7 +321,7 @@ func (s *testStore) getChunksForUser(userID string) []chunk.Chunk {
 }
 
 func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logproto.Stream {
-	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, logql.NoopPipeline.ForStream(labels.Labels{}))
+	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	require.NoError(t, err)
 
 	stream := logproto.Stream{

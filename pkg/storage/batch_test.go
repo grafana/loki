@@ -946,7 +946,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), logql.NoopPipeline, tt.direction, tt.start, tt.end)
+			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end)
 			require.NoError(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
@@ -1442,7 +1442,7 @@ func TestBuildHeapIterator(t *testing.T) {
 					direction: logproto.FORWARD,
 				},
 				ctx:      ctx,
-				pipeline: logql.NoopPipeline,
+				pipeline: log.NewNoopPipeline(),
 			}
 			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
 			if err != nil {
