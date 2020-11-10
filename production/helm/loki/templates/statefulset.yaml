@@ -107,11 +107,11 @@ spec:
   {{- if not .Values.persistence.enabled }}
         - name: storage
           emptyDir: {}
-  {{- else if .Values.persistence.existingClaim }}
+  {{- else if and .Values.persistence.enabled .Values.persistence.existingClaim }}
         - name: storage
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.existingClaim }}
-  {{- else }}
+  {{- else if .Values.persistence.enabled }}
   volumeClaimTemplates:
   - metadata:
       name: storage
