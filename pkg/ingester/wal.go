@@ -2,15 +2,10 @@ package ingester
 
 import (
 	"flag"
-	fmt "fmt"
-	"os"
-	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wal"
 
@@ -105,46 +100,13 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 	return w, nil
 }
 
-func (w *walWrapper) CheckpointWriter() (writer *WALCheckpointWriter, noop bool, err error) {
-	// First we advance the wal segment internally to ensure we don't overlap a previous checkpoint in
-	// low throughput scenarios and to minimize segment replays on top of checkpoints.
-	if err := w.wal.NextSegment(); err != nil {
-		return nil, false, err
-	}
-
-	_, lastSegment, err := wal.Segments(w.wal.Dir())
-	if err != nil {
-		return nil, false, err
-	}
-	if lastSegment < 0 {
-		// There are no WAL segments. No need of checkpoint yet.
-		return nil, true, nil
-	}
-
-	// Checkpoint is named after the last WAL segment present so that when replaying the WAL
-	// we can start from that particular WAL segment.
-	checkpointDir := filepath.Join(w.wal.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", lastSegment))
-	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
-	checkpointDirTemp := checkpointDir + ".tmp"
-
-	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
-		return nil, false, errors.Wrap(err, "create checkpoint dir")
-	}
-	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, false)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "open checkpoint")
-	}
+func (w *walWrapper) CheckpointWriter() *WALCheckpointWriter {
 
 	return &WALCheckpointWriter{
-		cfg:           w.cfg,
-		metrics:       w.metrics,
-		checkpointWAL: checkpoint,
-		segmentWAL:    w.wal,
-
-		lastSegment: lastSegment,
-		final:       checkpointDir,
-		start:       time.Now(),
-	}, false, nil
+		cfg:        w.cfg,
+		metrics:    w.metrics,
+		segmentWAL: w.wal,
+	}
 }
 
 func (w *walWrapper) Log(record *WALRecord) error {

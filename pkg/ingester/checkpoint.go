@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	fmt "fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -98,21 +99,63 @@ type SeriesIter interface {
 }
 
 type CheckpointWriter interface {
+	// Advances current checkpoint, can also signal a no-op.
+	Advance() (noop bool, err error)
 	Write(*Series) error
+	// Closes current checkpoint
 	Close() error
 }
 
 type WALCheckpointWriter struct {
-	cfg           WALConfig
-	metrics       *ingesterMetrics
-	checkpointWAL *wal.WAL
-	segmentWAL    *wal.WAL
+	cfg        WALConfig
+	metrics    *ingesterMetrics
+	segmentWAL *wal.WAL
 
-	lastSegment int    // name of the last segment guaranteed to be covered by the checkpoint
-	final       string // filename to atomically rotate upon completion
-	start       time.Time
-	bufSize     int
-	recs        [][]byte
+	checkpointWAL *wal.WAL
+	lastSegment   int    // name of the last segment guaranteed to be covered by the checkpoint
+	final         string // filename to atomically rotate upon completion
+	start         time.Time
+	bufSize       int
+	recs          [][]byte
+}
+
+func (w *WALCheckpointWriter) Advance() (bool, error) {
+	// First we advance the wal segment internally to ensure we don't overlap a previous checkpoint in
+	// low throughput scenarios and to minimize segment replays on top of checkpoints.
+	if err := w.segmentWAL.NextSegment(); err != nil {
+		return false, err
+	}
+
+	_, lastSegment, err := wal.Segments(w.segmentWAL.Dir())
+	if err != nil {
+		return false, err
+	}
+
+	if lastSegment < 0 {
+		// There are no WAL segments. No need of checkpoint yet.
+		return true, nil
+	}
+
+	// Checkpoint is named after the last WAL segment present so that when replaying the WAL
+	// we can start from that particular WAL segment.
+	checkpointDir := filepath.Join(w.segmentWAL.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", lastSegment))
+	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
+	checkpointDirTemp := checkpointDir + ".tmp"
+
+	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
+		return false, errors.Wrap(err, "create checkpoint dir")
+	}
+	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, false)
+	if err != nil {
+		return false, errors.Wrap(err, "open checkpoint")
+	}
+
+	w.checkpointWAL = checkpoint
+	w.lastSegment = lastSegment
+	w.final = checkpointDir
+	w.start = time.Now()
+
+	return false, nil
 }
 
 func (w *WALCheckpointWriter) Write(s *Series) error {
