@@ -125,6 +125,10 @@ type client struct {
 	wg      sync.WaitGroup
 
 	externalLabels model.LabelSet
+
+	// ctx is used in any upstream calls from the `client`.
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 type entry struct {
@@ -139,6 +143,8 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		return nil, errors.New("client needs target URL")
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	c := &client{
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
@@ -146,6 +152,8 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		entries: make(chan entry),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
+		ctx:            ctx,
+		cancel:         cancel,
 	}
 
 	err := cfg.Client.Validate()
@@ -246,12 +254,11 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 	bufBytes := float64(len(buf))
 	encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 
-	ctx := context.Background()
-	backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
+	backoff := util.NewBackoff(c.ctx, c.cfg.BackoffConfig)
 	var status int
 	for backoff.Ongoing() {
 		start := time.Now()
-		status, err = c.send(ctx, tenantID, buf)
+		status, err = c.send(c.ctx, tenantID, buf)
 		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
 		if err == nil {
@@ -349,6 +356,9 @@ func (c *client) getTenantID(labels model.LabelSet) string {
 
 // Stop the client.
 func (c *client) Stop() {
+	// cancel any upstream calls made using client's `ctx`.
+	c.cancel()
+
 	c.once.Do(func() { close(c.quit) })
 	c.wg.Wait()
 }
