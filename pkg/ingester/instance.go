@@ -358,6 +358,13 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 	return &logproto.SeriesResponse{Series: series}, nil
 }
 
+func (i *instance) numStreams() int {
+	i.streamsMtx.RLock()
+	defer i.streamsMtx.RUnlock()
+
+	return len(i.streams)
+}
+
 // forAllStreams will execute a function for all streams in the instance.
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forAllStreams(fn func(*stream) error) error {

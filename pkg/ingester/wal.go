@@ -162,7 +162,6 @@ func (w *walWrapper) run() {
 	level.Info(util.Logger).Log("msg", "started", "component", "wal")
 	defer w.wait.Done()
 
-	// writer := NewCheckpointer(dur time.Duration, iter SeriesIter, writer CheckpointWriter, metrics *ingesterMetrics)
 	checkpointer := NewCheckpointer(
 		w.cfg.CheckpointDuration,
 		nil,

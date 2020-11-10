@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
@@ -21,7 +22,7 @@ import (
 )
 
 // The passed wireChunks slice is for re-use.
-func toWireChunks(descs []*chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
+func toWireChunks(descs []chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 	if cap(wireChunks) < len(descs) {
 		wireChunks = make([]Chunk, len(descs))
 	} else {
@@ -52,10 +53,10 @@ func toWireChunks(descs []*chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 	return wireChunks, nil
 }
 
-func fromWireChunks(conf *Config, wireChunks []Chunk) ([]*chunkDesc, error) {
-	descs := make([]*chunkDesc, 0, len(wireChunks))
+func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
+	descs := make([]chunkDesc, 0, len(wireChunks))
 	for _, c := range wireChunks {
-		desc := &chunkDesc{
+		desc := chunkDesc{
 			closed:      c.Closed,
 			flushed:     c.FlushedAt,
 			lastUpdated: time.Now(),
@@ -92,10 +93,78 @@ func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, er
 	return b, nil
 }
 
+type SeriesWithErr struct {
+	Err    error
+	Series *Series
+}
+
 type SeriesIter interface {
 	Num() int
-	Iter() <-chan *Series
+	Iter() <-chan *SeriesWithErr
 	Stop()
+}
+
+type ingesterSeriesIter struct {
+	ing *Ingester
+
+	done chan struct{}
+}
+
+func newIngesterSeriesIter(ing *Ingester) *ingesterSeriesIter {
+	return &ingesterSeriesIter{
+		ing:  ing,
+		done: make(chan struct{}),
+	}
+}
+
+func (i *ingesterSeriesIter) Num() (ct int) {
+	for _, inst := range i.ing.getInstances() {
+		ct += inst.numStreams()
+	}
+	return ct
+}
+
+func (i *ingesterSeriesIter) Stop() {
+	close(i.done)
+}
+
+func (i *ingesterSeriesIter) Iter() <-chan *SeriesWithErr {
+	ch := make(chan *SeriesWithErr)
+	go func() {
+		for _, inst := range i.ing.getInstances() {
+			inst.streamsMtx.RLock()
+			// Need to buffer streams internally so the read lock isn't held trying to write to a blocked channel.
+			streams := make([]*stream, 0, len(inst.streams))
+			inst.streamsMtx.RUnlock()
+			inst.forAllStreams(func(stream *stream) error {
+				streams = append(streams, stream)
+				return nil
+			})
+
+			for _, stream := range streams {
+				// TODO(owen-d): use a pool
+				chunks, err := toWireChunks(stream.chunks, nil)
+				var s *Series
+				if err == nil {
+					s = &Series{
+						UserID:      inst.instanceID,
+						Fingerprint: uint64(stream.fp),
+						Labels:      client.FromLabelsToLabelAdapters(stream.labels),
+						Chunks:      chunks,
+					}
+				}
+				select {
+				case ch <- &SeriesWithErr{
+					Err:    err,
+					Series: s,
+				}:
+				case <-i.done:
+					return
+				}
+			}
+		}
+	}()
+	return ch
 }
 
 type CheckpointWriter interface {
@@ -305,7 +374,9 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 		return nil
 	}
 
-	perSeriesDuration := (95 * c.dur) / (100 * time.Duration(n))
+	// Give a 10% buffer to the checkpoint duration in order to account for
+	// new series, slow writes, etc.
+	perSeriesDuration := (90 * c.dur) / (100 * time.Duration(n))
 
 	ticker := time.NewTicker(perSeriesDuration)
 	defer ticker.Stop()
@@ -316,7 +387,10 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 		c.metrics.checkpointDuration.Observe(elapsed.Seconds())
 	}()
 	for s := range c.iter.Iter() {
-		if err := c.writer.Write(s); err != nil {
+		if s.Err != nil {
+			return s.Err
+		}
+		if err := c.writer.Write(s.Series); err != nil {
 			return err
 		}
 
