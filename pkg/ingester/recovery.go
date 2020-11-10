@@ -170,12 +170,92 @@ Recovery strategy:
     - mod fp into worker pool
 */
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
+	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput, errCh <-chan error) error {
+		rec := recordPool.GetRecord()
+		if err := decodeWALRecord(b, rec); err != nil {
+			return err
+		}
+
+		// First process all series to ensure we don't write entries to nonexistant series.
+		for _, s := range rec.Series {
+			if err := recoverer.SetStream(rec.UserID, s); err != nil {
+				return err
+			}
+
+		}
+
+		for _, entries := range rec.RefEntries {
+			worker := int(entries.Ref % uint64(len(inputs)))
+			select {
+			case err := <-errCh:
+				return err
+
+			case inputs[worker] <- recoveryInput{
+				userID: rec.UserID,
+				data:   entries,
+			}:
+			}
+		}
+
+		return nil
+	}
+
+	return recoverGeneric(
+		reader,
+		recoverer,
+		dispatch,
+		processEntries,
+	)
+
+}
+
+type recoveryInput struct {
+	userID string
+	data   interface{}
+}
+
+func processEntries(recoverer Recoverer, input <-chan recoveryInput, errCh chan<- error) {
+	for {
+		select {
+		case <-recoverer.Done():
+
+		case next, ok := <-input:
+			if !ok {
+				return
+			}
+			entries, ok := next.data.(RefEntries)
+			var err error
+			if !ok {
+				err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
+			}
+			if err == nil {
+				err = recoverer.Push(next.userID, entries)
+			}
+
+			// Pass the error back, but respect the quit signal.
+			if err != nil {
+				select {
+				case errCh <- err:
+				case <-recoverer.Done():
+				}
+				return
+			}
+		}
+	}
+}
+
+func recoverGeneric(
+	reader WALReader,
+	recoverer Recoverer,
+	dispatch func(Recoverer, []byte, []chan recoveryInput, <-chan error) error,
+	process func(Recoverer, <-chan recoveryInput, chan<- error),
+) error {
 	var wg sync.WaitGroup
 	var lastErr error
 	nWorkers := recoverer.NumWorkers()
 
 	if nWorkers < 1 {
-		return errors.New("cannot recover WAL with no workers")
+		return errors.New("cannot recover with no workers")
 	}
 
 	errCh := make(chan error)
@@ -184,39 +264,22 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 	for i := 0; i < nWorkers; i++ {
 		inputs = append(inputs, make(chan recoveryInput))
 
-		go processEntries(recoverer, inputs[i], errCh, &wg)
+		go func(input <-chan recoveryInput) {
+			process(recoverer, input, errCh)
+			wg.Done()
+		}(inputs[i])
+
 	}
 
 outer:
 	for reader.Next() {
-		rec := recordPool.GetRecord()
 		b := reader.Record()
 		if lastErr = reader.Err(); lastErr != nil {
 			break outer
 		}
 
-		if lastErr = decodeWALRecord(b, rec); lastErr != nil {
+		if lastErr = dispatch(recoverer, b, inputs, errCh); lastErr != nil {
 			break outer
-		}
-
-		// First process all series to ensure we don't write entries to nonexistant series.
-		for _, s := range rec.Series {
-			if lastErr = recoverer.SetStream(rec.UserID, s); lastErr != nil {
-				break outer
-			}
-		}
-
-		for _, entries := range rec.RefEntries {
-			worker := int(entries.Ref % uint64(nWorkers))
-			select {
-			case lastErr = <-errCh:
-				break outer
-
-			case inputs[worker] <- recoveryInput{
-				userID:  rec.UserID,
-				entries: entries,
-			}:
-			}
 		}
 	}
 
@@ -241,31 +304,4 @@ outer:
 	}
 
 	return lastErr
-}
-
-type recoveryInput struct {
-	userID  string
-	entries RefEntries
-}
-
-func processEntries(recoverer Recoverer, input <-chan recoveryInput, errCh chan<- error, wg *sync.WaitGroup) {
-	defer wg.Done()
-	for {
-		select {
-		case <-recoverer.Done():
-
-		case next, ok := <-input:
-			if !ok {
-				return
-			}
-			// Pass the error back, but respect the quit signal.
-			if err := recoverer.Push(next.userID, next.entries); err != nil {
-				select {
-				case errCh <- err:
-				case <-recoverer.Done():
-				}
-				return
-			}
-		}
-	}
 }
