@@ -270,16 +270,16 @@ type Checkpointer struct {
 	writer  CheckpointWriter
 	metrics *ingesterMetrics
 
-	quit chan struct{}
+	quit <-chan struct{}
 }
 
-func NewCheckpointer(dur time.Duration, iter SeriesIter, writer CheckpointWriter, metrics *ingesterMetrics) *Checkpointer {
+func NewCheckpointer(dur time.Duration, iter SeriesIter, writer CheckpointWriter, metrics *ingesterMetrics, quit <-chan struct{}) *Checkpointer {
 	return &Checkpointer{
 		dur:     dur,
 		iter:    iter,
 		writer:  writer,
 		metrics: metrics,
-		quit:    make(chan struct{}),
+		quit:    quit,
 	}
 }
 
@@ -337,4 +337,26 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	}
 
 	return c.writer.Close()
+}
+
+func (c *Checkpointer) Run() {
+	ticker := time.NewTicker(c.dur)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			start := time.Now()
+			level.Info(util.Logger).Log("msg", "starting checkpoint")
+			if err := c.PerformCheckpoint(); err != nil {
+				level.Error(util.Logger).Log("msg", "error checkpointing series", "err", err)
+				continue
+			}
+			elapsed := time.Since(start)
+			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
+			c.metrics.checkpointDuration.Observe(elapsed.Seconds())
+		case <-c.quit:
+			return
+		}
+	}
 }

@@ -3,9 +3,11 @@ package ingester
 import (
 	"flag"
 	"sync"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wal"
 
@@ -41,10 +43,17 @@ var (
 )
 
 type WALConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	Dir        string `yaml:"dir"`
-	Recover    bool   `yaml:"recover"`
-	Checkpoint bool   `yaml:"checkpoint"`
+	Enabled            bool          `yaml:"enabled"`
+	Dir                string        `yaml:"dir"`
+	Recover            bool          `yaml:"recover"`
+	CheckpointDuration time.Duration `yaml:"checkpoint_duration"`
+}
+
+func (cfg *WALConfig) Validate() error {
+	if cfg.Enabled && cfg.CheckpointDuration < 1 {
+		return errors.Errorf("invalid checkpoint duration: %v", cfg.CheckpointDuration)
+	}
+	return nil
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -52,7 +61,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
 	f.BoolVar(&cfg.Enabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
-	f.BoolVar(&cfg.Checkpoint, "ingester.checkpoint-enabled", true, "Enable checkpointing of in-memory chunks. It should always be true when using normally. Set it to false if you are doing some small tests as there is no mechanism to delete the old WAL yet if checkpoint is disabled.")
+	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 15*time.Minute, "Interval at which checkpoints should be created.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
@@ -142,9 +151,27 @@ func (w *walWrapper) Stop() {
 	level.Info(util.Logger).Log("msg", "stopped", "component", "wal")
 }
 
+func (w *walWrapper) checkpointWriter() *WALCheckpointWriter {
+	return &WALCheckpointWriter{
+		metrics:    w.metrics,
+		segmentWAL: w.wal,
+	}
+}
+
 func (w *walWrapper) run() {
 	level.Info(util.Logger).Log("msg", "started", "component", "wal")
 	defer w.wait.Done()
+
+	// writer := NewCheckpointer(dur time.Duration, iter SeriesIter, writer CheckpointWriter, metrics *ingesterMetrics)
+	checkpointer := NewCheckpointer(
+		w.cfg.CheckpointDuration,
+		nil,
+		w.checkpointWriter(),
+		w.metrics,
+		w.quit,
+	)
+	checkpointer.Run()
+
 }
 
 type resettingPool struct {
