@@ -333,7 +333,7 @@ func TestChunk_Slice(t *testing.T) {
 		{
 			name:       "slice no data in range",
 			sliceRange: model.Interval{Start: chunkStartTime.Add(time.Second), End: chunkStartTime.Add(10 * time.Second)},
-			err:        ErrSliceNoDataInRange,
+			err:        encoding.ErrSliceNoDataInRange,
 		},
 		{
 			name:       "slice interval not aligned with sample intervals",

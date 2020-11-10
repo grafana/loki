@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -684,7 +685,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 	var newChunks []*Chunk
 	if partiallyDeletedInterval.Start > chunk.From {
 		newChunk, err := chunk.Slice(chunk.From, partiallyDeletedInterval.Start-1)
-		if err != nil && err != ErrSliceNoDataInRange {
+		if err != nil && err != encoding.ErrSliceNoDataInRange {
 			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", chunk.From, partiallyDeletedInterval.Start-1)
 		}
 
@@ -695,7 +696,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 
 	if partiallyDeletedInterval.End < chunk.Through {
 		newChunk, err := chunk.Slice(partiallyDeletedInterval.End+1, chunk.Through)
-		if err != nil && err != ErrSliceNoDataInRange {
+		if err != nil && err != encoding.ErrSliceNoDataInRange {
 			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", partiallyDeletedInterval.End+1, chunk.Through)
 		}
 

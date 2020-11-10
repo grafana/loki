@@ -287,6 +287,10 @@ func (c *varbitChunk) Slice(_, _ model.Time) Chunk {
 	return c
 }
 
+func (c *varbitChunk) Rebound(start, end model.Time) (Chunk, error) {
+	return reboundChunk(c, start, end)
+}
+
 // Marshal implements chunk.
 func (c varbitChunk) Marshal(w io.Writer) error {
 	size := c.Size()
