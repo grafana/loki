@@ -69,10 +69,9 @@ func (noopWAL) Log(*WALRecord) error { return nil }
 func (noopWAL) Stop()                {}
 
 type walWrapper struct {
-	cfg       WALConfig
-	wal       *wal.WAL
-	bytesPool sync.Pool
-	metrics   *ingesterMetrics
+	cfg     WALConfig
+	wal     *wal.WAL
+	metrics *ingesterMetrics
 
 	wait sync.WaitGroup
 	quit chan struct{}
@@ -97,11 +96,6 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		quit:    make(chan struct{}),
 		wal:     tsdbWAL,
 		metrics: metrics,
-		bytesPool: sync.Pool{
-			New: func() interface{} {
-				return make([]byte, 0, 1<<10) // 1kb
-			},
-		},
 	}
 
 	w.wait.Add(1)
@@ -117,9 +111,9 @@ func (w *walWrapper) Log(record *WALRecord) error {
 	case <-w.quit:
 		return nil
 	default:
-		buf := w.bytesPool.Get().([]byte)[:0]
+		buf := recordPool.GetBytes()[:0]
 		defer func() {
-			w.bytesPool.Put(buf) // nolint:staticcheck
+			recordPool.PutBytes(buf)
 		}()
 
 		// Always write series then entries.
@@ -157,8 +151,9 @@ func (w *walWrapper) run() {
 }
 
 type resettingPool struct {
-	rPool *sync.Pool
-	ePool *sync.Pool
+	rPool *sync.Pool // records
+	ePool *sync.Pool // entries
+	bPool *sync.Pool // bytes
 }
 
 func (p *resettingPool) GetRecord() *WALRecord {
@@ -179,6 +174,14 @@ func (p *resettingPool) PutEntries(es []logproto.Entry) {
 	p.ePool.Put(es[:0])
 }
 
+func (p *resettingPool) GetBytes() []byte {
+	return p.bPool.Get().([]byte)
+}
+
+func (p *resettingPool) PutBytes(b []byte) {
+	p.bPool.Put(b[:0])
+}
+
 func newRecordPool() *resettingPool {
 	return &resettingPool{
 		rPool: &sync.Pool{
@@ -189,6 +192,11 @@ func newRecordPool() *resettingPool {
 		ePool: &sync.Pool{
 			New: func() interface{} {
 				return make([]logproto.Entry, 0, 512)
+			},
+		},
+		bPool: &sync.Pool{
+			New: func() interface{} {
+				return make([]byte, 0, 1<<10) // 1kb
 			},
 		},
 	}

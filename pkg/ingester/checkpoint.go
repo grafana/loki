@@ -80,3 +80,68 @@ func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, er
 	b = append(b, buf...)
 	return b, nil
 }
+
+type SeriesIter interface {
+	Num() int
+	Iter() <-chan Series
+	Stop()
+}
+
+type CheckpointWriter interface {
+	Log(Series) error
+	Close()
+}
+
+type Checkpointer struct {
+	dur    time.Duration
+	iter   SeriesIter
+	writer CheckpointWriter
+
+	quit chan struct{}
+}
+
+func NewCheckpointer(dur time.Duration, iter SeriesIter, writer CheckpointWriter) *Checkpointer {
+	return &Checkpointer{
+		dur:    dur,
+		iter:   iter,
+		writer: writer,
+		quit:   make(chan struct{}),
+	}
+}
+
+func (c *Checkpointer) PerformCheckpoint() error {
+	// signal whether checkpoint writes should be amortized or burst
+	var immediate bool
+	n := c.iter.Num()
+	if n < 1 {
+		return nil
+	}
+
+	perSeriesDuration := (95 * c.dur) / (100 * time.Duration(n))
+
+	ticker := time.NewTicker(perSeriesDuration)
+	defer ticker.Stop()
+	start := time.Now()
+	for s := range c.iter.Iter() {
+		if err := c.writer.Log(s); err != nil {
+			return err
+		}
+
+		if !immediate {
+			if time.Since(start) > c.dur {
+				// This indicates the checkpoint is taking too long; stop waiting
+				// and flush the remaining series as fast as possible.
+				immediate = true
+				continue
+			}
+		}
+
+		select {
+		case <-c.quit:
+		case <-ticker.C:
+		}
+
+	}
+
+	return nil
+}
