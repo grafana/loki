@@ -109,6 +109,16 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	return nil
 }
 
+// setChunks is used during checkpoint recovery
+func (s *stream) setChunks(chunks []Chunk) error {
+	chks, err := fromWireChunks(s.cfg, chunks)
+	if err != nil {
+		return err
+	}
+	s.chunks = chks
+	return nil
+}
+
 func (s *stream) NewChunk() chunkenc.Chunk {
 	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }

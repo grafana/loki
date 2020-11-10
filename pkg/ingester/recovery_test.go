@@ -108,6 +108,8 @@ func NewMemRecoverer() *MemRecoverer {
 
 func (r *MemRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
+func (r *MemRecoverer) Series(userID string, stream *Series) error { return nil }
+
 func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
 	r.Lock()
 	defer r.Unlock()
@@ -161,6 +163,7 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 	recoverer := NewMemRecoverer()
 
 	require.Nil(t, RecoverWAL(reader, recoverer))
+	recoverer.Close()
 
 	require.Equal(t, users, recoverer.usersCt)
 	require.Equal(t, streamsCt, recoverer.streamsCt)

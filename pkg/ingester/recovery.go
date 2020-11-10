@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -54,6 +55,7 @@ func newWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) 
 
 type Recoverer interface {
 	NumWorkers() int
+	Series(userID string, stream *Series) error
 	SetStream(userID string, series record.RefSeries) error
 	Push(userID string, entries RefEntries) error
 	Close()
@@ -76,6 +78,31 @@ func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
 
 // Use all available cores
 func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
+
+func (r *ingesterRecoverer) Series(userID string, series *Series) error {
+	inst := r.ing.getOrCreateInstance(userID)
+
+	// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
+	stream, err := inst.getOrCreateStream(logproto.Stream{
+		Labels: client.FromLabelAdaptersToLabels(series.Labels).String(),
+	}, true, nil)
+
+	if err != nil {
+		return err
+	}
+
+	if err := stream.setChunks(series.Chunks); err != nil {
+		return err
+	}
+
+	// now store the stream in the recovery map under the fingerprint originally recorded
+	// as it's possible the newly mapped fingerprint is different. This is because the WAL records
+	// will use this original reference.
+	got, _ := r.users.LoadOrStore(userID, &sync.Map{})
+	streamsMap := got.(*sync.Map)
+	streamsMap.Store(series.Fingerprint, stream)
+	return nil
+}
 
 // SetStream is responsible for setting the key path for userIDs -> fingerprints -> streams.
 // Internally, this uses nested sync.Maps due to their performance benefits for sets that only grow.
@@ -143,8 +170,6 @@ Recovery strategy:
     - mod fp into worker pool
 */
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
-	defer recoverer.Close()
-
 	var wg sync.WaitGroup
 	var lastErr error
 	nWorkers := recoverer.NumWorkers()
