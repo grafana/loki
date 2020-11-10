@@ -55,7 +55,7 @@ func newWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) 
 
 type Recoverer interface {
 	NumWorkers() int
-	Series(userID string, stream *Series) error
+	Series(series *Series) error
 	SetStream(userID string, series record.RefSeries) error
 	Push(userID string, entries RefEntries) error
 	Close()
@@ -79,8 +79,8 @@ func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
 // Use all available cores
 func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
-func (r *ingesterRecoverer) Series(userID string, series *Series) error {
-	inst := r.ing.getOrCreateInstance(userID)
+func (r *ingesterRecoverer) Series(series *Series) error {
+	inst := r.ing.getOrCreateInstance(series.UserID)
 
 	// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 	stream, err := inst.getOrCreateStream(logproto.Stream{
@@ -98,7 +98,7 @@ func (r *ingesterRecoverer) Series(userID string, series *Series) error {
 	// now store the stream in the recovery map under the fingerprint originally recorded
 	// as it's possible the newly mapped fingerprint is different. This is because the WAL records
 	// will use this original reference.
-	got, _ := r.users.LoadOrStore(userID, &sync.Map{})
+	got, _ := r.users.LoadOrStore(series.UserID, &sync.Map{})
 	streamsMap := got.(*sync.Map)
 	streamsMap.Store(series.Fingerprint, stream)
 	return nil
@@ -209,6 +209,66 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 
 }
 
+func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
+	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput, errCh <-chan error) error {
+		// TODO(owen-d): use a pool for chunks
+		s := &Series{}
+		if err := decodeCheckpointRecord(b, s); err != nil {
+			return err
+		}
+
+		worker := int(s.Fingerprint % uint64(len(inputs)))
+		select {
+		case err := <-errCh:
+			return err
+
+		case inputs[worker] <- recoveryInput{
+			userID: s.UserID,
+			data:   s,
+		}:
+		}
+
+		return nil
+	}
+
+	process := func(recoverer Recoverer, input <-chan recoveryInput, errCh chan<- error) {
+		for {
+			select {
+			case <-recoverer.Done():
+
+			case next, ok := <-input:
+				if !ok {
+					return
+				}
+				series, ok := next.data.(*Series)
+				var err error
+				if !ok {
+					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, series)
+				}
+				if err == nil {
+					err = recoverer.Series(series)
+				}
+
+				// Pass the error back, but respect the quit signal.
+				if err != nil {
+					select {
+					case errCh <- err:
+					case <-recoverer.Done():
+					}
+					return
+				}
+			}
+		}
+	}
+
+	return recoverGeneric(
+		reader,
+		recoverer,
+		dispatch,
+		process,
+	)
+}
+
 type recoveryInput struct {
 	userID string
 	data   interface{}
@@ -244,6 +304,11 @@ func processEntries(recoverer Recoverer, input <-chan recoveryInput, errCh chan<
 	}
 }
 
+// recoverGeneric enables reusing the ability to recover from WALs of different types
+// by exposing the dispatch and process functions.
+// Note: it explicitly does not call the Recoverer.Close function as it's possible to layer
+// multiple recoveries on top of each other, as in the case of recovering from Checkpoints
+// then the WAL.
 func recoverGeneric(
 	reader WALReader,
 	recoverer Recoverer,

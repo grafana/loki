@@ -108,7 +108,7 @@ func NewMemRecoverer() *MemRecoverer {
 
 func (r *MemRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
-func (r *MemRecoverer) Series(userID string, stream *Series) error { return nil }
+func (r *MemRecoverer) Series(_ *Series) error { return nil }
 
 func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
 	r.Lock()
