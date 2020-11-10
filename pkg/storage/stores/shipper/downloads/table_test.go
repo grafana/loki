@@ -281,3 +281,69 @@ func TestTable_DuplicateIndex(t *testing.T) {
 	// query the loaded table to see if it has right data.
 	testutil.TestSingleTableQuery(t, queries, table, 5, 20)
 }
+
+func TestLoadTable(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "load-table")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(tempDir))
+	}()
+
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	tableName := "test"
+
+	dbs := make(map[string]testutil.DBRecords)
+	for i := 0; i < 10; i++ {
+		dbs[fmt.Sprint(i)] = testutil.DBRecords{
+			Start:      i,
+			NumRecords: 1,
+		}
+	}
+
+	// setup the table in storage with some records
+	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbs, false)
+
+	boltDBIndexClient, fsObjectClient := buildTestClients(t, tempDir)
+	cachePath := filepath.Join(tempDir, cacheDirName)
+
+	// try loading the table.
+	table, err := LoadTable(tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	require.NoError(t, err)
+	require.NotNil(t, table)
+
+	// query the loaded table to see if it has right data.
+	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, 10)
+
+	// close the table to test reloading of table with already having files in the cache dir.
+	table.Close()
+
+	// change a boltdb file to text file which would fail to open.
+	tablePathInCache := filepath.Join(cachePath, tableName)
+	require.NoError(t, ioutil.WriteFile(filepath.Join(tablePathInCache, "0"), []byte("invalid boltdb file"), 0666))
+
+	// verify that changed boltdb file can't be opened.
+	_, err = local.OpenBoltdbFile(filepath.Join(tablePathInCache, "0"))
+	require.Error(t, err)
+
+	// add some more files to the storage.
+	dbs = make(map[string]testutil.DBRecords)
+	for i := 10; i < 20; i++ {
+		dbs[fmt.Sprint(i)] = testutil.DBRecords{
+			Start:      i,
+			NumRecords: 1,
+		}
+	}
+
+	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbs, false)
+
+	// try loading the table, it should skip loading corrupt file and reload it from storage.
+	table, err = LoadTable(tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	require.NoError(t, err)
+	require.NotNil(t, table)
+
+	defer table.Close()
+
+	// query the loaded table to see if it has right data.
+	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, 20)
+}
