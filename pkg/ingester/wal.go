@@ -100,15 +100,6 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 	return w, nil
 }
 
-func (w *walWrapper) CheckpointWriter() *WALCheckpointWriter {
-
-	return &WALCheckpointWriter{
-		cfg:        w.cfg,
-		metrics:    w.metrics,
-		segmentWAL: w.wal,
-	}
-}
-
 func (w *walWrapper) Log(record *WALRecord) error {
 	if record == nil || (len(record.Series) == 0 && len(record.RefEntries) == 0) {
 		return nil

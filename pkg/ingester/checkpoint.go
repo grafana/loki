@@ -107,14 +107,12 @@ type CheckpointWriter interface {
 }
 
 type WALCheckpointWriter struct {
-	cfg        WALConfig
 	metrics    *ingesterMetrics
 	segmentWAL *wal.WAL
 
 	checkpointWAL *wal.WAL
 	lastSegment   int    // name of the last segment guaranteed to be covered by the checkpoint
 	final         string // filename to atomically rotate upon completion
-	start         time.Time
 	bufSize       int
 	recs          [][]byte
 }
@@ -153,7 +151,6 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	w.checkpointWAL = checkpoint
 	w.lastSegment = lastSegment
 	w.final = checkpointDir
-	w.start = time.Now()
 
 	return false, nil
 }
@@ -234,11 +231,7 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 }
 
 func (w *WALCheckpointWriter) Close() error {
-	defer func() {
-		elapsed := time.Since(w.start)
-		level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
-		w.metrics.checkpointDuration.Observe(elapsed.Seconds())
-	}()
+
 	if len(w.recs) > 0 {
 		if err := w.flush(); err != nil {
 			return err
@@ -282,14 +275,23 @@ type Checkpointer struct {
 
 func NewCheckpointer(dur time.Duration, iter SeriesIter, writer CheckpointWriter, metrics *ingesterMetrics) *Checkpointer {
 	return &Checkpointer{
-		dur:    dur,
-		iter:   iter,
-		writer: writer,
-		quit:   make(chan struct{}),
+		dur:     dur,
+		iter:    iter,
+		writer:  writer,
+		metrics: metrics,
+		quit:    make(chan struct{}),
 	}
 }
 
 func (c *Checkpointer) PerformCheckpoint() (err error) {
+	noop, err := c.writer.Advance()
+	if err != nil {
+		return err
+	}
+	if noop {
+		return nil
+	}
+
 	c.metrics.checkpointCreationTotal.Inc()
 	defer func() {
 		if err != nil {
@@ -308,6 +310,11 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	ticker := time.NewTicker(perSeriesDuration)
 	defer ticker.Stop()
 	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
+		c.metrics.checkpointDuration.Observe(elapsed.Seconds())
+	}()
 	for s := range c.iter.Iter() {
 		if err := c.writer.Write(s); err != nil {
 			return err
