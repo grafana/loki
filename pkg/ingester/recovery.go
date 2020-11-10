@@ -159,16 +159,14 @@ func (r *ingesterRecoverer) Done() <-chan struct{} {
 	return r.done
 }
 
-/*
-RecoverWAL recovers from WAL segments (not checkpoints).
-Recovery strategy:
-- loop over all records
-  - create instance (user) if not exist
-  - create all streams (no samples) if not exist
+func Recover(reader WALReader, recoverer Recoverer) error {
+	defer recoverer.Close()
+	if err := RecoverCheckpoint(reader, recoverer); err != nil {
+		return err
+	}
+	return RecoverWAL(reader, recoverer)
+}
 
-  - loop over all []RefEntries in the WALRecord
-    - mod fp into worker pool
-*/
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput, errCh <-chan error) error {
 		rec := recordPool.GetRecord()
@@ -200,11 +198,41 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 		return nil
 	}
 
+	process := func(recoverer Recoverer, input <-chan recoveryInput, errCh chan<- error) {
+		for {
+			select {
+			case <-recoverer.Done():
+
+			case next, ok := <-input:
+				if !ok {
+					return
+				}
+				entries, ok := next.data.(RefEntries)
+				var err error
+				if !ok {
+					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
+				}
+				if err == nil {
+					err = recoverer.Push(next.userID, entries)
+				}
+
+				// Pass the error back, but respect the quit signal.
+				if err != nil {
+					select {
+					case errCh <- err:
+					case <-recoverer.Done():
+					}
+					return
+				}
+			}
+		}
+	}
+
 	return recoverGeneric(
 		reader,
 		recoverer,
 		dispatch,
-		processEntries,
+		process,
 	)
 
 }
@@ -272,36 +300,6 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 type recoveryInput struct {
 	userID string
 	data   interface{}
-}
-
-func processEntries(recoverer Recoverer, input <-chan recoveryInput, errCh chan<- error) {
-	for {
-		select {
-		case <-recoverer.Done():
-
-		case next, ok := <-input:
-			if !ok {
-				return
-			}
-			entries, ok := next.data.(RefEntries)
-			var err error
-			if !ok {
-				err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
-			}
-			if err == nil {
-				err = recoverer.Push(next.userID, entries)
-			}
-
-			// Pass the error back, but respect the quit signal.
-			if err != nil {
-				select {
-				case errCh <- err:
-				case <-recoverer.Done():
-				}
-				return
-			}
-		}
-	}
 }
 
 // recoverGeneric enables reusing the ability to recover from WALs of different types
