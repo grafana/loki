@@ -765,6 +765,11 @@ label_structured_data: <bool>
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
+
+# Whether promtail should pass on the timestamp from the incoming syslog message.
+# When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
+# Default is false
+use_incoming_timestamp: <bool>
 ```
 
 #### Available Labels
