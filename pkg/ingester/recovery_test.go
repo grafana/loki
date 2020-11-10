@@ -51,7 +51,7 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 					Ref: uint64(i),
 					Labels: labels.FromMap(
 						map[string]string{
-							"stream": string(i),
+							"stream": fmt.Sprint(i),
 							"user":   user,
 						},
 					),
