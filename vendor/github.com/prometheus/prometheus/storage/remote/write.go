@@ -22,6 +22,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -53,7 +54,7 @@ type WriteStorage struct {
 	interner          *pool
 
 	// For timestampTracker.
-	highestTimestamp *maxGauge
+	highestTimestamp *maxTimestamp
 }
 
 // NewWriteStorage creates and runs a WriteStorage.
@@ -71,7 +72,7 @@ func NewWriteStorage(logger log.Logger, reg prometheus.Registerer, walDir string
 		samplesIn:         newEWMARate(ewmaWeight, shardUpdateDuration),
 		walDir:            walDir,
 		interner:          newPool(),
-		highestTimestamp: &maxGauge{
+		highestTimestamp: &maxTimestamp{
 			Gauge: prometheus.NewGauge(prometheus.GaugeOpts{
 				Namespace: namespace,
 				Subsystem: subsystem,
@@ -202,7 +203,7 @@ type timestampTracker struct {
 	writeStorage         *WriteStorage
 	samples              int64
 	highestTimestamp     int64
-	highestRecvTimestamp *maxGauge
+	highestRecvTimestamp *maxTimestamp
 }
 
 // Add implements storage.Appender.

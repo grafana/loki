@@ -22,7 +22,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func connectToGrpcServer(serverAddress string) (GrpcStoreClient, *grpc.ClientConn, error) {
 	params := keepalive.ClientParameters{
 		Time:                time.Second * 20,
-		Timeout:             time.Minute * 10,
+		Timeout:             time.Second * 10,
 		PermitWithoutStream: true,
 	}
 	param := grpc.WithKeepaliveParams(params)

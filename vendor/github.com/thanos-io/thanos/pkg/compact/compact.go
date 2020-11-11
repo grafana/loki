@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,11 +22,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
-	terrors "github.com/prometheus/prometheus/tsdb/errors"
 
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
+	"github.com/thanos-io/thanos/pkg/errutil"
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
@@ -413,7 +414,7 @@ func (cg *Group) MinTime() int64 {
 	cg.mtx.Lock()
 	defer cg.mtx.Unlock()
 
-	min := int64(0)
+	min := int64(math.MaxInt64)
 	for _, b := range cg.blocks {
 		if b.MinTime < min {
 			min = b.MinTime
@@ -427,9 +428,9 @@ func (cg *Group) MaxTime() int64 {
 	cg.mtx.Lock()
 	defer cg.mtx.Unlock()
 
-	max := int64(0)
+	max := int64(math.MinInt64)
 	for _, b := range cg.blocks {
-		if b.MaxTime < max {
+		if b.MaxTime > max {
 			max = b.MaxTime
 		}
 	}
@@ -515,7 +516,7 @@ func (e HaltError) Error() string {
 // IsHaltError returns true if the base error is a HaltError.
 // If a multierror is passed, any halt error will return true.
 func IsHaltError(err error) bool {
-	if multiErr, ok := errors.Cause(err).(terrors.MultiError); ok {
+	if multiErr, ok := errors.Cause(err).(errutil.MultiError); ok {
 		for _, err := range multiErr {
 			if _, ok := errors.Cause(err).(HaltError); ok {
 				return true
@@ -548,7 +549,7 @@ func (e RetryError) Error() string {
 // IsRetryError returns true if the base error is a RetryError.
 // If a multierror is passed, all errors must be retriable.
 func IsRetryError(err error) bool {
-	if multiErr, ok := errors.Cause(err).(terrors.MultiError); ok {
+	if multiErr, ok := errors.Cause(err).(errutil.MultiError); ok {
 		for _, err := range multiErr {
 			if _, ok := errors.Cause(err).(RetryError); !ok {
 				return false
@@ -962,7 +963,7 @@ func (c *BucketCompactor) Compact(ctx context.Context) (rerr error) {
 		level.Info(c.logger).Log("msg", "start of compactions")
 
 		// Send all groups found during this pass to the compaction workers.
-		var groupErrs terrors.MultiError
+		var groupErrs errutil.MultiError
 	groupLoop:
 		for _, g := range groups {
 			select {
@@ -984,7 +985,7 @@ func (c *BucketCompactor) Compact(ctx context.Context) (rerr error) {
 
 		workCtxCancel()
 		if len(groupErrs) > 0 {
-			return groupErrs
+			return groupErrs.Err()
 		}
 
 		if finishedAllGroups {

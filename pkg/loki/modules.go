@@ -9,6 +9,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/NYTimes/gziphandler"
+	"github.com/cortexproject/cortex/pkg/frontend"
+	"github.com/cortexproject/cortex/pkg/frontend/transport"
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+
 	"github.com/grafana/loki/pkg/ruler/manager"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 
@@ -18,8 +23,7 @@ import (
 	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/cortex"
-	cortex_querier "github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	cortex_querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -155,11 +159,21 @@ func (t *Loki) initDistributor() (services.Service, error) {
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {
-	level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
-	worker, err := frontend.NewWorker(t.cfg.Worker, cortex_querier.Config{MaxConcurrent: t.cfg.Querier.MaxConcurrent}, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
-	if err != nil {
-		return nil, err
+	var (
+		worker services.Service
+		err    error
+	)
+
+	// NewQuerierWorker now expects Frontend (or Scheduler) address to be set. Loki only supports Frontend for now.
+	if t.cfg.Worker.FrontendAddress != "" {
+		t.cfg.Worker.MaxConcurrentRequests = t.cfg.Querier.MaxConcurrent
+		level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
+		worker, err = cortex_querier_worker.NewQuerierWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	if t.cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.cfg.Querier.IngesterQueryStoreMaxLookback = t.cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
@@ -339,12 +353,23 @@ type disabledShuffleShardingLimits struct{}
 func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { return 0 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
-
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
-	t.frontend, err = frontend.New(t.cfg.Frontend.Config, disabledShuffleShardingLimits{}, util.Logger, prometheus.DefaultRegisterer)
+
+	roundTripper, frontendV1, _, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
+		// Don't set FrontendV2 field to make sure that only frontendV1 can be initialized.
+		Handler:           t.cfg.Frontend.Handler,
+		FrontendV1:        t.cfg.Frontend.FrontendV1,
+		CompressResponses: t.cfg.Frontend.CompressResponses,
+		DownstreamURL:     t.cfg.Frontend.DownstreamURL,
+	}, disabledShuffleShardingLimits{}, t.cfg.Server.GRPCListenPort, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
-		return
+		return nil, err
 	}
+	t.frontend = frontendV1
+	if t.frontend != nil {
+		frontendv1pb.RegisterFrontendServer(t.server.GRPC, t.frontend)
+	}
+
 	level.Debug(util.Logger).Log("msg", "initializing query range tripperware",
 		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
 		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
@@ -361,16 +386,20 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		return
 	}
 	t.stopper = stopper
-	t.frontend.Wrap(tripperware)
-	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
-	frontendHandler := middleware.Merge(
+	roundTripper = tripperware(roundTripper)
+	frontendHandler := transport.NewHandler(t.cfg.Frontend.Handler, roundTripper, util.Logger)
+	if t.cfg.Frontend.CompressResponses {
+		frontendHandler = gziphandler.GzipHandler(frontendHandler)
+	}
+
+	frontendHandler = middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
-	).Wrap(t.frontend.Handler())
+	).Wrap(frontendHandler)
 
 	var defaultHandler http.Handler
 	if t.cfg.Frontend.TailProxyURL != "" {

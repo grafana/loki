@@ -32,7 +32,7 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 }
 
 // FromContext returns a span logger using the current parent span.
-// If there is no parent span, the Spanlogger will only log to stdout.
+// If there is no parent span, the Spanlogger will only log to global logger.
 func FromContext(ctx context.Context) *SpanLogger {
 	sp := opentracing.SpanFromContext(ctx)
 	if sp == nil {

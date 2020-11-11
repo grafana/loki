@@ -24,14 +24,15 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/tsdb"
-	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
+	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v2"
+
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/errutil"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
-	"golang.org/x/sync/errgroup"
-	"gopkg.in/yaml.v2"
 )
 
 type fetcherMetrics struct {
@@ -278,7 +279,7 @@ type response struct {
 	metas   map[ulid.ULID]*metadata.Meta
 	partial map[ulid.ULID]error
 	// If metaErr > 0 it means incomplete view, so some metas, failed to be loaded.
-	metaErrs tsdberrors.MultiError
+	metaErrs errutil.MultiError
 
 	noMetas        float64
 	corruptedMetas float64

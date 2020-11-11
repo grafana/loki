@@ -1,8 +1,10 @@
 syntax = "proto3";
 
+// Protobuf package should not be changed when moving around go packages
+// in order to not break backward compatibility.
 package frontend;
 
-option go_package = "frontend";
+option go_package = "frontendv1pb";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";

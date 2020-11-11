@@ -22,12 +22,18 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
+	errs "github.com/weaveworks/common/errors"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
-// ChunkLen is the length of a chunk in bytes.
-const ChunkLen = 1024
+const (
+	// ChunkLen is the length of a chunk in bytes.
+	ChunkLen = 1024
+
+	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
+	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
+)
 
 var (
 	errChunkBoundsExceeded = errors.New("attempted access outside of chunk boundaries")
@@ -50,9 +56,14 @@ type Chunk interface {
 	Encoding() Encoding
 	Utilization() float64
 
-	// Slice returns a smaller chunk the includes all samples between start and end
+	// Slice returns a smaller chunk that includes all samples between start and end
 	// (inclusive).  Its may over estimate. On some encodings it is a noop.
 	Slice(start, end model.Time) Chunk
+
+	// Rebound returns a smaller chunk that includes all samples between start and end (inclusive).
+	// We do not want to change existing Slice implementations because
+	// it is built specifically for query optimization and is a noop for some of the encodings.
+	Rebound(start, end model.Time) (Chunk, error)
 
 	// Len returns the number of samples in the chunk.  Implementations may be
 	// expensive.
@@ -245,4 +256,41 @@ func (it *indexAccessingChunkIterator) Batch(size int) Batch {
 // err implements Iterator.
 func (it *indexAccessingChunkIterator) Err() error {
 	return it.acc.err()
+}
+
+func reboundChunk(c Chunk, start, end model.Time) (Chunk, error) {
+	itr := c.NewIterator(nil)
+	if !itr.FindAtOrAfter(start) {
+		return nil, ErrSliceNoDataInRange
+	}
+
+	pc, err := NewForEncoding(c.Encoding())
+	if err != nil {
+		return nil, err
+	}
+
+	for !itr.Value().Timestamp.After(end) {
+		oc, err := pc.Add(itr.Value())
+		if err != nil {
+			return nil, err
+		}
+
+		if oc != nil {
+			return nil, ErrSliceChunkOverflow
+		}
+		if !itr.Scan() {
+			break
+		}
+	}
+
+	err = itr.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	if pc.Len() == 0 {
+		return nil, ErrSliceNoDataInRange
+	}
+
+	return pc, nil
 }

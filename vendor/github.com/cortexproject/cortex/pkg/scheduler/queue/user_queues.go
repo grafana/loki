@@ -1,4 +1,4 @@
-package frontend
+package queue
 
 import (
 	"math/rand"
@@ -26,7 +26,7 @@ type queues struct {
 }
 
 type userQueue struct {
-	ch chan *request
+	ch chan Request
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
@@ -74,7 +74,7 @@ func (q *queues) deleteQueue(userID string) {
 // MaxQueriers is used to compute which queriers should handle requests for this user.
 // If maxQueriers is <= 0, all queriers can handle this user's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan *request {
+func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 	// Empty user is not allowed, as that would break our users list ("" is used for free spot).
 	if userID == "" {
 		return nil
@@ -88,7 +88,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan *request {
 
 	if uq == nil {
 		uq = &userQueue{
-			ch:    make(chan *request, q.maxUserQueueSize),
+			ch:    make(chan Request, q.maxUserQueueSize),
 			seed:  util.ShuffleShardSeed(userID, ""),
 			index: -1,
 		}
@@ -121,7 +121,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan *request {
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *queues) getNextQueueForQuerier(lastUserIndex int, querier string) (chan *request, string, int) {
+func (q *queues) getNextQueueForQuerier(lastUserIndex int, querier string) (chan Request, string, int) {
 	uid := lastUserIndex
 
 	for iters := 0; iters < len(q.users); iters++ {

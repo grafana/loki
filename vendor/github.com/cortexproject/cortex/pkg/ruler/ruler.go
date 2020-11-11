@@ -406,7 +406,7 @@ func (r *Ruler) run(ctx context.Context) error {
 	var ringLastState ring.ReplicationSet
 
 	if r.cfg.EnableSharding {
-		ringLastState, _ = r.ring.GetAll(ring.Ruler)
+		ringLastState, _ = r.ring.GetAllHealthy(ring.Ruler)
 		ringTicker := time.NewTicker(util.DurationWithJitter(r.cfg.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -422,7 +422,7 @@ func (r *Ruler) run(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := r.ring.GetAll(ring.Ruler)
+			currRingState, _ := r.ring.GetAllHealthy(ring.Ruler)
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
@@ -684,7 +684,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 }
 
 func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	rulers, err := r.ring.GetAll(ring.Ruler)
+	rulers, err := r.ring.GetReplicationSetForOperation(ring.Ruler)
 	if err != nil {
 		return nil, err
 	}

@@ -9,7 +9,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -45,7 +44,7 @@ func NewTripperware(
 	schema chunk.SchemaConfig,
 	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
-) (frontend.Tripperware, Stopper, error) {
+) (queryrange.Tripperware, Stopper, error) {
 	// Ensure that QuerySplitDuration uses configuration defaults.
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
 	limits = WithDefaultLimits(limits, cfg.Config)
@@ -222,8 +221,8 @@ func NewLogFilterTripperware(
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
-) (frontend.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
+) (queryrange.Tripperware, error) {
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByMetrics))
 	}
@@ -264,7 +263,7 @@ func NewSeriesTripperware(
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	splitByMetrics *SplitByMetrics,
-) (frontend.Tripperware, error) {
+) (queryrange.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware,
@@ -294,7 +293,7 @@ func NewLabelsTripperware(
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	splitByMetrics *SplitByMetrics,
-) (frontend.Tripperware, error) {
+) (queryrange.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware,
@@ -330,8 +329,8 @@ func NewMetricTripperware(
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
 	registerer prometheus.Registerer,
-) (frontend.Tripperware, Stopper, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
+) (queryrange.Tripperware, Stopper, error) {
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
@@ -404,7 +403,7 @@ func NewMetricTripperware(
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
 			rt := queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
-			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return queryrange.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if !strings.HasSuffix(r.URL.Path, "/query_range") {
 					return next.RoundTrip(r)
 				}

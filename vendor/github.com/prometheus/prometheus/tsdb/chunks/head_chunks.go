@@ -27,10 +27,11 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
+
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
-	"go.uber.org/atomic"
 )
 
 // Head chunk file header fields constants.
@@ -152,10 +153,7 @@ func (cdm *ChunkDiskMapper) openMMapFiles() (returnErr error) {
 	cdm.closers = map[int]io.Closer{}
 	defer func() {
 		if returnErr != nil {
-			var merr tsdb_errors.MultiError
-			merr.Add(returnErr)
-			merr.Add(closeAllFromMap(cdm.closers))
-			returnErr = merr.Err()
+			returnErr = tsdb_errors.NewMulti(returnErr, closeAllFromMap(cdm.closers)).Err()
 
 			cdm.mmappedChunkFiles = nil
 			cdm.closers = nil
@@ -163,6 +161,11 @@ func (cdm *ChunkDiskMapper) openMMapFiles() (returnErr error) {
 	}()
 
 	files, err := listChunkFiles(cdm.dir.Name())
+	if err != nil {
+		return err
+	}
+
+	files, err = repairLastChunkFile(files)
 	if err != nil {
 		return err
 	}
@@ -226,7 +229,38 @@ func listChunkFiles(dir string) (map[int]string, error) {
 		}
 		res[int(seq)] = filepath.Join(dir, fi.Name())
 	}
+
 	return res, nil
+}
+
+// repairLastChunkFile deletes the last file if it's empty.
+// Because we don't fsync when creating these file, we could end
+// up with an empty file at the end during an abrupt shutdown.
+func repairLastChunkFile(files map[int]string) (_ map[int]string, returnErr error) {
+	lastFile := -1
+	for seq := range files {
+		if seq > lastFile {
+			lastFile = seq
+		}
+	}
+
+	if lastFile <= 0 {
+		return files, nil
+	}
+
+	info, err := os.Stat(files[lastFile])
+	if err != nil {
+		return files, errors.Wrap(err, "file stat during last head chunk file repair")
+	}
+	if info.Size() == 0 {
+		// Corrupt file, hence remove it.
+		if err := os.RemoveAll(files[lastFile]); err != nil {
+			return files, errors.Wrap(err, "delete corrupted, empty head chunk file during last file repair")
+		}
+		delete(files, lastFile)
+	}
+
+	return files, nil
 }
 
 // WriteChunk writes the chunk to the disk.
@@ -333,10 +367,7 @@ func (cdm *ChunkDiskMapper) cut() (returnErr error) {
 		// The file should not be closed if there is no error,
 		// its kept open in the ChunkDiskMapper.
 		if returnErr != nil {
-			var merr tsdb_errors.MultiError
-			merr.Add(returnErr)
-			merr.Add(newFile.Close())
-			returnErr = merr.Err()
+			returnErr = tsdb_errors.NewMulti(returnErr, newFile.Close()).Err()
 		}
 	}()
 
@@ -680,13 +711,13 @@ func (cdm *ChunkDiskMapper) Truncate(mint int64) error {
 	}
 	cdm.readPathMtx.RUnlock()
 
-	var merr tsdb_errors.MultiError
+	errs := tsdb_errors.NewMulti()
 	// Cut a new file only if the current file has some chunks.
 	if cdm.curFileSize() > HeadChunkFileHeaderSize {
-		merr.Add(cdm.CutNewFile())
+		errs.Add(cdm.CutNewFile())
 	}
-	merr.Add(cdm.deleteFiles(removedFiles))
-	return merr.Err()
+	errs.Add(cdm.deleteFiles(removedFiles))
+	return errs.Err()
 }
 
 func (cdm *ChunkDiskMapper) deleteFiles(removedFiles []int) error {
@@ -758,23 +789,23 @@ func (cdm *ChunkDiskMapper) Close() error {
 	}
 	cdm.closed = true
 
-	var merr tsdb_errors.MultiError
-	merr.Add(closeAllFromMap(cdm.closers))
-	merr.Add(cdm.finalizeCurFile())
-	merr.Add(cdm.dir.Close())
-
+	errs := tsdb_errors.NewMulti(
+		closeAllFromMap(cdm.closers),
+		cdm.finalizeCurFile(),
+		cdm.dir.Close(),
+	)
 	cdm.mmappedChunkFiles = map[int]*mmappedChunkFile{}
 	cdm.closers = map[int]io.Closer{}
 
-	return merr.Err()
+	return errs.Err()
 }
 
 func closeAllFromMap(cs map[int]io.Closer) error {
-	var merr tsdb_errors.MultiError
+	errs := tsdb_errors.NewMulti()
 	for _, c := range cs {
-		merr.Add(c.Close())
+		errs.Add(c.Close())
 	}
-	return merr.Err()
+	return errs.Err()
 }
 
 const inBufferShards = 128 // 128 is a randomly chosen number.

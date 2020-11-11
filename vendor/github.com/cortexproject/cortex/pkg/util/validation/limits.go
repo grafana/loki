@@ -5,6 +5,8 @@ import (
 	"flag"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/relabel"
+
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -46,6 +48,7 @@ type Limits struct {
 	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name"`
 	EnforceMetricName         bool                `yaml:"enforce_metric_name"`
 	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size"`
+	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 
 	// Ingester enforced limits.
 	// Series
@@ -64,6 +67,7 @@ type Limits struct {
 
 	// Querier enforced limits.
 	MaxChunksPerQuery    int           `yaml:"max_chunks_per_query"`
+	MaxQueryLookback     time.Duration `yaml:"max_query_lookback"`
 	MaxQueryLength       time.Duration `yaml:"max_query_length"`
 	MaxQueryParallelism  int           `yaml:"max_query_parallelism"`
 	CardinalityLimit     int           `yaml:"cardinality_limit"`
@@ -119,10 +123,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage. When running the Cortex chunks storage, this limit is enforced in the querier, while when running the Cortex blocks storage this limit is both enforced in the querier and store-gateway. 0 to disable.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query), in the querier (on the query possibly split by the query-frontend) and in the chunks storage. 0 to disable.")
-	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
+	f.DurationVar(&l.MaxQueryLookback, "querier.max-query-lookback", 0, "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
+	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
-	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends). This option only works with queriers connecting to the query-frontend, not when using downstream URL.")
+	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 
 	f.DurationVar(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -305,12 +310,18 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxChunksPerQuery
 }
 
+// MaxQueryLookback returns the max lookback period of queries.
+func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
+	return o.getOverridesForUser(userID).MaxQueryLookback
+}
+
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxQueryLength
 }
 
-// MaxCacheFreshness returns the limit of the length (in time) of a query.
+// MaxCacheFreshness returns the period after which results are cacheable,
+// to prevent caching of very recent results.
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxCacheFreshness
 }
@@ -320,7 +331,7 @@ func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
 }
 
-// MaxQueryParallelism returns the limit to the number of sub-queries the
+// MaxQueryParallelism returns the limit to the number of split queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryParallelism
@@ -374,6 +385,11 @@ func (o *Overrides) IngestionTenantShardSize(userID string) int {
 // EvaluationDelay returns the rules evaluation delay for a given user.
 func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerEvaluationDelay
+}
+
+// MetricRelabelConfigs returns the metric relabel configs for a given user.
+func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
+	return o.getOverridesForUser(userID).MetricRelabelConfigs
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.

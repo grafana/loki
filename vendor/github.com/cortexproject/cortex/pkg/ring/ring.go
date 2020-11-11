@@ -44,7 +44,18 @@ type ReadRing interface {
 	// buf is a slice to be overwritten for the return value
 	// to avoid memory allocation; can be nil.
 	Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error)
-	GetAll(op Operation) (ReplicationSet, error)
+
+	// GetAllHealthy returns all healthy instances in the ring, for the given operation.
+	// This function doesn't check if the quorum is honored, so doesn't fail if the number
+	// of unhealthy ingesters is greater than the tolerated max unavailable.
+	GetAllHealthy(op Operation) (ReplicationSet, error)
+
+	// GetReplicationSetForOperation returns all instances where the input operation should be executed.
+	// The resulting ReplicationSet doesn't necessarily contains all healthy instances
+	// in the ring, but could contain the minimum set of instances required to execute
+	// the input operation.
+	GetReplicationSetForOperation(op Operation) (ReplicationSet, error)
+
 	ReplicationFactor() int
 	IngesterCount() int
 
@@ -75,7 +86,11 @@ const (
 	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
 	BlocksRead
 
-	Ruler // Used for distributing rule groups between rulers.
+	// Ruler is the operation used for distributing rule groups between rulers.
+	Ruler
+
+	// Compactor is the operation used for distributing tenants/blocks across compactors.
+	Compactor
 )
 
 var (
@@ -85,6 +100,10 @@ var (
 	// ErrInstanceNotFound is the error returned when trying to get information for an instance
 	// not registered within the ring.
 	ErrInstanceNotFound = errors.New("instance not found in the ring")
+
+	// ErrTooManyFailedIngesters is the error returned when there are too many failed ingesters for a
+	// specific operation.
+	ErrTooManyFailedIngesters = errors.New("too many failed ingesters")
 )
 
 // Config for a Ring
@@ -313,8 +332,30 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 	}, nil
 }
 
-// GetAll returns all available ingesters in the ring.
-func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
+// GetAllHealthy implements ReadRing.
+func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil || len(r.ringDesc.Ingesters) == 0 {
+		return ReplicationSet{}, ErrEmptyRing
+	}
+
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	for _, ingester := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&ingester, op) {
+			ingesters = append(ingesters, ingester)
+		}
+	}
+
+	return ReplicationSet{
+		Ingesters: ingesters,
+		MaxErrors: 0,
+	}, nil
+}
+
+// GetReplicationSetForOperation implements ReadRing.
+func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -339,7 +380,7 @@ func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
 	}
 
 	if len(ingesters) < numRequired {
-		return ReplicationSet{}, fmt.Errorf("too many failed ingesters")
+		return ReplicationSet{}, ErrTooManyFailedIngesters
 	}
 
 	return ReplicationSet{

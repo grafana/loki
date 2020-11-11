@@ -176,7 +176,7 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 	resMetas := map[string][]*BlockMeta{}
 	resMetasLookup := map[string]map[ulid.ULID]*BlockMeta{}
 	resDeletionMarks := map[string]map[ulid.ULID]*metadata.DeletionMark{}
-	resErrs := tsdb_errors.MultiError{}
+	resErrs := tsdb_errors.NewMulti()
 
 	// Create a pool of workers which will synchronize metas. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in

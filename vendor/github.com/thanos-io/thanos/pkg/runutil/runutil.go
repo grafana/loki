@@ -59,7 +59,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
+
+	"github.com/thanos-io/thanos/pkg/errutil"
 )
 
 // Repeat executes f every interval seconds until stopc is closed or f returns an error.
@@ -136,7 +137,7 @@ func ExhaustCloseWithLogOnErr(logger log.Logger, r io.ReadCloser, format string,
 // CloseWithErrCapture runs function and on error return error by argument including the given error (usually
 // from caller function).
 func CloseWithErrCapture(err *error, closer io.Closer, format string, a ...interface{}) {
-	merr := tsdberrors.MultiError{}
+	merr := errutil.MultiError{}
 
 	merr.Add(*err)
 	merr.Add(errors.Wrapf(closer.Close(), format, a...))
@@ -151,7 +152,7 @@ func ExhaustCloseWithErrCapture(err *error, r io.ReadCloser, format string, a ..
 	CloseWithErrCapture(err, r, format, a...)
 
 	// Prepend the io.Copy error.
-	merr := tsdberrors.MultiError{}
+	merr := errutil.MultiError{}
 	merr.Add(copyErr)
 	merr.Add(*err)
 

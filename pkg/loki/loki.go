@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"net/http"
 
+	frontend "github.com/cortexproject/cortex/pkg/frontend/v1"
+	"github.com/cortexproject/cortex/pkg/querier/worker"
+
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -15,7 +18,6 @@ import (
 	"github.com/weaveworks/common/signals"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
@@ -60,7 +62,7 @@ type Config struct {
 	SchemaConfig     storage.SchemaConfig        `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits           `yaml:"limits_config,omitempty"`
 	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	Worker           frontend.WorkerConfig       `yaml:"frontend_worker,omitempty"`
+	Worker           worker.Config               `yaml:"frontend_worker,omitempty"`
 	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
 	Ruler            ruler.Config                `yaml:"ruler,omitempty"`
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`

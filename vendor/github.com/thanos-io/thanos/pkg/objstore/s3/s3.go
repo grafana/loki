@@ -59,16 +59,17 @@ var DefaultConfig = Config{
 
 // Config stores the configuration for s3 bucket.
 type Config struct {
-	Bucket          string            `yaml:"bucket"`
-	Endpoint        string            `yaml:"endpoint"`
-	Region          string            `yaml:"region"`
-	AccessKey       string            `yaml:"access_key"`
-	Insecure        bool              `yaml:"insecure"`
-	SignatureV2     bool              `yaml:"signature_version2"`
-	SecretKey       string            `yaml:"secret_key"`
-	PutUserMetadata map[string]string `yaml:"put_user_metadata"`
-	HTTPConfig      HTTPConfig        `yaml:"http_config"`
-	TraceConfig     TraceConfig       `yaml:"trace"`
+	Bucket             string            `yaml:"bucket"`
+	Endpoint           string            `yaml:"endpoint"`
+	Region             string            `yaml:"region"`
+	AccessKey          string            `yaml:"access_key"`
+	Insecure           bool              `yaml:"insecure"`
+	SignatureV2        bool              `yaml:"signature_version2"`
+	SecretKey          string            `yaml:"secret_key"`
+	PutUserMetadata    map[string]string `yaml:"put_user_metadata"`
+	HTTPConfig         HTTPConfig        `yaml:"http_config"`
+	TraceConfig        TraceConfig       `yaml:"trace"`
+	ListObjectsVersion string            `yaml:"list_objects_version"`
 	// PartSize used for multipart upload. Only used if uploaded object size is known and larger than configured PartSize.
 	PartSize  uint64    `yaml:"part_size"`
 	SSEConfig SSEConfig `yaml:"sse_config"`
@@ -137,6 +138,7 @@ type Bucket struct {
 	sse             encrypt.ServerSide
 	putUserMetadata map[string]string
 	partSize        uint64
+	listObjectsV1   bool
 }
 
 // parseConfig unmarshals a buffer into a Config with default HTTPConfig values.
@@ -246,6 +248,10 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		client.TraceOn(logWriter)
 	}
 
+	if config.ListObjectsVersion != "" && config.ListObjectsVersion != "v1" && config.ListObjectsVersion != "v2" {
+		return nil, errors.Errorf("Initialize s3 client list objects version: Unsupported version %q was provided. Supported values are v1, v2", config.ListObjectsVersion)
+	}
+
 	bkt := &Bucket{
 		logger:          logger,
 		name:            config.Bucket,
@@ -253,6 +259,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		sse:             sse,
 		putUserMetadata: config.PutUserMetadata,
 		partSize:        config.PartSize,
+		listObjectsV1:   config.ListObjectsVersion == "v1",
 	}
 	return bkt, nil
 }
@@ -309,6 +316,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) err
 	opts := minio.ListObjectsOptions{
 		Prefix:    dir,
 		Recursive: false,
+		UseV1:     b.listObjectsV1,
 	}
 
 	for object := range b.client.ListObjects(ctx, b.name, opts) {

@@ -232,10 +232,14 @@ type tsdbMetrics struct {
 	tsdbFsyncDuration            *prometheus.Desc
 	tsdbPageFlushes              *prometheus.Desc
 	tsdbPageCompletions          *prometheus.Desc
-	tsdbTruncateFail             *prometheus.Desc
-	tsdbTruncateTotal            *prometheus.Desc
-	tsdbTruncateDuration         *prometheus.Desc
-	tsdbWritesFailed             *prometheus.Desc
+	tsdbWALTruncateFail          *prometheus.Desc
+	tsdbWALTruncateTotal         *prometheus.Desc
+	tsdbWALTruncateDuration      *prometheus.Desc
+	tsdbWALCorruptionsTotal      *prometheus.Desc
+	tsdbWALWritesFailed          *prometheus.Desc
+	tsdbHeadTruncateFail         *prometheus.Desc
+	tsdbHeadTruncateTotal        *prometheus.Desc
+	tsdbHeadGcDuration           *prometheus.Desc
 	tsdbActiveAppenders          *prometheus.Desc
 	tsdbSeriesNotFound           *prometheus.Desc
 	tsdbChunks                   *prometheus.Desc
@@ -296,21 +300,37 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_wal_completed_pages_total",
 			"Total number of TSDB WAL completed pages.",
 			nil, nil),
-		tsdbTruncateFail: prometheus.NewDesc(
+		tsdbWALTruncateFail: prometheus.NewDesc(
 			"cortex_ingester_tsdb_wal_truncations_failed_total",
 			"Total number of TSDB WAL truncations that failed.",
 			nil, nil),
-		tsdbTruncateTotal: prometheus.NewDesc(
+		tsdbWALTruncateTotal: prometheus.NewDesc(
 			"cortex_ingester_tsdb_wal_truncations_total",
 			"Total number of TSDB  WAL truncations attempted.",
 			nil, nil),
-		tsdbTruncateDuration: prometheus.NewDesc(
+		tsdbWALTruncateDuration: prometheus.NewDesc(
 			"cortex_ingester_tsdb_wal_truncate_duration_seconds",
 			"Duration of TSDB WAL truncation.",
 			nil, nil),
-		tsdbWritesFailed: prometheus.NewDesc(
+		tsdbWALCorruptionsTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wal_corruptions_total",
+			"Total number of TSDB WAL corruptions.",
+			nil, nil),
+		tsdbWALWritesFailed: prometheus.NewDesc(
 			"cortex_ingester_tsdb_wal_writes_failed_total",
 			"Total number of TSDB WAL writes that failed.",
+			nil, nil),
+		tsdbHeadTruncateFail: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_truncations_failed_total",
+			"Total number of TSDB head truncations that failed.",
+			nil, nil),
+		tsdbHeadTruncateTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_truncations_total",
+			"Total number of TSDB head truncations attempted.",
+			nil, nil),
+		tsdbHeadGcDuration: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_gc_duration_seconds",
+			"Runtime of garbage collection in the TSDB head.",
 			nil, nil),
 		tsdbActiveAppenders: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_active_appenders",
@@ -374,10 +394,14 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbFsyncDuration
 	out <- sm.tsdbPageFlushes
 	out <- sm.tsdbPageCompletions
-	out <- sm.tsdbTruncateFail
-	out <- sm.tsdbTruncateTotal
-	out <- sm.tsdbTruncateDuration
-	out <- sm.tsdbWritesFailed
+	out <- sm.tsdbWALTruncateFail
+	out <- sm.tsdbWALTruncateTotal
+	out <- sm.tsdbWALTruncateDuration
+	out <- sm.tsdbWALCorruptionsTotal
+	out <- sm.tsdbWALWritesFailed
+	out <- sm.tsdbHeadTruncateFail
+	out <- sm.tsdbHeadTruncateTotal
+	out <- sm.tsdbHeadGcDuration
 	out <- sm.tsdbActiveAppenders
 	out <- sm.tsdbSeriesNotFound
 	out <- sm.tsdbChunks
@@ -408,10 +432,14 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfSummaries(out, sm.tsdbFsyncDuration, "prometheus_tsdb_wal_fsync_duration_seconds")
 	data.SendSumOfCounters(out, sm.tsdbPageFlushes, "prometheus_tsdb_wal_page_flushes_total")
 	data.SendSumOfCounters(out, sm.tsdbPageCompletions, "prometheus_tsdb_wal_completed_pages_total")
-	data.SendSumOfCounters(out, sm.tsdbTruncateFail, "prometheus_tsdb_wal_truncations_failed_total")
-	data.SendSumOfCounters(out, sm.tsdbTruncateTotal, "prometheus_tsdb_wal_truncations_total")
-	data.SendSumOfSummaries(out, sm.tsdbTruncateDuration, "prometheus_tsdb_wal_truncate_duration_seconds")
-	data.SendSumOfCounters(out, sm.tsdbWritesFailed, "prometheus_tsdb_wal_writes_failed_total")
+	data.SendSumOfCounters(out, sm.tsdbWALTruncateFail, "prometheus_tsdb_wal_truncations_failed_total")
+	data.SendSumOfCounters(out, sm.tsdbWALTruncateTotal, "prometheus_tsdb_wal_truncations_total")
+	data.SendSumOfSummaries(out, sm.tsdbWALTruncateDuration, "prometheus_tsdb_wal_truncate_duration_seconds")
+	data.SendSumOfCounters(out, sm.tsdbWALCorruptionsTotal, "prometheus_tsdb_wal_corruptions_total")
+	data.SendSumOfCounters(out, sm.tsdbWALWritesFailed, "prometheus_tsdb_wal_writes_failed_total")
+	data.SendSumOfCounters(out, sm.tsdbHeadTruncateFail, "prometheus_tsdb_head_truncations_failed_total")
+	data.SendSumOfCounters(out, sm.tsdbHeadTruncateTotal, "prometheus_tsdb_head_truncations_total")
+	data.SendSumOfSummaries(out, sm.tsdbHeadGcDuration, "prometheus_tsdb_head_gc_duration_seconds")
 	data.SendSumOfGauges(out, sm.tsdbActiveAppenders, "prometheus_tsdb_head_active_appenders")
 	data.SendSumOfCounters(out, sm.tsdbSeriesNotFound, "prometheus_tsdb_head_series_not_found_total")
 	data.SendSumOfGauges(out, sm.tsdbChunks, "prometheus_tsdb_head_chunks")
