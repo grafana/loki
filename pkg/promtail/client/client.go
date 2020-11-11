@@ -112,14 +112,20 @@ type Client interface {
 	api.EntryHandler
 	// Stop goroutine sending batch of entries.
 	Stop()
+
+	// Stop goroutine sending batch of entries without retries.
+	StopNow()
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
 type client struct {
-	logger  log.Logger
-	cfg     Config
-	client  *http.Client
-	quit    chan struct{}
+	logger log.Logger
+	cfg    Config
+	client *http.Client
+
+	// quit chan is depricated. Will be removed. Use `client.ctx` and `client.cancel` instead.
+	quit chan struct{}
+
 	once    sync.Once
 	entries chan entry
 	wg      sync.WaitGroup
@@ -256,9 +262,11 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 
 	backoff := util.NewBackoff(c.ctx, c.cfg.BackoffConfig)
 	var status int
-	for backoff.Ongoing() {
+	for {
 		start := time.Now()
-		status, err = c.send(c.ctx, tenantID, buf)
+		// send uses `timeout` internally, so `context.Background` is good enough.
+		status, err = c.send(context.Background(), tenantID, buf)
+
 		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
 		if err == nil {
@@ -295,6 +303,11 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
 		batchRetries.WithLabelValues(c.cfg.URL.Host).Inc()
 		backoff.Wait()
+
+		// Make sure it sends at least once before checking for retry.
+		if !backoff.Ongoing() {
+			break
+		}
 	}
 
 	if err != nil {
@@ -356,11 +369,15 @@ func (c *client) getTenantID(labels model.LabelSet) string {
 
 // Stop the client.
 func (c *client) Stop() {
-	// cancel any upstream calls made using client's `ctx`.
-	c.cancel()
-
 	c.once.Do(func() { close(c.quit) })
 	c.wg.Wait()
+}
+
+// StopNow stops the client without retries
+func (c *client) StopNow() {
+	// cancel any upstream calls made using client's `ctx`.
+	c.cancel()
+	c.Stop()
 }
 
 // Handle implement EntryHandler; adds a new line to the next batch; send is async.

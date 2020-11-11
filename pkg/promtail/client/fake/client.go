@@ -19,6 +19,11 @@ func (c *Client) Stop() {
 	c.OnStop()
 }
 
+// StopNow implements client.Client
+func (c *Client) StopNow() {
+	c.OnStop()
+}
+
 // Handle implements client.Client
 func (c *Client) Handle(labels model.LabelSet, time time.Time, entry string) error {
 	return c.OnHandleEntry.Handle(labels, time, entry)

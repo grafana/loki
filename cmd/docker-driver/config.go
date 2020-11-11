@@ -74,7 +74,9 @@ var (
 			MaxBackoff: client.MaxBackoff,
 			MaxRetries: client.MaxRetries,
 		},
-		Timeout: client.Timeout,
+		// Avoid blocking the docker-driver on the worst case
+		// https://github.com/grafana/loki/pull/2898#issuecomment-730218963
+		Timeout: 5 * time.Second,
 	}
 )
 

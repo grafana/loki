@@ -109,6 +109,12 @@ func (c *dqueClient) Stop() {
 	c.loki.Stop()
 }
 
+// Stop the client
+func (c *dqueClient) StopNow() {
+	c.once.Do(func() { c.queue.Close() })
+	c.loki.StopNow()
+}
+
 // Handle implement EntryHandler; adds a new line to the next batch; send is async.
 func (c *dqueClient) Handle(ls model.LabelSet, t time.Time, s string) error {
 	if err := c.queue.Enqueue(&dqueEntry{ls, t, s}); err != nil {

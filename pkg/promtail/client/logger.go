@@ -58,6 +58,8 @@ func NewLogger(log log.Logger, externalLabels lokiflag.LabelSet, cfgs ...Config)
 
 func (*logger) Stop() {}
 
+func (*logger) StopNow() {}
+
 func (l *logger) Handle(labels model.LabelSet, time time.Time, entry string) error {
 	l.Lock()
 	defer l.Unlock()
