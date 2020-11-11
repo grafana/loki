@@ -15,19 +15,27 @@ import (
 // SetupAuthMiddleware for the given server config.
 func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []string) middleware.Interface {
 	if enabled {
-		config.GRPCMiddleware = append(config.GRPCMiddleware,
-			middleware.ServerUserHeaderInterceptor,
-		)
+		ignoredMethods := map[string]bool{}
+		for _, m := range noGRPCAuthOn {
+			ignoredMethods[m] = true
+		}
+
+		config.GRPCMiddleware = append(config.GRPCMiddleware, func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+			if ignoredMethods[info.FullMethod] {
+				return handler(ctx, req)
+			}
+			return middleware.ServerUserHeaderInterceptor(ctx, req, info, handler)
+		})
+
 		config.GRPCStreamMiddleware = append(config.GRPCStreamMiddleware,
 			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				for _, path := range noGRPCAuthOn {
-					if info.FullMethod == path {
-						return handler(srv, ss)
-					}
+				if ignoredMethods[info.FullMethod] {
+					return handler(srv, ss)
 				}
 				return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 			},
 		)
+
 		return middleware.AuthenticateUser
 	}
 

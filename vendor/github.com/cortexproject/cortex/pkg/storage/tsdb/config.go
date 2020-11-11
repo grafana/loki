@@ -9,6 +9,7 @@ import (
 
 	"github.com/alecthomas/units"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
+	"github.com/cortexproject/cortex/pkg/storage/backend/swift"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -28,6 +30,9 @@ const (
 
 	// BackendAzure is the value for the Azure storage backend
 	BackendAzure = "azure"
+
+	// BackendSwift is the value for the Openstack Swift storage backend
+	BackendSwift = "swift"
 
 	// BackendFilesystem is the value for the filesystem storge backend
 	BackendFilesystem = "filesystem"
@@ -47,12 +52,14 @@ const (
 
 // Validation errors
 var (
-	supportedBackends = []string{BackendS3, BackendGCS, BackendAzure, BackendFilesystem}
+	supportedBackends = []string{BackendS3, BackendGCS, BackendAzure, BackendSwift, BackendFilesystem}
 
 	errUnsupportedStorageBackend    = errors.New("unsupported TSDB storage backend")
 	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
+	errInvalidOpeningConcurrency    = errors.New("invalid TSDB opening concurrency")
 	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
 	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
+	errInvalidWALSegmentSizeBytes   = errors.New("invalid TSDB WAL segment size bytes")
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
 )
@@ -64,6 +71,7 @@ type BucketConfig struct {
 	S3         s3.Config         `yaml:"s3"`
 	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
+	Swift      swift.Config      `yaml:"swift"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
 
 	// Not used internally, meant to allow callers to wrap Buckets
@@ -121,6 +129,7 @@ func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 	cfg.GCS.RegisterFlags(f)
 	cfg.Azure.RegisterFlags(f)
+	cfg.Swift.RegisterFlags(f)
 	cfg.Filesystem.RegisterFlags(f)
 
 	f.StringVar(&cfg.Backend, "blocks-storage.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
@@ -167,6 +176,7 @@ type TSDBConfig struct {
 	HeadCompactionIdleTimeout time.Duration `yaml:"head_compaction_idle_timeout"`
 	StripeSize                int           `yaml:"stripe_size"`
 	WALCompressionEnabled     bool          `yaml:"wal_compression_enabled"`
+	WALSegmentSizeBytes       int           `yaml:"wal_segment_size_bytes"`
 	FlushBlocksOnShutdown     bool          `yaml:"flush_blocks_on_shutdown"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup.
@@ -194,6 +204,7 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeadCompactionIdleTimeout, "blocks-storage.tsdb.head-compaction-idle-timeout", 1*time.Hour, "If TSDB head is idle for this duration, it is compacted. 0 means disabled.")
 	f.IntVar(&cfg.StripeSize, "blocks-storage.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
 	f.BoolVar(&cfg.WALCompressionEnabled, "blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
+	f.IntVar(&cfg.WALSegmentSizeBytes, "blocks-storage.tsdb.wal-segment-size-bytes", wal.DefaultSegmentSize, "TSDB WAL segments files max size (bytes).")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
 }
 
@@ -201,6 +212,10 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *TSDBConfig) Validate() error {
 	if cfg.ShipInterval > 0 && cfg.ShipConcurrency <= 0 {
 		return errInvalidShipConcurrency
+	}
+
+	if cfg.MaxTSDBOpeningConcurrencyOnStartup <= 0 {
+		return errInvalidOpeningConcurrency
 	}
 
 	if cfg.HeadCompactionInterval <= 0 || cfg.HeadCompactionInterval > 5*time.Minute {
@@ -217,6 +232,10 @@ func (cfg *TSDBConfig) Validate() error {
 
 	if len(cfg.BlockRanges) == 0 {
 		return errEmptyBlockranges
+	}
+
+	if cfg.WALSegmentSizeBytes <= 0 {
+		return errInvalidWALSegmentSizeBytes
 	}
 
 	return nil

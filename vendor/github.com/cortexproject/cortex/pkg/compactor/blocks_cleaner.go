@@ -120,7 +120,7 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context) error {
 		return errors.Wrap(err, "failed to discover users from bucket")
 	}
 
-	errs := tsdb_errors.MultiError{}
+	errs := tsdb_errors.NewMulti()
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. shutdown has been triggered).
 		if ctx.Err() != nil {

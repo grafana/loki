@@ -233,6 +233,10 @@ func (c *doubleDeltaEncodedChunk) Slice(_, _ model.Time) Chunk {
 	return c
 }
 
+func (c *doubleDeltaEncodedChunk) Rebound(start, end model.Time) (Chunk, error) {
+	return reboundChunk(c, start, end)
+}
+
 // Marshal implements chunk.
 func (c doubleDeltaEncodedChunk) Marshal(w io.Writer) error {
 	if len(c) > math.MaxUint16 {

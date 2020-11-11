@@ -228,6 +228,13 @@ func (d MetricFamiliesPerUser) SendMaxOfGauges(out chan<- prometheus.Metric, des
 	out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result)
 }
 
+func (d MetricFamiliesPerUser) SendMaxOfGaugesPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
+	for user, userMetrics := range d {
+		result := userMetrics.MaxGauges(gauge)
+		out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result, user)
+	}
+}
+
 func (d MetricFamiliesPerUser) SendSumOfSummaries(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
 	summaryData := SummaryData{}
 	for _, userMetrics := range d {

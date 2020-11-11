@@ -20,15 +20,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
-// Errors that decode can return
 const (
-	ErrInvalidChecksum    = errs.Error("invalid chunk checksum")
-	ErrWrongMetadata      = errs.Error("wrong chunk metadata")
-	ErrMetadataLength     = errs.Error("chunk metadata wrong length")
-	ErrDataLength         = errs.Error("chunk data wrong length")
-	ErrSliceOutOfRange    = errs.Error("chunk can't be sliced out of its data range")
-	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
-	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
+	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
+	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
+	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
+	ErrDataLength      = errs.Error("chunk data wrong length")
+	ErrSliceOutOfRange = errs.Error("chunk can't be sliced out of its data range")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -338,37 +335,9 @@ func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 		return nil, ErrSliceOutOfRange
 	}
 
-	itr := c.Data.NewIterator(nil)
-	if !itr.FindAtOrAfter(from) {
-		return nil, ErrSliceNoDataInRange
-	}
-
-	pc, err := prom_chunk.NewForEncoding(c.Data.Encoding())
+	pc, err := c.Data.Rebound(from, through)
 	if err != nil {
 		return nil, err
-	}
-
-	for !itr.Value().Timestamp.After(through) {
-		oc, err := pc.Add(itr.Value())
-		if err != nil {
-			return nil, err
-		}
-
-		if oc != nil {
-			return nil, ErrSliceChunkOverflow
-		}
-		if !itr.Scan() {
-			break
-		}
-	}
-
-	err = itr.Err()
-	if err != nil {
-		return nil, err
-	}
-
-	if pc.Len() == 0 {
-		return nil, ErrSliceNoDataInRange
 	}
 
 	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)

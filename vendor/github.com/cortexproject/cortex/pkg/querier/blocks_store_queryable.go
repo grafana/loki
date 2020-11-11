@@ -382,7 +382,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 
 		// Fetch series from stores. If an error occur we do not retry because retries
 		// are only meant to cover missing blocks.
-		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
+		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
@@ -433,6 +433,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 
 func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	ctx context.Context,
+	sp *storage.SelectHints,
 	clients map[BlocksStoreClient][]ulid.ULID,
 	minT int64,
 	maxT int64,
@@ -459,7 +460,13 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		blockIDs := blockIDs
 
 		g.Go(func() error {
-			req, err := createSeriesRequest(minT, maxT, convertedMatchers, blockIDs)
+			// See: https://github.com/prometheus/prometheus/pull/8050
+			// TODO(goutham): we should ideally be passing the hints down to the storage layer
+			// and let the TSDB return us data with no chunks as in prometheus#8050.
+			// But this is an acceptable workaround for now.
+			skipChunks := sp != nil && sp.Func == "series"
+
+			req, err := createSeriesRequest(minT, maxT, convertedMatchers, skipChunks, blockIDs)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
@@ -546,7 +553,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	return seriesSets, queriedBlocks, warnings, int(numChunks.Load()), nil
 }
 
-func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
+func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -569,6 +576,7 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, bloc
 		Matchers:                matchers,
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 		Hints:                   anyHints,
+		SkipChunks:              skipChunks,
 	}, nil
 }
 

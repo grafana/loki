@@ -48,6 +48,7 @@ github.com/Masterminds/squirrel
 github.com/Microsoft/go-winio
 github.com/Microsoft/go-winio/pkg/guid
 # github.com/NYTimes/gziphandler v1.1.1
+## explicit
 github.com/NYTimes/gziphandler
 # github.com/PuerkitoBio/purell v1.1.1
 github.com/PuerkitoBio/purell
@@ -159,7 +160,7 @@ github.com/coreos/go-systemd/journal
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.4.1-0.20201022071705-85942c5703cf
+# github.com/cortexproject/cortex v1.5.1-0.20201110164020-35e698bb56d6
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alerts
@@ -194,6 +195,12 @@ github.com/cortexproject/cortex/pkg/configs/userconfig
 github.com/cortexproject/cortex/pkg/cortex
 github.com/cortexproject/cortex/pkg/distributor
 github.com/cortexproject/cortex/pkg/flusher
+github.com/cortexproject/cortex/pkg/frontend
+github.com/cortexproject/cortex/pkg/frontend/transport
+github.com/cortexproject/cortex/pkg/frontend/v1
+github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb
+github.com/cortexproject/cortex/pkg/frontend/v2
+github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb
 github.com/cortexproject/cortex/pkg/ingester
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/ingester/index
@@ -202,11 +209,11 @@ github.com/cortexproject/cortex/pkg/querier
 github.com/cortexproject/cortex/pkg/querier/astmapper
 github.com/cortexproject/cortex/pkg/querier/batch
 github.com/cortexproject/cortex/pkg/querier/chunkstore
-github.com/cortexproject/cortex/pkg/querier/frontend
 github.com/cortexproject/cortex/pkg/querier/iterators
 github.com/cortexproject/cortex/pkg/querier/lazyquery
 github.com/cortexproject/cortex/pkg/querier/queryrange
 github.com/cortexproject/cortex/pkg/querier/series
+github.com/cortexproject/cortex/pkg/querier/worker
 github.com/cortexproject/cortex/pkg/ring
 github.com/cortexproject/cortex/pkg/ring/client
 github.com/cortexproject/cortex/pkg/ring/kv
@@ -218,10 +225,14 @@ github.com/cortexproject/cortex/pkg/ruler
 github.com/cortexproject/cortex/pkg/ruler/rules
 github.com/cortexproject/cortex/pkg/ruler/rules/local
 github.com/cortexproject/cortex/pkg/ruler/rules/objectclient
+github.com/cortexproject/cortex/pkg/scheduler
+github.com/cortexproject/cortex/pkg/scheduler/queue
+github.com/cortexproject/cortex/pkg/scheduler/schedulerpb
 github.com/cortexproject/cortex/pkg/storage/backend/azure
 github.com/cortexproject/cortex/pkg/storage/backend/filesystem
 github.com/cortexproject/cortex/pkg/storage/backend/gcs
 github.com/cortexproject/cortex/pkg/storage/backend/s3
+github.com/cortexproject/cortex/pkg/storage/backend/swift
 github.com/cortexproject/cortex/pkg/storage/tsdb
 github.com/cortexproject/cortex/pkg/storegateway
 github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb
@@ -234,6 +245,7 @@ github.com/cortexproject/cortex/pkg/util/grpc
 github.com/cortexproject/cortex/pkg/util/grpc/encoding/snappy
 github.com/cortexproject/cortex/pkg/util/grpc/healthcheck
 github.com/cortexproject/cortex/pkg/util/grpcclient
+github.com/cortexproject/cortex/pkg/util/grpcutil
 github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/middleware
 github.com/cortexproject/cortex/pkg/util/modules
@@ -727,7 +739,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20201014093524-73e2ce1bd643
+# github.com/prometheus/prometheus v1.8.2-0.20201029103703-63be30dceed9
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -824,7 +836,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.13.1-0.20201019130456-f41940581d9a
+# github.com/thanos-io/thanos v0.13.1-0.20201030101306-47f9a225cc52
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
@@ -836,6 +848,7 @@ github.com/thanos-io/thanos/pkg/component
 github.com/thanos-io/thanos/pkg/discovery/cache
 github.com/thanos-io/thanos/pkg/discovery/dns
 github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns
+github.com/thanos-io/thanos/pkg/errutil
 github.com/thanos-io/thanos/pkg/extprom
 github.com/thanos-io/thanos/pkg/gate
 github.com/thanos-io/thanos/pkg/http
@@ -1108,7 +1121,7 @@ golang.org/x/text/unicode/norm
 golang.org/x/text/width
 # golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 golang.org/x/time/rate
-# golang.org/x/tools v0.0.0-20201008025239-9df69603baec
+# golang.org/x/tools v0.0.0-20201020161133-226fd2f889ca
 golang.org/x/tools/cmd/goimports
 golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/gcexportdata

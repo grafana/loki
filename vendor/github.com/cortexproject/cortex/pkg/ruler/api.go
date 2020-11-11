@@ -134,7 +134,7 @@ func NewAPI(r *Ruler, s rules.RuleStore) *API {
 
 func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
+	userID, err := user.ExtractOrgID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondError(logger, w, "no valid org id found")
@@ -142,7 +142,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(ctx)
+	rgs, err := a.ruler.GetRules(req.Context())
 
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -226,7 +226,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 
 func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
+	userID, err := user.ExtractOrgID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondError(logger, w, "no valid org id found")
@@ -234,7 +234,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(ctx)
+	rgs, err := a.ruler.GetRules(req.Context())
 
 	if err != nil {
 		respondError(logger, w, err.Error())

@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
+	"github.com/cortexproject/cortex/pkg/storage/backend/swift"
 )
 
 // NewBucketClient creates a new bucket client based on the configured backend
@@ -22,6 +23,8 @@ func NewBucketClient(ctx context.Context, cfg BucketConfig, name string, logger 
 		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger)
 	case BackendAzure:
 		client, err = azure.NewBucketClient(cfg.Azure, name, logger)
+	case BackendSwift:
+		client, err = swift.NewBucketClient(cfg.Swift, name, logger)
 	case BackendFilesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
 	default:
