@@ -171,8 +171,8 @@ type CheckpointWriter interface {
 	// Advances current checkpoint, can also signal a no-op.
 	Advance() (noop bool, err error)
 	Write(*Series) error
-	// Closes current checkpoint
-	Close() error
+	// Closes current checkpoint.
+	Close(abort bool) error
 }
 
 type WALCheckpointWriter struct {
@@ -208,6 +208,14 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	checkpointDir := filepath.Join(w.segmentWAL.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", lastSegment))
 	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
 	checkpointDirTemp := checkpointDir + ".tmp"
+
+	// cleanup any old partial checkpoints
+	if _, err := os.Stat(checkpointDirTemp); err == nil {
+		if err := os.RemoveAll(checkpointDirTemp); err != nil {
+			level.Error(util.Logger).Log("msg", "unable to cleanup old tmp checkpoint", "dir", checkpointDirTemp)
+			return false, err
+		}
+	}
 
 	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
 		return false, errors.Wrap(err, "create checkpoint dir")
@@ -299,7 +307,7 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 	return errs.Err()
 }
 
-func (w *WALCheckpointWriter) Close() error {
+func (w *WALCheckpointWriter) Close(abort bool) error {
 
 	if len(w.recs) > 0 {
 		if err := w.flush(); err != nil {
@@ -308,6 +316,10 @@ func (w *WALCheckpointWriter) Close() error {
 	}
 	if err := w.checkpointWAL.Close(); err != nil {
 		return err
+	}
+
+	if abort {
+		return os.RemoveAll(w.checkpointWAL.Dir())
 	}
 
 	if err := fileutil.Replace(w.checkpointWAL.Dir(), w.final); err != nil {
@@ -405,12 +417,13 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 
 		select {
 		case <-c.quit:
+			return c.writer.Close(true)
 		case <-ticker.C:
 		}
 
 	}
 
-	return c.writer.Close()
+	return c.writer.Close(false)
 }
 
 func (c *Checkpointer) Run() {

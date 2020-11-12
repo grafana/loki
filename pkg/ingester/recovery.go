@@ -159,12 +159,12 @@ func (r *ingesterRecoverer) Done() <-chan struct{} {
 	return r.done
 }
 
-func Recover(reader WALReader, recoverer Recoverer) error {
+func Recover(checkpointReader, segmentReader WALReader, recoverer Recoverer) error {
 	defer recoverer.Close()
-	if err := RecoverCheckpoint(reader, recoverer); err != nil {
+	if err := RecoverCheckpoint(checkpointReader, recoverer); err != nil {
 		return err
 	}
-	return RecoverWAL(reader, recoverer)
+	return RecoverWAL(segmentReader, recoverer)
 }
 
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
