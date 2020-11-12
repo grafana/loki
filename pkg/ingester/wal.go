@@ -78,16 +78,17 @@ func (noopWAL) Log(*WALRecord) error { return nil }
 func (noopWAL) Stop()                {}
 
 type walWrapper struct {
-	cfg     WALConfig
-	wal     *wal.WAL
-	metrics *ingesterMetrics
+	cfg        WALConfig
+	wal        *wal.WAL
+	metrics    *ingesterMetrics
+	seriesIter SeriesIter
 
 	wait sync.WaitGroup
 	quit chan struct{}
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
-func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMetrics) (WAL, error) {
+func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMetrics, seriesIter SeriesIter) (WAL, error) {
 	if !cfg.Enabled {
 		return noopWAL{}, nil
 	}
@@ -98,10 +99,11 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 	}
 
 	w := &walWrapper{
-		cfg:     cfg,
-		quit:    make(chan struct{}),
-		wal:     tsdbWAL,
-		metrics: metrics,
+		cfg:        cfg,
+		quit:       make(chan struct{}),
+		wal:        tsdbWAL,
+		metrics:    metrics,
+		seriesIter: seriesIter,
 	}
 
 	w.wait.Add(1)
@@ -164,7 +166,7 @@ func (w *walWrapper) run() {
 
 	checkpointer := NewCheckpointer(
 		w.cfg.CheckpointDuration,
-		nil,
+		w.seriesIter,
 		w.checkpointWriter(),
 		w.metrics,
 		w.quit,

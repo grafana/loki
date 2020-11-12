@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -18,6 +20,13 @@ type WALReader interface {
 	Err() error
 	Record() []byte
 }
+
+type NoopWALReader struct{}
+
+func (NoopWALReader) Next() bool     { return false }
+func (NoopWALReader) Err() error     { return nil }
+func (NoopWALReader) Record() []byte { return nil }
+func (NoopWALReader) Close() error   { return nil }
 
 // If startSegment is <0, it means all the segments.
 func newWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) {
@@ -51,6 +60,24 @@ func newWalReader(dir string, startSegment int) (*wal.Reader, io.Closer, error) 
 		}
 	}
 	return wal.NewReader(segmentReader), segmentReader, nil
+}
+
+func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
+	lastCheckpointDir, idx, err := lastCheckpoint(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	if idx < 0 {
+		level.Info(util.Logger).Log("msg", "no checkpoint found")
+		var reader NoopWALReader
+		return reader, reader, nil
+	}
+
+	r, err := wal.NewSegmentsReader(lastCheckpointDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return wal.NewReader(r), r, nil
 }
 
 type Recoverer interface {
@@ -159,7 +186,7 @@ func (r *ingesterRecoverer) Done() <-chan struct{} {
 	return r.done
 }
 
-func Recover(checkpointReader, segmentReader WALReader, recoverer Recoverer) error {
+func RecoverCheckpointAndWAL(checkpointReader, segmentReader WALReader, recoverer Recoverer) error {
 	defer recoverer.Close()
 	if err := RecoverCheckpoint(checkpointReader, recoverer); err != nil {
 		return err

@@ -163,6 +163,7 @@ func (i *ingesterSeriesIter) Iter() <-chan *SeriesWithErr {
 				}
 			}
 		}
+		close(ch)
 	}()
 	return ch
 }
@@ -280,6 +281,39 @@ func checkpointIndex(filename string, includeTmp bool) (int, error) {
 	return strconv.Atoi(result[1])
 }
 
+// lastCheckpoint returns the directory name and index of the most recent checkpoint.
+// If dir does not contain any checkpoints, -1 is returned as index.
+func lastCheckpoint(dir string) (string, int, error) {
+	dirs, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return "", -1, err
+	}
+	var (
+		maxIdx        = -1
+		checkpointDir string
+	)
+	// There may be multiple checkpoints left, so select the one with max index.
+	for i := 0; i < len(dirs); i++ {
+		di := dirs[i]
+
+		idx, err := checkpointIndex(di.Name(), false)
+		if err != nil {
+			continue
+		}
+		if !di.IsDir() {
+			return "", -1, fmt.Errorf("checkpoint %s is not a directory", di.Name())
+		}
+		if idx > maxIdx {
+			checkpointDir = di.Name()
+			maxIdx = idx
+		}
+	}
+	if maxIdx >= 0 {
+		return filepath.Join(dir, checkpointDir), maxIdx, nil
+	}
+	return "", -1, nil
+}
+
 // deleteCheckpoints deletes all checkpoints in a directory which is < maxIndex.
 func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 	w.metrics.checkpointDeleteTotal.Inc()
@@ -383,7 +417,7 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	var immediate bool
 	n := c.iter.Num()
 	if n < 1 {
-		return nil
+		return c.writer.Close(false)
 	}
 
 	// Give a 10% buffer to the checkpoint duration in order to account for
@@ -429,6 +463,7 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 func (c *Checkpointer) Run() {
 	ticker := time.NewTicker(c.dur)
 	defer ticker.Stop()
+	defer c.iter.Stop()
 
 	for {
 		select {

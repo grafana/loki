@@ -157,16 +157,6 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	}
 
 	metrics := newIngesterMetrics(registerer)
-	wal, err := newWAL(cfg.WAL, registerer, metrics)
-	if err != nil {
-		return nil, err
-	}
-
-	if cfg.WAL.Enabled {
-		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
-			return nil, err
-		}
-	}
 
 	i := &Ingester{
 		cfg:             cfg,
@@ -177,9 +167,20 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		loopQuit:        make(chan struct{}),
 		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		tailersQuit:     make(chan struct{}),
-		wal:             wal,
 		metrics:         metrics,
 	}
+
+	if cfg.WAL.Enabled {
+		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
+	wal, err := newWAL(cfg.WAL, registerer, metrics, newIngesterSeriesIter(i))
+	if err != nil {
+		return nil, err
+	}
+	i.wal = wal
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
 	if err != nil {
@@ -201,12 +202,19 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if i.cfg.WAL.Recover {
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
 		start := time.Now()
-		reader, closer, err := newWalReader(i.cfg.WAL.Dir, -1)
+		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
 		if err != nil {
 			return err
 		}
-		defer closer.Close()
-		if err := RecoverWAL(reader, newIngesterRecoverer(i)); err != nil {
+		defer checkpointCloser.Close()
+
+		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
+		if err != nil {
+			return err
+		}
+		defer segmentCloser.Close()
+
+		if err := RecoverCheckpointAndWAL(checkpointReader, segmentReader, newIngesterRecoverer(i)); err != nil {
 			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 			return errors.Wrap(err, "failed to recover from WAL")
 		}
