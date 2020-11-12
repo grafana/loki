@@ -359,10 +359,11 @@ func (w *WALCheckpointWriter) Close(abort bool) error {
 	if err := fileutil.Replace(w.checkpointWAL.Dir(), w.final); err != nil {
 		return errors.Wrap(err, "rename checkpoint directory")
 	}
+	level.Info(util.Logger).Log("msg", "atomic checkpoint finished", "old", w.checkpointWAL.Dir(), "new", w.final)
 	// We delete the WAL segments which are before the previous checkpoint and not before the
 	// current checkpoint created. This is because if the latest checkpoint is corrupted for any reason, we
 	// should be able to recover from the older checkpoint which would need the older WAL segments.
-	if err := w.segmentWAL.Truncate(w.lastSegment); err != nil {
+	if err := w.segmentWAL.Truncate(w.lastSegment + 1); err != nil {
 		// It is fine to have old WAL segments hanging around if deletion failed.
 		// We can try again next time.
 		level.Error(util.Logger).Log("msg", "error deleting old WAL segments", "err", err, "lastSegment", w.lastSegment)
@@ -468,15 +469,11 @@ func (c *Checkpointer) Run() {
 	for {
 		select {
 		case <-ticker.C:
-			start := time.Now()
 			level.Info(util.Logger).Log("msg", "starting checkpoint")
 			if err := c.PerformCheckpoint(); err != nil {
 				level.Error(util.Logger).Log("msg", "error checkpointing series", "err", err)
 				continue
 			}
-			elapsed := time.Since(start)
-			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
-			c.metrics.checkpointDuration.Observe(elapsed.Seconds())
 		case <-c.quit:
 			return
 		}
