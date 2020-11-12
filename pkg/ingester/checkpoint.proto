@@ -14,8 +14,10 @@ message Chunk {
   google.protobuf.Timestamp from = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp to = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp flushedAt = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  bool closed = 4;
-  bytes data = 5;
+  google.protobuf.Timestamp lastUpdated = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  bool closed = 5;
+  bool synced = 6;
+  bytes data = 7;
 }
 
 // Series is a {de,}serializable intermediate type for Series.

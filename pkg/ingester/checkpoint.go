@@ -31,10 +31,12 @@ func toWireChunks(descs []chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 	for i, d := range descs {
 		from, to := d.chunk.Bounds()
 		wireChunk := Chunk{
-			From:      from,
-			To:        to,
-			Closed:    d.closed,
-			FlushedAt: d.flushed,
+			From:        from,
+			To:          to,
+			Closed:      d.closed,
+			FlushedAt:   d.flushed,
+			LastUpdated: d.lastUpdated,
+			Synced:      d.synced,
 		}
 
 		slice := wireChunks[i].Data[:0] // try to re-use the memory from last time
@@ -58,8 +60,9 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 	for _, c := range wireChunks {
 		desc := chunkDesc{
 			closed:      c.Closed,
+			synced:      c.Synced,
 			flushed:     c.FlushedAt,
-			lastUpdated: time.Now(),
+			lastUpdated: c.LastUpdated,
 		}
 
 		mc, err := chunkenc.NewByteChunk(c.Data, conf.BlockSize, conf.TargetChunkSize)
