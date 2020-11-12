@@ -188,12 +188,6 @@ type WALCheckpointWriter struct {
 }
 
 func (w *WALCheckpointWriter) Advance() (bool, error) {
-	// First we advance the wal segment internally to ensure we don't overlap a previous checkpoint in
-	// low throughput scenarios and to minimize segment replays on top of checkpoints.
-	if err := w.segmentWAL.NextSegment(); err != nil {
-		return false, err
-	}
-
 	_, lastSegment, err := wal.Segments(w.segmentWAL.Dir())
 	if err != nil {
 		return false, err
@@ -202,6 +196,12 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	if lastSegment < 0 {
 		// There are no WAL segments. No need of checkpoint yet.
 		return true, nil
+	}
+
+	// First we advance the wal segment internally to ensure we don't overlap a previous checkpoint in
+	// low throughput scenarios and to minimize segment replays on top of checkpoints.
+	if err := w.segmentWAL.NextSegment(); err != nil {
+		return false, err
 	}
 
 	// Checkpoint is named after the last WAL segment present so that when replaying the WAL

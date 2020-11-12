@@ -200,27 +200,40 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 func (i *Ingester) starting(ctx context.Context) error {
 	if i.cfg.WAL.Recover {
-		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		recoverer := newIngesterRecoverer(i)
+		defer recoverer.Close()
+
 		start := time.Now()
+
+		level.Info(util.Logger).Log("msg", "recovering from checkpoint")
 		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
 		if err != nil {
 			return err
 		}
 		defer checkpointCloser.Close()
 
+		if err = RecoverCheckpoint(checkpointReader, recoverer); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to recover from checkpoint", "elapsed", time.Since(start).String())
+			return err
+		}
+		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "elapsed", time.Since(start).String())
+
+		level.Info(util.Logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
 		}
 		defer segmentCloser.Close()
 
-		if err := RecoverCheckpointAndWAL(checkpointReader, segmentReader, newIngesterRecoverer(i)); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
-			return errors.Wrap(err, "failed to recover from WAL")
+		if err = RecoverWAL(segmentReader, recoverer); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to recover from WAL segments", "elapsed", time.Since(start).String())
+			return err
 		}
+		level.Info(util.Logger).Log("msg", "recovered from WAL segments", "elapsed", time.Since(start).String())
+
 		elapsed := time.Since(start)
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
-		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+		level.Info(util.Logger).Log("msg", "recovery completed", "time", elapsed.String())
 	}
 
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)

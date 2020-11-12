@@ -68,7 +68,7 @@ func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
 		return nil, nil, err
 	}
 	if idx < 0 {
-		level.Info(util.Logger).Log("msg", "no checkpoint found")
+		level.Info(util.Logger).Log("msg", "no checkpoint found, treating as no-op")
 		var reader NoopWALReader
 		return reader, reader, nil
 	}
@@ -184,14 +184,6 @@ func (r *ingesterRecoverer) Close() {
 
 func (r *ingesterRecoverer) Done() <-chan struct{} {
 	return r.done
-}
-
-func RecoverCheckpointAndWAL(checkpointReader, segmentReader WALReader, recoverer Recoverer) error {
-	defer recoverer.Close()
-	if err := RecoverCheckpoint(checkpointReader, recoverer); err != nil {
-		return err
-	}
-	return RecoverWAL(segmentReader, recoverer)
 }
 
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
