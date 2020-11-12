@@ -129,6 +129,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
+	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
 
 	i.streamsMtx.Lock()
