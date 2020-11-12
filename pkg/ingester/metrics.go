@@ -13,10 +13,15 @@ type ingesterMetrics struct {
 	checkpointDuration         prometheus.Summary
 	checkpointLoggedBytesTotal prometheus.Counter
 	walReplayDuration          prometheus.Gauge
-	walCorruptionsTotal        prometheus.Counter
+	walCorruptionsTotal        *prometheus.CounterVec
 	walLoggedBytesTotal        prometheus.Counter
 	walRecordsLogged           prometheus.Counter
 }
+
+const (
+	walTypeCheckpoint = "checkpoint"
+	walTypeSegment    = "segment"
+)
 
 func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 	return &ingesterMetrics{
@@ -24,10 +29,10 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Name: "loki_ingester_wal_replay_duration_seconds",
 			Help: "Time taken to replay the checkpoint and the WAL.",
 		}),
-		walCorruptionsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		walCorruptionsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_corruptions_total",
 			Help: "Total number of WAL corruptions encountered.",
-		}),
+		}, []string{"type"}),
 		checkpointDeleteFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_checkpoint_deletions_failed_total",
 			Help: "Total number of checkpoint deletions that failed.",

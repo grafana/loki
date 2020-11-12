@@ -213,6 +213,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		defer checkpointCloser.Close()
 
 		if err = RecoverCheckpoint(checkpointReader, recoverer); err != nil {
+			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
 			level.Error(util.Logger).Log("msg", "failed to recover from checkpoint", "elapsed", time.Since(start).String())
 			return err
 		}
@@ -226,6 +227,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		defer segmentCloser.Close()
 
 		if err = RecoverWAL(segmentReader, recoverer); err != nil {
+			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(util.Logger).Log("msg", "failed to recover from WAL segments", "elapsed", time.Since(start).String())
 			return err
 		}
@@ -234,6 +236,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		elapsed := time.Since(start)
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 		level.Info(util.Logger).Log("msg", "recovery completed", "time", elapsed.String())
+
 	}
 
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
