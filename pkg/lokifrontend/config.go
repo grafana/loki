@@ -4,7 +4,7 @@ import (
 	"flag"
 
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
-	"github.com/cortexproject/cortex/pkg/frontend/v1"
+	v1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 )
 
 type Config struct {
