@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -106,12 +107,17 @@ func fillChunk(c chunkenc.Chunk) int64 {
 	return inserted
 }
 
-func Test_EncodingChunks(t *testing.T) {
-
+func dummyConf() *Config {
 	var conf Config
 	conf.BlockSize = 256 * 1024
 	conf.TargetChunkSize = 1500 * 1024
 
+	return &conf
+}
+
+func Test_EncodingChunks(t *testing.T) {
+
+	conf := dummyConf()
 	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
 	fillChunk(c)
 
@@ -119,6 +125,7 @@ func Test_EncodingChunks(t *testing.T) {
 		{
 			chunk: c,
 		},
+		// test non zero values
 		{
 			chunk:       c,
 			closed:      true,
@@ -129,7 +136,7 @@ func Test_EncodingChunks(t *testing.T) {
 	}
 	there, err := toWireChunks(from, nil)
 	require.Nil(t, err)
-	backAgain, err := fromWireChunks(&conf, there)
+	backAgain, err := fromWireChunks(conf, there)
 	require.Nil(t, err)
 
 	for i, to := range backAgain {
@@ -147,5 +154,75 @@ func Test_EncodingChunks(t *testing.T) {
 		require.Equal(t, exp, enc)
 		require.Equal(t, matched, to)
 
+	}
+}
+
+func Test_EncodingCheckpoint(t *testing.T) {
+	conf := dummyConf()
+	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
+	c.Append(&logproto.Entry{
+		Timestamp: time.Unix(1, 0),
+		Line:      "hi there",
+	})
+	data, err := c.Bytes()
+	require.Nil(t, err)
+	from, to := c.Bounds()
+
+	ls := labels.FromMap(map[string]string{"foo": "bar"})
+	s := &Series{
+		UserID:      "fake",
+		Fingerprint: 123,
+		Labels:      client.FromLabelsToLabelAdapters(ls),
+		Chunks: []Chunk{
+			{
+				From:        from,
+				To:          to,
+				Closed:      true,
+				Synced:      true,
+				FlushedAt:   time.Unix(1, 0),
+				LastUpdated: time.Unix(0, 1),
+				Data:        data,
+			},
+		},
+	}
+
+	b, err := encodeWithTypeHeader(s, CheckpointRecord, recordPool.GetBytes()[:0])
+	require.Nil(t, err)
+
+	out := &Series{}
+	err = decodeCheckpointRecord(b, out)
+	require.Nil(t, err)
+
+	// test chunk bytes separately
+	sChunks := s.Chunks
+	s.Chunks = nil
+	outChunks := out.Chunks
+	out.Chunks = nil
+
+	require.Equal(t, s, out)
+	require.Equal(t, len(sChunks), len(outChunks))
+	for i, exp := range sChunks {
+
+		got := outChunks[i]
+		zero := time.Unix(0, 0)
+		// Issues diffing zero-value time.Locations against nil ones.
+		// Check/override them individually so that other fields get tested in an extensible manner.
+		require.Equal(t, true, exp.From.Equal(got.From))
+		exp.From = zero
+		got.From = zero
+
+		require.Equal(t, true, exp.To.Equal(got.To))
+		exp.To = zero
+		got.To = zero
+
+		require.Equal(t, true, exp.FlushedAt.Equal(got.FlushedAt))
+		exp.FlushedAt = zero
+		got.FlushedAt = zero
+
+		require.Equal(t, true, exp.LastUpdated.Equal(got.LastUpdated))
+		exp.LastUpdated = zero
+		got.LastUpdated = zero
+
+		require.Equal(t, exp, got)
 	}
 }
