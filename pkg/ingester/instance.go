@@ -59,9 +59,13 @@ var (
 type instance struct {
 	cfg        *Config
 	streamsMtx sync.RWMutex
-	streams    map[model.Fingerprint]*stream // we use 'mapped' fingerprints here.
-	index      *index.InvertedIndex
-	mapper     *fpMapper // using of mapper needs streamsMtx because it calls back
+
+	buf         []byte // buffer used to compute fps.
+	streams     map[string]*stream
+	streamsByFP map[model.Fingerprint]*stream
+
+	index  *index.InvertedIndex
+	mapper *fpMapper // using of mapper needs streamsMtx because it calls back
 
 	instanceID string
 
@@ -81,10 +85,12 @@ type instance struct {
 
 func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, limiter *Limiter, syncPeriod time.Duration, syncMinUtil float64) *instance {
 	i := &instance{
-		cfg:        cfg,
-		streams:    map[model.Fingerprint]*stream{},
-		index:      index.New(),
-		instanceID: instanceID,
+		cfg:         cfg,
+		streams:     map[string]*stream{},
+		streamsByFP: map[model.Fingerprint]*stream{},
+		buf:         make([]byte, 0, 1024),
+		index:       index.New(),
+		instanceID:  instanceID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
@@ -106,14 +112,14 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
-	rawFp := client.FastFingerprint(labels)
-	fp := i.mapper.mapFP(rawFp, labels)
+	fp := i.getHashForLabels(labels)
 
-	stream, ok := i.streams[fp]
+	stream, ok := i.streamsByFP[fp]
 	if !ok {
 		sortedLabels := i.index.Add(labels, fp)
 		stream = newStream(i.cfg, fp, sortedLabels, i.factory)
-		i.streams[fp] = stream
+		i.streamsByFP[fp] = stream
+		i.streams[stream.labelsString] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Inc()
 		i.addTailersToNewStream(stream)
@@ -153,19 +159,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, error) {
-	labels, err := util.ToClientLabels(pushReqStream.Labels)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-	rawFp := client.FastFingerprint(labels)
-	fp := i.mapper.mapFP(rawFp, labels)
-
-	stream, ok := i.streams[fp]
+	stream, ok := i.streams[pushReqStream.Labels]
 	if ok {
 		return stream, nil
 	}
 
-	err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+	err := i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
 	if err != nil {
 		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
 		bytes := 0
@@ -176,9 +175,16 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
 	}
 
+	labels, err := util.ToClientLabels(pushReqStream.Labels)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(labels, fp)
 	stream = newStream(i.cfg, fp, sortedLabels, i.factory)
-	i.streams[fp] = stream
+	i.streams[pushReqStream.Labels] = stream
+	i.streamsByFP[fp] = stream
+
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)
@@ -186,9 +192,16 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 	return stream, nil
 }
 
+func (i *instance) getHashForLabels(labels []client.LabelAdapter) model.Fingerprint {
+	var fp uint64
+	lbsModel := client.FromLabelAdaptersToLabels(labels)
+	fp, i.buf = lbsModel.HashForLabels(i.buf, []string(nil)...)
+	return i.mapper.mapFP(model.Fingerprint(fp), labels)
+}
+
 // Return labels associated with given fingerprint. Used by fingerprint mapper. Must hold streamsMtx.
 func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
-	s := i.streams[fp]
+	s := i.streamsByFP[fp]
 	if s == nil {
 		return nil
 	}
@@ -361,7 +374,7 @@ func (i *instance) forMatchingStreams(
 
 outer:
 	for _, streamID := range ids {
-		stream, ok := i.streams[streamID]
+		stream, ok := i.streamsByFP[streamID]
 		if !ok {
 			return ErrStreamMissing
 		}

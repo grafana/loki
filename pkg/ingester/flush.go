@@ -239,7 +239,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	instance.streamsMtx.Lock()
 	defer instance.streamsMtx.Unlock()
 
-	stream, ok := instance.streams[fp]
+	stream, ok := instance.streamsByFP[fp]
 	if !ok {
 		return nil, nil
 	}
@@ -300,7 +300,8 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
 
 	if len(stream.chunks) == 0 {
-		delete(instance.streams, stream.fp)
+		delete(instance.streamsByFP, stream.fp)
+		delete(instance.streams, stream.labelsString)
 		instance.index.Delete(stream.labels, stream.fp)
 		instance.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(instance.instanceID).Dec()
