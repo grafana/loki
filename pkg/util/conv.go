@@ -2,25 +2,12 @@ package util
 
 import (
 	"math"
-	"sort"
 	"time"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 )
-
-// ToClientLabels parses the labels and converts them to the Cortex type.
-func ToClientLabels(labels string) ([]client.LabelAdapter, error) {
-	ls, err := parser.ParseMetric(labels)
-	if err != nil {
-		return nil, err
-	}
-	sort.Sort(ls)
-	return client.FromLabelsToLabelAdapters(ls), nil
-}
 
 // ModelLabelSetToMap convert a model.LabelSet to a map[string]string
 func ModelLabelSetToMap(m model.LabelSet) map[string]string {
