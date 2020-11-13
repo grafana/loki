@@ -61,7 +61,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labels.Labels) model.Finge
 	s := m.fpToLabels(fp)
 	if s != nil {
 		// FP exists in memory, but is it for the same metric?
-		if equalLabels(metric, s) {
+		if labels.Equal(metric, s) {
 			// Yupp. We are done.
 			return fp
 		}
@@ -85,39 +85,6 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labels.Labels) model.Finge
 		}
 	}
 	return fp
-}
-
-func valueForName(s labels.Labels, name string) (string, bool) {
-	pos := sort.Search(len(s), func(i int) bool { return s[i].Name >= name })
-	if pos == len(s) || s[pos].Name != name {
-		return "", false
-	}
-	return s[pos].Value, true
-}
-
-// Check if a and b contain the same name/value pairs
-func equalLabels(a labels.Labels, b labels.Labels) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	// Check as many as we can where the two sets are in the same order
-	i := 0
-	for ; i < len(a); i++ {
-		if b[i].Name != a[i].Name {
-			break
-		}
-		if b[i].Value != a[i].Value {
-			return false
-		}
-	}
-	// Now check remaining values using binary search
-	for ; i < len(a); i++ {
-		v, found := valueForName(b, a[i].Name)
-		if !found || v != a[i].Value {
-			return false
-		}
-	}
-	return true
 }
 
 // maybeAddMapping is only used internally. It takes a detected collision and

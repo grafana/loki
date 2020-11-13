@@ -19,8 +19,8 @@ var (
 	fp2  = model.Fingerprint(maxMappedFP + 2)
 	fp3  = model.Fingerprint(1)
 	cm11 = []labels.Label{
-		{Name: "foo", Value: "bar"},
 		{Name: "dings", Value: "bumms"},
+		{Name: "foo", Value: "bar"},
 	}
 	cm12 = []labels.Label{
 		{Name: "bar", Value: "foo"},
@@ -29,19 +29,19 @@ var (
 		{Name: "foo", Value: "bar"},
 	}
 	cm21 = []labels.Label{
-		{Name: "foo", Value: "bumms"},
 		{Name: "dings", Value: "bar"},
+		{Name: "foo", Value: "bumms"},
 	}
 	cm22 = []labels.Label{
-		{Name: "dings", Value: "foo"},
 		{Name: "bar", Value: "bumms"},
+		{Name: "dings", Value: "foo"},
 	}
 	cm31 = []labels.Label{
 		{Name: "bumms", Value: "dings"},
 	}
 	cm32 = []labels.Label{
-		{Name: "bumms", Value: "dings"},
 		{Name: "bar", Value: "foo"},
+		{Name: "bumms", Value: "dings"},
 	}
 )
 
@@ -129,6 +129,7 @@ func TestFPMapper(t *testing.T) {
 
 // assertFingerprintEqual asserts that two fingerprints are equal.
 func assertFingerprintEqual(t *testing.T, gotFP, wantFP model.Fingerprint) {
+	t.Helper()
 	if gotFP != wantFP {
 		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
 	}
