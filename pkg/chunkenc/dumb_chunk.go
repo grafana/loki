@@ -19,11 +19,6 @@ func NewDumbChunk() Chunk {
 	return &dumbChunk{}
 }
 
-// NewDumbChunk returns a new chunk that isn't very good.
-func NewDumbChunkWithArray(entries []logproto.Entry) Chunk {
-	return &dumbChunk{entries: entries}
-}
-
 type dumbChunk struct {
 	entries []logproto.Entry
 }
