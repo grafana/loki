@@ -14,29 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-/*
-need to rebuild
-- user states
-  - inverted index
-  - map[fp]stream
-
-
-plan without checkpoint:
-1) Read wal records, mapping FPs & creating series into map[userId]map[uint64]stream
-2) ensure fpmapper & inverted index are created/used.
-3) iterate wal samples? Do this after b/c chunks may be cut while adding wal samples.
-
-After recovering from a checkpoint, all flushed chunks that are now passed the retention config may be dropped
-
-Error conditions to test:
-- stream limited by limiter should not apply during wal replay. Can be hacked by setting an unlimited limiter then overriding after wal replay.
-- corrupted segments/records?
-
-Keep in mind:
-- should we keep memory ballast to prevent alloc-ooming during checkpointing?
-- helpful operator errors for remediation actions
-*/
-
 var (
 	// shared pool for WALRecords and []logproto.Entries
 	recordPool = newRecordPool()

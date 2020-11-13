@@ -103,7 +103,16 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 	cfg.parsedEncoding = enc
+
+	if err = cfg.WAL.Validate(); err != nil {
+		return err
+	}
+
+	if cfg.MaxTransferRetries > 0 && cfg.WAL.Enabled {
+		return errors.New("The use of the write ahead log (WAL) is incompatible with chunk transfers. It's suggested to use the WAL. Please try setting ingester.max-transfer-retries to 0 to disable transfers.")
+	}
 	return nil
+
 }
 
 // Ingester builds chunks for incoming log streams.
