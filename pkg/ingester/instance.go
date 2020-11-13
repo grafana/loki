@@ -195,7 +195,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 func (i *instance) getHashForLabels(labels []client.LabelAdapter) model.Fingerprint {
 	var fp uint64
 	lbsModel := client.FromLabelAdaptersToLabels(labels)
-	fp, i.buf = lbsModel.HashForLabels(i.buf, []string(nil)...)
+	fp, i.buf = lbsModel.HashWithoutLabels(i.buf, []string(nil)...)
 	return i.mapper.mapFP(model.Fingerprint(fp), labels)
 }
 
