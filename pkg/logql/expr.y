@@ -101,7 +101,7 @@ import (
 
 %%
 
-root: expr { exprlex.(*lexer).expr = $1 };
+root: expr { exprlex.(*parser).expr = $1 };
 
 expr:
       logExpr                                      { $$ = $1 }

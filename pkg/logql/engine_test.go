@@ -13,7 +13,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -41,7 +41,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		data   interface{}
 		params interface{}
 
-		expected parser.Value
+		expected promql_parser.Value
 	}{
 		{
 			`{app="foo"}`, time.Unix(30, 0), logproto.FORWARD, 10,
@@ -493,7 +493,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		data   interface{}
 		params interface{}
 
-		expected parser.Value
+		expected promql_parser.Value
 	}{
 		{
 			`{app="foo"}`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.FORWARD, 10,
@@ -1649,7 +1649,7 @@ func BenchmarkRangeQuery1000000(b *testing.B) {
 	benchmarkRangeQuery(int64(1000000), b)
 }
 
-var result parser.Value
+var result promql_parser.Value
 
 func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	b.ReportAllocs()
