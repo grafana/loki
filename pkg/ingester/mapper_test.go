@@ -4,8 +4,6 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -20,34 +18,34 @@ var (
 	fp1  = model.Fingerprint(maxMappedFP + 1)
 	fp2  = model.Fingerprint(maxMappedFP + 2)
 	fp3  = model.Fingerprint(1)
-	cm11 = []client.LabelAdapter{
+	cm11 = []labels.Label{
 		{Name: "foo", Value: "bar"},
 		{Name: "dings", Value: "bumms"},
 	}
-	cm12 = []client.LabelAdapter{
+	cm12 = []labels.Label{
 		{Name: "bar", Value: "foo"},
 	}
-	cm13 = []client.LabelAdapter{
+	cm13 = []labels.Label{
 		{Name: "foo", Value: "bar"},
 	}
-	cm21 = []client.LabelAdapter{
+	cm21 = []labels.Label{
 		{Name: "foo", Value: "bumms"},
 		{Name: "dings", Value: "bar"},
 	}
-	cm22 = []client.LabelAdapter{
+	cm22 = []labels.Label{
 		{Name: "dings", Value: "foo"},
 		{Name: "bar", Value: "bumms"},
 	}
-	cm31 = []client.LabelAdapter{
+	cm31 = []labels.Label{
 		{Name: "bumms", Value: "dings"},
 	}
-	cm32 = []client.LabelAdapter{
+	cm32 = []labels.Label{
 		{Name: "bumms", Value: "dings"},
 		{Name: "bar", Value: "foo"},
 	}
 )
 
-func copyValuesAndSort(a []client.LabelAdapter) labels.Labels {
+func copyValuesAndSort(a []labels.Label) labels.Labels {
 	c := make(labels.Labels, len(a))
 	for i, pair := range a {
 		c[i].Name = pair.Name

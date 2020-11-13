@@ -8,8 +8,6 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
@@ -51,7 +49,7 @@ func newFPMapper(fpToLabels func(fingerprint model.Fingerprint) labels.Labels) *
 // mapFP takes a raw fingerprint (as returned by Metrics.FastFingerprint) and
 // returns a truly unique fingerprint. The caller must have locked the raw
 // fingerprint.
-func (m *fpMapper) mapFP(fp model.Fingerprint, metric []client.LabelAdapter) model.Fingerprint {
+func (m *fpMapper) mapFP(fp model.Fingerprint, metric labels.Labels) model.Fingerprint {
 	// First check if we are in the reserved FP space, in which case this is
 	// automatically a collision that has to be mapped.
 	if fp <= maxMappedFP {
@@ -98,7 +96,7 @@ func valueForName(s labels.Labels, name string) (string, bool) {
 }
 
 // Check if a and b contain the same name/value pairs
-func equalLabels(a []client.LabelAdapter, b labels.Labels) bool {
+func equalLabels(a labels.Labels, b labels.Labels) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -125,7 +123,7 @@ func equalLabels(a []client.LabelAdapter, b labels.Labels) bool {
 // maybeAddMapping is only used internally. It takes a detected collision and
 // adds it to the collisions map if not yet there. In any case, it returns the
 // truly unique fingerprint for the colliding metric.
-func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric []client.LabelAdapter) model.Fingerprint {
+func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.Labels) model.Fingerprint {
 	ms := metricToUniqueString(collidingMetric)
 	m.mtx.RLock()
 	mappedFPs, ok := m.mappings[fp]
@@ -177,7 +175,7 @@ func (m *fpMapper) nextMappedFP() model.Fingerprint {
 // FastFingerprint function, and its result is not suitable as a key for maps
 // and indexes as it might become really large, causing a lot of hashing effort
 // in maps and a lot of storage overhead in indexes.
-func metricToUniqueString(m []client.LabelAdapter) string {
+func metricToUniqueString(m labels.Labels) string {
 	parts := make([]string, 0, len(m))
 	for _, pair := range m {
 		parts = append(parts, pair.Name+separatorString+pair.Value)

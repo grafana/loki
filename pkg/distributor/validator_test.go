@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -157,10 +157,10 @@ func TestValidator_ValidateLabels(t *testing.T) {
 	}
 }
 
-func mustParseLabels(s string) []client.LabelAdapter {
-	labels, err := util.ToClientLabels(s)
+func mustParseLabels(s string) labels.Labels {
+	ls, err := logql.ParseLabels(s)
 	if err != nil {
 		panic(err)
 	}
-	return labels
+	return ls
 }

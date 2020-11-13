@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -108,15 +107,15 @@ func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, 
 
 // consumeChunk manually adds a chunk that was received during ingester chunk
 // transfer.
-func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapter, chunk *logproto.Chunk) error {
+func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *logproto.Chunk) error {
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
-	fp := i.getHashForLabels(labels)
+	fp := i.getHashForLabels(ls)
 
 	stream, ok := i.streamsByFP[fp]
 	if !ok {
-		sortedLabels := i.index.Add(labels, fp)
+		sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(ls), fp)
 		stream = newStream(i.cfg, fp, sortedLabels, i.factory)
 		i.streamsByFP[fp] = stream
 		i.streams[stream.labelsString] = stream
@@ -175,13 +174,13 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
 	}
 
-	labels, err := util.ToClientLabels(pushReqStream.Labels)
+	labels, err := logql.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	fp := i.getHashForLabels(labels)
-	sortedLabels := i.index.Add(labels, fp)
-	stream = newStream(i.cfg, fp, sortedLabels, i.factory)
+	_ = i.index.Add(client.FromLabelsToLabelAdapters(labels), fp)
+	stream = newStream(i.cfg, fp, labels, i.factory)
 	i.streams[pushReqStream.Labels] = stream
 	i.streamsByFP[fp] = stream
 
@@ -192,11 +191,10 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 	return stream, nil
 }
 
-func (i *instance) getHashForLabels(labels []client.LabelAdapter) model.Fingerprint {
+func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 	var fp uint64
-	lbsModel := client.FromLabelAdaptersToLabels(labels)
-	fp, i.buf = lbsModel.HashWithoutLabels(i.buf, []string(nil)...)
-	return i.mapper.mapFP(model.Fingerprint(fp), labels)
+	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
+	return i.mapper.mapFP(model.Fingerprint(fp), ls)
 }
 
 // Return labels associated with given fingerprint. Used by fingerprint mapper. Must hold streamsMtx.
