@@ -77,9 +77,17 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 }
 
 func decodeCheckpointRecord(rec []byte, s *Series) error {
-	switch RecordType(rec[0]) {
+	//TODO(owen-d): reduce allocs
+	// The proto unmarshaling code will retain references to the underlying []byte it's passed
+	// in order to reduce allocs. This is harmful to us because when reading from a WAL, the []byte
+	// is only guaranteed to be valid between calls to Next().
+	// Therefore, we copy it to avoid this problem.
+	cpy := make([]byte, len(rec))
+	copy(cpy, rec)
+
+	switch RecordType(cpy[0]) {
 	case CheckpointRecord:
-		return proto.Unmarshal(rec[1:], s)
+		return proto.Unmarshal(cpy[1:], s)
 	default:
 		return errors.Errorf("unexpected record type: %d", rec[0])
 	}

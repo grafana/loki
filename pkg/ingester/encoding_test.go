@@ -194,6 +194,12 @@ func Test_EncodingCheckpoint(t *testing.T) {
 	err = decodeCheckpointRecord(b, out)
 	require.Nil(t, err)
 
+	// override the passed []byte to ensure that the resulting *Series doesn't
+	// contain any trailing refs to it.
+	for i := range b {
+		b[i] = 0
+	}
+
 	// test chunk bytes separately
 	sChunks := s.Chunks
 	s.Chunks = nil

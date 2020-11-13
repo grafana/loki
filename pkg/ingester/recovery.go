@@ -18,6 +18,7 @@ import (
 type WALReader interface {
 	Next() bool
 	Err() error
+	// Record should not be used across multiple calls to Next()
 	Record() []byte
 }
 
@@ -260,7 +261,6 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 
 func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput, errCh <-chan error) error {
-		// TODO(owen-d): use a pool for chunks
 		s := &Series{}
 		if err := decodeCheckpointRecord(b, s); err != nil {
 			return err
