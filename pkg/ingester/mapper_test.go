@@ -4,8 +4,6 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -20,34 +18,34 @@ var (
 	fp1  = model.Fingerprint(maxMappedFP + 1)
 	fp2  = model.Fingerprint(maxMappedFP + 2)
 	fp3  = model.Fingerprint(1)
-	cm11 = []client.LabelAdapter{
-		{Name: "foo", Value: "bar"},
+	cm11 = []labels.Label{
 		{Name: "dings", Value: "bumms"},
-	}
-	cm12 = []client.LabelAdapter{
-		{Name: "bar", Value: "foo"},
-	}
-	cm13 = []client.LabelAdapter{
 		{Name: "foo", Value: "bar"},
 	}
-	cm21 = []client.LabelAdapter{
-		{Name: "foo", Value: "bumms"},
-		{Name: "dings", Value: "bar"},
-	}
-	cm22 = []client.LabelAdapter{
-		{Name: "dings", Value: "foo"},
-		{Name: "bar", Value: "bumms"},
-	}
-	cm31 = []client.LabelAdapter{
-		{Name: "bumms", Value: "dings"},
-	}
-	cm32 = []client.LabelAdapter{
-		{Name: "bumms", Value: "dings"},
+	cm12 = []labels.Label{
 		{Name: "bar", Value: "foo"},
+	}
+	cm13 = []labels.Label{
+		{Name: "foo", Value: "bar"},
+	}
+	cm21 = []labels.Label{
+		{Name: "dings", Value: "bar"},
+		{Name: "foo", Value: "bumms"},
+	}
+	cm22 = []labels.Label{
+		{Name: "bar", Value: "bumms"},
+		{Name: "dings", Value: "foo"},
+	}
+	cm31 = []labels.Label{
+		{Name: "bumms", Value: "dings"},
+	}
+	cm32 = []labels.Label{
+		{Name: "bar", Value: "foo"},
+		{Name: "bumms", Value: "dings"},
 	}
 )
 
-func copyValuesAndSort(a []client.LabelAdapter) labels.Labels {
+func copyValuesAndSort(a []labels.Label) labels.Labels {
 	c := make(labels.Labels, len(a))
 	for i, pair := range a {
 		c[i].Name = pair.Name
@@ -131,6 +129,7 @@ func TestFPMapper(t *testing.T) {
 
 // assertFingerprintEqual asserts that two fingerprints are equal.
 func assertFingerprintEqual(t *testing.T, gotFP, wantFP model.Fingerprint) {
+	t.Helper()
 	if gotFP != wantFP {
 		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
 	}

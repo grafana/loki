@@ -7,7 +7,6 @@ import (
 	"time"
 
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
@@ -25,6 +24,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -206,14 +206,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
-		ls, err := util.ToClientLabels(stream.Labels)
+		ls, err := logql.ParseLabels(stream.Labels)
 		if err != nil {
 			validationErr = httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
 			continue
 		}
 		// ensure labels are correctly sorted.
 		// todo(ctovena) we should lru cache this
-		stream.Labels = cortex_client.FromLabelAdaptersToLabels(ls).String()
+		stream.Labels = ls.String()
 		if err := d.validator.ValidateLabels(userID, ls, stream); err != nil {
 			validationErr = err
 			continue
