@@ -22,8 +22,8 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	lstore "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -100,14 +100,14 @@ func fillStore() error {
 		wgPush.Add(1)
 		go func(j int) {
 			defer wgPush.Done()
-			lbs, err := util.ToClientLabels(fmt.Sprintf("{foo=\"bar\",level=\"%d\"}", j))
+			lbs, err := logql.ParseLabels(fmt.Sprintf("{foo=\"bar\",level=\"%d\"}", j))
 			if err != nil {
 				panic(err)
 			}
-			labelsBuilder := labels.NewBuilder(client.FromLabelAdaptersToLabels(lbs))
+			labelsBuilder := labels.NewBuilder(lbs)
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
-			fp := client.FastFingerprint(lbs)
+			fp := client.Fingerprint(lbs)
 			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_4M, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{

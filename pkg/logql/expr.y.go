@@ -4,6 +4,7 @@ package logql
 
 import __yyfmt__ "fmt"
 
+
 import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -199,6 +200,7 @@ var exprStatenames = [...]string{}
 const exprEofCode = 1
 const exprErrCode = 2
 const exprInitialStackSize = 16
+
 
 var exprExca = [...]int{
 	-1, 1,
@@ -407,6 +409,7 @@ var exprErrorMessages = [...]struct {
 	token int
 	msg   string
 }{}
+
 
 /*	parser for yacc output	*/
 
@@ -740,7 +743,7 @@ exprdefault:
 	case 1:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprlex.(*lexer).expr = exprDollar[1].Expr
+			exprlex.(*parser).expr = exprDollar[1].Expr
 		}
 	case 2:
 		exprDollar = exprS[exprpt-1 : exprpt+1]

@@ -153,7 +153,7 @@ func (t *tailer) processStream(stream logproto.Stream) ([]logproto.Stream, error
 	defer t.pipelineMtx.Unlock()
 
 	streams := map[uint64]*logproto.Stream{}
-	lbs, err := util.ParseLabels(stream.Labels)
+	lbs, err := logql.ParseLabels(stream.Labels)
 	if err != nil {
 		return nil, err
 	}

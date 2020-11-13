@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/imdario/mergo"
@@ -80,7 +80,7 @@ func (t *PushTarget) run() error {
 	// We don't want the /debug and /metrics endpoints running
 	t.config.Server.RegisterInstrumentation = false
 
-	util.InitLogger(&t.config.Server)
+	cortex_util.InitLogger(&t.config.Server)
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {
@@ -109,18 +109,13 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	var lastErr error
 	for _, stream := range req.Streams {
-		matchers, err := logql.ParseMatchers(stream.Labels)
+		ls, err := logql.ParseLabels(stream.Labels)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
-		lb := labels.NewBuilder(make(labels.Labels, 0, len(matchers)+len(t.config.Labels)))
-
-		// Add stream labels
-		for i := range matchers {
-			lb.Set(matchers[i].Name, matchers[i].Value)
-		}
+		lb := labels.NewBuilder(ls)
 
 		// Add configured labels
 		for k, v := range t.config.Labels {
