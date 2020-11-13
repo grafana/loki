@@ -175,7 +175,9 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		return errors.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
 	}
 
-	return s.(*stream).Push(context.Background(), entries.Entries, nil)
+	// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
+	_ = s.(*stream).Push(context.Background(), entries.Entries, nil)
+	return nil
 }
 
 func (r *ingesterRecoverer) Close() {
