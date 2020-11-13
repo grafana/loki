@@ -101,7 +101,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				return &validation.Limits{MaxLabelNamesPerSeries: 2}
 			},
 			"{foo=\"bar\",food=\"bars\",fed=\"bears\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg("{fed=\"bears\", foo=\"bar\", food=\"bars\"}", 3, 2)),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg("{foo=\"bar\",food=\"bars\",fed=\"bears\"}", 3, 2)),
 		},
 		{
 			"label name too long",
