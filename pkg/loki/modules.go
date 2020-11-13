@@ -144,7 +144,9 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, err
 	}
 
-	logproto.RegisterPusherServer(t.server.GRPC, t.distributor)
+	if t.cfg.Target != All {
+		logproto.RegisterPusherServer(t.server.GRPC, t.distributor)
+	}
 
 	pushHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
