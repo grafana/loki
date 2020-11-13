@@ -345,7 +345,7 @@ func Test_validateDropConfig(t *testing.T) {
 			wantErr: fmt.Errorf(
 				ErrDropStageInvalidDuration,
 				dropInvalidDur,
-				"time: unknown unit y in duration 10y",
+				`time: unknown unit "y" in duration "10y"`,
 			),
 		},
 		{

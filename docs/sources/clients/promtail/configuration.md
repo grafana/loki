@@ -80,7 +80,30 @@ For more detailed information on configuring how to discover and scrape logs fro
 targets, see [Scraping](../scraping/). For more information on transforming logs
 from scraped targets, see [Pipelines](../pipelines/).
 
-Generic placeholders are defined as follows:
+### Use environment variables in the configuration
+
+You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
+To do this, use:
+
+```
+${VAR}
+```
+
+Where VAR is the name of the environment variable.
+
+Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
+
+To specify a default value, use:
+
+```
+${VAR:default_value}
+```
+
+Where default_value is the value to use if the environment variable is undefined.
+
+### Generic placeholders:
 
 - `<boolean>`: a boolean that can take the values `true` or `false`
 - `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
@@ -93,7 +116,7 @@ Generic placeholders are defined as follows:
 - `<string>`: a regular string
 - `<secret>`: a regular string that is a secret, such as a password
 
-Supported contents and default values of `config.yaml`:
+### Supported contents and default values of `config.yaml`:
 
 ```yaml
 # Configures the server for Promtail.
@@ -742,6 +765,11 @@ label_structured_data: <bool>
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
+
+# Whether promtail should pass on the timestamp from the incoming syslog message.
+# When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
+# Default is false
+use_incoming_timestamp: <bool>
 ```
 
 #### Available Labels

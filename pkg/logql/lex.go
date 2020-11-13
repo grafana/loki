@@ -1,7 +1,6 @@
 package logql
 
 import (
-	"strconv"
 	"strings"
 	"text/scanner"
 	"time"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/util/strutil"
 )
 
 var tokens = map[string]int{
@@ -93,9 +93,7 @@ var functionTokens = map[string]int{
 
 type lexer struct {
 	scanner.Scanner
-	errs   []ParseError
-	expr   Expr
-	parser *exprParserImpl
+	errs []ParseError
 }
 
 func (l *lexer) Lex(lval *exprSymType) int {
@@ -124,7 +122,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	case scanner.String, scanner.RawString:
 		var err error
-		lval.str, err = strconv.Unquote(l.TokenText())
+		lval.str, err = strutil.Unquote(l.TokenText())
 		if err != nil {
 			l.Error(err.Error())
 			return 0
@@ -133,7 +131,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	}
 
 	// scanning duration tokens
-	if l.TokenText() == "[" {
+	if r == '[' {
 		d := ""
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {
 			if string(r) == "]" {
@@ -151,7 +149,9 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return 0
 	}
 
-	if tok, ok := functionTokens[l.TokenText()+string(l.Peek())]; ok {
+	tokenText := l.TokenText()
+	tokenNext := tokenText + string(l.Peek())
+	if tok, ok := functionTokens[tokenNext]; ok {
 		// create a copy to advance to the entire token for testing suffix
 		sc := l.Scanner
 		sc.Next()
@@ -161,20 +161,20 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 	}
 
-	if tok, ok := functionTokens[l.TokenText()]; ok && isFunction(l.Scanner) {
+	if tok, ok := functionTokens[tokenText]; ok && isFunction(l.Scanner) {
 		return tok
 	}
 
-	if tok, ok := tokens[l.TokenText()+string(l.Peek())]; ok {
+	if tok, ok := tokens[tokenNext]; ok {
 		l.Next()
 		return tok
 	}
 
-	if tok, ok := tokens[l.TokenText()]; ok {
+	if tok, ok := tokens[tokenText]; ok {
 		return tok
 	}
 
-	lval.str = l.TokenText()
+	lval.str = tokenText
 	return IDENTIFIER
 }
 

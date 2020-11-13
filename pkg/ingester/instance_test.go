@@ -263,3 +263,43 @@ func makeRandomLabels() string {
 	}
 	return ls.Labels().String()
 }
+
+func Benchmark_PushInstance(b *testing.B) {
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+
+	i := newInstance(&Config{}, "test", limiter, noopWAL{})
+	ctx := context.Background()
+
+	for n := 0; n < b.N; n++ {
+		_ = i.Push(ctx, &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Now(), Line: "1"},
+						{Timestamp: time.Now(), Line: "2"},
+						{Timestamp: time.Now(), Line: "3"},
+					},
+				},
+				{
+					Labels: `{cpu="35",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Now(), Line: "1"},
+						{Timestamp: time.Now(), Line: "2"},
+						{Timestamp: time.Now(), Line: "3"},
+					},
+				},
+				{
+					Labels: `{cpu="89",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Now(), Line: "1"},
+						{Timestamp: time.Now(), Line: "2"},
+						{Timestamp: time.Now(), Line: "3"},
+					},
+				},
+			},
+		})
+	}
+}

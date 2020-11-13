@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
@@ -381,19 +382,21 @@ func (it *logBatchIterator) newChunksIterator(b *chunkBatch) (iter.EntryIterator
 func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
+		if len(chunks) != 0 && len(chunks[0]) != 0 {
+			streamPipeline := it.pipeline.ForStream(chunks[0][0].Chunk.Metric.WithoutLabels(labels.MetricName))
+			iterator, err := it.buildHeapIterator(chunks, from, through, streamPipeline, nextChunk)
+			if err != nil {
+				return nil, err
+			}
 
-		iterator, err := it.buildHeapIterator(chunks, from, through, nextChunk)
-		if err != nil {
-			return nil, err
+			result = append(result, iterator)
 		}
-
-		result = append(result, iterator)
 	}
 
 	return result, nil
 }
 
-func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.EntryIterator, error) {
+func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamPipeline log.StreamPipeline, nextChunk *LazyChunk) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 
 	for i := range chks {
@@ -402,7 +405,7 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, it.pipeline, nextChunk)
+			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, streamPipeline, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -514,17 +517,21 @@ func (it *sampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIter
 func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.SampleIterator, error) {
 	result := make([]iter.SampleIterator, 0, len(chks))
 	for _, chunks := range chks {
-		iterator, err := it.buildHeapIterator(chunks, from, through, nextChunk)
-		if err != nil {
-			return nil, err
+		if len(chunks) != 0 && len(chunks[0]) != 0 {
+			streamExtractor := it.extractor.ForStream(chunks[0][0].Chunk.Metric.WithoutLabels(labels.MetricName))
+			iterator, err := it.buildHeapIterator(chunks, from, through, streamExtractor, nextChunk)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, iterator)
 		}
-		result = append(result, iterator)
+
 	}
 
 	return result, nil
 }
 
-func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) (iter.SampleIterator, error) {
+func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamExtractor log.StreamSampleExtractor, nextChunk *LazyChunk) (iter.SampleIterator, error) {
 	result := make([]iter.SampleIterator, 0, len(chks))
 
 	for i := range chks {
@@ -533,7 +540,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, it.extractor, nextChunk)
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, streamExtractor, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -754,21 +761,4 @@ outer:
 	}
 
 	return css
-}
-
-// dropLabels returns a new label set with certain labels dropped
-func dropLabels(ls labels.Labels, removals ...string) (dst labels.Labels) {
-	toDel := make(map[string]struct{})
-	for _, r := range removals {
-		toDel[r] = struct{}{}
-	}
-
-	for _, l := range ls {
-		_, remove := toDel[l.Name]
-		if !remove {
-			dst = append(dst, l)
-		}
-	}
-
-	return dst
 }

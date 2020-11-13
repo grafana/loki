@@ -110,13 +110,14 @@ func QueryType(query string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	switch expr.(type) {
+	switch e := expr.(type) {
 	case SampleExpr:
 		return QueryTypeMetric, nil
-	case *matchersExpr:
+	case LogSelectorExpr:
+		if e.HasFilter() {
+			return QueryTypeFilter, nil
+		}
 		return QueryTypeLimited, nil
-	case *pipelineExpr:
-		return QueryTypeFilter, nil
 	default:
 		return "", nil
 	}

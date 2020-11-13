@@ -58,9 +58,13 @@ var (
 type instance struct {
 	cfg        *Config
 	streamsMtx sync.RWMutex
-	streams    map[model.Fingerprint]*stream // we use 'mapped' fingerprints here.
-	index      *index.InvertedIndex
-	mapper     *fpMapper // using of mapper needs streamsMtx because it calls back
+
+	buf         []byte // buffer used to compute fps.
+	streams     map[string]*stream
+	streamsByFP map[model.Fingerprint]*stream
+
+	index  *index.InvertedIndex
+	mapper *fpMapper // using of mapper needs streamsMtx because it calls back
 
 	instanceID string
 
@@ -83,10 +87,12 @@ func newInstance(
 	wal WAL,
 ) *instance {
 	i := &instance{
-		cfg:        cfg,
-		streams:    map[model.Fingerprint]*stream{},
-		index:      index.New(),
-		instanceID: instanceID,
+		cfg:         cfg,
+		streams:     map[string]*stream{},
+		streamsByFP: map[model.Fingerprint]*stream{},
+		buf:         make([]byte, 0, 1024),
+		index:       index.New(),
+		instanceID:  instanceID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
@@ -106,14 +112,14 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
-	rawFp := client.FastFingerprint(labels)
-	fp := i.mapper.mapFP(rawFp, labels)
+	fp := i.getHashForLabels(labels)
 
-	stream, ok := i.streams[fp]
+	stream, ok := i.streamsByFP[fp]
 	if !ok {
 		sortedLabels := i.index.Add(labels, fp)
 		stream = newStream(i.cfg, fp, sortedLabels)
-		i.streams[fp] = stream
+		i.streamsByFP[fp] = stream
+		i.streams[stream.labelsString] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Inc()
 		i.addTailersToNewStream(stream)
@@ -160,26 +166,21 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-// getOrCreateStream returns the stream or creates it. Must hold streams mutex.
+// getOrCreateStream returns the stream or creates it. Must hold streams mutex if not asked to lock.
 func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, record *WALRecord) (*stream, error) {
 	if lock {
 		i.streamsMtx.Lock()
 		defer i.streamsMtx.Unlock()
 	}
-	labels, err := util.ToClientLabels(pushReqStream.Labels)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-	rawFp := client.FastFingerprint(labels)
-	fp := i.mapper.mapFP(rawFp, labels)
+	stream, ok := i.streams[pushReqStream.Labels]
 
-	stream, ok := i.streams[fp]
 	if ok {
 		return stream, nil
 	}
 
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
+	var err error
 	if record != nil {
 		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
 	}
@@ -194,9 +195,16 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
 	}
 
+	labels, err := util.ToClientLabels(pushReqStream.Labels)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(labels, fp)
+
 	stream = newStream(i.cfg, fp, sortedLabels)
-	i.streams[fp] = stream
+	i.streams[pushReqStream.Labels] = stream
+	i.streamsByFP[fp] = stream
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -213,9 +221,16 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	return stream, nil
 }
 
+func (i *instance) getHashForLabels(labels []client.LabelAdapter) model.Fingerprint {
+	var fp uint64
+	lbsModel := client.FromLabelAdaptersToLabels(labels)
+	fp, i.buf = lbsModel.HashWithoutLabels(i.buf, []string(nil)...)
+	return i.mapper.mapFP(model.Fingerprint(fp), labels)
+}
+
 // Return labels associated with given fingerprint. Used by fingerprint mapper. Must hold streamsMtx.
 func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
-	s := i.streams[fp]
+	s := i.streamsByFP[fp]
 	if s == nil {
 		return nil
 	}
@@ -238,7 +253,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		expr.Matchers(),
 		func(stream *stream) error {
 			ingStats.TotalChunksMatched += int64(len(stream.chunks))
-			iter, err := stream.Iterator(ctx, req.Start, req.End, req.Direction, pipeline)
+			iter, err := stream.Iterator(ctx, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -269,7 +284,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		expr.Selector().Matchers(),
 		func(stream *stream) error {
 			ingStats.TotalChunksMatched += int64(len(stream.chunks))
-			iter, err := stream.SampleIterator(ctx, req.Start, req.End, extractor)
+			iter, err := stream.SampleIterator(ctx, req.Start, req.End, extractor.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -395,7 +410,7 @@ func (i *instance) forMatchingStreams(
 
 outer:
 	for _, streamID := range ids {
-		stream, ok := i.streams[streamID]
+		stream, ok := i.streamsByFP[streamID]
 		if !ok {
 			return ErrStreamMissing
 		}

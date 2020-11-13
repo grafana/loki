@@ -10,20 +10,28 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util"
 )
 
 const bufferSizeForTailResponse = 5
 
+type TailServer interface {
+	Send(*logproto.TailResponse) error
+	Context() context.Context
+}
+
 type tailer struct {
-	id       uint32
-	orgID    string
-	matchers []*labels.Matcher
-	pipeline logql.Pipeline
-	expr     logql.Expr
+	id          uint32
+	orgID       string
+	matchers    []*labels.Matcher
+	pipeline    logql.Pipeline
+	expr        logql.Expr
+	pipelineMtx sync.Mutex
 
 	sendChan chan *logproto.Stream
 
@@ -36,10 +44,10 @@ type tailer struct {
 	blockedMtx     sync.RWMutex
 	droppedStreams []*logproto.DroppedStream
 
-	conn logproto.Querier_TailServer
+	conn TailServer
 }
 
-func newTailer(orgID, query string, conn logproto.Querier_TailServer) (*tailer, error) {
+func newTailer(orgID, query string, conn TailServer) (*tailer, error) {
 	expr, err := logql.ParseLogSelector(query)
 	if err != nil {
 		return nil, err
@@ -137,26 +145,30 @@ func (t *tailer) send(stream logproto.Stream) error {
 
 func (t *tailer) processStream(stream logproto.Stream) ([]logproto.Stream, error) {
 	// Optimization: skip filtering entirely, if no filter is set
-	if t.pipeline == logql.NoopPipeline {
+	if log.IsNoopPipeline(t.pipeline) {
 		return []logproto.Stream{stream}, nil
 	}
+	// pipeline are not thread safe and tailer can process multiple stream at once.
+	t.pipelineMtx.Lock()
+	defer t.pipelineMtx.Unlock()
+
 	streams := map[uint64]*logproto.Stream{}
-	lbs, err := util.ParseLabels(stream.Labels)
+	lbs, err := logql.ParseLabels(stream.Labels)
 	if err != nil {
 		return nil, err
 	}
+	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := t.pipeline.Process([]byte(e.Line), lbs)
+		newLine, parsedLbs, ok := sp.Process([]byte(e.Line))
 		if !ok {
 			continue
 		}
 		var stream *logproto.Stream
-		lhash := parsedLbs.Hash()
-		if stream, ok = streams[lhash]; !ok {
+		if stream, ok = streams[parsedLbs.Hash()]; !ok {
 			stream = &logproto.Stream{
 				Labels: parsedLbs.String(),
 			}
-			streams[lhash] = stream
+			streams[parsedLbs.Hash()] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp: e.Timestamp,

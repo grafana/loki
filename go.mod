@@ -1,6 +1,6 @@
 module github.com/grafana/loki
 
-go 1.14
+go 1.15
 
 require (
 	github.com/aws/aws-lambda-go v1.17.0
@@ -15,6 +15,7 @@ require (
 	github.com/docker/docker v17.12.0-ce-rc1.0.20201009160326-9c15e82f19b0+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
+	github.com/drone/envsubst v1.0.2
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fatih/color v1.9.0
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c

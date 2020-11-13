@@ -208,6 +208,14 @@ func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval
 		return i, i
 	}
 
+	// since we are limiting the query interval, check if the query touches just the ingesters, if yes then query just the ingesters.
+	if ingesterOldestStartTime.Before(queryStart) {
+		return &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}, nil
+	}
+
 	// limit the start of ingester query interval to ingesterOldestStartTime.
 	ingesterQueryInterval := &interval{
 		start: ingesterOldestStartTime,

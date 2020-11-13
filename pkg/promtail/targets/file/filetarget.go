@@ -309,7 +309,7 @@ func (t *FileTarget) startTailing(ps []string) {
 	}
 }
 
-// stopTailingAndRemovePositions will stop the tailer and remove the positions entry.
+// stopTailingAndRemovePosition will stop the tailer and remove the positions entry.
 // Call this when a file no longer exists and you want to remove all traces of it.
 func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 	for _, p := range ps {

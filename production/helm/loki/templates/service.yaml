@@ -31,7 +31,7 @@ spec:
     - port: {{ .Values.service.port }}
       protocol: TCP
       name: http-metrics
-      targetPort: http-metrics
+      targetPort: {{ .Values.service.targetPort }}
 {{- if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
       nodePort: {{ .Values.service.nodePort }}
 {{- end }}

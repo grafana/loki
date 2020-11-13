@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -28,8 +28,8 @@ var samples = []logproto.Sample{
 	{Timestamp: time.Unix(100, 1).UnixNano(), Hash: 11, Value: 1.},
 }
 
-var labelFoo, _ = parser.ParseMetric("{app=\"foo\"}")
-var labelBar, _ = parser.ParseMetric("{app=\"bar\"}")
+var labelFoo, _ = promql_parser.ParseMetric("{app=\"foo\"}")
+var labelBar, _ = promql_parser.ParseMetric("{app=\"bar\"}")
 
 func newSampleIterator() iter.SampleIterator {
 	return iter.NewHeapSampleIterator(context.Background(), []iter.SampleIterator{

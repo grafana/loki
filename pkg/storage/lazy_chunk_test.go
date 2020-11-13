@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -46,7 +46,7 @@ func TestLazyChunkIterator(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, logql.NoopPipeline, nil)
+			it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
 			require.Nil(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			require.Nil(t, err)
@@ -174,10 +174,10 @@ func (fakeBlock) Entries() int     { return 0 }
 func (fakeBlock) Offset() int      { return 0 }
 func (f fakeBlock) MinTime() int64 { return f.mint }
 func (f fakeBlock) MaxTime() int64 { return f.maxt }
-func (fakeBlock) Iterator(context.Context, labels.Labels, logql.Pipeline) iter.EntryIterator {
+func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterator {
 	return nil
 }
-func (fakeBlock) SampleIterator(context.Context, labels.Labels, logql.SampleExtractor) iter.SampleIterator {
+func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 

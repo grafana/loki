@@ -28,12 +28,13 @@ func init() {
 }
 
 type Config struct {
-	config.Config `yaml:",inline"`
-	printVersion  bool
-	printConfig   bool
-	logConfig     bool
-	dryRun        bool
-	configFile    string
+	config.Config   `yaml:",inline"`
+	printVersion    bool
+	printConfig     bool
+	logConfig       bool
+	dryRun          bool
+	configFile      string
+	configExpandEnv bool
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -43,6 +44,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.BoolVar(&c.dryRun, "dry-run", false, "Start Promtail but print entries instead of sending them to Loki.")
 	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
+	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }
 

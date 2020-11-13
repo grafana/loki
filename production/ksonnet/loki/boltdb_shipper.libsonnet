@@ -13,6 +13,7 @@
 
     boltdb_shipper_shared_store: error 'must define boltdb_shipper_shared_store',
     compactor_pvc_size: '10Gi',
+    compactor_pvc_class: 'fast',
     index_period_hours: if self.using_boltdb_shipper then 24 else super.index_period_hours,
     loki+: if self.using_boltdb_shipper then {
       chunk_store_config+: {
@@ -47,7 +48,7 @@
     pvc.new('compactor-data') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.compactor_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
-    pvc.mixin.spec.withStorageClassName('fast')
+    pvc.mixin.spec.withStorageClassName($._config.ingester_pvc_class)
   else {},
 
   compactor_args:: if $._config.using_boltdb_shipper then {
