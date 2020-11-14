@@ -62,6 +62,11 @@ loki + promtail + gateway {
     namespace: 'loki',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
+    // Set to true if using boltdb shipper and add boltdb_shipper_shared_store
+    using_boltdb_shipper: false,
+
+    // boltdb_shipper_shared_store: {}
+
     // S3 variables remove if not using aws
     storage_backend: 's3,dynamodb',
     s3_access_key: 'key',
