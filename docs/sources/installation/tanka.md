@@ -62,7 +62,7 @@ loki + promtail + gateway {
     namespace: 'loki',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
-    // Set to true if using boltdb shipper and add boltdb_shipper_shared_store
+    // Set to true if using boltdb shipper and uncomment boltdb_shipper_shared_store below
     using_boltdb_shipper: false,
 
     // boltdb_shipper_shared_store: {}
