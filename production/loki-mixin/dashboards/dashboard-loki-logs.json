@@ -715,7 +715,7 @@
       "bars": true,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$logmetrics",
+      "datasource": "$logs",
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -857,19 +857,6 @@
         "name": "logs",
         "options": [],
         "query": "loki",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": null,
-        "multi": false,
-        "name": "logmetrics",
-        "options": [],
-        "query": "prometheus",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

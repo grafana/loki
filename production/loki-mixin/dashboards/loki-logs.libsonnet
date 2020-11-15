@@ -26,11 +26,6 @@ local lokiLogs = (import './dashboard-loki-logs.json');
           query:: 'loki',
         },
         {
-          name:: 'logmetrics',
-          type:: 'datasource',
-          query:: 'prometheus',
-        },
-        {
           name:: 'metrics',
           type:: 'datasource',
           query:: 'prometheus',
