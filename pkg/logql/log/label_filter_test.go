@@ -26,10 +26,10 @@ func TestBinary_Filter(t *testing.T) {
 			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "1s"}},
 		},
 		{
-			NewAndLabelFilter(NewNumericLabelFilter(LabelFilterEqual, "foo", 5), NewBytesLabelFilter(LabelFilterEqual, "bar", 42)),
-			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "42B"}},
+			NewAndLabelFilter(NewNumericLabelFilter(LabelFilterEqual, "foo", 5), NewBytesLabelFilter(LabelFilterEqual, "bar", 42000)),
+			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "42kB"}},
 			true,
-			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "42B"}},
+			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "42kB"}},
 		},
 		{
 			NewAndLabelFilter(

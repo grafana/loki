@@ -208,6 +208,13 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"foo", true}, {"bar", false}, {"foobar", true}},
 		},
+		{
+			`{app="foo"} | logfmt | duration > 1s and total_bytes < 1GB`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"duration=5m total_bytes=5kB", true}, {"duration=1s total_bytes=256B", false}, {"duration=0s", false}},
+		},
 	} {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
@@ -223,7 +230,7 @@ func Test_FilterMatcher(t *testing.T) {
 				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {
 					_, _, ok := sp.Process([]byte(lc.l))
-					assert.Equal(t, lc.e, ok)
+					assert.Equalf(t, lc.e, ok, "query for line '%s' was %v and not %v", lc.l, ok, lc.e)
 				}
 			}
 		})
