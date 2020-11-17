@@ -25,5 +25,5 @@ dependencies:
   repository:  "https://helm.elastic.co"
 - name: "logstash"
   condition: logstash.enabled
-  version: "~2.4.0"
-  repository:  "https://kubernetes-charts.storage.googleapis.com/"
+  version: "~7.8.0"
+  repository:  "https://helm.elastic.co"
