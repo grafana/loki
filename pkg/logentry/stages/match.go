@@ -132,7 +132,8 @@ func (m *matcherStage) Process(lbs model.LabelSet, extracted map[string]interfac
 		}
 	}
 
-	if newLine, newLabels, ok := m.pipeline.Process([]byte(*entry), labels.FromMap(util.ModelLabelSetToMap(lbs))); ok {
+	sp := m.pipeline.ForStream(labels.FromMap(util.ModelLabelSetToMap(lbs)))
+	if newLine, newLabels, ok := sp.Process([]byte(*entry)); ok {
 		switch m.action {
 		case MatchActionDrop:
 			// Adds the drop label to not be sent by the api.EntryHandler
@@ -142,7 +143,7 @@ func (m *matcherStage) Process(lbs model.LabelSet, extracted map[string]interfac
 			for k := range lbs {
 				delete(lbs, k)
 			}
-			for _, l := range newLabels {
+			for _, l := range newLabels.Labels() {
 				lbs[model.LabelName(l.Name)] = model.LabelValue(l.Value)
 			}
 			m.stage.Process(lbs, extracted, t, entry)

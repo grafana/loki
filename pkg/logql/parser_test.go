@@ -1229,6 +1229,27 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap bytes(foo) [5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+						&labelFilterExpr{
+							LabelFilterer: log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, "foo", 5),
+								log.NewDurationLabelFilter(log.LabelFilterLesserThan, "bar", 25*time.Millisecond),
+							),
+						},
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("foo", OpConvBytes)),
+				OpRangeTypeSum, nil, nil,
+			),
+		},
+		{
 			in: `sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
 			exp: newRangeAggregationExpr(
 				newLogRange(&pipelineExpr{
@@ -1969,13 +1990,43 @@ func Test_PipelineCombined(t *testing.T) {
 
 	p, err := expr.Pipeline()
 	require.Nil(t, err)
-
-	line, lbs, ok := p.Process([]byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`), labels.Labels{})
+	sp := p.ForStream(labels.Labels{})
+	line, lbs, ok := sp.Process([]byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`))
 	require.True(t, ok)
 	require.Equal(
 		t,
 		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
-		lbs,
+		lbs.Labels(),
 	)
 	require.Equal(t, string([]byte(`1.5s|POST|200`)), string(line))
+}
+
+var c []*labels.Matcher
+
+func Benchmark_ParseMatchers(b *testing.B) {
+	s := `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`
+	var err error
+	for n := 0; n < b.N; n++ {
+		c, err = ParseMatchers(s)
+		require.NoError(b, err)
+	}
+}
+
+var lbs labels.Labels
+
+func Benchmark_CompareParseLabels(b *testing.B) {
+	s := `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`
+	var err error
+	b.Run("logql", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			c, err = ParseMatchers(s)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("promql", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			lbs, err = ParseLabels(s)
+			require.NoError(b, err)
+		}
+	})
 }

@@ -310,6 +310,11 @@ github.com/docker/go-metrics
 github.com/docker/go-plugins-helpers/sdk
 # github.com/docker/go-units v0.4.0
 github.com/docker/go-units
+# github.com/drone/envsubst v1.0.2
+## explicit
+github.com/drone/envsubst
+github.com/drone/envsubst/parse
+github.com/drone/envsubst/path
 # github.com/dustin/go-humanize v1.0.0
 ## explicit
 github.com/dustin/go-humanize

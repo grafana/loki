@@ -1,4 +1,4 @@
-FROM golang:1.14.2 as build
+FROM golang:1.15.3 as build
 
 ARG TOUCH_PROTOS
 COPY . /src/loki

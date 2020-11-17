@@ -37,7 +37,7 @@ The following example shows a full log query in action:
 The query is composed of:
 
 - a log stream selector `{container="query-frontend",namespace="loki-dev"}` which targets the `query-frontend` container  in the `loki-dev`namespace.
-- a log pipeline `|= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500` which will filter out log that doesn't contains the word `metrics.go`, then parses each log line to extract more labels and filter with them.
+- a log pipeline `|= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500` which will filter out log that contains the word `metrics.go`, then parses each log line to extract more labels and filter with them.
 
 > To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
 For example `` `\w+` `` is the same as `"\\w+"`.
@@ -295,7 +295,7 @@ Will extract and rewrite the log line to only contains the query and the duratio
 
 You can use double quoted string for the template or single backtick \``\{{.label_name}}`\` to avoid the need to escape special characters.
 
-See [functions](#Template-functions) to learn about available functions in the template format.
+See [functions](functions/) to learn about available functions in the template format.
 
 #### Labels Format Expression
 
@@ -303,89 +303,14 @@ The `| label_format` expression can renamed, modify or add labels. It takes as p
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 
-The left side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value will be replace by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, this mean labels are available as variables and you can use the same list of [functions](#Template-functions).
+The left side can alternatively be a template string (double quoted or backtick), for example `dst="{{.status}} {{.query}}"`, in which case the `dst` label value is replaced by the result of the [text/template](https://golang.org/pkg/text/template/) evaluation. This is the same template engine as the `| line_format` expression, which means labels are available as variables and you can use the same list of [functions](functions/).
 
-In both case if the destination label doesn't exist a new one will be created.
+In both cases, if the destination label doesn't exist, then a new one is created.
 
 The renaming form `dst=src` will _drop_ the `src` label after remapping it to the `dst` label. However, the _template_ form will preserve the referenced labels, such that  `dst="{{.src}}"` results in both `dst` and `src` having the same value.
 
 > A single label name can only appear once per expression. This means `| label_format foo=bar,foo="new"` is not allowed but you can use two expressions for the desired effect: `| label_format foo=bar | label_format foo="new"`
 
-#### Template functions
-
-The text template format used in `| line_format` and `| label_format` support functions the following list of functions.
-
-##### ToLower & ToUpper
-
-Convert the entire string to lowercase or uppercase:
-
-Examples:
-
-```template
-"{{.request_method | ToLower}}"
-"{{.request_method | ToUpper}}"
-`{{ToUpper "This is a string" | ToLower}}`
-```
-
-##### Replace
-
-Perform simple string replacement.
-
-It takes three arguments:
-
-- string to replace
-- string to replace with
-- source string
-
-Example:
-
-```template
-`"This is a string" | Replace " " "-"`
-```
-
-The above will produce `This-is-a-string`
-
-##### Trim
-
-`Trim` returns a slice of the string s with all leading and
-trailing Unicode code points contained in cutset removed.
-
-`TrimLeft` and `TrimRight` are the same as `Trim` except that it respectively trim only leading and trailing characters.
-
-```template
-`{{ Trim .query ",. " }}`
-`{{ TrimLeft .uri ":" }}`
-`{{ TrimRight .path "/" }}`
-```
-
-`TrimSpace` TrimSpace returns string s with all leading
-and trailing white space removed, as defined by Unicode.
-
-```template
-{{ TrimSpace .latency }}
-```
-
-`TrimPrefix` and `TrimSuffix` will trim respectively the prefix or suffix supplied.
-
-```template
-{{ TrimPrefix .path "/" }}
-```
-
-##### Regex
-
-`regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [docs](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for detailed examples.
-
-```template
-`{{ regexReplaceAllLiteral "(a*)bc" .some_label "${1}a" }}`
-```
-
-`regexReplaceAllLiteral` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement The replacement string is substituted directly, without using Expand.
-
-```template
-`{{ regexReplaceAllLiteral "(ts=)" .timestamp "timestamp=" }}`
-```
-
-You can combine multiple function using pipe, for example if you want to strip out spaces and make the request method in capital you would write the following template `{{ .request_method | TrimSpace | ToUpper }}`.
 
 ### Log Queries Examples
 
@@ -492,7 +417,9 @@ The unwrap expression is noted `| unwrap label_identifier` where the label ident
 Since label values are string, by default a conversion into a float (64bits) will be attempted, in case of failure the `__error__` label is added to the sample.
 Optionally the label identifier can be wrapped by a conversion function `| unwrap <function>(label_identifier)`, which will attempt to convert the label value from a specific format.
 
-We currently support only the function `duration_seconds` (or its short equivalent `duration`) which will convert the label value in seconds from the [go duration format](https://golang.org/pkg/time/#ParseDuration) (e.g `5m`, `24s30ms`).
+We currently support the functions: 
+- `duration_seconds(label_identifier)` (or its short equivalent `duration`) which will convert the label value in seconds from the [go duration format](https://golang.org/pkg/time/#ParseDuration) (e.g `5m`, `24s30ms`).
+- `bytes(label_identifier)` which will convert the label value to raw bytes applying the bytes unit  (e.g. `5 MiB`, `3k`, `1G`).
 
 Supported function for operating over unwrapped ranges are:
 

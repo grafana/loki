@@ -133,8 +133,8 @@ func NewFileTargetManager(
 }
 
 func (tm *FileTargetManager) run() {
-	for targetGoups := range tm.manager.SyncCh() {
-		for jobName, groups := range targetGoups {
+	for targetGroups := range tm.manager.SyncCh() {
+		for jobName, groups := range targetGroups {
 			tm.syncers[jobName].sync(groups)
 		}
 	}

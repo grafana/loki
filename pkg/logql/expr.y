@@ -89,7 +89,7 @@ import (
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
-                  MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME DURATION_CONV DURATION_SECONDS_CONV
+                  MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -101,7 +101,7 @@ import (
 
 %%
 
-root: expr { exprlex.(*lexer).expr = $1 };
+root: expr { exprlex.(*parser).expr = $1 };
 
 expr:
       logExpr                                      { $$ = $1 }
@@ -146,7 +146,8 @@ unwrapExpr:
   ;
 
 convOp:
-    DURATION_CONV           { $$ = OpConvDuration }
+    BYTES_CONV              { $$ = OpConvBytes }
+  | DURATION_CONV           { $$ = OpConvDuration }
   | DURATION_SECONDS_CONV   { $$ = OpConvDurationSeconds }
   ;
 

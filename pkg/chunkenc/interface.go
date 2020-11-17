@@ -7,11 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
-
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 // Errors returned by the chunk interface.
@@ -100,17 +98,19 @@ type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Append(*logproto.Entry) error
-	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, lbs labels.Labels, pipeline logql.Pipeline) (iter.EntryIterator, error)
-	SampleIterator(ctx context.Context, from, through time.Time, lbs labels.Labels, extractor logql.SampleExtractor) iter.SampleIterator
+	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error)
+	SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
 	// Returns the list of blocks in the chunks.
 	Blocks(mintT, maxtT time.Time) []Block
 	Size() int
 	Bytes() ([]byte, error)
+	BytesWith([]byte) ([]byte, error) // uses provided []byte for buffer instantiation
 	BlockCount() int
 	Utilization() float64
 	UncompressedSize() int
 	CompressedSize() int
 	Close() error
+	Encoding() Encoding
 }
 
 // Block is a chunk block.
@@ -124,7 +124,7 @@ type Block interface {
 	// Entries is the amount of entries in the block.
 	Entries() int
 	// Iterator returns an entry iterator for the block.
-	Iterator(ctx context.Context, lbs labels.Labels, pipeline logql.Pipeline) iter.EntryIterator
+	Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator
 	// SampleIterator returns a sample iterator for the block.
-	SampleIterator(ctx context.Context, lbs labels.Labels, extractor logql.SampleExtractor) iter.SampleIterator
+	SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator
 }

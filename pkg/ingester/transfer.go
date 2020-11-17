@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 
@@ -101,9 +101,9 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 
 		userCtx := user.InjectOrgID(stream.Context(), chunkSet.UserId)
 
-		lbls := []client.LabelAdapter{}
+		lbls := make([]labels.Label, 0, len(chunkSet.Labels))
 		for _, lbl := range chunkSet.Labels {
-			lbls = append(lbls, client.LabelAdapter{Name: lbl.Name, Value: lbl.Value})
+			lbls = append(lbls, labels.Label{Name: lbl.Name, Value: lbl.Value})
 		}
 
 		instance := i.getOrCreateInstance(chunkSet.UserId)

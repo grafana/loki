@@ -70,7 +70,7 @@ func TestDistributor(t *testing.T) {
 			lines:            100,
 			mangleLabels:     true,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: parse error at line 1, col 4: literal not terminated"),
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: 1:4: parse error: unterminated quoted string"),
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d](samples=%v)", i, tc.lines), func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestDistributor(t *testing.T) {
 			limits.IngestionBurstSizeMB = ingestionRateLimit
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
 
-			d := prepare(t, limits, nil)
+			d := prepare(t, limits, nil, nil)
 			defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
 			request := makeWriteRequest(tc.lines, 10)
@@ -95,6 +95,21 @@ func TestDistributor(t *testing.T) {
 			assert.Equal(t, tc.expectedError, err)
 		})
 	}
+}
+
+func Test_SortLabelsOnPush(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.EnforceMetricName = false
+	ingester := &mockIngester{}
+	d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+
+	request := makeWriteRequest(10, 10)
+	request.Streams[0].Labels = `{buzz="f", a="b"}`
+	_, err := d.Push(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, `{a="b", buzz="f"}`, ingester.pushed[0].Streams[0].Labels)
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
@@ -165,7 +180,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			// Start all expected distributors
 			distributors := make([]*Distributor, testData.distributors)
 			for i := 0; i < testData.distributors; i++ {
-				distributors[i] = prepare(t, limits, kvStore)
+				distributors[i] = prepare(t, limits, kvStore, nil)
 				defer services.StopAndAwaitTerminated(context.Background(), distributors[i]) //nolint:errcheck
 			}
 
@@ -211,7 +226,7 @@ func loopbackInterfaceName() (string, error) {
 	return "", fmt.Errorf("can't retrieve loopback interface name")
 }
 
-func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distributor {
+func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory func(addr string) (ring_client.PoolClient, error)) *Distributor {
 	var (
 		distributorConfig Config
 		clientConfig      client.Config
@@ -243,8 +258,11 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distri
 	distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
 	distributorConfig.DistributorRing.KVStore.Mock = kvStore
 	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
-	distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
-		return ingesters[addr], nil
+	distributorConfig.factory = factory
+	if factory == nil {
+		distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
+			return ingesters[addr], nil
+		}
 	}
 
 	d, err := New(distributorConfig, clientConfig, ingestersRing, overrides, nil)
@@ -279,9 +297,12 @@ func makeWriteRequest(lines int, size int) *logproto.PushRequest {
 type mockIngester struct {
 	grpc_health_v1.HealthClient
 	logproto.PusherClient
+
+	pushed []*logproto.PushRequest
 }
 
 func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts ...grpc.CallOption) (*logproto.PushResponse, error) {
+	i.pushed = append(i.pushed, in)
 	return nil, nil
 }
 

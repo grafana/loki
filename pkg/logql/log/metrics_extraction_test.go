@@ -90,14 +90,33 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			},
 			true,
 		},
+		{
+			"convert bytes",
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertBytes, []string{"bar", "buzz"}, false, false, nil, NoopStage,
+			)),
+			labels.Labels{
+				{Name: "foo", Value: "13 MiB"},
+				{Name: "bar", Value: "foo"},
+				{Name: "buzz", Value: "blip"},
+				{Name: "namespace", Value: "dev"},
+			},
+			13 * 1024 * 1024,
+			labels.Labels{
+				{Name: "bar", Value: "foo"},
+				{Name: "buzz", Value: "blip"},
+			},
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sort.Sort(tt.in)
-			outval, outlbs, ok := tt.ex.Process([]byte(""), tt.in)
+
+			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process([]byte(""))
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
-			require.Equal(t, tt.wantLbs, outlbs)
+			require.Equal(t, tt.wantLbs, outlbs.Labels())
 		})
 	}
 }
@@ -107,4 +126,34 @@ func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
 		panic(err)
 	}
 	return ex
+}
+
+func TestNewLineSampleExtractor(t *testing.T) {
+
+	se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
+	require.NoError(t, err)
+	lbs := labels.Labels{
+		{Name: "namespace", Value: "dev"},
+		{Name: "cluster", Value: "us-central1"},
+	}
+	sort.Sort(lbs)
+	sse := se.ForStream(lbs)
+	f, l, ok := sse.Process([]byte(`foo`))
+	require.True(t, ok)
+	require.Equal(t, 1., f)
+	assertLabelResult(t, lbs, l)
+
+	filter, err := NewFilter("foo", labels.MatchEqual)
+	require.NoError(t, err)
+
+	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{filter.ToStage()}, []string{"namespace"}, false, false)
+	require.NoError(t, err)
+	sse = se.ForStream(lbs)
+	f, l, ok = sse.Process([]byte(`foo`))
+	require.True(t, ok)
+	require.Equal(t, 3., f)
+	assertLabelResult(t, labels.Labels{labels.Label{Name: "namespace", Value: "dev"}}, l)
+	sse = se.ForStream(lbs)
+	_, _, ok = sse.Process([]byte(`nope`))
+	require.False(t, ok)
 }

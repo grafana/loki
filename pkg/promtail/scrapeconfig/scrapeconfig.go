@@ -158,6 +158,10 @@ type SyslogTargetConfig struct {
 
 	// Labels optionally holds labels to associate with each record read from syslog.
 	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming syslog mesages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
 // PushTargetConfig describes a scrape config that listens for Loki push messages.

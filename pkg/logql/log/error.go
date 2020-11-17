@@ -6,6 +6,7 @@ var (
 	errLogfmt           = "LogfmtParserErr"
 	errSampleExtraction = "SampleExtractionErr"
 	errLabelFilter      = "LabelFilterErr"
+	errTemplateFormat   = "TemplateFormatErr"
 
 	ErrorLabel = "__error__"
 )
