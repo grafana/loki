@@ -308,7 +308,7 @@ func TestLoadTable(t *testing.T) {
 	cachePath := filepath.Join(tempDir, cacheDirName)
 
 	// try loading the table.
-	table, err := LoadTable(tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	table, err := LoadTable(context.Background(), tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -338,7 +338,7 @@ func TestLoadTable(t *testing.T) {
 	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbs, false)
 
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
-	table, err = LoadTable(tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	table, err = LoadTable(context.Background(), tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 

@@ -194,6 +194,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				storageClient:   fsObjectClient,
 				tables:          make(map[string]*Table),
 				metrics:         newMetrics(nil),
+				ctx:             context.Background(),
 				cancel:          func() {},
 			}
 

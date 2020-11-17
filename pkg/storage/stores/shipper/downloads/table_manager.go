@@ -275,7 +275,7 @@ func (tm *TableManager) ensureQueryReadiness() error {
 
 		level.Info(pkg_util.Logger).Log("msg", "table required for query readiness does not exist locally, downloading it", "table-name", tableName)
 		// table doesn't exist, download it.
-		table, err := LoadTable(tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
+		table, err := LoadTable(tm.ctx, tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {
 			return err
 		}
@@ -341,7 +341,7 @@ func (tm *TableManager) loadLocalTables() error {
 
 		level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
 
-		table, err := LoadTable(fileInfo.Name(), tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
+		table, err := LoadTable(tm.ctx, fileInfo.Name(), tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {
 			return err
 		}

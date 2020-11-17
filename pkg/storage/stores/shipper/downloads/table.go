@@ -98,7 +98,7 @@ func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient
 }
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
-func LoadTable(name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) (*Table, error) {
+func LoadTable(ctx context.Context, name, cacheLocation string, storageClient StorageClient, boltDBIndexClient BoltDBIndexClient, metrics *metrics) (*Table, error) {
 	// see if folder for table already exists.
 	folderPath := path.Join(cacheLocation, name)
 	_, err := os.Stat(folderPath)
@@ -108,7 +108,7 @@ func LoadTable(name, cacheLocation string, storageClient StorageClient, boltDBIn
 		}
 
 		// folder for table doesn't exist, this means we have to download it from the shared store.
-		table := NewTable(context.Background(), name, cacheLocation, storageClient, boltDBIndexClient, metrics)
+		table := NewTable(ctx, name, cacheLocation, storageClient, boltDBIndexClient, metrics)
 		<-table.ready
 		if table.err != nil {
 			return nil, table.err
@@ -153,7 +153,7 @@ func LoadTable(name, cacheLocation string, storageClient StorageClient, boltDBIn
 
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", name))
 	// sync the table to get new files and remove the deleted ones from storage.
-	err = table.Sync(context.Background())
+	err = table.Sync(ctx)
 	if err != nil {
 		return nil, err
 	}
