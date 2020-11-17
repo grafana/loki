@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-helm) and
-[deployed](https://helm.sh/docs/using_helm/#installing-tiller) to your cluster. Then add
+Make sure you have Helm 3
+[installed](https://helm.sh/docs/intro/install/). Then add
 Loki's chart repository to Helm:
 
 ```bash
@@ -84,11 +84,7 @@ $ helm upgrade --install loki loki/loki-stack \
 To install Grafana on your cluster with helm, use the following command:
 
 ```bash
-# with Helm 2
-$ helm install stable/grafana -n loki-grafana --namespace <YOUR-NAMESPACE>
-
-# with Helm 3
-$ helm install loki-grafana stable/grafana -n <YOUR-NAMESPACE>
+helm upgrade --install loki loki/loki-stack --set grafana.enabled=true
 ```
 
 > The chart loki-stack contains a pre-configured Grafana, simply use `--set grafana.enabled=true`
@@ -105,8 +101,10 @@ To access the Grafana UI, run the following command:
 $ kubectl port-forward --namespace <YOUR-NAMESPACE> service/loki-grafana 3000:80
 ```
 
-Navigate to http://localhost:3000 and login with `admin` and the password output above.
-Then follow the [instructions for adding the loki datasource](/docs/getting-started/grafana.md), using the URL `http://loki:3100/`.
+Navigate to `http://localhost:3000` and login with `admin` and the
+password output above. Loki is added as a [Data
+Source](../../getting-started/grafana/) automatically using URL
+`http://loki:3100/` for Loki.
 
 ## Run Loki behind https ingress
 

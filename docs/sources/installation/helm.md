@@ -5,8 +5,7 @@ title: Helm
 
 ## Prerequisites
 
-Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-helm) and
-[deployed](https://helm.sh/docs/using_helm/#installing-tiller) to your cluster.
+Make sure you have Helm 3 [installed](https://helm.sh/docs/intro/install/).
 
 Add [Loki's chart repository](https://github.com/grafana/loki/tree/master/production/helm/loki) to Helm:
 
@@ -64,7 +63,7 @@ helm upgrade --install loki loki/loki-stack \
 To install Grafana on your cluster with Helm, use the following command:
 
 ```bash
-helm install stable/grafana -n loki-grafana
+helm upgrade --install loki loki/loki-stack --set grafana.enabled=true
 ```
 
 To get the admin password for the Grafana pod, run the following command:
@@ -79,8 +78,9 @@ To access the Grafana UI, run the following command:
 kubectl port-forward --namespace <YOUR-NAMESPACE> service/loki-grafana 3000:80
 ```
 
-Navigate to `http://localhost:3000` and login with `admin` and the password
-output above. Then follow the [instructions for adding the Loki Data Source](../../getting-started/grafana/), using the URL
+Navigate to `http://localhost:3000` and login with `admin` and the
+password output above. Loki is added as a [Data
+Source](../../getting-started/grafana/) automatically using URL
 `http://loki:3100/` for Loki.
 
 ## Run Loki behind HTTPS ingress
