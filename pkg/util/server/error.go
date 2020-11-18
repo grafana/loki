@@ -7,6 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logql"
 )
@@ -30,7 +31,9 @@ func WriteError(err error, w http.ResponseWriter) {
 		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
 	case errors.As(err, &queryErr):
 		http.Error(w, err.Error(), http.StatusBadRequest)
-	case logql.IsParseError(err) || logql.IsPipelineError(err):
+	case errors.Is(err, logql.ErrLimit) || errors.Is(err, logql.ErrParse) || errors.Is(err, logql.ErrPipeline):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, user.ErrNoOrgID):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {

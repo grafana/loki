@@ -207,53 +207,79 @@ func TestReadFormatV1(t *testing.T) {
 // 2) []byte loaded chunks <-> []byte loaded chunks
 func TestRoundtripV2(t *testing.T) {
 	for _, enc := range testEncoding {
-		t.Run(enc.String(), func(t *testing.T) {
-			c := NewMemChunk(enc, testBlockSize, testTargetSize)
-			populated := fillChunk(c)
+		for _, version := range []byte{chunkFormatV2, chunkFormatV3} {
+			t.Run(enc.String(), func(t *testing.T) {
+				c := NewMemChunk(enc, testBlockSize, testTargetSize)
+				c.format = version
+				populated := fillChunk(c)
 
-			assertLines := func(c *MemChunk) {
-				require.Equal(t, enc, c.Encoding())
-				it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+				assertLines := func(c *MemChunk) {
+					require.Equal(t, enc, c.Encoding())
+					it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					i := int64(0)
+					var data int64
+					for it.Next() {
+						require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+						require.Equal(t, testdata.LogString(i), it.Entry().Line)
+
+						data += int64(len(it.Entry().Line))
+						i++
+					}
+					require.Equal(t, populated, data)
+				}
+
+				assertLines(c)
+
+				// test MemChunk -> NewByteChunk loading
+				b, err := c.Bytes()
 				if err != nil {
 					t.Fatal(err)
 				}
 
-				i := int64(0)
-				var data int64
-				for it.Next() {
-					require.Equal(t, i, it.Entry().Timestamp.UnixNano())
-					require.Equal(t, testdata.LogString(i), it.Entry().Line)
-
-					data += int64(len(it.Entry().Line))
-					i++
+				r, err := NewByteChunk(b, testBlockSize, testTargetSize)
+				if err != nil {
+					t.Fatal(err)
 				}
-				require.Equal(t, populated, data)
-			}
+				assertLines(r)
 
-			assertLines(c)
+				// test NewByteChunk -> NewByteChunk loading
+				rOut, err := r.Bytes()
+				require.Nil(t, err)
 
-			// test MemChunk -> NewByteChunk loading
+				loaded, err := NewByteChunk(rOut, testBlockSize, testTargetSize)
+				require.Nil(t, err)
+
+				assertLines(loaded)
+			})
+		}
+
+	}
+}
+
+func TestRoundtripV3(t *testing.T) {
+
+	for _, enc := range testEncoding {
+		t.Run(enc.String(), func(t *testing.T) {
+			c := NewMemChunk(enc, testBlockSize, testTargetSize)
+			_ = fillChunk(c)
+
 			b, err := c.Bytes()
-			if err != nil {
-				t.Fatal(err)
-			}
-
+			require.Nil(t, err)
 			r, err := NewByteChunk(b, testBlockSize, testTargetSize)
-			if err != nil {
-				t.Fatal(err)
-			}
-			assertLines(r)
-
-			// test NewByteChunk -> NewByteChunk loading
-			rOut, err := r.Bytes()
 			require.Nil(t, err)
 
-			loaded, err := NewByteChunk(rOut, testBlockSize, testTargetSize)
+			// have to populate then clear the head block or fail comparing against nil vs zero values
+			err = r.head.append(1, "1")
 			require.Nil(t, err)
+			r.head.clear()
 
-			assertLines(loaded)
+			require.Equal(t, c, r)
+
 		})
-
 	}
 
 }

@@ -3,7 +3,12 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,12 +22,16 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
-const cacheCleanupInterval = time.Hour
+const (
+	cacheCleanupInterval = time.Hour
+	durationDay          = 24 * time.Hour
+)
 
 type Config struct {
-	CacheDir     string
-	SyncInterval time.Duration
-	CacheTTL     time.Duration
+	CacheDir          string
+	SyncInterval      time.Duration
+	CacheTTL          time.Duration
+	QueryReadyNumDays int
 }
 
 type TableManager struct {
@@ -40,11 +49,6 @@ type TableManager struct {
 }
 
 func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
-	// cleanup existing directory and re-create it since we do not use existing files in it.
-	if err := os.RemoveAll(cfg.CacheDir); err != nil {
-		return nil, err
-	}
-
 	if err := chunk_util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -59,6 +63,23 @@ func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClien
 		ctx:             ctx,
 		cancel:          cancel,
 	}
+
+	// load the existing tables first.
+	err := tm.loadLocalTables()
+	if err != nil {
+		// call Stop to close open file references.
+		tm.Stop()
+		return nil, err
+	}
+
+	// download the missing tables.
+	err = tm.ensureQueryReadiness()
+	if err != nil {
+		// call Stop to close open file references.
+		tm.Stop()
+		return nil, err
+	}
+
 	go tm.loop()
 	return tm, nil
 }
@@ -79,6 +100,12 @@ func (tm *TableManager) loop() {
 			err := tm.syncTables(tm.ctx)
 			if err != nil {
 				level.Error(pkg_util.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
+			}
+
+			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
+			err = tm.ensureQueryReadiness()
+			if err != nil {
+				level.Error(pkg_util.Logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
 			err := tm.cleanupCache()
@@ -206,8 +233,128 @@ func (tm *TableManager) cleanupCache() error {
 			}
 
 			delete(tm.tables, name)
+
+			// remove the directory where files for the table were downloaded.
+			err = os.RemoveAll(path.Join(tm.cfg.CacheDir, name))
+			if err != nil {
+				level.Error(pkg_util.Logger).Log("msg", fmt.Sprintf("failed to remove directory for table %s", name), "err", err)
+			}
 		}
 	}
 
 	return nil
+}
+
+// ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
+func (tm *TableManager) ensureQueryReadiness() error {
+	if tm.cfg.QueryReadyNumDays == 0 {
+		return nil
+	}
+
+	_, tablesInStorage, err := tm.storageClient.List(context.Background(), "", delimiter)
+	if err != nil {
+		return err
+	}
+
+	// get the names of tables required for being query ready.
+	tableNames, err := tm.tablesRequiredForQueryReadiness(tablesInStorage)
+	if err != nil {
+		return err
+	}
+
+	level.Debug(pkg_util.Logger).Log("msg", fmt.Sprintf("list of tables required for query-readiness %s", tableNames))
+
+	for _, tableName := range tableNames {
+		tm.tablesMtx.RLock()
+		table, ok := tm.tables[tableName]
+		tm.tablesMtx.RUnlock()
+		if ok {
+			// table already exists, update the last used at time to avoid cache cleanup operation removing it.
+			table.UpdateLastUsedAt()
+			continue
+		}
+
+		level.Info(pkg_util.Logger).Log("msg", "table required for query readiness does not exist locally, downloading it", "table-name", tableName)
+		// table doesn't exist, download it.
+		table, err := LoadTable(tm.ctx, tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
+		if err != nil {
+			return err
+		}
+
+		tm.tablesMtx.Lock()
+		tm.tables[tableName] = table
+		tm.tablesMtx.Unlock()
+	}
+
+	return nil
+}
+
+// queryReadyTableNumbersRange returns the table numbers range. Table numbers are added as suffix to table names.
+func (tm *TableManager) queryReadyTableNumbersRange() (int64, int64) {
+	newestTableNumber := getActiveTableNumber()
+
+	return newestTableNumber - int64(tm.cfg.QueryReadyNumDays), newestTableNumber
+}
+
+// tablesRequiredForQueryReadiness returns the names of tables required to be downloaded for being query ready as per configured QueryReadyNumDays.
+// It only considers daily tables for simplicity and we anyways have made it mandatory to have daily tables with boltdb-shipper.
+func (tm *TableManager) tablesRequiredForQueryReadiness(tablesInStorage []chunk.StorageCommonPrefix) ([]string, error) {
+	// regex for finding daily tables which have a 5 digit number at the end.
+	re, err := regexp.Compile(`.+[0-9]{5}$`)
+	if err != nil {
+		return nil, err
+	}
+
+	minTableNumber, maxTableNumber := tm.queryReadyTableNumbersRange()
+	var requiredTableNames []string
+
+	for _, tableNameWithSep := range tablesInStorage {
+		// tableNames come with a delimiter(separator) because they are directories not objects so removing the delimiter.
+		tableName := strings.TrimSuffix(string(tableNameWithSep), delimiter)
+		if !re.MatchString(tableName) {
+			continue
+		}
+
+		tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		if minTableNumber <= tableNumber && tableNumber <= maxTableNumber {
+			requiredTableNames = append(requiredTableNames, tableName)
+		}
+	}
+
+	return requiredTableNames, nil
+}
+
+// loadLocalTables loads tables present locally.
+func (tm *TableManager) loadLocalTables() error {
+	filesInfo, err := ioutil.ReadDir(tm.cfg.CacheDir)
+	if err != nil {
+		return err
+	}
+
+	for _, fileInfo := range filesInfo {
+		if !fileInfo.IsDir() {
+			continue
+		}
+
+		level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
+
+		table, err := LoadTable(tm.ctx, fileInfo.Name(), tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
+		if err != nil {
+			return err
+		}
+
+		tm.tables[fileInfo.Name()] = table
+	}
+
+	return nil
+}
+
+func getActiveTableNumber() int64 {
+	periodSecs := int64(durationDay / time.Second)
+
+	return time.Now().Unix() / periodSecs
 }

@@ -240,7 +240,7 @@ func Test_SeriesQuery(t *testing.T) {
 }
 
 func entries(n int, t time.Time) []logproto.Entry {
-	var result []logproto.Entry
+	result := make([]logproto.Entry, 0, n)
 	for i := 0; i < n; i++ {
 		result = append(result, logproto.Entry{Timestamp: t, Line: fmt.Sprintf("hello %d", i)})
 		t = t.Add(time.Nanosecond)

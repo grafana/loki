@@ -57,7 +57,7 @@ func ParseExpr(input string) (expr Expr, err error) {
 		if r := recover(); r != nil {
 			var ok bool
 			if err, ok = r.(error); ok {
-				if IsParseError(err) {
+				if errors.Is(err, ErrParse) {
 					return
 				}
 				err = newParseError(err.Error(), 0, 0)
