@@ -137,7 +137,6 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	} else {
 		s3Config = &aws.Config{}
 		s3Config = s3Config.WithRegion("dummy")
-		s3Config = s3Config.WithCredentials(credentials.AnonymousCredentials)
 	}
 
 	s3Config = s3Config.WithMaxRetries(0)                          // We do our own retries, so we can monitor them
