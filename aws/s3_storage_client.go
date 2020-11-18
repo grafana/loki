@@ -317,11 +317,14 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 					commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(aws.StringValue(commonPrefix.Prefix)))
 				}
 
-				if !*output.IsTruncated {
+				if output.IsTruncated == nil || !*output.IsTruncated {
 					// No more results to fetch
 					break
 				}
-
+				if output.NextContinuationToken == nil {
+					// No way to continue
+					break
+				}
 				input.SetContinuationToken(*output.NextContinuationToken)
 			}
 
