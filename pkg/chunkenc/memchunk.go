@@ -24,12 +24,13 @@ import (
 )
 
 const (
+	_ byte = iota
+	chunkFormatV1
+	chunkFormatV2
+	chunkFormatV3
+
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
-
-	chunkFormatV1 byte = 1
-	chunkFormatV2 byte = 2
-	chunkFormatV3 byte = 3
 )
 
 var (
