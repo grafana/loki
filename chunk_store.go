@@ -254,7 +254,7 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 
 	var result UniqueStrings
 	for _, entry := range entries {
-		_, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		_, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -559,7 +559,7 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		chunkKey, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}

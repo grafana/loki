@@ -151,7 +151,7 @@ const (
 
 // parseRangeValueType returns the type of rangeValue
 func parseRangeValueType(rangeValue []byte) (int, error) {
-	components := decodeRangeKey(rangeValue)
+	components := decodeRangeKey(rangeValue, make([][]byte, 0, 5))
 	switch {
 	case len(components) < 3:
 		return 0, fmt.Errorf("invalid range value: %x", rangeValue)
@@ -340,7 +340,7 @@ func TestSchemaRangeKey(t *testing.T) {
 					_, err := parseMetricNameRangeValue(entry.RangeValue, entry.Value)
 					require.NoError(t, err)
 				case ChunkTimeRangeValue:
-					_, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+					_, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 					require.NoError(t, err)
 				case SeriesRangeValue:
 					_, err := parseSeriesRangeValue(entry.RangeValue, entry.Value)
