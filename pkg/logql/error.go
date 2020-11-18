@@ -9,6 +9,8 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 )
 
+// Those errors are useful for comparing error returned by the engine.
+// e.g. errors.Is(err,logql.ErrParse) let you know if this is a ast parsing error.
 var (
 	ErrParse    = errors.New("failed to parse the log query")
 	ErrPipeline = errors.New("failed execute pipeline")

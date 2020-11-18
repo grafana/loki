@@ -85,7 +85,7 @@ func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrange.Request) st
 type seriesLimiter struct {
 	hashes map[uint64]struct{}
 	rw     sync.RWMutex
-	buf    []byte
+	buf    []byte // buf used for hashing to avoid allocations.
 
 	maxSeries int
 	next      queryrange.Handler
