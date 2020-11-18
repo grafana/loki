@@ -16,6 +16,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -460,7 +461,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params))
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits)
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     test.ts,
@@ -468,7 +469,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				direction: test.direction,
 				limit:     test.limit,
 			})
-			res, err := q.Exec(context.Background())
+			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1513,7 +1514,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params))
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits)
 
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
@@ -1524,7 +1525,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				direction: test.direction,
 				limit:     test.limit,
 			})
-			res, err := q.Exec(context.Background())
+			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1549,7 +1550,7 @@ func (statsQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (it
 
 func TestEngine_Stats(t *testing.T) {
 
-	eng := NewEngine(EngineOpts{}, &statsQuerier{})
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits)
 
 	q := eng.Query(LiteralParams{
 		qs:        `{foo="bar"}`,
@@ -1558,7 +1559,7 @@ func TestEngine_Stats(t *testing.T) {
 		direction: logproto.BACKWARD,
 		limit:     1000,
 	})
-	r, err := q.Exec(context.Background())
+	r, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 	require.NoError(t, err)
 	require.Equal(t, int64(1), r.Statistics.Store.DecompressedBytes)
 }
@@ -1621,16 +1622,50 @@ func TestStepEvaluator_Error(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tc := tc
-			eng := NewEngine(EngineOpts{}, tc.querier)
+			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits)
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,
 				start: time.Unix(0, 0),
 				end:   time.Unix(180, 0),
 				step:  1 * time.Second,
 			})
-			_, err := q.Exec(context.Background())
+			_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			require.Equal(t, tc.err, err)
 		})
+	}
+}
+
+func TestEngine_MaxSeries(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{maxSeries: 1})
+
+	for _, test := range []struct {
+		qs             string
+		direction      logproto.Direction
+		expectLimitErr bool
+	}{
+		{`topk(1,rate(({app=~"foo|bar"})[1m]))`, logproto.FORWARD, true},
+		{`{app="foo"}`, logproto.FORWARD, false},
+		{`{app="bar"} |= "foo" |~ ".+bar"`, logproto.BACKWARD, false},
+		{`rate({app="foo"} |~".+bar" [1m])`, logproto.BACKWARD, true},
+		{`rate({app="foo"}[30s])`, logproto.FORWARD, true},
+		{`count_over_time({app="foo|bar"} |~".+bar" [1m])`, logproto.BACKWARD, true},
+		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD, false},
+	} {
+		q := eng.Query(LiteralParams{
+			qs:        test.qs,
+			start:     time.Unix(0, 0),
+			end:       time.Unix(100000, 0),
+			step:      60 * time.Second,
+			direction: test.direction,
+			limit:     1000,
+		})
+		_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+		if test.expectLimitErr {
+			require.NotNil(t, err)
+			require.True(t, errors.Is(err, ErrLimit))
+			return
+		}
+		require.Nil(t, err)
 	}
 }
 
@@ -1653,7 +1688,7 @@ var result promql_parser.Value
 
 func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	b.ReportAllocs()
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize))
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize), NoLimits)
 	start := time.Unix(0, 0)
 	end := time.Unix(testsize, 0)
 	b.ResetTimer()
@@ -1692,7 +1727,7 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 				direction: test.direction,
 				limit:     1000,
 			})
-			res, err := q.Exec(context.Background())
+			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if err != nil {
 				b.Fatal(err)
 			}
