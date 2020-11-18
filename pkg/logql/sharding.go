@@ -31,16 +31,18 @@ which can then take advantage of our sharded execution model.
 type ShardedEngine struct {
 	timeout        time.Duration
 	downstreamable Downstreamable
+	limits         Limits
 	metrics        *ShardingMetrics
 }
 
 // NewShardedEngine constructs a *ShardedEngine
-func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics) *ShardedEngine {
+func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits) *ShardedEngine {
 	opts.applyDefault()
 	return &ShardedEngine{
 		timeout:        opts.Timeout,
 		downstreamable: downstreamable,
 		metrics:        metrics,
+		limits:         limits,
 	}
 
 }
@@ -54,6 +56,7 @@ func (ng *ShardedEngine) Query(p Params, mapped Expr) Query {
 		parse: func(_ context.Context, _ string) (Expr, error) {
 			return mapped, nil
 		},
+		limits: ng.limits,
 	}
 }
 

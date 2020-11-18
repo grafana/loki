@@ -72,7 +72,7 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, &querier)
+	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits)
 
 	return &querier, nil
 }
