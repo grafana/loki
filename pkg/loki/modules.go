@@ -211,6 +211,8 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	logproto.RegisterIngesterServer(t.server.GRPC, t.ingester)
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
+	// TODO(owen-d): should this use cortex style path (/ingester/shutdown), legacy style (/shutdown), or apir prefixed (/loki/api/v1/ingester/shutdown)?
+	t.server.HTTP.Methods("POST").Path("/ingester/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
 	return t.ingester, nil
 }
 

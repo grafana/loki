@@ -37,6 +37,7 @@ The HTTP API includes the following endpoints:
     - [Examples](#examples-8)
   - [`GET /ready`](#get-ready)
   - [`POST /flush`](#post-flush)
+  - [`POST /ingester/shutdown`](#post-shutdown)
   - [`GET /metrics`](#get-metrics)
   - [Series](#series)
     - [Examples](#examples-9)
@@ -107,6 +108,7 @@ While these endpoints are exposed by just the distributor:
 And these endpoints are exposed by just the ingester:
 
 - [`POST /flush`](#post-flush)
+- [`POST /ingester/shutdown`](#post-shutdown)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
@@ -843,6 +845,14 @@ In microservices mode, the `/ready` endpoint is exposed by all components.
 backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
+
+## `POST /ingester/shutdown`
+
+`/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
+This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,
+but instead flushed to our chunk backend.
+
+In microservices mode, the `/ingester/shutdown` endpoint is exposed by the ingester.
 
 ## `GET /metrics`
 

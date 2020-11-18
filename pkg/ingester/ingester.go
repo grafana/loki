@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -325,6 +326,18 @@ func (i *Ingester) loop() {
 			return
 		}
 	}
+}
+
+// ShutdownHandler triggers the following set of operations in order:
+//     * Change the state of ring to stop accepting writes.
+//     * Flush all the chunks.
+func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	originalState := i.lifecycler.FlushOnShutdown()
+	// We want to flush the chunks if transfer fails irrespective of original flag.
+	i.lifecycler.SetFlushOnShutdown(true)
+	_ = services.StopAndAwaitTerminated(context.Background(), i)
+	i.lifecycler.SetFlushOnShutdown(originalState)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Push implements logproto.Pusher.
