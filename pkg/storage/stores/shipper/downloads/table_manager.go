@@ -68,6 +68,7 @@ func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClien
 	err := tm.loadLocalTables()
 	if err != nil {
 		// call Stop to close open file references.
+		tm.Stop()
 		return nil, err
 	}
 
