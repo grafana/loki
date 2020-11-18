@@ -1648,7 +1648,7 @@ logs in Loki.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 
-# Limit the maximum of unique series returned by a metric query.
+# Limit the maximum of unique series that is returned by a metric query.
 # When the limit is reached an error is returned.
 # CLI flag: -querier.max-query-series
 [max_query_series: <int> | default = 500]
