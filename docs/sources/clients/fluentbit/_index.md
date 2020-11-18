@@ -48,7 +48,7 @@ For more information about this see our [AWS documentation](../aws/ecs)
 
 ### Local
 
-First you need to follow those [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md) to build the plugin dynamic library.
+First, you need to follow the [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md) in order to build the plugin dynamic library.
 
 The assuming you have Fluent Bit installed in your `$PATH` you can run the plugin using:
 
