@@ -232,7 +232,8 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
 		return false, errors.Wrap(err, "create checkpoint dir")
 	}
-	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, false)
+	// checkpoint, err ;= wal.NewSize()
+	checkpoint, err := wal.NewSize(nil, nil, checkpointDirTemp, walSegmentSize, false)
 	if err != nil {
 		return false, errors.Wrap(err, "open checkpoint")
 	}

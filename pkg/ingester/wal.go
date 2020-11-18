@@ -19,6 +19,8 @@ var (
 	recordPool = newRecordPool()
 )
 
+const walSegmentSize = wal.DefaultSegmentSize * 4
+
 type WALConfig struct {
 	Enabled            bool          `yaml:"enabled"`
 	Dir                string        `yaml:"dir"`
@@ -72,7 +74,7 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		return noopWAL{}, nil
 	}
 
-	tsdbWAL, err := wal.NewSize(util.Logger, registerer, cfg.Dir, wal.DefaultSegmentSize*4, false)
+	tsdbWAL, err := wal.NewSize(util.Logger, registerer, cfg.Dir, walSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}
