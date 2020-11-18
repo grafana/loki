@@ -64,8 +64,9 @@ type SyslogTarget struct {
 }
 
 type message struct {
-	labels  model.LabelSet
-	message string
+	labels    model.LabelSet
+	message   string
+	timestamp time.Time
 }
 
 // NewSyslogTarget configures a new SyslogTarget.
@@ -231,12 +232,18 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 	}
 
-	t.messages <- message{filtered, *rfc5424Msg.Message}
+	var timestamp time.Time
+	if t.config.UseIncomingTimestamp && rfc5424Msg.Timestamp != nil {
+		timestamp = *rfc5424Msg.Timestamp
+	} else {
+		timestamp = time.Now()
+	}
+	t.messages <- message{filtered, *rfc5424Msg.Message, timestamp}
 }
 
 func (t *SyslogTarget) messageSender() {
 	for msg := range t.messages {
-		if err := t.handler.Handle(msg.labels, time.Now(), msg.message); err != nil {
+		if err := t.handler.Handle(msg.labels, msg.timestamp, msg.message); err != nil {
 			level.Error(t.logger).Log("msg", "error handling line", "error", err)
 		}
 		syslogEntries.Inc()

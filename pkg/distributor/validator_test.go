@@ -6,10 +6,12 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -99,7 +101,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				return &validation.Limits{MaxLabelNamesPerSeries: 2}
 			},
 			"{foo=\"bar\",food=\"bars\",fed=\"bears\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg("{fed=\"bears\", foo=\"bar\", food=\"bars\"}", 3, 2)),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg("{foo=\"bar\",food=\"bars\",fed=\"bears\"}", 3, 2)),
 		},
 		{
 			"label name too long",
@@ -149,8 +151,16 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(tt.userID, logproto.Stream{Labels: tt.labels})
+			err = v.ValidateLabels(tt.userID, mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})
 			assert.Equal(t, tt.expected, err)
 		})
 	}
+}
+
+func mustParseLabels(s string) labels.Labels {
+	ls, err := logql.ParseLabels(s)
+	if err != nil {
+		panic(err)
+	}
+	return ls
 }

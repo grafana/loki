@@ -144,6 +144,10 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, err
 	}
 
+	if t.cfg.Target != All {
+		logproto.RegisterPusherServer(t.server.GRPC, t.distributor)
+	}
+
 	pushHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,
@@ -489,15 +493,17 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		// Ruler Legacy API Routes
 		t.server.HTTP.Path("/api/prom/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
 		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
 		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteNamespace)))
+		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
 		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 
 		// Ruler API Routes
 		t.server.HTTP.Path("/loki/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
 		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
 		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteNamespace)))
+		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
 		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 	}
 

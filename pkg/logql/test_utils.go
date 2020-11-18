@@ -10,7 +10,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql/parser"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -271,7 +271,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 }
 
 func mustParseLabels(s string) labels.Labels {
-	labels, err := parser.ParseMetric(s)
+	labels, err := promql_parser.ParseMetric(s)
 	if err != nil {
 		logger.Fatalf("Failed to parse %s", s)
 	}

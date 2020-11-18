@@ -1668,6 +1668,10 @@ logs in Loki.
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.reload-period (runtime_config.period in YAML).
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
+
+# Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.
+# CLI flag: -frontend.max-cache-freshness
+[max_cache_freshness_per_query: <duration> | default = 1m]
 ```
 
 ### grpc_client_config

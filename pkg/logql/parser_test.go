@@ -2000,3 +2000,33 @@ func Test_PipelineCombined(t *testing.T) {
 	)
 	require.Equal(t, string([]byte(`1.5s|POST|200`)), string(line))
 }
+
+var c []*labels.Matcher
+
+func Benchmark_ParseMatchers(b *testing.B) {
+	s := `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`
+	var err error
+	for n := 0; n < b.N; n++ {
+		c, err = ParseMatchers(s)
+		require.NoError(b, err)
+	}
+}
+
+var lbs labels.Labels
+
+func Benchmark_CompareParseLabels(b *testing.B) {
+	s := `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`
+	var err error
+	b.Run("logql", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			c, err = ParseMatchers(s)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("promql", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			lbs, err = ParseLabels(s)
+			require.NoError(b, err)
+		}
+	})
+}

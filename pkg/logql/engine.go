@@ -8,15 +8,14 @@ import (
 	"sort"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/user"
-
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
@@ -47,7 +46,7 @@ func (streams Streams) Less(i, j int) bool {
 }
 
 // Type implements `promql.Value`
-func (Streams) Type() parser.ValueType { return ValueTypeStreams }
+func (Streams) Type() promql_parser.ValueType { return ValueTypeStreams }
 
 // String implements `promql.Value`
 func (Streams) String() string {
@@ -56,7 +55,7 @@ func (Streams) String() string {
 
 // Result is the result of a query execution.
 type Result struct {
-	Data       parser.Value
+	Data       promql_parser.Value
 	Statistics stats.Result
 }
 
@@ -166,7 +165,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	}, err
 }
 
-func (q *query) Eval(ctx context.Context) (parser.Value, error) {
+func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, q.timeout)
 	defer cancel()
 
@@ -195,7 +194,7 @@ func (q *query) Eval(ctx context.Context) (parser.Value, error) {
 }
 
 // evalSample evaluate a sampleExpr
-func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, error) {
+func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.Value, error) {
 	if lit, ok := expr.(*literalExpr); ok {
 		return q.evalLiteral(ctx, lit)
 	}
@@ -275,7 +274,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (parser.Value, 
 	return result, stepEvaluator.Error()
 }
 
-func (q *query) evalLiteral(_ context.Context, expr *literalExpr) (parser.Value, error) {
+func (q *query) evalLiteral(_ context.Context, expr *literalExpr) (promql_parser.Value, error) {
 	s := promql.Scalar{
 		T: q.params.Start().UnixNano() / int64(time.Millisecond),
 		V: expr.value,

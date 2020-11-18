@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"math/rand"
 	"sync"
 	"testing"
@@ -45,4 +46,31 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 
 		routines.Wait()
 	}
+}
+
+type fakeTailServer struct{}
+
+func (f *fakeTailServer) Send(*logproto.TailResponse) error { return nil }
+func (f *fakeTailServer) Context() context.Context          { return context.Background() }
+
+func Test_TailerSendRace(t *testing.T) {
+	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 1; i <= 20; i++ {
+		wg.Add(1)
+		go func() {
+			_ = tail.send(logproto.Stream{
+				Labels: makeRandomLabels(),
+				Entries: []logproto.Entry{
+					{Timestamp: time.Unix(0, 1), Line: "1"},
+					{Timestamp: time.Unix(0, 2), Line: "2"},
+					{Timestamp: time.Unix(0, 3), Line: "3"},
+				},
+			})
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }
