@@ -205,26 +205,26 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - name: Lint Rules
-        uses: grafana/cortex-rules-action@v0.3.1
+        uses: grafana/cortex-rules-action@v0.4.0
         env:
           ACTION: 'lint'
         with:
           args: --backend=loki
       - name: Diff rules
-        uses: grafana/cortex-rules-action@v0.3.1
+        uses: grafana/cortex-rules-action@v0.4.0
         env:
           ACTION: 'diff'
         with:
           args: --backend=loki
       - name: Sync rules
         if: ${{ !contains(steps.diff-rules.outputs.detailed, 'no changes detected') }}
-        uses: grafana/cortex-rules-action@v0.3.1
+        uses: grafana/cortex-rules-action@v0.4.0
         env:
           ACTION: 'sync'
         with:
           args: --backend=loki
       - name: Print rules
-        uses: grafana/cortex-rules-action@v0.3.1
+        uses: grafana/cortex-rules-action@v0.4.0
         env:
           ACTION: 'print'
 ```
