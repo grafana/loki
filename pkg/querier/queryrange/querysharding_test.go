@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"testing"
@@ -146,6 +147,7 @@ func Test_astMapper(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		fakeLimits{maxSeries: math.MaxInt32},
 	)
 
 	resp, err := mware.Do(context.Background(), defaultReq().WithQuery(`{food="bar"}`))
@@ -175,6 +177,7 @@ func Test_ShardingByPass(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		fakeLimits{maxSeries: math.MaxInt32},
 	)
 
 	_, err := mware.Do(context.Background(), defaultReq().WithQuery(`1+1`))

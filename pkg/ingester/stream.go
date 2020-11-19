@@ -138,7 +138,15 @@ func (s *stream) Push(
 		_, lastChunkTimestamp = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 
-	storedEntries := []logproto.Entry{}
+	s.tailerMtx.RLock()
+	hasTailers := len(s.tailers) != 0
+	s.tailerMtx.RUnlock()
+
+	var storedEntries []logproto.Entry
+	if hasTailers {
+		storedEntries = make([]logproto.Entry, 0, len(entries))
+	}
+
 	failedEntriesWithError := []entryWithError{}
 
 	// Don't fail on the first append error - if samples are sent out of order,
@@ -181,9 +189,12 @@ func (s *stream) Push(
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
 		} else {
 			// send only stored entries to tailers
-			storedEntries = append(storedEntries, entries[i])
+			if hasTailers {
+				storedEntries = append(storedEntries, entries[i])
+			}
 			lastChunkTimestamp = entries[i].Timestamp
-			s.lastLine = line{ts: lastChunkTimestamp, content: entries[i].Line}
+			s.lastLine.ts = lastChunkTimestamp
+			s.lastLine.content = entries[i].Line
 		}
 		chunk.lastUpdated = time.Now()
 	}

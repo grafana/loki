@@ -239,6 +239,7 @@ func NewLogFilterTripperware(
 				minShardingLookback,
 				instrumentMetrics, // instrumentation is included in the sharding middleware
 				shardingMetrics,
+				limits,
 			),
 		)
 	}
@@ -388,6 +389,7 @@ func NewMetricTripperware(
 				minShardingLookback,
 				instrumentMetrics, // instrumentation is included in the sharding middleware
 				shardingMetrics,
+				limits,
 			),
 		)
 	}

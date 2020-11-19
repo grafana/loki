@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -59,8 +60,8 @@ func TestMappingEquivalence(t *testing.T) {
 		)
 
 		opts := EngineOpts{}
-		regular := NewEngine(opts, q)
-		sharded := NewShardedEngine(opts, MockDownstreamer{regular}, nilMetrics)
+		regular := NewEngine(opts, q, NoLimits)
+		sharded := NewShardedEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits)
 
 		t.Run(tc.query, func(t *testing.T) {
 			params := NewLiteralParams(
@@ -74,7 +75,7 @@ func TestMappingEquivalence(t *testing.T) {
 				nil,
 			)
 			qry := regular.Query(params)
-			ctx := context.Background()
+			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper, err := NewShardMapper(shards, nilMetrics)
 			require.Nil(t, err)

@@ -24,6 +24,7 @@ func NewQueryShardMiddleware(
 	minShardingLookback time.Duration,
 	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
+	limits logql.Limits,
 ) queryrange.Middleware {
 
 	noshards := !hasShards(confs)
@@ -38,7 +39,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return newASTMapperware(confs, next, logger, shardingMetrics)
+		return newASTMapperware(confs, next, logger, shardingMetrics, limits)
 	})
 
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
@@ -60,13 +61,14 @@ func newASTMapperware(
 	next queryrange.Handler,
 	logger log.Logger,
 	metrics *logql.ShardingMetrics,
+	limits logql.Limits,
 ) *astMapperware {
 
 	return &astMapperware{
 		confs:   confs,
 		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
 		next:    next,
-		ng:      logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics),
+		ng:      logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits),
 		metrics: metrics,
 	}
 }

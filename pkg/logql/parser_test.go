@@ -1975,7 +1975,7 @@ func TestIsParseError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsParseError(tt.errFn()); got != tt.want {
+			if got := errors.Is(tt.errFn(), ErrParse); got != tt.want {
 				t.Errorf("IsParseError() = %v, want %v", got, tt.want)
 			}
 		})

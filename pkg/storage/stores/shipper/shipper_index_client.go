@@ -59,6 +59,7 @@ type Config struct {
 	CacheLocation        string        `yaml:"cache_location"`
 	CacheTTL             time.Duration `yaml:"cache_ttl"`
 	ResyncInterval       time.Duration `yaml:"resync_interval"`
+	QueryReadyNumDays    int           `yaml:"query_ready_num_days"`
 	IngesterName         string        `yaml:"-"`
 	Mode                 int           `yaml:"-"`
 }
@@ -70,6 +71,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.CacheLocation, "boltdb.shipper.cache-location", "", "Cache location for restoring boltDB files for queries")
 	f.DurationVar(&cfg.CacheTTL, "boltdb.shipper.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
+	f.IntVar(&cfg.QueryReadyNumDays, "boltdb.shipper.query-ready-num-days", 0, "Number of days of index to be kept downloaded for queries. Works only with tables created with 24h period.")
 }
 
 type Shipper struct {
@@ -137,9 +139,10 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 
 	if s.cfg.Mode != ModeWriteOnly {
 		cfg := downloads.Config{
-			CacheDir:     s.cfg.CacheLocation,
-			SyncInterval: s.cfg.ResyncInterval,
-			CacheTTL:     s.cfg.CacheTTL,
+			CacheDir:          s.cfg.CacheLocation,
+			SyncInterval:      s.cfg.ResyncInterval,
+			CacheTTL:          s.cfg.CacheTTL,
+			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
 		if err != nil {

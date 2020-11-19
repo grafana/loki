@@ -180,9 +180,14 @@ func journalTargetWithReader(
 	}
 
 	go func() {
-		err := t.r.Follow(until, ioutil.Discard)
-		if err != nil && err != sdjournal.ErrExpired {
-			level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
+		for {
+			err := t.r.Follow(until, ioutil.Discard)
+			if err != nil {
+				if err == sdjournal.ErrExpired || err == io.EOF {
+					return
+				}
+				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
+			}
 		}
 	}()
 

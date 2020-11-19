@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 )
@@ -139,4 +140,95 @@ func TestStreamIterator(t *testing.T) {
 		})
 	}
 
+}
+
+func Benchmark_PushStream(b *testing.B) {
+	ls := labels.Labels{
+		labels.Label{Name: "namespace", Value: "loki-dev"},
+		labels.Label{Name: "cluster", Value: "dev-us-central1"},
+		labels.Label{Name: "job", Value: "loki-dev/ingester"},
+		labels.Label{Name: "container", Value: "ingester"},
+	}
+	s := newStream(&Config{}, model.Fingerprint(0), ls, func() chunkenc.Chunk {
+		return &noopChunk{}
+	})
+	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
+	require.NoError(b, err)
+
+	go t.loop()
+	defer t.close()
+
+	s.tailers[1] = t
+	ctx := context.Background()
+	e := entries(100, time.Now())
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		require.NoError(b, s.Push(ctx, e, 0, 0))
+	}
+}
+
+type noopChunk struct {
+}
+
+func (c *noopChunk) Bounds() (time.Time, time.Time) {
+	return time.Time{}, time.Time{}
+}
+
+func (c *noopChunk) SpaceFor(_ *logproto.Entry) bool {
+	return true
+}
+
+func (c *noopChunk) Append(entry *logproto.Entry) error {
+	return nil
+}
+
+func (c *noopChunk) Size() int {
+	return 0
+}
+
+// UncompressedSize implements Chunk.
+func (c *noopChunk) UncompressedSize() int {
+	return c.Size()
+}
+
+// CompressedSize implements Chunk.
+func (c *noopChunk) CompressedSize() int {
+	return 0
+}
+
+// Utilization implements Chunk
+func (c *noopChunk) Utilization() float64 {
+	return 0
+}
+
+func (c *noopChunk) Encoding() chunkenc.Encoding { return chunkenc.EncNone }
+
+func (c *noopChunk) Iterator(_ context.Context, from, through time.Time, direction logproto.Direction, _ log.StreamPipeline) (iter.EntryIterator, error) {
+	return nil, nil
+}
+
+func (c *noopChunk) SampleIterator(_ context.Context, from, through time.Time, _ log.StreamSampleExtractor) iter.SampleIterator {
+	return nil
+}
+
+func (c *noopChunk) Bytes() ([]byte, error) {
+	return nil, nil
+}
+
+func (c *noopChunk) BytesWith(_ []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *noopChunk) Blocks(_ time.Time, _ time.Time) []chunkenc.Block {
+	return nil
+}
+
+func (c *noopChunk) BlockCount() int {
+	return 0
+}
+
+func (c *noopChunk) Close() error {
+	return nil
 }
