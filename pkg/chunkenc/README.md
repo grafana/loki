@@ -13,14 +13,14 @@
   --------------------------------------------------
   |         #blocks (uvarint)                      |
   --------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) | uncompressedSize (uvarint) |
+  ------------------------------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) | uncompressedSize (uvarint) |
+  ------------------------------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) | uncompressedSize (uvarint) |
+  ------------------------------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) | uncompressedSize (uvarint) |
+  ------------------------------------------------------------------------------------------------
   |                      checksum(from #blocks)                     |
   -------------------------------------------------------------------
   | metasOffset - offset to the point with #blocks |
