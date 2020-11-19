@@ -138,15 +138,7 @@ func (s *stream) Push(
 		_, lastChunkTimestamp = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 
-	s.tailerMtx.RLock()
-	hasTailers := len(s.tailers) != 0
-	s.tailerMtx.RUnlock()
-
-	var storedEntries []logproto.Entry
-	if hasTailers {
-		storedEntries = make([]logproto.Entry, 0, len(entries))
-	}
-
+	storedEntries := make([]logproto.Entry, 0, len(entries))
 	failedEntriesWithError := []entryWithError{}
 
 	// Don't fail on the first append error - if samples are sent out of order,
@@ -188,10 +180,7 @@ func (s *stream) Push(
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
 		} else {
-			// send only stored entries to tailers
-			if hasTailers {
-				storedEntries = append(storedEntries, entries[i])
-			}
+			storedEntries = append(storedEntries, entries[i])
 			lastChunkTimestamp = entries[i].Timestamp
 			s.lastLine.ts = lastChunkTimestamp
 			s.lastLine.content = entries[i].Line
@@ -205,32 +194,38 @@ func (s *stream) Push(
 			record.AddEntries(uint64(s.fp), storedEntries...)
 		}
 
-		go func() {
-			stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
+		s.tailerMtx.RLock()
+		hasTailers := len(s.tailers) != 0
+		s.tailerMtx.RUnlock()
+		if hasTailers {
+			go func() {
+				stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
 
-			closedTailers := []uint32{}
+				closedTailers := []uint32{}
 
-			s.tailerMtx.RLock()
-			for _, tailer := range s.tailers {
-				if tailer.isClosed() {
-					closedTailers = append(closedTailers, tailer.getID())
-					continue
+				s.tailerMtx.RLock()
+				for _, tailer := range s.tailers {
+					if tailer.isClosed() {
+						closedTailers = append(closedTailers, tailer.getID())
+						continue
+					}
+					if err := tailer.send(stream); err != nil {
+						level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to send stream to tailer", "err", err)
+					}
 				}
-				if err := tailer.send(stream); err != nil {
-					level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to send stream to tailer", "err", err)
-				}
-			}
-			s.tailerMtx.RUnlock()
+				s.tailerMtx.RUnlock()
 
-			if len(closedTailers) != 0 {
-				s.tailerMtx.Lock()
-				defer s.tailerMtx.Unlock()
+				if len(closedTailers) != 0 {
+					s.tailerMtx.Lock()
+					defer s.tailerMtx.Unlock()
 
-				for _, closedTailerID := range closedTailers {
-					delete(s.tailers, closedTailerID)
+					for _, closedTailerID := range closedTailers {
+						delete(s.tailers, closedTailerID)
+					}
 				}
-			}
-		}()
+			}()
+		}
+
 	}
 
 	if len(failedEntriesWithError) > 0 {

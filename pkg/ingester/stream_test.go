@@ -149,9 +149,7 @@ func Benchmark_PushStream(b *testing.B) {
 		labels.Label{Name: "job", Value: "loki-dev/ingester"},
 		labels.Label{Name: "container", Value: "ingester"},
 	}
-	s := newStream(&Config{}, model.Fingerprint(0), ls, func() chunkenc.Chunk {
-		return &noopChunk{}
-	})
+	s := newStream(&Config{}, model.Fingerprint(0), ls)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 
@@ -165,7 +163,9 @@ func Benchmark_PushStream(b *testing.B) {
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
-		require.NoError(b, s.Push(ctx, e, 0, 0))
+		rec := recordPool.GetRecord()
+		require.NoError(b, s.Push(ctx, e, rec))
+		recordPool.PutRecord(rec)
 	}
 }
 
