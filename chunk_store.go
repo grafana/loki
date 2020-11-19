@@ -458,7 +458,8 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 }
 
 func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", formatMatcher(matcher))
+	formattedMatcher := formatMatcher(matcher)
+	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", formattedMatcher)
 	defer log.Span.Finish()
 
 	var err error
@@ -476,11 +477,11 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formatMatcher(matcher), "queries", len(queries))
+	level.Debug(log).Log("matcher", formattedMatcher, "queries", len(queries))
 
 	if filter != nil {
 		queries = filter(queries)
-		level.Debug(log).Log("matcher", formatMatcher(matcher), "filteredQueries", len(queries))
+		level.Debug(log).Log("matcher", formattedMatcher, "filteredQueries", len(queries))
 	}
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
@@ -491,13 +492,13 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formatMatcher(matcher), "entries", len(entries))
+	level.Debug(log).Log("matcher", formattedMatcher, "entries", len(entries))
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formatMatcher(matcher), "ids", len(ids))
+	level.Debug(log).Log("matcher", formattedMatcher, "ids", len(ids))
 
 	return ids, nil
 }
