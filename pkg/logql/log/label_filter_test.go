@@ -26,10 +26,10 @@ func TestBinary_Filter(t *testing.T) {
 			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "1s"}},
 		},
 		{
-			NewAndLabelFilter(NewNumericLabelFilter(LabelFilterEqual, "foo", 5), NewBytesLabelFilter(LabelFilterEqual, "bar", 42)),
-			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "42B"}},
+			NewAndLabelFilter(NewNumericLabelFilter(LabelFilterEqual, "foo", 5), NewBytesLabelFilter(LabelFilterEqual, "bar", 42000)),
+			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "42kB"}},
 			true,
-			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "42B"}},
+			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "42kB"}},
 		},
 		{
 			NewAndLabelFilter(
@@ -157,6 +157,40 @@ func TestBinary_Filter(t *testing.T) {
 			require.Equal(t, tt.want, got)
 			sort.Sort(tt.wantLbs)
 			require.Equal(t, tt.wantLbs, b.Labels())
+		})
+	}
+}
+
+func TestBytes_Filter(t *testing.T) {
+	tests := []struct {
+		expectedBytes uint64
+		label         string
+
+		want      bool
+		wantLabel string
+	}{
+		{42, "42B", true, "42B"},
+		{42 * 1000, "42kB", true, "42kB"},
+		{42 * 1000 * 1000, "42MB", true, "42MB"},
+		{42 * 1000 * 1000 * 1000, "42GB", true, "42GB"},
+		{42 * 1000 * 1000 * 1000 * 1000, "42TB", true, "42TB"},
+		{42 * 1000 * 1000 * 1000 * 1000 * 1000, "42PB", true, "42PB"},
+		{42 * 1024, "42KiB", true, "42KiB"},
+		{42 * 1024 * 1024, "42MiB", true, "42MiB"},
+		{42 * 1024 * 1024 * 1024, "42GiB", true, "42GiB"},
+		{42 * 1024 * 1024 * 1024 * 1024, "42TiB", true, "42TiB"},
+		{42 * 1024 * 1024 * 1024 * 1024 * 1024, "42PiB", true, "42PiB"},
+	}
+	for _, tt := range tests {
+		f := NewBytesLabelFilter(LabelFilterEqual, "bar", tt.expectedBytes)
+		lbs := labels.Labels{{Name: "bar", Value: tt.label}}
+		t.Run(f.String(), func(t *testing.T) {
+			b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+			b.Reset()
+			_, got := f.Process(nil, b)
+			require.Equal(t, tt.want, got)
+			wantLbs := labels.Labels{{Name: "bar", Value: tt.wantLabel}}
+			require.Equal(t, wantLbs, b.Labels())
 		})
 	}
 }
