@@ -674,10 +674,14 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extra
 			}
 			series[lhash] = s
 		}
+
+		// []byte here doesn't create allocation because Sum64 has go:noescape directive
+		// which means the pointer created cannot escape the heap.
+		h := xxhash.Sum64([]byte(e.s))
 		s.Samples = append(s.Samples, logproto.Sample{
 			Timestamp: e.t,
 			Value:     value,
-			Hash:      xxhash.Sum64([]byte(e.s)),
+			Hash:      h,
 		})
 	}
 
