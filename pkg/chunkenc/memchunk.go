@@ -152,6 +152,94 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 	return outBuf.Bytes(), nil
 }
 
+// CheckpointBytes is used for WAL checkpointing
+func (hb *headBlock) CheckpointBytes(version byte) ([]byte, error) {
+	// wB is eventually returned via buf.Bytes(), don't return it to the pool.
+	wB := BytesBufferPool.Get(1 << 10).([]byte)
+	encB := BytesBufferPool.Get(1 << 10).([]byte)
+
+	defer func() {
+		BytesBufferPool.Put(encB[:0])
+	}()
+
+	buf := bytes.NewBuffer(wB[:0])
+	eb := encbuf{b: encB}
+
+	eb.putByte(version)
+	_, err := buf.Write(eb.get())
+	if err != nil {
+		return nil, errors.Wrap(err, "write headBlock version")
+	}
+	eb.reset()
+
+	eb.putUvarint(len(hb.entries))
+	eb.putUvarint(hb.size)
+	eb.putVarint64(hb.mint)
+	eb.putVarint64(hb.maxt)
+
+	_, err = buf.Write(eb.get())
+	if err != nil {
+		return nil, errors.Wrap(err, "write headBlock metas")
+	}
+	eb.reset()
+
+	for _, entry := range hb.entries {
+		eb.putVarint64(entry.t)
+		eb.putUvarint(len(entry.s))
+		_, err = buf.Write(eb.get())
+		if err != nil {
+			return nil, errors.Wrap(err, "write headBlock entry ts")
+		}
+		eb.reset()
+
+		_, err := buf.WriteString(entry.s)
+		if err != nil {
+			return nil, errors.Wrap(err, "write headblock entry line")
+		}
+	}
+	return buf.Bytes(), nil
+}
+
+func (hb *headBlock) FromCheckpoint(b []byte) error {
+	if len(b) < 1 {
+		return nil
+	}
+
+	db := decbuf{b: b}
+
+	version := db.byte()
+	if db.err() != nil {
+		return errors.Wrap(db.err(), "veryifing headblock header")
+	}
+	if version != chunkFormatV3 {
+		return errors.New("incompatible headBlock version, only V3 is currently supported")
+	}
+
+	ln := db.uvarint()
+	hb.size = db.uvarint()
+	hb.mint = db.varint64()
+	hb.maxt = db.varint64()
+
+	if err := db.err(); err != nil {
+		return errors.Wrap(err, "verifying headblock metadata")
+	}
+
+	hb.entries = make([]entry, ln)
+	for i := 0; i < ln && db.err() == nil; i++ {
+		var entry entry
+		entry.t = db.varint64()
+		lineLn := db.uvarint()
+		entry.s = string(db.bytes(lineLn))
+		hb.entries[i] = entry
+	}
+
+	if err := db.err(); err != nil {
+		return errors.Wrap(err, "decoding entries")
+	}
+
+	return nil
+}
+
 type entry struct {
 	t int64
 	s string
@@ -256,13 +344,12 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 }
 
 // BytesWith uses a provided []byte for buffer instantiation
+// NOTE: This does not cut the head block nor include any headblock data.
+// For this to be the case you must call Close() first.
+// This decision notably enables WAL checkpointing, which would otherwise
+// result in different content addressable chunks in storage based on the timing of when
+// they were checkpointed (which would cause new blocks to be cut early).
 func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
-	if c.head != nil {
-		// When generating the bytes, we need to flush the data held in-buffer.
-		if err := c.cut(); err != nil {
-			return nil, err
-		}
-	}
 	crc32Hash := newCRC32()
 
 	buf := bytes.NewBuffer(b[:0])
@@ -336,6 +423,35 @@ func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
 // Bytes implements Chunk.
 func (c *MemChunk) Bytes() ([]byte, error) {
 	return c.BytesWith(nil)
+}
+
+// SerializeForCheckpoint returns []bytes representing the chunk & head. This is to ensure eventually
+// flushed chunks don't have different substructures depending on when they were checkpointed.
+// In turn this allows us to maintain a more effective dedupe ratio in storage.
+func (c *MemChunk) SerializeForCheckpoint(b []byte) (chk, head []byte, err error) {
+	chk, err = c.BytesWith(b)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if c.head.isEmpty() {
+		return chk, nil, nil
+	}
+
+	head, err = c.head.CheckpointBytes(c.format)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return chk, head, nil
+}
+
+func MemchunkFromCheckpoint(chk, head []byte, blockSize int, targetSize int) (*MemChunk, error) {
+	mc, err := NewByteChunk(chk, blockSize, targetSize)
+	if err != nil {
+		return nil, err
+	}
+	return mc, mc.head.FromCheckpoint(head)
 }
 
 // Encoding implements Chunk.

@@ -72,7 +72,7 @@ type stream struct {
 }
 
 type chunkDesc struct {
-	chunk   chunkenc.Chunk
+	chunk   *chunkenc.MemChunk
 	closed  bool
 	synced  bool
 	flushed time.Time
@@ -124,7 +124,7 @@ func (s *stream) setChunks(chunks []Chunk) (entriesAdded int, err error) {
 	return entriesAdded, nil
 }
 
-func (s *stream) NewChunk() chunkenc.Chunk {
+func (s *stream) NewChunk() *chunkenc.MemChunk {
 	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 

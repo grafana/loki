@@ -320,6 +320,10 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 
 	wireChunks := make([]chunk.Chunk, 0, len(cs))
 	for _, c := range cs {
+		// Ensure that new blocks are cut before flushing as data in the head block is not included otherwise.
+		if err = c.chunk.Close(); err != nil {
+			return err
+		}
 		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
 		c := chunk.NewChunk(
 			userID, fp, metric,

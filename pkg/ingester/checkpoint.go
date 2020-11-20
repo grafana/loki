@@ -44,12 +44,13 @@ func toWireChunks(descs []chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
 			slice = make([]byte, 0, d.chunk.CompressedSize())
 		}
 
-		out, err := d.chunk.BytesWith(slice)
+		chk, head, err := d.chunk.SerializeForCheckpoint(slice)
 		if err != nil {
 			return nil, err
 		}
 
-		wireChunk.Data = out
+		wireChunk.Data = chk
+		wireChunk.Head = head
 		wireChunks[i] = wireChunk
 	}
 	return wireChunks, nil
@@ -65,7 +66,7 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 			lastUpdated: c.LastUpdated,
 		}
 
-		mc, err := chunkenc.NewByteChunk(c.Data, conf.BlockSize, conf.TargetChunkSize)
+		mc, err := chunkenc.MemchunkFromCheckpoint(c.Data, c.Head, conf.BlockSize, conf.TargetChunkSize)
 		if err != nil {
 			return nil, err
 		}

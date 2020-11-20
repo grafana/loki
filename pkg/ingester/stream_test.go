@@ -100,10 +100,9 @@ func TestStreamIterator(t *testing.T) {
 
 	for _, chk := range []struct {
 		name string
-		new  func() chunkenc.Chunk
+		new  func() *chunkenc.MemChunk
 	}{
-		{"dumbChunk", chunkenc.NewDumbChunk},
-		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0) }},
+		{"gzipChunk", func() *chunkenc.MemChunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0) }},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			var s stream

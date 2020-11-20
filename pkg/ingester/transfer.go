@@ -239,6 +239,12 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 			// typically streams won't have many chunks in memory so sending one at a time
 			// shouldn't add too much overhead.
 			for _, c := range istream.chunks {
+				// Close the chunk first, writing any data in the headblock to a new block.
+				err := c.chunk.Close()
+				if err != nil {
+					return err
+				}
+
 				bb, err := c.chunk.Bytes()
 				if err != nil {
 					return err
