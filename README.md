@@ -65,6 +65,7 @@ Commonly used sections:
 
 If you have any questions or feedback regarding Loki:
 
+- Search existing thread in the Grafana Labs community forum for Loki: [https://community.grafana.com](https://community.grafana.com/c/grafana-loki/)
 - Ask a question on the Loki Slack channel. To invite yourself to the Grafana Slack, visit [https://slack.grafana.com/](https://slack.grafana.com/) and join the #loki channel.
 - [File an issue](https://github.com/grafana/loki/issues/new) for bugs, issues and feature suggestions.
 - Send an email to [lokiproject@googlegroups.com](mailto:lokiproject@googlegroups.com), or use the [web interface](https://groups.google.com/forum/#!forum/lokiproject).
