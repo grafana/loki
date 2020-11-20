@@ -69,10 +69,10 @@ func TestConcurrentPushes(t *testing.T) {
 	wg := sync.WaitGroup{}
 	for i := 0; i < concurrent; i++ {
 		l := makeRandomLabels()
-		for uniqueLabels[l] {
+		for uniqueLabels[l.String()] {
 			l = makeRandomLabels()
 		}
-		uniqueLabels[l] = true
+		uniqueLabels[l.String()] = true
 
 		wg.Add(1)
 		go func(labels string) {
@@ -91,7 +91,7 @@ func TestConcurrentPushes(t *testing.T) {
 
 				tt = tt.Add(entriesPerIteration * time.Nanosecond)
 			}
-		}(l)
+		}(l.String())
 	}
 
 	time.Sleep(100 * time.Millisecond) // ready
@@ -123,7 +123,7 @@ func TestSyncPeriod(t *testing.T) {
 		result = append(result, logproto.Entry{Timestamp: tt, Line: fmt.Sprintf("hello %d", i)})
 		tt = tt.Add(time.Duration(1 + rand.Int63n(randomStep.Nanoseconds())))
 	}
-	pr := &logproto.PushRequest{Streams: []logproto.Stream{{Labels: lbls, Entries: result}}}
+	pr := &logproto.PushRequest{Streams: []logproto.Stream{{Labels: lbls.String(), Entries: result}}}
 	err = inst.Push(context.Background(), pr)
 	require.NoError(t, err)
 
@@ -250,12 +250,12 @@ func entries(n int, t time.Time) []logproto.Entry {
 
 var labelNames = []string{"app", "instance", "namespace", "user", "cluster"}
 
-func makeRandomLabels() string {
+func makeRandomLabels() labels.Labels {
 	ls := labels.NewBuilder(nil)
 	for _, ln := range labelNames {
 		ls.Set(ln, fmt.Sprintf("%d", rand.Int31()))
 	}
-	return ls.Labels().String()
+	return ls.Labels()
 }
 
 func Benchmark_PushInstance(b *testing.B) {
