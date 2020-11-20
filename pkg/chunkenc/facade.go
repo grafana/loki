@@ -44,12 +44,10 @@ func (f Facade) Marshal(w io.Writer) error {
 	if f.c == nil {
 		return nil
 	}
-	buf, err := f.c.Bytes()
-	if err != nil {
+	if _, err := f.c.WriteTo(w); err != nil {
 		return err
 	}
-	_, err = w.Write(buf)
-	return err
+	return nil
 }
 
 // UnmarshalFromBuf implements encoding.Chunk.

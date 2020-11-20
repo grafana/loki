@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -105,6 +106,7 @@ type Chunk interface {
 	Size() int
 	Bytes() ([]byte, error)
 	BytesWith([]byte) ([]byte, error) // uses provided []byte for buffer instantiation
+	io.WriterTo
 	BlockCount() int
 	Utilization() float64
 	UncompressedSize() int
