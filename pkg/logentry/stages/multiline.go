@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
-	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 )
 
@@ -18,7 +18,7 @@ const (
 
 const MultilineDropReason = "multiline collapse"
 
-// MultilineConfig contains the configuration for a multilineStage 
+// MultilineConfig contains the configuration for a multilineStage
 type MultilineConfig struct {
 	Expression *string `mapstructure:"firstline"`
 	regex      *regexp.Regexp
@@ -33,7 +33,7 @@ func validateMultilineConfig(cfg *MultilineConfig) error {
 	if err != nil {
 		return errors.Errorf(ErrMultilineStageInvalidRegex, err)
 	}
-		cfg.regex = expr
+	cfg.regex = expr
 
 	return nil
 }

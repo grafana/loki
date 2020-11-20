@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
 )
+
 func Test_multilineStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
@@ -17,10 +18,12 @@ func Test_multilineStage_Process(t *testing.T) {
 	util.InitLogger(cfg)
 	Debug = true
 
-	mcfg := &MultilineConfig{Expression: ptrFromString("^START"),}
-	validateMultilineConfig(mcfg)
+	mcfg := &MultilineConfig{Expression: ptrFromString("^START")}
+	err := validateMultilineConfig(mcfg)
+	require.NoError(t, err)
+
 	stage := &multilineStage{
-		cfg: mcfg,
+		cfg:    mcfg,
 		logger: util.Logger,
 		buffer: new(bytes.Buffer),
 	}
