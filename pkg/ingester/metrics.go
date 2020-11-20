@@ -12,10 +12,15 @@ type ingesterMetrics struct {
 	checkpointCreationTotal    prometheus.Counter
 	checkpointDuration         prometheus.Summary
 	checkpointLoggedBytesTotal prometheus.Counter
-	walReplayDuration          prometheus.Gauge
-	walCorruptionsTotal        *prometheus.CounterVec
-	walLoggedBytesTotal        prometheus.Counter
-	walRecordsLogged           prometheus.Counter
+
+	walReplayDuration   prometheus.Gauge
+	walCorruptionsTotal *prometheus.CounterVec
+	walLoggedBytesTotal prometheus.Counter
+	walRecordsLogged    prometheus.Counter
+
+	recoveredStreamsTotal prometheus.Counter
+	recoveredChunksTotal  prometheus.Counter
+	recoveredEntriesTotal prometheus.Counter
 }
 
 const (
@@ -65,6 +70,18 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 		walLoggedBytesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_logged_bytes_total",
 			Help: "Total number of bytes written to disk for WAL records.",
+		}),
+		recoveredStreamsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_recovered_streams_total",
+			Help: "Total number of streams recovered from the WAL.",
+		}),
+		recoveredChunksTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_recovered_chunks_total",
+			Help: "Total number of chunks recovered from the WAL checkpoints.",
+		}),
+		recoveredEntriesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_recovered_entries_total",
+			Help: "Total number of entries recovered from the WAL.",
 		}),
 	}
 }

@@ -75,8 +75,9 @@ type instance struct {
 
 	limiter *Limiter
 
-	// WAL
 	wal WAL
+
+	metrics *ingesterMetrics
 }
 
 func newInstance(
@@ -84,6 +85,7 @@ func newInstance(
 	instanceID string,
 	limiter *Limiter,
 	wal WAL,
+	metrics *ingesterMetrics,
 ) *instance {
 	i := &instance{
 		cfg:         cfg,
@@ -99,7 +101,8 @@ func newInstance(
 		tailers: map[uint32]*tailer{},
 		limiter: limiter,
 
-		wal: wal,
+		wal:     wal,
+		metrics: metrics,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -117,7 +120,7 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 	if !ok {
 
 		sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(ls), fp)
-		stream = newStream(i.cfg, fp, sortedLabels)
+		stream = newStream(i.cfg, fp, sortedLabels, i.metrics)
 		i.streamsByFP[fp] = stream
 		i.streams[stream.labelsString] = stream
 		i.streamsCreatedTotal.Inc()
@@ -202,7 +205,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(labels), fp)
-	stream = newStream(i.cfg, fp, sortedLabels)
+	stream = newStream(i.cfg, fp, sortedLabels, i.metrics)
 	i.streams[pushReqStream.Labels] = stream
 	i.streamsByFP[fp] = stream
 
@@ -212,6 +215,9 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 			Ref:    uint64(fp),
 			Labels: sortedLabels,
 		})
+	} else {
+		// If the record is nil, this is a WAL recovery.
+		i.metrics.recoveredStreamsTotal.Inc()
 	}
 
 	memoryStreams.WithLabelValues(i.instanceID).Inc()

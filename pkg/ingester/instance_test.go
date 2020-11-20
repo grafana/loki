@@ -28,12 +28,14 @@ func defaultConfig() *Config {
 	return &cfg
 }
 
+var NilMetrics = newIngesterMetrics(nil)
+
 func TestLabelsCollisions(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(defaultConfig(), "test", limiter, noopWAL{})
+	i := newInstance(defaultConfig(), "test", limiter, noopWAL{}, nil)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -60,7 +62,7 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{})
+	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{}, NilMetrics)
 
 	const (
 		concurrent          = 10
@@ -118,7 +120,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{})
+	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{}, NilMetrics)
 	lbls := makeRandomLabels()
 
 	tt := time.Now()
@@ -158,7 +160,7 @@ func Test_SeriesQuery(t *testing.T) {
 	cfg.SyncPeriod = 1 * time.Minute
 	cfg.SyncMinUtilization = 0.20
 
-	instance := newInstance(cfg, "test", limiter, noopWAL{})
+	instance := newInstance(cfg, "test", limiter, noopWAL{}, NilMetrics)
 
 	currentTime := time.Now()
 
@@ -170,7 +172,7 @@ func Test_SeriesQuery(t *testing.T) {
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(testStream, false, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := newStream(cfg, 0, nil).NewChunk()
+		chunk := newStream(cfg, 0, nil, NilMetrics).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -269,7 +271,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(&Config{}, "test", limiter, noopWAL{})
+	i := newInstance(&Config{}, "test", limiter, noopWAL{}, NilMetrics)
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {

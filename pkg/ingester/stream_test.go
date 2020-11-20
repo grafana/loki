@@ -42,6 +42,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				labels.Labels{
 					{Name: "foo", Value: "bar"},
 				},
+				NilMetrics,
 			)
 
 			err := s.Push(context.Background(), []logproto.Entry{
@@ -79,6 +80,7 @@ func TestPushDeduplication(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		NilMetrics,
 	)
 
 	err := s.Push(context.Background(), []logproto.Entry{
@@ -149,7 +151,7 @@ func Benchmark_PushStream(b *testing.B) {
 		labels.Label{Name: "job", Value: "loki-dev/ingester"},
 		labels.Label{Name: "container", Value: "ingester"},
 	}
-	s := newStream(&Config{}, model.Fingerprint(0), ls)
+	s := newStream(&Config{}, model.Fingerprint(0), ls, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 

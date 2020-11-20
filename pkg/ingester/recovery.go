@@ -119,9 +119,12 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		return err
 	}
 
-	if err := stream.setChunks(series.Chunks); err != nil {
+	added, err := stream.setChunks(series.Chunks)
+	if err != nil {
 		return err
 	}
+	r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
+	r.ing.metrics.recoveredEntriesTotal.Add(float64(added))
 
 	// now store the stream in the recovery map under the fingerprint originally recorded
 	// as it's possible the newly mapped fingerprint is different. This is because the WAL records

@@ -65,6 +65,7 @@ type stream struct {
 	labels       labels.Labels
 	labelsString string
 	lastLine     line
+	metrics      *ingesterMetrics
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -84,13 +85,14 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels) *stream {
+func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, metrics *ingesterMetrics) *stream {
 	return &stream{
 		cfg:          cfg,
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
 		tailers:      map[uint32]*tailer{},
+		metrics:      metrics,
 	}
 }
 
@@ -110,13 +112,16 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 }
 
 // setChunks is used during checkpoint recovery
-func (s *stream) setChunks(chunks []Chunk) error {
+func (s *stream) setChunks(chunks []Chunk) (entriesAdded int, err error) {
 	chks, err := fromWireChunks(s.cfg, chunks)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	s.chunks = chks
-	return nil
+	for _, c := range s.chunks {
+		entriesAdded += c.chunk.Size()
+	}
+	return entriesAdded, nil
 }
 
 func (s *stream) NewChunk() chunkenc.Chunk {
@@ -192,6 +197,9 @@ func (s *stream) Push(
 		// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 		if record != nil {
 			record.AddEntries(uint64(s.fp), storedEntries...)
+		} else {
+			// If record is nil, this is a WAL recovery.
+			s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
 		}
 
 		s.tailerMtx.RLock()
