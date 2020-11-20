@@ -310,6 +310,5 @@ func (s *stream) addTailer(t *tailer) {
 }
 
 func (s *stream) matchesTailer(t *tailer) bool {
-	metric := util.LabelsToMetric(s.labels)
-	return t.isWatchingLabels(metric)
+	return t.isWatchingLabels(s.labels)
 }

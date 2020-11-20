@@ -8,7 +8,6 @@ import (
 
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"golang.org/x/net/context"
 
@@ -183,9 +182,9 @@ func (t *tailer) processStream(stream logproto.Stream) ([]logproto.Stream, error
 }
 
 // Returns true if tailer is interested in the passed labelset
-func (t *tailer) isWatchingLabels(metric model.Metric) bool {
+func (t *tailer) isWatchingLabels(lbs labels.Labels) bool {
 	for _, matcher := range t.matchers {
-		if !matcher.Matches(string(metric[model.LabelName(matcher.Name)])) {
+		if !matcher.Matches(lbs.Get(matcher.Name)) {
 			return false
 		}
 	}
