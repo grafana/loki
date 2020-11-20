@@ -96,6 +96,19 @@ config:
   compactor:
     working_directory: /data/loki/boltdb-shipper-compactor
     shared_store: filesystem
+# Needed for Alerting: https://grafana.com/docs/loki/latest/alerting/
+# This is just a simple example, for more details: https://grafana.com/docs/loki/latest/configuration/#ruler_config
+#  ruler:
+#    storage:
+#      type: local
+#      local:
+#        directory: /rules
+#    rule_path: /tmp/scratch
+#    alertmanager_url: http://alertmanager.svc.namespace:9093
+#    ring:
+#      kvstore:
+#        store: inmemory
+#    enable_api: true
 
 ## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
 extraArgs: {}
@@ -249,3 +262,12 @@ extraPorts: []
 
 # Extra env variables to pass to the loki container
 env: []
+
+# Specify Loki Alerting rules based on this documentation: https://grafana.com/docs/loki/latest/alerting/
+# When specified, you also need to add a ruler config section above. An example is shown in the alerting docs.
+alerting_groups: []
+#  - name: example
+#    rules:
+#    - alert: HighThroughputLogStreams
+#      expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
+#      for: 2m
