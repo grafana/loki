@@ -136,7 +136,6 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 			t.dropStream(*s)
 		}
 	}
-	return
 }
 
 func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*logproto.Stream {
