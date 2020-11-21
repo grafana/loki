@@ -154,7 +154,7 @@ All `options` of the `logConfiguration` will be automatically translated into [f
 
 ```conf
 [OUTPUT]
-    Name loki
+    Name grafana-loki
     Match awsfirelens*
     Url https://<userid>:<grafancloud apikey>@logs-prod-us-central1.grafana.net/loki/api/v1/push
     Labels {job="firelens"}
