@@ -161,10 +161,10 @@ func Test_EncodingChunks(t *testing.T) {
 func Test_EncodingCheckpoint(t *testing.T) {
 	conf := dummyConf()
 	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
-	c.Append(&logproto.Entry{
+	require.Nil(t, c.Append(&logproto.Entry{
 		Timestamp: time.Unix(1, 0),
 		Line:      "hi there",
-	})
+	}))
 	data, err := c.Bytes()
 	require.Nil(t, err)
 	from, to := c.Bounds()

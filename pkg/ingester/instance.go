@@ -163,7 +163,9 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	}
 
 	if !record.IsEmpty() {
-		i.wal.Log(record)
+		if err := i.wal.Log(record); err != nil {
+			return err
+		}
 	}
 
 	return appendErr

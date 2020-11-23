@@ -77,6 +77,7 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 	return descs, nil
 }
 
+// nolint:interfacer
 func decodeCheckpointRecord(rec []byte, s *Series) error {
 	//TODO(owen-d): reduce allocs
 	// The proto unmarshaling code will retain references to the underlying []byte it's passed
@@ -148,7 +149,7 @@ func (i *ingesterSeriesIter) Iter() <-chan *SeriesWithErr {
 			// Need to buffer streams internally so the read lock isn't held trying to write to a blocked channel.
 			streams := make([]*stream, 0, len(inst.streams))
 			inst.streamsMtx.RUnlock()
-			inst.forAllStreams(func(stream *stream) error {
+			_ = inst.forAllStreams(func(stream *stream) error {
 				streams = append(streams, stream)
 				return nil
 			})

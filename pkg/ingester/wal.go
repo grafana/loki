@@ -177,7 +177,7 @@ func (p *resettingPool) GetEntries() []logproto.Entry {
 }
 
 func (p *resettingPool) PutEntries(es []logproto.Entry) {
-	p.ePool.Put(es[:0])
+	p.ePool.Put(es[:0]) // nolint:staticcheck
 }
 
 func (p *resettingPool) GetBytes() []byte {
@@ -185,7 +185,7 @@ func (p *resettingPool) GetBytes() []byte {
 }
 
 func (p *resettingPool) PutBytes(b []byte) {
-	p.bPool.Put(b[:0])
+	p.bPool.Put(b[:0]) // nolint:staticcheck
 }
 
 func newRecordPool() *resettingPool {
