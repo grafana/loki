@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"testing"
@@ -221,6 +222,8 @@ func (c *noopChunk) Bytes() ([]byte, error) {
 func (c *noopChunk) BytesWith(_ []byte) ([]byte, error) {
 	return nil, nil
 }
+
+func (c *noopChunk) WriteTo(w io.Writer) (int64, error) { return 0, nil }
 
 func (c *noopChunk) Blocks(_ time.Time, _ time.Time) []chunkenc.Block {
 	return nil

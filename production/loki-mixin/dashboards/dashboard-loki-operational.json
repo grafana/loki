@@ -1534,17 +1534,17 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\", cluster=\"$cluster\"})) * 1e3",
+          "expr": "histogram_quantile(0.99, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
           "legendFormat": ".99-{{route}}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.9, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\", cluster=\"$cluster\"})) * 1e3",
+          "expr": "histogram_quantile(0.9, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
           "legendFormat": ".9-{{route}}",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.5, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\", cluster=\"$cluster\"})) * 1e3",
+          "expr": "histogram_quantile(0.5, sum by (le,route) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
           "legendFormat": ".5-{{route}}",
           "refId": "C"
         }
@@ -1639,7 +1639,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code!~\"5[0-9]{2}\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[5m])) by (route)",
+          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code!~\"5[0-9]{2}\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[5m])) by (route)",
           "interval": "",
           "legendFormat": "{{route}}",
           "refId": "A"

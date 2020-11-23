@@ -344,16 +344,31 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 }
 
 // BytesWith uses a provided []byte for buffer instantiation
-// NOTE: This does not cut the head block nor include any headblock data.
+// NOTE: This does not cut the head block nor include any head block data.
+func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
+	buf := bytes.NewBuffer(b[:0])
+	if _, err := c.WriteTo(buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// Bytes implements Chunk.
+// NOTE: Does not cut head block or include any head block data.
+func (c *MemChunk) Bytes() ([]byte, error) {
+	return c.BytesWith(nil)
+}
+
+// WriteTo Implements io.WriterTo
+// NOTE: Does not cut head block or include any head block data.
 // For this to be the case you must call Close() first.
 // This decision notably enables WAL checkpointing, which would otherwise
 // result in different content addressable chunks in storage based on the timing of when
 // they were checkpointed (which would cause new blocks to be cut early).
-func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
+func (c *MemChunk) WriteTo(w io.Writer) (int64, error) {
 	crc32Hash := newCRC32()
 
-	buf := bytes.NewBuffer(b[:0])
-	offset := 0
+	offset := int64(0)
 
 	eb := encbuf{b: make([]byte, 0, 1<<10)}
 
@@ -365,25 +380,25 @@ func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
 		eb.putByte(byte(c.encoding))
 	}
 
-	n, err := buf.Write(eb.get())
+	n, err := w.Write(eb.get())
 	if err != nil {
-		return buf.Bytes(), errors.Wrap(err, "write blockMeta #entries")
+		return offset, errors.Wrap(err, "write blockMeta #entries")
 	}
-	offset += n
+	offset += int64(n)
 
 	// Write Blocks.
 	for i, b := range c.blocks {
-		c.blocks[i].offset = offset
+		c.blocks[i].offset = int(offset)
 
 		eb.reset()
 		eb.putBytes(b.b)
 		eb.putHash(crc32Hash)
 
-		n, err := buf.Write(eb.get())
+		n, err := w.Write(eb.get())
 		if err != nil {
-			return buf.Bytes(), errors.Wrap(err, "write block")
+			return offset, errors.Wrap(err, "write block")
 		}
-		offset += n
+		offset += int64(n)
 	}
 
 	metasOffset := offset
@@ -404,25 +419,22 @@ func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
 	}
 	eb.putHash(crc32Hash)
 
-	_, err = buf.Write(eb.get())
+	n, err = w.Write(eb.get())
 	if err != nil {
-		return buf.Bytes(), errors.Wrap(err, "write block metas")
+		return offset, errors.Wrap(err, "write block metas")
 	}
+	offset += int64(n)
 
 	// Write the metasOffset.
 	eb.reset()
-	eb.putBE64int(metasOffset)
-	_, err = buf.Write(eb.get())
+	eb.putBE64int(int(metasOffset))
+	n, err = w.Write(eb.get())
 	if err != nil {
-		return buf.Bytes(), errors.Wrap(err, "write metasOffset")
+		return offset, errors.Wrap(err, "write metasOffset")
 	}
+	offset += int64(n)
 
-	return buf.Bytes(), nil
-}
-
-// Bytes implements Chunk.
-func (c *MemChunk) Bytes() ([]byte, error) {
-	return c.BytesWith(nil)
+	return offset, nil
 }
 
 // SerializeForCheckpoint returns []bytes representing the chunk & head. This is to ensure eventually

@@ -74,7 +74,7 @@ you should always use the "query" command when you are running log queries.
 For more information about log queries and metric queries, refer to the
 LogQL documentation:
 
-https://github.com/grafana/loki/blob/master/docs/logql.md`)
+https://grafana.com/docs/loki/latest/logql/`)
 	instantQuery = newQuery(true, instantQueryCmd)
 
 	labelsCmd   = app.Command("labels", "Find values for a given label.")
