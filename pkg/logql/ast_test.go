@@ -3,10 +3,11 @@ package logql
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func Test_logSelectorExpr_String(t *testing.T) {
