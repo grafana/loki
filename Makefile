@@ -339,7 +339,6 @@ helm: PACKAGE_ARGS ?=
 helm:
 	-rm -f production/helm/*/requirements.lock
 	@set -e; \
-	helm init -c; \
 	helm repo add elastic https://helm.elastic.co ; \
 	helm repo add grafana https://grafana.github.io/helm-charts ; \
 	helm repo add prometheus https://prometheus-community.github.io/helm-charts ; \
@@ -351,8 +350,6 @@ helm:
 	rm -f production/helm/*/requirements.lock
 
 helm-install:
-	kubectl apply -f tools/helm.yaml
-	helm init --wait --service-account helm --upgrade
 	HELM_ARGS="$(HELM_ARGS)" $(MAKE) helm-upgrade
 
 helm-install-fluent-bit:
