@@ -209,7 +209,7 @@ func (hb *headBlock) FromCheckpoint(b []byte) error {
 
 	version := db.byte()
 	if db.err() != nil {
-		return errors.Wrap(db.err(), "veryifing headblock header")
+		return errors.Wrap(db.err(), "verifying headblock header")
 	}
 	if version != chunkFormatV3 {
 		return errors.New("incompatible headBlock version, only V3 is currently supported")
