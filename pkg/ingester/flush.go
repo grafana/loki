@@ -151,12 +151,16 @@ func (i *Ingester) sweepUsers(immediate bool) {
 }
 
 func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
+	instance.streamsMtx.Lock()
+	defer instance.streamsMtx.Unlock()
+
 	for _, stream := range instance.streams {
 		i.sweepStream(instance, stream, immediate)
 		i.removeFlushedChunks(instance, stream)
 	}
 }
 
+// must hold streamsMtx
 func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
 	stream.chunkMtx.RLock()
 	defer stream.chunkMtx.RUnlock()
@@ -221,7 +225,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel()
-	err := i.flushChunks(ctx, fp, labels, chunks, &instance.streamsMtx, chunkMtx)
+	err := i.flushChunks(ctx, fp, labels, chunks, chunkMtx)
 	if err != nil {
 		return err
 	}
@@ -281,6 +285,7 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 	return false, ""
 }
 
+// must hold streamsMtx
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	now := time.Now()
 
@@ -298,17 +303,15 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
 
 	if len(stream.chunks) == 0 {
-		instance.streamsMtx.Lock()
 		delete(instance.streamsByFP, stream.fp)
 		delete(instance.streams, stream.labelsString)
-		instance.streamsMtx.Unlock()
 		instance.index.Delete(stream.labels, stream.fp)
 		instance.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(instance.instanceID).Dec()
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, streamsMtx sync.Locker, chunkMtx sync.Locker) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, chunkMtx sync.Locker) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
@@ -323,6 +326,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	for _, c := range cs {
 		// Ensure that new blocks are cut before flushing as data in the head block is not included otherwise.
 		if err = c.chunk.Close(); err != nil {
+			chunkMtx.Unlock()
 			return err
 		}
 		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
@@ -334,10 +338,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		)
 
 		start := time.Now()
-		streamsMtx.Lock()
 		err := c.Encode()
-		streamsMtx.Unlock()
 		if err != nil {
+			chunkMtx.Unlock()
 			return err
 		}
 		chunkEncodeTime.Observe(time.Since(start).Seconds())
