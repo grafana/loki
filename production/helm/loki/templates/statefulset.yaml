@@ -67,6 +67,12 @@ spec:
             - name: storage
               mountPath: "/data"
               subPath: {{ .Values.persistence.subPath }}
+            {{- if gt (len .Values.alerting_groups) 0 }}
+            - name: scratch
+              mountPath: /tmp/scratch
+            - name: rules
+              mountPath: /rules
+            {{- end }}
           ports:
             - name: http-metrics
               containerPort: {{ .Values.config.server.http_listen_port }}
@@ -98,6 +104,13 @@ spec:
         {{- toYaml .Values.tolerations | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       volumes:
+        {{- if gt (len .Values.alerting_groups) 0 }}
+        - name: scratch
+          emptyDir: {}
+        - name: rules
+          configMap:
+            name: {{ template "loki.fullname" . }}-alerting-rules
+        {{- end }}
         - name: config
           secret:
             secretName: {{ template "loki.fullname" . }}
