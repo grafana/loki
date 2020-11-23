@@ -151,9 +151,6 @@ func (i *Ingester) sweepUsers(immediate bool) {
 }
 
 func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
-	instance.streamsMtx.Lock()
-	defer instance.streamsMtx.Unlock()
-
 	for _, stream := range instance.streams {
 		i.sweepStream(instance, stream, immediate)
 		i.removeFlushedChunks(instance, stream)
@@ -161,6 +158,8 @@ func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
 }
 
 func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
+	stream.chunkMtx.RLock()
+	defer stream.chunkMtx.RUnlock()
 	if len(stream.chunks) == 0 {
 		return
 	}
@@ -214,7 +213,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 		return nil
 	}
 
-	chunks, labels := i.collectChunksToFlush(instance, fp, immediate)
+	chunks, labels, chunkMtx := i.collectChunksToFlush(instance, fp, immediate)
 	if len(chunks) < 1 {
 		return nil
 	}
@@ -222,29 +221,26 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel()
-	err := i.flushChunks(ctx, fp, labels, chunks, &instance.streamsMtx)
+	err := i.flushChunks(ctx, fp, labels, chunks, &instance.streamsMtx, chunkMtx)
 	if err != nil {
 		return err
 	}
 
-	instance.streamsMtx.Lock()
-	for _, chunk := range chunks {
-		chunk.flushed = time.Now()
-	}
-	instance.streamsMtx.Unlock()
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
 	instance.streamsMtx.Lock()
-	defer instance.streamsMtx.Unlock()
-
 	stream, ok := instance.streamsByFP[fp]
+	instance.streamsMtx.Unlock()
+
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	var result []*chunkDesc
+	stream.chunkMtx.Lock()
+	defer stream.chunkMtx.Unlock()
 	for j := range stream.chunks {
 		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
 		if immediate || shouldFlush {
@@ -262,7 +258,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			}
 		}
 	}
-	return result, stream.labels
+	return result, stream.labels, &stream.chunkMtx
 }
 
 func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
@@ -288,6 +284,8 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	now := time.Now()
 
+	stream.chunkMtx.Lock()
+	defer stream.chunkMtx.Unlock()
 	prevNumChunks := len(stream.chunks)
 	for len(stream.chunks) > 0 {
 		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) < i.cfg.RetainPeriod {
@@ -300,15 +298,17 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
 
 	if len(stream.chunks) == 0 {
+		instance.streamsMtx.Lock()
 		delete(instance.streamsByFP, stream.fp)
 		delete(instance.streams, stream.labelsString)
+		instance.streamsMtx.Unlock()
 		instance.index.Delete(stream.labels, stream.fp)
 		instance.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(instance.instanceID).Dec()
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, streamsMtx sync.Locker) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, streamsMtx sync.Locker, chunkMtx sync.Locker) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
@@ -319,6 +319,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	metric := labelsBuilder.Labels()
 
 	wireChunks := make([]chunk.Chunk, 0, len(cs))
+	chunkMtx.Lock()
 	for _, c := range cs {
 		// Ensure that new blocks are cut before flushing as data in the head block is not included otherwise.
 		if err = c.chunk.Close(); err != nil {
@@ -342,6 +343,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		chunkEncodeTime.Observe(time.Since(start).Seconds())
 		wireChunks = append(wireChunks, c)
 	}
+	// release chunk lock so as not to hold for network request, plus we don't need it
+	// anymore if the storage write fails.
+	chunkMtx.Unlock()
 
 	if err := i.store.Put(ctx, wireChunks); err != nil {
 		return err
@@ -350,7 +354,15 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	// Record statistics only when actual put request did not return error.
 	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := chunksPerTenant.WithLabelValues(userID)
+
+	chunkMtx.Lock()
+	defer chunkMtx.Unlock()
+
 	for i, wc := range wireChunks {
+
+		// flush successful, write while we have lock
+		cs[i].flushed = time.Now()
+
 		numEntries := cs[i].chunk.Size()
 		byt, err := wc.Encoded()
 		if err != nil {

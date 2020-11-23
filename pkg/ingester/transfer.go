@@ -229,6 +229,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 
 	for instanceID, inst := range i.instances {
 		for _, istream := range inst.streams {
+			istream.chunkMtx.Lock()
 			lbls := []*logproto.LabelPair{}
 			for _, lbl := range istream.labels {
 				lbls = append(lbls, &logproto.LabelPair{Name: lbl.Name, Value: lbl.Value})
@@ -242,11 +243,13 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				// Close the chunk first, writing any data in the headblock to a new block.
 				err := c.chunk.Close()
 				if err != nil {
+					istream.chunkMtx.Unlock()
 					return err
 				}
 
 				bb, err := c.chunk.Bytes()
 				if err != nil {
+					istream.chunkMtx.Unlock()
 					return err
 				}
 
@@ -262,12 +265,14 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 					FromIngesterId: i.lifecycler.ID,
 				})
 				if err != nil {
+					istream.chunkMtx.Unlock()
 					level.Error(logger).Log("msg", "failed sending stream's chunks to ingester", "to_ingester", targetIngester.Addr, "err", err)
 					return err
 				}
 
 				sentChunks.Add(float64(len(chunks)))
 			}
+			istream.chunkMtx.Unlock()
 		}
 	}
 

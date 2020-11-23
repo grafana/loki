@@ -155,8 +155,18 @@ func (i *ingesterSeriesIter) Iter() <-chan *SeriesWithErr {
 			})
 
 			for _, stream := range streams {
+				stream.chunkMtx.RLock()
+				if len(stream.chunks) < 1 {
+					stream.chunkMtx.RUnlock()
+					// it's possible the stream has been flushed to storage
+					// in between starting the checkpointing process and
+					// checkpointing this stream.
+					continue
+				}
+
 				// TODO(owen-d): use a pool
 				chunks, err := toWireChunks(stream.chunks, nil)
+				stream.chunkMtx.RUnlock()
 				var s *Series
 				if err == nil {
 					s = &Series{

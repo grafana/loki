@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 var (
@@ -60,8 +61,10 @@ type stream struct {
 	cfg *Config
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks       []chunkDesc
-	fp           model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	chunks   []chunkDesc
+	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	chunkMtx sync.RWMutex
+
 	labels       labels.Labels
 	labelsString string
 	lastLine     line
@@ -104,6 +107,8 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 		return err
 	}
 
+	s.chunkMtx.Lock()
+	defer s.chunkMtx.Unlock()
 	s.chunks = append(s.chunks, chunkDesc{
 		chunk: c,
 	})
@@ -113,6 +118,8 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 
 // setChunks is used during checkpoint recovery
 func (s *stream) setChunks(chunks []Chunk) (entriesAdded int, err error) {
+	s.chunkMtx.Lock()
+	defer s.chunkMtx.Unlock()
 	chks, err := fromWireChunks(s.cfg, chunks)
 	if err != nil {
 		return 0, err
@@ -133,8 +140,11 @@ func (s *stream) Push(
 	entries []logproto.Entry,
 	record *WALRecord,
 ) error {
+	s.chunkMtx.Lock()
+	defer s.chunkMtx.Unlock()
+	prevNumChunks := len(s.chunks)
 	var lastChunkTimestamp time.Time
-	if len(s.chunks) == 0 {
+	if prevNumChunks == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
 			chunk: s.NewChunk(),
 		})
@@ -261,6 +271,9 @@ func (s *stream) Push(
 		return lastEntryWithErr.e
 	}
 
+	if len(s.chunks) != prevNumChunks {
+		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
+	}
 	return nil
 }
 
@@ -292,8 +305,21 @@ func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp t
 	return false
 }
 
+func (s *stream) Bounds() (from, to time.Time) {
+	s.chunkMtx.RLock()
+	defer s.chunkMtx.RUnlock()
+	if len(s.chunks) > 0 {
+		from, _ = s.chunks[0].chunk.Bounds()
+		_, to = s.chunks[len(s.chunks)-1].chunk.Bounds()
+	}
+	return from, to
+
+}
+
 // Returns an iterator.
-func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
+func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, from, through time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
+	s.chunkMtx.RLock()
+	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
 		itr, err := c.chunk.Iterator(ctx, from, through, direction, pipeline)
@@ -311,11 +337,16 @@ func (s *stream) Iterator(ctx context.Context, from, through time.Time, directio
 		}
 	}
 
+	if ingStats != nil {
+		ingStats.TotalChunksMatched += int64(len(s.chunks))
+	}
 	return iter.NewNonOverlappingIterator(iterators, ""), nil
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(ctx context.Context, ingStats *stats.IngesterData, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
+	s.chunkMtx.RLock()
+	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
 		if itr := c.chunk.SampleIterator(ctx, from, through, extractor); itr != nil {
@@ -323,6 +354,7 @@ func (s *stream) SampleIterator(ctx context.Context, from, through time.Time, ex
 		}
 	}
 
+	ingStats.TotalChunksMatched += int64(len(s.chunks))
 	return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
 }
 
