@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/pkg/logql/log"
-
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -339,4 +338,41 @@ func mustNewRegexParser(re string) log.Stage {
 		panic(err)
 	}
 	return r
+}
+
+func Test_canInjectVectorGrouping(t *testing.T) {
+
+	tests := []struct {
+		vecOp   string
+		rangeOp string
+		want    bool
+	}{
+		{OpTypeSum, OpRangeTypeBytes, true},
+		{OpTypeSum, OpRangeTypeBytesRate, true},
+		{OpTypeSum, OpRangeTypeSum, true},
+		{OpTypeSum, OpRangeTypeRate, true},
+		{OpTypeSum, OpRangeTypeCount, true},
+
+		{OpTypeSum, OpRangeTypeAvg, false},
+		{OpTypeSum, OpRangeTypeMax, false},
+		{OpTypeSum, OpRangeTypeQuantile, false},
+		{OpTypeSum, OpRangeTypeStddev, false},
+		{OpTypeSum, OpRangeTypeStdvar, false},
+		{OpTypeSum, OpRangeTypeMin, false},
+		{OpTypeSum, OpRangeTypeMax, false},
+
+		{OpTypeAvg, OpRangeTypeBytes, false},
+		{OpTypeCount, OpRangeTypeBytesRate, false},
+		{OpTypeBottomK, OpRangeTypeSum, false},
+		{OpTypeMax, OpRangeTypeRate, false},
+		{OpTypeMin, OpRangeTypeCount, false},
+		{OpTypeTopK, OpRangeTypeCount, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.vecOp+"_"+tt.rangeOp, func(t *testing.T) {
+			if got := canInjectVectorGrouping(tt.vecOp, tt.rangeOp); got != tt.want {
+				t.Errorf("canInjectVectorGrouping() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
