@@ -168,7 +168,7 @@ func (lt *Table) Snapshot() error {
 			return err
 		}
 
-		snapshot.boltdb, err = local.OpenBoltdbFile(filePath)
+		snapshot.boltdb, err = shipper_util.SafeOpenBoltdbFile(filePath)
 		if err != nil {
 			return err
 		}
@@ -228,7 +228,7 @@ func (lt *Table) getOrAddDB(name string) (*bbolt.DB, error) {
 
 	db, ok = lt.dbs[name]
 	if !ok {
-		db, err = local.OpenBoltdbFile(filepath.Join(lt.path, name))
+		db, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(lt.path, name))
 		if err != nil {
 			return nil, err
 		}
@@ -490,7 +490,7 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 			continue
 		}
 
-		db, err := local.OpenBoltdbFile(filepath.Join(dir, fileInfo.Name()))
+		db, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(dir, fileInfo.Name()))
 		if err != nil {
 			return nil, err
 		}

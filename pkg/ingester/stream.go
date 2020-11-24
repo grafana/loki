@@ -227,9 +227,7 @@ func (s *stream) Push(
 						closedTailers = append(closedTailers, tailer.getID())
 						continue
 					}
-					if err := tailer.send(stream); err != nil {
-						level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to send stream to tailer", "err", err)
-					}
+					tailer.send(stream, s.labels)
 				}
 				s.tailerMtx.RUnlock()
 
