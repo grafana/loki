@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -82,7 +81,7 @@ func (t *table) compact() error {
 		}
 	}()
 
-	t.compactedDB, err = local.OpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
+	t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
 	if err != nil {
 		return err
 	}
@@ -221,7 +220,7 @@ func (t *table) writeBatch(batch []indexEntry) error {
 func (t *table) readFile(path string) error {
 	level.Debug(util.Logger).Log("msg", "reading file for compaction", "path", path)
 
-	db, err := local.OpenBoltdbFile(path)
+	db, err := shipper_util.SafeOpenBoltdbFile(path)
 	if err != nil {
 		return err
 	}

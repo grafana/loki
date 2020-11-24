@@ -7,6 +7,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"go.etcd.io/bbolt"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -115,4 +118,14 @@ func CompressFile(src, dest string) error {
 	}
 
 	return compressedFile.Sync()
+}
+
+// SafeOpenBoltdbFile will recover from a panic opening a DB file, and return the panic message in the err return object.
+func SafeOpenBoltdbFile(path string) (boltdb *bbolt.DB, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("recovered from panic opening boltdb file: %v", r)
+		}
+	}()
+	return local.OpenBoltdbFile(path)
 }
