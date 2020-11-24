@@ -25,7 +25,7 @@
           {
             alert: 'PromtailRequestLatency',
             expr: |||
-              job_status_code:promtail_request_duration_seconds:99quantile > 1
+              job_status_code_namespace:promtail_request_duration_seconds:99quantile > 1
             |||,
             'for': '15m',
             labels: {
@@ -55,7 +55,7 @@
           {
             alert: 'PromtailFileMissing',
             expr: |||
-              count by (path,instance,job) (promtail_file_bytes_total) unless count by (path,instance,job) (promtail_read_bytes_total)
+              promtail_file_bytes_total unless promtail_read_bytes_total
             |||,
             'for': '15m',
             labels: {
