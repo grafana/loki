@@ -87,12 +87,13 @@ func TestPipeline_JSON(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			lbls := model.LabelSet{}
-			ts := time.Now()
-			entry := testData.entry
-			extracted := map[string]interface{}{}
-			pl.Process(lbls, extracted, &ts, &entry)
-			assert.Equal(t, testData.expectedExtract, extracted)
+			out := pl.Run(withInboundEntries(Entry{
+				Labels:    model.LabelSet{},
+				Extracted: map[string]interface{}{},
+				Line:      testData.entry,
+				Timestamp: time.Now(),
+			}))
+			assert.Equal(t, testData.expectedExtract, (<-out).Extracted)
 		})
 	}
 }
@@ -364,12 +365,13 @@ func TestJSONParser_Parse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}
-			lbs := model.LabelSet{}
-			extr := tt.extracted
-			ts := time.Now()
-			p.Process(lbs, extr, &ts, &tt.entry)
-
-			assert.Equal(t, tt.expectedExtract, extr)
+			out := p.Run(withInboundEntries(Entry{
+				Labels:    model.LabelSet{},
+				Extracted: tt.extracted,
+				Line:      tt.entry,
+				Timestamp: time.Now(),
+			}))
+			assert.Equal(t, tt.expectedExtract, (<-out).Extracted)
 		})
 	}
 }

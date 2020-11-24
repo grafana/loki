@@ -47,8 +47,8 @@ func Test_dropStage_Process(t *testing.T) {
 		config     *DropConfig
 		labels     model.LabelSet
 		extracted  map[string]interface{}
-		t          *time.Time
-		entry      *string
+		t          time.Time
+		entry      string
 		shouldDrop bool
 	}{
 		{
@@ -58,8 +58,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          nil,
-			entry:      ptrFromString("12345678901"),
+			entry:      "12345678901",
 			shouldDrop: true,
 		},
 		{
@@ -69,8 +68,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          nil,
-			entry:      ptrFromString("1234567890"),
+			entry:      "1234567890",
 			shouldDrop: false,
 		},
 		{
@@ -80,8 +78,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          nil,
-			entry:      ptrFromString("123456789"),
+			entry:      "123456789",
 			shouldDrop: false,
 		},
 		{
@@ -91,8 +88,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          ptrFromTime(time.Now().Add(-2 * time.Hour)),
-			entry:      nil,
+			t:          time.Now().Add(-2 * time.Hour),
 			shouldDrop: true,
 		},
 		{
@@ -102,8 +98,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          ptrFromTime(time.Now().Add(-5 * time.Minute)),
-			entry:      nil,
+			t:          time.Now().Add(-5 * time.Minute),
 			shouldDrop: false,
 		},
 		{
@@ -277,11 +272,16 @@ func Test_dropStage_Process(t *testing.T) {
 				cfg:    tt.config,
 				logger: util.Logger,
 			}
-			m.Process(tt.labels, tt.extracted, tt.t, tt.entry)
+			out := processEntries(m, Entry{
+				Labels:    tt.labels,
+				Line:      *tt.entry,
+				Extracted: tt.extracted,
+				Timestamp: *tt.t,
+			})
 			if tt.shouldDrop {
-				assert.Contains(t, tt.labels.String(), dropLabel)
+				assert.Len(t, out, 0)
 			} else {
-				assert.NotContains(t, tt.labels.String(), dropLabel)
+				assert.Len(t, out, 1)
 			}
 		})
 	}
@@ -301,21 +301,22 @@ func TestDropPipeline(t *testing.T) {
 	plName := "test_pipeline"
 	pl, err := NewPipeline(util.Logger, loadConfig(testDropYaml), &plName, registry)
 	require.NoError(t, err)
-	lbls := model.LabelSet{}
-	ts := time.Now()
 
-	// Process the first log line which should be dropped
-	entry := testMatchLogLineApp1
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Contains(t, lbls.String(), dropLabel)
+	out := processEntries(pl, Entry{
+		Labels:    model.LabelSet{},
+		Extracted: map[string]interface{}{},
+		Line:      testMatchLogLineApp1,
+		Timestamp: time.Now(),
+	}, Entry{
+		Labels:    model.LabelSet{},
+		Extracted: map[string]interface{}{},
+		Line:      testMatchLogLineApp2,
+		Timestamp: time.Now(),
+	})
 
-	// Process the second line which should not be dropped.
-	entry = testMatchLogLineApp2
-	extracted = map[string]interface{}{}
-	lbls = model.LabelSet{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.NotContains(t, lbls.String(), dropLabel)
+	// Only the second line will go through.
+	assert.Len(t, out, 1)
+	assert.Equal(t, out[0].Line, testMatchLogLineApp2)
 }
 
 var (

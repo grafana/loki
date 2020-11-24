@@ -1,8 +1,6 @@
 package stages
 
 import (
-	"time"
-
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/go-kit/kit/log"
@@ -108,6 +106,7 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 
 	return &matcherStage{
 		dropReason: dropReason,
+		dropCount:  getDropCountMetric(registerer),
 		matchers:   selector.Matchers(),
 		stage:      pl,
 		action:     cfg.Action,
@@ -115,40 +114,106 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 	}, nil
 }
 
+func getDropCountMetric(registerer prometheus.Registerer) *prometheus.CounterVec {
+	dropCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "logentry",
+		Name:      "dropped_lines_total",
+		Help:      "A count of all log lines dropped as a result of a pipeline stage",
+	}, []string{"reason"})
+	err := registerer.Register(dropCount)
+	if err != nil {
+		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			dropCount = existing.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			// Same behavior as MustRegister if the error is not for AlreadyRegistered
+			panic(err)
+		}
+	}
+	return dropCount
+}
+
 // matcherStage applies Label matchers to determine if the include stages should be run
 type matcherStage struct {
 	dropReason string
+	dropCount  *prometheus.CounterVec
 	matchers   []*labels.Matcher
 	pipeline   logql.Pipeline
 	stage      Stage
 	action     string
 }
 
-// Process implements Stage
-func (m *matcherStage) Process(lbs model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	for _, filter := range m.matchers {
-		if !filter.Matches(string(lbs[model.LabelName(filter.Name)])) {
-			return
-		}
+func (m *matcherStage) Run(in chan Entry) chan Entry {
+	switch m.action {
+	case MatchActionDrop:
+		return m.runDrop(in)
+	case MatchActionKeep:
+		return m.runKeep(in)
 	}
+	panic("unexpected action")
+}
 
-	sp := m.pipeline.ForStream(labels.FromMap(util.ModelLabelSetToMap(lbs)))
-	if newLine, newLabels, ok := sp.Process([]byte(*entry)); ok {
-		switch m.action {
-		case MatchActionDrop:
-			// Adds the drop label to not be sent by the api.EntryHandler
-			lbs[dropLabel] = model.LabelValue(m.dropReason)
-		case MatchActionKeep:
-			*entry = string(newLine)
-			for k := range lbs {
-				delete(lbs, k)
+func (m *matcherStage) runKeep(in chan Entry) chan Entry {
+	next := make(chan Entry)
+	out := make(chan Entry)
+	outNext := m.stage.Run(next)
+	go func() {
+		for e := range outNext {
+			out <- e
+		}
+		close(out)
+	}()
+	go func() {
+		for e := range in {
+			e, ok := m.processLogQL(e)
+			if !ok {
+				out <- e
+				continue
 			}
-			for _, l := range newLabels.Labels() {
-				lbs[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+			next <- e
+		}
+		close(next)
+	}()
+	return out
+}
+
+func (m *matcherStage) runDrop(in chan Entry) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		for e := range in {
+			if e, ok := m.processLogQL(e); !ok {
+				out <- e
+				continue
 			}
-			m.stage.Process(lbs, extracted, t, entry)
+			m.dropCount.WithLabelValues(m.dropReason).Inc()
+		}
+		close(out)
+	}()
+	return out
+}
+
+func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
+	for _, filter := range m.matchers {
+		if !filter.Matches(string(e.Labels[model.LabelName(filter.Name)])) {
+			return e, false
 		}
 	}
+	sp := m.pipeline.ForStream(labels.FromMap(util.ModelLabelSetToMap(e.Labels)))
+	newLine, newLabels, ok := sp.Process([]byte(e.Line))
+	if !ok {
+		return e, false
+	}
+	for k := range e.Labels {
+		delete(e.Labels, k)
+	}
+	for _, l := range newLabels.Labels() {
+		e.Labels[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+	}
+	return Entry{
+		Labels:    e.Labels,
+		Extracted: e.Extracted,
+		Line:      string(newLine),
+		Timestamp: e.Timestamp,
+	}, true
 }
 
 // Name implements Stage

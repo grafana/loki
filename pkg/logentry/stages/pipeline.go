@@ -4,12 +4,10 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 const dropLabel = "__drop__"
@@ -26,7 +24,6 @@ type Pipeline struct {
 	stages     []Stage
 	jobName    *string
 	plDuration *prometheus.HistogramVec
-	dropCount  *prometheus.CounterVec
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
@@ -41,20 +38,6 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 	if err != nil {
 		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
 			hist = existing.ExistingCollector.(*prometheus.HistogramVec)
-		} else {
-			// Same behavior as MustRegister if the error is not for AlreadyRegistered
-			panic(err)
-		}
-	}
-	dropCount := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "logentry",
-		Name:      "dropped_lines_total",
-		Help:      "A count of all log lines dropped as a result of a pipeline stage",
-	}, []string{"reason"})
-	err = registerer.Register(dropCount)
-	if err != nil {
-		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			dropCount = existing.ExistingCollector.(*prometheus.CounterVec)
 		} else {
 			// Same behavior as MustRegister if the error is not for AlreadyRegistered
 			panic(err)
@@ -88,33 +71,33 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 		stages:     st,
 		jobName:    jobName,
 		plDuration: hist,
-		dropCount:  dropCount,
 	}, nil
 }
 
-// Process implements Stage allowing a pipeline stage to also be an entire pipeline
-func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface{}, ts *time.Time, entry *string) {
-	start := time.Now()
-
-	// Initialize the extracted map with the initial labels (ie. "filename"),
-	// so that stages can operate on initial labels too
-	for labelName, labelValue := range labels {
-		extracted[string(labelName)] = string(labelValue)
-	}
-
-	for i, stage := range p.stages {
-		if Debug {
-			level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "name", stage.Name(), "labels", labels, "time", ts, "entry", entry)
+func RunWith(in chan Entry, process func(e Entry) Entry) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		for e := range in {
+			out <- process(e)
 		}
-		stage.Process(labels, extracted, ts, entry)
+		close(out)
+	}()
+	return out
+}
+
+func (p *Pipeline) Run(in chan Entry) chan Entry {
+	in = RunWith(in, func(e Entry) Entry {
+		// Initialize the extracted map with the initial labels (ie. "filename"),
+		// so that stages can operate on initial labels too
+		for labelName, labelValue := range e.Labels {
+			e.Extracted[string(labelName)] = string(labelValue)
+		}
+		return e
+	})
+	for _, m := range p.stages {
+		in = m.Run(in)
 	}
-	dur := time.Since(start).Seconds()
-	if Debug {
-		level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
-	}
-	if p.jobName != nil {
-		p.plDuration.WithLabelValues(*p.jobName).Observe(dur)
-	}
+	return in
 }
 
 // Name implements Stage
@@ -122,26 +105,48 @@ func (p *Pipeline) Name() string {
 	return StageTypePipeline
 }
 
+// type Runner interface {
+// 	Run(in chan Entry) chan Entry
+// }
+
+// type RunnerFunc func(in chan Entry) chan Entry
+
+// func(f RunnerFunc) Run(in chan Entry) chan Entry{
+// 	f(in)
+// }
+
+// func (p *Pipeline) Wrap(r Runner) Runner {
+// 	res := RunnerFunc(func(in chan Entry) chan Entry {
+// 		out := p.Run(in)
+// 		go func() {
+// 			for e := range out {
+
+// 			}
+// 		}
+// 	})
+
+// 	return res
+// }
+
 // Wrap implements EntryMiddleware
 func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
-	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
-		extracted := map[string]interface{}{}
-		p.Process(labels, extracted, &timestamp, &line)
-		// if the labels set contains the __drop__ label we don't send this entry to the next EntryHandler
-		if reason, ok := labels[dropLabel]; ok {
-			if reason == "" {
-				reason = "undefined"
-			}
-			p.dropCount.WithLabelValues(string(reason)).Inc()
-			return nil
+	in := make(chan Entry)
+	out := p.Run(in)
+	go func() {
+		for e := range out {
+			_ = next.Handle(e.Labels, e.Timestamp, e.Line)
 		}
-		return next.Handle(labels, timestamp, line)
+		close(in)
+	}()
+	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
+		in <- Entry{
+			Labels:    labels,
+			Extracted: map[string]interface{}{},
+			Line:      line,
+			Timestamp: timestamp,
+		}
+		return nil
 	})
-}
-
-// AddStage adds a stage to the pipeline
-func (p *Pipeline) AddStage(stage Stage) {
-	p.stages = append(p.stages, stage)
 }
 
 // Size gets the current number of stages in the pipeline

@@ -29,9 +29,39 @@ const (
 
 // Stage takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
 // timestamp and log entry
-type Stage interface {
+type Processor interface {
 	Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
 	Name() string
+}
+
+type Entry struct {
+	Labels    model.LabelSet
+	Extracted map[string]interface{}
+	Timestamp time.Time
+	Line      string
+}
+
+type Stage interface {
+	Name() string
+	Run(chan Entry) chan Entry
+}
+
+type stageProcessor struct {
+	Processor
+}
+
+func (s stageProcessor) Run(in chan Entry) chan Entry {
+	return RunWith(in, func(e Entry) Entry {
+		s.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
+		return e
+	})
+}
+
+func toStage(p Processor, err error) (Stage, error) {
+	if err != nil {
+		return nil, err
+	}
+	return &stageProcessor{Processor: p}, nil
 }
 
 // StageFunc is modelled on http.HandlerFunc.
@@ -59,37 +89,37 @@ func New(logger log.Logger, jobName *string, stageType string,
 			return nil, err
 		}
 	case StageTypeJSON:
-		s, err = newJSONStage(logger, cfg)
+		s, err = toStage(newJSONStage(logger, cfg))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeRegex:
-		s, err = newRegexStage(logger, cfg)
+		s, err = toStage(newRegexStage(logger, cfg))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeMetric:
-		s, err = newMetricStage(logger, cfg, registerer)
+		s, err = toStage(newMetricStage(logger, cfg, registerer))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeLabel:
-		s, err = newLabelStage(logger, cfg)
+		s, err = toStage(newLabelStage(logger, cfg))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeLabelDrop:
-		s, err = newLabelDropStage(cfg)
+		s, err = toStage(newLabelDropStage(cfg))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeTimestamp:
-		s, err = newTimestampStage(logger, cfg)
+		s, err = toStage(newTimestampStage(logger, cfg))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeOutput:
-		s, err = newOutputStage(logger, cfg)
+		s, err = toStage(newOutputStage(logger, cfg))
 		if err != nil {
 			return nil, err
 		}
@@ -99,22 +129,22 @@ func New(logger log.Logger, jobName *string, stageType string,
 			return nil, err
 		}
 	case StageTypeTemplate:
-		s, err = newTemplateStage(logger, cfg)
+		s, err = toStage(newTemplateStage(logger, cfg))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeTenant:
-		s, err = newTenantStage(logger, cfg)
+		s, err = toStage(newTenantStage(logger, cfg))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeReplace:
-		s, err = newReplaceStage(logger, cfg)
+		s, err = toStage(newReplaceStage(logger, cfg))
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeDrop:
-		s, err = newDropStage(logger, cfg)
+		s, err = newDropStage(logger, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}
