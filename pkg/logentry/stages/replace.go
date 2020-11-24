@@ -56,7 +56,7 @@ type replaceStage struct {
 }
 
 // newReplaceStage creates a newReplaceStage
-func newReplaceStage(logger log.Logger, config interface{}) (Processor, error) {
+func newReplaceStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := parseReplaceConfig(config)
 	if err != nil {
 		return nil, err
@@ -66,11 +66,11 @@ func newReplaceStage(logger log.Logger, config interface{}) (Processor, error) {
 		return nil, err
 	}
 
-	return &replaceStage{
+	return toStage(&replaceStage{
 		cfg:        cfg,
 		expression: expression,
 		logger:     log.With(logger, "component", "stage", "type", "replace"),
-	}, nil
+	}), nil
 }
 
 // parseReplaceConfig processes an incoming configuration into a ReplaceConfig

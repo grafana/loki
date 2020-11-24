@@ -4,10 +4,11 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 const dropLabel = "__drop__"
@@ -20,30 +21,13 @@ type PipelineStage = map[interface{}]interface{}
 
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
-	logger     log.Logger
-	stages     []Stage
-	jobName    *string
-	plDuration *prometheus.HistogramVec
+	logger  log.Logger
+	stages  []Stage
+	jobName *string
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
 func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, registerer prometheus.Registerer) (*Pipeline, error) {
-	hist := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "logentry",
-		Name:      "pipeline_duration_seconds",
-		Help:      "Label and metric extraction pipeline processing time, in seconds",
-		Buckets:   []float64{.000005, .000010, .000025, .000050, .000100, .000250, .000500, .001000, .002500, .005000, .010000, .025000},
-	}, []string{"job_name"})
-	err := registerer.Register(hist)
-	if err != nil {
-		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			hist = existing.ExistingCollector.(*prometheus.HistogramVec)
-		} else {
-			// Same behavior as MustRegister if the error is not for AlreadyRegistered
-			panic(err)
-		}
-	}
-
 	st := []Stage{}
 	for _, s := range stgs {
 		stage, ok := s.(PipelineStage)
@@ -67,10 +51,9 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 		}
 	}
 	return &Pipeline{
-		logger:     log.With(logger, "component", "pipeline"),
-		stages:     st,
-		jobName:    jobName,
-		plDuration: hist,
+		logger:  log.With(logger, "component", "pipeline"),
+		stages:  st,
+		jobName: jobName,
 	}, nil
 }
 

@@ -312,10 +312,13 @@ func TestTimestampStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ts := time.Now()
-			lbls := model.LabelSet{}
-			st.Process(lbls, test.extracted, &ts, nil)
-			assert.Equal(t, test.expected.UnixNano(), ts.UnixNano())
+			out := processEntries(st, Entry{
+				Labels:    model.LabelSet{},
+				Line:      "hello world",
+				Extracted: test.extracted,
+				Timestamp: time.Now(),
+			})[0]
+			assert.Equal(t, test.expected.UnixNano(), out.Timestamp.UnixNano())
 		})
 	}
 }
@@ -458,9 +461,13 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				extracted := inputEntry.extracted
 				timestamp := inputEntry.timestamp
 				entry := ""
-
-				s.Process(inputEntry.labels, extracted, &timestamp, &entry)
-				assert.Equal(t, testData.expectedTimestamps[i], timestamp, "entry: %d", i)
+				out := processEntries(s, Entry{
+					Labels:    inputEntry.labels,
+					Line:      entry,
+					Extracted: extracted,
+					Timestamp: timestamp,
+				})[0]
+				assert.Equal(t, testData.expectedTimestamps[i], out.Timestamp, "entry: %d", i)
 			}
 		})
 	}

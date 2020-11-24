@@ -191,8 +191,11 @@ func TestLabelStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			st.Process(test.inputLabels, test.extractedData, nil, nil)
-			assert.Equal(t, test.expectedLabels, test.inputLabels)
+			out := processEntries(st, Entry{
+				Labels:    test.inputLabels,
+				Extracted: test.extractedData,
+			})[0]
+			assert.Equal(t, test.expectedLabels, out.Labels)
 		})
 	}
 }

@@ -380,10 +380,12 @@ func TestTemplateStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			lbls := model.LabelSet{}
-			entry := "not important for this test"
-			st.Process(lbls, test.extracted, nil, &entry)
-			assert.Equal(t, test.expectedExtracted, test.extracted)
+			out := processEntries(st, Entry{
+				Labels:    model.LabelSet{},
+				Line:      "not important for this test",
+				Extracted: test.extracted,
+			})[0]
+			assert.Equal(t, test.expectedExtracted, out.Extracted)
 		})
 	}
 }

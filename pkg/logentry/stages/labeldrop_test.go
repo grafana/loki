@@ -63,8 +63,11 @@ func Test_dropLabelStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			st.Process(test.inputLabels, map[string]interface{}{}, nil, nil)
-			assert.Equal(t, test.expectedLabels, test.inputLabels)
+			out := processEntries(st, Entry{
+				Labels:    test.inputLabels,
+				Extracted: map[string]interface{}{},
+			})[0]
+			assert.Equal(t, test.expectedLabels, out.Labels)
 		})
 	}
 }

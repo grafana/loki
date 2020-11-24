@@ -294,15 +294,15 @@ func TestPipeline_Wrap(t *testing.T) {
 		labels     model.LabelSet
 		shouldSend bool
 	}{
-		// "should drop": {
-		// 	map[model.LabelName]model.LabelValue{
-		// 		dropLabel:     "true",
-		// 		"stream":      "stderr",
-		// 		"action":      "GET",
-		// 		"status_code": "200",
-		// 	},
-		// 	false,
-		// },
+		"should drop": {
+			map[model.LabelName]model.LabelValue{
+				dropLabel:     "true",
+				"stream":      "stderr",
+				"action":      "GET",
+				"status_code": "200",
+			},
+			false,
+		},
 		"should send": {
 			map[model.LabelName]model.LabelValue{
 				"stream":      "stderr",

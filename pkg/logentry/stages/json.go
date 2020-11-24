@@ -66,7 +66,7 @@ type jsonStage struct {
 }
 
 // newJSONStage creates a new json pipeline stage from a config.
-func newJSONStage(logger log.Logger, config interface{}) (*jsonStage, error) {
+func newJSONStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := parseJSONConfig(config)
 	if err != nil {
 		return nil, err
@@ -75,11 +75,11 @@ func newJSONStage(logger log.Logger, config interface{}) (*jsonStage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &jsonStage{
+	return toStage(&jsonStage{
 		cfg:         cfg,
 		expressions: expressions,
 		logger:      log.With(logger, "component", "stage", "type", "json"),
-	}, nil
+	}), nil
 }
 
 func parseJSONConfig(config interface{}) (*JSONConfig, error) {

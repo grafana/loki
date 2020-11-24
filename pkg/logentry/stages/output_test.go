@@ -138,10 +138,14 @@ func TestOutputStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			lbls := model.LabelSet{}
-			entry := "replaceme"
-			st.Process(lbls, test.extracted, nil, &entry)
-			assert.Equal(t, test.expectedOutput, entry)
+
+			out := processEntries(st, Entry{
+				Labels:    model.LabelSet{},
+				Extracted: test.extracted,
+				Line:      "replaceme",
+			})[0]
+
+			assert.Equal(t, test.expectedOutput, out.Line)
 		})
 	}
 }

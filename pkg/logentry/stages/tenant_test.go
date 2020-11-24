@@ -180,17 +180,17 @@ func TestTenantStage_Process(t *testing.T) {
 
 			// Process and dummy line and ensure nothing has changed except
 			// the tenant reserved label
-			timestamp := time.Unix(1, 1)
-			entry := "hello world"
-			labels := testData.inputLabels.Clone()
-			extracted := testData.inputExtracted
+			out := processEntries(stage, Entry{
+				Labels:    testData.inputLabels.Clone(),
+				Line:      "hello world",
+				Extracted: testData.inputExtracted,
+				Timestamp: time.Unix(1, 1),
+			})[0]
 
-			stage.Process(labels, extracted, &timestamp, &entry)
+			assert.Equal(t, time.Unix(1, 1), out.Timestamp)
+			assert.Equal(t, "hello world", out.Line)
 
-			assert.Equal(t, time.Unix(1, 1), timestamp)
-			assert.Equal(t, "hello world", entry)
-
-			actualTenant, ok := labels[client.ReservedLabelTenantID]
+			actualTenant, ok := out.Labels[client.ReservedLabelTenantID]
 			if testData.expectedTenant == nil {
 				assert.False(t, ok)
 			} else {
