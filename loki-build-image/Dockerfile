@@ -1,5 +1,5 @@
 FROM alpine as helm
-ARG HELM_VER="v3.4.1"
+ARG HELM_VER="v3.2.3"
 
 RUN apk add --no-cache curl && \
     curl -L -o /tmp/helm-$HELM_VER.tgz https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz && \

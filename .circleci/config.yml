@@ -122,7 +122,7 @@ jobs:
       - run:
           name: Install Helm
           command: |
-            curl -L https://git.io/get_helm.sh | bash -s -- -v v3.4.1
+            curl -L https://git.io/get_helm.sh | bash -s -- -v v3.2.3
       - run:
           name: Install Chart Testing tool
           command: |
