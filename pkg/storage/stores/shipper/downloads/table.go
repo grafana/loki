@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -142,7 +141,7 @@ func LoadTable(ctx context.Context, name, cacheLocation string, storageClient St
 		}
 
 		// if we fail to open a boltdb file, lets skip it and let sync operation re-download the file from storage.
-		boltdb, err := local.OpenBoltdbFile(filepath.Join(folderPath, fileInfo.Name()))
+		boltdb, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(folderPath, fileInfo.Name()))
 		if err != nil {
 			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to open existing boltdb file %s, continuing without it to let the sync operation catch up", filepath.Join(folderPath, fileInfo.Name())), "err", err)
 			continue
@@ -218,7 +217,7 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 		}
 
 		filePath := path.Join(folderPath, dbName)
-		boltdb, err := local.OpenBoltdbFile(filePath)
+		boltdb, err := shipper_util.SafeOpenBoltdbFile(filePath)
 		if err != nil {
 			return err
 		}
@@ -452,7 +451,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	t.dbsMtx.Lock()
 	defer t.dbsMtx.Unlock()
 
-	boltdb, err := local.OpenBoltdbFile(filePath)
+	boltdb, err := shipper_util.SafeOpenBoltdbFile(filePath)
 	if err != nil {
 		return err
 	}
