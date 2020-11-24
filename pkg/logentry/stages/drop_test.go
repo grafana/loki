@@ -189,7 +189,7 @@ func Test_dropStage_Process(t *testing.T) {
 				Expression: ptrFromString(".*val.*"),
 			},
 			labels:     model.LabelSet{},
-			entry:      ptrFromString("this is a line which does not match the regex"),
+			entry:      "this is a line which does not match the regex",
 			extracted:  map[string]interface{}{},
 			shouldDrop: false,
 		},
@@ -199,7 +199,7 @@ func Test_dropStage_Process(t *testing.T) {
 				Expression: ptrFromString(".*val.*"),
 			},
 			labels:     model.LabelSet{},
-			entry:      ptrFromString("this is a line with the word value in it"),
+			entry:      "this is a line with the word value in it",
 			extracted:  map[string]interface{}{},
 			shouldDrop: true,
 		},
@@ -213,8 +213,7 @@ func Test_dropStage_Process(t *testing.T) {
 			extracted: map[string]interface{}{
 				"key": "pal1",
 			},
-			t:          nil,
-			entry:      ptrFromString("12345678901"),
+			entry:      "12345678901",
 			shouldDrop: true,
 		},
 		{
@@ -227,8 +226,7 @@ func Test_dropStage_Process(t *testing.T) {
 			extracted: map[string]interface{}{
 				"key": "pal1",
 			},
-			t:          nil,
-			entry:      ptrFromString("123456789"),
+			entry:      "123456789",
 			shouldDrop: false,
 		},
 		{
@@ -241,8 +239,7 @@ func Test_dropStage_Process(t *testing.T) {
 			extracted: map[string]interface{}{
 				"WOOOOOOOOOOOOOO": "pal1",
 			},
-			t:          nil,
-			entry:      ptrFromString("123456789012"),
+			entry:      "123456789012",
 			shouldDrop: false,
 		},
 		{
@@ -257,8 +254,8 @@ func Test_dropStage_Process(t *testing.T) {
 			extracted: map[string]interface{}{
 				"key": "must contain value to match",
 			},
-			t:          ptrFromTime(time.Now().Add(-2 * time.Hour)),
-			entry:      ptrFromString("12345678901"),
+			t:          time.Now().Add(-2 * time.Hour),
+			entry:      "12345678901",
 			shouldDrop: true,
 		},
 	}
@@ -268,15 +265,13 @@ func Test_dropStage_Process(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			m := &dropStage{
-				cfg:    tt.config,
-				logger: util.Logger,
-			}
+			m, err := newDropStage(util.Logger, tt.config, prometheus.DefaultRegisterer)
+			require.NoError(t, err)
 			out := processEntries(m, Entry{
 				Labels:    tt.labels,
-				Line:      *tt.entry,
+				Line:      tt.entry,
 				Extracted: tt.extracted,
-				Timestamp: *tt.t,
+				Timestamp: tt.t,
 			})
 			if tt.shouldDrop {
 				assert.Len(t, out, 0)
