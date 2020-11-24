@@ -6,6 +6,12 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+type Entry struct {
+	Labels    model.LabelSet
+	Timestamp time.Time
+	Line      string
+}
+
 type InstrumentedEntryHandler interface {
 	EntryHandler
 	UnregisterLatencyMetric(labels model.LabelSet)
@@ -13,15 +19,7 @@ type InstrumentedEntryHandler interface {
 
 // EntryHandler is something that can "handle" entries.
 type EntryHandler interface {
-	Handle(labels model.LabelSet, time time.Time, entry string) error
-}
-
-// EntryHandlerFunc is modelled on http.HandlerFunc.
-type EntryHandlerFunc func(labels model.LabelSet, time time.Time, entry string) error
-
-// Handle implements EntryHandler.
-func (e EntryHandlerFunc) Handle(labels model.LabelSet, time time.Time, entry string) error {
-	return e(labels, time, entry)
+	Run(chan<- Entry)
 }
 
 // EntryMiddleware is something that takes on EntryHandler and produces another.
