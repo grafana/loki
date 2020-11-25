@@ -50,13 +50,13 @@ type WAL interface {
 	// Log marshalls the records and writes it into the WAL.
 	Log(*WALRecord) error
 	// Stop stops all the WAL operations.
-	Stop()
+	Stop() error
 }
 
 type noopWAL struct{}
 
 func (noopWAL) Log(*WALRecord) error { return nil }
-func (noopWAL) Stop()                {}
+func (noopWAL) Stop() error          { return nil }
 
 type walWrapper struct {
 	cfg        WALConfig
@@ -127,11 +127,12 @@ func (w *walWrapper) Log(record *WALRecord) error {
 	}
 }
 
-func (w *walWrapper) Stop() {
+func (w *walWrapper) Stop() error {
 	close(w.quit)
 	w.wait.Wait()
-	_ = w.wal.Close()
+	err := w.wal.Close()
 	level.Info(util.Logger).Log("msg", "stopped", "component", "wal")
+	return err
 }
 
 func (w *walWrapper) checkpointWriter() *WALCheckpointWriter {

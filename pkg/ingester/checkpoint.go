@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
@@ -95,13 +96,14 @@ func decodeCheckpointRecord(rec []byte, s *Series) error {
 	}
 }
 
-func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, error) {
+func encodeWithTypeHeader(m proto.Message, typ RecordType) ([]byte, error) {
 	buf, err := proto.Marshal(m)
 	if err != nil {
-		return b, err
+		return nil, err
 	}
 
-	b = append(b[:0], byte(typ))
+	b := make([]byte, 0, len(buf)+1)
+	b = append(b, byte(typ))
 	b = append(b, buf...)
 	return b, nil
 }
@@ -112,7 +114,7 @@ type SeriesWithErr struct {
 }
 
 type SeriesIter interface {
-	Num() int
+	Count() int
 	Iter() <-chan *SeriesWithErr
 	Stop()
 }
@@ -130,7 +132,7 @@ func newIngesterSeriesIter(ing *Ingester) *ingesterSeriesIter {
 	}
 }
 
-func (i *ingesterSeriesIter) Num() (ct int) {
+func (i *ingesterSeriesIter) Count() (ct int) {
 	for _, inst := range i.ing.getInstances() {
 		ct += inst.numStreams()
 	}
@@ -244,8 +246,8 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
 		return false, errors.Wrap(err, "create checkpoint dir")
 	}
-	// checkpoint, err ;= wal.NewSize()
-	checkpoint, err := wal.NewSize(nil, nil, checkpointDirTemp, walSegmentSize, false)
+
+	checkpoint, err := wal.NewSize(log.With(util.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, false)
 	if err != nil {
 		return false, errors.Wrap(err, "open checkpoint")
 	}
@@ -258,7 +260,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 }
 
 func (w *WALCheckpointWriter) Write(s *Series) error {
-	b, err := encodeWithTypeHeader(s, CheckpointRecord, recordPool.GetBytes()[:0])
+	b, err := encodeWithTypeHeader(s, CheckpointRecord)
 	if err != nil {
 		return err
 	}
@@ -440,7 +442,7 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	}()
 	// signal whether checkpoint writes should be amortized or burst
 	var immediate bool
-	n := c.iter.Num()
+	n := c.iter.Count()
 	if n < 1 {
 		return c.writer.Close(false)
 	}

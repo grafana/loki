@@ -38,11 +38,11 @@ func Test_Encoding_Series(t *testing.T) {
 
 	buf := record.encodeSeries(nil)
 
-	var decoded WALRecord
+	decoded := recordPool.GetRecord()
 
-	err := decodeWALRecord(buf, &decoded)
+	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
-	require.Equal(t, record, &decoded)
+	require.Equal(t, record, decoded)
 }
 
 func Test_Encoding_Entries(t *testing.T) {
@@ -81,14 +81,15 @@ func Test_Encoding_Entries(t *testing.T) {
 
 	buf := record.encodeEntries(nil)
 
-	var decoded WALRecord
+	decoded := recordPool.GetRecord()
 
-	err := decodeWALRecord(buf, &decoded)
+	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
-	require.Equal(t, record, &decoded)
+	require.Equal(t, record, decoded)
 }
 
-func fillChunk(c chunkenc.Chunk) int64 {
+func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
+	t.Helper()
 	var i, inserted int64
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
@@ -96,10 +97,7 @@ func fillChunk(c chunkenc.Chunk) int64 {
 	}
 
 	for c.SpaceFor(entry) {
-		err := c.Append(entry)
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, c.Append(entry))
 		i++
 		inserted += int64(len(entry.Line))
 		entry.Timestamp = time.Unix(0, i)
@@ -120,7 +118,7 @@ func Test_EncodingChunks(t *testing.T) {
 
 	conf := dummyConf()
 	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
-	fillChunk(c)
+	fillChunk(t, c)
 
 	from := []chunkDesc{
 		{
@@ -187,7 +185,7 @@ func Test_EncodingCheckpoint(t *testing.T) {
 		},
 	}
 
-	b, err := encodeWithTypeHeader(s, CheckpointRecord, recordPool.GetBytes()[:0])
+	b, err := encodeWithTypeHeader(s, CheckpointRecord)
 	require.Nil(t, err)
 
 	out := &Series{}

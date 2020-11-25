@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	errUtil "github.com/grafana/loki/pkg/util"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -147,7 +148,6 @@ type Ingester struct {
 
 	metrics *ingesterMetrics
 
-	// WAL
 	wal WAL
 }
 
@@ -297,9 +297,9 @@ func (i *Ingester) running(ctx context.Context) error {
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
-	i.wal.Stop()
-
-	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	var errs errUtil.MultiError
+	errs.Add(i.wal.Stop())
+	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
 	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
 	// we better stop them.
@@ -308,7 +308,7 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	i.flushQueuesDone.Wait()
 
-	return err
+	return errs.Err()
 }
 
 func (i *Ingester) loop() {
