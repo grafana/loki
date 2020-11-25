@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/cortexproject/cortex/pkg/chunk/local"
@@ -120,12 +121,37 @@ func CompressFile(src, dest string) error {
 	return compressedFile.Sync()
 }
 
+type result struct {
+	boltdb *bbolt.DB
+	err error
+}
+
 // SafeOpenBoltdbFile will recover from a panic opening a DB file, and return the panic message in the err return object.
 func SafeOpenBoltdbFile(path string) (boltdb *bbolt.DB, err error) {
+	result := make(chan *result)
+	// Open the file in a separate goroutine because we want to change
+	// the behavior of a Fault for just this operation and not for the
+	// calling goroutine
+	go safeOpenBoltDbFile(path, result)
+	res := <-result
+	return res.boltdb, res.err
+}
+
+func safeOpenBoltDbFile(path string, ret chan *result) {
+	// boltdb can throw faults which are not caught be recover unless we turn them into panics
+	debug.SetPanicOnFault(true)
+	res := &result{}
+
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("recovered from panic opening boltdb file: %v", r)
+			res.err = fmt.Errorf("recovered from panic opening boltdb file: %v", r)
 		}
+
+		// Return the result object on the channel to unblock the calling thread
+		ret <- res
 	}()
-	return local.OpenBoltdbFile(path)
+
+	b, err := local.OpenBoltdbFile(path)
+	res.boltdb = b
+	res.err = err
 }
