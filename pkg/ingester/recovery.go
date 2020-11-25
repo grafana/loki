@@ -353,8 +353,8 @@ func recoverGeneric(
 		inputs = append(inputs, make(chan recoveryInput))
 
 		go func(input <-chan recoveryInput) {
+			defer wg.Done()
 			process(recoverer, input, errCh)
-			wg.Done()
 		}(inputs[i])
 
 	}

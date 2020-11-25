@@ -152,17 +152,17 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 	return outBuf.Bytes(), nil
 }
 
-// CheckpointBytes is used for WAL checkpointing
+// CheckpointBytes serializes a headblock to []byte. This is used by the WAL checkpointing,
+// which does not want to mutate a chunk by cutting it (otherwise risking content address changes), but
+// needs to serialize/deserialize the data to disk to ensure data durability.
 func (hb *headBlock) CheckpointBytes(version byte) ([]byte, error) {
-	// wB is eventually returned via buf.Bytes(), don't return it to the pool.
-	wB := BytesBufferPool.Get(1 << 10).([]byte)
 	encB := BytesBufferPool.Get(1 << 10).([]byte)
 
 	defer func() {
 		BytesBufferPool.Put(encB[:0])
 	}()
 
-	buf := bytes.NewBuffer(wB[:0])
+	buf := bytes.NewBuffer(make([]byte, 0, 1<<10))
 	eb := encbuf{b: encB}
 
 	eb.putByte(version)

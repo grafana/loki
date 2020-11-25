@@ -111,6 +111,7 @@ func (t *tailer) loop() {
 }
 
 func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
+	defer recordPool.PutEntries(stream.Entries)
 	if t.isClosed() {
 		return
 	}

@@ -133,15 +133,11 @@ func decodeEntries(b []byte, rec *WALRecord) error {
 
 	for len(dec.B) > 0 && dec.Err() == nil {
 		refEntries := RefEntries{
-			Ref:     dec.Be64(),
-			Entries: recordPool.GetEntries(),
+			Ref: dec.Be64(),
 		}
 
 		nEntries := dec.Uvarint()
 		rem := nEntries
-		if cap(refEntries.Entries) < nEntries {
-			refEntries.Entries = make([]logproto.Entry, 0, nEntries)
-		}
 		for ; dec.Err() == nil && rem > 0; rem-- {
 			timeOffset := dec.Varint64()
 			lineLength := dec.Uvarint()
@@ -180,8 +176,6 @@ func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 		decbuf = DecWith(b)
 		t      = RecordType(decbuf.Byte())
 	)
-
-	walRec.Reset()
 
 	switch t {
 	case WALRecordSeries:
