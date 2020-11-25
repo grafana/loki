@@ -138,7 +138,7 @@ func SafeOpenBoltdbFile(path string) (*bbolt.DB, error) {
 }
 
 func safeOpenBoltDbFile(path string, ret chan *result) {
-	// boltdb can throw faults which are not caught be recover unless we turn them into panics
+	// boltdb can throw faults which are not caught by recover unless we turn them into panics
 	debug.SetPanicOnFault(true)
 	res := &result{}
 
