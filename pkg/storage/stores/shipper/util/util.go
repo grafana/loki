@@ -123,7 +123,7 @@ func CompressFile(src, dest string) error {
 
 type result struct {
 	boltdb *bbolt.DB
-	err error
+	err    error
 }
 
 // SafeOpenBoltdbFile will recover from a panic opening a DB file, and return the panic message in the err return object.
