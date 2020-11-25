@@ -1,6 +1,8 @@
 package log
 
 import (
+	"unsafe"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -15,11 +17,15 @@ type Pipeline interface {
 }
 
 // StreamPipeline transform and filter log lines and labels.
+// A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
 	Process(line []byte) ([]byte, LabelsResult, bool)
+	ProcessString(line string) (string, LabelsResult, bool)
 }
 
 // Stage is a single step of a Pipeline.
+// A Stage implementation should never mutate the line passed, but instead either
+// return the line unchanged or allocate a new line.
 type Stage interface {
 	Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 }
@@ -46,6 +52,10 @@ type noopStreamPipeline struct {
 }
 
 func (n noopStreamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
+	return line, n.LabelsResult, true
+}
+
+func (n noopStreamPipeline) ProcessString(line string) (string, LabelsResult, bool) {
 	return line, n.LabelsResult, true
 }
 
@@ -123,6 +133,15 @@ func (p *streamPipeline) Process(line []byte) ([]byte, LabelsResult, bool) {
 	return line, p.builder.LabelsResult(), true
 }
 
+func (p *streamPipeline) ProcessString(line string) (string, LabelsResult, bool) {
+	// Stages only read from the line.
+	lb := unsafeGetBytes(line)
+	lb, lr, ok := p.Process(lb)
+	// either the line is unchanged and we can just send back the same string.
+	// or we created a new buffer for it in which case it is still safe to avoid the string(byte) copy.
+	return unsafeGetString(lb), lr, ok
+}
+
 // ReduceStages reduces multiple stages into one.
 func ReduceStages(stages []Stage) Stage {
 	if len(stages) == 0 {
@@ -138,4 +157,12 @@ func ReduceStages(stages []Stage) Stage {
 		}
 		return line, true
 	})
+}
+
+func unsafeGetBytes(s string) []byte {
+	return *(*[]byte)(unsafe.Pointer(&s))
+}
+
+func unsafeGetString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

@@ -117,6 +117,11 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
 			require.Equal(t, tt.wantLbs, outlbs.Labels())
+
+			outval, outlbs, ok = tt.ex.ForStream(tt.in).ProcessString("")
+			require.Equal(t, tt.wantOk, ok)
+			require.Equal(t, tt.want, outval)
+			require.Equal(t, tt.wantLbs, outlbs.Labels())
 		})
 	}
 }
@@ -139,6 +144,11 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	sort.Sort(lbs)
 	sse := se.ForStream(lbs)
 	f, l, ok := sse.Process([]byte(`foo`))
+	require.True(t, ok)
+	require.Equal(t, 1., f)
+	assertLabelResult(t, lbs, l)
+
+	f, l, ok = sse.ProcessString(`foo`)
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, lbs, l)

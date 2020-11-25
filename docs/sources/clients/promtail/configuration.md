@@ -10,10 +10,10 @@ and how to scrape logs from files.
 - [Configuring Promtail](#configuring-promtail)
   - [Printing Promtail Config At Runtime](#printing-promtail-config-at-runtime)
   - [Configuration File Reference](#configuration-file-reference)
-  - [server_config](#server_config)
-  - [client_config](#client_config)
-  - [position_config](#position_config)
-  - [scrape_config](#scrape_config)
+  - [server](#server)
+  - [clients](#clients)
+  - [positions](#positions)
+  - [scrape_configs](#scrape_configs)
     - [pipeline_stages](#pipeline_stages)
       - [docker](#docker)
       - [cri](#cri)
@@ -29,12 +29,12 @@ and how to scrape logs from files.
         - [gauge](#gauge)
         - [histogram](#histogram)
       - [tenant](#tenant)
-    - [journal_config](#journal_config)
-    - [syslog_config](#syslog_config)
+    - [journal](#journal)
+    - [syslog](#syslog)
       - [Available Labels](#available-labels)
-    - [loki_push_api_config](#loki_push_api_config)
-    - [relabel_config](#relabel_config)
-    - [static_config](#static_config)
+    - [loki_push_api](#loki_push_api)
+    - [relabel_configs](#relabel_configs)
+    - [static_configs](#static_configs)
     - [file_sd_config](#file_sd_config)
     - [kubernetes_sd_config](#kubernetes_sd_config)
       - [`node`](#node)
@@ -142,9 +142,9 @@ scrape_configs:
 [target_config: <target_config>]
 ```
 
-## server_config
+## server
 
-The `server_config` block configures Promtail's behavior as an HTTP server:
+The `server` block configures Promtail's behavior as an HTTP server:
 
 ```yaml
 # Disable the HTTP and GRPC server.
@@ -197,9 +197,9 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 [health_check_target: <bool> | default = true]
 ```
 
-## client_config
+## clients
 
-The `client_config` block configures how Promtail connects to an instance of
+The `clients` block configures how Promtail connects to an instance of
 Loki:
 
 ```yaml
@@ -296,9 +296,9 @@ external_labels:
 [timeout: <duration> | default = 10s]
 ```
 
-## position_config
+## positions
 
-The `position_config` block configures where Promtail will save a file
+The `positions` block configures where Promtail will save a file
 indicating how far it has read into a file. It is needed for when Promtail
 is restarted to allow it to continue from where it left off.
 
@@ -313,9 +313,9 @@ is restarted to allow it to continue from where it left off.
 [ignore_invalid_yaml: <boolean> | default = false]
 ```
 
-## scrape_config
+## scrape_configs
 
-The `scrape_config` block configures how Promtail can scrape logs from a series
+The `scrape_configs` block configures how Promtail can scrape logs from a series
 of targets using a specified discovery method:
 
 ```yaml
@@ -698,9 +698,9 @@ tenant:
   [ value: <string> ]
 ```
 
-### journal_config
+### journal
 
-The `journal_config` block configures reading from the systemd journal from
+The `journal` block configures reading from the systemd journal from
 Promtail. Requires a build of Promtail that has journal support _enabled_. If
 using the AMD64 Docker image, this is enabled by default.
 
@@ -726,9 +726,9 @@ labels:
 
 **Note**: priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
 
-### syslog_config
+### syslog
 
-The `syslog_config` block configures a syslog listener allowing users to push
+The `syslog` block configures a syslog listener allowing users to push
 logs to promtail with the syslog protocol.
 Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
 with and without octet counting.
@@ -784,13 +784,13 @@ use_incoming_timestamp: <bool>
 - `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
 - `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
 
-### loki_push_api_config
+### loki_push_api
 
-The `loki_push_api_config` block configures Promtail to expose a [Loki push API](../../../api#post-lokiapiv1push) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API](../../../api#post-lokiapiv1push) server.
 
-Each job configured with a `loki_push_api_config` will expose this API and will require a separate port.
+Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
-Note the `server` configuration is the same as [server_config](#server_config)
+Note the `server` configuration is the same as [server](#server)
 
 
 
@@ -809,7 +809,7 @@ labels:
 
 See [Example Push Config](#example-push-config)
 
-### relabel_config
+### relabel_configs
 
 Relabeling is a powerful tool to dynamically rewrite the label set of a target
 before it gets scraped. Multiple relabeling steps can be configured per scrape
@@ -886,9 +886,9 @@ use `.*<regex>.*`.
 Care must be taken with `labeldrop` and `labelkeep` to ensure that logs are
 still uniquely labeled once the labels are removed.
 
-### static_config
+### static_configs
 
-A `static_config` allows specifying a list of targets and a common label set
+A `static_configs` allows specifying a list of targets and a common label set
 for them.  It is the canonical way to specify static targets in a scrape
 configuration.
 

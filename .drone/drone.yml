@@ -12,28 +12,28 @@ workspace:
 
 steps:
 - name: test
-  image: grafana/loki-build-image:0.11.0
+  image: grafana/loki-build-image:0.12.0
   commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
 
 - name: lint
-  image: grafana/loki-build-image:0.11.0
+  image: grafana/loki-build-image:0.12.0
   commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
 
 - name: check-generated-files
-  image: grafana/loki-build-image:0.11.0
+  image: grafana/loki-build-image:0.12.0
   commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
 
 - name: check-mod
-  image: grafana/loki-build-image:0.11.0
+  image: grafana/loki-build-image:0.12.0
   commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
@@ -814,7 +814,7 @@ platform:
 
 steps:
 - name: trigger
-  image: grafana/loki-build-image:0.11.0
+  image: grafana/loki-build-image:0.12.0
   commands:
   - ./tools/deploy.sh
   environment:
@@ -842,7 +842,7 @@ platform:
 
 steps:
 - name: trigger
-  image: grafana/loki-build-image:0.11.0
+  image: grafana/loki-build-image:0.12.0
   commands:
   - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki -delete
   - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/promtail -delete

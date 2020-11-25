@@ -718,6 +718,32 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 	}
 }
 
+func BenchmarkHeadBlockSampleIterator(b *testing.B) {
+
+	for _, j := range []int{100000, 50000, 15000, 10000} {
+		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
+
+			h := headBlock{}
+
+			for i := 0; i < j; i++ {
+				if err := h.append(int64(i), "this is the append string"); err != nil {
+					b.Fatal(err)
+				}
+			}
+
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				iter := h.sampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
+
+				for iter.Next() {
+					_ = iter.Sample()
+				}
+			}
+		})
+	}
+}
+
 func TestMemChunk_IteratorBounds(t *testing.T) {
 
 	var createChunk = func() *MemChunk {

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -35,7 +36,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 		go assert.NotPanics(t, func() {
 			defer routines.Done()
 			time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
-			_ = tailer.send(stream)
+			tailer.send(stream, labels.Labels{{Name: "type", Value: "test"}})
 		})
 
 		go assert.NotPanics(t, func() {
@@ -61,14 +62,15 @@ func Test_TailerSendRace(t *testing.T) {
 	for i := 1; i <= 20; i++ {
 		wg.Add(1)
 		go func() {
-			_ = tail.send(logproto.Stream{
-				Labels: makeRandomLabels(),
+			lbs := makeRandomLabels()
+			tail.send(logproto.Stream{
+				Labels: lbs.String(),
 				Entries: []logproto.Entry{
 					{Timestamp: time.Unix(0, 1), Line: "1"},
 					{Timestamp: time.Unix(0, 2), Line: "2"},
 					{Timestamp: time.Unix(0, 3), Line: "3"},
 				},
-			})
+			}, lbs)
 			wg.Done()
 		}()
 	}
