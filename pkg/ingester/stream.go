@@ -144,6 +144,7 @@ func (s *stream) Push(
 	}
 
 	storedEntries := recordPool.GetEntries()
+	defer recordPool.PutEntries(storedEntries)
 	failedEntriesWithError := []entryWithError{}
 
 	// Don't fail on the first append error - if samples are sent out of order,
@@ -207,7 +208,11 @@ func (s *stream) Push(
 		s.tailerMtx.RUnlock()
 		if hasTailers {
 			go func() {
-				stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
+				// Since tailers run on their own goroutine, we must copy over the entries to prevent
+				// shared access bugs after releasing the entries back into the pool.
+				entries := make([]logproto.Entry, len(storedEntries))
+				_ = copy(entries, storedEntries)
+				stream := logproto.Stream{Labels: s.labelsString, Entries: entries}
 
 				closedTailers := []uint32{}
 
