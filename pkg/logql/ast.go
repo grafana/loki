@@ -711,10 +711,23 @@ func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 func (e *vectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	// inject in the range vector extractor the outer groups to improve performance.
 	// This is only possible if the operation is a sum. Anything else needs all labels.
-	if r, ok := e.left.(*rangeAggregationExpr); ok && e.operation == OpTypeSum {
+	if r, ok := e.left.(*rangeAggregationExpr); ok && canInjectVectorGrouping(e.operation, r.operation) {
 		return r.extractor(e.grouping, len(e.grouping.groups) == 0)
 	}
 	return e.left.Extractor()
+}
+
+// canInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
+func canInjectVectorGrouping(vecOp, rangeOp string) bool {
+	if vecOp != OpTypeSum {
+		return false
+	}
+	switch rangeOp {
+	case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeSum, OpRangeTypeRate, OpRangeTypeCount:
+		return true
+	default:
+		return false
+	}
 }
 
 func (e *vectorAggregationExpr) String() string {
