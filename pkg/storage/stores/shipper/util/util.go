@@ -127,7 +127,7 @@ type result struct {
 }
 
 // SafeOpenBoltdbFile will recover from a panic opening a DB file, and return the panic message in the err return object.
-func SafeOpenBoltdbFile(path string) (boltdb *bbolt.DB, err error) {
+func SafeOpenBoltdbFile(path string) (*bbolt.DB, error) {
 	result := make(chan *result)
 	// Open the file in a separate goroutine because we want to change
 	// the behavior of a Fault for just this operation and not for the
