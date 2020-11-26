@@ -10,20 +10,16 @@ import (
 	"time"
 
 	"github.com/coreos/go-systemd/sdjournal"
-
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/prometheus/prometheus/pkg/relabel"
-
-	"github.com/stretchr/testify/assert"
-
+	"github.com/grafana/loki/pkg/promtail/client/fake"
+	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/testutils"
-
-	"github.com/go-kit/kit/log"
-	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/pkg/promtail/positions"
 )
 
 type mockJournalReader struct {
@@ -86,10 +82,7 @@ func TestJournalTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
 
 	relabelCfg := `
 - source_labels: ['__journal_code_file']
@@ -115,9 +108,10 @@ func TestJournalTarget(t *testing.T) {
 		})
 		assert.NoError(t, err)
 	}
-	fmt.Println(client.Messages)
-	assert.Len(t, client.Messages, 10)
+	fmt.Println(client.Received())
+	assert.Len(t, client.Received(), 10)
 	require.NoError(t, jt.Stop())
+	client.Stop()
 }
 
 func TestJournalTarget_JSON(t *testing.T) {
@@ -139,10 +133,7 @@ func TestJournalTarget_JSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
 
 	relabelCfg := `
 - source_labels: ['__journal_code_file']
@@ -173,12 +164,13 @@ func TestJournalTarget_JSON(t *testing.T) {
 
 		expectMsg := `{"CODE_FILE":"journaltarget_test.go","MESSAGE":"ping","OTHER_FIELD":"foobar"}`
 
-		require.Greater(t, len(client.Messages), 0)
-		require.Equal(t, expectMsg, client.Messages[len(client.Messages)-1].Log)
+		require.Greater(t, len(client.Received()), 0)
+		require.Equal(t, expectMsg, client.Received()[len(client.Received())-1].Line)
 	}
 
-	assert.Len(t, client.Messages, 10)
+	assert.Len(t, client.Received(), 10)
 	require.NoError(t, jt.Stop())
+	client.Stop()
 }
 
 func TestJournalTarget_Since(t *testing.T) {
@@ -200,10 +192,7 @@ func TestJournalTarget_Since(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
 
 	cfg := scrapeconfig.JournalTargetConfig{
 		MaxAge: "4h",
@@ -215,6 +204,7 @@ func TestJournalTarget_Since(t *testing.T) {
 
 	r := jt.r.(*mockJournalReader)
 	require.Equal(t, r.config.Since, -1*time.Hour*4)
+	client.Stop()
 }
 
 func TestJournalTarget_Cursor_TooOld(t *testing.T) {
@@ -237,10 +227,7 @@ func TestJournalTarget_Cursor_TooOld(t *testing.T) {
 	}
 	ps.PutString("journal-test", "foobar")
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
 
 	cfg := scrapeconfig.JournalTargetConfig{}
 
@@ -257,6 +244,7 @@ func TestJournalTarget_Cursor_TooOld(t *testing.T) {
 
 	r := jt.r.(*mockJournalReader)
 	require.Equal(t, r.config.Since, -1*time.Hour*7)
+	client.Stop()
 }
 
 func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
@@ -279,10 +267,7 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 	}
 	ps.PutString("journal-test", "foobar")
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
 
 	cfg := scrapeconfig.JournalTargetConfig{}
 
@@ -300,6 +285,7 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 	r := jt.r.(*mockJournalReader)
 	require.Equal(t, r.config.Since, time.Duration(0))
 	require.Equal(t, r.config.Cursor, "foobar")
+	client.Stop()
 }
 
 func Test_MakeJournalFields(t *testing.T) {

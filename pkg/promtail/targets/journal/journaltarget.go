@@ -9,24 +9,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-systemd/sdjournal"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
-	"github.com/go-kit/kit/log/level"
-
-	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
-
-	"github.com/go-kit/kit/log"
-
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-
-	"github.com/coreos/go-systemd/sdjournal"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 const (
@@ -294,8 +290,14 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 	}
 
 	t.positions.PutString(t.positionPath, entry.Cursor)
-	err := t.handler.Handle(labels, ts, msg)
-	return journalEmptyStr, err
+	t.handler.Chan() <- api.Entry{
+		Labels: labels,
+		Entry: logproto.Entry{
+			Line:      msg,
+			Timestamp: ts,
+		},
+	}
+	return journalEmptyStr, nil
 }
 
 // Type returns JournalTargetType.
@@ -332,7 +334,9 @@ func (t *JournalTarget) Details() interface{} {
 // Stop shuts down the JournalTarget.
 func (t *JournalTarget) Stop() error {
 	t.until <- time.Now()
-	return t.r.Close()
+	err := t.r.Close()
+	t.handler.Stop()
+	return err
 }
 
 func makeJournalFields(fields map[string]string) map[string]string {
