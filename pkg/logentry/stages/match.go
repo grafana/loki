@@ -159,12 +159,13 @@ func (m *matcherStage) runKeep(in chan Entry) chan Entry {
 	out := make(chan Entry)
 	outNext := m.stage.Run(next)
 	go func() {
+		defer close(out)
 		for e := range outNext {
 			out <- e
 		}
-		close(out)
 	}()
 	go func() {
+		defer close(next)
 		for e := range in {
 			e, ok := m.processLogQL(e)
 			if !ok {
@@ -173,7 +174,6 @@ func (m *matcherStage) runKeep(in chan Entry) chan Entry {
 			}
 			next <- e
 		}
-		close(next)
 	}()
 	return out
 }
@@ -181,6 +181,7 @@ func (m *matcherStage) runKeep(in chan Entry) chan Entry {
 func (m *matcherStage) runDrop(in chan Entry) chan Entry {
 	out := make(chan Entry)
 	go func() {
+		defer close(out)
 		for e := range in {
 			if e, ok := m.processLogQL(e); !ok {
 				out <- e
@@ -188,7 +189,6 @@ func (m *matcherStage) runDrop(in chan Entry) chan Entry {
 			}
 			m.dropCount.WithLabelValues(m.dropReason).Inc()
 		}
-		close(out)
 	}()
 	return out
 }

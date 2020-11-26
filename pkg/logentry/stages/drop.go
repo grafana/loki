@@ -104,6 +104,7 @@ type dropStage struct {
 func (m *dropStage) Run(in chan Entry) chan Entry {
 	out := make(chan Entry)
 	go func() {
+		defer close(out)
 		for e := range in {
 			if !m.shouldDrop(e) {
 				out <- e
@@ -111,7 +112,6 @@ func (m *dropStage) Run(in chan Entry) chan Entry {
 			}
 			m.dropCount.WithLabelValues(*m.cfg.DropReason)
 		}
-		close(out)
 	}()
 	return out
 }

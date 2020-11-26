@@ -57,14 +57,15 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 func RunWith(in chan Entry, process func(e Entry) Entry) chan Entry {
 	out := make(chan Entry)
 	go func() {
+		defer close(out)
 		for e := range in {
 			out <- process(e)
 		}
-		close(out)
 	}()
 	return out
 }
 
+// Run implements Stage
 func (p *Pipeline) Run(in chan Entry) chan Entry {
 	in = RunWith(in, func(e Entry) Entry {
 		// Initialize the extracted map with the initial labels (ie. "filename"),
@@ -101,13 +102,13 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 	}()
 	go func() {
 		defer wg.Done()
+		defer close(pipelineIn)
 		for e := range res {
 			pipelineIn <- Entry{
 				Extracted: map[string]interface{}{},
 				Entry:     e,
 			}
 		}
-		close(pipelineIn)
 	}()
 	return api.NewEntryHandler(res, func() {
 		once.Do(func() { close(res) })

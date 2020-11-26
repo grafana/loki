@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/client/fake"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -321,9 +322,8 @@ func TestPipeline_Wrap(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			out := make(chan api.Entry, 1)
-			stub := api.NewEntryHandler(out, func() { close(out) })
-			handler := p.Wrap(stub)
+			c := fake.New(func() {})
+			handler := p.Wrap(c)
 
 			handler.Chan() <- api.Entry{
 				Labels: tt.labels,
@@ -333,10 +333,10 @@ func TestPipeline_Wrap(t *testing.T) {
 				},
 			}
 			handler.Stop()
-			stub.Stop()
+			c.Stop()
 			var received bool
 
-			for range out {
+			if len(c.Received()) != 0 {
 				received = true
 			}
 
