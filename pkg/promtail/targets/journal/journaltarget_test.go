@@ -162,15 +162,16 @@ func TestJournalTarget_JSON(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		expectMsg := `{"CODE_FILE":"journaltarget_test.go","MESSAGE":"ping","OTHER_FIELD":"foobar"}`
-
-		require.Greater(t, len(client.Received()), 0)
-		require.Equal(t, expectMsg, client.Received()[len(client.Received())-1].Line)
 	}
-
-	assert.Len(t, client.Received(), 10)
+	expectMsg := `{"CODE_FILE":"journaltarget_test.go","MESSAGE":"ping","OTHER_FIELD":"foobar"}`
 	require.NoError(t, jt.Stop())
 	client.Stop()
+
+	assert.Len(t, client.Received(), 10)
+	for i := 0; i < 10; i++ {
+		require.Equal(t, expectMsg, client.Received()[i].Line)
+	}
+
 }
 
 func TestJournalTarget_Since(t *testing.T) {
