@@ -1,25 +1,42 @@
 package fake
 
 import (
-	"time"
-
-	"github.com/prometheus/common/model"
+	"sync"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Client is a fake client used for testing.
 type Client struct {
-	OnHandleEntry api.EntryHandlerFunc
-	OnStop        func()
+	entries  chan api.Entry
+	received []api.Entry
+	once     sync.Once
+	OnStop   func()
+}
+
+func New(stop func()) *Client {
+	c := &Client{
+		OnStop:  stop,
+		entries: make(chan api.Entry),
+	}
+	go func() {
+		for e := range c.entries {
+			c.received = append(c.received, e)
+		}
+	}()
+	return c
 }
 
 // Stop implements client.Client
 func (c *Client) Stop() {
+	c.once.Do(func() { close(c.entries) })
 	c.OnStop()
 }
 
-// Handle implements client.Client
-func (c *Client) Handle(labels model.LabelSet, time time.Time, entry string) error {
-	return c.OnHandleEntry.Handle(labels, time, entry)
+func (c *Client) Chan() chan<- api.Entry {
+	return c.entries
+}
+
+func (c *Client) Received() []api.Entry {
+	return c.received
 }

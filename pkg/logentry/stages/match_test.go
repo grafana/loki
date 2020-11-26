@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -68,10 +70,14 @@ func TestMatchPipeline(t *testing.T) {
 	out := pl.Run(in)
 
 	in <- Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testMatchLogLineApp1,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testMatchLogLineApp1,
+				Timestamp: time.Now(),
+			},
+		},
 	}
 	e := <-out
 
@@ -163,12 +169,16 @@ func TestMatcher(t *testing.T) {
 			if s != nil {
 
 				out := processEntries(s, Entry{
-					Labels: toLabelSet(tt.labels),
 					Extracted: map[string]interface{}{
 						"test_label": "unimportant value",
 					},
-					Line:      "foo",
-					Timestamp: time.Now(),
+					Entry: api.Entry{
+						Labels: toLabelSet(tt.labels),
+						Entry: logproto.Entry{
+							Line:      "foo",
+							Timestamp: time.Now(),
+						},
+					},
 				})
 
 				if tt.shouldDrop {

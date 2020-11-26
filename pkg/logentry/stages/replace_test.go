@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -127,10 +129,14 @@ func TestPipeline_Replace(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := processEntries(pl, Entry{
-				Labels:    model.LabelSet{},
 				Extracted: map[string]interface{}{},
-				Line:      testData.entry,
-				Timestamp: time.Now(),
+				Entry: api.Entry{
+					Labels: model.LabelSet{},
+					Entry: logproto.Entry{
+						Line:      testData.entry,
+						Timestamp: time.Now(),
+					},
+				},
 			})[0]
 			assert.Equal(t, testData.expectedEntry, out.Line)
 			assert.Equal(t, testData.extracted, out.Extracted)

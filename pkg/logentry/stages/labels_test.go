@@ -10,6 +10,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -53,10 +55,14 @@ func TestLabelsPipeline_Labels(t *testing.T) {
 	}
 
 	out := processEntries(pl, Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testLabelsLogLine,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testLabelsLogLine,
+				Timestamp: time.Now(),
+			},
+		},
 	})[0]
 	assert.Equal(t, expectedLbls, out.Labels)
 }
@@ -71,10 +77,14 @@ func TestLabelsPipelineWithMissingKey_Labels(t *testing.T) {
 	}
 	Debug = true
 	_ = processEntries(pl, Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testLabelsLogLineWithMissingKey,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testLabelsLogLineWithMissingKey,
+				Timestamp: time.Now(),
+			},
+		},
 	})
 
 	expectedLog := "level=debug msg=\"failed to convert extracted label value to string\" err=\"Can't convert <nil> to string\" type=null"
@@ -192,8 +202,10 @@ func TestLabelStage_Process(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := processEntries(st, Entry{
-				Labels:    test.inputLabels,
 				Extracted: test.extractedData,
+				Entry: api.Entry{
+					Labels: test.inputLabels,
+				},
 			})[0]
 			assert.Equal(t, test.expectedLabels, out.Labels)
 		})

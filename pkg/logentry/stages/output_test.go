@@ -8,6 +8,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -49,10 +51,14 @@ func TestPipeline_Output(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := processEntries(pl, Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testOutputLogLine,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testOutputLogLine,
+				Timestamp: time.Now(),
+			},
+		},
 	})[0]
 
 	assert.Equal(t, "this is a log line", out.Line)
@@ -69,10 +75,14 @@ func TestPipelineWithMissingKey_Output(t *testing.T) {
 	Debug = true
 
 	_ = processEntries(pl, Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testOutputLogLineWithMissingKey,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testOutputLogLineWithMissingKey,
+				Timestamp: time.Now(),
+			},
+		},
 	})
 	expectedLog := "level=debug msg=\"extracted output could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
@@ -140,9 +150,13 @@ func TestOutputStage_Process(t *testing.T) {
 			}
 
 			out := processEntries(st, Entry{
-				Labels:    model.LabelSet{},
 				Extracted: test.extracted,
-				Line:      "replaceme",
+				Entry: api.Entry{
+					Labels: model.LabelSet{},
+					Entry: logproto.Entry{
+						Line: "replaceme",
+					},
+				},
 			})[0]
 
 			assert.Equal(t, test.expectedOutput, out.Line)

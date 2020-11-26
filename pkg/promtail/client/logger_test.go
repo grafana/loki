@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
@@ -19,6 +21,7 @@ func TestNewLogger(t *testing.T) {
 
 	l, err := NewLogger(util.Logger, flagext.LabelSet{}, []Config{{URL: cortexflag.URLValue{URL: &url.URL{Host: "string"}}}}...)
 	require.NoError(t, err)
-	err = l.Handle(model.LabelSet{"foo": "bar"}, time.Now(), "entry")
-	require.NoError(t, err)
+	l.Chan() <- api.Entry{Labels: model.LabelSet{"foo": "bar"}, Entry: logproto.Entry{Timestamp: time.Now(), Line: "entry"}}
+	l.Stop()
+
 }

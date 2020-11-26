@@ -10,37 +10,38 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 func TestBatch_add(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		inputEntries      []entry
+		inputEntries      []api.Entry
 		expectedSizeBytes int
 	}{
 		"empty batch": {
-			inputEntries:      []entry{},
+			inputEntries:      []api.Entry{},
 			expectedSizeBytes: 0,
 		},
 		"single stream with single log entry": {
-			inputEntries: []entry{
-				{"tenant", model.LabelSet{}, logEntries[0].Entry},
+			inputEntries: []api.Entry{
+				{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
 			},
 			expectedSizeBytes: len(logEntries[0].Entry.Line),
 		},
 		"single stream with multiple log entries": {
-			inputEntries: []entry{
-				{"tenant", model.LabelSet{}, logEntries[0].Entry},
-				{"tenant", model.LabelSet{}, logEntries[1].Entry},
+			inputEntries: []api.Entry{
+				{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
+				{Labels: model.LabelSet{}, Entry: logEntries[1].Entry},
 			},
 			expectedSizeBytes: len(logEntries[0].Entry.Line) + len(logEntries[1].Entry.Line),
 		},
 		"multiple streams with multiple log entries": {
-			inputEntries: []entry{
-				{"tenant", model.LabelSet{"type": "a"}, logEntries[0].Entry},
-				{"tenant", model.LabelSet{"type": "a"}, logEntries[1].Entry},
-				{"tenant", model.LabelSet{"type": "b"}, logEntries[2].Entry},
+			inputEntries: []api.Entry{
+				{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry},
+				{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry},
+				{Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry},
 			},
 			expectedSizeBytes: len(logEntries[0].Entry.Line) + len(logEntries[1].Entry.Line) + len(logEntries[2].Entry.Line),
 		},
@@ -74,22 +75,22 @@ func TestBatch_encode(t *testing.T) {
 		},
 		"single stream with single log entry": {
 			inputBatch: newBatch(
-				entry{"tenant", model.LabelSet{}, logEntries[0].Entry},
+				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
 			),
 			expectedEntriesCount: 1,
 		},
 		"single stream with multiple log entries": {
 			inputBatch: newBatch(
-				entry{"tenant", model.LabelSet{}, logEntries[0].Entry},
-				entry{"tenant", model.LabelSet{}, logEntries[1].Entry},
+				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
+				api.Entry{Labels: model.LabelSet{}, Entry: logEntries[1].Entry},
 			),
 			expectedEntriesCount: 2,
 		},
 		"multiple streams with multiple log entries": {
 			inputBatch: newBatch(
-				entry{"tenant", model.LabelSet{"type": "a"}, logEntries[0].Entry},
-				entry{"tenant", model.LabelSet{"type": "a"}, logEntries[1].Entry},
-				entry{"tenant", model.LabelSet{"type": "b"}, logEntries[2].Entry},
+				api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry},
+				api.Entry{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry},
+				api.Entry{Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry},
 			),
 			expectedEntriesCount: 3,
 		},
@@ -120,8 +121,8 @@ func TestHashCollisions(t *testing.T) {
 	const entriesPerLabel = 10
 
 	for i := 0; i < entriesPerLabel; i++ {
-		b.add(entry{labels: ls1, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
-		b.add(entry{labels: ls2, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
+		b.add(api.Entry{Labels: ls1, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
+		b.add(api.Entry{Labels: ls2, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
 	}
 
 	// make sure that colliding labels are stored properly as independent streams

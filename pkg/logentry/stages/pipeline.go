@@ -1,17 +1,14 @@
 package stages
 
 import (
-	"time"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 )
-
-const dropLabel = "__drop__"
 
 // PipelineStages contains configuration for each stage within a pipeline
 type PipelineStages = []interface{}
@@ -88,47 +85,33 @@ func (p *Pipeline) Name() string {
 	return StageTypePipeline
 }
 
-// type Runner interface {
-// 	Run(in chan Entry) chan Entry
-// }
-
-// type RunnerFunc func(in chan Entry) chan Entry
-
-// func(f RunnerFunc) Run(in chan Entry) chan Entry{
-// 	f(in)
-// }
-
-// func (p *Pipeline) Wrap(r Runner) Runner {
-// 	res := RunnerFunc(func(in chan Entry) chan Entry {
-// 		out := p.Run(in)
-// 		go func() {
-// 			for e := range out {
-
-// 			}
-// 		}
-// 	})
-
-// 	return res
-// }
-
 // Wrap implements EntryMiddleware
 func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
-	in := make(chan Entry)
-	out := p.Run(in)
+	res := make(chan api.Entry)
+	nextChan := next.Chan()
+	wg, once := sync.WaitGroup{}, sync.Once{}
+	pipelineIn := make(chan Entry)
+	pipelineOut := p.Run(pipelineIn)
+	wg.Add(2)
 	go func() {
-		for e := range out {
-			_ = next.Handle(e.Labels, e.Timestamp, e.Line)
+		defer wg.Done()
+		for e := range pipelineOut {
+			nextChan <- e.Entry
 		}
-		close(in)
 	}()
-	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
-		in <- Entry{
-			Labels:    labels,
-			Extracted: map[string]interface{}{},
-			Line:      line,
-			Timestamp: timestamp,
+	go func() {
+		defer wg.Done()
+		for e := range res {
+			pipelineIn <- Entry{
+				Extracted: map[string]interface{}{},
+				Entry:     e,
+			}
 		}
-		return nil
+		close(pipelineIn)
+	}()
+	return api.NewEntryHandler(res, func() {
+		once.Do(func() { close(res) })
+		wg.Wait()
 	})
 }
 

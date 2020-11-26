@@ -7,6 +7,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -38,6 +40,9 @@ pipeline_stages:
         action:
         service:
         status_code: "status"
+- match:
+    selector: "{match=\"false\"}"
+    action: drop
 `
 
 var testLabelsFromJSONYaml = `
@@ -85,7 +90,7 @@ func TestNewPipeline(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	require.Equal(t, 1, len(p.stages))
+	require.Equal(t, 2, len(p.stages))
 }
 
 func TestPipeline_Process(t *testing.T) {
@@ -197,10 +202,14 @@ func TestPipeline_Process(t *testing.T) {
 			require.NoError(t, err)
 
 			out := <-p.Run(withInboundEntries(Entry{
-				Labels:    tt.initialLabels,
 				Extracted: map[string]interface{}{},
-				Line:      tt.entry,
-				Timestamp: tt.t,
+				Entry: api.Entry{
+					Labels: tt.initialLabels,
+					Entry: logproto.Entry{
+						Line:      tt.entry,
+						Timestamp: tt.t,
+					},
+				},
 			}))
 
 			assert.Equal(t, tt.expectedLabels, out.Labels, "did not get expected labels")
@@ -258,24 +267,19 @@ func BenchmarkPipeline(b *testing.B) {
 			}()
 			for i := 0; i < b.N; i++ {
 				in <- Entry{
-					Labels:    lb,
 					Extracted: map[string]interface{}{},
-					Line:      bm.entry,
-					Timestamp: ts,
+					Entry: api.Entry{
+						Labels: lb,
+						Entry: logproto.Entry{
+							Line:      bm.entry,
+							Timestamp: ts,
+						},
+					},
 				}
 			}
 			close(in)
 		})
 	}
-}
-
-type stubHandler struct {
-	bool
-}
-
-func (s *stubHandler) Handle(labels model.LabelSet, time time.Time, entry string) error {
-	s.bool = true
-	return nil
 }
 
 func TestPipeline_Wrap(t *testing.T) {
@@ -296,10 +300,10 @@ func TestPipeline_Wrap(t *testing.T) {
 	}{
 		"should drop": {
 			map[model.LabelName]model.LabelValue{
-				dropLabel:     "true",
 				"stream":      "stderr",
 				"action":      "GET",
 				"status_code": "200",
+				"match":       "false",
 			},
 			false,
 		},
@@ -317,12 +321,26 @@ func TestPipeline_Wrap(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			stub := &stubHandler{}
+			out := make(chan api.Entry, 1)
+			stub := api.NewEntryHandler(out, func() { close(out) })
 			handler := p.Wrap(stub)
-			if err := handler.Handle(tt.labels, now, rawTestLine); err != nil {
-				t.Fatalf("failed to handle entry: %v", err)
+
+			handler.Chan() <- api.Entry{
+				Labels: tt.labels,
+				Entry: logproto.Entry{
+					Line:      rawTestLine,
+					Timestamp: now,
+				},
 			}
-			assert.Equal(t, tt.shouldSend, stub.bool)
+			handler.Stop()
+			stub.Stop()
+			var received bool
+
+			for range out {
+				received = true
+			}
+
+			assert.Equal(t, tt.shouldSend, received)
 
 		})
 	}

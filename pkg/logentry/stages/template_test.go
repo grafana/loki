@@ -9,6 +9,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -67,10 +69,14 @@ func TestPipeline_Template(t *testing.T) {
 	}
 
 	out := processEntries(pl, Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testTemplateLogLine,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testTemplateLogLine,
+				Timestamp: time.Now(),
+			},
+		},
 	})[0]
 	assert.Equal(t, expectedLbls, out.Labels)
 }
@@ -86,10 +92,14 @@ func TestPipelineWithMissingKey_Template(t *testing.T) {
 	Debug = true
 
 	_ = processEntries(pl, Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testTemplateLogLineWithMissingKey,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testTemplateLogLineWithMissingKey,
+				Timestamp: time.Now(),
+			},
+		},
 	})
 
 	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
@@ -381,8 +391,12 @@ func TestTemplateStage_Process(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := processEntries(st, Entry{
-				Labels:    model.LabelSet{},
-				Line:      "not important for this test",
+				Entry: api.Entry{
+					Labels: model.LabelSet{},
+					Entry: logproto.Entry{
+						Line: "not important for this test",
+					},
+				},
 				Extracted: test.extracted,
 			})[0]
 			assert.Equal(t, test.expectedExtracted, out.Extracted)

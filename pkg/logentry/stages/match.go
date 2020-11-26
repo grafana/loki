@@ -9,7 +9,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -209,10 +211,14 @@ func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
 		e.Labels[model.LabelName(l.Name)] = model.LabelValue(l.Value)
 	}
 	return Entry{
-		Labels:    e.Labels,
 		Extracted: e.Extracted,
-		Line:      string(newLine),
-		Timestamp: e.Timestamp,
+		Entry: api.Entry{
+			Labels: e.Labels,
+			Entry: logproto.Entry{
+				Line:      string(newLine),
+				Timestamp: e.Timestamp,
+			},
+		},
 	}, true
 }
 

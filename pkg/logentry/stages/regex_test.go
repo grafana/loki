@@ -9,6 +9,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -106,9 +108,13 @@ func TestPipeline_Regex(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := processEntries(pl, Entry{
-				Labels:    model.LabelSet{},
-				Timestamp: time.Now(),
-				Line:      testData.entry,
+				Entry: api.Entry{
+					Labels: model.LabelSet{},
+					Entry: logproto.Entry{
+						Timestamp: time.Now(),
+						Line:      testData.entry,
+					},
+				},
 				Extracted: map[string]interface{}{},
 			})[0]
 			assert.Equal(t, testData.expectedExtract, out.Extracted)
@@ -127,10 +133,14 @@ func TestPipelineWithMissingKey_Regex(t *testing.T) {
 	Debug = true
 
 	_ = processEntries(pl, Entry{
-		Labels:    model.LabelSet{},
-		Timestamp: time.Now(),
-		Line:      testRegexLogLineWithMissingKey,
 		Extracted: map[string]interface{}{},
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      testRegexLogLineWithMissingKey,
+			},
+		},
 	})[0]
 
 	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"Can't convert <nil> to string\" type=null"
@@ -337,10 +347,14 @@ func TestRegexParser_Parse(t *testing.T) {
 				t.Fatalf("failed to create regex parser: %s", err)
 			}
 			out := processEntries(p, Entry{
-				Labels:    model.LabelSet{},
 				Extracted: tt.extracted,
-				Line:      tt.entry,
-				Timestamp: time.Now(),
+				Entry: api.Entry{
+					Labels: model.LabelSet{},
+					Entry: logproto.Entry{
+						Line:      tt.entry,
+						Timestamp: time.Now(),
+					},
+				},
 			})[0]
 			assert.Equal(t, tt.expectedExtract, out.Extracted)
 
@@ -393,10 +407,14 @@ func BenchmarkRegexStage(b *testing.B) {
 			}()
 			for i := 0; i < b.N; i++ {
 				in <- Entry{
-					Labels:    labels,
 					Extracted: extr,
-					Line:      bm.entry,
-					Timestamp: ts,
+					Entry: api.Entry{
+						Labels: labels,
+						Entry: logproto.Entry{
+							Line:      bm.entry,
+							Timestamp: ts,
+						},
+					},
 				}
 			}
 			close(in)

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -88,10 +90,14 @@ func TestPipeline_JSON(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := pl.Run(withInboundEntries(Entry{
-				Labels:    model.LabelSet{},
 				Extracted: map[string]interface{}{},
-				Line:      testData.entry,
-				Timestamp: time.Now(),
+				Entry: api.Entry{
+					Labels: model.LabelSet{},
+					Entry: logproto.Entry{
+						Line:      testData.entry,
+						Timestamp: time.Now(),
+					},
+				},
 			}))
 			assert.Equal(t, testData.expectedExtract, (<-out).Extracted)
 		})
@@ -366,10 +372,14 @@ func TestJSONParser_Parse(t *testing.T) {
 				t.Fatalf("failed to create json parser: %s", err)
 			}
 			out := p.Run(withInboundEntries(Entry{
-				Labels:    model.LabelSet{},
 				Extracted: tt.extracted,
-				Line:      tt.entry,
-				Timestamp: time.Now(),
+				Entry: api.Entry{
+					Labels: model.LabelSet{},
+					Entry: logproto.Entry{
+						Line:      tt.entry,
+						Timestamp: time.Now(),
+					},
+				},
 			}))
 			assert.Equal(t, tt.expectedExtract, (<-out).Extracted)
 		})

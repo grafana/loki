@@ -144,9 +144,6 @@ type metricStage struct {
 
 // Process implements Stage
 func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	if _, ok := labels[dropLabel]; ok {
-		return
-	}
 	for name, collector := range m.metrics {
 		// There is a special case for counters where we count even if there is no match in the extracted map.
 		if c, ok := collector.(*metric.Counters); ok {

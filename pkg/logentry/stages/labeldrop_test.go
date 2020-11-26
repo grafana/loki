@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,8 +65,10 @@ func Test_dropLabelStage_Process(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := processEntries(st, Entry{
-				Labels:    test.inputLabels,
 				Extracted: map[string]interface{}{},
+				Entry: api.Entry{
+					Labels: test.inputLabels,
+				},
 			})[0]
 			assert.Equal(t, test.expectedLabels, out.Labels)
 		})

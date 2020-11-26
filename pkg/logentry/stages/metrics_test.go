@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logentry/metric"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var testMetricYaml = `
@@ -116,10 +118,14 @@ func TestMetricsPipeline(t *testing.T) {
 	}
 
 	out := <-pl.Run(withInboundEntries(Entry{
-		Labels:    model.LabelSet{"test": "app"},
-		Line:      testMetricLogLine1,
-		Timestamp: time.Now(),
 		Extracted: map[string]interface{}{},
+		Entry: api.Entry{
+			Labels: model.LabelSet{"test": "app"},
+			Entry: logproto.Entry{
+				Line:      testMetricLogLine1,
+				Timestamp: time.Now(),
+			},
+		},
 	}))
 	out.Line = testMetricLogLine2
 	<-pl.Run(withInboundEntries(out))
@@ -140,10 +146,14 @@ func TestPipelineWithMissingKey_Metrics(t *testing.T) {
 	}
 	Debug = true
 	<-pl.Run(withInboundEntries(Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testMetricLogLineWithMissingKey,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testMetricLogLineWithMissingKey,
+				Timestamp: time.Now(),
+			},
+		},
 	}))
 	expectedLog := "level=debug msg=\"failed to convert extracted value to string, can't perform value comparison\" metric=bloki_count err=\"can't convert <nil> to string\""
 	if !(strings.Contains(buf.String(), expectedLog)) {
@@ -190,10 +200,14 @@ func TestMetricsWithDropInPipeline(t *testing.T) {
 	in := make(chan Entry)
 	out := pl.Run(in)
 	in <- Entry{
-		Labels:    lbls,
 		Extracted: map[string]interface{}{},
-		Line:      testMetricLogLine1,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: lbls,
+			Entry: logproto.Entry{
+				Line:      testMetricLogLine1,
+				Timestamp: time.Now(),
+			},
+		},
 	}
 	e := <-out
 	e.Labels = droppingLabels
@@ -386,10 +400,14 @@ func TestMetricStage_Process(t *testing.T) {
 	}
 
 	out := processEntries(jsonStage, Entry{
-		Labels:    labelFoo,
 		Extracted: map[string]interface{}{},
-		Line:      logFixture,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: labelFoo,
+			Entry: logproto.Entry{
+				Line:      logFixture,
+				Timestamp: time.Now(),
+			},
+		},
 	})
 	out[0].Line = regexLogFixture
 	out = processEntries(regexStage, out...)

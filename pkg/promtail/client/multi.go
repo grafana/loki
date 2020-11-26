@@ -2,17 +2,20 @@ package client
 
 import (
 	"errors"
-	"time"
+	"sync"
 
 	"github.com/go-kit/kit/log"
-	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 // MultiClient is client pushing to one or more loki instances.
-type MultiClient []Client
+type MultiClient struct {
+	clients []Client
+	entries chan api.Entry
+	wg      sync.WaitGroup
+}
 
 // NewMulti creates a new client
 func NewMulti(logger log.Logger, externalLabels flagext.LabelSet, cfgs ...Config) (Client, error) {
@@ -35,23 +38,35 @@ func NewMulti(logger log.Logger, externalLabels flagext.LabelSet, cfgs ...Config
 		}
 		clients = append(clients, client)
 	}
-	return MultiClient(clients), nil
+	multi := &MultiClient{
+		clients: clients,
+		entries: make(chan api.Entry),
+	}
+	multi.start()
+	return multi, nil
 }
 
-// Handle Implements api.EntryHandler
-func (m MultiClient) Handle(labels model.LabelSet, time time.Time, entry string) error {
-	var result util.MultiError
-	for _, client := range m {
-		if err := client.Handle(labels, time, entry); err != nil {
-			result.Add(err)
+func (m *MultiClient) start() {
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		for e := range m.entries {
+			for _, c := range m.clients {
+				c.Chan() <- e
+			}
 		}
-	}
-	return result.Err()
+	}()
+}
+
+func (m *MultiClient) Chan() chan<- api.Entry {
+	return m.entries
 }
 
 // Stop implements Client
-func (m MultiClient) Stop() {
-	for _, c := range m {
+func (m *MultiClient) Stop() {
+	close(m.entries)
+	m.wg.Wait()
+	for _, c := range m.clients {
 		c.Stop()
 	}
 }

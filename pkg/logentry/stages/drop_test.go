@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -268,10 +270,14 @@ func Test_dropStage_Process(t *testing.T) {
 			m, err := newDropStage(util.Logger, tt.config, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			out := processEntries(m, Entry{
-				Labels:    tt.labels,
-				Line:      tt.entry,
 				Extracted: tt.extracted,
-				Timestamp: tt.t,
+				Entry: api.Entry{
+					Labels: tt.labels,
+					Entry: logproto.Entry{
+						Timestamp: tt.t,
+						Line:      tt.entry,
+					},
+				},
 			})
 			if tt.shouldDrop {
 				assert.Len(t, out, 0)
@@ -298,15 +304,23 @@ func TestDropPipeline(t *testing.T) {
 	require.NoError(t, err)
 
 	out := processEntries(pl, Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testMatchLogLineApp1,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testMatchLogLineApp1,
+				Timestamp: time.Now(),
+			},
+		},
 	}, Entry{
-		Labels:    model.LabelSet{},
 		Extracted: map[string]interface{}{},
-		Line:      testMatchLogLineApp2,
-		Timestamp: time.Now(),
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Line:      testMatchLogLineApp2,
+				Timestamp: time.Now(),
+			},
+		},
 	})
 
 	// Only the second line will go through.

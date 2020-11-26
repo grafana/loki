@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -35,10 +36,8 @@ type Processor interface {
 }
 
 type Entry struct {
-	Labels    model.LabelSet
 	Extracted map[string]interface{}
-	Timestamp time.Time
-	Line      string
+	api.Entry
 }
 
 type Stage interface {

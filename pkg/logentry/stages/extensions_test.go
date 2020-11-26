@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
@@ -70,10 +72,14 @@ func TestNewDocker(t *testing.T) {
 				t.Fatalf("failed to create Docker parser: %s", err)
 			}
 			out := processEntries(p, Entry{
-				Labels:    toLabelSet(tt.labels),
 				Extracted: map[string]interface{}{},
-				Line:      tt.entry,
-				Timestamp: tt.t,
+				Entry: api.Entry{
+					Labels: toLabelSet(tt.labels),
+					Entry: logproto.Entry{
+						Line:      tt.entry,
+						Timestamp: tt.t,
+					},
+				},
 			})[0]
 
 			assertLabels(t, tt.expectedLabels, out.Labels)
@@ -150,10 +156,14 @@ func TestNewCri(t *testing.T) {
 			}
 
 			out := processEntries(p, Entry{
-				Labels:    toLabelSet(tt.labels),
 				Extracted: map[string]interface{}{},
-				Line:      tt.entry,
-				Timestamp: tt.t,
+				Entry: api.Entry{
+					Labels: toLabelSet(tt.labels),
+					Entry: logproto.Entry{
+						Line:      tt.entry,
+						Timestamp: tt.t,
+					},
+				},
 			})[0]
 
 			assertLabels(t, tt.expectedLabels, out.Labels)
