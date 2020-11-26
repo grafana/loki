@@ -87,21 +87,21 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 		return
 	}()
 
-	require.Eventually(t, func() bool {mu.Lock(); defer mu.Unlock(); return len(res) == 2;}, time.Duration(3 * maxWait), time.Second)
+	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(res) == 2 }, time.Duration(3*maxWait), time.Second)
 	require.Equal(t, "START line", res[0].Line)
 	require.Equal(t, "not a start line hitting timeout", res[1].Line)
 }
 
 func simpleEntry(line string) Entry {
 	return Entry{
-				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
-					Labels:    model.LabelSet{},
-					Entry: logproto.Entry{
-						Timestamp: time.Now(),
-						Line: line,
-					},
-				},
-			}
+		Extracted: map[string]interface{}{},
+		Entry: api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      line,
+			},
+		},
+	}
 
 }
