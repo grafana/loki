@@ -48,7 +48,7 @@ func (b *boltDBShipperTableClient) Stop() {
 }
 
 func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, name string) error {
-	objects, dirs, err := b.objectClient.List(ctx, name, delimiter)
+	objects, dirs, err := b.objectClient.List(ctx, name+delimiter, delimiter)
 	if err != nil {
 		return err
 	}
