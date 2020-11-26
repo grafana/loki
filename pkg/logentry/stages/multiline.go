@@ -2,10 +2,14 @@ package stages
 
 import (
 	"bytes"
+	"fmt"
 	"regexp"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 )
@@ -25,8 +29,7 @@ type MultilineConfig struct {
 }
 
 func validateMultilineConfig(cfg *MultilineConfig) error {
-	if cfg == nil ||
-		(cfg.Expression == nil) {
+	if cfg == nil || cfg.Expression == nil || cfg.MaxWaitTime == nil {
 		return errors.New(ErrMultilineStageEmptyConfig)
 	}
 
@@ -79,9 +82,12 @@ func (m *multilineStage) Run(in chan Entry) chan Entry {
 		for {
 			select {
 			case <- time.After(m.cfg.maxWait):
+				level.Debug(m.logger).Log("msg", fmt.Sprintf("flush multiline block due to %v timeout", m.cfg.maxWait), "block", m.buffer.String())
 				m.flush(out)
 			case e, ok := <- in:
 				if !ok {
+					level.Debug(m.logger).Log("msg", "flush multiline block because inbound closed", "block", m.buffer.String())
+					m.flush(out)
 					return	
 				}
 
@@ -105,14 +111,19 @@ func (m *multilineStage) Run(in chan Entry) chan Entry {
 
 func (m *multilineStage) flush(out chan Entry) {
 	if m.buffer.Len() == 0 {
+		level.Debug(m.logger).Log("msg", "nothing to flush", "buffer_len", m.buffer.Len())
 		return
 	}
 
 	collapsed := &Entry{
-		Labels: m.startLineEntry.Labels,
 		Extracted: m.startLineEntry.Extracted,
-		Timestamp: m.startLineEntry.Timestamp,
-		Line: m.buffer.String(),
+		Entry: api.Entry{
+			Labels: m.startLineEntry.Entry.Labels,
+			Entry: logproto.Entry{
+				Timestamp: m.startLineEntry.Entry.Entry.Timestamp,
+				Line: m.buffer.String(),
+			},
+		},
 	}
 	m.buffer.Reset()
 
