@@ -200,7 +200,7 @@ func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
 		}
 	}
 	sp := m.pipeline.ForStream(labels.FromMap(util.ModelLabelSetToMap(e.Labels)))
-	newLine, newLabels, ok := sp.Process([]byte(e.Line))
+	newLine, newLabels, ok := sp.ProcessString(e.Line)
 	if !ok {
 		return e, false
 	}
@@ -215,7 +215,7 @@ func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
 		Entry: api.Entry{
 			Labels: e.Labels,
 			Entry: logproto.Entry{
-				Line:      string(newLine),
+				Line:      newLine,
 				Timestamp: e.Timestamp,
 			},
 		},

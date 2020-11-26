@@ -1,7 +1,8 @@
 FROM alpine as helm
-ARG HELM_VER="v2.13.1"
+ARG HELM_VER="v3.2.3"
+
 RUN apk add --no-cache curl && \
-    curl -L -o /tmp/helm-$HELM_VER.tgz http://storage.googleapis.com/kubernetes-helm/helm-${HELM_VER}-linux-amd64.tar.gz && \
+    curl -L -o /tmp/helm-$HELM_VER.tgz https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz && \
     tar -xz -C /tmp -f /tmp/helm-$HELM_VER.tgz && \
     mv /tmp/linux-amd64/helm /usr/bin/helm && \
     rm -rf /tmp/linux-amd64 /tmp/helm-$HELM_VER.tgz
