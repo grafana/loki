@@ -656,5 +656,5 @@ func Test_DryRun(t *testing.T) {
 		},
 	}, false)
 	require.NoError(t, err)
-	require.IsType(t, client.MultiClient{}, p.client)
+	require.IsType(t, &client.MultiClient{}, p.client)
 }
