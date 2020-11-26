@@ -3,8 +3,9 @@ package api
 import (
 	"sync"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // Entry is a log entry with labels.

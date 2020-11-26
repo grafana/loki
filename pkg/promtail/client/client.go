@@ -349,9 +349,7 @@ func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 		e.Labels = c.externalLabels.Merge(e.Labels)
 	}
 	tenantID := c.getTenantID(e.Labels)
-	if _, ok := e.Labels[ReservedLabelTenantID]; ok {
-		delete(e.Labels, ReservedLabelTenantID)
-	}
+	delete(e.Labels, ReservedLabelTenantID)
 	return e, tenantID
 }
 

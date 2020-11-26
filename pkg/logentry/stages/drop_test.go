@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -290,10 +291,6 @@ func Test_dropStage_Process(t *testing.T) {
 
 func ptrFromString(str string) *string {
 	return &str
-}
-
-func ptrFromTime(t time.Time) *time.Time {
-	return &t
 }
 
 // TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
