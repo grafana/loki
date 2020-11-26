@@ -88,6 +88,7 @@ func Test_newReaderTarget(t *testing.T) {
 				return
 			}
 			<-got.ctx.Done()
+			c.Stop()
 			compareEntries(t, tt.want, c.Received())
 		})
 	}
