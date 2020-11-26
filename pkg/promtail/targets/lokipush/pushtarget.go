@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/distributor"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
@@ -139,17 +140,18 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, entry := range stream.Entries {
-			var err error
+			e := api.Entry{
+				Labels: filtered.Clone(),
+				Entry: logproto.Entry{
+					Line: entry.Line,
+				},
+			}
 			if t.config.KeepTimestamp {
-				err = t.handler.Handle(filtered.Clone(), entry.Timestamp, entry.Line)
+				e.Timestamp = entry.Timestamp
 			} else {
-				err = t.handler.Handle(filtered.Clone(), time.Now(), entry.Line)
+				e.Timestamp = time.Now()
 			}
-
-			if err != nil {
-				lastErr = err
-				continue
-			}
+			t.handler.Chan() <- e
 		}
 	}
 
@@ -193,5 +195,6 @@ func (t *PushTarget) Details() interface{} {
 func (t *PushTarget) Stop() error {
 	level.Info(t.logger).Log("msg", "stopping push server", "job", t.jobName)
 	t.server.Shutdown()
+	t.handler.Stop()
 	return nil
 }

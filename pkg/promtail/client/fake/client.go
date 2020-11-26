@@ -11,6 +11,7 @@ type Client struct {
 	entries  chan api.Entry
 	received []api.Entry
 	once     sync.Once
+	mtx      sync.Mutex
 	OnStop   func()
 }
 
@@ -21,7 +22,9 @@ func New(stop func()) *Client {
 	}
 	go func() {
 		for e := range c.entries {
+			c.mtx.Lock()
 			c.received = append(c.received, e)
+			c.mtx.Unlock()
 		}
 	}()
 	return c
@@ -38,5 +41,9 @@ func (c *Client) Chan() chan<- api.Entry {
 }
 
 func (c *Client) Received() []api.Entry {
-	return c.received
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	cpy := make([]api.Entry, len(c.received))
+	copy(cpy, c.received)
+	return cpy
 }

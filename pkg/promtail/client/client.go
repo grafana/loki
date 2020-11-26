@@ -107,11 +107,7 @@ func init() {
 }
 
 // Client pushes entries to Loki and can be stopped
-type Client interface {
-	api.EntryHandler
-	// Stop goroutine sending batch of entries.
-	Stop()
-}
+type Client api.EntryHandler
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
 type client struct {

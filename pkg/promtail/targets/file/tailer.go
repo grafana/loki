@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/util"
@@ -131,7 +132,7 @@ func (t *tailer) readLines() {
 		level.Info(t.logger).Log("msg", "tail routine: exited", "path", t.path)
 		close(t.done)
 	}()
-
+	entries := t.handler.Chan()
 	for {
 		line, ok := <-t.tail.Lines
 		if !ok {
@@ -147,8 +148,12 @@ func (t *tailer) readLines() {
 
 		readLines.WithLabelValues(t.path).Inc()
 		logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(line.Text)))
-		if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
-			level.Error(t.logger).Log("msg", "tail routine: error handling line", "path", t.path, "error", err)
+		entries <- api.Entry{
+			Labels: model.LabelSet{},
+			Entry: logproto.Entry{
+				Timestamp: line.Time,
+				Line:      line.Text,
+			},
 		}
 
 	}
@@ -202,6 +207,7 @@ func (t *tailer) stop() {
 		// Wait for readLines() to consume all the remaining messages and exit when the channel is closed
 		<-t.done
 		level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
+		t.handler.Stop()
 	})
 }
 
