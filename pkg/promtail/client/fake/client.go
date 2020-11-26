@@ -12,6 +12,7 @@ type Client struct {
 	received []api.Entry
 	once     sync.Once
 	mtx      sync.Mutex
+	wg       sync.WaitGroup
 	OnStop   func()
 }
 
@@ -20,7 +21,9 @@ func New(stop func()) *Client {
 		OnStop:  stop,
 		entries: make(chan api.Entry),
 	}
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		for e := range c.entries {
 			c.mtx.Lock()
 			c.received = append(c.received, e)
@@ -33,6 +36,7 @@ func New(stop func()) *Client {
 // Stop implements client.Client
 func (c *Client) Stop() {
 	c.once.Do(func() { close(c.entries) })
+	c.wg.Wait()
 	c.OnStop()
 }
 
