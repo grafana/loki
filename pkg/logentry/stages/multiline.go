@@ -20,12 +20,15 @@ const (
 	ErrMultilineStageInvalidMaxWaitTime = "multiline stage `max_wait_time` parse error: %v"
 )
 
+const maxLineDefault uint64 = 128
+
 // MultilineConfig contains the configuration for a multilineStage
 type MultilineConfig struct {
 	Expression  *string `mapstructure:"firstline"`
+	regex       *regexp.Regexp
+	MaxLines     *uint64 `mapstructure:"max_lines"`
 	MaxWaitTime *string `mapstructure:"max_wait_time"`
 	maxWait     time.Duration
-	regex       *regexp.Regexp
 }
 
 func validateMultilineConfig(cfg *MultilineConfig) error {
@@ -45,6 +48,11 @@ func validateMultilineConfig(cfg *MultilineConfig) error {
 	}
 	cfg.maxWait = maxWait
 
+	if cfg.MaxLines == nil {
+		cfg.MaxLines = new(uint64)
+		*cfg.MaxLines = maxLineDefault
+	}
+
 	return nil
 }
 
@@ -54,6 +62,7 @@ type multilineStage struct {
 	cfg            *MultilineConfig
 	buffer         *bytes.Buffer
 	startLineEntry Entry
+	currentLines   uint64
 }
 
 // newMulitlineStage creates a MulitlineStage from config
@@ -103,6 +112,11 @@ func (m *multilineStage) Run(in chan Entry) chan Entry {
 					m.buffer.WriteRune('\n')
 				}
 				m.buffer.WriteString(e.Line)
+				m.currentLines++
+
+				if m.currentLines == *m.cfg.MaxLines {
+					m.flush(out)
+				}
 			}
 		}
 	}()
@@ -126,6 +140,7 @@ func (m *multilineStage) flush(out chan Entry) {
 		},
 	}
 	m.buffer.Reset()
+	m.currentLines = 0
 
 	out <- *collapsed
 }
