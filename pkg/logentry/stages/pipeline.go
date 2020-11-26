@@ -54,11 +54,12 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 	}, nil
 }
 
-func RunWith(in chan Entry, process func(e Entry) Entry) chan Entry {
+// RunWith will reads from the input channel entries, mutate them with the process function and returns them via the output channel.
+func RunWith(input chan Entry, process func(e Entry) Entry) chan Entry {
 	out := make(chan Entry)
 	go func() {
 		defer close(out)
-		for e := range in {
+		for e := range input {
 			out <- process(e)
 		}
 	}()
@@ -75,6 +76,7 @@ func (p *Pipeline) Run(in chan Entry) chan Entry {
 		}
 		return e
 	})
+	// chain all stages together.
 	for _, m := range p.stages {
 		in = m.Run(in)
 	}

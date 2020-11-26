@@ -40,11 +40,13 @@ type Entry struct {
 	api.Entry
 }
 
+// Stage can receive entries via an inbound channel and forward mutated entries to an outbound channel.
 type Stage interface {
 	Name() string
 	Run(chan Entry) chan Entry
 }
 
+// stageProcessor Allow to transform a Processor (old synchronous pipeline stage) into an async Stage
 type stageProcessor struct {
 	Processor
 }

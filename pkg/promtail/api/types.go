@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// Entry is a log entry with labels.
 type Entry struct {
 	Labels model.LabelSet
 	logproto.Entry
@@ -18,23 +19,26 @@ type InstrumentedEntryHandler interface {
 }
 
 // EntryHandler is something that can "handle" entries via a channel.
+// Stop must be called to gracefully shutdown the EntryHandler
 type EntryHandler interface {
 	Chan() chan<- Entry
 	Stop()
 }
 
-// EntryMiddleware takes a entry channel to intercept then and returns another one.
-// Closing the new channel is required but will not close the inner channel in case it still in used.
+// EntryMiddleware takes an EntryHandler and returns another one that will intercept and forward entries.
+// The newly created EntryHandler should be Stopped independently from the original one.
 type EntryMiddleware interface {
 	Wrap(EntryHandler) EntryHandler
 }
 
+// EntryMiddlewareFunc allows to create EntryMiddleware via a function.
 type EntryMiddlewareFunc func(EntryHandler) EntryHandler
 
 func (e EntryMiddlewareFunc) Wrap(next EntryHandler) EntryHandler {
 	return e(next)
 }
 
+// EntryMutatorFunc is a function that can mutate an entry
 type EntryMutatorFunc func(Entry) Entry
 
 type entryHandler struct {
@@ -50,6 +54,7 @@ func (e entryHandler) Stop() {
 	e.stop()
 }
 
+// NewEntryHandler creates a new EntryHandler using a input channel and a stop function.
 func NewEntryHandler(entries chan<- Entry, stop func()) EntryHandler {
 	return entryHandler{
 		stop:    stop,
@@ -57,6 +62,7 @@ func NewEntryHandler(entries chan<- Entry, stop func()) EntryHandler {
 	}
 }
 
+// NewEntryMutatorHandler creates a EntryHandler that mutates incoming entries from another EntryHandler.
 func NewEntryMutatorHandler(next EntryHandler, f EntryMutatorFunc) EntryHandler {
 	out, wg, once := make(chan Entry), sync.WaitGroup{}, sync.Once{}
 	nextChan := next.Chan()
