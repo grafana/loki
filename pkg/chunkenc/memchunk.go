@@ -741,8 +741,7 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 	streams := map[uint64]*logproto.Stream{}
 	for _, e := range hb.entries {
 		chunkStats.HeadChunkBytes += int64(len(e.s))
-		line := []byte(e.s)
-		newLine, parsedLbs, ok := pipeline.Process(line)
+		newLine, parsedLbs, ok := pipeline.ProcessString(e.s)
 		if !ok {
 			continue
 		}
@@ -756,7 +755,7 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp: time.Unix(0, e.t),
-			Line:      string(newLine),
+			Line:      newLine,
 		})
 
 	}
@@ -780,8 +779,7 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extra
 	series := map[uint64]*logproto.Series{}
 	for _, e := range hb.entries {
 		chunkStats.HeadChunkBytes += int64(len(e.s))
-		line := []byte(e.s)
-		value, parsedLabels, ok := extractor.Process(line)
+		value, parsedLabels, ok := extractor.ProcessString(e.s)
 		if !ok {
 			continue
 		}
@@ -794,10 +792,14 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extra
 			}
 			series[lhash] = s
 		}
+
+		// []byte here doesn't create allocation because Sum64 has go:noescape directive
+		// It specifies that the function does not allow any of the pointers passed as arguments to escape into the heap or into the values returned from the function.
+		h := xxhash.Sum64([]byte(e.s))
 		s.Samples = append(s.Samples, logproto.Sample{
 			Timestamp: e.t,
 			Value:     value,
-			Hash:      xxhash.Sum64([]byte(e.s)),
+			Hash:      h,
 		})
 	}
 

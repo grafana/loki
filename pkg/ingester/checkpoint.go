@@ -169,6 +169,7 @@ func (i *ingesterSeriesIter) Iter() <-chan *SeriesWithErr {
 				// TODO(owen-d): use a pool
 				chunks, err := toWireChunks(stream.chunks, nil)
 				stream.chunkMtx.RUnlock()
+
 				var s *Series
 				if err == nil {
 					s = &Series{

@@ -5,7 +5,48 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
 )
+
+func TestNoopPipeline(t *testing.T) {
+	lbs := labels.Labels{{Name: "foo", Value: "bar"}}
+	l, lbr, ok := NewNoopPipeline().ForStream(lbs).Process([]byte(""))
+	require.Equal(t, []byte(""), l)
+	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
+	require.Equal(t, true, ok)
+
+	ls, lbr, ok := NewNoopPipeline().ForStream(lbs).ProcessString("")
+	require.Equal(t, "", ls)
+	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
+	require.Equal(t, true, ok)
+}
+
+func TestPipeline(t *testing.T) {
+	lbs := labels.Labels{{Name: "foo", Value: "bar"}}
+	p := NewPipeline([]Stage{
+		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+		newMustLineFormatter("lbs {{.foo}}"),
+	})
+	l, lbr, ok := p.ForStream(lbs).Process([]byte("line"))
+	require.Equal(t, []byte("lbs bar"), l)
+	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
+	require.Equal(t, true, ok)
+
+	ls, lbr, ok := p.ForStream(lbs).ProcessString("line")
+	require.Equal(t, "lbs bar", ls)
+	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
+	require.Equal(t, true, ok)
+
+	l, lbr, ok = p.ForStream(labels.Labels{}).Process([]byte("line"))
+	require.Equal(t, []byte(nil), l)
+	require.Equal(t, nil, lbr)
+	require.Equal(t, false, ok)
+
+	ls, lbr, ok = p.ForStream(labels.Labels{}).ProcessString("line")
+	require.Equal(t, "", ls)
+	require.Equal(t, nil, lbr)
+	require.Equal(t, false, ok)
+}
 
 var (
 	resOK   bool

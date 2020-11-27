@@ -153,7 +153,7 @@ func (s *stream) Push(
 		_, lastChunkTimestamp = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 
-	storedEntries := recordPool.GetEntries()
+	var storedEntries []logproto.Entry
 	failedEntriesWithError := []entryWithError{}
 
 	// Don't fail on the first append error - if samples are sent out of order,

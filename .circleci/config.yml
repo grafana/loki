@@ -46,7 +46,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.11.0
+    - image: grafana/loki-build-image:0.12.0
   working_directory: /src/loki
 
 jobs:
@@ -107,7 +107,7 @@ jobs:
 
   test-helm:
     environment:
-      CT_VERSION: 2.3.3
+      CT_VERSION: 3.3.0
     machine:
       image: ubuntu-1604:201903-01
     steps:
@@ -122,9 +122,7 @@ jobs:
       - run:
           name: Install Helm
           command: |
-            curl -L https://git.io/get_helm.sh | bash -s -- -v v2.16.3
-            kubectl apply -f tools/helm.yaml
-            helm init --service-account helm --wait
+            curl -L https://git.io/get_helm.sh | bash -s -- -v v3.2.3
       - run:
           name: Install Chart Testing tool
           command: |
