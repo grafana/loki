@@ -323,6 +323,7 @@ func (s *targetSyncer) stop() {
 		target.Stop()
 		delete(s.targets, key)
 	}
+	s.entryHandler.Stop()
 }
 
 func hostname() (string, error) {
