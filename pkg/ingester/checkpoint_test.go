@@ -10,11 +10,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
+
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/validation"
-	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 )
 
 // small util for ensuring data exists as we expect
