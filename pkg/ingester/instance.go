@@ -153,13 +153,10 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		prevNumChunks := len(stream.chunks)
 		if err := stream.Push(ctx, s.Entries, record); err != nil {
 			appendErr = err
 			continue
 		}
-
-		memoryChunks.Add(float64(len(stream.chunks) - prevNumChunks))
 	}
 
 	if !record.IsEmpty() {
@@ -259,8 +256,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 	err = i.forMatchingStreams(
 		expr.Matchers(),
 		func(stream *stream) error {
-			ingStats.TotalChunksMatched += int64(len(stream.chunks))
-			iter, err := stream.Iterator(ctx, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
+			iter, err := stream.Iterator(ctx, ingStats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -290,8 +286,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	err = i.forMatchingStreams(
 		expr.Selector().Matchers(),
 		func(stream *stream) error {
-			ingStats.TotalChunksMatched += int64(len(stream.chunks))
-			iter, err := stream.SampleIterator(ctx, req.Start, req.End, extractor.ForStream(stream.labels))
+			iter, err := stream.SampleIterator(ctx, ingStats, req.Start, req.End, extractor.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -577,10 +572,9 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 }
 
 func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {
-	firstchunkFrom, _ := stream.chunks[0].chunk.Bounds()
-	_, lastChunkTo := stream.chunks[len(stream.chunks)-1].chunk.Bounds()
+	from, to := stream.Bounds()
 
-	if req.End.UnixNano() > firstchunkFrom.UnixNano() && req.Start.UnixNano() <= lastChunkTo.UnixNano() {
+	if req.End.UnixNano() > from.UnixNano() && req.Start.UnixNano() <= to.UnixNano() {
 		return true
 	}
 	return false
