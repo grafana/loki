@@ -322,33 +322,38 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	metric := labelsBuilder.Labels()
 
 	wireChunks := make([]chunk.Chunk, 0, len(cs))
-	chunkMtx.Lock()
-	for _, c := range cs {
-		// Ensure that new blocks are cut before flushing as data in the head block is not included otherwise.
-		if err = c.chunk.Close(); err != nil {
-			chunkMtx.Unlock()
-			return err
-		}
-		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
-		c := chunk.NewChunk(
-			userID, fp, metric,
-			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
-			firstTime,
-			lastTime,
-		)
 
-		start := time.Now()
-		err := c.Encode()
-		if err != nil {
-			chunkMtx.Unlock()
-			return err
+	// use anonymous function to make lock releasing simpler.
+	err = func() error {
+		chunkMtx.Lock()
+		defer chunkMtx.Unlock()
+
+		for _, c := range cs {
+			// Ensure that new blocks are cut before flushing as data in the head block is not included otherwise.
+			if err := c.chunk.Close(); err != nil {
+				return err
+			}
+			firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
+			c := chunk.NewChunk(
+				userID, fp, metric,
+				chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
+				firstTime,
+				lastTime,
+			)
+
+			start := time.Now()
+			if err := c.Encode(); err != nil {
+				return err
+			}
+			chunkEncodeTime.Observe(time.Since(start).Seconds())
+			wireChunks = append(wireChunks, c)
 		}
-		chunkEncodeTime.Observe(time.Since(start).Seconds())
-		wireChunks = append(wireChunks, c)
+		return nil
+	}()
+
+	if err != nil {
+		return err
 	}
-	// release chunk lock so as not to hold for network request, plus we don't need it
-	// anymore if the storage write fails.
-	chunkMtx.Unlock()
 
 	if err := i.store.Put(ctx, wireChunks); err != nil {
 		return err
