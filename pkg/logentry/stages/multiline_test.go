@@ -1,7 +1,6 @@
 package stages
 
 import (
-	"bytes"
 	"sync"
 	"testing"
 	"time"
@@ -29,7 +28,6 @@ func Test_multilineStage_Process(t *testing.T) {
 	stage := &multilineStage{
 		cfg:    mcfg,
 		logger: util.Logger,
-		buffer: new(bytes.Buffer),
 	}
 
 	out := processEntries(stage, simpleEntry("START line 1"), simpleEntry("not a start line"), simpleEntry("START line 2"), simpleEntry("START line 3"))
@@ -54,7 +52,6 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 	stage := &multilineStage{
 		cfg:    mcfg,
 		logger: util.Logger,
-		buffer: new(bytes.Buffer),
 	}
 
 	in := make(chan Entry, 2)
