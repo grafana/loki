@@ -64,15 +64,15 @@ type stream struct {
 	fp           model.Fingerprint // possibly remapped fingerprint, used in the streams map
 	labels       labels.Labels
 	labelsString string
-	factory      func() chunkenc.Chunk
 	lastLine     line
+	metrics      *ingesterMetrics
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 }
 
 type chunkDesc struct {
-	chunk   chunkenc.Chunk
+	chunk   *chunkenc.MemChunk
 	closed  bool
 	synced  bool
 	flushed time.Time
@@ -85,14 +85,14 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, factory func() chunkenc.Chunk) *stream {
+func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, metrics *ingesterMetrics) *stream {
 	return &stream{
 		cfg:          cfg,
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
-		factory:      factory,
 		tailers:      map[uint32]*tailer{},
+		metrics:      metrics,
 	}
 }
 
@@ -111,26 +111,39 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	return nil
 }
 
-func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
+// setChunks is used during checkpoint recovery
+func (s *stream) setChunks(chunks []Chunk) (entriesAdded int, err error) {
+	chks, err := fromWireChunks(s.cfg, chunks)
+	if err != nil {
+		return 0, err
+	}
+	s.chunks = chks
+	for _, c := range s.chunks {
+		entriesAdded += c.chunk.Size()
+	}
+	return entriesAdded, nil
+}
+
+func (s *stream) NewChunk() *chunkenc.MemChunk {
+	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+}
+
+func (s *stream) Push(
+	ctx context.Context,
+	entries []logproto.Entry,
+	record *WALRecord,
+) error {
 	var lastChunkTimestamp time.Time
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
-			chunk: s.factory(),
+			chunk: s.NewChunk(),
 		})
 		chunksCreatedTotal.Inc()
 	} else {
 		_, lastChunkTimestamp = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 
-	s.tailerMtx.RLock()
-	hasTailers := len(s.tailers) != 0
-	s.tailerMtx.RUnlock()
-
 	var storedEntries []logproto.Entry
-	if hasTailers {
-		storedEntries = make([]logproto.Entry, 0, len(entries))
-	}
-
 	failedEntriesWithError := []entryWithError{}
 
 	// Don't fail on the first append error - if samples are sent out of order,
@@ -149,7 +162,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronize
 		}
 
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk, synchronizePeriod, minUtilization) {
+		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 			err := chunk.chunk.Close()
 			if err != nil {
@@ -164,7 +177,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronize
 			chunksCreatedTotal.Inc()
 
 			s.chunks = append(s.chunks, chunkDesc{
-				chunk: s.factory(),
+				chunk: s.NewChunk(),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
 			lastChunkTimestamp = time.Time{}
@@ -172,10 +185,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronize
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
 		} else {
-			// send only stored entries to tailers
-			if hasTailers {
-				storedEntries = append(storedEntries, entries[i])
-			}
+			storedEntries = append(storedEntries, entries[i])
 			lastChunkTimestamp = entries[i].Timestamp
 			s.lastLine.ts = lastChunkTimestamp
 			s.lastLine.content = entries[i].Line
@@ -184,30 +194,44 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronize
 	}
 
 	if len(storedEntries) != 0 {
-		go func() {
-			stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
+		// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
+		if record != nil {
+			record.AddEntries(uint64(s.fp), storedEntries...)
+		} else {
+			// If record is nil, this is a WAL recovery.
+			s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
+		}
 
-			closedTailers := []uint32{}
+		s.tailerMtx.RLock()
+		hasTailers := len(s.tailers) != 0
+		s.tailerMtx.RUnlock()
+		if hasTailers {
+			go func() {
+				stream := logproto.Stream{Labels: s.labelsString, Entries: storedEntries}
 
-			s.tailerMtx.RLock()
-			for _, tailer := range s.tailers {
-				if tailer.isClosed() {
-					closedTailers = append(closedTailers, tailer.getID())
-					continue
+				closedTailers := []uint32{}
+
+				s.tailerMtx.RLock()
+				for _, tailer := range s.tailers {
+					if tailer.isClosed() {
+						closedTailers = append(closedTailers, tailer.getID())
+						continue
+					}
+					tailer.send(stream, s.labels)
 				}
-				tailer.send(stream, s.labels)
-			}
-			s.tailerMtx.RUnlock()
+				s.tailerMtx.RUnlock()
 
-			if len(closedTailers) != 0 {
-				s.tailerMtx.Lock()
-				defer s.tailerMtx.Unlock()
+				if len(closedTailers) != 0 {
+					s.tailerMtx.Lock()
+					defer s.tailerMtx.Unlock()
 
-				for _, closedTailerID := range closedTailers {
-					delete(s.tailers, closedTailerID)
+					for _, closedTailerID := range closedTailers {
+						delete(s.tailers, closedTailerID)
+					}
 				}
-			}
-		}()
+			}()
+		}
+
 	}
 
 	if len(failedEntriesWithError) > 0 {

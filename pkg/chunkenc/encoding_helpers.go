@@ -119,4 +119,17 @@ func (d *decbuf) byte() byte {
 	return x
 }
 
+func (d *decbuf) bytes(n int) []byte {
+	if d.e != nil {
+		return nil
+	}
+	if len(d.b) < n {
+		d.e = ErrInvalidSize
+		return nil
+	}
+	x := d.b[:n]
+	d.b = d.b[n:]
+	return x
+}
+
 func (d *decbuf) err() error { return d.e }

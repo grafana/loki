@@ -294,6 +294,7 @@ func TestSerialization(t *testing.T) {
 			for i := 0; i < numSamples; i++ {
 				require.NoError(t, chk.Append(logprotoEntry(int64(i), strconv.Itoa(i))))
 			}
+			require.NoError(t, chk.Close())
 
 			byt, err := chk.Bytes()
 			require.NoError(t, err)
@@ -838,6 +839,68 @@ func TestBytesWith(t *testing.T) {
 	require.Nil(t, err)
 
 	require.Equal(t, exp, out)
+}
+
+func TestHeadBlockCheckpointing(t *testing.T) {
+	c := NewMemChunk(EncSnappy, 256*1024, 1500*1024)
+
+	// add a few entries
+	for i := 0; i < 5; i++ {
+		entry := &logproto.Entry{
+			Timestamp: time.Unix(int64(i), 0),
+			Line:      fmt.Sprintf("hi there - %d", i),
+		}
+		require.Equal(t, true, c.SpaceFor(entry))
+		require.Nil(t, c.Append(entry))
+	}
+
+	// ensure blocks are not cut
+	require.Equal(t, 0, len(c.blocks))
+
+	b, err := c.head.CheckpointBytes(c.format)
+	require.Nil(t, err)
+
+	hb := &headBlock{}
+	require.Nil(t, hb.FromCheckpoint(b))
+	require.Equal(t, c.head, hb)
+}
+
+func TestCheckpointEncoding(t *testing.T) {
+	blockSize, targetSize := 256*1024, 1500*1024
+	c := NewMemChunk(EncSnappy, blockSize, targetSize)
+
+	// add a few entries
+	for i := 0; i < 5; i++ {
+		entry := &logproto.Entry{
+			Timestamp: time.Unix(int64(i), 0),
+			Line:      fmt.Sprintf("hi there - %d", i),
+		}
+		require.Equal(t, true, c.SpaceFor(entry))
+		require.Nil(t, c.Append(entry))
+	}
+
+	// cut it
+	require.Nil(t, c.cut())
+
+	// add a few more to head
+	for i := 5; i < 10; i++ {
+		entry := &logproto.Entry{
+			Timestamp: time.Unix(int64(i), 0),
+			Line:      fmt.Sprintf("hi there - %d", i),
+		}
+		require.Equal(t, true, c.SpaceFor(entry))
+		require.Nil(t, c.Append(entry))
+	}
+
+	// ensure new blocks are not cut
+	require.Equal(t, 1, len(c.blocks))
+
+	chk, head, err := c.SerializeForCheckpoint(nil)
+	require.Nil(t, err)
+
+	cpy, err := MemchunkFromCheckpoint(chk, head, blockSize, targetSize)
+	require.Nil(t, err)
+	require.Equal(t, c, cpy)
 }
 
 var streams = []logproto.Stream{}

@@ -9,26 +9,33 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
-
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-var defaultFactory = func() chunkenc.Chunk {
-	return chunkenc.NewMemChunk(chunkenc.EncGZIP, 512, 0)
+func defaultConfig() *Config {
+	cfg := Config{
+		BlockSize:     512,
+		ChunkEncoding: "gzip",
+	}
+	if err := cfg.Validate(); err != nil {
+		panic(errors.Wrap(err, "error building default test config"))
+	}
+	return &cfg
 }
+
+var NilMetrics = newIngesterMetrics(nil)
 
 func TestLabelsCollisions(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0)
+	i := newInstance(defaultConfig(), "test", limiter, noopWAL{}, nil)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -55,7 +62,7 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	inst := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0)
+	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{}, NilMetrics)
 
 	const (
 		concurrent          = 10
@@ -113,7 +120,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst := newInstance(&Config{}, "test", defaultFactory, limiter, syncPeriod, minUtil)
+	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{}, NilMetrics)
 	lbls := makeRandomLabels()
 
 	tt := time.Now()
@@ -128,7 +135,7 @@ func TestSyncPeriod(t *testing.T) {
 	require.NoError(t, err)
 
 	// let's verify results
-	s, err := inst.getOrCreateStream(pr.Streams[0])
+	s, err := inst.getOrCreateStream(pr.Streams[0], false, recordPool.GetRecord())
 	require.NoError(t, err)
 
 	// make sure each chunk spans max 'sync period' time
@@ -149,10 +156,11 @@ func Test_SeriesQuery(t *testing.T) {
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
 	// just some random values
-	syncPeriod := 1 * time.Minute
-	minUtil := 0.20
+	cfg := defaultConfig()
+	cfg.SyncPeriod = 1 * time.Minute
+	cfg.SyncMinUtilization = 0.20
 
-	instance := newInstance(&Config{}, "test", defaultFactory, limiter, syncPeriod, minUtil)
+	instance := newInstance(cfg, "test", limiter, noopWAL{}, NilMetrics)
 
 	currentTime := time.Now()
 
@@ -162,9 +170,9 @@ func Test_SeriesQuery(t *testing.T) {
 	}
 
 	for _, testStream := range testStreams {
-		stream, err := instance.getOrCreateStream(testStream)
+		stream, err := instance.getOrCreateStream(testStream, false, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := defaultFactory()
+		chunk := newStream(cfg, 0, nil, NilMetrics).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -263,7 +271,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0)
+	i := newInstance(&Config{}, "test", limiter, noopWAL{}, NilMetrics)
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {
