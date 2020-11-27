@@ -352,7 +352,9 @@ func (s *stream) SampleIterator(ctx context.Context, ingStats *stats.IngesterDat
 		}
 	}
 
-	ingStats.TotalChunksMatched += int64(len(s.chunks))
+	if ingStats != nil {
+		ingStats.TotalChunksMatched += int64(len(s.chunks))
+	}
 	return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
 }
 
