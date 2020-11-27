@@ -184,7 +184,7 @@ func TestMatcher(t *testing.T) {
 
 				if tt.shouldDrop {
 					if len(out) != 0 {
-						t.Error("stage should have been dropped")
+						t.Errorf("stage should have been dropped but got %v", out)
 					}
 					return
 				}
