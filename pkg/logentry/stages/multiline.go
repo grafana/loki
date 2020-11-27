@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 )
 
 const (
@@ -92,46 +94,77 @@ func (m *multilineStage) Run(in chan Entry) chan Entry {
 	go func() {
 		defer close(out)
 
-		state := &multilineState{
-			buffer:       new(bytes.Buffer),
-			currentLines: 0,
-		}
+		streams := make(map[model.Fingerprint](chan Entry))
+		wg := new(sync.WaitGroup)
 
-		for {
-			select {
-			case <-time.After(m.cfg.maxWait):
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("flush multiline block due to %v timeout", m.cfg.maxWait), "block", state.buffer.String())
-				m.flush(out, state)
-			case e, ok := <-in:
-				if !ok {
-					level.Debug(m.logger).Log("msg", "flush multiline block because inbound closed", "block", state.buffer.String())
-					m.flush(out, state)
-					return
-				}
+		for e := range in {
+			key := e.Labels.FastFingerprint()
+			s, ok := streams[key]
+			if !ok {
+				level.Debug(m.logger).Log("msg", "creating new stream", "stream", key)
+				s = make(chan Entry)
+				streams[key] = s
 
-				isFirstLine := m.cfg.regex.MatchString(e.Line)
-				if isFirstLine {
-					m.flush(out, state)
-
-					// The start line entry is used to set timestamp and labels in the flush method.
-					// The timestamps for following lines are ignored for now.
-					state.startLineEntry = e
-				}
-
-				// Append block line
-				if state.buffer.Len() > 0 {
-					state.buffer.WriteRune('\n')
-				}
-				state.buffer.WriteString(e.Line)
-				state.currentLines++
-
-				if state.currentLines == *m.cfg.MaxLines {
-					m.flush(out, state)
-				}
+				wg.Add(1)
+				go m.runMultiline(s, out, wg)
 			}
+			level.Debug(m.logger).Log("msg", "pass entry", "stream", key, "line", e.Line)
+			s <- e
 		}
+
+		// Close all streams and wait for them to finish being processed.
+		for _, s := range streams {
+			close(s)
+		}
+		wg.Wait()
 	}()
 	return out
+}
+
+func (m *multilineStage) runMultiline(in chan Entry, out chan Entry, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	state := &multilineState{
+		buffer:       new(bytes.Buffer),
+		currentLines: 0,
+	}
+
+	for {
+		select {
+		case <-time.After(m.cfg.maxWait):
+			level.Debug(m.logger).Log("msg", fmt.Sprintf("flush multiline block due to %v timeout", m.cfg.maxWait), "block", state.buffer.String())
+			m.flush(out, state)
+		case e, ok := <-in:
+			level.Debug(m.logger).Log("msg", "processing line", "line", e.Line, "stream", e.Labels.FastFingerprint())
+
+			if !ok {
+				level.Debug(m.logger).Log("msg", "flush multiline block because inbound closed", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
+				m.flush(out, state)
+				return
+			}
+
+			isFirstLine := m.cfg.regex.MatchString(e.Line)
+			if isFirstLine {
+				level.Debug(m.logger).Log("msg", "flush multiline block because new start line", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
+				m.flush(out, state)
+
+				// The start line entry is used to set timestamp and labels in the flush method.
+				// The timestamps for following lines are ignored for now.
+				state.startLineEntry = e
+			}
+
+			// Append block line
+			if state.buffer.Len() > 0 {
+				state.buffer.WriteRune('\n')
+			}
+			state.buffer.WriteString(e.Line)
+			state.currentLines++
+
+			if state.currentLines == *m.cfg.MaxLines {
+				m.flush(out, state)
+			}
+		}
+	}
 }
 
 func (m *multilineStage) flush(out chan Entry, s *multilineState) {
