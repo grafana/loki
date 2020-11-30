@@ -26,7 +26,7 @@ Some features of the deployment:
    docker-compose -f ./docker-compose-ha-memberlist.yaml up
    ```
 
-1. When adding data source in the grafana dashboar, using `http://loki-gateway:3100` for the URL field.
+1. When adding data source in the grafana dashboard, using `http://loki-gateway:3100` for the URL field.
 
 1. To clean up
 
