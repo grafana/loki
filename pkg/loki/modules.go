@@ -282,7 +282,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 					Validity: t.cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
-		case Querier:
+		case Querier, Ruler:
 			// We do not want query to do any updates to index
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
@@ -297,7 +297,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 
 	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
 		switch t.cfg.Target {
-		case Querier:
+		case Querier, Ruler:
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
 			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier)
