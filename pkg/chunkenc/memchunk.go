@@ -253,7 +253,7 @@ func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 		blocks:     []block{},
 
 		head:   &headBlock{},
-		format: chunkFormatV3,
+		format: chunkFormatV2,
 
 		encoding: enc,
 	}
