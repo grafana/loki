@@ -263,17 +263,8 @@ func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 
 // NewMemChunkV3 returns a new in-mem chunk v3 format.
 func NewMemChunkV3(enc Encoding, blockSize, targetSize int) *MemChunk {
-	c := &MemChunk{
-		blockSize:  blockSize,  // The blockSize in bytes.
-		targetSize: targetSize, // Desired chunk size in compressed bytes
-		blocks:     []block{},
-
-		head:   &headBlock{},
-		format: chunkFormatV3,
-
-		encoding: enc,
-	}
-
+	c := NewMemChunk(enc, blockSize, targetSize)
+	c.format = chunkFormatV3
 	return c
 }
 
