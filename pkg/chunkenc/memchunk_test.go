@@ -844,7 +844,7 @@ func TestBytesWith(t *testing.T) {
 
 func TestHeadBlockCheckpointing(t *testing.T) {
 	c := NewMemChunk(EncSnappy, 256*1024, 1500*1024)
-
+	c.format = chunkFormatV3
 	// add a few entries
 	for i := 0; i < 5; i++ {
 		entry := &logproto.Entry{

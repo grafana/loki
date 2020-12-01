@@ -132,6 +132,9 @@ func (s *stream) setChunks(chunks []Chunk) (entriesAdded int, err error) {
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
+	if s.cfg.WAL.Enabled {
+		return chunkenc.NewMemChunkV3(s.cfg.parsedEncoding, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+	}
 	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
