@@ -76,7 +76,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       g.row('Requests')
       .addPanel(
         g.panel('QPS') +
-        g.qpsPanel('promtail_request_duration_seconds_count{%s}')
+        g.qpsPanel('promtail_request_duration_seconds_count{%s}' % dashboards['promtail.json'].selector)
       )
       .addPanel(
         g.panel('Latency') +
