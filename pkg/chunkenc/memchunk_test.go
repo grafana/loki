@@ -256,6 +256,7 @@ func TestRoundtripV3(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
 			c := NewMemChunk(enc, testBlockSize, testTargetSize)
+			c.format = chunkFormatV3
 			_ = fillChunk(c)
 
 			b, err := c.Bytes()
