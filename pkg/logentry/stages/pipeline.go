@@ -90,7 +90,7 @@ func (p *Pipeline) Name() string {
 
 // Wrap implements EntryMiddleware
 func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
-	res := make(chan api.Entry)
+	handlerIn := make(chan api.Entry)
 	nextChan := next.Chan()
 	wg, once := sync.WaitGroup{}, sync.Once{}
 	pipelineIn := make(chan Entry)
@@ -105,15 +105,15 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 	go func() {
 		defer wg.Done()
 		defer close(pipelineIn)
-		for e := range res {
+		for e := range handlerIn {
 			pipelineIn <- Entry{
 				Extracted: map[string]interface{}{},
 				Entry:     e,
 			}
 		}
 	}()
-	return api.NewEntryHandler(res, func() {
-		once.Do(func() { close(res) })
+	return api.NewEntryHandler(handlerIn, func() {
+		once.Do(func() { close(handlerIn) })
 		wg.Wait()
 	})
 }

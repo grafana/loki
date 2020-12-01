@@ -65,17 +65,17 @@ func NewEntryHandler(entries chan<- Entry, stop func()) EntryHandler {
 
 // NewEntryMutatorHandler creates a EntryHandler that mutates incoming entries from another EntryHandler.
 func NewEntryMutatorHandler(next EntryHandler, f EntryMutatorFunc) EntryHandler {
-	out, wg, once := make(chan Entry), sync.WaitGroup{}, sync.Once{}
+	in, wg, once := make(chan Entry), sync.WaitGroup{}, sync.Once{}
 	nextChan := next.Chan()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for e := range out {
+		for e := range in {
 			nextChan <- f(e)
 		}
 	}()
-	return NewEntryHandler(out, func() {
-		once.Do(func() { close(out) })
+	return NewEntryHandler(in, func() {
+		once.Do(func() { close(in) })
 		wg.Wait()
 	})
 }

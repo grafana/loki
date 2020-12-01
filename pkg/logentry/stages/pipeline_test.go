@@ -92,7 +92,7 @@ func TestNewPipeline(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	require.Equal(t, 2, len(p.stages))
+	require.Len(t, p.stages, 2)
 }
 
 func TestPipeline_Process(t *testing.T) {

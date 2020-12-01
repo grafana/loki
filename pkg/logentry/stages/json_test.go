@@ -90,7 +90,7 @@ func TestPipeline_JSON(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out := pl.Run(withInboundEntries(Entry{
+			out := processEntries(pl, Entry{
 				Extracted: map[string]interface{}{},
 				Entry: api.Entry{
 					Labels: model.LabelSet{},
@@ -99,8 +99,8 @@ func TestPipeline_JSON(t *testing.T) {
 						Timestamp: time.Now(),
 					},
 				},
-			}))
-			assert.Equal(t, testData.expectedExtract, (<-out).Extracted)
+			})[0]
+			assert.Equal(t, testData.expectedExtract, out.Extracted)
 		})
 	}
 }
