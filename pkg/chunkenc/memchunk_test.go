@@ -264,8 +264,7 @@ func TestRoundtripV3(t *testing.T) {
 
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			c := NewMemChunk(enc, testBlockSize, testTargetSize)
-			c.format = chunkFormatV3
+			c := NewMemChunkV3(enc, testBlockSize, testTargetSize)
 			_ = fillChunk(c)
 
 			b, err := c.Bytes()
@@ -843,8 +842,7 @@ func TestBytesWith(t *testing.T) {
 }
 
 func TestHeadBlockCheckpointing(t *testing.T) {
-	c := NewMemChunk(EncSnappy, 256*1024, 1500*1024)
-	c.format = chunkFormatV3
+	c := NewMemChunkV3(EncSnappy, 256*1024, 1500*1024)
 	// add a few entries
 	for i := 0; i < 5; i++ {
 		entry := &logproto.Entry{
