@@ -131,7 +131,7 @@ loading data from the backend store.
 
 ### Query frontend
 
-The **query-frotend** service is an optional component in front of a pool of queriers. It's responsible for fairly scheduling requests between them, paralleling them when possible, and caching.
+The **query-frontend** service is an optional component in front of a pool of queriers. It's responsible for fairly scheduling requests between them, paralleling them when possible, and caching.
 
 ## Chunk Store
 
