@@ -901,6 +901,14 @@ func TestCheckpointEncoding(t *testing.T) {
 
 	cpy, err := MemchunkFromCheckpoint(chk, head, blockSize, targetSize)
 	require.Nil(t, err)
+
+	// TODO(owen-d): remove once v3+ is the default chunk version
+	// because that is when we started serializing uncompressed size.
+	// Until then, nil them out in order to ease equality testing.
+	for i := range c.blocks {
+		c.blocks[i].uncompressedSize = 0
+	}
+
 	require.Equal(t, c, cpy)
 }
 
