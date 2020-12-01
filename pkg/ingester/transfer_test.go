@@ -92,6 +92,7 @@ func TestTransferOut(t *testing.T) {
 		for _, stream := range ing2.instances["test"].streams {
 			it, err := stream.Iterator(
 				context.TODO(),
+				nil,
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,

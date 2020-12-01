@@ -162,6 +162,7 @@ or expanded config can be used.
 ```yaml
 storage_config:
   aws:
+    bucketnames: bucket_name1, bucket_name2
     endpoint: s3.endpoint.com
     region: s3_region
     access_key_id: s3_access_key_id

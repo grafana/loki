@@ -10,7 +10,7 @@ server:
   log_level: debug
 
 memberlist:
-  join_members: ["loki-1", "loki_2", "loki_3"]
+  join_members: ["loki-1", "loki-2", "loki-3"]
   dead_node_reclaim_time: 30s
   gossip_to_dead_nodes_time: 15s
   left_ingesters_timeout: 30s

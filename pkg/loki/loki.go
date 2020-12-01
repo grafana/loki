@@ -124,6 +124,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Ruler.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
+	if err := c.Ingester.Validate(); err != nil {
+		return errors.Wrap(err, "invalid ingester config")
+	}
 	return nil
 }
 

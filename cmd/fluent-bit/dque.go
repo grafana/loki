@@ -131,6 +131,16 @@ func (c *dqueClient) Chan() chan<- api.Entry {
 	return c.entries
 }
 
+// Stop the client
+func (c *dqueClient) StopNow() {
+	c.once.Do(func() {
+		close(c.entries)
+		c.queue.Close()
+		c.loki.StopNow()
+		c.wg.Wait()
+	})
+}
+
 func (c *dqueClient) enqueuer() {
 	defer c.wg.Done()
 	for e := range c.entries {

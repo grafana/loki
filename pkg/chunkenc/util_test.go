@@ -52,5 +52,6 @@ func fillChunk(c Chunk) int64 {
 		entry.Line = testdata.LogString(i)
 
 	}
+	_ = c.Close()
 	return inserted
 }

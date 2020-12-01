@@ -31,6 +31,8 @@ type logger struct {
 	*tabwriter.Writer
 	sync.Mutex
 	entries chan api.Entry
+
+	once sync.Once
 }
 
 // NewLogger creates a new client logger that logs entries instead of sending them.
@@ -60,7 +62,9 @@ func NewLogger(log log.Logger, externalLabels lokiflag.LabelSet, cfgs ...Config)
 	return l, nil
 }
 
-func (*logger) Stop() {}
+func (l *logger) Stop() {
+	l.once.Do(func() { close(l.entries) })
+}
 
 func (l *logger) Chan() chan<- api.Entry {
 	return l.entries
@@ -78,3 +82,4 @@ func (l *logger) run() {
 	}
 
 }
+func (l *logger) StopNow() { l.Stop() }

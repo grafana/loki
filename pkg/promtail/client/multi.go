@@ -15,6 +15,8 @@ type MultiClient struct {
 	clients []Client
 	entries chan api.Entry
 	wg      sync.WaitGroup
+
+	once sync.Once
 }
 
 // NewMulti creates a new client
@@ -64,9 +66,16 @@ func (m *MultiClient) Chan() chan<- api.Entry {
 
 // Stop implements Client
 func (m *MultiClient) Stop() {
-	close(m.entries)
+	m.once.Do(func() { close(m.entries) })
 	m.wg.Wait()
 	for _, c := range m.clients {
 		c.Stop()
+	}
+}
+
+// StopNow implements Client
+func (m *MultiClient) StopNow() {
+	for _, c := range m.clients {
+		c.StopNow()
 	}
 }

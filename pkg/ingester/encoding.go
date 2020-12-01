@@ -5,7 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/encoding"
-	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -25,9 +25,44 @@ const (
 
 // WALRecord is a struct combining the series and samples record.
 type WALRecord struct {
-	UserID     string
-	Series     []tsdb_record.RefSeries
-	RefEntries RefEntries
+	UserID string
+	Series []record.RefSeries
+
+	// entryIndexMap coordinates the RefEntries index associated with a particular fingerprint.
+	// This is helpful for constant time lookups during ingestion and is ignored when restoring
+	// from the WAL.
+	entryIndexMap map[uint64]int
+	RefEntries    []RefEntries
+}
+
+func (r *WALRecord) IsEmpty() bool {
+	return len(r.Series) == 0 && len(r.RefEntries) == 0
+}
+
+func (r *WALRecord) Reset() {
+	r.UserID = ""
+	if len(r.Series) > 0 {
+		r.Series = r.Series[:0]
+	}
+
+	for _, ref := range r.RefEntries {
+		recordPool.PutEntries(ref.Entries)
+	}
+	r.RefEntries = r.RefEntries[:0]
+	r.entryIndexMap = make(map[uint64]int)
+}
+
+func (r *WALRecord) AddEntries(fp uint64, entries ...logproto.Entry) {
+	if idx, ok := r.entryIndexMap[fp]; ok {
+		r.RefEntries[idx].Entries = append(r.RefEntries[idx].Entries, entries...)
+		return
+	}
+
+	r.entryIndexMap[fp] = len(r.RefEntries)
+	r.RefEntries = append(r.RefEntries, RefEntries{
+		Ref:     fp,
+		Entries: entries,
+	})
 }
 
 type RefEntries struct {
@@ -35,74 +70,96 @@ type RefEntries struct {
 	Entries []logproto.Entry
 }
 
-func (record *WALRecord) encodeSeries(b []byte) []byte {
+func (r *WALRecord) encodeSeries(b []byte) []byte {
 	buf := EncWith(b)
 	buf.PutByte(byte(WALRecordSeries))
-	buf.PutUvarintStr(record.UserID)
+	buf.PutUvarintStr(r.UserID)
 
-	var enc tsdb_record.Encoder
+	var enc record.Encoder
 	// The 'encoded' already has the type header and userID here, hence re-using
 	// the remaining part of the slice (i.e. encoded[len(encoded):])) to encode the series.
 	encoded := buf.Get()
-	encoded = append(encoded, enc.Series(record.Series, encoded[len(encoded):])...)
+	encoded = append(encoded, enc.Series(r.Series, encoded[len(encoded):])...)
 
 	return encoded
 }
 
-func (record *WALRecord) encodeEntries(b []byte) []byte {
+func (r *WALRecord) encodeEntries(b []byte) []byte {
 	buf := EncWith(b)
 	buf.PutByte(byte(WALRecordEntries))
-	buf.PutUvarintStr(record.UserID)
+	buf.PutUvarintStr(r.UserID)
 
-	entries := record.RefEntries.Entries
-	if len(entries) == 0 {
-		return buf.Get()
+	// Placeholder for the first timestamp of any sample encountered.
+	// All others in this record will store their timestamps as diffs relative to this
+	// as a space optimization.
+	var first int64
+
+outer:
+	for _, ref := range r.RefEntries {
+		for _, entry := range ref.Entries {
+			first = entry.Timestamp.UnixNano()
+			buf.PutBE64int64(first)
+			break outer
+		}
 	}
 
-	// Only encode the series fingerprint if there are >0 entries.
-	buf.PutBE64(record.RefEntries.Ref)
+	for _, ref := range r.RefEntries {
+		// ignore refs with 0 entries
+		if len(ref.Entries) < 1 {
+			continue
+		}
+		buf.PutBE64(ref.Ref)             // write fingerprint
+		buf.PutUvarint(len(ref.Entries)) // write number of entries
 
-	// Store base timestamp and base reference number of first sample.
-	// All samples encode their timestamp and ref as delta to those.
-	first := entries[0].Timestamp.UnixNano()
-
-	buf.PutBE64int64(first)
-
-	for _, s := range entries {
-		buf.PutVarint64(s.Timestamp.UnixNano() - first)
-		// denote line length
-		byteLine := []byte(s.Line)
-		buf.PutUvarint(len(byteLine))
-		buf.PutBytes(byteLine)
+		for _, s := range ref.Entries {
+			buf.PutVarint64(s.Timestamp.UnixNano() - first)
+			// denote line length
+			byteLine := []byte(s.Line)
+			buf.PutUvarint(len(byteLine))
+			buf.PutBytes(byteLine)
+		}
 	}
 	return buf.Get()
 
 }
 
-func decodeEntries(b []byte, entries *RefEntries) error {
+func decodeEntries(b []byte, rec *WALRecord) error {
 	if len(b) == 0 {
 		return nil
 	}
 
 	dec := DecWith(b)
-
-	entries.Ref = dec.Be64()
 	baseTime := dec.Be64int64()
 
 	for len(dec.B) > 0 && dec.Err() == nil {
-		dRef := dec.Varint64()
-		ln := dec.Uvarint()
-		line := dec.Bytes(ln)
+		refEntries := RefEntries{
+			Ref: dec.Be64(),
+		}
 
-		entries.Entries = append(entries.Entries, logproto.Entry{
-			Timestamp: time.Unix(0, baseTime+dRef),
-			Line:      string(line),
-		})
+		nEntries := dec.Uvarint()
+		rem := nEntries
+		for ; dec.Err() == nil && rem > 0; rem-- {
+			timeOffset := dec.Varint64()
+			lineLength := dec.Uvarint()
+			line := dec.Bytes(lineLength)
+
+			refEntries.Entries = append(refEntries.Entries, logproto.Entry{
+				Timestamp: time.Unix(0, baseTime+timeOffset),
+				Line:      string(line),
+			})
+		}
+
+		if dec.Err() != nil {
+			return errors.Wrapf(dec.Err(), "entry decode error after %d RefEntries", nEntries-rem)
+		}
+
+		rec.RefEntries = append(rec.RefEntries, refEntries)
 	}
 
 	if dec.Err() != nil {
-		return errors.Wrapf(dec.Err(), "decode error after %d entries", len(entries.Entries))
+		return errors.Wrap(dec.Err(), "refEntry decode error")
 	}
+
 	if len(dec.B) > 0 {
 		return errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
@@ -113,15 +170,12 @@ func decodeEntries(b []byte, entries *RefEntries) error {
 func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 	var (
 		userID  string
-		dec     tsdb_record.Decoder
-		rSeries []tsdb_record.RefSeries
+		dec     record.Decoder
+		rSeries []record.RefSeries
 
 		decbuf = DecWith(b)
 		t      = RecordType(decbuf.Byte())
 	)
-
-	walRec.Series = walRec.Series[:0]
-	walRec.RefEntries.Entries = walRec.RefEntries.Entries[:0]
 
 	switch t {
 	case WALRecordSeries:
@@ -129,7 +183,7 @@ func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 		rSeries, err = dec.Series(decbuf.B, walRec.Series)
 	case WALRecordEntries:
 		userID = decbuf.UvarintStr()
-		err = decodeEntries(decbuf.B, &walRec.RefEntries)
+		err = decodeEntries(decbuf.B, walRec)
 	default:
 		return errors.New("unknown record type")
 	}

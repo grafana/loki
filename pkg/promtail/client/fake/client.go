@@ -51,3 +51,8 @@ func (c *Client) Received() []api.Entry {
 	copy(cpy, c.received)
 	return cpy
 }
+
+// StopNow implements client.Client
+func (c *Client) StopNow() {
+	c.Stop()
+}

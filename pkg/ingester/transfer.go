@@ -229,38 +229,52 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 
 	for instanceID, inst := range i.instances {
 		for _, istream := range inst.streams {
-			lbls := []*logproto.LabelPair{}
-			for _, lbl := range istream.labels {
-				lbls = append(lbls, &logproto.LabelPair{Name: lbl.Name, Value: lbl.Value})
-			}
-
-			// We moved to sending one chunk at a time in a stream instead of sending all chunks for a stream
-			// as large chunks can create large payloads of >16MB which can hit GRPC limits,
-			// typically streams won't have many chunks in memory so sending one at a time
-			// shouldn't add too much overhead.
-			for _, c := range istream.chunks {
-				bb, err := c.chunk.Bytes()
-				if err != nil {
-					return err
+			err = func() error {
+				istream.chunkMtx.Lock()
+				defer istream.chunkMtx.Unlock()
+				lbls := []*logproto.LabelPair{}
+				for _, lbl := range istream.labels {
+					lbls = append(lbls, &logproto.LabelPair{Name: lbl.Name, Value: lbl.Value})
 				}
 
-				chunks := make([]*logproto.Chunk, 1)
-				chunks[0] = &logproto.Chunk{
-					Data: bb,
-				}
+				// We moved to sending one chunk at a time in a stream instead of sending all chunks for a stream
+				// as large chunks can create large payloads of >16MB which can hit GRPC limits,
+				// typically streams won't have many chunks in memory so sending one at a time
+				// shouldn't add too much overhead.
+				for _, c := range istream.chunks {
+					// Close the chunk first, writing any data in the headblock to a new block.
+					err := c.chunk.Close()
+					if err != nil {
+						return err
+					}
 
-				err = stream.Send(&logproto.TimeSeriesChunk{
-					Chunks:         chunks,
-					UserId:         instanceID,
-					Labels:         lbls,
-					FromIngesterId: i.lifecycler.ID,
-				})
-				if err != nil {
-					level.Error(logger).Log("msg", "failed sending stream's chunks to ingester", "to_ingester", targetIngester.Addr, "err", err)
-					return err
-				}
+					bb, err := c.chunk.Bytes()
+					if err != nil {
+						return err
+					}
 
-				sentChunks.Add(float64(len(chunks)))
+					chunks := make([]*logproto.Chunk, 1)
+					chunks[0] = &logproto.Chunk{
+						Data: bb,
+					}
+
+					err = stream.Send(&logproto.TimeSeriesChunk{
+						Chunks:         chunks,
+						UserId:         instanceID,
+						Labels:         lbls,
+						FromIngesterId: i.lifecycler.ID,
+					})
+					if err != nil {
+						level.Error(logger).Log("msg", "failed sending stream's chunks to ingester", "to_ingester", targetIngester.Addr, "err", err)
+						return err
+					}
+
+					sentChunks.Add(float64(len(chunks)))
+				}
+				return nil
+			}()
+			if err != nil {
+				return err
 			}
 		}
 	}
