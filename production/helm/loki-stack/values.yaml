@@ -38,9 +38,8 @@ filebeat:
 
 logstash:
   enabled: false
-  image:
-    repository: grafana/logstash-output-loki
-    tag: 1.0.1
+  image: grafana/logstash-output-loki
+  imageTag: 1.0.1
   filters:
     main: |-
       filter {
