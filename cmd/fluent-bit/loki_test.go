@@ -33,6 +33,8 @@ func (r *recorder) toEntry() *entry { return r.entry }
 
 func (r *recorder) Stop() {}
 
+func (r *recorder) StopNow() {}
+
 var now = time.Now()
 
 func Test_loki_sendRecord(t *testing.T) {

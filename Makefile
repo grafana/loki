@@ -383,6 +383,7 @@ helm-clean:
 #################
 
 # optionally set the tag or the arch suffix (-arm64)
+LOKI_DOCKER_DRIVER ?= "grafana/loki-docker-driver"
 PLUGIN_TAG ?= $(IMAGE_TAG)
 PLUGIN_ARCH ?=
 
@@ -393,24 +394,24 @@ docker-driver: docker-driver-clean
 	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH) cmd/docker-driver
-	docker plugin create grafana/loki-docker-driver:latest$(PLUGIN_ARCH) cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH) cmd/docker-driver
 
 cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
-	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	docker plugin push grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
+	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	docker plugin push $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
 
 docker-driver-enable:
-	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	docker plugin enable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 
 docker-driver-clean:
-	-docker plugin disable grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	-docker plugin rm grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	-docker plugin rm grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
+	-docker plugin disable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	-docker plugin rm $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	-docker plugin rm $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
 	rm -rf cmd/docker-driver/rootfs
 
 #####################

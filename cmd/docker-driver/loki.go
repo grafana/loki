@@ -70,6 +70,6 @@ func (l *loki) Name() string {
 
 // Log implements `logger.Logger`
 func (l *loki) Close() error {
-	l.client.Stop()
+	l.client.StopNow()
 	return nil
 }

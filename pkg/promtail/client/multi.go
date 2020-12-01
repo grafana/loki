@@ -55,3 +55,10 @@ func (m MultiClient) Stop() {
 		c.Stop()
 	}
 }
+
+// StopNow implements Client
+func (m MultiClient) StopNow() {
+	for _, c := range m {
+		c.StopNow()
+	}
+}
