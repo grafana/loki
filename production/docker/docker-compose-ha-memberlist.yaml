@@ -6,7 +6,7 @@ networks:
 services:
 
   grafana:
-    image: grafana/grafana:7.2.0
+    image: grafana/grafana:7.3.4
     ports:
       - "3000:3000"
     networks:
@@ -47,7 +47,7 @@ services:
       replicas: 2
 
   loki-1:
-    image: grafana/loki:1.6.1
+    image: grafana/loki:2.0.0
     volumes:
       - ./config:/etc/loki/
       - ./chunks:/loki/chunks/
@@ -60,7 +60,7 @@ services:
     restart: on-failure
 
   loki-2:
-    image: grafana/loki:1.6.1
+    image: grafana/loki:2.0.0
     volumes:
       - ./config:/etc/loki/
       - ./chunks:/loki/chunks/
@@ -74,7 +74,7 @@ services:
     restart: on-failure
 
   loki-3:
-    image: grafana/loki:1.6.1
+    image: grafana/loki:2.0.0
     volumes:
       - ./config:/etc/loki/
       - ./chunks:/loki/chunks/
