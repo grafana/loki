@@ -109,7 +109,7 @@ kubectl exec -it promtail-bth9q -- /bin/sh
 Once connected, verify the config in `/etc/promtail/promtail.yml` has the
 contents you expect.
 
-Also check `/var/log/positions.yaml` (`../run/promtail/positions.yaml` when
+Also check `/var/log/positions.yaml` (`/run/promtail/positions.yaml` when
 deployed by Helm or whatever value is specified for `positions.file`) and make
 sure Promtail is tailing the logs you would expect.
 
