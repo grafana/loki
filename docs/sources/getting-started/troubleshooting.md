@@ -46,11 +46,11 @@ Promtail yet. There may be one of many root causes:
 Promtail exposes two web pages that can be used to understand how its service
 discovery works.
 
-The service discovery page (`../service-discovery`) shows all
+The service discovery page (`/service-discovery`) shows all
 discovered targets with their labels before and after relabeling as well as
 the reason why the target has been dropped.
 
-The targets page (`../targets`) displays only targets that are being actively
+The targets page (`/targets`) displays only targets that are being actively
 scraped and their respective labels, files, and positions.
 
 On Kubernetes, you can access those two pages by port-forwarding the Promtail
