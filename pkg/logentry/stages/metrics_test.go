@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logentry/metric"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var testMetricYaml = `
@@ -117,16 +115,7 @@ func TestMetricsPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := <-pl.Run(withInboundEntries(Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{"test": "app"},
-			Entry: logproto.Entry{
-				Line:      testMetricLogLine1,
-				Timestamp: time.Now(),
-			},
-		},
-	}))
+	out := <-pl.Run(withInboundEntries(newEntry(nil, model.LabelSet{"test": "app"}, testMetricLogLine1, time.Now())))
 	out.Line = testMetricLogLine2
 	<-pl.Run(withInboundEntries(out))
 
@@ -145,16 +134,7 @@ func TestPipelineWithMissingKey_Metrics(t *testing.T) {
 		t.Fatal(err)
 	}
 	Debug = true
-	<-pl.Run(withInboundEntries(Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testMetricLogLineWithMissingKey,
-				Timestamp: time.Now(),
-			},
-		},
-	}))
+	processEntries(pl, newEntry(nil, nil, testMetricLogLineWithMissingKey, time.Now()))
 	expectedLog := "level=debug msg=\"failed to convert extracted value to string, can't perform value comparison\" metric=bloki_count err=\"can't convert <nil> to string\""
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
@@ -199,16 +179,8 @@ func TestMetricsWithDropInPipeline(t *testing.T) {
 	}
 	in := make(chan Entry)
 	out := pl.Run(in)
-	in <- Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: lbls,
-			Entry: logproto.Entry{
-				Line:      testMetricLogLine1,
-				Timestamp: time.Now(),
-			},
-		},
-	}
+
+	in <- newEntry(nil, lbls, testMetricLogLine1, time.Now())
 	e := <-out
 	e.Labels = droppingLabels
 	e.Line = testMetricLogLine2
@@ -398,17 +370,7 @@ func TestMetricStage_Process(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-
-	out := processEntries(jsonStage, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: labelFoo,
-			Entry: logproto.Entry{
-				Line:      logFixture,
-				Timestamp: time.Now(),
-			},
-		},
-	})
+	out := processEntries(jsonStage, newEntry(nil, labelFoo, logFixture, time.Now()))
 	out[0].Line = regexLogFixture
 	out = processEntries(regexStage, out...)
 	out = processEntries(metricStage, out...)

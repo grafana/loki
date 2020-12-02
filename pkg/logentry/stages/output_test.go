@@ -10,11 +10,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var testOutputYaml = `
@@ -51,16 +47,7 @@ func TestPipeline_Output(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testOutputLogLine,
-				Timestamp: time.Now(),
-			},
-		},
-	})[0]
+	out := processEntries(pl, newEntry(nil, nil, testOutputLogLine, time.Now()))[0]
 
 	assert.Equal(t, "this is a log line", out.Line)
 }
@@ -74,17 +61,7 @@ func TestPipelineWithMissingKey_Output(t *testing.T) {
 		t.Fatal(err)
 	}
 	Debug = true
-
-	_ = processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testOutputLogLineWithMissingKey,
-				Timestamp: time.Now(),
-			},
-		},
-	})
+	_ = processEntries(pl, newEntry(nil, nil, testOutputLogLineWithMissingKey, time.Now()))
 	expectedLog := "level=debug msg=\"extracted output could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
@@ -149,16 +126,7 @@ func TestOutputStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			out := processEntries(st, Entry{
-				Extracted: test.extracted,
-				Entry: api.Entry{
-					Labels: model.LabelSet{},
-					Entry: logproto.Entry{
-						Line: "replaceme",
-					},
-				},
-			})[0]
+			out := processEntries(st, newEntry(test.extracted, nil, "replaceme", time.Time{}))[0]
 
 			assert.Equal(t, test.expectedOutput, out.Line)
 		})

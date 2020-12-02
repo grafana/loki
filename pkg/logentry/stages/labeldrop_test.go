@@ -2,14 +2,13 @@ package stages
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
-
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 func Test_dropLabelStage_Process(t *testing.T) {
@@ -65,12 +64,7 @@ func Test_dropLabelStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out := processEntries(st, Entry{
-				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
-					Labels: test.inputLabels,
-				},
-			})[0]
+			out := processEntries(st, newEntry(nil, test.inputLabels, "", time.Now()))[0]
 			assert.Equal(t, test.expectedLabels, out.Labels)
 		})
 	}

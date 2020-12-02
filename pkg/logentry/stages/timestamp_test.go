@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
@@ -52,16 +50,7 @@ func TestTimestampPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testTimestampLogLine,
-				Timestamp: time.Now(),
-			},
-		},
-	})[0]
+	out := processEntries(pl, newEntry(nil, nil, testTimestampLogLine, time.Now()))[0]
 	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)).Unix(), out.Timestamp.Unix())
 }
 
@@ -80,16 +69,7 @@ func TestPipelineWithMissingKey_Timestamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	Debug = true
-	_ = processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testTimestampLogLineWithMissingKey,
-				Timestamp: time.Now(),
-			},
-		},
-	})
+	_ = processEntries(pl, newEntry(nil, nil, testTimestampLogLineWithMissingKey, time.Now()))
 
 	expectedLog := fmt.Sprintf("level=debug msg=\"%s\" err=\"Can't convert <nil> to string\" type=null", ErrTimestampConversionFailed)
 	if !(strings.Contains(buf.String(), expectedLog)) {
@@ -322,16 +302,7 @@ func TestTimestampStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out := processEntries(st, Entry{
-				Extracted: test.extracted,
-				Entry: api.Entry{
-					Labels: model.LabelSet{},
-					Entry: logproto.Entry{
-						Line:      "hello world",
-						Timestamp: time.Now(),
-					},
-				},
-			})[0]
+			out := processEntries(st, newEntry(test.extracted, nil, "hello world", time.Now()))[0]
 			assert.Equal(t, test.expected.UnixNano(), out.Timestamp.UnixNano())
 		})
 	}
@@ -472,19 +443,7 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 			require.NoError(t, err)
 
 			for i, inputEntry := range testData.inputEntries {
-				extracted := inputEntry.extracted
-				timestamp := inputEntry.timestamp
-				entry := ""
-				out := processEntries(s, Entry{
-					Extracted: extracted,
-					Entry: api.Entry{
-						Labels: inputEntry.labels,
-						Entry: logproto.Entry{
-							Line:      entry,
-							Timestamp: timestamp,
-						},
-					},
-				})[0]
+				out := processEntries(s, newEntry(inputEntry.extracted, inputEntry.labels, "", inputEntry.timestamp))[0]
 				assert.Equal(t, testData.expectedTimestamps[i], out.Timestamp, "entry: %d", i)
 			}
 		})

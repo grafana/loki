@@ -14,9 +14,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var testRegexYamlSingleStageWithoutSource = `
@@ -108,16 +105,8 @@ func TestPipeline_Regex(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out := processEntries(pl, Entry{
-				Entry: api.Entry{
-					Labels: model.LabelSet{},
-					Entry: logproto.Entry{
-						Timestamp: time.Now(),
-						Line:      testData.entry,
-					},
-				},
-				Extracted: map[string]interface{}{},
-			})[0]
+
+			out := processEntries(pl, newEntry(nil, nil, testData.entry, time.Now()))[0]
 			assert.Equal(t, testData.expectedExtract, out.Extracted)
 		})
 	}
@@ -132,17 +121,7 @@ func TestPipelineWithMissingKey_Regex(t *testing.T) {
 		t.Fatal(err)
 	}
 	Debug = true
-
-	_ = processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Timestamp: time.Now(),
-				Line:      testRegexLogLineWithMissingKey,
-			},
-		},
-	})[0]
+	_ = processEntries(pl, newEntry(nil, nil, testRegexLogLineWithMissingKey, time.Now()))[0]
 
 	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"Can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
@@ -347,16 +326,7 @@ func TestRegexParser_Parse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create regex parser: %s", err)
 			}
-			out := processEntries(p, Entry{
-				Extracted: tt.extracted,
-				Entry: api.Entry{
-					Labels: model.LabelSet{},
-					Entry: logproto.Entry{
-						Line:      tt.entry,
-						Timestamp: time.Now(),
-					},
-				},
-			})[0]
+			out := processEntries(p, newEntry(tt.extracted, nil, tt.entry, time.Now()))[0]
 			assert.Equal(t, tt.expectedExtract, out.Extracted)
 
 		})
@@ -407,16 +377,7 @@ func BenchmarkRegexStage(b *testing.B) {
 				}
 			}()
 			for i := 0; i < b.N; i++ {
-				in <- Entry{
-					Extracted: extr,
-					Entry: api.Entry{
-						Labels: labels,
-						Entry: logproto.Entry{
-							Line:      bm.entry,
-							Timestamp: ts,
-						},
-					},
-				}
+				in <- newEntry(extr, labels, bm.entry, ts)
 			}
 			close(in)
 		})

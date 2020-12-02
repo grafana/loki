@@ -7,11 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var testMatchYaml = `
@@ -70,16 +66,8 @@ func TestMatchPipeline(t *testing.T) {
 
 	out := pl.Run(in)
 
-	in <- Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testMatchLogLineApp1,
-				Timestamp: time.Now(),
-			},
-		},
-	}
+	in <- newEntry(nil, nil, testMatchLogLineApp1, time.Now())
+
 	e := <-out
 
 	assert.Equal(t, "app1 log line", e.Line)
@@ -169,18 +157,9 @@ func TestMatcher(t *testing.T) {
 			}
 			if s != nil {
 
-				out := processEntries(s, Entry{
-					Extracted: map[string]interface{}{
-						"test_label": "unimportant value",
-					},
-					Entry: api.Entry{
-						Labels: toLabelSet(tt.labels),
-						Entry: logproto.Entry{
-							Line:      "foo",
-							Timestamp: time.Now(),
-						},
-					},
-				})
+				out := processEntries(s, newEntry(map[string]interface{}{
+					"test_label": "unimportant value",
+				}, toLabelSet(tt.labels), "foo", time.Now()))
 
 				if tt.shouldDrop {
 					if len(out) != 0 {

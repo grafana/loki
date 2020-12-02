@@ -203,16 +203,7 @@ func TestPipeline_Process(t *testing.T) {
 			p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 
-			out := <-p.Run(withInboundEntries(Entry{
-				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
-					Labels: tt.initialLabels,
-					Entry: logproto.Entry{
-						Line:      tt.entry,
-						Timestamp: tt.t,
-					},
-				},
-			}))
+			out := processEntries(p, newEntry(nil, tt.initialLabels, tt.entry, tt.t))[0]
 
 			assert.Equal(t, tt.expectedLabels, out.Labels, "did not get expected labels")
 			assert.Equal(t, tt.expectedEntry, out.Line, "did not receive expected log entry")
@@ -268,16 +259,7 @@ func BenchmarkPipeline(b *testing.B) {
 				}
 			}()
 			for i := 0; i < b.N; i++ {
-				in <- Entry{
-					Extracted: map[string]interface{}{},
-					Entry: api.Entry{
-						Labels: lb,
-						Entry: logproto.Entry{
-							Line:      bm.entry,
-							Timestamp: ts,
-						},
-					},
-				}
+				in <- newEntry(nil, lb, bm.entry, ts)
 			}
 			close(in)
 		})

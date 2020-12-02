@@ -8,12 +8,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var testJSONYamlSingleStageWithoutSource = `
@@ -90,16 +86,7 @@ func TestPipeline_JSON(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out := processEntries(pl, Entry{
-				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
-					Labels: model.LabelSet{},
-					Entry: logproto.Entry{
-						Line:      testData.entry,
-						Timestamp: time.Now(),
-					},
-				},
-			})[0]
+			out := processEntries(pl, newEntry(nil, nil, testData.entry, time.Now()))[0]
 			assert.Equal(t, testData.expectedExtract, out.Extracted)
 		})
 	}
@@ -372,17 +359,9 @@ func TestJSONParser_Parse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}
-			out := p.Run(withInboundEntries(Entry{
-				Extracted: tt.extracted,
-				Entry: api.Entry{
-					Labels: model.LabelSet{},
-					Entry: logproto.Entry{
-						Line:      tt.entry,
-						Timestamp: time.Now(),
-					},
-				},
-			}))
-			assert.Equal(t, tt.expectedExtract, (<-out).Extracted)
+			out := processEntries(p, newEntry(tt.extracted, nil, tt.entry, time.Now()))[0]
+
+			assert.Equal(t, tt.expectedExtract, out.Extracted)
 		})
 	}
 }

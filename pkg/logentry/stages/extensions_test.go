@@ -7,9 +7,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var (
@@ -72,16 +69,7 @@ func TestNewDocker(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create Docker parser: %s", err)
 			}
-			out := processEntries(p, Entry{
-				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
-					Labels: toLabelSet(tt.labels),
-					Entry: logproto.Entry{
-						Line:      tt.entry,
-						Timestamp: tt.t,
-					},
-				},
-			})[0]
+			out := processEntries(p, newEntry(nil, toLabelSet(tt.labels), tt.entry, tt.t))[0]
 
 			assertLabels(t, tt.expectedLabels, out.Labels)
 			assert.Equal(t, tt.expectedEntry, out.Line, "did not receive expected log entry")
@@ -155,17 +143,7 @@ func TestNewCri(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create CRI parser: %s", err)
 			}
-
-			out := processEntries(p, Entry{
-				Extracted: map[string]interface{}{},
-				Entry: api.Entry{
-					Labels: toLabelSet(tt.labels),
-					Entry: logproto.Entry{
-						Line:      tt.entry,
-						Timestamp: tt.t,
-					},
-				},
-			})[0]
+			out := processEntries(p, newEntry(nil, toLabelSet(tt.labels), tt.entry, tt.t))[0]
 
 			assertLabels(t, tt.expectedLabels, out.Labels)
 			assert.Equal(t, tt.expectedEntry, out.Line, "did not receive expected log entry")

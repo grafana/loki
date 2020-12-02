@@ -13,9 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var testLabelsYaml = `
@@ -55,16 +52,7 @@ func TestLabelsPipeline_Labels(t *testing.T) {
 		"app":   "loki",
 	}
 
-	out := processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testLabelsLogLine,
-				Timestamp: time.Now(),
-			},
-		},
-	})[0]
+	out := processEntries(pl, newEntry(nil, nil, testLabelsLogLine, time.Now()))[0]
 	assert.Equal(t, expectedLbls, out.Labels)
 }
 
@@ -77,16 +65,8 @@ func TestLabelsPipelineWithMissingKey_Labels(t *testing.T) {
 		t.Fatal(err)
 	}
 	Debug = true
-	_ = processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testLabelsLogLineWithMissingKey,
-				Timestamp: time.Now(),
-			},
-		},
-	})
+
+	_ = processEntries(pl, newEntry(nil, nil, testLabelsLogLineWithMissingKey, time.Now()))
 
 	expectedLog := "level=debug msg=\"failed to convert extracted label value to string\" err=\"Can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
@@ -202,12 +182,8 @@ func TestLabelStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out := processEntries(st, Entry{
-				Extracted: test.extractedData,
-				Entry: api.Entry{
-					Labels: test.inputLabels,
-				},
-			})[0]
+
+			out := processEntries(st, newEntry(test.extractedData, test.inputLabels, "", time.Time{}))[0]
 			assert.Equal(t, test.expectedLabels, out.Labels)
 		})
 	}

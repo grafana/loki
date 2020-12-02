@@ -12,9 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 var testTemplateYaml = `
@@ -68,17 +65,7 @@ func TestPipeline_Template(t *testing.T) {
 		"level": "OK",
 		"type":  "TEST",
 	}
-
-	out := processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testTemplateLogLine,
-				Timestamp: time.Now(),
-			},
-		},
-	})[0]
+	out := processEntries(pl, newEntry(nil, nil, testTemplateLogLine, time.Now()))[0]
 	assert.Equal(t, expectedLbls, out.Labels)
 }
 
@@ -92,16 +79,7 @@ func TestPipelineWithMissingKey_Template(t *testing.T) {
 	}
 	Debug = true
 
-	_ = processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testTemplateLogLineWithMissingKey,
-				Timestamp: time.Now(),
-			},
-		},
-	})
+	_ = processEntries(pl, newEntry(nil, nil, testTemplateLogLineWithMissingKey, time.Now()))
 
 	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
@@ -391,15 +369,8 @@ func TestTemplateStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out := processEntries(st, Entry{
-				Entry: api.Entry{
-					Labels: model.LabelSet{},
-					Entry: logproto.Entry{
-						Line: "not important for this test",
-					},
-				},
-				Extracted: test.extracted,
-			})[0]
+
+			out := processEntries(st, newEntry(test.expectedExtracted, nil, "not important for this test", time.Time{}))[0]
 			assert.Equal(t, test.expectedExtracted, out.Extracted)
 		})
 	}

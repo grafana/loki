@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/client"
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
@@ -47,16 +45,7 @@ func TestPipelineWithMissingKey_Tenant(t *testing.T) {
 	}
 	Debug = true
 
-	_ = processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testTenantLogLineWithMissingKey,
-				Timestamp: time.Now(),
-			},
-		},
-	})
+	_ = processEntries(pl, newEntry(nil, nil, testTenantLogLineWithMissingKey, time.Now()))
 	expectedLog := "level=debug msg=\"failed to convert value to string\" err=\"Can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
@@ -186,16 +175,8 @@ func TestTenantStage_Process(t *testing.T) {
 
 			// Process and dummy line and ensure nothing has changed except
 			// the tenant reserved label
-			out := processEntries(stage, Entry{
-				Extracted: testData.inputExtracted,
-				Entry: api.Entry{
-					Labels: testData.inputLabels.Clone(),
-					Entry: logproto.Entry{
-						Line:      "hello world",
-						Timestamp: time.Unix(1, 1),
-					},
-				},
-			})[0]
+
+			out := processEntries(stage, newEntry(testData.inputExtracted, testData.inputLabels.Clone(), "hello world", time.Unix(1, 1)))[0]
 
 			assert.Equal(t, time.Unix(1, 1), out.Timestamp)
 			assert.Equal(t, "hello world", out.Line)

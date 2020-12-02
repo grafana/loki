@@ -12,9 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -270,16 +267,7 @@ func Test_dropStage_Process(t *testing.T) {
 			}
 			m, err := newDropStage(util.Logger, tt.config, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
-			out := processEntries(m, Entry{
-				Extracted: tt.extracted,
-				Entry: api.Entry{
-					Labels: tt.labels,
-					Entry: logproto.Entry{
-						Timestamp: tt.t,
-						Line:      tt.entry,
-					},
-				},
-			})
+			out := processEntries(m, newEntry(tt.extracted, tt.labels, tt.entry, tt.t))
 			if tt.shouldDrop {
 				assert.Len(t, out, 0)
 			} else {
@@ -299,26 +287,10 @@ func TestDropPipeline(t *testing.T) {
 	plName := "test_pipeline"
 	pl, err := NewPipeline(util.Logger, loadConfig(testDropYaml), &plName, registry)
 	require.NoError(t, err)
-
-	out := processEntries(pl, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testMatchLogLineApp1,
-				Timestamp: time.Now(),
-			},
-		},
-	}, Entry{
-		Extracted: map[string]interface{}{},
-		Entry: api.Entry{
-			Labels: model.LabelSet{},
-			Entry: logproto.Entry{
-				Line:      testMatchLogLineApp2,
-				Timestamp: time.Now(),
-			},
-		},
-	})
+	out := processEntries(pl,
+		newEntry(nil, nil, testMatchLogLineApp1, time.Now()),
+		newEntry(nil, nil, testMatchLogLineApp2, time.Now()),
+	)
 
 	// Only the second line will go through.
 	assert.Len(t, out, 1)
