@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 const (
@@ -27,19 +29,38 @@ const (
 	StageTypeDrop      = "drop"
 )
 
-// Stage takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
+// Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
 // timestamp and log entry
-type Stage interface {
+type Processor interface {
 	Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
 	Name() string
 }
 
-// StageFunc is modelled on http.HandlerFunc.
-type StageFunc func(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
+type Entry struct {
+	Extracted map[string]interface{}
+	api.Entry
+}
 
-// Process implements EntryHandler.
-func (s StageFunc) Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string) {
-	s(labels, extracted, time, entry)
+// Stage can receive entries via an inbound channel and forward mutated entries to an outbound channel.
+type Stage interface {
+	Name() string
+	Run(chan Entry) chan Entry
+}
+
+// stageProcessor Allow to transform a Processor (old synchronous pipeline stage) into an async Stage
+type stageProcessor struct {
+	Processor
+}
+
+func (s stageProcessor) Run(in chan Entry) chan Entry {
+	return RunWith(in, func(e Entry) Entry {
+		s.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
+		return e
+	})
+}
+
+func toStage(p Processor) Stage {
+	return &stageProcessor{Processor: p}
 }
 
 // New creates a new stage for the given type and configuration.
@@ -114,7 +135,7 @@ func New(logger log.Logger, jobName *string, stageType string,
 			return nil, err
 		}
 	case StageTypeDrop:
-		s, err = newDropStage(logger, cfg)
+		s, err = newDropStage(logger, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}

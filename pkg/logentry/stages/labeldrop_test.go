@@ -2,6 +2,7 @@ package stages
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
@@ -63,8 +64,8 @@ func Test_dropLabelStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			st.Process(test.inputLabels, map[string]interface{}{}, nil, nil)
-			assert.Equal(t, test.expectedLabels, test.inputLabels)
+			out := processEntries(st, newEntry(nil, test.inputLabels, "", time.Now()))[0]
+			assert.Equal(t, test.expectedLabels, out.Labels)
 		})
 	}
 }

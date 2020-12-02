@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/syslog/syslogparser"
@@ -91,7 +92,7 @@ func NewSyslogTarget(
 	}
 
 	t.messages = make(chan message)
-	go t.messageSender()
+	go t.messageSender(handler.Chan())
 
 	err := t.run()
 	return t, err
@@ -241,10 +242,14 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 	t.messages <- message{filtered, *rfc5424Msg.Message, timestamp}
 }
 
-func (t *SyslogTarget) messageSender() {
+func (t *SyslogTarget) messageSender(entries chan<- api.Entry) {
 	for msg := range t.messages {
-		if err := t.handler.Handle(msg.labels, msg.timestamp, msg.message); err != nil {
-			level.Error(t.logger).Log("msg", "error handling line", "error", err)
+		entries <- api.Entry{
+			Labels: msg.labels,
+			Entry: logproto.Entry{
+				Timestamp: msg.timestamp,
+				Line:      msg.message,
+			},
 		}
 		syslogEntries.Inc()
 	}
@@ -310,6 +315,7 @@ func (t *SyslogTarget) Stop() error {
 	err := t.listener.Close()
 	t.openConnections.Wait()
 	close(t.messages)
+	t.handler.Stop()
 	return err
 }
 

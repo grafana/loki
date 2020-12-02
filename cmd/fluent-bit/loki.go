@@ -16,6 +16,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/client"
 )
 
@@ -63,15 +65,28 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	}
 	if l.cfg.dropSingleKey && len(records) == 1 {
 		for _, v := range records {
-			return l.client.Handle(lbs, ts, fmt.Sprintf("%v", v))
+			l.client.Chan() <- api.Entry{
+				Labels: lbs,
+				Entry: logproto.Entry{
+					Timestamp: ts,
+					Line:      fmt.Sprintf("%v", v),
+				},
+			}
+			return nil
 		}
 	}
 	line, err := createLine(records, l.cfg.lineFormat)
 	if err != nil {
 		return fmt.Errorf("error creating line: %v", err)
 	}
-
-	return l.client.Handle(lbs, ts, line)
+	l.client.Chan() <- api.Entry{
+		Labels: lbs,
+		Entry: logproto.Entry{
+			Timestamp: ts,
+			Line:      line,
+		},
+	}
+	return nil
 }
 
 // prevent base64-encoding []byte values (default json.Encoder rule) by

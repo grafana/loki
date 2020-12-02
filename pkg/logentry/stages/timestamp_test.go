@@ -50,12 +50,8 @@ func TestTimestampPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lbls := model.LabelSet{}
-	ts := time.Now()
-	entry := testTimestampLogLine
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)).Unix(), ts.Unix())
+	out := processEntries(pl, newEntry(nil, nil, testTimestampLogLine, time.Now()))[0]
+	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)).Unix(), out.Timestamp.Unix())
 }
 
 var (
@@ -72,12 +68,9 @@ func TestPipelineWithMissingKey_Timestamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lbls := model.LabelSet{}
 	Debug = true
-	ts := time.Now()
-	entry := testTimestampLogLineWithMissingKey
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
+	_ = processEntries(pl, newEntry(nil, nil, testTimestampLogLineWithMissingKey, time.Now()))
+
 	expectedLog := fmt.Sprintf("level=debug msg=\"%s\" err=\"Can't convert <nil> to string\" type=null", ErrTimestampConversionFailed)
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
@@ -309,10 +302,8 @@ func TestTimestampStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ts := time.Now()
-			lbls := model.LabelSet{}
-			st.Process(lbls, test.extracted, &ts, nil)
-			assert.Equal(t, test.expected.UnixNano(), ts.UnixNano())
+			out := processEntries(st, newEntry(test.extracted, nil, "hello world", time.Now()))[0]
+			assert.Equal(t, test.expected.UnixNano(), out.Timestamp.UnixNano())
 		})
 	}
 }
@@ -452,12 +443,8 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 			require.NoError(t, err)
 
 			for i, inputEntry := range testData.inputEntries {
-				extracted := inputEntry.extracted
-				timestamp := inputEntry.timestamp
-				entry := ""
-
-				s.Process(inputEntry.labels, extracted, &timestamp, &entry)
-				assert.Equal(t, testData.expectedTimestamps[i], timestamp, "entry: %d", i)
+				out := processEntries(s, newEntry(inputEntry.extracted, inputEntry.labels, "", inputEntry.timestamp))[0]
+				assert.Equal(t, testData.expectedTimestamps[i], out.Timestamp, "entry: %d", i)
 			}
 		})
 	}

@@ -5,49 +5,19 @@ import (
 	"io"
 	"net"
 	"os"
-	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/promtail/client/fake"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 )
-
-type ClientMessage struct {
-	Labels    model.LabelSet
-	Timestamp time.Time
-	Message   string
-}
-
-type TestLabeledClient struct {
-	log log.Logger
-
-	messagesMtx sync.RWMutex
-	messages    []ClientMessage
-}
-
-func (c *TestLabeledClient) Handle(ls model.LabelSet, t time.Time, s string) error {
-	level.Debug(c.log).Log("msg", "received log", "log", s)
-
-	c.messagesMtx.Lock()
-	defer c.messagesMtx.Unlock()
-	c.messages = append(c.messages, ClientMessage{ls, t, s})
-	return nil
-}
-
-func (c *TestLabeledClient) Messages() []ClientMessage {
-	c.messagesMtx.RLock()
-	defer c.messagesMtx.RUnlock()
-
-	return c.messages
-}
 
 func TestSyslogTarget_NewlineSeparatedMessages(t *testing.T) {
 	testSyslogTarget(t, false)
@@ -60,7 +30,7 @@ func TestSyslogTarget_OctetCounting(t *testing.T) {
 func testSyslogTarget(t *testing.T, octetCounting bool) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	client := &TestLabeledClient{log: logger}
+	client := fake.New(func() {})
 
 	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress:       "127.0.0.1:0",
@@ -89,8 +59,8 @@ func testSyslogTarget(t *testing.T, octetCounting bool) {
 	require.NoError(t, c.Close())
 
 	require.Eventuallyf(t, func() bool {
-		return len(client.Messages()) == len(messages)
-	}, time.Second, time.Millisecond, "Expected to receive %d messages, got %d.", len(messages), len(client.Messages()))
+		return len(client.Received()) == len(messages)
+	}, time.Second, time.Millisecond, "Expected to receive %d messages, got %d.", len(messages), len(client.Received()))
 
 	require.Equal(t, model.LabelSet{
 		"test": "syslog_target",
@@ -102,10 +72,10 @@ func testSyslogTarget(t *testing.T, octetCounting bool) {
 		"msg_id":   "id1",
 
 		"sd_custom_exkey": "1",
-	}, client.Messages()[0].Labels)
-	require.Equal(t, "An application event log entry...", client.Messages()[0].Message)
+	}, client.Received()[0].Labels)
+	require.Equal(t, "An application event log entry...", client.Received()[0].Line)
 
-	require.NotZero(t, client.Messages()[0].Timestamp)
+	require.NotZero(t, client.Received()[0].Timestamp)
 }
 
 func relabelConfig(t *testing.T) []*relabel.Config {
@@ -159,7 +129,7 @@ func writeMessagesToStream(w io.Writer, messages []string, octetCounting bool) e
 func TestSyslogTarget_InvalidData(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	client := &TestLabeledClient{log: logger}
+	client := fake.New(func() {})
 
 	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
@@ -189,7 +159,7 @@ func TestSyslogTarget_InvalidData(t *testing.T) {
 func TestSyslogTarget_NonUTF8Message(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	client := &TestLabeledClient{log: logger}
+	client := fake.New(func() {})
 
 	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
@@ -216,17 +186,17 @@ func TestSyslogTarget_NonUTF8Message(t *testing.T) {
 	require.NoError(t, c.Close())
 
 	require.Eventuallyf(t, func() bool {
-		return len(client.Messages()) == 2
-	}, time.Second, time.Millisecond, "Expected to receive 2 messages, got %d.", len(client.Messages()))
+		return len(client.Received()) == 2
+	}, time.Second, time.Millisecond, "Expected to receive 2 messages, got %d.", len(client.Received()))
 
-	require.Equal(t, msg1, client.Messages()[0].Message)
-	require.Equal(t, msg2, client.Messages()[1].Message)
+	require.Equal(t, msg1, client.Received()[0].Line)
+	require.Equal(t, msg2, client.Received()[1].Line)
 }
 
 func TestSyslogTarget_IdleTimeout(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
-	client := &TestLabeledClient{log: logger}
+	client := fake.New(func() {})
 
 	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",

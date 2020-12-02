@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/util/flagext"
 )
@@ -76,7 +76,7 @@ func validateDropConfig(cfg *DropConfig) error {
 }
 
 // newDropStage creates a DropStage from config
-func newDropStage(logger log.Logger, config interface{}) (Stage, error) {
+func newDropStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &DropConfig{}
 	err := mapstructure.WeakDecode(config, cfg)
 	if err != nil {
@@ -88,55 +88,71 @@ func newDropStage(logger log.Logger, config interface{}) (Stage, error) {
 	}
 
 	return &dropStage{
-		logger: log.With(logger, "component", "stage", "type", "drop"),
-		cfg:    cfg,
+		logger:    log.With(logger, "component", "stage", "type", "drop"),
+		cfg:       cfg,
+		dropCount: getDropCountMetric(registerer),
 	}, nil
 }
 
 // dropStage applies Label matchers to determine if the include stages should be run
 type dropStage struct {
-	logger log.Logger
-	cfg    *DropConfig
+	logger    log.Logger
+	cfg       *DropConfig
+	dropCount *prometheus.CounterVec
 }
 
-// Process implements Stage
-func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (m *dropStage) Run(in chan Entry) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		defer close(out)
+		for e := range in {
+			if !m.shouldDrop(e) {
+				out <- e
+				continue
+			}
+			m.dropCount.WithLabelValues(*m.cfg.DropReason)
+		}
+	}()
+	return out
+}
+
+func (m *dropStage) shouldDrop(e Entry) bool {
 	// There are many options for dropping a log and if multiple are defined it's treated like an AND condition
 	// where all drop conditions must be met to drop the log.
 	// Therefore if at any point there is a condition which does not match we can return.
 	// The order is what I roughly think would be fastest check to slowest check to try to quit early whenever possible
 
 	if m.cfg.LongerThan != nil {
-		if len([]byte(*entry)) > m.cfg.longerThan.Val() {
+		if len(e.Line) > m.cfg.longerThan.Val() {
 			// Too long, drop
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("line met drop criteria for length %v > %v", len([]byte(*entry)), m.cfg.longerThan.Val()))
+				level.Debug(m.logger).Log("msg", fmt.Sprintf("line met drop criteria for length %v > %v", len(e.Line), m.cfg.longerThan.Val()))
 			}
 		} else {
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, it did not meet criteria for drop length %v is not greater than %v", len([]byte(*entry)), m.cfg.longerThan.Val()))
+				level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, it did not meet criteria for drop length %v is not greater than %v", len(e.Line), m.cfg.longerThan.Val()))
 			}
-			return
+			return false
 		}
 	}
 
 	if m.cfg.OlderThan != nil {
 		ct := time.Now()
-		if t.Before(ct.Add(-m.cfg.olderThan)) {
+		if e.Timestamp.Before(ct.Add(-m.cfg.olderThan)) {
 			// Too old, drop
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("line met drop criteria for age; current time=%v, drop before=%v, log timestamp=%v", ct, ct.Add(-m.cfg.olderThan), t))
+				level.Debug(m.logger).Log("msg", fmt.Sprintf("line met drop criteria for age; current time=%v, drop before=%v, log timestamp=%v", ct, ct.Add(-m.cfg.olderThan), e.Timestamp))
 			}
 		} else {
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, it did not meet drop criteria for age; current time=%v, drop before=%v, log timestamp=%v", ct, ct.Add(-m.cfg.olderThan), t))
+				level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, it did not meet drop criteria for age; current time=%v, drop before=%v, log timestamp=%v", ct, ct.Add(-m.cfg.olderThan), e.Timestamp))
 			}
-			return
+			return false
 		}
 	}
 
 	if m.cfg.Source != nil && m.cfg.Expression == nil {
-		if v, ok := extracted[*m.cfg.Source]; ok {
+		if v, ok := e.Extracted[*m.cfg.Source]; ok {
 			if m.cfg.Value == nil {
 				// Found in map, no value set meaning drop if found in map
 				if Debug {
@@ -153,7 +169,7 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 					if Debug {
 						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, source key was found in extracted map but value '%v' did not match desired value '%v'", v, *m.cfg.Value))
 					}
-					return
+					return false
 				}
 			}
 		} else {
@@ -161,19 +177,19 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 			if Debug {
 				level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
 			}
-			return
+			return false
 		}
 	}
 
 	if m.cfg.Expression != nil {
 		if m.cfg.Source != nil {
-			if v, ok := extracted[*m.cfg.Source]; ok {
+			if v, ok := e.Extracted[*m.cfg.Source]; ok {
 				s, err := getString(v)
 				if err != nil {
 					if Debug {
 						level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test regex line will not be dropped.", "err", err, "type", reflect.TypeOf(v))
 					}
-					return
+					return false
 				}
 				match := m.cfg.regex.FindStringSubmatch(s)
 				if match == nil {
@@ -181,7 +197,7 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 					if Debug {
 						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, the provided regular expression did not match the value found in the extracted map for source key: %v", *m.cfg.Source))
 					}
-					return
+					return false
 				}
 				// regex match, will be dropped
 				if Debug {
@@ -193,28 +209,19 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 				if Debug {
 					level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
 				}
-				return
+				return false
 			}
 		} else {
-			if entry != nil {
-				match := m.cfg.regex.FindStringSubmatch(*entry)
-				if match == nil {
-					// Not a match to the regex, don't drop
-					if Debug {
-						level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
-					}
-					return
-				}
+			match := m.cfg.regex.FindStringSubmatch(e.Line)
+			if match == nil {
+				// Not a match to the regex, don't drop
 				if Debug {
-					level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
+					level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
 				}
-
-			} else {
-				// Not a match to entry was nil, do not drop
-				if Debug {
-					level.Debug(m.logger).Log("msg", "line will not be dropped, because it was nil and we can't regex match to nil")
-				}
-				return
+				return false
+			}
+			if Debug {
+				level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
 			}
 		}
 	}
@@ -223,8 +230,7 @@ func (m *dropStage) Process(labels model.LabelSet, extracted map[string]interfac
 	if Debug {
 		level.Debug(m.logger).Log("msg", "all criteria met, line will be dropped")
 	}
-	// Adds the drop label to not be sent by the api.EntryHandler
-	labels[dropLabel] = model.LabelValue(*m.cfg.DropReason)
+	return true
 }
 
 // Name implements Stage

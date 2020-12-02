@@ -134,6 +134,7 @@ func (t *FileTarget) Ready() bool {
 func (t *FileTarget) Stop() {
 	close(t.quit)
 	<-t.done
+	t.handler.Stop()
 }
 
 // Type implements a Target

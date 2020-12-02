@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
@@ -129,7 +130,9 @@ func newReaderTarget(logger log.Logger, in io.Reader, client api.EntryHandler, c
 
 func (t *readerTarget) read() {
 	defer t.cancel()
+	defer t.out.Stop()
 
+	entries := t.out.Chan()
 	for {
 		if t.ctx.Err() != nil {
 			return
@@ -146,8 +149,12 @@ func (t *readerTarget) read() {
 			}
 			continue
 		}
-		if err := t.out.Handle(t.lbs.Clone(), time.Now(), line); err != nil {
-			level.Error(t.logger).Log("msg", "error sending line", "err", err)
+		entries <- api.Entry{
+			Labels: t.lbs.Clone(),
+			Entry: logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      line,
+			},
 		}
 		if err == io.EOF {
 			return

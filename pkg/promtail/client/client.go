@@ -27,7 +27,6 @@ import (
 	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -110,37 +109,25 @@ func init() {
 // Client pushes entries to Loki and can be stopped
 type Client interface {
 	api.EntryHandler
-	// Stop goroutine sending batch of entries.
-	Stop()
-
 	// Stop goroutine sending batch of entries without retries.
 	StopNow()
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
 type client struct {
-	logger log.Logger
-	cfg    Config
-	client *http.Client
+	logger  log.Logger
+	cfg     Config
+	client  *http.Client
+	entries chan api.Entry
 
-	// quit chan is depricated. Will be removed. Use `client.ctx` and `client.cancel` instead.
-	quit chan struct{}
-
-	once    sync.Once
-	entries chan entry
-	wg      sync.WaitGroup
+	once sync.Once
+	wg   sync.WaitGroup
 
 	externalLabels model.LabelSet
 
 	// ctx is used in any upstream calls from the `client`.
 	ctx    context.Context
 	cancel context.CancelFunc
-}
-
-type entry struct {
-	tenantID string
-	labels   model.LabelSet
-	logproto.Entry
 }
 
 // New makes a new Client.
@@ -154,8 +141,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 	c := &client{
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
-		quit:    make(chan struct{}),
-		entries: make(chan entry),
+		entries: make(chan api.Entry),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
 		ctx:            ctx,
@@ -213,24 +199,25 @@ func (c *client) run() {
 
 	for {
 		select {
-		case <-c.quit:
-			return
-
-		case e := <-c.entries:
-			batch, ok := batches[e.tenantID]
+		case e, ok := <-c.entries:
+			if !ok {
+				return
+			}
+			e, tenantID := c.processEntry(e)
+			batch, ok := batches[tenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[e.tenantID] = newBatch(e)
+				batches[tenantID] = newBatch(e)
 				break
 			}
 
 			// If adding the entry to the batch will increase the size over the max
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
-				c.sendBatch(e.tenantID, batch)
+				c.sendBatch(tenantID, batch)
 
-				batches[e.tenantID] = newBatch(e)
+				batches[tenantID] = newBatch(e)
 				break
 			}
 
@@ -249,6 +236,10 @@ func (c *client) run() {
 			}
 		}
 	}
+}
+
+func (c *client) Chan() chan<- api.Entry {
+	return c.entries
 }
 
 func (c *client) sendBatch(tenantID string, batch *batch) {
@@ -369,37 +360,24 @@ func (c *client) getTenantID(labels model.LabelSet) string {
 
 // Stop the client.
 func (c *client) Stop() {
-	c.once.Do(func() { close(c.quit) })
+	c.once.Do(func() { close(c.entries) })
 	c.wg.Wait()
 }
 
 // StopNow stops the client without retries
 func (c *client) StopNow() {
-	// cancel any upstream calls made using client's `ctx`.
+	// cancel will stop retrying http requests.
 	c.cancel()
 	c.Stop()
 }
 
-// Handle implement EntryHandler; adds a new line to the next batch; send is async.
-func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
+func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 	if len(c.externalLabels) > 0 {
-		ls = c.externalLabels.Merge(ls)
+		e.Labels = c.externalLabels.Merge(e.Labels)
 	}
-
-	// Get the tenant  ID in case it has been overridden while processing
-	// the pipeline stages, then remove the special label
-	tenantID := c.getTenantID(ls)
-	if _, ok := ls[ReservedLabelTenantID]; ok {
-		// Clone the label set to not manipulate the input one
-		ls = ls.Clone()
-		delete(ls, ReservedLabelTenantID)
-	}
-
-	c.entries <- entry{tenantID, ls, logproto.Entry{
-		Timestamp: t,
-		Line:      s,
-	}}
-	return nil
+	tenantID := c.getTenantID(e.Labels)
+	delete(e.Labels, ReservedLabelTenantID)
+	return e, tenantID
 }
 
 func (c *client) UnregisterLatencyMetric(labels model.LabelSet) {

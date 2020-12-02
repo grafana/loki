@@ -114,5 +114,6 @@ func (p *Promtail) Shutdown() {
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
+	// todo work out the stop.
 	p.client.Stop()
 }

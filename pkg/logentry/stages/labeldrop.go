@@ -24,7 +24,7 @@ func validateLabelDropConfig(c LabelDropConfig) error {
 	return nil
 }
 
-func newLabelDropStage(configs interface{}) (*labelDropStage, error) {
+func newLabelDropStage(configs interface{}) (Stage, error) {
 	cfgs := &LabelDropConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -36,9 +36,9 @@ func newLabelDropStage(configs interface{}) (*labelDropStage, error) {
 		return nil, err
 	}
 
-	return &labelDropStage{
+	return toStage(&labelDropStage{
 		cfgs: *cfgs,
-	}, nil
+	}), nil
 }
 
 type labelDropStage struct {

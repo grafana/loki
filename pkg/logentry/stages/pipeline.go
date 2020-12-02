@@ -1,18 +1,14 @@
 package stages
 
 import (
-	"time"
+	"sync"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 )
-
-const dropLabel = "__drop__"
 
 // PipelineStages contains configuration for each stage within a pipeline
 type PipelineStages = []interface{}
@@ -22,45 +18,13 @@ type PipelineStage = map[interface{}]interface{}
 
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
-	logger     log.Logger
-	stages     []Stage
-	jobName    *string
-	plDuration *prometheus.HistogramVec
-	dropCount  *prometheus.CounterVec
+	logger  log.Logger
+	stages  []Stage
+	jobName *string
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
 func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, registerer prometheus.Registerer) (*Pipeline, error) {
-	hist := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "logentry",
-		Name:      "pipeline_duration_seconds",
-		Help:      "Label and metric extraction pipeline processing time, in seconds",
-		Buckets:   []float64{.000005, .000010, .000025, .000050, .000100, .000250, .000500, .001000, .002500, .005000, .010000, .025000},
-	}, []string{"job_name"})
-	err := registerer.Register(hist)
-	if err != nil {
-		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			hist = existing.ExistingCollector.(*prometheus.HistogramVec)
-		} else {
-			// Same behavior as MustRegister if the error is not for AlreadyRegistered
-			panic(err)
-		}
-	}
-	dropCount := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "logentry",
-		Name:      "dropped_lines_total",
-		Help:      "A count of all log lines dropped as a result of a pipeline stage",
-	}, []string{"reason"})
-	err = registerer.Register(dropCount)
-	if err != nil {
-		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			dropCount = existing.ExistingCollector.(*prometheus.CounterVec)
-		} else {
-			// Same behavior as MustRegister if the error is not for AlreadyRegistered
-			panic(err)
-		}
-	}
-
 	st := []Stage{}
 	for _, s := range stgs {
 		stage, ok := s.(PipelineStage)
@@ -84,37 +48,39 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 		}
 	}
 	return &Pipeline{
-		logger:     log.With(logger, "component", "pipeline"),
-		stages:     st,
-		jobName:    jobName,
-		plDuration: hist,
-		dropCount:  dropCount,
+		logger:  log.With(logger, "component", "pipeline"),
+		stages:  st,
+		jobName: jobName,
 	}, nil
 }
 
-// Process implements Stage allowing a pipeline stage to also be an entire pipeline
-func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface{}, ts *time.Time, entry *string) {
-	start := time.Now()
-
-	// Initialize the extracted map with the initial labels (ie. "filename"),
-	// so that stages can operate on initial labels too
-	for labelName, labelValue := range labels {
-		extracted[string(labelName)] = string(labelValue)
-	}
-
-	for i, stage := range p.stages {
-		if Debug {
-			level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "name", stage.Name(), "labels", labels, "time", ts, "entry", entry)
+// RunWith will reads from the input channel entries, mutate them with the process function and returns them via the output channel.
+func RunWith(input chan Entry, process func(e Entry) Entry) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		defer close(out)
+		for e := range input {
+			out <- process(e)
 		}
-		stage.Process(labels, extracted, ts, entry)
+	}()
+	return out
+}
+
+// Run implements Stage
+func (p *Pipeline) Run(in chan Entry) chan Entry {
+	in = RunWith(in, func(e Entry) Entry {
+		// Initialize the extracted map with the initial labels (ie. "filename"),
+		// so that stages can operate on initial labels too
+		for labelName, labelValue := range e.Labels {
+			e.Extracted[string(labelName)] = string(labelValue)
+		}
+		return e
+	})
+	// chain all stages together.
+	for _, m := range p.stages {
+		in = m.Run(in)
 	}
-	dur := time.Since(start).Seconds()
-	if Debug {
-		level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
-	}
-	if p.jobName != nil {
-		p.plDuration.WithLabelValues(*p.jobName).Observe(dur)
-	}
+	return in
 }
 
 // Name implements Stage
@@ -124,24 +90,32 @@ func (p *Pipeline) Name() string {
 
 // Wrap implements EntryMiddleware
 func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
-	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
-		extracted := map[string]interface{}{}
-		p.Process(labels, extracted, &timestamp, &line)
-		// if the labels set contains the __drop__ label we don't send this entry to the next EntryHandler
-		if reason, ok := labels[dropLabel]; ok {
-			if reason == "" {
-				reason = "undefined"
-			}
-			p.dropCount.WithLabelValues(string(reason)).Inc()
-			return nil
+	handlerIn := make(chan api.Entry)
+	nextChan := next.Chan()
+	wg, once := sync.WaitGroup{}, sync.Once{}
+	pipelineIn := make(chan Entry)
+	pipelineOut := p.Run(pipelineIn)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for e := range pipelineOut {
+			nextChan <- e.Entry
 		}
-		return next.Handle(labels, timestamp, line)
+	}()
+	go func() {
+		defer wg.Done()
+		defer close(pipelineIn)
+		for e := range handlerIn {
+			pipelineIn <- Entry{
+				Extracted: map[string]interface{}{},
+				Entry:     e,
+			}
+		}
+	}()
+	return api.NewEntryHandler(handlerIn, func() {
+		once.Do(func() { close(handlerIn) })
+		wg.Wait()
 	})
-}
-
-// AddStage adds a stage to the pipeline
-func (p *Pipeline) AddStage(stage Stage) {
-	p.stages = append(p.stages, stage)
 }
 
 // Size gets the current number of stages in the pipeline

@@ -20,17 +20,18 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
 var (
-	logEntries = []entry{
-		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(1, 0).UTC(), Line: "line1"}},
-		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(2, 0).UTC(), Line: "line2"}},
-		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(3, 0).UTC(), Line: "line3"}},
-		{labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(4, 0).UTC(), Line: "line4"}},
-		{labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
-		{labels: model.LabelSet{"__tenant_id__": "tenant-2"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
+	logEntries = []api.Entry{
+		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(1, 0).UTC(), Line: "line1"}},
+		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(2, 0).UTC(), Line: "line2"}},
+		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(3, 0).UTC(), Line: "line3"}},
+		{Labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(4, 0).UTC(), Line: "line4"}},
+		{Labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
+		{Labels: model.LabelSet{"__tenant_id__": "tenant-2"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
 	}
 )
 
@@ -46,7 +47,7 @@ func TestClient_Handle(t *testing.T) {
 		clientMaxRetries     int
 		clientTenantID       string
 		serverResponseStatus int
-		inputEntries         []entry
+		inputEntries         []api.Entry
 		inputDelay           time.Duration
 		expectedReqs         []receivedReq
 		expectedMetrics      string
@@ -56,7 +57,7 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      100 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[1], logEntries[2]},
+			inputEntries:         []api.Entry{logEntries[0], logEntries[1], logEntries[2]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
@@ -81,7 +82,7 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      100 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[1]},
+			inputEntries:         []api.Entry{logEntries[0], logEntries[1]},
 			inputDelay:           110 * time.Millisecond,
 			expectedReqs: []receivedReq{
 				{
@@ -107,7 +108,7 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      10 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 500,
-			inputEntries:         []entry{logEntries[0]},
+			inputEntries:         []api.Entry{logEntries[0]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
@@ -136,7 +137,7 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      10 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 400,
-			inputEntries:         []entry{logEntries[0]},
+			inputEntries:         []api.Entry{logEntries[0]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
@@ -157,7 +158,7 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      10 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 429,
-			inputEntries:         []entry{logEntries[0]},
+			inputEntries:         []api.Entry{logEntries[0]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
@@ -187,7 +188,7 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			clientTenantID:       "tenant-default",
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[1]},
+			inputEntries:         []api.Entry{logEntries[0], logEntries[1]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "tenant-default",
@@ -209,7 +210,7 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			clientTenantID:       "tenant-default",
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[3], logEntries[4], logEntries[5]},
+			inputEntries:         []api.Entry{logEntries[0], logEntries[3], logEntries[4], logEntries[5]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "tenant-default",
@@ -271,8 +272,7 @@ func TestClient_Handle(t *testing.T) {
 
 			// Send all the input log entries
 			for i, logEntry := range testData.inputEntries {
-				err = c.Handle(logEntry.labels, logEntry.Timestamp, logEntry.Line)
-				require.NoError(t, err)
+				c.Chan() <- logEntry
 
 				if testData.inputDelay > 0 && i < len(testData.inputEntries)-1 {
 					time.Sleep(testData.inputDelay)
@@ -315,7 +315,7 @@ func TestClient_StopNow(t *testing.T) {
 		clientMaxRetries     int
 		clientTenantID       string
 		serverResponseStatus int
-		inputEntries         []entry
+		inputEntries         []api.Entry
 		inputDelay           time.Duration
 		expectedReqs         []receivedReq
 		expectedMetrics      string
@@ -326,7 +326,7 @@ func TestClient_StopNow(t *testing.T) {
 			clientBatchWait:      100 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[1], logEntries[2]},
+			inputEntries:         []api.Entry{logEntries[0], logEntries[1], logEntries[2]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
@@ -352,7 +352,7 @@ func TestClient_StopNow(t *testing.T) {
 			clientBatchWait:      10 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 429,
-			inputEntries:         []entry{logEntries[0]},
+			inputEntries:         []api.Entry{logEntries[0]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
@@ -406,8 +406,7 @@ func TestClient_StopNow(t *testing.T) {
 
 			// Send all the input log entries
 			for i, logEntry := range c.inputEntries {
-				err = cl.Handle(logEntry.labels, logEntry.Timestamp, logEntry.Line)
-				require.NoError(t, err)
+				cl.Chan() <- logEntry
 
 				if c.inputDelay > 0 && i < len(c.inputEntries)-1 {
 					time.Sleep(c.inputDelay)

@@ -47,8 +47,8 @@ func Test_dropStage_Process(t *testing.T) {
 		config     *DropConfig
 		labels     model.LabelSet
 		extracted  map[string]interface{}
-		t          *time.Time
-		entry      *string
+		t          time.Time
+		entry      string
 		shouldDrop bool
 	}{
 		{
@@ -58,8 +58,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          nil,
-			entry:      ptrFromString("12345678901"),
+			entry:      "12345678901",
 			shouldDrop: true,
 		},
 		{
@@ -69,8 +68,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          nil,
-			entry:      ptrFromString("1234567890"),
+			entry:      "1234567890",
 			shouldDrop: false,
 		},
 		{
@@ -80,8 +78,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          nil,
-			entry:      ptrFromString("123456789"),
+			entry:      "123456789",
 			shouldDrop: false,
 		},
 		{
@@ -91,8 +88,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          ptrFromTime(time.Now().Add(-2 * time.Hour)),
-			entry:      nil,
+			t:          time.Now().Add(-2 * time.Hour),
 			shouldDrop: true,
 		},
 		{
@@ -102,8 +98,7 @@ func Test_dropStage_Process(t *testing.T) {
 			},
 			labels:     model.LabelSet{},
 			extracted:  map[string]interface{}{},
-			t:          ptrFromTime(time.Now().Add(-5 * time.Minute)),
-			entry:      nil,
+			t:          time.Now().Add(-5 * time.Minute),
 			shouldDrop: false,
 		},
 		{
@@ -194,7 +189,7 @@ func Test_dropStage_Process(t *testing.T) {
 				Expression: ptrFromString(".*val.*"),
 			},
 			labels:     model.LabelSet{},
-			entry:      ptrFromString("this is a line which does not match the regex"),
+			entry:      "this is a line which does not match the regex",
 			extracted:  map[string]interface{}{},
 			shouldDrop: false,
 		},
@@ -204,7 +199,7 @@ func Test_dropStage_Process(t *testing.T) {
 				Expression: ptrFromString(".*val.*"),
 			},
 			labels:     model.LabelSet{},
-			entry:      ptrFromString("this is a line with the word value in it"),
+			entry:      "this is a line with the word value in it",
 			extracted:  map[string]interface{}{},
 			shouldDrop: true,
 		},
@@ -218,8 +213,7 @@ func Test_dropStage_Process(t *testing.T) {
 			extracted: map[string]interface{}{
 				"key": "pal1",
 			},
-			t:          nil,
-			entry:      ptrFromString("12345678901"),
+			entry:      "12345678901",
 			shouldDrop: true,
 		},
 		{
@@ -232,8 +226,7 @@ func Test_dropStage_Process(t *testing.T) {
 			extracted: map[string]interface{}{
 				"key": "pal1",
 			},
-			t:          nil,
-			entry:      ptrFromString("123456789"),
+			entry:      "123456789",
 			shouldDrop: false,
 		},
 		{
@@ -246,8 +239,7 @@ func Test_dropStage_Process(t *testing.T) {
 			extracted: map[string]interface{}{
 				"WOOOOOOOOOOOOOO": "pal1",
 			},
-			t:          nil,
-			entry:      ptrFromString("123456789012"),
+			entry:      "123456789012",
 			shouldDrop: false,
 		},
 		{
@@ -262,8 +254,8 @@ func Test_dropStage_Process(t *testing.T) {
 			extracted: map[string]interface{}{
 				"key": "must contain value to match",
 			},
-			t:          ptrFromTime(time.Now().Add(-2 * time.Hour)),
-			entry:      ptrFromString("12345678901"),
+			t:          time.Now().Add(-2 * time.Hour),
+			entry:      "12345678901",
 			shouldDrop: true,
 		},
 	}
@@ -273,15 +265,13 @@ func Test_dropStage_Process(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			m := &dropStage{
-				cfg:    tt.config,
-				logger: util.Logger,
-			}
-			m.Process(tt.labels, tt.extracted, tt.t, tt.entry)
+			m, err := newDropStage(util.Logger, tt.config, prometheus.DefaultRegisterer)
+			require.NoError(t, err)
+			out := processEntries(m, newEntry(tt.extracted, tt.labels, tt.entry, tt.t))
 			if tt.shouldDrop {
-				assert.Contains(t, tt.labels.String(), dropLabel)
+				assert.Len(t, out, 0)
 			} else {
-				assert.NotContains(t, tt.labels.String(), dropLabel)
+				assert.Len(t, out, 1)
 			}
 		})
 	}
@@ -291,31 +281,20 @@ func ptrFromString(str string) *string {
 	return &str
 }
 
-func ptrFromTime(t time.Time) *time.Time {
-	return &t
-}
-
 // TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestDropPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	plName := "test_pipeline"
 	pl, err := NewPipeline(util.Logger, loadConfig(testDropYaml), &plName, registry)
 	require.NoError(t, err)
-	lbls := model.LabelSet{}
-	ts := time.Now()
+	out := processEntries(pl,
+		newEntry(nil, nil, testMatchLogLineApp1, time.Now()),
+		newEntry(nil, nil, testMatchLogLineApp2, time.Now()),
+	)
 
-	// Process the first log line which should be dropped
-	entry := testMatchLogLineApp1
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Contains(t, lbls.String(), dropLabel)
-
-	// Process the second line which should not be dropped.
-	entry = testMatchLogLineApp2
-	extracted = map[string]interface{}{}
-	lbls = model.LabelSet{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.NotContains(t, lbls.String(), dropLabel)
+	// Only the second line will go through.
+	assert.Len(t, out, 1)
+	assert.Equal(t, out[0].Line, testMatchLogLineApp2)
 }
 
 var (

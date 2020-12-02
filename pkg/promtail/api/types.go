@@ -1,48 +1,91 @@
 package api
 
 import (
-	"time"
+	"sync"
 
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
+
+// Entry is a log entry with labels.
+type Entry struct {
+	Labels model.LabelSet
+	logproto.Entry
+}
 
 type InstrumentedEntryHandler interface {
 	EntryHandler
 	UnregisterLatencyMetric(labels model.LabelSet)
 }
 
-// EntryHandler is something that can "handle" entries.
+// EntryHandler is something that can "handle" entries via a channel.
+// Stop must be called to gracefully shutdown the EntryHandler
 type EntryHandler interface {
-	Handle(labels model.LabelSet, time time.Time, entry string) error
+	Chan() chan<- Entry
+	Stop()
 }
 
-// EntryHandlerFunc is modelled on http.HandlerFunc.
-type EntryHandlerFunc func(labels model.LabelSet, time time.Time, entry string) error
-
-// Handle implements EntryHandler.
-func (e EntryHandlerFunc) Handle(labels model.LabelSet, time time.Time, entry string) error {
-	return e(labels, time, entry)
-}
-
-// EntryMiddleware is something that takes on EntryHandler and produces another.
+// EntryMiddleware takes an EntryHandler and returns another one that will intercept and forward entries.
+// The newly created EntryHandler should be Stopped independently from the original one.
 type EntryMiddleware interface {
-	Wrap(next EntryHandler) EntryHandler
+	Wrap(EntryHandler) EntryHandler
 }
 
-// EntryMiddlewareFunc is modelled on http.HandlerFunc.
-type EntryMiddlewareFunc func(next EntryHandler) EntryHandler
+// EntryMiddlewareFunc allows to create EntryMiddleware via a function.
+type EntryMiddlewareFunc func(EntryHandler) EntryHandler
 
-// Wrap implements EntryMiddleware.
 func (e EntryMiddlewareFunc) Wrap(next EntryHandler) EntryHandler {
 	return e(next)
 }
 
+// EntryMutatorFunc is a function that can mutate an entry
+type EntryMutatorFunc func(Entry) Entry
+
+type entryHandler struct {
+	stop    func()
+	entries chan<- Entry
+}
+
+func (e entryHandler) Chan() chan<- Entry {
+	return e.entries
+}
+
+func (e entryHandler) Stop() {
+	e.stop()
+}
+
+// NewEntryHandler creates a new EntryHandler using a input channel and a stop function.
+func NewEntryHandler(entries chan<- Entry, stop func()) EntryHandler {
+	return entryHandler{
+		stop:    stop,
+		entries: entries,
+	}
+}
+
+// NewEntryMutatorHandler creates a EntryHandler that mutates incoming entries from another EntryHandler.
+func NewEntryMutatorHandler(next EntryHandler, f EntryMutatorFunc) EntryHandler {
+	in, wg, once := make(chan Entry), sync.WaitGroup{}, sync.Once{}
+	nextChan := next.Chan()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for e := range in {
+			nextChan <- f(e)
+		}
+	}()
+	return NewEntryHandler(in, func() {
+		once.Do(func() { close(in) })
+		wg.Wait()
+	})
+}
+
 // AddLabelsMiddleware is an EntryMiddleware that adds some labels.
 func AddLabelsMiddleware(additionalLabels model.LabelSet) EntryMiddleware {
-	return EntryMiddlewareFunc(func(next EntryHandler) EntryHandler {
-		return EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
-			labels = additionalLabels.Merge(labels) // Add the additionalLabels but preserves the original labels.
-			return next.Handle(labels, time, entry)
+	return EntryMiddlewareFunc(func(eh EntryHandler) EntryHandler {
+		return NewEntryMutatorHandler(eh, func(e Entry) Entry {
+			e.Labels = additionalLabels.Merge(e.Labels)
+			return e
 		})
 	})
 }
