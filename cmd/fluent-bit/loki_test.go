@@ -14,8 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/promtail/client/fake"
 )
 
-func (r *recorder) StopNow() {}
-
 var now = time.Now()
 
 func Test_loki_sendRecord(t *testing.T) {

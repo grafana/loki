@@ -3,7 +3,6 @@
 package journal
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -108,10 +107,9 @@ func TestJournalTarget(t *testing.T) {
 		})
 		assert.NoError(t, err)
 	}
-	fmt.Println(client.Received())
-	assert.Len(t, client.Received(), 10)
 	require.NoError(t, jt.Stop())
 	client.Stop()
+	assert.Len(t, client.Received(), 10)
 }
 
 func TestJournalTarget_JSON(t *testing.T) {
