@@ -33,15 +33,19 @@ func Test_multilineStage_Process(t *testing.T) {
 	}
 
 	out := processEntries(stage,
+		simpleEntry("not a start line before 1", "label"),
+		simpleEntry("not a start line before 2", "label"),
 		simpleEntry("START line 1", "label"),
 		simpleEntry("not a start line", "label"),
 		simpleEntry("START line 2", "label"),
 		simpleEntry("START line 3", "label"))
 
-	require.Len(t, out, 3)
-	require.Equal(t, "START line 1\nnot a start line", out[0].Line)
-	require.Equal(t, "START line 2", out[1].Line)
-	require.Equal(t, "START line 3", out[2].Line)
+	require.Len(t, out, 5)
+	require.Equal(t, "not a start line before 1", out[0].Line)
+	require.Equal(t, "not a start line before 2", out[1].Line)
+	require.Equal(t, "START line 1\nnot a start line", out[2].Line)
+	require.Equal(t, "START line 2", out[3].Line)
+	require.Equal(t, "START line 3", out[4].Line)
 }
 func Test_multilineStage_MultiStreams(t *testing.T) {
 	// Enable debug logging

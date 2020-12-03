@@ -102,6 +102,13 @@ func (m *multilineStage) Run(in chan Entry) chan Entry {
 			key := e.Labels.FastFingerprint()
 			s, ok := streams[key]
 			if !ok {
+				// Pass through entries until we hit first start line.
+				if !m.cfg.regex.MatchString(e.Line) {
+					level.Debug(m.logger).Log("msg", "pass through entry", "stream", key)
+					out <- e
+					continue
+				}
+
 				level.Debug(m.logger).Log("msg", "creating new stream", "stream", key)
 				s = make(chan Entry)
 				streams[key] = s
