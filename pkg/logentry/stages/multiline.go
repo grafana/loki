@@ -182,7 +182,7 @@ func (m *multilineStage) runMultiline(in chan Entry, out chan Entry, wg *sync.Wa
 	}
 }
 
-flush(out chan Entry, s *multilineState) {
+func flush(out chan Entry, s *multilineState) {
 	if s.buffer.Len() == 0 {
 		level.Debug(m.logger).Log("msg", "nothing to flush", "buffer_len", s.buffer.Len())
 		return
