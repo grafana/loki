@@ -364,7 +364,7 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = false]
 ```
 
-## `ruler_config`
+## ruler_config
 
 The `ruler_config` configures the Loki ruler.
 
