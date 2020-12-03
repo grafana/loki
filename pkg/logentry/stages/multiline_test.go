@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 func Test_multilineStage_Process(t *testing.T) {
@@ -94,7 +95,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 	util.InitLogger(cfg)
 	Debug = true
 
-	maxWait := time.Duration(2 * time.Second)
+	maxWait := 2 * time.Second
 	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString(maxWait.String())}
 	err := validateMultilineConfig(mcfg)
 	require.NoError(t, err)
@@ -117,7 +118,6 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 			res = append(res, e)
 			mu.Unlock()
 		}
-		return
 	}()
 
 	// Write input with a delay
@@ -131,10 +131,9 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 
 		// Signal pipeline we are done.
 		close(in)
-		return
 	}()
 
-	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(res) == 2 }, time.Duration(3*maxWait), time.Second)
+	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(res) == 2 }, 3*maxWait, time.Second)
 	require.Equal(t, "START line", res[0].Line)
 	require.Equal(t, "not a start line hitting timeout", res[1].Line)
 }
