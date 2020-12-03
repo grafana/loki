@@ -143,6 +143,7 @@ func (it *batchChunkIterator) loop(ctx context.Context) {
 		}
 		select {
 		case <-ctx.Done():
+			it.next <- &chunkBatch{err: ctx.Err()}
 			close(it.next)
 			return
 		case it.next <- it.nextBatch():

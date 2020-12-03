@@ -150,7 +150,10 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	status := "200"
 	if err != nil {
 		status = "500"
-		if errors.Is(err, ErrParse) || errors.Is(err, ErrPipeline) || errors.Is(err, ErrLimit) {
+		if errors.Is(err, ErrParse) ||
+			errors.Is(err, ErrPipeline) ||
+			errors.Is(err, ErrLimit) ||
+			errors.Is(err, context.Canceled) {
 			status = "400"
 		}
 	}
