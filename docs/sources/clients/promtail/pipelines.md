@@ -206,6 +206,7 @@ Parsing stages:
 
 Transform stages:
 
+  - [multiline](../stages/multiline/): Merges multiple lines, e.g. stack traces, into multiline blocks.
   - [template](../stages/template/): Use Go templates to modify extracted data.
 
 Action stages:
