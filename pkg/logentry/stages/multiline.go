@@ -23,7 +23,10 @@ const (
 	ErrMultilineStageInvalidMaxWaitTime = "multiline stage `max_wait_time` parse error: %v"
 )
 
-const maxLineDefault uint64 = 128
+const (
+	maxLineDefault uint64 = 128
+	maxWaitDefault = 3 * time.Second
+)
 
 // MultilineConfig contains the configuration for a multilineStage
 type MultilineConfig struct {
@@ -35,7 +38,7 @@ type MultilineConfig struct {
 }
 
 func validateMultilineConfig(cfg *MultilineConfig) error {
-	if cfg == nil || cfg.Expression == nil || cfg.MaxWaitTime == nil {
+	if cfg == nil || cfg.Expression == nil {
 		return errors.New(ErrMultilineStageEmptyConfig)
 	}
 
@@ -45,11 +48,15 @@ func validateMultilineConfig(cfg *MultilineConfig) error {
 	}
 	cfg.regex = expr
 
-	maxWait, err := time.ParseDuration(*cfg.MaxWaitTime)
-	if err != nil {
-		return errors.Errorf(ErrMultilineStageInvalidMaxWaitTime, err)
+	if cfg.MaxWaitTime != nil {
+		maxWait, err := time.ParseDuration(*cfg.MaxWaitTime)
+		if err != nil {
+			return errors.Errorf(ErrMultilineStageInvalidMaxWaitTime, err)
+		}
+		cfg.maxWait = maxWait
+	} else {
+		cfg.maxWait = maxWaitDefault
 	}
-	cfg.maxWait = maxWait
 
 	if cfg.MaxLines == nil {
 		cfg.MaxLines = new(uint64)
@@ -181,7 +188,7 @@ flush(out chan Entry, s *multilineState) {
 		return
 	}
 
-	collapsed := &Entry{
+	collapsed := Entry{
 		Extracted: s.startLineEntry.Extracted,
 		Entry: api.Entry{
 			Labels: s.startLineEntry.Entry.Labels,
@@ -194,7 +201,7 @@ flush(out chan Entry, s *multilineState) {
 	s.buffer.Reset()
 	s.currentLines = 0
 
-	out <- *collapsed
+	out <- collapsed
 }
 
 // Name implements Stage

@@ -20,6 +20,7 @@ multiline:
   # If now new logs arrive withing this maximum wait time the current block will be sent on.
   # This is useful if the opserved application dies with e.g. an exception. No new logs will arrive and the exception
   # block is sent *after* the maximum wait time expired.
+  # It defaults to 3s.
   max_wait_time: <duration>
 
   # Maximum number of lines a block can have. If block has more lines a new block is started.
