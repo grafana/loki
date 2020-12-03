@@ -601,7 +601,7 @@ func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 func (e rangeAggregationExpr) validate() error {
 	if e.grouping != nil {
 		switch e.operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.operation)
 		}
@@ -712,7 +712,10 @@ func (e *vectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	// inject in the range vector extractor the outer groups to improve performance.
 	// This is only possible if the operation is a sum. Anything else needs all labels.
 	if r, ok := e.left.(*rangeAggregationExpr); ok && canInjectVectorGrouping(e.operation, r.operation) {
-		return r.extractor(e.grouping, len(e.grouping.groups) == 0)
+		// if the range vec operation has no grouping we can push down the vec one.
+		if r.grouping == nil {
+			return r.extractor(e.grouping)
+		}
 	}
 	return e.left.Extractor()
 }
