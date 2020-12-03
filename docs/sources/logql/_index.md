@@ -431,7 +431,7 @@ Supported function for operating over unwrapped ranges are:
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
 
-Except for `sum_over_time` unwrapped range aggregations support grouping.
+Except for `sum_over_time`, unwrapped range aggregations support grouping.
 
 ```logql
 <aggr-op>([parameter,] <unwrapped-range>) [without|by (<label list>)]
