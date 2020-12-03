@@ -111,19 +111,25 @@ func (m *multilineStage) Run(in chan Entry) chan Entry {
 			if !ok {
 				// Pass through entries until we hit first start line.
 				if !m.cfg.regex.MatchString(e.Line) {
-					level.Debug(m.logger).Log("msg", "pass through entry", "stream", key)
+					if Debug {
+						level.Debug(m.logger).Log("msg", "pass through entry", "stream", key)
+					}
 					out <- e
 					continue
 				}
 
-				level.Debug(m.logger).Log("msg", "creating new stream", "stream", key)
+				if Debug {
+					level.Debug(m.logger).Log("msg", "creating new stream", "stream", key)
+				}
 				s = make(chan Entry)
 				streams[key] = s
 
 				wg.Add(1)
 				go m.runMultiline(s, out, wg)
 			}
-			level.Debug(m.logger).Log("msg", "pass entry", "stream", key, "line", e.Line)
+			if Debug {
+				level.Debug(m.logger).Log("msg", "pass entry", "stream", key, "line", e.Line)
+			}
 			s <- e
 		}
 
@@ -147,20 +153,28 @@ func (m *multilineStage) runMultiline(in chan Entry, out chan Entry, wg *sync.Wa
 	for {
 		select {
 		case <-time.After(m.cfg.maxWait):
-			level.Debug(m.logger).Log("msg", fmt.Sprintf("flush multiline block due to %v timeout", m.cfg.maxWait), "block", state.buffer.String())
+			if Debug {
+				level.Debug(m.logger).Log("msg", fmt.Sprintf("flush multiline block due to %v timeout", m.cfg.maxWait), "block", state.buffer.String())
+			}
 			m.flush(out, state)
 		case e, ok := <-in:
-			level.Debug(m.logger).Log("msg", "processing line", "line", e.Line, "stream", e.Labels.FastFingerprint())
+			if Debug {
+				level.Debug(m.logger).Log("msg", "processing line", "line", e.Line, "stream", e.Labels.FastFingerprint())
+			}
 
 			if !ok {
-				level.Debug(m.logger).Log("msg", "flush multiline block because inbound closed", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
+				if Debug {
+					level.Debug(m.logger).Log("msg", "flush multiline block because inbound closed", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
+				}
 				m.flush(out, state)
 				return
 			}
 
 			isFirstLine := m.cfg.regex.MatchString(e.Line)
 			if isFirstLine {
-				level.Debug(m.logger).Log("msg", "flush multiline block because new start line", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
+				if Debug {
+					level.Debug(m.logger).Log("msg", "flush multiline block because new start line", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
+				}
 				m.flush(out, state)
 
 				// The start line entry is used to set timestamp and labels in the flush method.
@@ -182,9 +196,11 @@ func (m *multilineStage) runMultiline(in chan Entry, out chan Entry, wg *sync.Wa
 	}
 }
 
-func flush(out chan Entry, s *multilineState) {
+func(m *multilineStage) flush(out chan Entry, s *multilineState) {
 	if s.buffer.Len() == 0 {
-		level.Debug(m.logger).Log("msg", "nothing to flush", "buffer_len", s.buffer.Len())
+		if Debug {
+			level.Debug(m.logger).Log("msg", "nothing to flush", "buffer_len", s.buffer.Len())
+		}
 		return
 	}
 
