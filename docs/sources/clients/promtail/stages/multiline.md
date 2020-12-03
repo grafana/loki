@@ -4,7 +4,7 @@ title: multiline
 
 # `multiline` stage
 
-The `multiline` stage multiple lines into a multiline block before passing it on to the next stage in the pipeline.
+The `multiline` stage merges multiple lines into a multiline block before passing it on to the next stage in the pipeline.
 
 A new block is identified by the `firstline` regular expression. Any line that does *not* match the expression is considered to be part of the block of the previous match.
 
@@ -56,7 +56,7 @@ Exception: Sorry, this route always breaks
 [2020-12-03 11:36:27] "GET /hello HTTP/1.1" 200 -
 ```
 
-We would like to collapse all lines of the traceback into one multiline block. All blocks start with a timestamp in brackets. Thus we configure a `multiline` stage with the `firstline` regular expression `^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]`. This will match the start of the traceback but not the following lines until `Exception: Sorry, this route always breaks`. These will be part of a multiline block and one log entry in Loki.
+We would like to collapse all lines of the traceback into one multiline block. In this example, all blocks start with a timestamp in brackets. Thus we configure a `multiline` stage with the `firstline` regular expression `^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]`. This will match the start of the traceback but not the following lines until `Exception: Sorry, this route always breaks`. These will be part of a multiline block and one log entry in Loki.
 
 ```yaml
 multiline:
