@@ -1493,6 +1493,35 @@ func Test_IsInvalidChunkError(t *testing.T) {
 	}
 }
 
+func TestBatchCancel(t *testing.T) {
+	chunk := func(from time.Time) *LazyChunk {
+		return newLazyChunk(logproto.Stream{
+			Labels: fooLabelsWithName,
+			Entries: []logproto.Entry{
+				{
+					Timestamp: from,
+					Line:      "1",
+				},
+				{
+					Timestamp: from.Add(time.Millisecond),
+					Line:      "2",
+				},
+			},
+		})
+	}
+	chunks := []*LazyChunk{
+		chunk(from), chunk(from.Add(10 * time.Millisecond)), chunk(from.Add(30 * time.Millisecond)),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	it, err := newLogBatchIterator(ctx, NilMetrics, chunks, 1, newMatchers(fooLabels), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now())
+	require.NoError(t, err)
+	defer require.NoError(t, it.Close())
+	for it.Next() {
+	}
+	require.Equal(t, context.Canceled, it.Error())
+}
+
 var entry logproto.Entry
 
 func Benchmark_store_OverlappingChunks(b *testing.B) {
