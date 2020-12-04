@@ -293,7 +293,7 @@ For example the following expression:
 
 Will extract and rewrite the log line to only contains the query and the duration of a request.
 
-You can use double quoted string for the template or single backtick \``\{{.label_name}}`\` to avoid the need to escape special characters.
+You can use double quoted string for the template or backticks `` `{{.label_name}}` `` to avoid the need to escape special characters.
 
 See [functions](functions/) to learn about available functions in the template format.
 
