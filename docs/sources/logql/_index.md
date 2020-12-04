@@ -122,7 +122,7 @@ The matching is case-sensitive by default and can be switched to case-insensitiv
 
 While line filter expressions could be placed anywhere in a pipeline, it is almost always better to have them at the beginning. This ways it will improve the performance of the query doing further processing only when a line matches.
 
-For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line_format "{{.err}}"` will always run faster than  `{job="mysql"} | json | line_format "{{.message}}"` |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
+For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line_format "{{.err}}"` will always run faster than  `{job="mysql"} | json | line_format "{{.message}}" |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
 
 #### Parser Expression
 
