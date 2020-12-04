@@ -13,17 +13,17 @@ A new block is identified by the `firstline` regular expression. Any line that d
 ```yaml
 multiline:
   # RE2 regular expression, if matched will start a new multiline block.
-  # This expresion must be provided.
+  # This expression must be provided.
   firstline: <string>
 
   # The maximum wait time will be parsed as a Go duration: https://golang.org/pkg/time/#ParseDuration.
-  # If now new logs arrive withing this maximum wait time the current block will be sent on.
-  # This is useful if the opserved application dies with e.g. an exception. No new logs will arrive and the exception
-  # block is sent *after* the maximum wait time expired.
+  # If no new logs arrive within this maximum wait time the current block will be sent on.
+  # This is useful if the observed application dies with e.g. an exception. No new logs will arrive and the exception
+  # block is sent *after* the maximum wait time expires.
   # It defaults to 3s.
   max_wait_time: <duration>
 
-  # Maximum number of lines a block can have. If block has more lines a new block is started.
+  # Maximum number of lines a block can have. If the block has more lines a new block is started.
   # The default is 128 lines.
   max_lines: <integer>
 ```

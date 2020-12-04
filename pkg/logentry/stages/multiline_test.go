@@ -16,7 +16,6 @@ import (
 )
 
 func Test_multilineStage_Process(t *testing.T) {
-
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
@@ -47,6 +46,7 @@ func Test_multilineStage_Process(t *testing.T) {
 	require.Equal(t, "START line 2", out[3].Line)
 	require.Equal(t, "START line 3", out[4].Line)
 }
+
 func Test_multilineStage_MultiStreams(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
