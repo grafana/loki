@@ -66,7 +66,7 @@ func validateMultilineConfig(cfg *MultilineConfig) error {
 	return nil
 }
 
-// dropMultiline matches lines to determine whether the following lines belong to a block and should be collapsed
+// multilineStage matches lines to determine whether the following lines belong to a block and should be collapsed
 type multilineStage struct {
 	logger log.Logger
 	cfg    *MultilineConfig
