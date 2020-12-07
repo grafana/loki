@@ -417,12 +417,13 @@ The unwrap expression is noted `| unwrap label_identifier` where the label ident
 Since label values are string, by default a conversion into a float (64bits) will be attempted, in case of failure the `__error__` label is added to the sample.
 Optionally the label identifier can be wrapped by a conversion function `| unwrap <function>(label_identifier)`, which will attempt to convert the label value from a specific format.
 
-We currently support the functions: 
+We currently support the functions:
 - `duration_seconds(label_identifier)` (or its short equivalent `duration`) which will convert the label value in seconds from the [go duration format](https://golang.org/pkg/time/#ParseDuration) (e.g `5m`, `24s30ms`).
 - `bytes(label_identifier)` which will convert the label value to raw bytes applying the bytes unit  (e.g. `5 MiB`, `3k`, `1G`).
 
 Supported function for operating over unwrapped ranges are:
 
+- `rate(log-range)`: calculates per second rate of all values in the specified interval.
 - `sum_over_time(unwrapped-range)`: the sum of all values in the specified interval.
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
@@ -431,7 +432,7 @@ Supported function for operating over unwrapped ranges are:
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
 
-Except for `sum_over_time`, `min_over_time` and `max_over_time` unwrapped range aggregations support grouping.
+Except for `sum_over_time` and `rate` unwrapped range aggregations support grouping.
 
 ```logql
 <aggr-op>([parameter,] <unwrapped-range>) [without|by (<label list>)]
