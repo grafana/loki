@@ -53,14 +53,14 @@ First, you need to follow the [instructions](https://github.com/grafana/loki/blo
 The assuming you have Fluent Bit installed in your `$PATH` you can run the plugin using:
 
 ```bash
-fluent-bit -e /path/to/built/out_loki.so -c fluent-bit.conf
+fluent-bit -e /path/to/built/out_grafana_loki.so -c fluent-bit.conf
 ```
 
 You can also adapt your plugins.conf, removing the need to change the command line options:
 
 ```conf
 [PLUGINS]
-    Path /path/to/built/out_loki.so
+    Path /path/to/built/out_grafana_loki.so
 ```
 
 ## Configuration Options
@@ -155,7 +155,7 @@ Loki output plugin has buffering mechanism based on [`dque`](https://github.com/
 
 ```properties
 [Output]
-    Name loki
+    Name grafana-loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
     Buffer true
@@ -170,7 +170,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
 
 ```properties
 [Output]
-    Name loki
+    Name grafana-loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
     BatchWait 1s
@@ -184,7 +184,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
 
 ```properties
 [Output]
-    Name loki
+    Name grafana-loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
     BatchWait 1s
