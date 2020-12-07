@@ -13,7 +13,7 @@ Prerequisites:
 * Go 1.11+
 * gcc (for cgo)
 
-To build the output plugin library file (`out_loki.so`), you can use:
+To build the output plugin library file (`out_grafana_loki.so`), you can use:
 
 ```bash
 make fluent-bit-plugin
