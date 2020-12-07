@@ -105,6 +105,8 @@ func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 		return stdvarOverTime, nil
 	case OpRangeTypeQuantile:
 		return quantileOverTime(*r.params), nil
+	case OpRangeTypeAbsent:
+		return one, nil
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}
@@ -243,4 +245,8 @@ func quantile(q float64, values vectorByValueHeap) float64 {
 
 	weight := rank - math.Floor(rank)
 	return values[int(lowerIndex)].V*(1-weight) + values[int(upperIndex)].V*weight
+}
+
+func one(samples []promql.Point) float64 {
+	return 1.0
 }

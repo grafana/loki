@@ -417,14 +417,21 @@ func rangeAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
+	iter := newRangeVectorIterator(
+		it,
+		expr.left.interval.Nanoseconds(),
+		q.Step().Nanoseconds(),
+		q.Start().UnixNano(), q.End().UnixNano(),
+	)
+	if expr.operation == OpRangeTypeAbsent {
+		return &absentRangeVectorEvaluator{
+			iter: iter,
+			lbs:  absentLabels(expr),
+		}, nil
+	}
 	return &rangeVectorEvaluator{
-		iter: newRangeVectorIterator(
-			it,
-			expr.left.interval.Nanoseconds(),
-			q.Step().Nanoseconds(),
-			q.Start().UnixNano(), q.End().UnixNano(),
-		),
-		agg: agg,
+		iter: iter,
+		agg:  agg,
 	}, nil
 }
 
@@ -454,6 +461,50 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 func (r rangeVectorEvaluator) Close() error { return r.iter.Close() }
 
 func (r rangeVectorEvaluator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
+	return r.iter.Error()
+}
+
+type absentRangeVectorEvaluator struct {
+	iter RangeVectorIterator
+	lbs  labels.Labels
+
+	err error
+}
+
+func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
+	next := r.iter.Next()
+	if !next {
+		return false, 0, promql.Vector{}
+	}
+	ts, vec := r.iter.At(one)
+	for _, s := range vec {
+		// Errors are not allowed in metrics.
+		if s.Metric.Has(log.ErrorLabel) {
+			r.err = newPipelineErr(s.Metric)
+			return false, 0, promql.Vector{}
+		}
+	}
+	if len(vec) > 0 {
+		return next, ts, promql.Vector{}
+	}
+	// values are missing.
+	return next, ts, promql.Vector{
+		promql.Sample{
+			Point: promql.Point{
+				T: ts,
+				V: 1.,
+			},
+			Metric: r.lbs,
+		},
+	}
+}
+
+func (r absentRangeVectorEvaluator) Close() error { return r.iter.Close() }
+
+func (r absentRangeVectorEvaluator) Error() error {
 	if r.err != nil {
 		return r.err
 	}
@@ -897,4 +948,30 @@ func literalStepEvaluator(
 		eval.Close,
 		eval.Error,
 	)
+}
+
+func absentLabels(expr SampleExpr) labels.Labels {
+	m := labels.Labels{}
+
+	lm := expr.Selector().Matchers()
+	if len(lm) == 0 {
+		return m
+	}
+
+	empty := []string{}
+	for _, ma := range lm {
+		if ma.Name == labels.MetricName {
+			continue
+		}
+		if ma.Type == labels.MatchEqual && !m.Has(ma.Name) {
+			m = labels.NewBuilder(m).Set(ma.Name, ma.Value).Labels()
+		} else {
+			empty = append(empty, ma.Name)
+		}
+	}
+
+	for _, v := range empty {
+		m = labels.NewBuilder(m).Del(v).Labels()
+	}
+	return m
 }

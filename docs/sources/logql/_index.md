@@ -430,8 +430,9 @@ Supported function for operating over unwrapped ranges are:
 - `stdvar_over_time(unwrapped-range)`: the population standard variance of the values in the specified interval.
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
+- `absent_over_time(unwrapped-range)`: returns an empty vector if the range vector passed to it has any elements and a 1-element vector with the value 1 if the range vector passed to it has no elements. (`absent_over_time` is useful for alerting on when no time series and logs stream exist for label combination for a certain amount of time.)
 
-Except for `sum_over_time`, unwrapped range aggregations support grouping.
+Except for `sum_over_time` and `absent_over_time`, unwrapped range aggregations support grouping.
 
 ```logql
 <aggr-op>([parameter,] <unwrapped-range>) [without|by (<label list>)]

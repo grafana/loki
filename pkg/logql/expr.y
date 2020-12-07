@@ -90,7 +90,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-
+                  ABSENT_OVER_TIME
 // Operators are listed with increasing precedence.
 %left <binOp> OR
 %left <binOp> AND UNLESS
@@ -331,6 +331,7 @@ rangeOp:
     | STDVAR_OVER_TIME   { $$ = OpRangeTypeStdvar }
     | STDDEV_OVER_TIME   { $$ = OpRangeTypeStddev }
     | QUANTILE_OVER_TIME { $$ = OpRangeTypeQuantile }
+    | ABSENT_OVER_TIME   { $$ = OpRangeTypeAbsent }
     ;
 
 
