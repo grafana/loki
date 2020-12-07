@@ -101,6 +101,8 @@ func Test_SampleExpr_String(t *testing.T) {
 			count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
 		)`,
 		`sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
+		`last_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
+		`first_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
 		`sum by (job) (
 			sum_over_time(
 				{namespace="tns"} |= "level=error" | json | avg=5 and bar<25ms | unwrap duration(latency)  | __error__!~".*" [5m]

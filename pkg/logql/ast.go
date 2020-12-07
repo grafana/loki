@@ -603,14 +603,14 @@ func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 func (e rangeAggregationExpr) validate() error {
 	if e.grouping != nil {
 		switch e.operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.operation)
 		}
 	}
 	if e.left.unwrap != nil {
 		switch e.operation {
-		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile:
+		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeFirst, OpRangeTypeLast:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.operation)
