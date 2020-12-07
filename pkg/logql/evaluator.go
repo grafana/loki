@@ -950,6 +950,8 @@ func literalStepEvaluator(
 	)
 }
 
+// absentLabels guesses labels based on labels matchers of a SampleExpr
+// This is to replace missing timeseries during absent_over_time aggregation.
 func absentLabels(expr SampleExpr) labels.Labels {
 	m := labels.Labels{}
 
