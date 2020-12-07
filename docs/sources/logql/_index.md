@@ -295,7 +295,7 @@ Will extract and rewrite the log line to only contains the query and the duratio
 
 You can use double quoted string for the template or single backtick \``\{{.label_name}}`\` to avoid the need to escape special characters.
 
-See [functions](functions/) to learn about available functions in the template format.
+See [template functions](template_functions/) to learn about available functions in the template format.
 
 #### Labels Format Expression
 
@@ -417,7 +417,7 @@ The unwrap expression is noted `| unwrap label_identifier` where the label ident
 Since label values are string, by default a conversion into a float (64bits) will be attempted, in case of failure the `__error__` label is added to the sample.
 Optionally the label identifier can be wrapped by a conversion function `| unwrap <function>(label_identifier)`, which will attempt to convert the label value from a specific format.
 
-We currently support the functions: 
+We currently support the functions:
 - `duration_seconds(label_identifier)` (or its short equivalent `duration`) which will convert the label value in seconds from the [go duration format](https://golang.org/pkg/time/#ParseDuration) (e.g `5m`, `24s30ms`).
 - `bytes(label_identifier)` which will convert the label value to raw bytes applying the bytes unit  (e.g. `5 MiB`, `3k`, `1G`).
 
@@ -512,6 +512,10 @@ Get the rate of HTTP GET of /home requests from NGINX logs by region:
 ```logql
 avg(rate(({job="nginx"} |= "GET" | json | path="/home")[10s])) by (region)
 ```
+
+### Functions
+
+Loki supports several functions to operate on data. These are described in detail in the expression language [functions](functions/) page.
 
 ### Binary Operators
 
