@@ -30,7 +30,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
+      {{- if not .Values.config.existingSecret }}
         checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -113,7 +115,11 @@ spec:
         {{- end }}
         - name: config
           secret:
+          {{- if .Values.config.existingSecret }}
+            secretName: {{ .Values.config.existingSecret }}
+          {{- else }}
             secretName: {{ template "loki.fullname" . }}
+          {{- end }}
 {{- if .Values.extraVolumes }}
 {{ toYaml .Values.extraVolumes | indent 8}}
 {{- end }}

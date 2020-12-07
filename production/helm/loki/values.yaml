@@ -44,6 +44,8 @@ tracing:
   jaegerAgentHost:
 
 config:
+  ## Name of the existing secret containing loki.yaml key and the configuration as value
+  # existingSecret:
   auth_enabled: false
   ingester:
     chunk_idle_period: 3m
