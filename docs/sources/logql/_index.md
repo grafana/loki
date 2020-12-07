@@ -122,7 +122,7 @@ The matching is case-sensitive by default and can be switched to case-insensitiv
 
 While line filter expressions could be placed anywhere in a pipeline, it is almost always better to have them at the beginning. This ways it will improve the performance of the query doing further processing only when a line matches.
 
-For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line_format "{{.err}}"` will always run faster than  `{job="mysql"} | json | line_format "{{.message}}"` |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
+For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line_format "{{.err}}"` will always run faster than  `{job="mysql"} | json | line_format "{{.message}}" |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
 
 #### Parser Expression
 
@@ -293,7 +293,7 @@ For example the following expression:
 
 Will extract and rewrite the log line to only contains the query and the duration of a request.
 
-You can use double quoted string for the template or single backtick \``\{{.label_name}}`\` to avoid the need to escape special characters.
+You can use double quoted string for the template or backticks `` `{{.label_name}}` `` to avoid the need to escape special characters.
 
 See [functions](functions/) to learn about available functions in the template format.
 
