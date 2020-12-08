@@ -14,26 +14,33 @@ import (
 const unsupportedErr = "unsupported range vector aggregation operation: %s"
 
 func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
-	return r.extractor(nil, false)
+	return r.extractor(nil)
 }
 
-func (r rangeAggregationExpr) extractor(gr *grouping, all bool) (log.SampleExtractor, error) {
+// extractor creates a SampleExtractor but allows for the grouping to be overridden.
+func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
 	var groups []string
 	var without bool
+	var noLabels bool
 
-	// fallback to parents grouping
-	if gr != nil {
-		groups = gr.groups
-		without = gr.without
-	}
-
-	// range aggregation grouping takes priority
 	if r.grouping != nil {
 		groups = r.grouping.groups
 		without = r.grouping.without
+		if len(groups) == 0 {
+			noLabels = true
+		}
+	}
+
+	// uses override if it exists
+	if override != nil {
+		groups = override.groups
+		without = override.without
+		if len(groups) == 0 {
+			noLabels = true
+		}
 	}
 
 	sort.Strings(groups)
@@ -61,16 +68,16 @@ func (r rangeAggregationExpr) extractor(gr *grouping, all bool) (log.SampleExtra
 
 		return log.LabelExtractorWithStages(
 			r.left.unwrap.identifier,
-			convOp, groups, without, all, stages,
+			convOp, groups, without, noLabels, stages,
 			log.ReduceAndLabelFilter(r.left.unwrap.postFilters),
 		)
 	}
 	// otherwise we extract metrics from the log line.
 	switch r.operation {
 	case OpRangeTypeRate, OpRangeTypeCount:
-		return log.NewLineSampleExtractor(log.CountExtractor, stages, groups, without, all)
+		return log.NewLineSampleExtractor(log.CountExtractor, stages, groups, without, noLabels)
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
-		return log.NewLineSampleExtractor(log.BytesExtractor, stages, groups, without, all)
+		return log.NewLineSampleExtractor(log.BytesExtractor, stages, groups, without, noLabels)
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}

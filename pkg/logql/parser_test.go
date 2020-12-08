@@ -186,6 +186,19 @@ func TestParse(t *testing.T) {
 			}, nil),
 		},
 		{
+			in: `avg(count_over_time({ foo !~ "bar" }[5h])) by ()`,
+			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "count_over_time",
+			}, "avg", &grouping{
+				without: false,
+				groups:  nil,
+			}, nil),
+		},
+		{
 			in: `max without (bar) (count_over_time({ foo !~ "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
@@ -196,6 +209,19 @@ func TestParse(t *testing.T) {
 			}, "max", &grouping{
 				without: true,
 				groups:  []string{"bar"},
+			}, nil),
+		},
+		{
+			in: `max without () (count_over_time({ foo !~ "bar" }[5h]))`,
+			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * time.Hour,
+				},
+				operation: "count_over_time",
+			}, "max", &grouping{
+				without: true,
+				groups:  nil,
 			}, nil),
 		},
 		{
@@ -1313,6 +1339,36 @@ func TestParse(t *testing.T) {
 					5*time.Minute,
 					newUnwrapExpr("bar", "")),
 				OpRangeTypeMin, nil, nil,
+			),
+		},
+		{
+			in: `min_over_time({app="foo"} | unwrap bar [5m]) by ()`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar", "")),
+				OpRangeTypeMin, &grouping{}, nil,
+			),
+		},
+		{
+			in: `max_over_time({app="foo"} | unwrap bar [5m]) without ()`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar", "")),
+				OpRangeTypeMax, &grouping{without: true}, nil,
+			),
+		},
+		{
+			in: `max_over_time({app="foo"} | unwrap bar [5m]) without (foo,bar)`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar", "")),
+				OpRangeTypeMax, &grouping{without: true, groups: []string{"foo", "bar"}}, nil,
 			),
 		},
 		{
