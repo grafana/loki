@@ -295,7 +295,7 @@ Will extract and rewrite the log line to only contains the query and the duratio
 
 You can use double quoted string for the template or backticks `` `{{.label_name}}` `` to avoid the need to escape special characters.
 
-See [functions](functions/) to learn about available functions in the template format.
+See [template functions](template_functions/) to learn about available functions in the template format.
 
 #### Labels Format Expression
 
@@ -513,6 +513,10 @@ Get the rate of HTTP GET of /home requests from NGINX logs by region:
 ```logql
 avg(rate(({job="nginx"} |= "GET" | json | path="/home")[10s])) by (region)
 ```
+
+### Functions
+
+Loki supports several functions to operate on data. These are described in detail in the expression language [functions](functions/) page.
 
 ### Binary Operators
 
