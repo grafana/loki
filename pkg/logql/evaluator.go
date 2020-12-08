@@ -206,6 +206,8 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q)
 	case *binOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
+	case *labelReplaceExpr:
+		return labelReplaceEvaluator(ctx, nextEv, e, q)
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -950,7 +952,54 @@ func literalStepEvaluator(
 	)
 }
 
-// absentLabels guesses labels based on labels matchers of a SampleExpr
+func labelReplaceEvaluator(
+	ctx context.Context,
+	ev SampleEvaluator,
+	expr *labelReplaceExpr,
+	q Params,
+) (StepEvaluator, error) {
+	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, 0, 1024)
+	var labelCache map[uint64]labels.Labels
+	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+		next, ts, vec := nextEvaluator.Next()
+		if !next {
+			return false, 0, promql.Vector{}
+		}
+		if labelCache == nil {
+			labelCache = make(map[uint64]labels.Labels, len(vec))
+		}
+		var hash uint64
+		for i, s := range vec {
+			hash, buf = s.Metric.HashWithoutLabels(buf)
+			if labels, ok := labelCache[hash]; ok {
+				vec[i].Metric = labels
+				continue
+			}
+			src := s.Metric.Get(expr.src)
+			indexes := expr.re.FindStringSubmatchIndex(src)
+			if indexes == nil {
+				// If there is no match, no replacement should take place.
+				labelCache[hash] = s.Metric
+				continue
+			}
+			res := expr.re.ExpandString([]byte{}, expr.replacement, src, indexes)
+
+			lb := labels.NewBuilder(s.Metric).Del(expr.dst)
+			if len(res) > 0 {
+				lb.Set(expr.dst, string(res))
+			}
+			outLbs := lb.Labels()
+			labelCache[hash] = outLbs
+			vec[i].Metric = outLbs
+		}
+		return next, ts, vec
+	}, nextEvaluator.Close, nextEvaluator.Error)
+}
+
 // This is to replace missing timeseries during absent_over_time aggregation.
 func absentLabels(expr SampleExpr) labels.Labels {
 	m := labels.Labels{}

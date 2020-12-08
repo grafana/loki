@@ -86,7 +86,7 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 	switch r.operation {
 	case OpRangeTypeRate:
-		return rateLogs(r.left.interval), nil
+		return rateLogs(r.left.interval, r.left.unwrap != nil), nil
 	case OpRangeTypeCount:
 		return countOverTime, nil
 	case OpRangeTypeBytesRate:
@@ -113,9 +113,16 @@ func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 }
 
 // rateLogs calculates the per-second rate of log lines.
-func rateLogs(selRange time.Duration) func(samples []promql.Point) float64 {
+func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.Point) float64 {
 	return func(samples []promql.Point) float64 {
-		return float64(len(samples)) / selRange.Seconds()
+		if !computeValues {
+			return float64(len(samples)) / selRange.Seconds()
+		}
+		var total float64
+		for _, p := range samples {
+			total += p.V
+		}
+		return total / selRange.Seconds()
 	}
 }
 

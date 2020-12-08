@@ -295,7 +295,7 @@ Will extract and rewrite the log line to only contains the query and the duratio
 
 You can use double quoted string for the template or backticks `` `{{.label_name}}` `` to avoid the need to escape special characters.
 
-See [functions](functions/) to learn about available functions in the template format.
+See [template functions](template_functions/) to learn about available functions in the template format.
 
 #### Labels Format Expression
 
@@ -423,6 +423,7 @@ We currently support the functions:
 
 Supported function for operating over unwrapped ranges are:
 
+- `rate(log-range)`: calculates per second rate of all values in the specified interval.
 - `sum_over_time(unwrapped-range)`: the sum of all values in the specified interval.
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
@@ -432,7 +433,7 @@ Supported function for operating over unwrapped ranges are:
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
 - `absent_over_time(unwrapped-range)`: returns an empty vector if the range vector passed to it has any elements and a 1-element vector with the value 1 if the range vector passed to it has no elements. (`absent_over_time` is useful for alerting on when no time series and logs stream exist for label combination for a certain amount of time.)
 
-Except for `sum_over_time` and `absent_over_time`, unwrapped range aggregations support grouping.
+Except for `sum_over_time`,`absent_over_time` and `rate`, unwrapped range aggregations support grouping.
 
 ```logql
 <aggr-op>([parameter,] <unwrapped-range>) [without|by (<label list>)]
@@ -513,6 +514,10 @@ Get the rate of HTTP GET of /home requests from NGINX logs by region:
 ```logql
 avg(rate(({job="nginx"} |= "GET" | json | path="/home")[10s])) by (region)
 ```
+
+### Functions
+
+Loki supports several functions to operate on data. These are described in detail in the expression language [functions](functions/) page.
 
 ### Binary Operators
 

@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -525,6 +526,8 @@ const (
 	OpConvBytes           = "bytes"
 	OpConvDuration        = "duration"
 	OpConvDurationSeconds = "duration_seconds"
+
+	OpLabelReplace = "label_replace"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -609,7 +612,7 @@ func (e rangeAggregationExpr) validate() error {
 	}
 	if e.left.unwrap != nil {
 		switch e.operation {
-		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeAbsent:
+		case OpRangeTypeRate, OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeAbsent:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.operation)
@@ -891,6 +894,61 @@ func formatOperation(op string, grouping *grouping, params ...string) string {
 	}
 	sb.WriteString("(")
 	sb.WriteString(strings.Join(nonEmptyParams, ","))
+	sb.WriteString(")")
+	return sb.String()
+}
+
+type labelReplaceExpr struct {
+	left        SampleExpr
+	dst         string
+	replacement string
+	src         string
+	regex       string
+	re          *regexp.Regexp
+
+	implicit
+}
+
+func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex string) *labelReplaceExpr {
+	re, err := regexp.Compile("^(?:" + regex + ")$")
+	if err != nil {
+		panic(newParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0))
+	}
+	return &labelReplaceExpr{
+		left:        left,
+		dst:         dst,
+		replacement: replacement,
+		src:         src,
+		re:          re,
+		regex:       regex,
+	}
+}
+
+func (e *labelReplaceExpr) Selector() LogSelectorExpr {
+	return e.left.Selector()
+}
+
+func (e *labelReplaceExpr) Extractor() (SampleExtractor, error) {
+	return e.left.Extractor()
+}
+
+func (e *labelReplaceExpr) Operations() []string {
+	return e.left.Operations()
+}
+
+func (e *labelReplaceExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpLabelReplace)
+	sb.WriteString("(")
+	sb.WriteString(e.left.String())
+	sb.WriteString(",")
+	sb.WriteString(strconv.Quote(e.dst))
+	sb.WriteString(",")
+	sb.WriteString(strconv.Quote(e.replacement))
+	sb.WriteString(",")
+	sb.WriteString(strconv.Quote(e.src))
+	sb.WriteString(",")
+	sb.WriteString(strconv.Quote(e.regex))
 	sb.WriteString(")")
 	return sb.String()
 }

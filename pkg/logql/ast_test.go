@@ -110,6 +110,20 @@ func Test_SampleExpr_String(t *testing.T) {
 		/
 			count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
 		)`,
+		`label_replace(
+			sum by (job) (
+				sum_over_time(
+					{namespace="tns"} |= "level=error" | json | avg=5 and bar<25ms | unwrap duration(latency)  | __error__!~".*" [5m]
+				)
+			/
+				count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
+			),
+			"foo",
+			"$1",
+			"service",
+			"(.*):.*"
+		)
+		`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
