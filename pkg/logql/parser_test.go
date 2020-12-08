@@ -153,6 +153,16 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `absent_over_time({ foo !~ "bar" }[1w])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 7 * 24 * time.Hour,
+				},
+				operation: OpRangeTypeAbsent,
+			},
+		},
+		{
 			in: `sum(rate({ foo !~ "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
@@ -299,6 +309,14 @@ func TestParse(t *testing.T) {
 				msg:  "syntax error: unexpected IDENTIFIER",
 				line: 1,
 				col:  1,
+			},
+		},
+		{
+			in: `absent_over_time({ foo !~ "bar" }[5h]) by (foo)`,
+			err: ParseError{
+				msg:  "grouping not allowed for absent_over_time aggregation",
+				line: 0,
+				col:  0,
 			},
 		},
 		{

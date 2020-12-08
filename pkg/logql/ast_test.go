@@ -58,6 +58,7 @@ func Test_SampleExpr_String(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []string{
 		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
+		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
@@ -101,6 +102,7 @@ func Test_SampleExpr_String(t *testing.T) {
 			count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
 		)`,
 		`sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
+		`absent_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
 		`sum by (job) (
 			sum_over_time(
 				{namespace="tns"} |= "level=error" | json | avg=5 and bar<25ms | unwrap duration(latency)  | __error__!~".*" [5m]
