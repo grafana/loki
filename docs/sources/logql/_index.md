@@ -423,6 +423,7 @@ We currently support the functions:
 
 Supported function for operating over unwrapped ranges are:
 
+- `rate(log-range)`: calculates per second rate of all values in the specified interval.
 - `sum_over_time(unwrapped-range)`: the sum of all values in the specified interval.
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
@@ -431,7 +432,7 @@ Supported function for operating over unwrapped ranges are:
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
 
-Except for `sum_over_time`, unwrapped range aggregations support grouping.
+Except for `sum_over_time` and `rate` unwrapped range aggregations support grouping.
 
 ```logql
 <aggr-op>([parameter,] <unwrapped-range>) [without|by (<label list>)]
