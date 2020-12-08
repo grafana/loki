@@ -30,7 +30,7 @@ docker run --log-driver=loki \
 ```
 
 > **Note**: The Loki logging driver still uses the json-log driver in combination with sending logs to Loki, this is mainly useful to keep the `docker logs` command working.
-> You can adjust file size and rotation using the respective log option `max-size` and `max-file`.
+> You can adjust file size and rotation using the respective log option `max-size` and `max-file`. Keep in mind that default values for these options are not taken from json-log configuration.
 > You can deactivate this behavior by setting the log option `no-file` to true.
 
 ## Change the default logging driver
