@@ -1,3 +1,17 @@
+## 2.0.1 (2020/12/10)
+
+2.0.1 is a special release, it only exists to add the v3 support to Loki's chunk format.
+
+**There is no reason to upgrade from 2.0.0 to 2.0.1**
+
+This chunk version is internal to Loki and not configurable, and in a future version v3 will become the default (Likely 2.2.0).
+
+We are creating this to enable users to roll back from a future release which was writing v3 chunks, back as far as 2.0.0 and still be able to read chunks.
+
+This is mostly a safety measure to help if someone upgrades from 2.0.0 and skips versions to a future version which is writing v3 chunks and they encounter an issue which they would like to roll back. They would be able to then roll back to 2.0.1 and still read v3 chunks.
+
+It should be noted this does not help anyone upgrading from a version older than 2.0.0, that is you should at least upgrade to 2.0.0 before going to a newer version if you are on a version older than 2.0.0.
+
 ## 2.0.0 (2020/10/26)
 
 2.0.0 is here!!
