@@ -27,13 +27,15 @@ import (
 const (
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
+
+	_ byte = iota
+	chunkFormatV1
+	chunkFormatV2
+	chunkFormatV3
 )
 
 var (
 	magicNumber = uint32(0x12EE56A)
-
-	chunkFormatV1 = byte(1)
-	chunkFormatV2 = byte(2)
 )
 
 // The table gets initialized with sync.Once but may still cause a race
@@ -96,6 +98,15 @@ func (hb *headBlock) isEmpty() bool {
 	return len(hb.entries) == 0
 }
 
+func (hb *headBlock) clear() {
+	if hb.entries != nil {
+		hb.entries = hb.entries[:0]
+	}
+	hb.size = 0
+	hb.mint = 0
+	hb.maxt = 0
+}
+
 func (hb *headBlock) append(ts int64, line string) error {
 	if !hb.isEmpty() && hb.maxt > ts {
 		return ErrOutOfOrder
@@ -155,7 +166,7 @@ func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 		blocks:     []block{},
 
 		head:   &headBlock{},
-		format: chunkFormatV2,
+		format: chunkFormatV3,
 
 		encoding: enc,
 	}
@@ -184,8 +195,8 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 	switch version {
 	case chunkFormatV1:
 		bc.encoding = EncGZIP
-	case chunkFormatV2:
-		// format v2 has a byte for block encoding.
+	case chunkFormatV2, chunkFormatV3:
+		// format v2+ has a byte for block encoding.
 		enc := Encoding(db.byte())
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "verifying encoding")
@@ -219,6 +230,9 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 
 		// Read offset and length.
 		blk.offset = db.uvarint()
+		if version == chunkFormatV3 {
+			blk.uncompressedSize = db.uvarint()
+		}
 		l := db.uvarint()
 		blk.b = b[blk.offset : blk.offset+l]
 
@@ -260,8 +274,8 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	// Write the header (magicNum + version).
 	eb.putBE32(magicNumber)
 	eb.putByte(c.format)
-	if c.format == chunkFormatV2 {
-		// chunk format v2 has a byte for encoding.
+	if c.format > chunkFormatV1 {
+		// chunk format v2+ has a byte for encoding.
 		eb.putByte(byte(c.encoding))
 	}
 
@@ -297,6 +311,9 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 		eb.putVarint64(b.mint)
 		eb.putVarint64(b.maxt)
 		eb.putUvarint(b.offset)
+		if c.format == chunkFormatV3 {
+			eb.putUvarint(b.uncompressedSize)
+		}
 		eb.putUvarint(len(b.b))
 	}
 	eb.putHash(crc32Hash)
@@ -437,10 +454,7 @@ func (c *MemChunk) cut() error {
 
 	c.cutBlockSize += len(b)
 
-	c.head.entries = c.head.entries[:0]
-	c.head.mint = 0 // Will be set on first append.
-	c.head.size = 0
-
+	c.head.clear()
 	return nil
 }
 
