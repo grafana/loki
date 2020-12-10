@@ -33,6 +33,8 @@ var testEncoding = []Encoding{
 	EncLZ4_1M,
 	EncLZ4_4M,
 	EncSnappy,
+	EncFlate,
+	EncZstd,
 }
 
 var (
@@ -619,6 +621,13 @@ func BenchmarkWrite(b *testing.B) {
 
 }
 
+type nomatchPipeline struct{}
+
+func (nomatchPipeline) Process(line []byte) ([]byte, log.LabelsResult, bool) { return line, nil, false }
+func (nomatchPipeline) ProcessString(line string) (string, log.LabelsResult, bool) {
+	return line, nil, false
+}
+
 func BenchmarkRead(b *testing.B) {
 	for _, enc := range testEncoding {
 		b.Run(enc.String(), func(b *testing.B) {
@@ -629,7 +638,7 @@ func BenchmarkRead(b *testing.B) {
 			for n := 0; n < b.N; n++ {
 				for _, c := range chunks {
 					// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-					iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, noopStreamPipeline)
+					iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
 					if err != nil {
 						panic(err)
 					}

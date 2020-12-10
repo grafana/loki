@@ -579,10 +579,15 @@ github.com/jstemmer/go-junit-report/formatter
 github.com/jstemmer/go-junit-report/parser
 # github.com/julienschmidt/httprouter v1.3.0
 github.com/julienschmidt/httprouter
-# github.com/klauspost/compress v1.9.5
+# github.com/klauspost/compress v1.11.3
 ## explicit
 github.com/klauspost/compress/flate
+github.com/klauspost/compress/fse
 github.com/klauspost/compress/gzip
+github.com/klauspost/compress/huff0
+github.com/klauspost/compress/snappy
+github.com/klauspost/compress/zstd
+github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/klauspost/cpuid v1.3.1
 github.com/klauspost/cpuid
 # github.com/konsorten/go-windows-terminal-sequences v1.0.3
@@ -666,7 +671,7 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/pierrec/lz4/v4 v4.0.2-0.20200813132121-22f5d580d5c4
+# github.com/pierrec/lz4/v4 v4.1.1
 ## explicit
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block

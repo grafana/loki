@@ -37,13 +37,13 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.10
-	github.com/klauspost/compress v1.9.5
 	github.com/mitchellh/mapstructure v1.3.3
+	github.com/klauspost/compress v1.11.3
 	github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.2.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
-	github.com/pierrec/lz4/v4 v4.0.2-0.20200813132121-22f5d580d5c4
+	github.com/pierrec/lz4/v4 v4.1.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
 	github.com/prometheus/client_model v0.2.0
