@@ -2,19 +2,24 @@ package querier
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"net/http"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
-
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
+	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
@@ -236,6 +241,99 @@ func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval
 	return ingesterQueryInterval, storeQueryInterval
 }
 
+func (q *Querier) Query(request *logproto.QueryRequest, server logproto.Querier_QueryServer) error {
+	// TODO: check is this the correct validation
+	ctx := server.Context()
+	if err := q.validateEntriesLimits(ctx, request.Selector, request.Limit); err != nil {
+		return err
+	}
+	params := logql.NewLiteralParams(
+		request.Selector,
+		request.Start,
+		request.End,
+		time.Duration(request.Step),
+		time.Duration(request.Interval),
+		request.Direction,
+		request.Limit,
+		request.Shards,
+	)
+	query := q.engine.Query(params)
+	result, err := query.Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	switch result.Data.Type() {
+	case logql.ValueTypeStreams:
+		streams := result.Data.(logql.Streams)
+		response := logproto.QueryResponse{
+			Streams: make([]logproto.Stream, 0, len(streams)),
+		}
+		for _, stream := range streams {
+			response.Streams = append(response.Streams, stream)
+		}
+		err := server.Send(&response)
+		return err
+	default:
+		return errors.New("unexpected type (%T): cannot send")
+	}
+}
+
+func (q *Querier) QuerySample(request *logproto.SampleQueryRequest, server logproto.Querier_QuerySampleServer) error {
+	// TODO: check what validation should be used here
+	ctx := server.Context()
+	params := logql.NewLiteralParams(
+		request.Selector,
+		request.Start,
+		request.End,
+		0,
+		0,
+		0,
+		0,
+		request.Shards,
+	)
+	query := q.engine.Query(params)
+	result, err := query.Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	switch result.Data.Type() {
+	case promql_parser.ValueTypeMatrix:
+		matrix := result.Data.(promql.Matrix)
+		response := logproto.SampleQueryResponse{
+			Series: make([]logproto.Series, 0, len(matrix)),
+		}
+		// TODO: check is the correct way to convert promql.Matrix to []logproto.Series?
+		for _, series := range matrix {
+			s := logproto.Series{
+				Labels:  series.Metric.String(),
+				Samples: make([]logproto.Sample, 0, len(series.Points)),
+			}
+			for _, point := range series.Points {
+				sample := logproto.Sample{
+					Timestamp: point.T,
+					Value:     point.V,
+				}
+				s.Samples = append(s.Samples, sample)
+			}
+			response.Series = append(response.Series, s)
+		}
+		err := server.Send(&response)
+		return err
+	default:
+		return errors.New("unexpected type (%T): cannot send")
+	}
+}
+
+func (q *Querier) TailersCount(ctx context.Context, request *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+	return nil, errors.New("TailersCount only available from Ingester")
+}
+
+func (q *Querier) GetChunkIDs(ctx context.Context, request *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	return nil, errors.New("GetChunkIDs only available from Ingester")
+}
+
 // Label does the heavy lifting for a Label query.
 func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
@@ -282,8 +380,43 @@ func (*Querier) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
+func (q *Querier) Tail(request *logproto.TailRequest, server logproto.Querier_TailServer) error {
+	// TODO: check what validation is required here
+	ctx := server.Context()
+	logger := util.WithContext(ctx, util.Logger)
+	tailer, err := q.GetTailer(ctx, request)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := tailer.close(); err != nil {
+			level.Error(logger).Log("msg", "Error closing Tailer", "err", err)
+		}
+	}()
+
+	var response *loghttp_legacy.TailResponse
+	responseChan := tailer.getResponseChan()
+	closeErrChan := tailer.getCloseErrorChan()
+
+	for {
+		select {
+		case response = <-responseChan:
+			for _, stream := range response.Streams {
+				tailResponse := logproto.TailResponse{
+					Stream: &stream,
+				}
+				if err := server.Send(&tailResponse); err != nil {
+					return err
+				}
+			}
+		case err := <-closeErrChan:
+			return err
+		}
+	}
+}
+
 // Tail keeps getting matching logs from all ingesters for given query
-func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+func (q *Querier) GetTailer(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
 	err := q.checkTailRequestLimit(ctx)
 	if err != nil {
 		return nil, err

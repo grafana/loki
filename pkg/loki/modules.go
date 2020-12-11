@@ -172,6 +172,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
+	if t.cfg.Target != All {
+		logproto.RegisterQuerierServer(t.server.GRPC, t.querier)
+	}
+
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.httpAuthMiddleware,

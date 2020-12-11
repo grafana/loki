@@ -40,6 +40,8 @@ message QueryRequest {
   Direction direction = 5;
   reserved 6;
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
+  int64 step = 8;
+  int64 interval = 9;
 }
 
 message SampleQueryRequest {
