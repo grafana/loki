@@ -36,12 +36,6 @@ workflows:
           requires: [test]
           filters: { <<: *only-tags }
 
-      - test-helm:
-          requires: [test]
-          filters: { <<: *tags }
-      - publish-helm:
-          requires: [test-helm]
-          filters: { <<: *tag-or-master }
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
@@ -104,49 +98,3 @@ jobs:
       - run:
           name: github release
           command: make BUILD_IN_CONTAINER=false publish
-
-  test-helm:
-    environment:
-      CT_VERSION: 3.3.0
-    machine:
-      image: ubuntu-1604:201903-01
-    steps:
-      - checkout
-      - run:
-          name: Install k3s
-          command: |
-            curl -sfL https://get.k3s.io | sh -
-            sudo chmod 755 /etc/rancher/k3s/k3s.yaml
-            mkdir -p ~/.kube
-            cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      - run:
-          name: Install Helm
-          command: |
-            curl -L https://git.io/get_helm.sh | bash -s -- -v v3.2.3
-      - run:
-          name: Install Chart Testing tool
-          command: |
-            pip install yamale==2.2.0 yamllint
-            curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
-            sudo tar -C /usr/local/bin -xvf ct.tgz
-            sudo mv /usr/local/bin/etc /etc/ct/
-      - run:
-          name: Run Chart Tests
-          command: |
-            ct lint --chart-dirs=production/helm --config=production/helm/ct.yaml
-            ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack --config=production/helm/ct.yaml
-
-  publish-helm:
-    <<: *defaults
-    steps:
-      - add_ssh_keys:
-          fingerprints:
-            - "5a:d3:08:5e:f7:53:a0:c4:e9:5d:83:c6:02:6a:d9:bd"
-      - checkout
-      - run:
-          name: import GPG key
-          command: echo -e "$GPG_KEY" | gpg --import
-      - run:
-          name: export  GPG key
-          command: gpg --export-secret-key loki-team@googlegroups.com  > ~/.gnupg/secring.gpg
-      - run: PACKAGE_ARGS='--sign --key "Grafana Loki" --keyring ~/.gnupg/secring.gpg' make helm-publish
