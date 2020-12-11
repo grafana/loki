@@ -30,8 +30,9 @@ func removeLineformat(expr SampleExpr) {
 		if !ok {
 			return
 		}
-		if rangeExpr.operation != OpRangeTypeCount &&
-			rangeExpr.operation != OpRangeTypeRate {
+		// bytes operation count bytes of the log line so line_format changes the result.
+		if rangeExpr.operation == OpRangeTypeBytes ||
+			rangeExpr.operation == OpRangeTypeBytesRate {
 			return
 		}
 		pipelineExpr, ok := rangeExpr.left.left.(*pipelineExpr)
