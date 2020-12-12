@@ -60,4 +60,4 @@ $ make loki promtail logcli
 
 ## Contribute to the Helm Chart
 
-Please follow the [Helm documentation](https://github.com/grafana/loki/tree/master/production/helm/).
+The official Loki helm charts can be found in the [Grafana Helm Charts Repo](https://github.com/grafana/helm-charts).
