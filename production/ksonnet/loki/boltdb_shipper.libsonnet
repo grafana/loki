@@ -48,7 +48,7 @@
     pvc.new('compactor-data') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.compactor_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
-    pvc.mixin.spec.withStorageClassName($._config.ingester_pvc_class)
+    pvc.mixin.spec.withStorageClassName($._config.compactor_pvc_class)
   else {},
 
   compactor_args:: if $._config.using_boltdb_shipper then {
