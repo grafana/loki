@@ -135,7 +135,7 @@ type Loki struct {
 	cfg Config
 
 	// set during initialization
-	moduleManager *modules.Manager
+	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
 
 	server          *server.Server
@@ -204,7 +204,7 @@ var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info
 
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run() error {
-	serviceMap, err := t.moduleManager.InitModuleServices(t.cfg.Target)
+	serviceMap, err := t.ModuleManager.InitModuleServices(t.cfg.Target)
 	if err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
-	t.moduleManager = mm
+	t.ModuleManager = mm
 
 	return nil
 }
