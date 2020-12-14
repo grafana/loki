@@ -1,9 +1,10 @@
-# cloud.google.com/go v0.65.0
+# cloud.google.com/go v0.73.0
 cloud.google.com/go
 cloud.google.com/go/compute/metadata
 cloud.google.com/go/iam
 cloud.google.com/go/internal
 cloud.google.com/go/internal/optional
+cloud.google.com/go/internal/pubsub
 cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
 cloud.google.com/go/longrunning
@@ -12,11 +13,17 @@ cloud.google.com/go/longrunning/autogen
 cloud.google.com/go/bigtable
 cloud.google.com/go/bigtable/bttest
 cloud.google.com/go/bigtable/internal/option
+# cloud.google.com/go/pubsub v1.9.1
+## explicit
+cloud.google.com/go/pubsub
+cloud.google.com/go/pubsub/apiv1
+cloud.google.com/go/pubsub/internal/distribution
+cloud.google.com/go/pubsub/internal/scheduler
 # cloud.google.com/go/storage v1.10.0
 cloud.google.com/go/storage
 # github.com/Azure/azure-pipeline-go v0.2.2
 github.com/Azure/azure-pipeline-go/pipeline
-# github.com/Azure/azure-sdk-for-go v48.2.0+incompatible => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
+# github.com/Azure/azure-sdk-for-go v46.4.0+incompatible => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute
 github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-10-01/network
 github.com/Azure/azure-sdk-for-go/version
@@ -27,7 +34,7 @@ github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
 # github.com/Azure/go-autorest v14.2.0+incompatible
 github.com/Azure/go-autorest
-# github.com/Azure/go-autorest/autorest v0.11.11
+# github.com/Azure/go-autorest/autorest v0.11.10
 github.com/Azure/go-autorest/autorest
 github.com/Azure/go-autorest/autorest/azure
 # github.com/Azure/go-autorest/autorest/adal v0.9.5
@@ -48,7 +55,6 @@ github.com/Masterminds/squirrel
 github.com/Microsoft/go-winio
 github.com/Microsoft/go-winio/pkg/guid
 # github.com/NYTimes/gziphandler v1.1.1
-## explicit
 github.com/NYTimes/gziphandler
 # github.com/PuerkitoBio/purell v1.1.1
 github.com/PuerkitoBio/purell
@@ -62,7 +68,7 @@ github.com/alecthomas/units
 # github.com/armon/go-metrics v0.3.3
 github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
-# github.com/asaskevich/govalidator v0.0.0-20200907205600-7a23bdc65eef
+# github.com/asaskevich/govalidator v0.0.0-20200108200545-475eaeb16496
 github.com/asaskevich/govalidator
 # github.com/aws/aws-lambda-go v1.17.0
 ## explicit
@@ -71,7 +77,7 @@ github.com/aws/aws-lambda-go/lambda
 github.com/aws/aws-lambda-go/lambda/handlertrace
 github.com/aws/aws-lambda-go/lambda/messages
 github.com/aws/aws-lambda-go/lambdacontext
-# github.com/aws/aws-sdk-go v1.35.31
+# github.com/aws/aws-sdk-go v1.35.5
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
 github.com/aws/aws-sdk-go/aws/awserr
@@ -160,7 +166,7 @@ github.com/coreos/go-systemd/journal
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.6.0
+# github.com/cortexproject/cortex v1.4.1-0.20201022071705-85942c5703cf
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alerts
@@ -195,12 +201,6 @@ github.com/cortexproject/cortex/pkg/configs/userconfig
 github.com/cortexproject/cortex/pkg/cortex
 github.com/cortexproject/cortex/pkg/distributor
 github.com/cortexproject/cortex/pkg/flusher
-github.com/cortexproject/cortex/pkg/frontend
-github.com/cortexproject/cortex/pkg/frontend/transport
-github.com/cortexproject/cortex/pkg/frontend/v1
-github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb
-github.com/cortexproject/cortex/pkg/frontend/v2
-github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb
 github.com/cortexproject/cortex/pkg/ingester
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/ingester/index
@@ -209,12 +209,11 @@ github.com/cortexproject/cortex/pkg/querier
 github.com/cortexproject/cortex/pkg/querier/astmapper
 github.com/cortexproject/cortex/pkg/querier/batch
 github.com/cortexproject/cortex/pkg/querier/chunkstore
+github.com/cortexproject/cortex/pkg/querier/frontend
 github.com/cortexproject/cortex/pkg/querier/iterators
 github.com/cortexproject/cortex/pkg/querier/lazyquery
 github.com/cortexproject/cortex/pkg/querier/queryrange
 github.com/cortexproject/cortex/pkg/querier/series
-github.com/cortexproject/cortex/pkg/querier/stats
-github.com/cortexproject/cortex/pkg/querier/worker
 github.com/cortexproject/cortex/pkg/ring
 github.com/cortexproject/cortex/pkg/ring/client
 github.com/cortexproject/cortex/pkg/ring/kv
@@ -226,23 +225,15 @@ github.com/cortexproject/cortex/pkg/ruler
 github.com/cortexproject/cortex/pkg/ruler/rules
 github.com/cortexproject/cortex/pkg/ruler/rules/local
 github.com/cortexproject/cortex/pkg/ruler/rules/objectclient
-github.com/cortexproject/cortex/pkg/scheduler
-github.com/cortexproject/cortex/pkg/scheduler/queue
-github.com/cortexproject/cortex/pkg/scheduler/schedulerpb
-github.com/cortexproject/cortex/pkg/storage/bucket
-github.com/cortexproject/cortex/pkg/storage/bucket/azure
-github.com/cortexproject/cortex/pkg/storage/bucket/filesystem
-github.com/cortexproject/cortex/pkg/storage/bucket/gcs
-github.com/cortexproject/cortex/pkg/storage/bucket/s3
-github.com/cortexproject/cortex/pkg/storage/bucket/swift
+github.com/cortexproject/cortex/pkg/storage/backend/azure
+github.com/cortexproject/cortex/pkg/storage/backend/filesystem
+github.com/cortexproject/cortex/pkg/storage/backend/gcs
+github.com/cortexproject/cortex/pkg/storage/backend/s3
 github.com/cortexproject/cortex/pkg/storage/tsdb
-github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex
 github.com/cortexproject/cortex/pkg/storegateway
 github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb
-github.com/cortexproject/cortex/pkg/tenant
 github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/chunkcompat
-github.com/cortexproject/cortex/pkg/util/concurrency
 github.com/cortexproject/cortex/pkg/util/extract
 github.com/cortexproject/cortex/pkg/util/fakeauth
 github.com/cortexproject/cortex/pkg/util/flagext
@@ -250,11 +241,9 @@ github.com/cortexproject/cortex/pkg/util/grpc
 github.com/cortexproject/cortex/pkg/util/grpc/encoding/snappy
 github.com/cortexproject/cortex/pkg/util/grpc/healthcheck
 github.com/cortexproject/cortex/pkg/util/grpcclient
-github.com/cortexproject/cortex/pkg/util/grpcutil
 github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/middleware
 github.com/cortexproject/cortex/pkg/util/modules
-github.com/cortexproject/cortex/pkg/util/process
 github.com/cortexproject/cortex/pkg/util/push
 github.com/cortexproject/cortex/pkg/util/runtimeconfig
 github.com/cortexproject/cortex/pkg/util/services
@@ -270,7 +259,7 @@ github.com/davecgh/go-spew/spew
 github.com/dgrijalva/jwt-go
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 github.com/dgryski/go-rendezvous
-# github.com/digitalocean/godo v1.52.0
+# github.com/digitalocean/godo v1.46.0
 github.com/digitalocean/godo
 # github.com/docker/distribution v2.7.1+incompatible
 github.com/docker/distribution/digestset
@@ -369,7 +358,7 @@ github.com/go-logr/logr
 # github.com/go-openapi/analysis v0.19.10
 github.com/go-openapi/analysis
 github.com/go-openapi/analysis/internal
-# github.com/go-openapi/errors v0.19.8 => github.com/go-openapi/errors v0.19.4
+# github.com/go-openapi/errors v0.19.4
 github.com/go-openapi/errors
 # github.com/go-openapi/jsonpointer v0.19.3
 github.com/go-openapi/jsonpointer
@@ -388,11 +377,11 @@ github.com/go-openapi/runtime/middleware/untyped
 github.com/go-openapi/runtime/security
 # github.com/go-openapi/spec v0.19.8
 github.com/go-openapi/spec
-# github.com/go-openapi/strfmt v0.19.11
+# github.com/go-openapi/strfmt v0.19.5
 github.com/go-openapi/strfmt
 # github.com/go-openapi/swag v0.19.9
 github.com/go-openapi/swag
-# github.com/go-openapi/validate v0.19.14 => github.com/go-openapi/validate v0.19.8
+# github.com/go-openapi/validate v0.19.8
 github.com/go-openapi/validate
 # github.com/go-redis/redis/v8 v8.2.3
 github.com/go-redis/redis/v8
@@ -453,7 +442,7 @@ github.com/golang/protobuf/ptypes/wrappers
 github.com/golang/snappy
 # github.com/google/btree v1.0.0
 github.com/google/btree
-# github.com/google/go-cmp v0.5.2
+# github.com/google/go-cmp v0.5.4
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
@@ -473,7 +462,7 @@ github.com/googleapis/gax-go/v2
 github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
 github.com/googleapis/gnostic/openapiv2
-# github.com/gophercloud/gophercloud v0.14.0
+# github.com/gophercloud/gophercloud v0.13.0
 github.com/gophercloud/gophercloud
 github.com/gophercloud/gophercloud/openstack
 github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/floatingips
@@ -492,7 +481,7 @@ github.com/gophercloud/gophercloud/pagination
 # github.com/gorilla/mux v1.7.3
 ## explicit
 github.com/gorilla/mux
-# github.com/gorilla/websocket v1.4.2
+# github.com/gorilla/websocket v1.4.0
 ## explicit
 github.com/gorilla/websocket
 # github.com/grpc-ecosystem/go-grpc-middleware v1.1.0
@@ -506,7 +495,7 @@ github.com/grpc-ecosystem/go-grpc-middleware/util/metautils
 ## explicit
 github.com/grpc-ecosystem/go-grpc-prometheus
 github.com/grpc-ecosystem/go-grpc-prometheus/packages/grpcstatus
-# github.com/grpc-ecosystem/grpc-gateway v1.16.0
+# github.com/grpc-ecosystem/grpc-gateway v1.15.0
 github.com/grpc-ecosystem/grpc-gateway/internal
 github.com/grpc-ecosystem/grpc-gateway/runtime
 github.com/grpc-ecosystem/grpc-gateway/utilities
@@ -579,20 +568,15 @@ github.com/jstemmer/go-junit-report/formatter
 github.com/jstemmer/go-junit-report/parser
 # github.com/julienschmidt/httprouter v1.3.0
 github.com/julienschmidt/httprouter
-# github.com/klauspost/compress v1.11.3
+# github.com/klauspost/compress v1.9.5
 ## explicit
 github.com/klauspost/compress/flate
-github.com/klauspost/compress/fse
 github.com/klauspost/compress/gzip
-github.com/klauspost/compress/huff0
-github.com/klauspost/compress/snappy
-github.com/klauspost/compress/zstd
-github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/klauspost/cpuid v1.3.1
 github.com/klauspost/cpuid
 # github.com/konsorten/go-windows-terminal-sequences v1.0.3
 github.com/konsorten/go-windows-terminal-sequences
-# github.com/lann/builder v0.0.0-20180802200727-47ae307949d0
+# github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939
 github.com/lann/builder
 # github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0
 github.com/lann/ps
@@ -615,7 +599,7 @@ github.com/mattn/go-ieproxy
 github.com/mattn/go-isatty
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.35
+# github.com/miekg/dns v1.1.31
 github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.0
 github.com/minio/md5-simd
@@ -635,7 +619,7 @@ github.com/minio/minio-go/v7/pkg/tags
 github.com/minio/sha256-simd
 # github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
-# github.com/mitchellh/mapstructure v1.3.3
+# github.com/mitchellh/mapstructure v1.2.2
 ## explicit
 github.com/mitchellh/mapstructure
 # github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2
@@ -671,7 +655,7 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/pierrec/lz4/v4 v4.1.1
+# github.com/pierrec/lz4/v4 v4.0.2-0.20200813132121-22f5d580d5c4
 ## explicit
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block
@@ -683,7 +667,7 @@ github.com/pierrec/lz4/v4/internal/xxh32
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/alertmanager v0.21.1-0.20201106142418-c39b78780054
+# github.com/prometheus/alertmanager v0.21.1-0.20200911160112-1fdff6b3f939
 github.com/prometheus/alertmanager/api
 github.com/prometheus/alertmanager/api/metrics
 github.com/prometheus/alertmanager/api/v1
@@ -722,7 +706,7 @@ github.com/prometheus/alertmanager/store
 github.com/prometheus/alertmanager/template
 github.com/prometheus/alertmanager/types
 github.com/prometheus/alertmanager/ui
-# github.com/prometheus/client_golang v1.8.0
+# github.com/prometheus/client_golang v1.7.1
 ## explicit
 github.com/prometheus/client_golang/api
 github.com/prometheus/client_golang/api/prometheus/v1
@@ -736,7 +720,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.2.0
 ## explicit
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.15.0
+# github.com/prometheus/common v0.14.0
 ## explicit
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -746,11 +730,11 @@ github.com/prometheus/common/route
 github.com/prometheus/common/version
 # github.com/prometheus/node_exporter v1.0.0-rc.0.0.20200428091818-01054558c289
 github.com/prometheus/node_exporter/https
-# github.com/prometheus/procfs v0.2.0
+# github.com/prometheus/procfs v0.1.3
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20201119181812-c8f810083d3f
+# github.com/prometheus/prometheus v1.8.2-0.20201014093524-73e2ce1bd643
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -847,7 +831,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.13.1-0.20201130180807-84afc97e7d58
+# github.com/thanos-io/thanos v0.13.1-0.20201019130456-f41940581d9a
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
@@ -859,7 +843,6 @@ github.com/thanos-io/thanos/pkg/component
 github.com/thanos-io/thanos/pkg/discovery/cache
 github.com/thanos-io/thanos/pkg/discovery/dns
 github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns
-github.com/thanos-io/thanos/pkg/errutil
 github.com/thanos-io/thanos/pkg/extprom
 github.com/thanos-io/thanos/pkg/gate
 github.com/thanos-io/thanos/pkg/http
@@ -881,6 +864,7 @@ github.com/thanos-io/thanos/pkg/store/hintspb
 github.com/thanos-io/thanos/pkg/store/labelpb
 github.com/thanos-io/thanos/pkg/store/storepb
 github.com/thanos-io/thanos/pkg/store/storepb/prompb
+github.com/thanos-io/thanos/pkg/store/storepb/testutil
 github.com/thanos-io/thanos/pkg/strutil
 github.com/thanos-io/thanos/pkg/testutil
 github.com/thanos-io/thanos/pkg/tracing
@@ -916,7 +900,7 @@ github.com/uber/jaeger-lib/metrics/prometheus
 ## explicit
 # github.com/ugorji/go/codec v1.1.7
 github.com/ugorji/go/codec
-# github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec
+# github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099
 ## explicit
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
@@ -1016,7 +1000,7 @@ go.etcd.io/etcd/raft/tracker
 go.etcd.io/etcd/version
 go.etcd.io/etcd/wal
 go.etcd.io/etcd/wal/walpb
-# go.mongodb.org/mongo-driver v1.4.3
+# go.mongodb.org/mongo-driver v1.3.2
 go.mongodb.org/mongo-driver/bson
 go.mongodb.org/mongo-driver/bson/bsoncodec
 go.mongodb.org/mongo-driver/bson/bsonoptions
@@ -1024,7 +1008,7 @@ go.mongodb.org/mongo-driver/bson/bsonrw
 go.mongodb.org/mongo-driver/bson/bsontype
 go.mongodb.org/mongo-driver/bson/primitive
 go.mongodb.org/mongo-driver/x/bsonx/bsoncore
-# go.opencensus.io v0.22.4
+# go.opencensus.io v0.22.5
 go.opencensus.io
 go.opencensus.io/internal
 go.opencensus.io/internal/tagencoding
@@ -1082,10 +1066,10 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/sha3
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/lint v0.0.0-20200302205851-738671d3881b
+# golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5
 golang.org/x/lint
 golang.org/x/lint/golint
-# golang.org/x/mod v0.3.0
+# golang.org/x/mod v0.4.0
 golang.org/x/mod/module
 golang.org/x/mod/semver
 # golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
@@ -1108,16 +1092,16 @@ golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.0.0-20201109201403-9fd604954f58
+# golang.org/x/oauth2 v0.0.0-20201208152858-08078c50e5b5
 golang.org/x/oauth2
 golang.org/x/oauth2/google
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+# golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20201119102817-f84b799fce68
+# golang.org/x/sys v0.0.0-20201201145000-ef89a241ccb3
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
@@ -1129,9 +1113,9 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
-# golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
+# golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
 golang.org/x/time/rate
-# golang.org/x/tools v0.0.0-20201119054027-25dc3e1ccc3c
+# golang.org/x/tools v0.0.0-20201208233053-a543418bbed2
 golang.org/x/tools/cmd/goimports
 golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/gcexportdata
@@ -1147,7 +1131,7 @@ golang.org/x/tools/internal/imports
 # golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.35.0
+# google.golang.org/api v0.36.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1
 google.golang.org/api/googleapi
@@ -1160,12 +1144,13 @@ google.golang.org/api/iterator
 google.golang.org/api/option
 google.golang.org/api/option/internaloption
 google.golang.org/api/storage/v1
+google.golang.org/api/support/bundler
 google.golang.org/api/transport/cert
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
 google.golang.org/api/transport/http/internal/propagation
 google.golang.org/api/transport/internal/dca
-# google.golang.org/appengine v1.6.6
+# google.golang.org/appengine v1.6.7
 google.golang.org/appengine
 google.golang.org/appengine/internal
 google.golang.org/appengine/internal/app_identity
@@ -1178,18 +1163,19 @@ google.golang.org/appengine/internal/socket
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/socket
 google.golang.org/appengine/urlfetch
-# google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
+# google.golang.org/genproto v0.0.0-20201209185603-f92720507ed4
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/bigtable/admin/v2
 google.golang.org/genproto/googleapis/bigtable/v2
 google.golang.org/genproto/googleapis/iam/v1
 google.golang.org/genproto/googleapis/longrunning
+google.golang.org/genproto/googleapis/pubsub/v1
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/status
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/protobuf/field_mask
-# google.golang.org/grpc v1.33.1 => google.golang.org/grpc v1.29.1
+# google.golang.org/grpc v1.34.0 => google.golang.org/grpc v1.29.1
 ## explicit
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -1307,7 +1293,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.19.4
+# k8s.io/api v0.19.2
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
 k8s.io/api/apps/v1
@@ -1349,7 +1335,7 @@ k8s.io/api/settings/v1alpha1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apimachinery v0.19.4
+# k8s.io/apimachinery v0.19.2
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
 k8s.io/apimachinery/pkg/api/resource
@@ -1455,7 +1441,7 @@ k8s.io/client-go/util/workqueue
 # k8s.io/klog v1.0.0
 ## explicit
 k8s.io/klog
-# k8s.io/klog/v2 v2.4.0
+# k8s.io/klog/v2 v2.3.0
 k8s.io/klog/v2
 # k8s.io/utils v0.0.0-20200729134348-d5654de09c73
 k8s.io/utils/buffer
@@ -1475,5 +1461,3 @@ sigs.k8s.io/yaml
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
-# github.com/go-openapi/errors => github.com/go-openapi/errors v0.19.4
-# github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8

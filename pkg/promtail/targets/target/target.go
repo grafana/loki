@@ -23,6 +23,9 @@ const (
 
 	// PushTargetType is a Loki push target
 	PushTargetType = TargetType("Push")
+
+	// PubsubTargetType is a target where log entries are pulled from pubsub topic.
+	PubsubTargetType = TargetType("Pubsub")
 )
 
 // Target is a promtail scrape target

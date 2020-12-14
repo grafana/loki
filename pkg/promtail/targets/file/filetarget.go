@@ -65,7 +65,16 @@ type FileTarget struct {
 }
 
 // NewFileTarget create a new FileTarget.
-func NewFileTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
+func NewFileTarget(
+	metrics *Metrics,
+	logger log.Logger,
+	handler api.EntryHandler,
+	positions positions.Positions,
+	path string,
+	labels model.LabelSet,
+	discoveredLabels model.LabelSet,
+	targetConfig *Config,
+) (*FileTarget, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

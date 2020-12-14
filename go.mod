@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/NYTimes/gziphandler v1.1.1
+	cloud.google.com/go/pubsub v1.9.1
 	github.com/aws/aws-lambda-go v1.17.0
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2

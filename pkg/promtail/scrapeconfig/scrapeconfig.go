@@ -31,6 +31,7 @@ type Config struct {
 	JobName                string                 `yaml:"job_name,omitempty"`
 	PipelineStages         stages.PipelineStages  `yaml:"pipeline_stages,omitempty"`
 	JournalConfig          *JournalTargetConfig   `yaml:"journal,omitempty"`
+	PubsubConfig           *PubsubTargetConfig    `yaml:"pubsub,omitempty"`
 	SyslogConfig           *SyslogTargetConfig    `yaml:"syslog,omitempty"`
 	PushConfig             *PushTargetConfig      `yaml:"loki_push_api,omitempty"`
 	RelabelConfigs         []*relabel.Config      `yaml:"relabel_configs,omitempty"`
@@ -162,6 +163,16 @@ type SyslogTargetConfig struct {
 	// UseIncomingTimestamp sets the timestamp to the incoming syslog mesages
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+}
+
+type PubsubTargetConfig struct {
+	ProjectID    string         `yaml:"projectID"`
+	Subscription string         `yaml:"subscription"`
+	Labels       model.LabelSet `yaml:"labels"`
+
+	// TODO(kavi):
+	// 1. accept credentials json key
+	// 2. Other configs like, exclusion filter, batch pull, concurrency, ordering
 }
 
 // PushTargetConfig describes a scrape config that listens for Loki push messages.
