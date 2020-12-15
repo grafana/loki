@@ -28,6 +28,7 @@ type StreamPipeline interface {
 // return the line unchanged or allocate a new line.
 type Stage interface {
 	Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
+	RequiredLabelNames() []string
 }
 
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
@@ -74,11 +75,22 @@ type noopStage struct{}
 func (noopStage) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
+func (noopStage) RequiredLabelNames() []string { return []string{} }
 
-type StageFunc func(line []byte, lbs *LabelsBuilder) ([]byte, bool)
+type StageFunc struct {
+	process        func(line []byte, lbs *LabelsBuilder) ([]byte, bool)
+	requiredLabels []string
+}
 
 func (fn StageFunc) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	return fn(line, lbs)
+	return fn.process(line, lbs)
+}
+
+func (fn StageFunc) RequiredLabelNames() []string {
+	if fn.requiredLabels == nil {
+		return []string{}
+	}
+	return fn.requiredLabels
 }
 
 // pipeline is a combinations of multiple stages.
@@ -147,16 +159,23 @@ func ReduceStages(stages []Stage) Stage {
 	if len(stages) == 0 {
 		return NoopStage
 	}
-	return StageFunc(func(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-		var ok bool
-		for _, p := range stages {
-			line, ok = p.Process(line, lbs)
-			if !ok {
-				return nil, false
+	var requiredLabelNames []string
+	for _, s := range stages {
+		requiredLabelNames = append(requiredLabelNames, s.RequiredLabelNames()...)
+	}
+	return StageFunc{
+		process: func(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+			var ok bool
+			for _, p := range stages {
+				line, ok = p.Process(line, lbs)
+				if !ok {
+					return nil, false
+				}
 			}
-		}
-		return line, true
-	})
+			return line, true
+		},
+		requiredLabels: requiredLabelNames,
+	}
 }
 
 func unsafeGetBytes(s string) []byte {

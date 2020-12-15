@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+	"text/template/parse"
 )
 
 var (
@@ -84,6 +85,61 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	res := make([]byte, len(lf.buf.Bytes()))
 	copy(res, lf.buf.Bytes())
 	return res, true
+}
+
+func (lf *LineFormatter) RequiredLabelNames() []string {
+	return uniqueString(listNodeFields(lf.Root))
+}
+
+func listNodeFields(node parse.Node) []string {
+	var res []string
+	if node.Type() == parse.NodeAction {
+		res = append(res, listNodeFieldsFromPipe(node.(*parse.ActionNode).Pipe)...)
+	}
+	res = append(res, listNodeFieldsFromBranch(node)...)
+	if ln, ok := node.(*parse.ListNode); ok {
+		for _, n := range ln.Nodes {
+			res = append(res, listNodeFields(n)...)
+		}
+	}
+	return res
+}
+
+func listNodeFieldsFromBranch(node parse.Node) []string {
+	var res []string
+	var b parse.BranchNode
+	switch node.Type() {
+	case parse.NodeIf:
+		b = node.(*parse.IfNode).BranchNode
+	case parse.NodeWith:
+		b = node.(*parse.WithNode).BranchNode
+	case parse.NodeRange:
+		b = node.(*parse.RangeNode).BranchNode
+	default:
+		return res
+	}
+	if b.Pipe != nil {
+		res = append(res, listNodeFieldsFromPipe(b.Pipe)...)
+	}
+	if b.List != nil {
+		res = append(res, listNodeFields(b.List)...)
+	}
+	if b.ElseList != nil {
+		res = append(res, listNodeFields(b.ElseList)...)
+	}
+	return res
+}
+
+func listNodeFieldsFromPipe(p *parse.PipeNode) []string {
+	var res []string
+	for _, c := range p.Cmds {
+		for _, a := range c.Args {
+			if f, ok := a.(*parse.FieldNode); ok {
+				res = append(res, f.Ident...)
+			}
+		}
+	}
+	return res
 }
 
 // LabelFmt is a configuration struct for formatting a label.
@@ -185,6 +241,11 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 		lbs.Set(f.Name, lf.buf.String())
 	}
 	return l, true
+}
+
+func (lf *LabelsFormatter) RequiredLabelNames() []string {
+	var names []string
+	return names
 }
 
 func trunc(c int, s string) string {

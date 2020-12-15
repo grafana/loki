@@ -48,10 +48,15 @@ type lineSampleExtractor struct {
 // NewLineSampleExtractor creates a SampleExtractor from a LineExtractor.
 // Multiple log stages are run before converting the log line.
 func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without bool, noLabels bool) (SampleExtractor, error) {
+	s := ReduceStages(stages)
+	var expectedLabels []string
+	if !without {
+		expectedLabels = uniqueString(append(s.RequiredLabelNames(), groups...))
+	}
 	return &lineSampleExtractor{
-		Stage:            ReduceStages(stages),
+		Stage:            s,
 		LineExtractor:    ex,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, expectedLabels, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }
@@ -132,12 +137,18 @@ func LabelExtractorWithStages(
 		groups = append(groups, labelName)
 		sort.Strings(groups)
 	}
+	var expectedLabels []string
+	if !without {
+		expectedLabels = append(postFilter.RequiredLabelNames(), groups...)
+		expectedLabels = append(expectedLabels, postFilter.RequiredLabelNames()...)
+		expectedLabels = uniqueString(expectedLabels)
+	}
 	return &labelSampleExtractor{
 		preStage:         ReduceStages(preStages),
 		conversionFn:     convFn,
 		labelName:        labelName,
 		postFilter:       postFilter,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, expectedLabels, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }

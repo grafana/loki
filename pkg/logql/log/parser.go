@@ -3,8 +3,8 @@ package log
 import (
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	jsonSpacer      = "_"
+	jsonSpacer      = '_'
 	duplicateSuffix = "_extracted"
+	trueString      = "true"
+	falseString     = "false"
 )
 
 var (
@@ -26,67 +28,169 @@ var (
 	errMissingCapture = errors.New("at least one named capture must be supplied")
 )
 
+type JSONParser struct {
+	buf []byte // buffer used to build json keys
+	lbs *LabelsBuilder
+}
+
+// NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
+func NewJSONParser() *JSONParser {
+	return &JSONParser{
+		buf: make([]byte, 0, 1024),
+	}
+}
+
+func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	it := jsoniter.ConfigFastest.BorrowIterator(line)
+	defer jsoniter.ConfigFastest.ReturnIterator(it)
+
+	// reset the state.
+	j.buf = j.buf[:0]
+	j.lbs = lbs
+
+	if err := j.readObject(it); err != nil {
+		lbs.SetErr(errJSON)
+		return line, true
+	}
+	return line, true
+}
+
+func (j *JSONParser) readObject(it *jsoniter.Iterator) error {
+	// we only care about object and values.
+	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
+		return errors.New("not a json object")
+	}
+	_ = it.ReadMapCB(j.parseMap(""))
+	if it.Error != nil && it.Error != io.EOF {
+		return it.Error
+	}
+	return nil
+}
+
+func (j *JSONParser) parseMap(prefix string) func(iter *jsoniter.Iterator, field string) bool {
+	return func(iter *jsoniter.Iterator, field string) bool {
+		switch iter.WhatIsNext() {
+		// are we looking at a value that needs to be added ?
+		case jsoniter.StringValue, jsoniter.NumberValue, jsoniter.BoolValue:
+			j.parseLabelValue(iter, prefix, field)
+		// Or another new object based on a prefix.
+		case jsoniter.ObjectValue:
+			if key, ok := j.nextKeyPrefix(prefix, field); ok {
+				return iter.ReadMapCB(j.parseMap(key))
+			}
+			// If this keys is not expected we skip the object
+			iter.Skip()
+		default:
+			iter.Skip()
+		}
+		return true
+	}
+}
+
+func (j *JSONParser) nextKeyPrefix(prefix, field string) (string, bool) {
+	// first time time we add return the field as prefix.
+	if len(prefix) == 0 {
+		field = sanitizeLabelKey(field, true)
+		if isValidKeyPrefix(field, j.lbs.ParserLabelHints()) {
+			return field, true
+		}
+		return "", false
+	}
+	// otherwise we build the prefix and check using the buffer
+	j.buf = j.buf[:0]
+	j.buf = append(j.buf, prefix...)
+	j.buf = append(j.buf, byte(jsonSpacer))
+	j.buf = append(j.buf, sanitizeLabelKey(field, false)...)
+	// if matches keep going
+	if isValidKeyPrefix(string(j.buf), j.lbs.ParserLabelHints()) {
+		return string(j.buf), true
+	}
+	return "", false
+
+}
+
+// isValidKeyPrefix extract an object if the prefix is valid
+func isValidKeyPrefix(objectprefix string, hints []string) bool {
+	if len(hints) == 0 {
+		return true
+	}
+	for _, k := range hints {
+		if strings.HasPrefix(k, objectprefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field string) {
+	// the first time we use the field as label key.
+	if len(prefix) == 0 {
+		field = sanitizeLabelKey(field, true)
+		if !shouldExtractKey(field, j.lbs.ParserLabelHints()) {
+			// we can skip the value
+			iter.Skip()
+			return
+
+		}
+		if j.lbs.BaseHas(field) {
+			field = field + duplicateSuffix
+		}
+		j.lbs.Set(field, readValue(iter))
+		return
+
+	}
+	// other we build the label key using the buffer
+	j.buf = j.buf[:0]
+	j.buf = append(j.buf, prefix...)
+	j.buf = append(j.buf, byte(jsonSpacer))
+	j.buf = append(j.buf, sanitizeLabelKey(field, false)...)
+	if j.lbs.BaseHas(string(j.buf)) {
+		j.buf = append(j.buf, duplicateSuffix...)
+	}
+	if !shouldExtractKey(string(j.buf), j.lbs.ParserLabelHints()) {
+		iter.Skip()
+		return
+	}
+	j.lbs.Set(string(j.buf), readValue(iter))
+}
+
+func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
+
+func readValue(iter *jsoniter.Iterator) string {
+	switch iter.WhatIsNext() {
+	case jsoniter.StringValue:
+		return iter.ReadString()
+	case jsoniter.NumberValue:
+		return iter.ReadNumber().String()
+	case jsoniter.BoolValue:
+		if iter.ReadBool() {
+			return trueString
+		}
+		return falseString
+	default:
+		iter.Skip()
+		return ""
+	}
+}
+
+func shouldExtractKey(key string, hints []string) bool {
+	if len(hints) == 0 {
+		return true
+	}
+	for _, k := range hints {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
 func addLabel(lbs *LabelsBuilder, key, value string) {
-	key = sanitizeKey(key)
+	key = sanitizeLabelKey(key, true)
 	if lbs.BaseHas(key) {
 		key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 	}
 	lbs.Set(key, value)
-}
-
-func sanitizeKey(key string) string {
-	if len(key) == 0 {
-		return key
-	}
-	key = strings.TrimSpace(key)
-	if key[0] >= '0' && key[0] <= '9' {
-		key = "_" + key
-	}
-	return strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || (r >= '0' && r <= '9') {
-			return r
-		}
-		return '_'
-	}, key)
-}
-
-type JSONParser struct{}
-
-// NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
-func NewJSONParser() *JSONParser {
-	return &JSONParser{}
-}
-
-func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	data := map[string]interface{}{}
-	err := jsoniter.ConfigFastest.Unmarshal(line, &data)
-	if err != nil {
-		lbs.SetErr(errJSON)
-		return line, true
-	}
-	parseMap("", data, lbs)
-	return line, true
-}
-
-func parseMap(prefix string, data map[string]interface{}, lbs *LabelsBuilder) {
-	for key, val := range data {
-		switch concrete := val.(type) {
-		case map[string]interface{}:
-			parseMap(jsonKey(prefix, key), concrete, lbs)
-		case string:
-			addLabel(lbs, jsonKey(prefix, key), concrete)
-		case float64:
-			f := strconv.FormatFloat(concrete, 'f', -1, 64)
-			addLabel(lbs, jsonKey(prefix, key), f)
-		}
-	}
-}
-
-func jsonKey(prefix, key string) string {
-	if prefix == "" {
-		return key
-	}
-	return fmt.Sprintf("%s%s%s", prefix, jsonSpacer, key)
 }
 
 type RegexpParser struct {
@@ -144,6 +248,8 @@ func (r *RegexpParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
 
+func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
+
 type LogfmtParser struct {
 	dec *logfmt.Decoder
 }
@@ -158,8 +264,10 @@ func NewLogfmtParser() *LogfmtParser {
 
 func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	l.dec.Reset(line)
-
 	for l.dec.ScanKeyval() {
+		if !shouldExtractKey(string(l.dec.Key()), lbs.ParserLabelHints()) {
+			continue
+		}
 		key := string(l.dec.Key())
 		val := string(l.dec.Value())
 		addLabel(lbs, key, val)
@@ -170,3 +278,5 @@ func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	}
 	return line, true
 }
+
+func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
