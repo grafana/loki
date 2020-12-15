@@ -88,7 +88,7 @@ func (j *JSONParser) parseMap(prefix string) func(iter *jsoniter.Iterator, field
 }
 
 func (j *JSONParser) nextKeyPrefix(prefix, field string) (string, bool) {
-	// first time time we add return the field as prefix.
+	// first time we add return the field as prefix.
 	if len(prefix) == 0 {
 		field = sanitizeLabelKey(field, true)
 		if isValidKeyPrefix(field, j.lbs.ParserLabelHints()) {
@@ -139,7 +139,7 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 		return
 
 	}
-	// other we build the label key using the buffer
+	// otherwise we build the label key using the buffer
 	j.buf = j.buf[:0]
 	j.buf = append(j.buf, prefix...)
 	j.buf = append(j.buf, byte(jsonSpacer))
