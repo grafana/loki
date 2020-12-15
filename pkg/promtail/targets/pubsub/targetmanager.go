@@ -86,6 +86,10 @@ type PubsubTarget struct {
 	// lifecycle management
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// pubsub
+	ps   *pubsub.Client
+	msgs chan *pubsub.Message
 }
 
 func NewPubsubTarget(
@@ -98,6 +102,11 @@ func NewPubsubTarget(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	ps, err := pubsub.NewClient(ctx, config.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+
 	pt := &PubsubTarget{
 		logger:        logger,
 		handler:       handler,
@@ -106,6 +115,9 @@ func NewPubsubTarget(
 		jobName:       jobName,
 		ctx:           ctx,
 		cancel:        cancel,
+		ps:            ps,
+		// NOTE(kavi): make Buffer channel of size based on concurrency config
+		msgs: make(chan *pubsub.Message),
 	}
 
 	go pt.run()
@@ -114,36 +126,41 @@ func NewPubsubTarget(
 }
 
 func (t *PubsubTarget) run() error {
-	pclient, err := pubsub.NewClient(t.ctx, t.config.ProjectID)
-	if err != nil {
-		return fmt.Errorf("failed to create pubsub client: %w", err)
-	}
-
 	send := t.handler.Chan()
 
-	sub := pclient.SubscriptionInProject(t.config.Subscription, t.config.ProjectID)
+	sub := t.ps.SubscriptionInProject(t.config.Subscription, t.config.ProjectID)
 
 	labels := make(model.LabelSet)
 
 	// TODO(kavi): take labelset from the config
 	labels[model.LabelName("source")] = model.LabelValue("cloudtail")
 
+	go func() {
+		err := sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
+			t.msgs <- m
+		})
+		if err != nil {
+			// TODO(kavi): Add proper error propagation
+			level.Error(t.logger).Log("error", err)
+		}
+
+	}()
+
 	for {
 		level.Info(t.logger).Log("event", "listening for new message")
 		select {
 		case <-t.ctx.Done():
 			return t.ctx.Err()
-		default:
-			// TODO(kavi): add proper formatter
-			sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
-				send <- api.Entry{
-					Labels: labels,
-					Entry: logproto.Entry{
-						Timestamp: time.Now(),
-						Line:      "testing",
-					},
-				}
-			})
+		case <-t.msgs:
+			level.Info(t.logger).Log("event", "sending log entry", "message", m)
+			send <- api.Entry{
+				Labels: labels,
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      "testing",
+				},
+			}
+
 		}
 	}
 }

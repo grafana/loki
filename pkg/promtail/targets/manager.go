@@ -67,6 +67,8 @@ func NewTargetManagers(
 		return nil, err
 	}
 
+	level.Info(logger).Log("event", "debugging, am i here????")
+
 	for _, cfg := range scrapeConfigs {
 		switch {
 		case cfg.HasServiceDiscoveryConfig():
@@ -76,6 +78,7 @@ func NewTargetManagers(
 		case cfg.SyslogConfig != nil:
 			targetScrapeConfigs[SyslogScrapeConfigs] = append(targetScrapeConfigs[SyslogScrapeConfigs], cfg)
 		case cfg.PubsubConfig != nil:
+			level.Info(logger).Log("event", "debugging, am i here inside scrapeconfig????")
 			targetScrapeConfigs[PubsubScrapeConfigs] = append(targetScrapeConfigs[PubsubScrapeConfigs], cfg)
 		case cfg.PushConfig != nil:
 			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
@@ -134,6 +137,7 @@ func NewTargetManagers(
 			}
 			targetManagers = append(targetManagers, syslogTargetManager)
 		case PubsubScrapeConfigs:
+			level.Info(logger).Log("event", "debugging, am i here inside targetconfig switch????")
 			pubsubTargetManager, err := pubsub.NewPubsubTargetManager(
 				logger,
 				client,
