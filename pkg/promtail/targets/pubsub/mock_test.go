@@ -1,3 +1,5 @@
+// NOTE(kavi): This is inspired from https://github.com/googleapis/google-cloud-go/blob/pubsub/v1.9.1/pubsub/mock_test.go
+
 // Copyright 2017 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");

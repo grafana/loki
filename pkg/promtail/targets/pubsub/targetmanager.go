@@ -152,8 +152,9 @@ func (t *PubsubTarget) run() error {
 		select {
 		case <-t.ctx.Done():
 			return t.ctx.Err()
-		case <-t.msgs:
+		case m := <-t.msgs:
 			level.Info(t.logger).Log("event", "sending log entry", "message", m)
+			// TODO(kavi): add proper formatter
 			send <- api.Entry{
 				Labels: labels,
 				Entry: logproto.Entry{
@@ -161,7 +162,7 @@ func (t *PubsubTarget) run() error {
 					Line:      "testing",
 				},
 			}
-
+			m.Ack()
 		}
 	}
 }
