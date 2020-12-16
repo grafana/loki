@@ -130,11 +130,6 @@ func (t *PubsubTarget) run() error {
 
 	sub := t.ps.SubscriptionInProject(t.config.Subscription, t.config.ProjectID)
 
-	labels := make(model.LabelSet)
-
-	// TODO(kavi): take labelset from the config
-	labels[model.LabelName("source")] = model.LabelValue("cloudtail")
-
 	go func() {
 		// TODO(kavi): add support for streaming pull
 		err := sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
@@ -153,13 +148,13 @@ func (t *PubsubTarget) run() error {
 		case <-t.ctx.Done():
 			return t.ctx.Err()
 		case m := <-t.msgs:
-			level.Info(t.logger).Log("event", "sending log entry", "message", m)
+			level.Info(t.logger).Log("event", "sending log entry", "message", string(m.Data))
 			// TODO(kavi): add proper formatter
 			send <- api.Entry{
-				Labels: labels,
+				Labels: model.LabelSet{"source": "cloudtail"},
 				Entry: logproto.Entry{
 					Timestamp: time.Now(),
-					Line:      "testing",
+					Line:      string(m.Data),
 				},
 			}
 			m.Ack()
