@@ -1,4 +1,6 @@
-# Loki Helm Chart
+# ⚠️  DEPRECATED - Loki Helm Chart
+
+This chart was moved to <https://github.com/grafana/helm-charts>.
 
 ## Prerequisites
 
