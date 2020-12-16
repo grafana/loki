@@ -136,6 +136,7 @@ func (t *PubsubTarget) run() error {
 	labels[model.LabelName("source")] = model.LabelValue("cloudtail")
 
 	go func() {
+		// TODO(kavi): add support for streaming pull
 		err := sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
 			t.msgs <- m
 		})
