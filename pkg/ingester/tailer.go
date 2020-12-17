@@ -176,9 +176,11 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 
 // Returns true if tailer is interested in the passed labelset
 func (t *tailer) isWatchingLabels(lbs labels.Labels) bool {
-	for _, matcher := range t.matchers {
-		if !matcher.Matches(lbs.Get(matcher.Name)) {
-			return false
+	for _, l := range lbs {
+		for _, matcher := range t.matchers {
+			if l.Name == matcher.Name && !matcher.Matches(l.Value) {
+				return false
+			}
 		}
 	}
 

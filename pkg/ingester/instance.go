@@ -430,18 +430,17 @@ outer:
 	return nil
 }
 
-func (i *instance) addNewTailer(t *tailer) {
-	i.streamsMtx.RLock()
-	for _, stream := range i.streams {
-		if stream.matchesTailer(t) {
-			stream.addTailer(t)
-		}
+func (i *instance) addNewTailer(t *tailer) error {
+	if err := i.forMatchingStreams(t.matchers, func(s *stream) error {
+		s.addTailer(t)
+		return nil
+	}); err != nil {
+		return err
 	}
-	i.streamsMtx.RUnlock()
-
 	i.tailerMtx.Lock()
 	defer i.tailerMtx.Unlock()
 	i.tailers[t.getID()] = t
+	return nil
 }
 
 func (i *instance) addTailersToNewStream(stream *stream) {

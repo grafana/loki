@@ -637,7 +637,9 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance.addNewTailer(tailer)
+	if err := instance.addNewTailer(tailer); err != nil {
+		return err
+	}
 	tailer.loop()
 	return nil
 }
