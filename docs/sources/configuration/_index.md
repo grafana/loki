@@ -1427,7 +1427,7 @@ memcached_client:
 
   # The maximum number of idle connections in the memcached client pool.
   # CLI flag: -<prefix>.memcached.max-idle-conns
-  [max_idle_conns: <int> | default = 100]
+  [max_idle_conns: <int> | default = 16]
 
   # The period with which to poll the DNS for memcached servers.
   # CLI flag: -<prefix>.memcached.update-interval
