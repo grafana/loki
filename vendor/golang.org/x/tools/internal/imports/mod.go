@@ -59,8 +59,6 @@ func (r *ModuleResolver) init() error {
 	}
 	inv := gocommand.Invocation{
 		BuildFlags: r.env.BuildFlags,
-		ModFlag:    r.env.ModFlag,
-		ModFile:    r.env.ModFile,
 		Env:        r.env.env(),
 		Logf:       r.env.Logf,
 		WorkingDir: r.env.WorkingDir,
@@ -88,11 +86,7 @@ func (r *ModuleResolver) init() error {
 	if gmc := r.env.Env["GOMODCACHE"]; gmc != "" {
 		r.moduleCacheDir = gmc
 	} else {
-		gopaths := filepath.SplitList(goenv["GOPATH"])
-		if len(gopaths) == 0 {
-			return fmt.Errorf("empty GOPATH")
-		}
-		r.moduleCacheDir = filepath.Join(gopaths[0], "/pkg/mod")
+		r.moduleCacheDir = filepath.Join(filepath.SplitList(goenv["GOPATH"])[0], "/pkg/mod")
 	}
 
 	sort.Slice(r.modsByModPath, func(i, j int) bool {
@@ -351,11 +345,10 @@ func (r *ModuleResolver) modInfo(dir string) (modDir string, modName string) {
 	}
 
 	if r.dirInModuleCache(dir) {
-		if matches := modCacheRegexp.FindStringSubmatch(dir); len(matches) == 3 {
-			index := strings.Index(dir, matches[1]+"@"+matches[2])
-			modDir := filepath.Join(dir[:index], matches[1]+"@"+matches[2])
-			return modDir, readModName(filepath.Join(modDir, "go.mod"))
-		}
+		matches := modCacheRegexp.FindStringSubmatch(dir)
+		index := strings.Index(dir, matches[1]+"@"+matches[2])
+		modDir := filepath.Join(dir[:index], matches[1]+"@"+matches[2])
+		return modDir, readModName(filepath.Join(modDir, "go.mod"))
 	}
 	for {
 		if info, ok := r.cacheLoad(dir); ok {
@@ -494,7 +487,7 @@ func (r *ModuleResolver) scan(ctx context.Context, callback *scanCallback) error
 	return nil
 }
 
-func (r *ModuleResolver) scoreImportPath(ctx context.Context, path string) float64 {
+func (r *ModuleResolver) scoreImportPath(ctx context.Context, path string) int {
 	if _, ok := stdlib[path]; ok {
 		return MaxRelevance
 	}
@@ -502,31 +495,17 @@ func (r *ModuleResolver) scoreImportPath(ctx context.Context, path string) float
 	return modRelevance(mod)
 }
 
-func modRelevance(mod *gocommand.ModuleJSON) float64 {
-	var relevance float64
+func modRelevance(mod *gocommand.ModuleJSON) int {
 	switch {
 	case mod == nil: // out of scope
 		return MaxRelevance - 4
 	case mod.Indirect:
-		relevance = MaxRelevance - 3
+		return MaxRelevance - 3
 	case !mod.Main:
-		relevance = MaxRelevance - 2
+		return MaxRelevance - 2
 	default:
-		relevance = MaxRelevance - 1 // main module ties with stdlib
+		return MaxRelevance - 1 // main module ties with stdlib
 	}
-
-	_, versionString, ok := module.SplitPathVersion(mod.Path)
-	if ok {
-		index := strings.Index(versionString, "v")
-		if index == -1 {
-			return relevance
-		}
-		if versionNumber, err := strconv.ParseFloat(versionString[index+1:], 64); err == nil {
-			relevance += versionNumber / 1000
-		}
-	}
-
-	return relevance
 }
 
 // canonicalize gets the result of canonicalizing the packages using the results

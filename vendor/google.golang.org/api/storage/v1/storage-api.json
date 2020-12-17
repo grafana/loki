@@ -26,7 +26,7 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"32313837343738383335383432353737343034\"",
+  "etag": "\"-2NioU2H8y8siEzrBOV_qzRI6kQ/sPMqcoPqdFD0a_Hhegm2T9RGrZc\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -36,7 +36,6 @@
   "labels": [
     "labs"
   ],
-  "mtlsRootUrl": "https://storage.mtls.googleapis.com/",
   "name": "storage",
   "ownerDomain": "google.com",
   "ownerName": "Google",
@@ -1782,7 +1781,7 @@
               "type": "string"
             },
             "kmsKeyName": {
-              "description": "Resource name of the Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that will be used to encrypt the object. Overrides the object metadata's kms_key_name value, if any.",
+              "description": "Not currently supported. Specifying the parameter causes the request to fail with status code 400 - Bad Request.",
               "location": "query",
               "type": "string"
             },
@@ -3230,7 +3229,7 @@
       }
     }
   },
-  "revision": "20201112",
+  "revision": "20200826",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "Bucket": {
@@ -3336,10 +3335,6 @@
                 }
               },
               "type": "object"
-            },
-            "publicAccessPrevention": {
-              "description": "The bucket's Public Access Prevention configuration. Currently, 'unspecified' and 'enforced' are supported.",
-              "type": "string"
             },
             "uniformBucketLevelAccess": {
               "description": "The bucket's uniform bucket-level access configuration.",
@@ -3584,6 +3579,10 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "zoneSeparation": {
+          "description": "If set, objects placed in this bucket are required to be separated by disaster domain.",
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -4097,7 +4096,7 @@
           "type": "string"
         },
         "kmsKeyName": {
-          "description": "Not currently supported. Specifying the parameter causes the request to fail with status code 400 - Bad Request.",
+          "description": "Cloud KMS Key used to encrypt this object, if the object is encrypted by such a key.",
           "type": "string"
         },
         "md5Hash": {

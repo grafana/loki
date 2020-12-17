@@ -34,24 +34,24 @@ func baseCreds(ctx context.Context, ds *DialSettings) (*google.Credentials, erro
 		return ds.Credentials, nil
 	}
 	if ds.CredentialsJSON != nil {
-		return credentialsFromJSON(ctx, ds.CredentialsJSON, ds)
+		return credentialsFromJSON(ctx, ds.CredentialsJSON, ds.Endpoint, ds.Scopes, ds.Audiences)
 	}
 	if ds.CredentialsFile != "" {
 		data, err := ioutil.ReadFile(ds.CredentialsFile)
 		if err != nil {
 			return nil, fmt.Errorf("cannot read credentials file: %v", err)
 		}
-		return credentialsFromJSON(ctx, data, ds)
+		return credentialsFromJSON(ctx, data, ds.Endpoint, ds.Scopes, ds.Audiences)
 	}
 	if ds.TokenSource != nil {
 		return &google.Credentials{TokenSource: ds.TokenSource}, nil
 	}
-	cred, err := google.FindDefaultCredentials(ctx, ds.GetScopes()...)
+	cred, err := google.FindDefaultCredentials(ctx, ds.Scopes...)
 	if err != nil {
 		return nil, err
 	}
 	if len(cred.JSON) > 0 {
-		return credentialsFromJSON(ctx, cred.JSON, ds)
+		return credentialsFromJSON(ctx, cred.JSON, ds.Endpoint, ds.Scopes, ds.Audiences)
 	}
 	// For GAE and GCE, the JSON is empty so return the default credentials directly.
 	return cred, nil
@@ -66,12 +66,12 @@ const (
 //
 // - If the JSON is a service account and no scopes provided, returns self-signed JWT auth flow
 // - Otherwise, returns OAuth 2.0 flow.
-func credentialsFromJSON(ctx context.Context, data []byte, ds *DialSettings) (*google.Credentials, error) {
-	cred, err := google.CredentialsFromJSON(ctx, data, ds.GetScopes()...)
+func credentialsFromJSON(ctx context.Context, data []byte, endpoint string, scopes []string, audiences []string) (*google.Credentials, error) {
+	cred, err := google.CredentialsFromJSON(ctx, data, scopes...)
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > 0 && len(ds.Scopes) == 0 && (ds.DefaultAudience != "" || len(ds.Audiences) > 0) {
+	if len(data) > 0 && len(scopes) == 0 {
 		var f struct {
 			Type string `json:"type"`
 			// The rest JSON fields are omitted because they are not used.
@@ -80,7 +80,7 @@ func credentialsFromJSON(ctx context.Context, data []byte, ds *DialSettings) (*g
 			return nil, err
 		}
 		if f.Type == serviceAccountKey {
-			ts, err := selfSignedJWTTokenSource(data, ds.DefaultAudience, ds.Audiences)
+			ts, err := selfSignedJWTTokenSource(data, endpoint, audiences)
 			if err != nil {
 				return nil, err
 			}
@@ -90,8 +90,9 @@ func credentialsFromJSON(ctx context.Context, data []byte, ds *DialSettings) (*g
 	return cred, err
 }
 
-func selfSignedJWTTokenSource(data []byte, defaultAudience string, audiences []string) (oauth2.TokenSource, error) {
-	audience := defaultAudience
+func selfSignedJWTTokenSource(data []byte, endpoint string, audiences []string) (oauth2.TokenSource, error) {
+	// Use the API endpoint as the default audience
+	audience := endpoint
 	if len(audiences) > 0 {
 		// TODO(shinfan): Update golang oauth to support multiple audiences.
 		if len(audiences) > 1 {
@@ -117,7 +118,7 @@ func QuotaProjectFromCreds(cred *google.Credentials) string {
 
 func impersonateCredentials(ctx context.Context, creds *google.Credentials, ds *DialSettings) (*google.Credentials, error) {
 	if len(ds.ImpersonationConfig.Scopes) == 0 {
-		ds.ImpersonationConfig.Scopes = ds.GetScopes()
+		ds.ImpersonationConfig.Scopes = ds.Scopes
 	}
 	ts, err := impersonate.TokenSource(ctx, creds.TokenSource, ds.ImpersonationConfig)
 	if err != nil {
