@@ -19,10 +19,19 @@ import (
 	"log"
 	"sync"
 
+	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"google.golang.org/api/option"
+	"google.golang.org/grpc"
 )
+
+func openCensusOptions() []option.ClientOption {
+	return []option.ClientOption{
+		option.WithGRPCDialOption(grpc.WithStatsHandler(&ocgrpc.ClientHandler{})),
+	}
+}
 
 // The following keys are used to tag requests with a specific topic/subscription ID.
 var (

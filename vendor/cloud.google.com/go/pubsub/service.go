@@ -15,11 +15,13 @@
 package pubsub
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"time"
 
 	gax "github.com/googleapis/gax-go/v2"
+	pb "google.golang.org/genproto/googleapis/pubsub/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -34,6 +36,18 @@ const (
 	maxPayload       = 512 * 1024
 	maxSendRecvBytes = 20 * 1024 * 1024 // 20M
 )
+
+func convertMessages(rms []*pb.ReceivedMessage) ([]*Message, error) {
+	msgs := make([]*Message, 0, len(rms))
+	for i, m := range rms {
+		msg, err := toMessage(m)
+		if err != nil {
+			return nil, fmt.Errorf("pubsub: cannot decode the retrieved message at index: %d, message: %+v", i, m)
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs, nil
+}
 
 func trunc32(i int64) int32 {
 	if i > math.MaxInt32 {

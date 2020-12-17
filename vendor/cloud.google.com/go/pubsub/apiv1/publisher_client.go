@@ -27,15 +27,12 @@ import (
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
 	pubsubpb "google.golang.org/genproto/googleapis/pubsub/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 )
-
-var newPublisherClientHook clientHook
 
 // PublisherCallOptions contains the retry settings for each method of PublisherClient.
 type PublisherCallOptions struct {
@@ -47,16 +44,13 @@ type PublisherCallOptions struct {
 	ListTopicSubscriptions []gax.CallOption
 	ListTopicSnapshots     []gax.CallOption
 	DeleteTopic            []gax.CallOption
-	DetachSubscription     []gax.CallOption
 }
 
 func defaultPublisherClientOptions() []option.ClientOption {
 	return []option.ClientOption{
-		internaloption.WithDefaultEndpoint("pubsub.googleapis.com:443"),
-		internaloption.WithDefaultMTLSEndpoint("pubsub.mtls.googleapis.com:443"),
-		internaloption.WithDefaultAudience("https://pubsub.googleapis.com/"),
-		internaloption.WithDefaultScopes(DefaultAuthScopes()...),
+		option.WithEndpoint("pubsub.googleapis.com:443"),
 		option.WithGRPCDialOption(grpc.WithDisableServiceConfig()),
+		option.WithScopes(DefaultAuthScopes()...),
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(math.MaxInt32))),
 	}
@@ -166,17 +160,6 @@ func defaultPublisherCallOptions() *PublisherCallOptions {
 				})
 			}),
 		},
-		DetachSubscription: []gax.CallOption{
-			gax.WithRetry(func() gax.Retryer {
-				return gax.OnCodes([]codes.Code{
-					codes.Unavailable,
-				}, gax.Backoff{
-					Initial:    100 * time.Millisecond,
-					Max:        60000 * time.Millisecond,
-					Multiplier: 1.30,
-				})
-			}),
-		},
 	}
 }
 
@@ -186,9 +169,6 @@ func defaultPublisherCallOptions() *PublisherCallOptions {
 type PublisherClient struct {
 	// Connection pool of gRPC connections to the service.
 	connPool gtransport.ConnPool
-
-	// flag to opt out of default deadlines via GOOGLE_API_GO_EXPERIMENTAL_DISABLE_DEFAULT_DEADLINE
-	disableDeadlines bool
 
 	// The gRPC API client.
 	publisherClient pubsubpb.PublisherClient
@@ -205,33 +185,17 @@ type PublisherClient struct {
 // The service that an application uses to manipulate topics, and to send
 // messages to a topic.
 func NewPublisherClient(ctx context.Context, opts ...option.ClientOption) (*PublisherClient, error) {
-	clientOpts := defaultPublisherClientOptions()
-
-	if newPublisherClientHook != nil {
-		hookOpts, err := newPublisherClientHook(ctx, clientHookParams{})
-		if err != nil {
-			return nil, err
-		}
-		clientOpts = append(clientOpts, hookOpts...)
-	}
-
-	disableDeadlines, err := checkDisableDeadlines()
-	if err != nil {
-		return nil, err
-	}
-
-	connPool, err := gtransport.DialPool(ctx, append(clientOpts, opts...)...)
+	connPool, err := gtransport.DialPool(ctx, append(defaultPublisherClientOptions(), opts...)...)
 	if err != nil {
 		return nil, err
 	}
 	c := &PublisherClient{
-		connPool:         connPool,
-		disableDeadlines: disableDeadlines,
-		CallOptions:      defaultPublisherCallOptions(),
+		connPool:    connPool,
+		CallOptions: defaultPublisherCallOptions(),
 
 		publisherClient: pubsubpb.NewPublisherClient(connPool),
 	}
-	c.setGoogleClientInfo()
+	c.SetGoogleClientInfo()
 
 	return c, nil
 }
@@ -249,22 +213,19 @@ func (c *PublisherClient) Close() error {
 	return c.connPool.Close()
 }
 
-// setGoogleClientInfo sets the name and version of the application in
+// SetGoogleClientInfo sets the name and version of the application in
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
-func (c *PublisherClient) setGoogleClientInfo(keyval ...string) {
+func (c *PublisherClient) SetGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", versionGo()}, keyval...)
 	kv = append(kv, "gapic", versionClient, "gax", gax.Version, "grpc", grpc.Version)
 	c.xGoogMetadata = metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
 }
 
-// CreateTopic creates the given topic with the given name. See the resource name rules (at https://cloud.google.com/pubsub/docs/admin#resource_names).
+// CreateTopic creates the given topic with the given name. See the
+//
+// resource name rules (at https://cloud.google.com/pubsub/docs/admin#resource_names).
 func (c *PublisherClient) CreateTopic(ctx context.Context, req *pubsubpb.Topic, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
 	opts = append(c.CallOptions.CreateTopic[0:len(c.CallOptions.CreateTopic):len(c.CallOptions.CreateTopic)], opts...)
@@ -283,11 +244,6 @@ func (c *PublisherClient) CreateTopic(ctx context.Context, req *pubsubpb.Topic, 
 // UpdateTopic updates an existing topic. Note that certain properties of a
 // topic are not modifiable.
 func (c *PublisherClient) UpdateTopic(ctx context.Context, req *pubsubpb.UpdateTopicRequest, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic.name", url.QueryEscape(req.GetTopic().GetName())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
 	opts = append(c.CallOptions.UpdateTopic[0:len(c.CallOptions.UpdateTopic):len(c.CallOptions.UpdateTopic)], opts...)
@@ -306,11 +262,6 @@ func (c *PublisherClient) UpdateTopic(ctx context.Context, req *pubsubpb.UpdateT
 // Publish adds one or more messages to the topic. Returns NOT_FOUND if the topic
 // does not exist.
 func (c *PublisherClient) Publish(ctx context.Context, req *pubsubpb.PublishRequest, opts ...gax.CallOption) (*pubsubpb.PublishResponse, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
 	opts = append(c.CallOptions.Publish[0:len(c.CallOptions.Publish):len(c.CallOptions.Publish)], opts...)
@@ -328,11 +279,6 @@ func (c *PublisherClient) Publish(ctx context.Context, req *pubsubpb.PublishRequ
 
 // GetTopic gets the configuration of a topic.
 func (c *PublisherClient) GetTopic(ctx context.Context, req *pubsubpb.GetTopicRequest, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
 	opts = append(c.CallOptions.GetTopic[0:len(c.CallOptions.GetTopic):len(c.CallOptions.GetTopic)], opts...)
@@ -373,7 +319,7 @@ func (c *PublisherClient) ListTopics(ctx context.Context, req *pubsubpb.ListTopi
 		}
 
 		it.Response = resp
-		return resp.GetTopics(), resp.GetNextPageToken(), nil
+		return resp.Topics, resp.NextPageToken, nil
 	}
 	fetch := func(pageSize int, pageToken string) (string, error) {
 		items, nextPageToken, err := it.InternalFetch(pageSize, pageToken)
@@ -384,12 +330,12 @@ func (c *PublisherClient) ListTopics(ctx context.Context, req *pubsubpb.ListTopi
 		return nextPageToken, nil
 	}
 	it.pageInfo, it.nextFunc = iterator.NewPageInfo(fetch, it.bufLen, it.takeBuf)
-	it.pageInfo.MaxSize = int(req.GetPageSize())
-	it.pageInfo.Token = req.GetPageToken()
+	it.pageInfo.MaxSize = int(req.PageSize)
+	it.pageInfo.Token = req.PageToken
 	return it
 }
 
-// ListTopicSubscriptions lists the names of the attached subscriptions on this topic.
+// ListTopicSubscriptions lists the names of the subscriptions on this topic.
 func (c *PublisherClient) ListTopicSubscriptions(ctx context.Context, req *pubsubpb.ListTopicSubscriptionsRequest, opts ...gax.CallOption) *StringIterator {
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -414,7 +360,7 @@ func (c *PublisherClient) ListTopicSubscriptions(ctx context.Context, req *pubsu
 		}
 
 		it.Response = resp
-		return resp.GetSubscriptions(), resp.GetNextPageToken(), nil
+		return resp.Subscriptions, resp.NextPageToken, nil
 	}
 	fetch := func(pageSize int, pageToken string) (string, error) {
 		items, nextPageToken, err := it.InternalFetch(pageSize, pageToken)
@@ -425,16 +371,17 @@ func (c *PublisherClient) ListTopicSubscriptions(ctx context.Context, req *pubsu
 		return nextPageToken, nil
 	}
 	it.pageInfo, it.nextFunc = iterator.NewPageInfo(fetch, it.bufLen, it.takeBuf)
-	it.pageInfo.MaxSize = int(req.GetPageSize())
-	it.pageInfo.Token = req.GetPageToken()
+	it.pageInfo.MaxSize = int(req.PageSize)
+	it.pageInfo.Token = req.PageToken
 	return it
 }
 
 // ListTopicSnapshots lists the names of the snapshots on this topic. Snapshots are used in
-// Seek (at https://cloud.google.com/pubsub/docs/replay-overview) operations,
-// which allow you to manage message acknowledgments in bulk. That is, you can
-// set the acknowledgment state of messages in an existing subscription to the
-// state captured by a snapshot.
+// Seek (at https://cloud.google.com/pubsub/docs/replay-overview)
+// operations, which allow
+// you to manage message acknowledgments in bulk. That is, you can set the
+// acknowledgment state of messages in an existing subscription to the state
+// captured by a snapshot.
 func (c *PublisherClient) ListTopicSnapshots(ctx context.Context, req *pubsubpb.ListTopicSnapshotsRequest, opts ...gax.CallOption) *StringIterator {
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -459,7 +406,7 @@ func (c *PublisherClient) ListTopicSnapshots(ctx context.Context, req *pubsubpb.
 		}
 
 		it.Response = resp
-		return resp.GetSnapshots(), resp.GetNextPageToken(), nil
+		return resp.Snapshots, resp.NextPageToken, nil
 	}
 	fetch := func(pageSize int, pageToken string) (string, error) {
 		items, nextPageToken, err := it.InternalFetch(pageSize, pageToken)
@@ -470,8 +417,8 @@ func (c *PublisherClient) ListTopicSnapshots(ctx context.Context, req *pubsubpb.
 		return nextPageToken, nil
 	}
 	it.pageInfo, it.nextFunc = iterator.NewPageInfo(fetch, it.bufLen, it.takeBuf)
-	it.pageInfo.MaxSize = int(req.GetPageSize())
-	it.pageInfo.Token = req.GetPageToken()
+	it.pageInfo.MaxSize = int(req.PageSize)
+	it.pageInfo.Token = req.PageToken
 	return it
 }
 
@@ -481,11 +428,6 @@ func (c *PublisherClient) ListTopicSnapshots(ctx context.Context, req *pubsubpb.
 // configuration or subscriptions. Existing subscriptions to this topic are
 // not deleted, but their topic field is set to _deleted-topic_.
 func (c *PublisherClient) DeleteTopic(ctx context.Context, req *pubsubpb.DeleteTopicRequest, opts ...gax.CallOption) error {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
 	opts = append(c.CallOptions.DeleteTopic[0:len(c.CallOptions.DeleteTopic):len(c.CallOptions.DeleteTopic)], opts...)
@@ -495,31 +437,6 @@ func (c *PublisherClient) DeleteTopic(ctx context.Context, req *pubsubpb.DeleteT
 		return err
 	}, opts...)
 	return err
-}
-
-// DetachSubscription detaches a subscription from this topic. All messages retained in the
-// subscription are dropped. Subsequent Pull and StreamingPull requests
-// will return FAILED_PRECONDITION. If the subscription is a push
-// subscription, pushes to the endpoint will stop.
-func (c *PublisherClient) DetachSubscription(ctx context.Context, req *pubsubpb.DetachSubscriptionRequest, opts ...gax.CallOption) (*pubsubpb.DetachSubscriptionResponse, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append(c.CallOptions.DetachSubscription[0:len(c.CallOptions.DetachSubscription):len(c.CallOptions.DetachSubscription)], opts...)
-	var resp *pubsubpb.DetachSubscriptionResponse
-	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
-		var err error
-		resp, err = c.publisherClient.DetachSubscription(ctx, req, settings.GRPC...)
-		return err
-	}, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
 }
 
 // StringIterator manages a stream of string.

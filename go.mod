@@ -3,6 +3,8 @@ module github.com/grafana/loki
 go 1.15
 
 require (
+	cloud.google.com/go v0.65.0
+	cloud.google.com/go/pubsub v1.3.1
 	github.com/aws/aws-lambda-go v1.17.0
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2
@@ -23,6 +25,7 @@ require (
 	github.com/go-logfmt/logfmt v0.5.0
 	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/protobuf v1.3.1 // remember to update loki-build-image/Dockerfile too
+	github.com/golang/protobuf v1.4.2
 	github.com/golang/snappy v0.0.2
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.0
@@ -60,6 +63,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 	golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
+	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
 	google.golang.org/grpc v1.32.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7

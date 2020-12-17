@@ -39,7 +39,7 @@ type pullStream struct {
 // for testing
 type streamingPullFunc func(context.Context, ...gax.CallOption) (pb.Subscriber_StreamingPullClient, error)
 
-func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName string, maxOutstandingMessages, maxOutstandingBytes int, maxDurationPerLeaseExtension time.Duration) *pullStream {
+func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName string) *pullStream {
 	ctx = withSubscriptionKey(ctx, subName)
 	return &pullStream{
 		ctx: ctx,
@@ -47,17 +47,10 @@ func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName
 			spc, err := streamingPull(ctx, gax.WithGRPCOptions(grpc.MaxCallRecvMsgSize(maxSendRecvBytes)))
 			if err == nil {
 				recordStat(ctx, StreamRequestCount, 1)
-				streamAckDeadline := int32(maxDurationPerLeaseExtension / time.Second)
-				// By default, maxDurationPerLeaseExtension, aka MaxExtensionPeriod, is disabled,
-				// so in these cases, use a healthy default of 60 seconds.
-				if streamAckDeadline <= 0 {
-					streamAckDeadline = 60
-				}
 				err = spc.Send(&pb.StreamingPullRequest{
-					Subscription:             subName,
-					StreamAckDeadlineSeconds: streamAckDeadline,
-					MaxOutstandingMessages:   int64(maxOutstandingMessages),
-					MaxOutstandingBytes:      int64(maxOutstandingBytes),
+					Subscription: subName,
+					// We modack messages when we receive them, so this value doesn't matter too much.
+					StreamAckDeadlineSeconds: 60,
 				})
 			}
 			if err != nil {

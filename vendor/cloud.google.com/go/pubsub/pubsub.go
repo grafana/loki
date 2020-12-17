@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/internal/version"
@@ -62,7 +61,6 @@ func NewClient(ctx context.Context, projectID string, opts ...option.ClientOptio
 			return nil, fmt.Errorf("grpc.Dial: %v", err)
 		}
 		o = []option.ClientOption{option.WithGRPCConn(conn)}
-		o = append(o, option.WithTelemetryDisabled())
 	} else {
 		numConns := runtime.GOMAXPROCS(0)
 		if numConns > 4 {
@@ -75,15 +73,19 @@ func NewClient(ctx context.Context, projectID string, opts ...option.ClientOptio
 				Time: 5 * time.Minute,
 			})),
 		}
+		o = append(o, openCensusOptions()...)
 	}
 	o = append(o, opts...)
 	pubc, err := vkit.NewPublisherClient(ctx, o...)
 	if err != nil {
-		return nil, fmt.Errorf("pubsub(publisher): %v", err)
+		return nil, fmt.Errorf("pubsub: %v", err)
 	}
-	subc, err := vkit.NewSubscriberClient(ctx, o...)
+	subc, err := vkit.NewSubscriberClient(ctx, option.WithGRPCConn(pubc.Connection()))
 	if err != nil {
-		return nil, fmt.Errorf("pubsub(subscriber): %v", err)
+		// Should never happen, since we are passing in the connection.
+		// If it does, we cannot close, because the user may have passed in their
+		// own connection originally.
+		return nil, fmt.Errorf("pubsub: %v", err)
 	}
 	pubc.SetGoogleClientInfo("gccl", version.Repo)
 	return &Client{
@@ -99,22 +101,10 @@ func NewClient(ctx context.Context, projectID string, opts ...option.ClientOptio
 // If the client is available for the lifetime of the program, then Close need not be
 // called at exit.
 func (c *Client) Close() error {
-	pubErr := c.pubc.Close()
-	subErr := c.subc.Close()
-	if pubErr != nil {
-		return fmt.Errorf("pubsub publisher closing error: %v", pubErr)
-	}
-	if subErr != nil {
-		// Suppress client connection closing errors. This will only happen
-		// when using the client in conjunction with the Pub/Sub emulator
-		// or fake (pstest). Closing both clients separately will never
-		// return this error against the live Pub/Sub service.
-		if strings.Contains(subErr.Error(), "the client connection is closing") {
-			return nil
-		}
-		return fmt.Errorf("pubsub subscriber closing error: %v", subErr)
-	}
-	return nil
+	// Return the first error, because the first call closes the connection.
+	err := c.pubc.Close()
+	_ = c.subc.Close()
+	return err
 }
 
 func (c *Client) fullyQualifiedProjectName() string {

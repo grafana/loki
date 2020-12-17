@@ -17,7 +17,6 @@ package pubsub
 import (
 	"context"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -38,19 +37,20 @@ import (
 const gracePeriod = 5 * time.Second
 
 type messageIterator struct {
-	ctx        context.Context
-	cancel     func() // the function that will cancel ctx; called in stop
-	po         *pullOptions
-	ps         *pullStream
-	subc       *vkit.SubscriberClient
-	subName    string
-	kaTick     <-chan time.Time // keep-alive (deadline extensions)
-	ackTicker  *time.Ticker     // message acks
-	nackTicker *time.Ticker     // message nacks (more frequent than acks)
-	pingTicker *time.Ticker     //  sends to the stream to keep it open
-	failed     chan struct{}    // closed on stream error
-	drained    chan struct{}    // closed when stopped && no more pending messages
-	wg         sync.WaitGroup
+	ctx                context.Context
+	cancel             func() // the function that will cancel ctx; called in stop
+	po                 *pullOptions
+	ps                 *pullStream
+	subc               *vkit.SubscriberClient
+	subName            string
+	maxExtensionPeriod *time.Duration
+	kaTick             <-chan time.Time // keep-alive (deadline extensions)
+	ackTicker          *time.Ticker     // message acks
+	nackTicker         *time.Ticker     // message nacks (more frequent than acks)
+	pingTicker         *time.Ticker     //  sends to the stream to keep it open
+	failed             chan struct{}    // closed on stream error
+	drained            chan struct{}    // closed when stopped && no more pending messages
+	wg                 sync.WaitGroup
 
 	mu          sync.Mutex
 	ackTimeDist *distribution.D // dist uses seconds
@@ -72,16 +72,10 @@ type messageIterator struct {
 // subName is the full name of the subscription to pull messages from.
 // Stop must be called on the messageIterator when it is no longer needed.
 // The iterator always uses the background context for acking messages and extending message deadlines.
-func newMessageIterator(subc *vkit.SubscriberClient, subName string, po *pullOptions) *messageIterator {
+func newMessageIterator(subc *vkit.SubscriberClient, subName string, maxExtensionPeriod *time.Duration, po *pullOptions) *messageIterator {
 	var ps *pullStream
 	if !po.synchronous {
-		maxMessages := po.maxOutstandingMessages
-		maxBytes := po.maxOutstandingBytes
-		if po.useLegacyFlowControl {
-			maxMessages = 0
-			maxBytes = 0
-		}
-		ps = newPullStream(context.Background(), subc.StreamingPull, subName, maxMessages, maxBytes, po.maxExtensionPeriod)
+		ps = newPullStream(context.Background(), subc.StreamingPull, subName)
 	}
 	// The period will update each tick based on the distribution of acks. We'll start by arbitrarily sending
 	// the first keepAlive halfway towards the minimum ack deadline.
@@ -99,6 +93,7 @@ func newMessageIterator(subc *vkit.SubscriberClient, subName string, po *pullOpt
 		po:                 po,
 		subc:               subc,
 		subName:            subName,
+		maxExtensionPeriod: maxExtensionPeriod,
 		kaTick:             time.After(keepAlivePeriod),
 		ackTicker:          ackTicker,
 		nackTicker:         nackTicker,
@@ -205,8 +200,7 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 		return nil, it.fail(err)
 	}
 	recordStat(it.ctx, PullCount, int64(len(rmsgs)))
-	now := time.Now()
-	msgs, err := convertMessages(rmsgs, now, it.done)
+	msgs, err := convertMessages(rmsgs)
 	if err != nil {
 		return nil, it.fail(err)
 	}
@@ -215,14 +209,16 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 	maxExt := time.Now().Add(it.po.maxExtension)
 	ackIDs := map[string]bool{}
 	it.mu.Lock()
+	now := time.Now()
 	for _, m := range msgs {
-		ackID := msgAckID(m)
-		addRecv(m.ID, ackID, now)
-		it.keepAliveDeadlines[ackID] = maxExt
+		m.receiveTime = now
+		addRecv(m.ID, m.ackID, now)
+		m.doneFunc = it.done
+		it.keepAliveDeadlines[m.ackID] = maxExt
 		// Don't change the mod-ack if the message is going to be nacked. This is
 		// possible if there are retries.
-		if !it.pendingNacks[ackID] {
-			ackIDs[ackID] = true
+		if !it.pendingNacks[m.ackID] {
+			ackIDs[m.ackID] = true
 		}
 	}
 	deadline := it.ackDeadline()
@@ -388,53 +384,12 @@ func (it *messageIterator) sendAck(m map[string]bool) bool {
 	return it.sendAckIDRPC(m, maxPayload-overhead, func(ids []string) error {
 		recordStat(it.ctx, AckCount, int64(len(ids)))
 		addAcks(ids)
-		bo := gax.Backoff{
-			Initial:    100 * time.Millisecond,
-			Max:        time.Second,
-			Multiplier: 2,
-		}
-		cctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		defer cancel()
-		for {
-			// Use context.Background() as the call's context, not it.ctx. We don't
-			// want to cancel this RPC when the iterator is stopped.
-			cctx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel2()
-			err := it.subc.Acknowledge(cctx2, &pb.AcknowledgeRequest{
-				Subscription: it.subName,
-				AckIds:       ids,
-			})
-			// Retry DeadlineExceeded errors a few times before giving up and
-			// allowing the message to expire and be redelivered.
-			// The underlying library handles other retries, currently only
-			// codes.Unavailable.
-			switch status.Code(err) {
-			case codes.DeadlineExceeded:
-				// Use the outer context with timeout here. Errors from gax, including
-				// context deadline exceeded should be transparent, as unacked messages
-				// will be redelivered.
-				if err := gax.Sleep(cctx, bo.Pause()); err != nil {
-					return nil
-				}
-			default:
-				if err == nil {
-					return nil
-				}
-				// This addresses an error where `context deadline exceeded` errors
-				// not captured by the previous case causes fatal errors.
-				// See https://github.com/googleapis/google-cloud-go/issues/3060
-				if strings.Contains(err.Error(), "context deadline exceeded") {
-					// Context deadline exceeded errors here should be transparent
-					// to prevent the iterator from shutting down.
-					if err := gax.Sleep(cctx, bo.Pause()); err != nil {
-						return nil
-					}
-					continue
-				}
-				// Any other error is fatal.
-				return err
-			}
-		}
+		// Use context.Background() as the call's context, not it.ctx. We don't
+		// want to cancel this RPC when the iterator is stopped.
+		return it.subc.Acknowledge(context.Background(), &pb.AcknowledgeRequest{
+			Subscription: it.subName,
+			AckIds:       ids,
+		})
 	})
 }
 
@@ -483,16 +438,6 @@ func (it *messageIterator) sendModAck(m map[string]bool, deadline time.Duration)
 				recordStat(it.ctx, ModAckTimeoutCount, 1)
 				return nil
 			default:
-				if err == nil {
-					return nil
-				}
-				// This addresses an error where `context deadline exceeded` errors
-				// not captured by the previous case causes fatal errors.
-				// See https://github.com/googleapis/google-cloud-go/issues/3060
-				if strings.Contains(err.Error(), "context deadline exceeded") {
-					recordStat(it.ctx, ModAckTimeoutCount, 1)
-					return nil
-				}
 				// Any other error is fatal.
 				return err
 			}
@@ -575,8 +520,8 @@ func splitRequestIDs(ids []string, maxSize int) (prefix, remainder []string) {
 func (it *messageIterator) ackDeadline() time.Duration {
 	pt := time.Duration(it.ackTimeDist.Percentile(.99)) * time.Second
 
-	if it.po.maxExtensionPeriod > 0 && pt > it.po.maxExtensionPeriod {
-		return it.po.maxExtensionPeriod
+	if *it.maxExtensionPeriod > 0 && pt > *it.maxExtensionPeriod {
+		return *it.maxExtensionPeriod
 	}
 	if pt > maxAckDeadline {
 		return maxAckDeadline
