@@ -3,12 +3,10 @@ package pubsub
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
@@ -150,13 +148,11 @@ func (t *PubsubTarget) run() error {
 		case m := <-t.msgs:
 			level.Info(t.logger).Log("event", "sending log entry", "message", string(m.Data))
 			// TODO(kavi): add proper formatter
-			send <- api.Entry{
-				Labels: model.LabelSet{"source": "cloudtail"},
-				Entry: logproto.Entry{
-					Timestamp: time.Now(),
-					Line:      string(m.Data),
-				},
+			entry, err := format(m)
+			if err != nil {
+				return err
 			}
+			send <- entry
 			m.Ack()
 		}
 	}

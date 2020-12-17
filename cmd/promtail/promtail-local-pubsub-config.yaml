@@ -9,10 +9,7 @@ clients:
   - url: http://localhost:3100/loki/api/v1/push
 
 scrape_configs:
-- job_name: system
-  static_configs:
-  - targets:
-      - localhost
-    labels:
-      job: varlogs
-      __path__: /Users/kaviraj/src/go-play/*.log
+  - job_name: pubsub-test
+    pubsub:
+      projectID: "grafanalabs-dev"
+      subscription: "dev-logs-pull"

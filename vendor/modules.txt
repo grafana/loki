@@ -1,10 +1,12 @@
 # cloud.google.com/go v0.73.0
+## explicit
 cloud.google.com/go
 cloud.google.com/go/compute/metadata
 cloud.google.com/go/iam
 cloud.google.com/go/internal
 cloud.google.com/go/internal/optional
 cloud.google.com/go/internal/pubsub
+cloud.google.com/go/internal/testutil
 cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
 cloud.google.com/go/longrunning
@@ -425,6 +427,7 @@ github.com/golang-migrate/migrate/v4/source/file
 github.com/golang/groupcache/lru
 github.com/golang/groupcache/singleflight
 # github.com/golang/protobuf v1.4.3
+## explicit
 github.com/golang/protobuf/descriptor
 github.com/golang/protobuf/internal/gengogrpc
 github.com/golang/protobuf/jsonpb
@@ -1164,6 +1167,7 @@ google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/socket
 google.golang.org/appengine/urlfetch
 # google.golang.org/genproto v0.0.0-20201209185603-f92720507ed4
+## explicit
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/bigtable/admin/v2
