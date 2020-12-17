@@ -15,4 +15,4 @@ scrape_configs:
       - localhost
     labels:
       job: varlogs
-      __path__: /Users/kaviraj/src/go-play/*.log
+      __path__: /var/log/*log

@@ -1,7 +1,6 @@
 package distributor
 
 import (
-	"fmt"
 	"math"
 	"net/http"
 
@@ -22,11 +21,8 @@ const applicationJSON = "application/json"
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
-	fmt.Println("i'm inside the push handler")
-
 	req, err := ParseRequest(r)
 	if err != nil {
-		fmt.Println("bad request", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -47,8 +43,6 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 	var req logproto.PushRequest
-
-	fmt.Println("debug parse request", r.Header.Get(contentType))
 
 	switch r.Header.Get(contentType) {
 	case applicationJSON:
