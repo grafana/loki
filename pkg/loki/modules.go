@@ -78,7 +78,7 @@ func (t *Loki) initServer() (services.Service, error) {
 		return nil, err
 	}
 
-	t.server = serv
+	t.Server = serv
 
 	servicesToWaitFor := func() []services.Service {
 		svs := []services.Service(nil)
@@ -91,7 +91,7 @@ func (t *Loki) initServer() (services.Service, error) {
 		return svs
 	}
 
-	s := cortex.NewServerService(t.server, servicesToWaitFor)
+	s := cortex.NewServerService(t.Server, servicesToWaitFor)
 
 	return s, nil
 }
@@ -104,7 +104,7 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 		return
 	}
 	prometheus.MustRegister(t.ring)
-	t.server.HTTP.Handle("/ring", t.ring)
+	t.Server.HTTP.Handle("/ring", t.ring)
 	return t.ring, nil
 }
 
@@ -145,7 +145,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	}
 
 	if t.cfg.Target != All {
-		logproto.RegisterPusherServer(t.server.GRPC, t.distributor)
+		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
 	}
 
 	pushHandler := middleware.Merge(
@@ -153,14 +153,14 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.httpAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
-	t.server.HTTP.Handle("/api/prom/push", pushHandler)
-	t.server.HTTP.Handle("/loki/api/v1/push", pushHandler)
+	t.Server.HTTP.Handle("/api/prom/push", pushHandler)
+	t.Server.HTTP.Handle("/loki/api/v1/push", pushHandler)
 	return t.distributor, nil
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {
 	level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
-	worker, err := frontend.NewWorker(t.cfg.Worker, cortex_querier.Config{MaxConcurrent: t.cfg.Querier.MaxConcurrent}, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	worker, err := frontend.NewWorker(t.cfg.Worker, cortex_querier.Config{MaxConcurrent: t.cfg.Querier.MaxConcurrent}, httpgrpc_server.NewServer(t.Server.HTTPServer.Handler), util.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -178,21 +178,21 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
 	)
-	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
-	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
+	t.Server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
+	t.Server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
 	// Prometheus compatibility requires `loki/api/v1/labels` however we already released `loki/api/v1/label`
 	// which is a little more consistent with `/loki/api/v1/label/{name}/values` so we are going to handle both paths.
-	t.server.HTTP.Handle("/loki/api/v1/label", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
-	t.server.HTTP.Handle("/loki/api/v1/labels", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
-	t.server.HTTP.Handle("/loki/api/v1/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
-	t.server.HTTP.Handle("/loki/api/v1/tail", httpMiddleware.Wrap(http.HandlerFunc(t.querier.TailHandler)))
-	t.server.HTTP.Handle("/loki/api/v1/series", httpMiddleware.Wrap(http.HandlerFunc(t.querier.SeriesHandler)))
+	t.Server.HTTP.Handle("/loki/api/v1/label", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
+	t.Server.HTTP.Handle("/loki/api/v1/labels", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
+	t.Server.HTTP.Handle("/loki/api/v1/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
+	t.Server.HTTP.Handle("/loki/api/v1/tail", httpMiddleware.Wrap(http.HandlerFunc(t.querier.TailHandler)))
+	t.Server.HTTP.Handle("/loki/api/v1/series", httpMiddleware.Wrap(http.HandlerFunc(t.querier.SeriesHandler)))
 
-	t.server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LogQueryHandler)))
-	t.server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
-	t.server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
-	t.server.HTTP.Handle("/api/prom/tail", httpMiddleware.Wrap(http.HandlerFunc(t.querier.TailHandler)))
-	t.server.HTTP.Handle("/api/prom/series", httpMiddleware.Wrap(http.HandlerFunc(t.querier.SeriesHandler)))
+	t.Server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LogQueryHandler)))
+	t.Server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
+	t.Server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
+	t.Server.HTTP.Handle("/api/prom/tail", httpMiddleware.Wrap(http.HandlerFunc(t.querier.TailHandler)))
+	t.Server.HTTP.Handle("/api/prom/series", httpMiddleware.Wrap(http.HandlerFunc(t.querier.SeriesHandler)))
 	return worker, nil // ok if worker is nil here
 }
 
@@ -206,13 +206,13 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		return
 	}
 
-	logproto.RegisterPusherServer(t.server.GRPC, t.ingester)
-	logproto.RegisterQuerierServer(t.server.GRPC, t.ingester)
-	logproto.RegisterIngesterServer(t.server.GRPC, t.ingester)
-	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
-	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
+	logproto.RegisterPusherServer(t.Server.GRPC, t.ingester)
+	logproto.RegisterQuerierServer(t.Server.GRPC, t.ingester)
+	logproto.RegisterIngesterServer(t.Server.GRPC, t.ingester)
+	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, t.ingester)
+	t.Server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
 	// TODO(owen-d): should this use cortex style path (/ingester/shutdown), legacy style (/shutdown), or apir prefixed (/loki/api/v1/ingester/shutdown)?
-	t.server.HTTP.Methods("POST").Path("/ingester/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
+	t.Server.HTTP.Methods("POST").Path("/ingester/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
 	return t.ingester, nil
 }
 
@@ -368,7 +368,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}
 	t.stopper = stopper
 	t.frontend.Wrap(tripperware)
-	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
+	frontend.RegisterFrontendServer(t.Server.GRPC, t.frontend)
 
 	frontendHandler := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
@@ -400,20 +400,20 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	} else {
 		defaultHandler = frontendHandler
 	}
-	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
-	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
-	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
-	t.server.HTTP.Handle("/loki/api/v1/labels", frontendHandler)
-	t.server.HTTP.Handle("/loki/api/v1/label/{name}/values", frontendHandler)
-	t.server.HTTP.Handle("/loki/api/v1/series", frontendHandler)
-	t.server.HTTP.Handle("/api/prom/query", frontendHandler)
-	t.server.HTTP.Handle("/api/prom/label", frontendHandler)
-	t.server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
-	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
+	t.Server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
+	t.Server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
+	t.Server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
+	t.Server.HTTP.Handle("/loki/api/v1/labels", frontendHandler)
+	t.Server.HTTP.Handle("/loki/api/v1/label/{name}/values", frontendHandler)
+	t.Server.HTTP.Handle("/loki/api/v1/series", frontendHandler)
+	t.Server.HTTP.Handle("/api/prom/query", frontendHandler)
+	t.Server.HTTP.Handle("/api/prom/label", frontendHandler)
+	t.Server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
+	t.Server.HTTP.Handle("/api/prom/series", frontendHandler)
 
 	// defer tail endpoints to the default handler
-	t.server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
-	t.server.HTTP.Handle("/api/prom/tail", defaultHandler)
+	t.Server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
+	t.Server.HTTP.Handle("/api/prom/tail", defaultHandler)
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.frontend.Close()
@@ -485,28 +485,28 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	// Expose HTTP endpoints.
 	if t.cfg.Ruler.EnableAPI {
 
-		t.server.HTTP.Handle("/ruler/ring", t.ruler)
-		cortex_ruler.RegisterRulerServer(t.server.GRPC, t.ruler)
+		t.Server.HTTP.Handle("/ruler/ring", t.ruler)
+		cortex_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
-		t.server.HTTP.Path("/prometheus/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusRules)))
-		t.server.HTTP.Path("/prometheus/api/v1/alerts").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusAlerts)))
+		t.Server.HTTP.Path("/prometheus/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusRules)))
+		t.Server.HTTP.Path("/prometheus/api/v1/alerts").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusAlerts)))
 
 		// Ruler Legacy API Routes
-		t.server.HTTP.Path("/api/prom/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteNamespace)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
-		t.server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
+		t.Server.HTTP.Path("/api/prom/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
+		t.Server.HTTP.Path("/api/prom/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
+		t.Server.HTTP.Path("/api/prom/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
+		t.Server.HTTP.Path("/api/prom/rules/{namespace}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteNamespace)))
+		t.Server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
+		t.Server.HTTP.Path("/api/prom/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 
 		// Ruler API Routes
-		t.server.HTTP.Path("/loki/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteNamespace)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
-		t.server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
+		t.Server.HTTP.Path("/loki/api/v1/rules").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
+		t.Server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
+		t.Server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("POST").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
+		t.Server.HTTP.Path("/loki/api/v1/rules/{namespace}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteNamespace)))
+		t.Server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("GET").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
+		t.Server.HTTP.Path("/loki/api/v1/rules/{namespace}/{groupName}").Methods("DELETE").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 	}
 
 	return t.ruler, nil

@@ -138,7 +138,7 @@ type Loki struct {
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
 
-	server          *server.Server
+	Server          *server.Server
 	ring            *ring.Ring
 	overrides       *validation.Overrides
 	distributor     *distributor.Distributor
@@ -210,7 +210,7 @@ func (t *Loki) Run() error {
 	}
 
 	t.serviceMap = serviceMap
-	t.server.HTTP.Handle("/services", http.HandlerFunc(t.servicesHandler))
+	t.Server.HTTP.Handle("/services", http.HandlerFunc(t.servicesHandler))
 
 	// get all services, create service manager and tell it to start
 	var servs []services.Service
@@ -224,7 +224,7 @@ func (t *Loki) Run() error {
 	}
 
 	// before starting servers, register /ready handler. It should reflect entire Loki.
-	t.server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
+	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util.Logger).Log("msg", "Loki started") }
@@ -251,7 +251,7 @@ func (t *Loki) Run() error {
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
 
 	// Setup signal handler. If signal arrives, we stop the manager, which stops all the services.
-	handler := signals.NewHandler(t.server.Log)
+	handler := signals.NewHandler(t.Server.Log)
 	go func() {
 		handler.Loop()
 		sm.StopAsync()
