@@ -12,6 +12,7 @@ import (
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 
@@ -51,6 +52,8 @@ var (
 		Name:      "distributor_lines_received_total",
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
+
+	maxLabelCacheSize = 10000
 )
 
 // Config for a Distributor.
@@ -86,6 +89,7 @@ type Distributor struct {
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
+	labelCache           *lru.Cache
 }
 
 // New a distributor creates.
@@ -121,6 +125,10 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
 	}
 
+	labelCache, err := lru.New(maxLabelCacheSize)
+	if err != nil {
+		return nil, err
+	}
 	d := Distributor{
 		cfg:                  cfg,
 		clientCfg:            clientCfg,
@@ -129,6 +137,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		validator:            validator,
 		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, cortex_util.Logger),
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		labelCache:           labelCache,
 	}
 
 	servs = append(servs, d.pool)
@@ -206,17 +215,23 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
-		ls, err := logql.ParseLabels(stream.Labels)
-		if err != nil {
-			validationErr = httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
-			continue
-		}
-		// ensure labels are correctly sorted.
-		// todo(ctovena) we should lru cache this
-		stream.Labels = ls.String()
-		if err := d.validator.ValidateLabels(userID, ls, stream); err != nil {
-			validationErr = err
-			continue
+		label, ok := d.labelCache.Get(stream.Labels)
+		if !ok {
+			ls, err := logql.ParseLabels(stream.Labels)
+			if err != nil {
+				validationErr = httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
+				continue
+			}
+			// ensure labels are correctly sorted.
+			// todo(ctovena) we should lru cache this
+			stream.Labels = ls.String()
+			if err := d.validator.ValidateLabels(userID, ls, stream); err != nil {
+				validationErr = err
+				continue
+			}
+			d.labelCache.Add(stream.Labels, stream.Labels)
+		} else {
+			stream.Labels = label.(string)
 		}
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
