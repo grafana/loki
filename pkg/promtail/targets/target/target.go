@@ -23,6 +23,9 @@ const (
 
 	// PushTargetType is a Loki push target
 	PushTargetType = TargetType("Push")
+
+	// WindowsTargetType is a Windows event target
+	WindowsTargetType = TargetType("WindowsEvent")
 )
 
 // Target is a promtail scrape target

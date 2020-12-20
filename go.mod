@@ -29,14 +29,16 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20191002090509-6af20e3a5340 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
+	github.com/hashicorp/consul/api v1.7.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hpcloud/tail v1.0.0
 	github.com/imdario/mergo v0.3.9
 	github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da
+	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.10
-	github.com/klauspost/compress v1.9.5
+	github.com/klauspost/compress v1.11.0
 	github.com/mitchellh/mapstructure v1.2.2
 	github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
@@ -51,6 +53,7 @@ require (
 	github.com/segmentio/fasthash v1.0.2
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
+	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.6.1
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
@@ -60,6 +63,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 	golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
+	golang.org/x/sys v0.0.0-20201218084310-7d0127a74742
 	google.golang.org/grpc v1.32.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
@@ -74,6 +78,8 @@ replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v
 
 // Keeping this same as Cortex to avoid dependency issues.
 replace k8s.io/client-go => k8s.io/client-go v0.19.2
+
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
 // >v1.2.0 has some conflict with prometheus/alertmanager. Hence prevent the upgrade till it's fixed.
 replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0

@@ -142,7 +142,7 @@ github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.1.1
 ## explicit
 github.com/cespare/xxhash/v2
-# github.com/containerd/containerd v1.3.4
+# github.com/containerd/containerd v1.4.1
 github.com/containerd/containerd/errdefs
 github.com/containerd/containerd/log
 github.com/containerd/containerd/platforms
@@ -498,6 +498,7 @@ github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc
 # github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul/api v1.7.0
+## explicit
 github.com/hashicorp/consul/api
 # github.com/hashicorp/errwrap v1.0.0
 github.com/hashicorp/errwrap
@@ -540,6 +541,11 @@ github.com/influxdata/go-syslog/v3/common
 github.com/influxdata/go-syslog/v3/nontransparent
 github.com/influxdata/go-syslog/v3/octetcounting
 github.com/influxdata/go-syslog/v3/rfc5424
+# github.com/influxdata/telegraf v1.16.3
+## explicit
+github.com/influxdata/telegraf
+github.com/influxdata/telegraf/plugins/inputs
+github.com/influxdata/telegraf/plugins/inputs/win_eventlog
 # github.com/jessevdk/go-flags v1.4.0
 github.com/jessevdk/go-flags
 # github.com/jmespath/go-jmespath v0.4.0
@@ -561,7 +567,7 @@ github.com/jstemmer/go-junit-report/formatter
 github.com/jstemmer/go-junit-report/parser
 # github.com/julienschmidt/httprouter v1.3.0
 github.com/julienschmidt/httprouter
-# github.com/klauspost/compress v1.9.5
+# github.com/klauspost/compress v1.11.0
 ## explicit
 github.com/klauspost/compress/flate
 github.com/klauspost/compress/gzip
@@ -813,6 +819,7 @@ github.com/soheilhy/cmux
 # github.com/sony/gobreaker v0.4.1
 github.com/sony/gobreaker
 # github.com/spf13/afero v1.2.2
+## explicit
 github.com/spf13/afero
 github.com/spf13/afero/mem
 # github.com/spf13/pflag v1.0.5
@@ -1094,12 +1101,14 @@ golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20200930132711-30421366ff76
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20201008064518-c1f3e3309c71
+# golang.org/x/sys v0.0.0-20201218084310-7d0127a74742
+## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
+golang.org/x/sys/windows/svc/eventlog
 # golang.org/x/text v0.3.3
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
@@ -1447,6 +1456,7 @@ sigs.k8s.io/yaml
 # github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
 # github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 # k8s.io/client-go => k8s.io/client-go v0.19.2
+# github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1
