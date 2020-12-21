@@ -166,13 +166,13 @@ type SyslogTargetConfig struct {
 }
 
 type PubsubTargetConfig struct {
-	ProjectID    string         `yaml:"projectID"`
-	Subscription string         `yaml:"subscription"`
-	Labels       model.LabelSet `yaml:"labels"`
+	ProjectID       string         `yaml:"projectID"`
+	Subscription    string         `yaml:"subscription"`
+	Labels          model.LabelSet `yaml:"labels"`
+	CredentialsPath string         `yaml:"credentialsPath"`
 
 	// TODO(kavi):
-	// 1. accept credentials json key
-	// 2. Other configs like, exclusion filter, batch pull, concurrency, ordering
+	// 1. Other configs like, exclusion filter, batch pull, concurrency, ordering
 }
 
 // PushTargetConfig describes a scrape config that listens for Loki push messages.

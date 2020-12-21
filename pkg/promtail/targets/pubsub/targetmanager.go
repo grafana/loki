@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
+	"google.golang.org/api/option"
 )
 
 var (
@@ -100,7 +101,7 @@ func NewPubsubTarget(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ps, err := pubsub.NewClient(ctx, config.ProjectID)
+	ps, err := pubsub.NewClient(ctx, config.ProjectID, option.WithCredentialsFile(config.CredentialsPath))
 	if err != nil {
 		return nil, err
 	}
@@ -150,9 +151,11 @@ func (t *PubsubTarget) run() error {
 			// TODO(kavi): add proper formatter
 			entry, err := format(m)
 			if err != nil {
-				return err
+				level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
 			}
+			level.Debug(t.logger).Log("event", "about sending")
 			send <- entry
+			level.Debug(t.logger).Log("event", "after sending")
 			m.Ack()
 		}
 	}
