@@ -1,6 +1,5 @@
 .DEFAULT_GOAL := all
 .PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources touch-protos
-.PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
@@ -328,55 +327,6 @@ else
 		esac
 endif
 
-
-########
-# Helm #
-########
-
-CHARTS := production/helm/loki production/helm/promtail production/helm/fluent-bit production/helm/loki-stack
-
-helm: PACKAGE_ARGS ?=
-helm:
-	-rm -f production/helm/*/requirements.lock
-	@set -e; \
-	helm repo add elastic https://helm.elastic.co ; \
-	helm repo add grafana https://grafana.github.io/helm-charts ; \
-	helm repo add prometheus https://prometheus-community.github.io/helm-charts ; \
-	for chart in $(CHARTS); do \
-		helm dependency build $$chart; \
-		helm lint $$chart; \
-		helm package $(PACKAGE_ARGS) $$chart; \
-	done
-	rm -f production/helm/*/requirements.lock
-
-helm-install:
-	HELM_ARGS="$(HELM_ARGS)" $(MAKE) helm-upgrade
-
-helm-install-fluent-bit:
-	HELM_ARGS="--set fluent-bit.enabled=true,promtail.enabled=false" $(MAKE) helm-install
-
-
-helm-upgrade: helm
-	helm upgrade --wait --install $(ARGS) loki-stack ./production/helm/loki-stack \
-	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) --set fluent-bit.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml $(HELM_ARGS)
-
-helm-publish: helm
-	cp production/helm/README.md index.md
-	git config user.email "$CIRCLE_USERNAME@users.noreply.github.com"
-	git config user.name "${CIRCLE_USERNAME}"
-	git checkout gh-pages || (git checkout --orphan gh-pages && git rm -rf . > /dev/null)
-	mkdir -p charts
-	mv *.tgz *.tgz.prov index.md charts/
-	helm repo index charts/
-	git add charts/
-	git commit -m "[skip ci] Publishing helm charts: ${CIRCLE_SHA1}"
-	git push origin gh-pages
-
-helm-debug: ARGS=--dry-run --debug
-helm-debug: helm-upgrade
-
-helm-clean:
-	-helm delete --purge loki-stack
 
 #################
 # Docker Driver #
