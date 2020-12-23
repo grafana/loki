@@ -171,6 +171,17 @@ Thanks to @huikang for adding a new docker-compose file for running Loki as micr
 * [2434](https://github.com/grafana/loki/pull/2434) **andsens**: fluent-plugin: Improve escaping in key_value format
 
 
+### Notes
+
+This release was created from revision ae9c4b82ec4a5d21267da50d6a1a8170e0ef82ff (Which was PR 2960) and the following PR's were cherry-picked
+* [2984](https://github.com/grafana/loki/pull/2984) **owen-d**: adds the ability to read chunkFormatV3 while writing v2
+* [2974](https://github.com/grafana/loki/pull/2974) **hedss**: fluent-bit: Rename Fluent Bit plugin output name.
+
+### Dependencies
+
+* Go Version:     1.15.3
+* Cortex Version: 85942c5703cf22b64cecfd291e7e7c42d1b8c30c
+
 ## 2.0.1 (2020/12/10)
 
 2.0.1 is a special release, it only exists to add the v3 support to Loki's chunk format.
