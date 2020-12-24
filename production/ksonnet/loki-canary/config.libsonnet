@@ -1,5 +1,5 @@
 {
   _images+:: {
-    loki_canary: 'grafana/loki-canary:v2.0.0',
+    loki_canary: 'grafana/loki-canary:2.1.0',
   },
 }
