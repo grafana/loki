@@ -74,11 +74,13 @@
     cassandra_addresses: error 'must specify cassandra_addresses',
 
     // S3 variables
+    s3_region: '',
     s3_access_key: '',
     s3_secret_access_key: '',
     s3_address: error 'must specify s3_address',
     s3_bucket_name: error 'must specify s3_bucket_name',
     s3_path_style: false,
+    s3_insecure: '',
 
     // Dynamodb variables
     dynamodb_access_key: '',
@@ -95,8 +97,16 @@
       },
       s3: {
         s3forcepathstyle: $._config.s3_path_style,
-      } + (
-        if $._config.s3_access_key != '' then {
+      } + ( 
+        // Some S3-compartible APIs require a full set of parameters
+        if $._config.s3_region != '' then {
+          region: $._config.s3_region,
+          endpoint: $._config.s3_address,
+          bucketnames: $._config.s3_bucket_name,
+          access_key_id: $._config.s3_access_key,
+          secret_access_key: $._config.s3_secret_access_key,
+          insecure: $._config.s3_insecure,
+        } else if $._config.s3_access_key != '' then {
           s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
         } else {
           s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
