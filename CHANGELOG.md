@@ -14,13 +14,15 @@ The Helm charts have moved!
 
 This was done to consolidate Grafana's helm charts for all Grafana projects in one place: https://github.com/grafana/helm-charts/
 
+**From now moving forward, please use the new Helm repo url: https://grafana.github.io/helm-charts**
+
 The charts in the Loki repo will soon be removed so please update your Helm repo to the new URL and submit your PR's over there as well
 
 Special thanks to @torstenwalter, @unguiculus, and @scottrigby for their initiative and amazing work to make this happen!
 
 Also go check out the microservices helm chart contributed by @unguiculus in the new repo!
 
-### Fluent bit plugin users read this!
+#### Fluent bit plugin users read this!
 
 Fluent bit officially supports Loki as an output plugin now! WoooHOOO!
 
