@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -106,7 +107,50 @@ func (j *JSONParser) nextKeyPrefix(prefix, field string) (string, bool) {
 		return string(j.buf), true
 	}
 	return "", false
+}
 
+type LineDeduper struct{
+	groupBy map[string]interface{}
+	inverted bool
+	seen map[uint64]uint64
+}
+
+func NewLineDeduper(groupBy map[string]interface{}, inverted bool) *LineDeduper {
+	return &LineDeduper{
+		groupBy: groupBy,
+		inverted: inverted,
+		seen: make(map[uint64]uint64),
+	}
+}
+
+func (l *LineDeduper) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	var newLabelList []labels.Label
+
+	for _, label := range lbs.add {
+		if _, exists := l.groupBy[label.Name]; true {
+			// if exists and inverted, skip
+			// if not exists, skip
+			// if exists and not inverted, add
+			// if not exists and inverted, add
+			if (exists && l.inverted) || (!exists && !l.inverted) {
+				continue
+			}
+
+			newLabelList = append(newLabelList, label)
+		}
+	}
+
+	if len(newLabelList) == 0 {
+		return line, true
+	}
+
+	result := lbs.toResult(newLabelList)
+	if _, beenSeen := l.seen[result.Hash()]; beenSeen {
+		return nil, false
+	}
+
+	l.seen[result.Hash()]++
+	return line, true
 }
 
 // isValidKeyPrefix extract an object if the prefix is valid

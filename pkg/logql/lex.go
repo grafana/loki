@@ -58,6 +58,8 @@ var tokens = map[string]int{
 	// fmt
 	OpFmtLabel: LABEL_FMT,
 	OpFmtLine:  LINE_FMT,
+
+	OpDedup: DEDUP,
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis

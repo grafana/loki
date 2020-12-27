@@ -302,6 +302,25 @@ func newLabelParserExpr(op, param string) *labelParserExpr {
 	}
 }
 
+func newLineDedupFilterExpr(grouping *grouping) *lineDedupFilterExpr {
+	return &lineDedupFilterExpr{
+		grouping: grouping,
+	}
+}
+
+func (e *lineDedupFilterExpr) Stage() (log.Stage, error) {
+	var groupMap = make(map[string]interface{})
+	for _, group := range e.grouping.groups {
+		groupMap[group] = nil
+	}
+
+	return log.NewLineDeduper(groupMap, e.grouping.without), nil
+}
+
+func (e *lineDedupFilterExpr) String() string {
+	return fmt.Sprintf("%s %s %s", OpPipe, OpDedup, e.grouping.String())
+}
+
 func (e *labelParserExpr) Stage() (log.Stage, error) {
 	switch e.op {
 	case OpParserTypeJSON:
@@ -361,6 +380,12 @@ func (e *lineFmtExpr) String() string {
 
 type labelFmtExpr struct {
 	formats []log.LabelFmt
+
+	implicit
+}
+
+type lineDedupFilterExpr struct {
+	grouping *grouping
 
 	implicit
 }
@@ -518,6 +543,8 @@ const (
 
 	OpFmtLine  = "line_format"
 	OpFmtLabel = "label_format"
+
+	OpDedup = "dedup"
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"

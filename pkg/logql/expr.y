@@ -42,6 +42,7 @@ import (
   DurationFilter          log.LabelFilterer
   LabelFilter             log.LabelFilterer
   UnitFilter              log.LabelFilterer
+  LineDedupFilter         *lineDedupFilterExpr
   LineFormatExpr          *lineFmtExpr
   LabelFormatExpr         *labelFmtExpr
   LabelFormat             log.LabelFmt
@@ -78,6 +79,7 @@ import (
 %type <DurationFilter>        durationFilter
 %type <LabelFilter>           labelFilter
 %type <LineFilters>           lineFilters
+%type <LineDedupFilter>       lineDedupFilter
 %type <LineFormatExpr>        lineFormatExpr
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
@@ -92,7 +94,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  ABSENT_OVER_TIME LABEL_REPLACE
+                  ABSENT_OVER_TIME LABEL_REPLACE DEDUP
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -213,6 +215,11 @@ pipelineStage:
   | PIPE labelFilter             { $$ = &labelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
+  | PIPE lineDedupFilter         { $$ = $2 }
+  ;
+
+lineDedupFilter:
+    DEDUP grouping { $$ = newLineDedupFilterExpr($2) }
   ;
 
 lineFilters:
