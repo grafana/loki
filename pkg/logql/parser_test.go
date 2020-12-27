@@ -746,6 +746,24 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			// missing "by" clause
+			in: `{foo="bar"} dedup (label)`,
+			err: ParseError{
+				msg:  "syntax error: unexpected dedup",
+				line: 1,
+				col:  13,
+			},
+		},
+		{
+			// misspelling of "dedup"
+			in: `{foo="bar"} dedupe by (label)`,
+			err: ParseError{
+				msg:  "syntax error: unexpected IDENTIFIER",
+				line: 1,
+				col:  13,
+			},
+		},
+		{
 			// require left associativity
 			in: `
 			sum(count_over_time({foo="bar"}[5m])) by (foo) /
@@ -1135,6 +1153,36 @@ func TestParse(t *testing.T) {
 								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
 							),
 						),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json | dedup by (status_code)`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&lineDedupFilterExpr{
+						grouping: &grouping{
+							without: false,
+							groups: []string{"status_code"},
+						},
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json | dedup without (status_code)`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&lineDedupFilterExpr{
+						grouping: &grouping{
+							without: true,
+							groups: []string{"status_code"},
+						},
 					},
 				},
 			},
