@@ -1,10 +1,11 @@
 package log
 
 import (
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"testing"
+
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -41,7 +42,7 @@ func Test_Deduplication(t *testing.T) {
 		inverted     bool
 	}{
 		{
-			name: "dedup by (namespace)",
+			name:         "dedup by (namespace)",
 			labelFilters: []string{"namespace"},
 			inverted:     false,
 			wantLines: [][]byte{
@@ -50,63 +51,63 @@ func Test_Deduplication(t *testing.T) {
 			},
 		},
 		{
-			name: "dedup by (role)",
+			name:         "dedup by (role)",
 			labelFilters: []string{"role"},
 			inverted:     false,
 			wantLines: append(
 				[][]byte{data.Dev.first(), data.QA.first()}, // only first entries with different "role" label
-				data.Prod.all()...), 						 // include all of prodLabels since it has no "role" label
+				data.Prod.all()...), // include all of prodLabels since it has no "role" label
 		},
 		{
-			name: "dedup without (role)",
+			name:         "dedup without (role)",
 			labelFilters: []string{"role"},
 			inverted:     true,
 			// dedup without (x) will dedup by all labels that are not "x",
 			// so this will dedup by "namespace" and "cluster"
-			wantLines:    [][]byte{data.Dev.first(), data.Prod.first()},
+			wantLines: [][]byte{data.Dev.first(), data.Prod.first()},
 		},
 		{
-			name: "dedup without (unknown)",
+			name:         "dedup without (unknown)",
 			labelFilters: []string{"unknown"},
 			inverted:     true,
 			// dedup without a label missing to all entries will result in a dedup by all present labels
-			wantLines:    [][]byte{data.Dev.first(), data.QA.first(), data.Prod.first()},
+			wantLines: [][]byte{data.Dev.first(), data.QA.first(), data.Prod.first()},
 		},
 		{
-			name: "dedup by (unknown)",
+			name:         "dedup by (unknown)",
 			labelFilters: []string{"unknown"},
 			inverted:     false,
 			// dedup by a label missing to all entries is effectively a noop
-			wantLines:    data.allLines(),
+			wantLines: data.allLines(),
 		},
 		{
-			name: "dedup by (cluster, namespace)",
+			name:         "dedup by (cluster, namespace)",
 			labelFilters: []string{"cluster", "namespace"},
 			inverted:     false,
 			// dedup by multiple labels
-			wantLines:    [][]byte{data.Dev.first(), data.Prod.first()},
+			wantLines: [][]byte{data.Dev.first(), data.Prod.first()},
 		},
 		{
-			name: "dedup without (role, namespace)",
+			name:         "dedup without (role, namespace)",
 			labelFilters: []string{"role", "namespace"},
 			inverted:     true,
 			// dedup without multiple labels
 			// - all lines have the same "cluster" label so only the first is returned
-			wantLines:    [][]byte{data.Dev.first()},
+			wantLines: [][]byte{data.Dev.first()},
 		},
 		{
-			name: "dedup by ()",
+			name:         "dedup by ()",
 			labelFilters: nil,
 			inverted:     false,
 			// dedup without labels is effectively a noop
-			wantLines:    data.allLines(),
+			wantLines: data.allLines(),
 		},
 		{
-			name: "dedup without ()",
+			name:         "dedup without ()",
 			labelFilters: nil,
 			inverted:     true,
 			// dedup without labels will result in a dedup by all present labels
-			wantLines:    [][]byte{data.Dev.first(), data.QA.first(), data.Prod.first()},
+			wantLines: [][]byte{data.Dev.first(), data.QA.first(), data.Prod.first()},
 		},
 	}
 
