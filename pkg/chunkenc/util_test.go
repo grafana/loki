@@ -14,12 +14,12 @@ func logprotoEntry(ts int64, line string) *logproto.Entry {
 	}
 }
 
-func generateData(enc Encoding) ([]Chunk, uint64) {
+func generateData(enc Encoding, chunksCount int) ([]Chunk, uint64) {
 	chunks := []Chunk{}
 	i := int64(0)
 	size := uint64(0)
 
-	for n := 0; n < 50; n++ {
+	for n := 0; n < chunksCount; n++ {
 		entry := logprotoEntry(0, testdata.LogString(0))
 		c := NewMemChunk(enc, testBlockSize, testTargetSize)
 		for c.SpaceFor(entry) {
@@ -52,5 +52,6 @@ func fillChunk(c Chunk) int64 {
 		entry.Line = testdata.LogString(i)
 
 	}
+	_ = c.Close()
 	return inserted
 }

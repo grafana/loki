@@ -47,10 +47,14 @@ and its results, such as the API URL, set of common labels, and set
 of excluded labels. This extra information can be suppressed with the
 --quiet flag.
 
+By default we look over the last hour of data; use --since to modify
+or provide specific start and end times with --start and --end.
+The output is limited to 30 entries by default; use --limit to increase.
+
 While "query" does support metrics queries, its output contains multiple
 data points between the start and end query time. This output is used to
-build graphs, like what is seen in the Grafana Explore graph view. If
-you are querying metrics and just want the most recent data point
+build graphs, similar to what is seen in the Grafana Explore graph view.
+If you are querying metrics and just want the most recent data point
 (like what is seen in the Grafana Explore table view), then you should use
 the "instant-query" command instead.`)
 	rangeQuery = newQuery(false, queryCmd)
@@ -70,7 +74,7 @@ you should always use the "query" command when you are running log queries.
 For more information about log queries and metric queries, refer to the
 LogQL documentation:
 
-https://github.com/grafana/loki/blob/master/docs/logql.md`)
+https://grafana.com/docs/loki/latest/logql/`)
 	instantQuery = newQuery(true, instantQueryCmd)
 
 	labelsCmd   = app.Command("labels", "Find values for a given label.")
@@ -78,13 +82,13 @@ https://github.com/grafana/loki/blob/master/docs/logql.md`)
 
 	seriesCmd = app.Command("series", `Run series query.
 
-The "series" command will take the provided label matcher 
+The "series" command will take the provided label matcher
 and return all the log streams found in the time window.
 
 It is possible to send an empty label matcher '{}' to return all streams.
 
 Use the --analyze-labels flag to get a summary of the labels found in all streams.
-This is helpful to find high cardinality labels. 
+This is helpful to find high cardinality labels.
 `)
 	seriesQuery = newSeriesQuery(seriesCmd)
 )
@@ -293,7 +297,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
 	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&q.LocalConfig)
-	cmd.Flag("colored-output", "Show ouput with colored labels").Default("false").BoolVar(&q.ColoredOutput)
+	cmd.Flag("colored-output", "Show output with colored labels").Default("false").BoolVar(&q.ColoredOutput)
 
 	return q
 }

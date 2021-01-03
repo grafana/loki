@@ -1,9 +1,9 @@
 ---
-title: promtail eks
+title: EKS
 ---
 # Sending logs from EKS with Promtail
 
-In this tutorial we'll see how setup promtail on [EKS][eks]. Amazon Elastic Kubernetes Service (Amazon [EKS][eks]) is a fully managed Kubernetes service, using Promtail we'll get full visibility into our cluster logs. We'll start by forwarding pods logs then nodes services and finally Kubernetes events.
+In this tutorial we'll see how to set up Promtail on [EKS][eks]. Amazon Elastic Kubernetes Service (Amazon [EKS][eks]) is a fully managed Kubernetes service, using Promtail we'll get full visibility into our cluster logs. We'll start by forwarding pods logs then nodes services and finally Kubernetes events.
 
 After this tutorial you will able to query all your logs in one place using Grafana.
 
@@ -51,7 +51,7 @@ Server Version: version.Info{Major:"1", Minor:"16+", GitVersion:"v1.16.8-eks-fd1
 
 ## Adding Promtail DaemonSet
 
-To ship all your pods logs we're going to setup [Promtail](../../promtail/) as a DaemonSet in our cluster. This means it will run on each nodes of the cluster, we will then configure it to find the logs of your containers on the host.
+To ship all your pods logs we're going to set up [Promtail](../../promtail/) as a DaemonSet in our cluster. This means it will run on each nodes of the cluster, we will then configure it to find the logs of your containers on the host.
 
 What's nice about Promtail is that it uses the same [service discovery as Prometheus][prometheus conf], you should make sure the `scrape_configs` of Promtail matches the Prometheus one. Not only this is simpler to configure, but this also means Metrics and Logs will have the same metadata (labels) attached by the Prometheus service discovery. When querying Grafana you will be able to correlate metrics and logs very quickly, you can read more about this on our [blogpost][correlate].
 
@@ -75,7 +75,7 @@ loki/promtail   0.24.0          v1.6.0          Responsible for gathering logs a
 If you want to install Loki, Grafana, Prometheus and Promtail all together you can use the `loki-stack` chart, for now we'll focus on Promtail. Let's create a new helm value file, we'll fetch the [default][default value file] one and work from there:
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/production/helm/promtail/values.yaml > values.yaml
+curl https://raw.githubusercontent.com/grafana/helm-charts/main/charts/promtail/values.yaml > values.yaml
 ```
 
 First we're going to tell Promtail to send logs to our Loki instance, the example below shows how to send logs to [GrafanaCloud][GrafanaCloud], replace your credentials. The default value will send to your own Loki and Grafana instance if you're using the `loki-chart` repository.
@@ -206,7 +206,7 @@ pipelineStages:
         namespace: ""
 ```
 
-> Pipeline stages are great ways to parse log content and create labels (which are [indexed][labels post]), if you want to configure more of them, check out the [documentation][pipeline].
+> Pipeline stages are great ways to parse log content and create labels (which are [indexed][labels post]), if you want to configure more of them, check out the [pipeline][pipeline] documentation.
 
 Now update Promtail again:
 
@@ -217,7 +217,7 @@ helm upgrade  promtail loki/promtail -n monitoring -f values.yaml
 And deploy the `eventrouter` using:
 
 ```bash
- kubectl create -f https://raw.githubusercontent.com/grafana/loki/master/docs/clients/aws/eks/eventrouter.yaml
+ kubectl create -f https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/eks/eventrouter.yaml
 
 serviceaccount/eventrouter created
 clusterrole.rbac.authorization.k8s.io/eventrouter created
@@ -246,11 +246,11 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [blog ship log with fargate]: https://aws.amazon.com/blogs/containers/how-to-capture-application-logs-when-using-amazon-eks-on-aws-fargate/
 [correlate]: https://grafana.com/blog/2020/03/31/how-to-successfully-correlate-metrics-logs-and-traces-in-grafana/
 [tiller install]: https://v2.helm.sh/docs/using_helm/
-[default value file]: https://github.com/grafana/loki/blob/master/production/helm/promtail/values.yaml
-[systemd]: https://github.com/grafana/loki/tree/master/production/helm/promtail#run-promtail-with-systemd-journal-support
+[default value file]: https://github.com/grafana/helm-charts/blob/main/charts/promtail/values.yaml
+[systemd]: ../../../installation/helm#run-promtail-with-systemd-journal-support
 [grafana logs namespace]: namespace-grafana.png
 [relabel_configs]:https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
-[syslog]: https://github.com/grafana/loki/tree/master/production/helm/promtail#run-promtail-with-syslog-support
+[syslog]: ../../../installation/helm#run-promtail-with-syslog-support
 [Filters]: https://grafana.com/docs/loki/latest/logql/#filter-expression
 [kubelet]: https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/#:~:text=The%20kubelet%20works%20in%20terms,PodSpecs%20are%20running%20and%20healthy.
 [LogQL]: https://grafana.com/docs/loki/latest/logql/

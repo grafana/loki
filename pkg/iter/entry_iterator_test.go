@@ -331,7 +331,7 @@ func TestReverseEntryIterator(t *testing.T) {
 	for i := int64(testSize - 1); i >= 0; i-- {
 		assert.Equal(t, true, reversedIter.Next())
 		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
-		assert.Equal(t, reversedIter.Labels(), "")
+		assert.Equal(t, reversedIter.Labels(), defaultLabels)
 	}
 
 	assert.Equal(t, false, reversedIter.Next())

@@ -2,8 +2,10 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -19,15 +21,25 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
+const delimiter = "/"
+
 type Config struct {
-	WorkingDirectory string `yaml:"working_directory"`
-	SharedStoreType  string `yaml:"shared_store"`
+	WorkingDirectory   string        `yaml:"working_directory"`
+	SharedStoreType    string        `yaml:"shared_store"`
+	CompactionInterval time.Duration `yaml:"compaction_interval"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
+	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 2*time.Hour, "Interval at which to re-run the compaction operation.")
+}
+
+func (cfg *Config) IsDefaults() bool {
+	cpy := &Config{}
+	cpy.RegisterFlags(flag.NewFlagSet("defaults", flag.ContinueOnError))
+	return reflect.DeepEqual(cfg, cpy)
 }
 
 type Compactor struct {
@@ -40,6 +52,10 @@ type Compactor struct {
 }
 
 func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registerer) (*Compactor, error) {
+	if cfg.IsDefaults() {
+		return nil, errors.New("Must specify compactor config")
+	}
+
 	objectClient, err := storage.NewObjectClient(cfg.SharedStoreType, storageConfig)
 	if err != nil {
 		return nil, err
@@ -56,8 +72,31 @@ func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registe
 		metrics:      newMetrics(r),
 	}
 
-	compactor.Service = services.NewTimerService(4*time.Hour, nil, compactor.Run, nil)
+	compactor.Service = services.NewBasicService(nil, compactor.loop, nil)
 	return &compactor, nil
+}
+
+func (c *Compactor) loop(ctx context.Context) error {
+	runCompaction := func() {
+		err := c.Run(ctx)
+		if err != nil {
+			level.Error(pkg_util.Logger).Log("msg", "failed to run compaction", "err", err)
+		}
+	}
+
+	runCompaction()
+
+	ticker := time.NewTicker(c.cfg.CompactionInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			runCompaction()
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
 
 func (c *Compactor) Run(ctx context.Context) error {
@@ -68,10 +107,11 @@ func (c *Compactor) Run(ctx context.Context) error {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
 		if status == statusSuccess {
 			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
+			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 		}
 	}()
 
-	_, dirs, err := c.objectClient.List(ctx, "")
+	_, dirs, err := c.objectClient.List(ctx, "", delimiter)
 	if err != nil {
 		status = statusFailure
 		return err
@@ -79,7 +119,7 @@ func (c *Compactor) Run(ctx context.Context) error {
 
 	tables := make([]string, len(dirs))
 	for i, dir := range dirs {
-		tables[i] = strings.TrimSuffix(string(dir), "/")
+		tables[i] = strings.TrimSuffix(string(dir), delimiter)
 	}
 
 	for _, tableName := range tables {

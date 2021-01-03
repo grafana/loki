@@ -82,7 +82,7 @@ func (cfg *Config) Validate(log log.Logger) error {
 		if cfg.SplitQueriesByInterval <= 0 {
 			return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
 		}
-		if err := cfg.ResultsCacheConfig.CacheConfig.Validate(); err != nil {
+		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
 			return errors.Wrap(err, "invalid ResultsCache config")
 		}
 	}
@@ -154,12 +154,16 @@ func NewTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec, registerer))
+		staticIntervalFn := func(_ Request) time.Duration { return cfg.SplitQueriesByInterval }
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(staticIntervalFn, limits, codec, registerer))
 	}
 
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader, registerer)
+		shouldCache := func(r Request) bool {
+			return !r.GetCachingOptions().Disabled
+		}
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
 		if err != nil {
 			return nil, nil, err
 		}

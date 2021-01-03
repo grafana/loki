@@ -60,17 +60,13 @@ func TestPipeline_Template(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lbls := model.LabelSet{}
 	expectedLbls := model.LabelSet{
 		"app":   "LOKI doki",
 		"level": "OK",
 		"type":  "TEST",
 	}
-	ts := time.Now()
-	entry := testTemplateLogLine
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, expectedLbls, lbls)
+	out := processEntries(pl, newEntry(nil, nil, testTemplateLogLine, time.Now()))[0]
+	assert.Equal(t, expectedLbls, out.Labels)
 }
 
 func TestPipelineWithMissingKey_Template(t *testing.T) {
@@ -81,12 +77,10 @@ func TestPipelineWithMissingKey_Template(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lbls := model.LabelSet{}
 	Debug = true
-	ts := time.Now()
-	entry := testTemplateLogLineWithMissingKey
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
+
+	_ = processEntries(pl, newEntry(nil, nil, testTemplateLogLineWithMissingKey, time.Now()))
+
 	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
@@ -375,10 +369,9 @@ func TestTemplateStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			lbls := model.LabelSet{}
-			entry := "not important for this test"
-			st.Process(lbls, test.extracted, nil, &entry)
-			assert.Equal(t, test.expectedExtracted, test.extracted)
+
+			out := processEntries(st, newEntry(test.expectedExtracted, nil, "not important for this test", time.Time{}))[0]
+			assert.Equal(t, test.expectedExtracted, out.Extracted)
 		})
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/syslog/syslogparser"
@@ -38,11 +39,17 @@ var (
 		Name:      "syslog_target_parsing_errors_total",
 		Help:      "Total number of parsing errors while receiving syslog messages",
 	})
+	syslogEmptyMessages = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "syslog_empty_messages_total",
+		Help:      "Total number of empty messages receiving from syslog",
+	})
 
 	defaultIdleTimeout = 120 * time.Second
 )
 
 // SyslogTarget listens to syslog messages.
+// nolint:golint
 type SyslogTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
@@ -58,8 +65,9 @@ type SyslogTarget struct {
 }
 
 type message struct {
-	labels  model.LabelSet
-	message string
+	labels    model.LabelSet
+	message   string
+	timestamp time.Time
 }
 
 // NewSyslogTarget configures a new SyslogTarget.
@@ -84,7 +92,7 @@ func NewSyslogTarget(
 	}
 
 	t.messages = make(chan message)
-	go t.messageSender()
+	go t.messageSender(handler.Chan())
 
 	err := t.run()
 	return t, err
@@ -181,6 +189,7 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 	rfc5424Msg := msg.(*rfc5424.SyslogMessage)
 
 	if rfc5424Msg.Message == nil {
+		syslogEmptyMessages.Inc()
 		return
 	}
 
@@ -224,13 +233,23 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 	}
 
-	t.messages <- message{filtered, *rfc5424Msg.Message}
+	var timestamp time.Time
+	if t.config.UseIncomingTimestamp && rfc5424Msg.Timestamp != nil {
+		timestamp = *rfc5424Msg.Timestamp
+	} else {
+		timestamp = time.Now()
+	}
+	t.messages <- message{filtered, *rfc5424Msg.Message, timestamp}
 }
 
-func (t *SyslogTarget) messageSender() {
+func (t *SyslogTarget) messageSender(entries chan<- api.Entry) {
 	for msg := range t.messages {
-		if err := t.handler.Handle(msg.labels, time.Now(), msg.message); err != nil {
-			level.Error(t.logger).Log("msg", "error handling line", "error", err)
+		entries <- api.Entry{
+			Labels: msg.labels,
+			Entry: logproto.Entry{
+				Timestamp: msg.timestamp,
+				Line:      msg.message,
+			},
 		}
 		syslogEntries.Inc()
 	}
@@ -296,6 +315,7 @@ func (t *SyslogTarget) Stop() error {
 	err := t.listener.Close()
 	t.openConnections.Wait()
 	close(t.messages)
+	t.handler.Stop()
 	return err
 }
 

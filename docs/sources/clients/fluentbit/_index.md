@@ -21,7 +21,7 @@ docker run -v /var/log:/var/log \
 
 You can run Fluent Bit as a [Daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
 
-To do so you can use our [Fluent Bit helm chart](../../production/helm/fluent-bit/README):
+To do so you can use our [Fluent Bit helm chart](https://github.com/grafana/helm-charts/tree/main/charts/fluent-bit):
 
 > Make sure [tiller](https://helm.sh/docs/install/) is installed correctly in your cluster
 
@@ -48,19 +48,19 @@ For more information about this see our [AWS documentation](../aws/ecs)
 
 ### Local
 
-First you need to follow those [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README) to build the plugin dynamic library.
+First, you need to follow the [instructions](https://github.com/grafana/loki/blob/master/cmd/fluent-bit/README.md) in order to build the plugin dynamic library.
 
 The assuming you have Fluent Bit installed in your `$PATH` you can run the plugin using:
 
 ```bash
-fluent-bit -e /path/to/built/out_loki.so -c fluent-bit.conf
+fluent-bit -e /path/to/built/out_grafana_loki.so -c fluent-bit.conf
 ```
 
 You can also adapt your plugins.conf, removing the need to change the command line options:
 
 ```conf
 [PLUGINS]
-    Path /path/to/built/out_loki.so
+    Path /path/to/built/out_grafana_loki.so
 ```
 
 ## Configuration Options
@@ -103,7 +103,7 @@ If set to true, it will add all Kubernetes labels to Loki labels automatically a
 ### LabelMapPath
 
 When using the `Parser` and `Filter` plugins Fluent Bit can extract and add data to the current record/log data. While Loki labels are key value pair, record data can be nested structures.
-You can pass a json file that defines how to extract [labels](../../docs/sources/overview#overview-of-loki) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
+You can pass a json file that defines how to extract [labels](../../getting-started/labels/) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
 
 Considering the record below :
 
@@ -146,8 +146,8 @@ If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log li
 
 Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. Loki output plugin in certain situation can be blocked by loki client because of its design:
 
-* BatchSize is over limit, output plugin pause receiving new records until the pending batch is successfully sent to the server
-* Loki server is unreachable (retry 429s, 500s and connection-level errors), output plugin blocks new records until loki server will be available again and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
+- BatchSize is over limit, output plugin pause receiving new records until the pending batch is successfully sent to the server
+- Loki server is unreachable (retry 429s, 500s and connection-level errors), output plugin blocks new records until loki server will be available again and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
 
 The blocking state with some of the input plugins is not acceptable because it can have a undesirable side effects on the part that generates the logs. Fluent Bit implements buffering mechanism that is based on parallel processing and it cannot send logs in order which is loki requirement (loki logs must be in increasing time order per stream).
 
@@ -155,7 +155,7 @@ Loki output plugin has buffering mechanism based on [`dque`](https://github.com/
 
 ```properties
 [Output]
-    Name loki
+    Name grafana-loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
     Buffer true
@@ -170,7 +170,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
 
 ```properties
 [Output]
-    Name loki
+    Name grafana-loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
     BatchWait 1s
@@ -184,7 +184,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
 
 ```properties
 [Output]
-    Name loki
+    Name grafana-loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
     BatchWait 1s

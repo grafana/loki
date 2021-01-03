@@ -2,22 +2,25 @@ package ingester
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
+	"net/http"
+	"os"
 	"sync"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/user"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/helpers"
@@ -26,6 +29,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	errUtil "github.com/grafana/loki/pkg/util"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -46,15 +52,16 @@ type Config struct {
 	// Config for transferring chunks.
 	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
 
-	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
-	FlushCheckPeriod  time.Duration `yaml:"flush_check_period"`
-	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
-	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
-	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
-	BlockSize         int           `yaml:"chunk_block_size"`
-	TargetChunkSize   int           `yaml:"chunk_target_size"`
-	ChunkEncoding     string        `yaml:"chunk_encoding"`
-	MaxChunkAge       time.Duration `yaml:"max_chunk_age"`
+	ConcurrentFlushes int               `yaml:"concurrent_flushes"`
+	FlushCheckPeriod  time.Duration     `yaml:"flush_check_period"`
+	FlushOpTimeout    time.Duration     `yaml:"flush_op_timeout"`
+	RetainPeriod      time.Duration     `yaml:"chunk_retain_period"`
+	MaxChunkIdle      time.Duration     `yaml:"chunk_idle_period"`
+	BlockSize         int               `yaml:"chunk_block_size"`
+	TargetChunkSize   int               `yaml:"chunk_target_size"`
+	ChunkEncoding     string            `yaml:"chunk_encoding"`
+	parsedEncoding    chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
+	MaxChunkAge       time.Duration     `yaml:"max_chunk_age"`
 
 	// Synchronization settings. Used to make sure that ingesters cut their chunks at the same moments.
 	SyncPeriod         time.Duration `yaml:"sync_period"`
@@ -67,11 +74,14 @@ type Config struct {
 
 	QueryStore                  bool          `yaml:"-"`
 	QueryStoreMaxLookBackPeriod time.Duration `yaml:"query_store_max_look_back_period"`
+
+	WAL WALConfig `yaml:"wal,omitempty"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
+	cfg.WAL.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 16, "")
@@ -89,6 +99,24 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 }
 
+func (cfg *Config) Validate() error {
+	enc, err := chunkenc.ParseEncoding(cfg.ChunkEncoding)
+	if err != nil {
+		return err
+	}
+	cfg.parsedEncoding = enc
+
+	if err = cfg.WAL.Validate(); err != nil {
+		return err
+	}
+
+	if cfg.MaxTransferRetries > 0 && cfg.WAL.Enabled {
+		return errors.New("the use of the write ahead log (WAL) is incompatible with chunk transfers. It's suggested to use the WAL. Please try setting ingester.max-transfer-retries to 0 to disable transfers")
+	}
+	return nil
+
+}
+
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
 	services.Service
@@ -104,7 +132,8 @@ type Ingester struct {
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	store ChunkStore
+	store           ChunkStore
+	periodicConfigs []chunk.PeriodConfig
 
 	loopDone    sync.WaitGroup
 	loopQuit    chan struct{}
@@ -116,7 +145,10 @@ type Ingester struct {
 	flushQueuesDone sync.WaitGroup
 
 	limiter *Limiter
-	factory func() chunkenc.Chunk
+
+	metrics *ingesterMetrics
+
+	wal WAL
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -124,6 +156,8 @@ type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
+	GetSchemaConfigs() []chunk.PeriodConfig
 }
 
 // New makes a new Ingester.
@@ -131,25 +165,34 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
-	enc, err := chunkenc.ParseEncoding(cfg.ChunkEncoding)
+
+	metrics := newIngesterMetrics(registerer)
+
+	i := &Ingester{
+		cfg:             cfg,
+		clientConfig:    clientConfig,
+		instances:       map[string]*instance{},
+		store:           store,
+		periodicConfigs: store.GetSchemaConfigs(),
+		loopQuit:        make(chan struct{}),
+		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		tailersQuit:     make(chan struct{}),
+		metrics:         metrics,
+	}
+
+	if cfg.WAL.Enabled {
+		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
+	wal, err := newWAL(cfg.WAL, registerer, metrics, newIngesterSeriesIter(i))
 	if err != nil {
 		return nil, err
 	}
+	i.wal = wal
 
-	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-		instances:    map[string]*instance{},
-		store:        store,
-		loopQuit:     make(chan struct{}),
-		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		tailersQuit:  make(chan struct{}),
-		factory: func() chunkenc.Chunk {
-			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
-		},
-	}
-
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true, registerer)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +209,46 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
+	if i.cfg.WAL.Recover {
+		recoverer := newIngesterRecoverer(i)
+		defer recoverer.Close()
+
+		start := time.Now()
+
+		level.Info(util.Logger).Log("msg", "recovering from checkpoint")
+		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
+		if err != nil {
+			return err
+		}
+		defer checkpointCloser.Close()
+
+		if err = RecoverCheckpoint(checkpointReader, recoverer); err != nil {
+			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
+			level.Error(util.Logger).Log("msg", "failed to recover from checkpoint", "elapsed", time.Since(start).String())
+			return err
+		}
+		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "elapsed", time.Since(start).String())
+
+		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
+		if err != nil {
+			return err
+		}
+		defer segmentCloser.Close()
+
+		if err = RecoverWAL(segmentReader, recoverer); err != nil {
+			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
+			level.Error(util.Logger).Log("msg", "failed to recover from WAL segments", "elapsed", time.Since(start).String())
+			return err
+		}
+		level.Info(util.Logger).Log("msg", "recovered from WAL segments", "elapsed", time.Since(start).String())
+
+		elapsed := time.Since(start)
+		i.metrics.walReplayDuration.Set(elapsed.Seconds())
+		level.Info(util.Logger).Log("msg", "recovery completed", "time", elapsed.String())
+
+	}
+
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
@@ -214,8 +297,9 @@ func (i *Ingester) running(ctx context.Context) error {
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
-
-	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	var errs errUtil.MultiError
+	errs.Add(i.wal.Stop())
+	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
 	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
 	// we better stop them.
@@ -224,7 +308,7 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	i.flushQueuesDone.Wait()
 
-	return err
+	return errs.Err()
 }
 
 func (i *Ingester) loop() {
@@ -242,6 +326,18 @@ func (i *Ingester) loop() {
 			return
 		}
 	}
+}
+
+// ShutdownHandler triggers the following set of operations in order:
+//     * Change the state of ring to stop accepting writes.
+//     * Flush all the chunks.
+func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	originalState := i.lifecycler.FlushOnShutdown()
+	// We want to flush the chunks if transfer fails irrespective of original flag.
+	i.lifecycler.SetFlushOnShutdown(true)
+	_ = services.StopAndAwaitTerminated(context.Background(), i)
+	i.lifecycler.SetFlushOnShutdown(originalState)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Push implements logproto.Pusher.
@@ -268,7 +364,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization)
+		inst = newInstance(&i.cfg, instanceID, i.limiter, i.wal, i.metrics)
 		i.instances[instanceID] = inst
 	}
 	return inst
@@ -354,6 +450,64 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
 }
 
+// boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.
+// max look back is limited to from time of boltdb-shipper config.
+// It considers previous periodic config's from time if that also has index type set to boltdb-shipper.
+func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
+	activePeriodicConfigIndex := storage.ActivePeriodConfig(i.periodicConfigs)
+	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
+	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType {
+		return 0
+	}
+
+	startTime := activePeriodicConfig.From
+	if activePeriodicConfigIndex != 0 && i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == shipper.BoltDBShipperType {
+		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
+	}
+
+	maxLookBack := time.Since(startTime.Time.Time())
+	return maxLookBack
+}
+
+// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
+func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
+	if boltdbShipperMaxLookBack == 0 {
+		return &logproto.GetChunkIDsResponse{}, nil
+	}
+
+	reqStart := req.Start
+	reqStart = adjustQueryStartTime(boltdbShipperMaxLookBack, reqStart, time.Now())
+
+	// parse the request
+	start, end := listutil.RoundToMilliseconds(reqStart, req.End)
+	matchers, err := logql.ParseMatchers(req.Matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	// get chunk references
+	chunksGroups, _, err := i.store.GetChunkRefs(ctx, orgID, start, end, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// build the response
+	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
+	for _, chunks := range chunksGroups {
+		for _, chk := range chunks {
+			resp.ChunkIDs = append(resp.ChunkIDs, chk.ExternalKey())
+		}
+	}
+
+	return &resp, nil
+}
+
 // Label returns the set of labels for the stream this ingester knows about.
 func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	instanceID, err := user.ExtractOrgID(ctx)
@@ -367,8 +521,9 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	// Only continue if we should query the store for labels
-	if !i.cfg.QueryStore {
+	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.
+	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
+	if boltdbShipperMaxLookBack == 0 && !i.cfg.QueryStore {
 		return resp, nil
 	}
 
@@ -383,8 +538,13 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
+
+	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
+	if boltdbShipperMaxLookBack != 0 {
+		maxLookBackPeriod = boltdbShipperMaxLookBack
+	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-	start := adjustQueryStartTime(i.cfg, *req.Start, time.Now())
+	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
 	if start.After(*req.End) {
 		// The request is older than we are allowed to query the store, just return what we have.
 		return resp, nil
@@ -506,7 +666,7 @@ func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.T
 	if !cfg.QueryStore {
 		return time.Time{}, time.Time{}, false
 	}
-	start = adjustQueryStartTime(cfg, start, now)
+	start = adjustQueryStartTime(cfg.QueryStoreMaxLookBackPeriod, start, now)
 
 	if start.After(end) {
 		return time.Time{}, time.Time{}, false
@@ -514,9 +674,9 @@ func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.T
 	return start, end, true
 }
 
-func adjustQueryStartTime(cfg Config, start, now time.Time) time.Time {
-	if cfg.QueryStoreMaxLookBackPeriod > 0 {
-		oldestStartTime := now.Add(-cfg.QueryStoreMaxLookBackPeriod)
+func adjustQueryStartTime(maxLookBackPeriod time.Duration, start, now time.Time) time.Time {
+	if maxLookBackPeriod > 0 {
+		oldestStartTime := now.Add(-maxLookBackPeriod)
 		if oldestStartTime.After(start) {
 			return oldestStartTime
 		}

@@ -791,9 +791,10 @@ func Test_codec_MergeResponse(t *testing.T) {
 
 type badResponse struct{}
 
-func (badResponse) Reset()         {}
-func (badResponse) String() string { return "noop" }
-func (badResponse) ProtoMessage()  {}
+func (badResponse) Reset()                                             {}
+func (badResponse) String() string                                     { return "noop" }
+func (badResponse) ProtoMessage()                                      {}
+func (badResponse) GetHeaders() []*queryrange.PrometheusResponseHeader { return nil }
 
 type badReader struct{}
 

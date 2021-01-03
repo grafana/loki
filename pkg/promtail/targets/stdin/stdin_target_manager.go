@@ -13,10 +13,10 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
@@ -38,7 +38,7 @@ var (
 	// defaultStdInCfg is the default config for stdin target if none provided.
 	defaultStdInCfg = scrapeconfig.Config{
 		JobName: "stdin",
-		ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
+		ServiceDiscoveryConfig: scrapeconfig.ServiceDiscoveryConfig{
 			StaticConfigs: []*targetgroup.Group{
 				{Labels: model.LabelSet{"job": "stdin"}},
 				{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},
@@ -51,17 +51,18 @@ type Shutdownable interface {
 	Shutdown()
 }
 
-type stdinTargetManager struct {
+// nolint:golint
+type StdinTargetManager struct {
 	*readerTarget
 	app Shutdownable
 }
 
-func NewStdinTargetManager(log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*stdinTargetManager, error) {
+func NewStdinTargetManager(log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*StdinTargetManager, error) {
 	reader, err := newReaderTarget(log, stdIn, client, getStdinConfig(log, configs))
 	if err != nil {
 		return nil, err
 	}
-	stdinManager := &stdinTargetManager{
+	stdinManager := &StdinTargetManager{
 		readerTarget: reader,
 		app:          app,
 	}
@@ -85,12 +86,12 @@ func getStdinConfig(log log.Logger, configs []scrapeconfig.Config) scrapeconfig.
 	return cfg
 }
 
-func (t *stdinTargetManager) Ready() bool {
+func (t *StdinTargetManager) Ready() bool {
 	return t.ctx.Err() == nil
 }
-func (t *stdinTargetManager) Stop()                                     { t.cancel() }
-func (t *stdinTargetManager) ActiveTargets() map[string][]target.Target { return nil }
-func (t *stdinTargetManager) AllTargets() map[string][]target.Target    { return nil }
+func (t *StdinTargetManager) Stop()                                     { t.cancel() }
+func (t *StdinTargetManager) ActiveTargets() map[string][]target.Target { return nil }
+func (t *StdinTargetManager) AllTargets() map[string][]target.Target    { return nil }
 
 type readerTarget struct {
 	in     *bufio.Reader
@@ -129,7 +130,9 @@ func newReaderTarget(logger log.Logger, in io.Reader, client api.EntryHandler, c
 
 func (t *readerTarget) read() {
 	defer t.cancel()
+	defer t.out.Stop()
 
+	entries := t.out.Chan()
 	for {
 		if t.ctx.Err() != nil {
 			return
@@ -146,8 +149,12 @@ func (t *readerTarget) read() {
 			}
 			continue
 		}
-		if err := t.out.Handle(t.lbs, time.Now(), line); err != nil {
-			level.Error(t.logger).Log("msg", "error sending line", "err", err)
+		entries <- api.Entry{
+			Labels: t.lbs.Clone(),
+			Entry: logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      line,
+			},
 		}
 		if err == io.EOF {
 			return

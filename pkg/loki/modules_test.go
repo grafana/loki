@@ -9,9 +9,10 @@ import (
 
 func Test_calculateMaxLookBack(t *testing.T) {
 	type args struct {
-		pc                chunk.PeriodConfig
-		maxLookBackConfig time.Duration
-		maxChunkAge       time.Duration
+		pc                               chunk.PeriodConfig
+		maxLookBackConfig                time.Duration
+		maxChunkAge                      time.Duration
+		querierBoltDBFilesResyncInterval time.Duration
 	}
 	tests := []struct {
 		name    string
@@ -25,10 +26,11 @@ func Test_calculateMaxLookBack(t *testing.T) {
 				pc: chunk.PeriodConfig{
 					ObjectType: "filesystem",
 				},
-				maxLookBackConfig: 0,
-				maxChunkAge:       1 * time.Hour,
+				maxLookBackConfig:                0,
+				maxChunkAge:                      1 * time.Hour,
+				querierBoltDBFilesResyncInterval: 5 * time.Minute,
 			},
-			want:    90 * time.Minute,
+			want:    81 * time.Minute,
 			wantErr: false,
 		},
 		{
@@ -37,8 +39,9 @@ func Test_calculateMaxLookBack(t *testing.T) {
 				pc: chunk.PeriodConfig{
 					ObjectType: "filesystem",
 				},
-				maxLookBackConfig: -1,
-				maxChunkAge:       1 * time.Hour,
+				maxLookBackConfig:                -1,
+				maxChunkAge:                      1 * time.Hour,
+				querierBoltDBFilesResyncInterval: 5 * time.Minute,
 			},
 			want:    -1,
 			wantErr: false,
@@ -49,8 +52,9 @@ func Test_calculateMaxLookBack(t *testing.T) {
 				pc: chunk.PeriodConfig{
 					ObjectType: "gcs",
 				},
-				maxLookBackConfig: -1,
-				maxChunkAge:       1 * time.Hour,
+				maxLookBackConfig:                -1,
+				maxChunkAge:                      1 * time.Hour,
+				querierBoltDBFilesResyncInterval: 5 * time.Minute,
 			},
 			want:    0,
 			wantErr: true,
@@ -61,8 +65,9 @@ func Test_calculateMaxLookBack(t *testing.T) {
 				pc: chunk.PeriodConfig{
 					ObjectType: "filesystem",
 				},
-				maxLookBackConfig: 1 * time.Hour,
-				maxChunkAge:       1 * time.Hour,
+				maxLookBackConfig:                1 * time.Hour,
+				maxChunkAge:                      1 * time.Hour,
+				querierBoltDBFilesResyncInterval: 5 * time.Minute,
 			},
 			want:    0,
 			wantErr: true,
@@ -70,7 +75,7 @@ func Test_calculateMaxLookBack(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := calculateMaxLookBack(tt.args.pc, tt.args.maxLookBackConfig, tt.args.maxChunkAge)
+			got, err := calculateMaxLookBack(tt.args.pc, tt.args.maxLookBackConfig, tt.args.maxChunkAge, tt.args.querierBoltDBFilesResyncInterval)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("calculateMaxLookBack() error = %v, wantErr %v", err, tt.wantErr)
 				return

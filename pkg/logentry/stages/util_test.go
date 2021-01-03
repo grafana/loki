@@ -7,7 +7,29 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 )
+
+func newEntry(ex map[string]interface{}, lbs model.LabelSet, line string, ts time.Time) Entry {
+	if ex == nil {
+		ex = map[string]interface{}{}
+	}
+	if lbs == nil {
+		lbs = model.LabelSet{}
+	}
+	return Entry{
+		Extracted: ex,
+		Entry: api.Entry{
+			Labels: lbs,
+			Entry: logproto.Entry{
+				Timestamp: ts,
+				Line:      line,
+			},
+		},
+	}
+}
 
 // nolint
 func mustParseTime(layout, value string) time.Time {
@@ -83,11 +105,29 @@ func TestConvertDateLayout(t *testing.T) {
 		timestamp string
 		expected  time.Time
 	}{
-		"custom layout with year": {
+		"custom layout with short year": {
+			"06 Jan 02 15:04:05",
+			nil,
+			"19 Jul 15 01:02:03",
+			time.Date(2019, 7, 15, 1, 2, 3, 0, time.UTC),
+		},
+		"custom layout with long year": {
 			"2006 Jan 02 15:04:05",
 			nil,
 			"2019 Jul 15 01:02:03",
 			time.Date(2019, 7, 15, 1, 2, 3, 0, time.UTC),
+		},
+		"custom layout with short year and location": {
+			"06 Jan 02 15:04:05",
+			location,
+			"19 Jul 15 01:02:03",
+			time.Date(2019, 7, 15, 1, 2, 3, 0, location),
+		},
+		"custom layout with long year and location": {
+			"2006 Jan 02 15:04:05",
+			location,
+			"2019 Jul 15 01:02:03",
+			time.Date(2019, 7, 15, 1, 2, 3, 0, location),
 		},
 		"custom layout without year": {
 			"Jan 02 15:04:05",
@@ -95,7 +135,7 @@ func TestConvertDateLayout(t *testing.T) {
 			"Jul 15 01:02:03",
 			time.Date(time.Now().Year(), 7, 15, 1, 2, 3, 0, time.UTC),
 		},
-		"custom layout with year and location": {
+		"custom layout without year and location": {
 			"Jan 02 15:04:05",
 			location,
 			"Jul 15 01:02:03",

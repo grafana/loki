@@ -9,7 +9,7 @@ type ReplicationStrategy interface {
 	// Filter out unhealthy instances and checks if there're enough instances
 	// for an operation to succeed. Returns an error if there are not enough
 	// instances.
-	Filter(instances []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration) (healthy []IngesterDesc, maxFailures int, err error)
+	Filter(instances []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) (healthy []IngesterDesc, maxFailures int, err error)
 
 	// ShouldExtendReplicaSet returns true if given an instance that's going to be
 	// added to the replica set, the replica set size should be extended by 1
@@ -25,7 +25,7 @@ type DefaultReplicationStrategy struct{}
 // - Filters out dead ingesters so the one doesn't even try to write to them.
 // - Checks there is enough ingesters for an operation to succeed.
 // The ingesters argument may be overwritten.
-func (s *DefaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration) ([]IngesterDesc, int, error) {
+func (s *DefaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]IngesterDesc, int, error) {
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
 	// than the replication factor, so use the bigger or the two.
@@ -49,8 +49,14 @@ func (s *DefaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operati
 	// This is just a shortcut - if there are not minSuccess available ingesters,
 	// after filtering out dead ones, don't even bother trying.
 	if len(ingesters) < minSuccess {
-		err := fmt.Errorf("at least %d live replicas required, could only find %d",
-			minSuccess, len(ingesters))
+		var err error
+
+		if zoneAwarenessEnabled {
+			err = fmt.Errorf("at least %d live replicas required across different availability zones, could only find %d", minSuccess, len(ingesters))
+		} else {
+			err = fmt.Errorf("at least %d live replicas required, could only find %d", minSuccess, len(ingesters))
+		}
+
 		return nil, 0, err
 	}
 
@@ -85,8 +91,8 @@ func (r *Ring) ReplicationFactor() int {
 
 // IngesterCount is number of ingesters in the ring
 func (r *Ring) IngesterCount() int {
-	r.mtx.Lock()
+	r.mtx.RLock()
 	c := len(r.ringDesc.Ingesters)
-	r.mtx.Unlock()
+	r.mtx.RUnlock()
 	return c
 }

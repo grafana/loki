@@ -18,7 +18,8 @@ Configuration examples can be found in the [Configuration Examples](examples/) d
   - [querier_config](#querier_config)
   - [query_frontend_config](#query_frontend_config)
   - [queryrange_config](#queryrange_config)
-  - [`frontend_worker_config`](#frontend_worker_config)
+  - [ruler_config](#ruler_config)
+  - [frontend_worker_config](#frontend_worker_config)
   - [ingester_client_config](#ingester_client_config)
   - [ingester_config](#ingester_config)
   - [consul_config](#consul_config)
@@ -63,19 +64,44 @@ command line. The file is written in [YAML format](https://en.wikipedia.org/wiki
 defined by the scheme below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
-Generic placeholders are defined as follows:
+### Use environment variables in the configuration
 
-* `<boolean>` : a boolean that can take the values `true` or `false`
-* `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
-* `<duration>` : a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
-* `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
-* `<labelvalue>` : a string of unicode characters
-* `<filename>` : a valid path relative to current working directory or an absolute path.
-* `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
-* `<string>` : a regular string
-* `<secret>` : a regular string that is a secret, such as a password
+> **Note:** This feature is only available in Loki 2.1+.
 
-Supported contents and default values of `loki.yaml`:
+You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
+To do this, use:
+
+```
+${VAR}
+```
+
+Where VAR is the name of the environment variable.
+
+Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
+
+To specify a default value, use:
+
+```
+${VAR:default_value}
+```
+
+Where default_value is the value to use if the environment variable is undefined.
+
+### Generic placeholders:
+
+- `<boolean>` : a boolean that can take the values `true` or `false`
+- `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
+- `<duration>` : a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
+- `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
+- `<labelvalue>` : a string of unicode characters
+- `<filename>` : a valid path relative to current working directory or an absolute path.
+- `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
+- `<string>` : a regular string
+- `<secret>` : a regular string that is a secret, such as a password
+
+### Supported contents and default values of `loki.yaml`:
 
 ```yaml
 # The module to run Loki with. Supported values
@@ -102,6 +128,9 @@ Supported contents and default values of `loki.yaml`:
 # The queryrange_config configures the query splitting and caching in the Loki
 # query-frontend.
 [query_range: <queryrange_config>]
+
+# The ruler_config configures the Loki ruler.
+[ruler: <ruler_config>]
 
 # Configures how the distributor will connect to ingesters. Only appropriate
 # when running all modules, the distributor, or the querier.
@@ -197,7 +226,7 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 
 # Base path to serve all API routes from (e.g., /v1/).
 # CLI flag: -server.path-prefix
-[http_path_prefix: <string>]
+[http_prefix: <string> | default = "/api/prom"]
 ```
 
 ## distributor_config
@@ -292,6 +321,10 @@ The query_frontend_config configures the Loki query-frontend.
 # Set to < 0 to enable on all queries.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
+
+# URL of querier for tail proxy.
+# CLI flag: -frontend.tail-proxy-url
+[tail_proxy_url: <string> | default = ""]
 ```
 
 ## queryrange_config
@@ -306,6 +339,7 @@ The queryrange_config configures the query splitting and caching in the Loki que
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+# Deprecated: Split queries by day and execute in parallel. Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
 [split_queries_by_day: <boolean> | default = false]
 
@@ -332,7 +366,339 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = false]
 ```
 
-## `frontend_worker_config`
+## ruler_config
+
+The `ruler_config` configures the Loki ruler.
+
+```yaml
+# URL of alerts return path.
+# CLI flag: -ruler.external.url
+[external_url: <url> | default = ]
+
+ruler_client:
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -ruler.client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -ruler.client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -ruler.client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -ruler.client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
+# How frequently to evaluate rules
+# CLI flag: -ruler.evaluation-interval
+[evaluation_interval: <duration> | default = 1m]
+
+# How frequently to poll for rule changes
+# CLI flag: -ruler.poll-interval
+[poll_interval: <duration> | default = 1m]
+
+storage:
+  # Method to use for backend rule storage (azure, gcs, s3, swift, local)
+  # CLI flag: -ruler.storage.type
+  [type: <string> ]
+
+  azure:
+    # Azure Cloud environment. Supported values are: AzureGlobal,
+    # AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.
+    # CLI flag: -ruler.storage.azure.environment
+    [environment: <string> | default = "AzureGlobal"]
+
+    # Name of the blob container used to store chunks. This container must be
+    # created before running cortex.
+    # CLI flag: -ruler.storage.azure.container-name
+    [container_name: <string> | default = "cortex"]
+
+    # The Microsoft Azure account name to be used
+    # CLI flag: -ruler.storage.azure.account-name
+    [account_name: <string> | default = ""]
+
+    # The Microsoft Azure account key to use.
+    # CLI flag: -ruler.storage.azure.account-key
+    [account_key: <string> | default = ""]
+
+    # Preallocated buffer size for downloads.
+    # CLI flag: -ruler.storage.azure.download-buffer-size
+    [download_buffer_size: <int> | default = 512000]
+
+    # Preallocated buffer size for uploads.
+    # CLI flag: -ruler.storage.azure.upload-buffer-size
+    [upload_buffer_size: <int> | default = 256000]
+
+    # Number of buffers used to used to upload a chunk.
+    # CLI flag: -ruler.storage.azure.download-buffer-count
+    [upload_buffer_count: <int> | default = 1]
+
+    # Timeout for requests made against azure blob storage.
+    # CLI flag: -ruler.storage.azure.request-timeout
+    [request_timeout: <duration> | default = 30s]
+
+    # Number of retries for a request which times out.
+    # CLI flag: -ruler.storage.azure.max-retries
+    [max_retries: <int> | default = 5]
+
+    # Minimum time to wait before retrying a request.
+    # CLI flag: -ruler.storage.azure.min-retry-delay
+    [min_retry_delay: <duration> | default = 10ms]
+
+    # Maximum time to wait before retrying a request.
+    # CLI flag: -ruler.storage.azure.max-retry-delay
+    [max_retry_delay: <duration> | default = 500ms]
+
+  gcs:
+    # Name of GCS bucket to put chunks in.
+    # CLI flag: -ruler.storage.gcs.bucketname
+    [bucket_name: <string> | default = ""]
+
+    # The size of the buffer that GCS client for each PUT request. 0 to disable
+    # buffering.
+    # CLI flag: -ruler.storage.gcs.chunk-buffer-size
+    [chunk_buffer_size: <int> | default = 0]
+
+    # The duration after which the requests to GCS should be timed out.
+    # CLI flag: -ruler.storage.gcs.request-timeout
+    [request_timeout: <duration> | default = 0s]
+
+  s3:
+    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
+    # specified as a host, proper endpoint will be deduced. Use
+    # inmemory:///<bucket-name> to use a mock in-memory implementation.
+    # CLI flag: -ruler.storage.s3.url
+    [s3: <url> | default = ]
+
+    # Set this to `true` to force the request to use path-style addressing.
+    # CLI flag: -ruler.storage.s3.force-path-style
+    [s3forcepathstyle: <boolean> | default = false]
+
+    # Comma separated list of bucket names to evenly distribute chunks over.
+    # Overrides any buckets specified in s3.url flag
+    # CLI flag: -ruler.storage.s3.buckets
+    [bucketnames: <string> | default = ""]
+
+    # S3 Endpoint to connect to.
+    # CLI flag: -ruler.storage.s3.endpoint
+    [endpoint: <string> | default = ""]
+
+    # AWS region to use.
+    # CLI flag: -ruler.storage.s3.region
+    [region: <string> | default = ""]
+
+    # AWS Access Key ID
+    # CLI flag: -ruler.storage.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # AWS Secret Access Key
+    # CLI flag: -ruler.storage.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # Disable https on S3 connection.
+    # CLI flag: -ruler.storage.s3.insecure
+    [insecure: <boolean> | default = false]
+
+    # Enable AES256 AWS server-side encryption
+    # CLI flag: -ruler.storage.s3.sse-encryption
+    [sse_encryption: <boolean> | default = false]
+
+    http_config:
+      # The maximum amount of time an idle connection will be held open.
+      # CLI flag: -ruler.storage.s3.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # If non-zero, specifies the amount of time to wait for a server's
+      # response headers after fully writing the request.
+      # CLI flag: -ruler.storage.s3.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 0s]
+
+      # Set to false to skip verifying the certificate chain and hostname.
+      # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+  swift:
+    # Openstack authentication URL.
+    # CLI flag: -ruler.storage.swift.auth-url
+    [auth_url: <string> | default = ""]
+
+    # Openstack username for the api.
+    # CLI flag: -ruler.storage.swift.username
+    [username: <string> | default = ""]
+
+    # Openstack user's domain name.
+    # CLI flag: -ruler.storage.swift.user-domain-name
+    [user_domain_name: <string> | default = ""]
+
+    # Openstack user's domain ID.
+    # CLI flag: -ruler.storage.swift.user-domain-id
+    [user_domain_id: <string> | default = ""]
+
+    # Openstack user ID for the API.
+    # CLI flag: -ruler.storage.swift.user-id
+    [user_id: <string> | default = ""]
+
+    # Openstack API key.
+    # CLI flag: -ruler.storage.swift.password
+    [password: <string> | default = ""]
+
+    # Openstack user's domain ID.
+    # CLI flag: -ruler.storage.swift.domain-id
+    [domain_id: <string> | default = ""]
+
+    # Openstack user's domain name.
+    # CLI flag: -ruler.storage.swift.domain-name
+    [domain_name: <string> | default = ""]
+
+    # Openstack project ID (v2,v3 auth only).
+    # CLI flag: -ruler.storage.swift.project-id
+    [project_id: <string> | default = ""]
+
+    # Openstack project name (v2,v3 auth only).
+    # CLI flag: -ruler.storage.swift.project-name
+    [project_name: <string> | default = ""]
+
+    # ID of the project's domain (v3 auth only), only needed if it differs the
+    # from user domain.
+    # CLI flag: -ruler.storage.swift.project-domain-id
+    [project_domain_id: <string> | default = ""]
+
+    # Name of the project's domain (v3 auth only), only needed if it differs
+    # from the user domain.
+    # CLI flag: -ruler.storage.swift.project-domain-name
+    [project_domain_name: <string> | default = ""]
+
+    # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
+    # auth only)
+    # CLI flag: -ruler.storage.swift.region-name
+    [region_name: <string> | default = ""]
+
+    # Name of the Swift container to put chunks in.
+    # CLI flag: -ruler.storage.swift.container-name
+    [container_name: <string> | default = "cortex"]
+
+  local:
+    # Directory to scan for rules
+    # CLI flag: -ruler.storage.local.directory
+    [directory: <string> | default = ""]
+
+# File path to store temporary rule files
+# CLI flag: -ruler.rule-path
+[rule_path: <string> | default = "/rules"]
+
+# Comma-separated list of Alertmanager URLs to send notifications to.
+# Each Alertmanager URL is treated as a separate group in the configuration.
+# Multiple Alertmanagers in HA per group can be supported by using DNS
+# resolution via -ruler.alertmanager-discovery.
+# CLI flag: -ruler.alertmanager-url
+[alertmanager_url: <string> | default = ""]
+
+# Use DNS SRV records to discover Alertmanager hosts.
+# CLI flag: -ruler.alertmanager-discovery
+[enable_alertmanager_discovery: <boolean> | default = false]
+
+# How long to wait between refreshing DNS resolutions of Alertmanager hosts.
+# CLI flag: -ruler.alertmanager-refresh-interval
+[alertmanager_refresh_interval: <duration> | default = 1m]
+
+# If enabled, then requests to Alertmanager use the v2 API.
+# CLI flag: -ruler.alertmanager-use-v2
+[enable_alertmanager_v2: <boolean> | default = false]
+
+# Capacity of the queue for notifications to be sent to the Alertmanager.
+# CLI flag: -ruler.notification-queue-capacity
+[notification_queue_capacity: <int> | default = 10000]
+
+# HTTP timeout duration when sending notifications to the Alertmanager.
+# CLI flag: -ruler.notification-timeout
+[notification_timeout: <duration> | default = 10s]
+
+# Max time to tolerate outage for restoring "for" state of alert.
+# CLI flag: -ruler.for-outage-tolerance
+[for_outage_tolerance: <duration> | default = 1h]
+
+# Minimum duration between alert and restored "for" state. This is maintained
+# only for alerts with configured "for" time greater than the grace period.
+# CLI flag: -ruler.for-grace-period
+[for_grace_period: <duration> | default = 10m]
+
+# Minimum amount of time to wait before resending an alert to Alertmanager.
+# CLI flag: -ruler.resend-delay
+[resend_delay: <duration> | default = 1m]
+
+# Distribute rule evaluation using ring backend.
+# CLI flag: -ruler.enable-sharding
+[enable_sharding: <boolean> | default = false]
+
+# Time to spend searching for a pending ruler when shutting down.
+# CLI flag: -ruler.search-pending-for
+[search_pending_for: <duration> | default = 5m]
+
+ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -ruler.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -ruler.ring.prefix
+    [prefix: <string> | default = "rulers/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: ruler.ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: ruler.ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -ruler.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -ruler.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -ruler.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -ruler.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring.
+  # CLI flag: -ruler.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 5s]
+
+  # The heartbeat timeout after which rulers are considered unhealthy within the
+  # ring.
+  # CLI flag: -ruler.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # Number of tokens for each ingester.
+  # CLI flag: -ruler.ring.num-tokens
+  [num_tokens: <int> | default = 128]
+
+# Period with which to attempt to flush rule groups.
+# CLI flag: -ruler.flush-period
+[flush_period: <duration> | default = 1m]
+
+# Enable the Ruler API.
+# CLI flag: -experimental.ruler.enable-api
+[enable_api: <boolean> | default = false]
+```
+
+## frontend_worker_config
 
 The `frontend_worker_config` configures the worker - running within the Loki querier - picking up and executing queries enqueued by the query-frontend.
 
@@ -1072,9 +1438,14 @@ memcached_client:
   [consistent_hash: <bool>]
 
 redis:
-  # Redis service endpoint to use when caching chunks. If empty, no redis will be used.
+  # Redis Server endpoint to use for caching. A comma-separated list of endpoints
+  # for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
   # CLI flag: -<prefix>.redis.endpoint
   [endpoint: <string>]
+
+  # Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.
+  # CLI flag: -<prefix>.redis.master-name
+  [master_name: <string>]
 
   # Maximum time to wait before giving up on redis requests.
   # CLI flag: -<prefix>.redis.timeout
@@ -1084,13 +1455,13 @@ redis:
   # CLI flag: -<prefix>.redis.expiration
   [expiration: <duration> | default = 0s]
 
-  # Maximum number of idle connections in pool.
-  # CLI flag: -<prefix>.redis.max-idle-conns
-  [max_idle_conns: <int> | default = 80]
+  # Database index.
+  # CLI flag: -<prefix>.redis.db
+  [db: <int>]
 
-  # Maximum number of active connections in pool.
-  # CLI flag: -<prefix>.redis.max-active-conns
-  [max_active_conns: <int> | default = 0]
+  # Maximum number of connections in the pool.
+  # CLI flag: -<prefix>.redis.pool-size
+  [pool_size: <int> | default = 0]
 
   # Password to use when connecting to redis.
   # CLI flag: -<prefix>.redis.password
@@ -1099,6 +1470,16 @@ redis:
   # Enables connecting to redis with TLS.
   # CLI flag: -<prefix>.redis.enable-tls
   [enable_tls: <boolean> | default = false]
+
+  # Close connections after remaining idle for this duration.
+  # If the value is zero, then idle connections are not closed.
+  # CLI flag: -<prefix>.redis.idle-timeout
+  [idle_timeout: <duration> | default = 0s]
+
+  # Close connections older than this duration. If the value is zero, then
+  # the pool does not close connections based on age.
+  # CLI flag: -<prefix>.redis.max-connection-age
+  [max_connection_age: <duration> | default = 0s]
 
 fifocache:
   # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
@@ -1246,7 +1627,7 @@ logs in Loki.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <string> | default = none ]
 
-# Maximum number of log entries that will be returned for a query. 0 to disable.
+# Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]
 
@@ -1269,6 +1650,11 @@ logs in Loki.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 
+# Limit the maximum of unique series that is returned by a metric query.
+# When the limit is reached an error is returned.
+# CLI flag: -querier.max-query-series
+[max_query_series: <int> | default = 500]
+
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
@@ -1284,6 +1670,10 @@ logs in Loki.
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.reload-period (runtime_config.period in YAML).
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
+
+# Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.
+# CLI flag: -frontend.max-cache-freshness
+[max_cache_freshness_per_query: <duration> | default = 1m]
 ```
 
 ### grpc_client_config
@@ -1498,3 +1888,4 @@ multi_kv_config:
     mirror-enabled: false
     primary: consul
 ```
+### Generic placeholders

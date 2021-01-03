@@ -1,4 +1,6 @@
-# Fluent Bit Loki chart
+# ⚠️  DEPRECATED - Fluent Bit Loki chart
+
+This chart was moved to <https://github.com/grafana/helm-charts>.
 
 This chart install the Fluent Bit application to ship logs to Loki. It defines daemonset on a [Kubernetes](http://kubernetes.io) cluster using the [Helm](https://helm.sh) package manager.
 
@@ -83,6 +85,8 @@ For more details, read the [Fluent Bit documentation](../../../cmd/fluent-bit/RE
 | `config.loglevel`        | the Fluent Bit log level (debug,info,warn,error).                                                  | `warn`                           |
 | `config.lineFormat`      | The line format to use to send a record (json/key_value)                                           | `json`                           |
 | `config.k8sLoggingParser`| Allow Kubernetes Pods to suggest a pre-defined Parser. See [Official Fluent Bit documentation](https://docs.fluentbit.io/manual/filter/kubernetes#kubernetes-annotations).                                                                                      | `Off`                           |
+| `config.k8sLoggingExclude`| Allow Kubernetes Pods to exclude their logs from the log processor. See [Official Fluent Bit documentation](https://docs.fluentbit.io/manual/pipeline/filters/kubernetes)                                                                                             | `Off`
+| `config.memBufLimit`     | Override the default  Mem_Buf_Limit [Official Fluent Bit documentation](https://docs.fluentbit.io/manual/administration/backpressure#mem_buf_limit) | `5MB`
 | `config.removeKeys`      | The list of key to remove from each record                                                         | `[removeKeys,stream]`            |
 | `config.labels`          | A set of labels to send for every log                                                              | `'{job="fluent-bit"}'`           |
 | `config.autoKubernetesLabels` | If set to true, it will add all Kubernetes labels to Loki labels                                   | `false`                          |

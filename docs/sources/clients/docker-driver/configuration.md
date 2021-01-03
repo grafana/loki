@@ -6,6 +6,10 @@ title: Configuration
 The Docker daemon on each machine has a default logging driver and
 each container will use the default driver unless configured otherwise.
 
+## Installation
+
+Before configuring the plugin, [install or upgrade the Loki Docker Driver Client](../../docker-driver/)
+
 ## Change the logging driver for a container
 
 The `docker run` command can be configured to use a different logging driver
@@ -26,7 +30,7 @@ docker run --log-driver=loki \
 ```
 
 > **Note**: The Loki logging driver still uses the json-log driver in combination with sending logs to Loki, this is mainly useful to keep the `docker logs` command working.
-> You can adjust file size and rotation using the respective log option `max-size` and `max-file`.
+> You can adjust file size and rotation using the respective log option `max-size` and `max-file`. Keep in mind that default values for these options are not taken from json-log configuration.
 > You can deactivate this behavior by setting the log option `no-file` to true.
 
 ## Change the default logging driver
@@ -99,7 +103,7 @@ Once deployed, the Grafana service will send its logs to Loki.
 
 ## Labels
 
-Loki can received a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector](../../logql#log-stream-selector).
+Loki can received a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector](../../../logql/#log-stream-selector).
 
 By default, the Docker driver will add the following labels to each log line:
 
@@ -198,9 +202,9 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-min-backoff`              |    No     |          `100ms`           | The minimum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
 | `loki-max-backoff`              |    No     |           `10s`            | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
 | `loki-retries`                  |    No     |            `10`            | The maximum amount of retries for a log batch.                                                                                                                                                                                                                                |
-| `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/master/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels. [see documentation](../promtail/stages/)              |
-| `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see](#pipeline-stages) and  [see documentation](../promtail/stages/)                                                                                                                                                   |
-| `loki-relabel-config`           |    No     |                            | A [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) allowing you to rename labels [see](#relabeling)                                                                                            |
+| `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/master/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels, [see associated documentation](../../promtail/stages/). |
+| `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see pipeline stages](#pipeline-stages) and [associated documentation](../../promtail/stages/).                                                                                                                         |
+| `loki-relabel-config`           |    No     |                            | A [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) allowing you to rename labels [see relabeling](#relabeling).                                                                                |
 | `loki-tenant-id`                |    No     |                            | Set the tenant id (http header`X-Scope-OrgID`) when sending logs to Loki. It can be overrides by a pipeline stage.                                                                                                                                                            |
 | `loki-tls-ca-file`              |    No     |                            | Set the path to a custom certificate authority.                                                                                                                                                                                                                               |
 | `loki-tls-cert-file`            |    No     |                            | Set the path to a client certificate file.                                                                                                                                                                                                                                    |

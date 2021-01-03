@@ -10,10 +10,10 @@ and how to scrape logs from files.
 - [Configuring Promtail](#configuring-promtail)
   - [Printing Promtail Config At Runtime](#printing-promtail-config-at-runtime)
   - [Configuration File Reference](#configuration-file-reference)
-  - [server_config](#server_config)
-  - [client_config](#client_config)
-  - [position_config](#position_config)
-  - [scrape_config](#scrape_config)
+  - [server](#server)
+  - [clients](#clients)
+  - [positions](#positions)
+  - [scrape_configs](#scrape_configs)
     - [pipeline_stages](#pipeline_stages)
       - [docker](#docker)
       - [cri](#cri)
@@ -29,12 +29,12 @@ and how to scrape logs from files.
         - [gauge](#gauge)
         - [histogram](#histogram)
       - [tenant](#tenant)
-    - [journal_config](#journal_config)
-    - [syslog_config](#syslog_config)
+    - [journal](#journal)
+    - [syslog](#syslog)
       - [Available Labels](#available-labels)
-    - [loki_push_api_config](#loki_push_api_config)
-    - [relabel_config](#relabel_config)
-    - [static_config](#static_config)
+    - [loki_push_api](#loki_push_api)
+    - [relabel_configs](#relabel_configs)
+    - [static_configs](#static_configs)
     - [file_sd_config](#file_sd_config)
     - [kubernetes_sd_config](#kubernetes_sd_config)
       - [`node`](#node)
@@ -80,20 +80,43 @@ For more detailed information on configuring how to discover and scrape logs fro
 targets, see [Scraping](../scraping/). For more information on transforming logs
 from scraped targets, see [Pipelines](../pipelines/).
 
-Generic placeholders are defined as follows:
+### Use environment variables in the configuration
 
-* `<boolean>`: a boolean that can take the values `true` or `false`
-* `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
-* `<duration>`: a duration matching the regular expression `[0-9]+(ms|[smhdwy])`
-* `<labelname>`: a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
-* `<labelvalue>`: a string of Unicode characters
-* `<filename>`: a valid path relative to current working directory or an
+You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
+To do this, use:
+
+```
+${VAR}
+```
+
+Where VAR is the name of the environment variable.
+
+Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
+
+To specify a default value, use:
+
+```
+${VAR:default_value}
+```
+
+Where default_value is the value to use if the environment variable is undefined.
+
+### Generic placeholders:
+
+- `<boolean>`: a boolean that can take the values `true` or `false`
+- `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
+- `<duration>`: a duration matching the regular expression `[0-9]+(ms|[smhdwy])`
+- `<labelname>`: a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
+- `<labelvalue>`: a string of Unicode characters
+- `<filename>`: a valid path relative to current working directory or an
     absolute path.
-* `<host>`: a valid string consisting of a hostname or IP followed by an optional port number
-* `<string>`: a regular string
-* `<secret>`: a regular string that is a secret, such as a password
+- `<host>`: a valid string consisting of a hostname or IP followed by an optional port number
+- `<string>`: a regular string
+- `<secret>`: a regular string that is a secret, such as a password
 
-Supported contents and default values of `config.yaml`:
+### Supported contents and default values of `config.yaml`:
 
 ```yaml
 # Configures the server for Promtail.
@@ -119,9 +142,9 @@ scrape_configs:
 [target_config: <target_config>]
 ```
 
-## server_config
+## server
 
-The `server_config` block configures Promtail's behavior as an HTTP server:
+The `server` block configures Promtail's behavior as an HTTP server:
 
 ```yaml
 # Disable the HTTP and GRPC server.
@@ -174,9 +197,9 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 [health_check_target: <bool> | default = true]
 ```
 
-## client_config
+## clients
 
-The `client_config` block configures how Promtail connects to an instance of
+The `clients` block configures how Promtail connects to an instance of
 Loki:
 
 ```yaml
@@ -259,12 +282,12 @@ backoff_config:
 # Use map like {"foo": "bar"} to add a label foo with
 # value bar.
 # These can also be specified from command line:
-# -client.external-labels=k1=v1,k2=v2 
+# -client.external-labels=k1=v1,k2=v2
 # (or --client.external-labels depending on your OS)
-# labels supplied by the command line are applied 
+# labels supplied by the command line are applied
 # to all clients configured in the `clients` section.
 # NOTE: values defined in the config file will replace values
-# defined on the command line for a given client if the 
+# defined on the command line for a given client if the
 # label keys are the same.
 external_labels:
   [ <labelname>: <labelvalue> ... ]
@@ -273,9 +296,9 @@ external_labels:
 [timeout: <duration> | default = 10s]
 ```
 
-## position_config
+## positions
 
-The `position_config` block configures where Promtail will save a file
+The `positions` block configures where Promtail will save a file
 indicating how far it has read into a file. It is needed for when Promtail
 is restarted to allow it to continue from where it left off.
 
@@ -290,18 +313,14 @@ is restarted to allow it to continue from where it left off.
 [ignore_invalid_yaml: <boolean> | default = false]
 ```
 
-## scrape_config
+## scrape_configs
 
-The `scrape_config` block configures how Promtail can scrape logs from a series
+The `scrape_configs` block configures how Promtail can scrape logs from a series
 of targets using a specified discovery method:
 
 ```yaml
 # Name to identify this scrape config in the Promtail UI.
 job_name: <string>
-
-# Describes how to parse log lines. Supported values [cri docker raw]
-# Deprecated in favor of pipeline_stages using the cri or docker stages.
-[entry_parser: <string> | default = "docker"]
 
 # Describes how to transform logs from targets.
 [pipeline_stages: <pipeline_stages>]
@@ -336,10 +355,9 @@ kubernetes_sd_configs:
 
 ### pipeline_stages
 
-The [pipeline](../pipelines/) stages (`pipeline_stages`) is used to transform
-log entries and their labels after discovery and consists of a list of any of the items listed below.
+[Pipeline](../pipelines/) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
-Stages serve several purposes, more detail can be found [here](../pipelines/), however generally you extract data with `regex` or `json` stages into a temporary map which can then be use as `labels` or `output` or any of the other stages aside from `docker` and `cri` which are explained in more detail below.
+In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
 ```yaml
 - [
@@ -680,9 +698,9 @@ tenant:
   [ value: <string> ]
 ```
 
-### journal_config
+### journal
 
-The `journal_config` block configures reading from the systemd journal from
+The `journal` block configures reading from the systemd journal from
 Promtail. Requires a build of Promtail that has journal support _enabled_. If
 using the AMD64 Docker image, this is enabled by default.
 
@@ -708,9 +726,9 @@ labels:
 
 **Note**: priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
 
-### syslog_config
+### syslog
 
-The `syslog_config` block configures a syslog listener allowing users to push
+The `syslog` block configures a syslog listener allowing users to push
 logs to promtail with the syslog protocol.
 Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
 with and without octet counting.
@@ -747,27 +765,32 @@ label_structured_data: <bool>
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
+
+# Whether promtail should pass on the timestamp from the incoming syslog message.
+# When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
+# Default is false
+use_incoming_timestamp: <bool>
 ```
 
 #### Available Labels
 
-* `__syslog_connection_ip_address`: The remote IP address.
-* `__syslog_connection_hostname`: The remote hostname.
-* `__syslog_message_severity`: The [syslog severity](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L184).
-* `__syslog_message_facility`: The [syslog facility](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L235) and `syslog(3)`.
-* `__syslog_message_hostname`: The [hostname](https://tools.ietf.org/html/rfc5424#section-6.2.4) parsed from the message.
-* `__syslog_message_app_name`: The [app-name field](https://tools.ietf.org/html/rfc5424#section-6.2.5) parsed from the message.
-* `__syslog_message_proc_id`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
-* `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
-* `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
+- `__syslog_connection_ip_address`: The remote IP address.
+- `__syslog_connection_hostname`: The remote hostname.
+- `__syslog_message_severity`: The [syslog severity](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L184).
+- `__syslog_message_facility`: The [syslog facility](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L235) and `syslog(3)`.
+- `__syslog_message_hostname`: The [hostname](https://tools.ietf.org/html/rfc5424#section-6.2.4) parsed from the message.
+- `__syslog_message_app_name`: The [app-name field](https://tools.ietf.org/html/rfc5424#section-6.2.5) parsed from the message.
+- `__syslog_message_proc_id`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
+- `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
+- `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
 
-### loki_push_api_config
+### loki_push_api
 
-The `loki_push_api_config` block configures Promtail to expose a [Loki push API](../../../api#post-lokiapiv1push) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API](../../../api#post-lokiapiv1push) server.
 
-Each job configured with a `loki_push_api_config` will expose this API and will require a separate port.
+Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
-Note the `server` configuration is the same as [server_config](#server_config)
+Note the `server` configuration is the same as [server](#server)
 
 
 
@@ -786,7 +809,7 @@ labels:
 
 See [Example Push Config](#example-push-config)
 
-### relabel_config
+### relabel_configs
 
 Relabeling is a powerful tool to dynamically rewrite the label set of a target
 before it gets scraped. Multiple relabeling steps can be configured per scrape
@@ -845,27 +868,27 @@ use `.*<regex>.*`.
 
 `<relabel_action>` determines the relabeling action to take:
 
-* `replace`: Match `regex` against the concatenated `source_labels`. Then, set
+- `replace`: Match `regex` against the concatenated `source_labels`. Then, set
   `target_label` to `replacement`, with match group references
   (`${1}`, `${2}`, ...) in `replacement` substituted by their value. If `regex`
   does not match, no replacement takes place.
-* `keep`: Drop targets for which `regex` does not match the concatenated `source_labels`.
-* `drop`: Drop targets for which `regex` matches the concatenated `source_labels`.
-* `hashmod`: Set `target_label` to the `modulus` of a hash of the concatenated `source_labels`.
-* `labelmap`: Match `regex` against all label names. Then copy the values of the matching labels
+- `keep`: Drop targets for which `regex` does not match the concatenated `source_labels`.
+- `drop`: Drop targets for which `regex` matches the concatenated `source_labels`.
+- `hashmod`: Set `target_label` to the `modulus` of a hash of the concatenated `source_labels`.
+- `labelmap`: Match `regex` against all label names. Then copy the values of the matching labels
    to label names given by `replacement` with match group references
   (`${1}`, `${2}`, ...) in `replacement` substituted by their value.
-* `labeldrop`: Match `regex` against all label names. Any label that matches will be
+- `labeldrop`: Match `regex` against all label names. Any label that matches will be
   removed from the set of labels.
-* `labelkeep`: Match `regex` against all label names. Any label that does not match will be
+- `labelkeep`: Match `regex` against all label names. Any label that does not match will be
   removed from the set of labels.
 
 Care must be taken with `labeldrop` and `labelkeep` to ensure that logs are
 still uniquely labeled once the labels are removed.
 
-### static_config
+### static_configs
 
-A `static_config` allows specifying a list of targets and a common label set
+A `static_configs` allows specifying a list of targets and a common label set
 for them.  It is the canonical way to specify static targets in a scrape
 configuration.
 
@@ -953,12 +976,12 @@ node object in the address type order of `NodeInternalIP`, `NodeExternalIP`,
 
 Available meta labels:
 
-* `__meta_kubernetes_node_name`: The name of the node object.
-* `__meta_kubernetes_node_label_<labelname>`: Each label from the node object.
-* `__meta_kubernetes_node_labelpresent_<labelname>`: `true` for each label from the node object.
-* `__meta_kubernetes_node_annotation_<annotationname>`: Each annotation from the node object.
-* `__meta_kubernetes_node_annotationpresent_<annotationname>`: `true` for each annotation from the node object.
-* `__meta_kubernetes_node_address_<address_type>`: The first address for each node address type, if it exists.
+- `__meta_kubernetes_node_name`: The name of the node object.
+- `__meta_kubernetes_node_label_<labelname>`: Each label from the node object.
+- `__meta_kubernetes_node_labelpresent_<labelname>`: `true` for each label from the node object.
+- `__meta_kubernetes_node_annotation_<annotationname>`: Each annotation from the node object.
+- `__meta_kubernetes_node_annotationpresent_<annotationname>`: `true` for each annotation from the node object.
+- `__meta_kubernetes_node_address_<address_type>`: The first address for each node address type, if it exists.
 
 In addition, the `instance` label for the node will be set to the node name
 as retrieved from the API server.
@@ -972,16 +995,16 @@ service port.
 
 Available meta labels:
 
-* `__meta_kubernetes_namespace`: The namespace of the service object.
-* `__meta_kubernetes_service_annotation_<annotationname>`: Each annotation from the service object.
-* `__meta_kubernetes_service_annotationpresent_<annotationname>`: "true" for each annotation of the service object.
-* `__meta_kubernetes_service_cluster_ip`: The cluster IP address of the service. (Does not apply to services of type ExternalName)
-* `__meta_kubernetes_service_external_name`: The DNS name of the service. (Applies to services of type ExternalName)
-* `__meta_kubernetes_service_label_<labelname>`: Each label from the service object.
-* `__meta_kubernetes_service_labelpresent_<labelname>`: `true` for each label of the service object.
-* `__meta_kubernetes_service_name`: The name of the service object.
-* `__meta_kubernetes_service_port_name`: Name of the service port for the target.
-* `__meta_kubernetes_service_port_protocol`: Protocol of the service port for the target.
+- `__meta_kubernetes_namespace`: The namespace of the service object.
+- `__meta_kubernetes_service_annotation_<annotationname>`: Each annotation from the service object.
+- `__meta_kubernetes_service_annotationpresent_<annotationname>`: "true" for each annotation of the service object.
+- `__meta_kubernetes_service_cluster_ip`: The cluster IP address of the service. (Does not apply to services of type ExternalName)
+- `__meta_kubernetes_service_external_name`: The DNS name of the service. (Applies to services of type ExternalName)
+- `__meta_kubernetes_service_label_<labelname>`: Each label from the service object.
+- `__meta_kubernetes_service_labelpresent_<labelname>`: `true` for each label of the service object.
+- `__meta_kubernetes_service_name`: The name of the service object.
+- `__meta_kubernetes_service_port_name`: Name of the service port for the target.
+- `__meta_kubernetes_service_port_protocol`: Protocol of the service port for the target.
 
 #### `pod`
 
@@ -992,26 +1015,26 @@ adding a port via relabeling.
 
 Available meta labels:
 
-* `__meta_kubernetes_namespace`: The namespace of the pod object.
-* `__meta_kubernetes_pod_name`: The name of the pod object.
-* `__meta_kubernetes_pod_ip`: The pod IP of the pod object.
-* `__meta_kubernetes_pod_label_<labelname>`: Each label from the pod object.
-* `__meta_kubernetes_pod_labelpresent_<labelname>`: `true`for each label from the pod object.
-* `__meta_kubernetes_pod_annotation_<annotationname>`: Each annotation from the pod object.
-* `__meta_kubernetes_pod_annotationpresent_<annotationname>`: `true` for each annotation from the pod object.
-* `__meta_kubernetes_pod_container_init`: `true` if the container is an [InitContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/)
-* `__meta_kubernetes_pod_container_name`: Name of the container the target address points to.
-* `__meta_kubernetes_pod_container_port_name`: Name of the container port.
-* `__meta_kubernetes_pod_container_port_number`: Number of the container port.
-* `__meta_kubernetes_pod_container_port_protocol`: Protocol of the container port.
-* `__meta_kubernetes_pod_ready`: Set to `true` or `false` for the pod's ready state.
-* `__meta_kubernetes_pod_phase`: Set to `Pending`, `Running`, `Succeeded`, `Failed` or `Unknown`
+- `__meta_kubernetes_namespace`: The namespace of the pod object.
+- `__meta_kubernetes_pod_name`: The name of the pod object.
+- `__meta_kubernetes_pod_ip`: The pod IP of the pod object.
+- `__meta_kubernetes_pod_label_<labelname>`: Each label from the pod object.
+- `__meta_kubernetes_pod_labelpresent_<labelname>`: `true`for each label from the pod object.
+- `__meta_kubernetes_pod_annotation_<annotationname>`: Each annotation from the pod object.
+- `__meta_kubernetes_pod_annotationpresent_<annotationname>`: `true` for each annotation from the pod object.
+- `__meta_kubernetes_pod_container_init`: `true` if the container is an [InitContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/)
+- `__meta_kubernetes_pod_container_name`: Name of the container the target address points to.
+- `__meta_kubernetes_pod_container_port_name`: Name of the container port.
+- `__meta_kubernetes_pod_container_port_number`: Number of the container port.
+- `__meta_kubernetes_pod_container_port_protocol`: Protocol of the container port.
+- `__meta_kubernetes_pod_ready`: Set to `true` or `false` for the pod's ready state.
+- `__meta_kubernetes_pod_phase`: Set to `Pending`, `Running`, `Succeeded`, `Failed` or `Unknown`
   in the [lifecycle](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase).
-* `__meta_kubernetes_pod_node_name`: The name of the node the pod is scheduled onto.
-* `__meta_kubernetes_pod_host_ip`: The current host IP of the pod object.
-* `__meta_kubernetes_pod_uid`: The UID of the pod object.
-* `__meta_kubernetes_pod_controller_kind`: Object kind of the pod controller.
-* `__meta_kubernetes_pod_controller_name`: Name of the pod controller.
+- `__meta_kubernetes_pod_node_name`: The name of the node the pod is scheduled onto.
+- `__meta_kubernetes_pod_host_ip`: The current host IP of the pod object.
+- `__meta_kubernetes_pod_uid`: The UID of the pod object.
+- `__meta_kubernetes_pod_controller_kind`: Object kind of the pod controller.
+- `__meta_kubernetes_pod_controller_name`: Name of the pod controller.
 
 #### `endpoints`
 
@@ -1022,19 +1045,19 @@ endpoint port, are discovered as targets as well.
 
 Available meta labels:
 
-* `__meta_kubernetes_namespace`: The namespace of the endpoints object.
-* `__meta_kubernetes_endpoints_name`: The names of the endpoints object.
-* For all targets discovered directly from the endpoints list (those not additionally inferred
+- `__meta_kubernetes_namespace`: The namespace of the endpoints object.
+- `__meta_kubernetes_endpoints_name`: The names of the endpoints object.
+- For all targets discovered directly from the endpoints list (those not additionally inferred
   from underlying pods), the following labels are attached:
-  * `__meta_kubernetes_endpoint_hostname`: Hostname of the endpoint.
-  * `__meta_kubernetes_endpoint_node_name`: Name of the node hosting the endpoint.
-  * `__meta_kubernetes_endpoint_ready`: Set to `true` or `false` for the endpoint's ready state.
-  * `__meta_kubernetes_endpoint_port_name`: Name of the endpoint port.
-  * `__meta_kubernetes_endpoint_port_protocol`: Protocol of the endpoint port.
-  * `__meta_kubernetes_endpoint_address_target_kind`: Kind of the endpoint address target.
-  * `__meta_kubernetes_endpoint_address_target_name`: Name of the endpoint address target.
-* If the endpoints belong to a service, all labels of the `role: service` discovery are attached.
-* For all targets backed by a pod, all labels of the `role: pod` discovery are attached.
+  - `__meta_kubernetes_endpoint_hostname`: Hostname of the endpoint.
+  - `__meta_kubernetes_endpoint_node_name`: Name of the node hosting the endpoint.
+  - `__meta_kubernetes_endpoint_ready`: Set to `true` or `false` for the endpoint's ready state.
+  - `__meta_kubernetes_endpoint_port_name`: Name of the endpoint port.
+  - `__meta_kubernetes_endpoint_port_protocol`: Protocol of the endpoint port.
+  - `__meta_kubernetes_endpoint_address_target_kind`: Kind of the endpoint address target.
+  - `__meta_kubernetes_endpoint_address_target_name`: Name of the endpoint address target.
+- If the endpoints belong to a service, all labels of the `role: service` discovery are attached.
+- For all targets backed by a pod, all labels of the `role: pod` discovery are attached.
 
 #### `ingress`
 
@@ -1044,15 +1067,15 @@ The address will be set to the host specified in the ingress spec.
 
 Available meta labels:
 
-* `__meta_kubernetes_namespace`: The namespace of the ingress object.
-* `__meta_kubernetes_ingress_name`: The name of the ingress object.
-* `__meta_kubernetes_ingress_label_<labelname>`: Each label from the ingress object.
-* `__meta_kubernetes_ingress_labelpresent_<labelname>`: `true` for each label from the ingress object.
-* `__meta_kubernetes_ingress_annotation_<annotationname>`: Each annotation from the ingress object.
-* `__meta_kubernetes_ingress_annotationpresent_<annotationname>`: `true` for each annotation from the ingress object.
-* `__meta_kubernetes_ingress_scheme`: Protocol scheme of ingress, `https` if TLS
+- `__meta_kubernetes_namespace`: The namespace of the ingress object.
+- `__meta_kubernetes_ingress_name`: The name of the ingress object.
+- `__meta_kubernetes_ingress_label_<labelname>`: Each label from the ingress object.
+- `__meta_kubernetes_ingress_labelpresent_<labelname>`: `true` for each label from the ingress object.
+- `__meta_kubernetes_ingress_annotation_<annotationname>`: Each annotation from the ingress object.
+- `__meta_kubernetes_ingress_annotationpresent_<annotationname>`: `true` for each annotation from the ingress object.
+- `__meta_kubernetes_ingress_scheme`: Protocol scheme of ingress, `https` if TLS
   config is set. Defaults to `http`.
-* `__meta_kubernetes_ingress_path`: Path from ingress spec. Defaults to `/`.
+- `__meta_kubernetes_ingress_path`: Path from ingress spec. Defaults to `/`.
 
 See below for the configuration options for Kubernetes discovery:
 
@@ -1123,7 +1146,7 @@ sync_period: "10s"
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../docker-driver/) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/loki/tree/master/production/helm/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config

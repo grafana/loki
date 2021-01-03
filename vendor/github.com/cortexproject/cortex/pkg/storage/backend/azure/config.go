@@ -17,7 +17,7 @@ type Config struct {
 
 // RegisterFlags registers the flags for TSDB Azure storage
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("experimental.blocks-storage.", f)
+	cfg.RegisterFlagsWithPrefix("blocks-storage.", f)
 }
 
 // RegisterFlagsWithPrefix registers the flags for TSDB Azure storage

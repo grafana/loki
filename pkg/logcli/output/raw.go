@@ -14,9 +14,9 @@ type RawOutput struct {
 	options *LogOutputOptions
 }
 
-func NewRaw (writer io.Writer, options *LogOutputOptions) LogOutput {
+func NewRaw(writer io.Writer, options *LogOutputOptions) LogOutput {
 	return &RawOutput{
-		w: writer,
+		w:       writer,
 		options: options,
 	}
 }

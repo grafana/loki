@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -47,6 +46,7 @@ var (
 )
 
 // FileTargetManager manages a set of targets.
+// nolint:golint
 type FileTargetManager struct {
 	log     log.Logger
 	quit    context.CancelFunc
@@ -75,7 +75,7 @@ func NewFileTargetManager(
 		return nil, err
 	}
 
-	config := map[string]sd_config.ServiceDiscoveryConfig{}
+	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
 		if !cfg.HasServiceDiscoveryConfig() {
 			continue
@@ -85,30 +85,6 @@ func NewFileTargetManager(
 		pipeline, err := stages.NewPipeline(log.With(logger, "component", "file_pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
 		if err != nil {
 			return nil, err
-		}
-
-		// Backwards compatibility with old EntryParser config
-		if pipeline.Size() == 0 {
-			switch cfg.EntryParser {
-			case api.CRI:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				cri, err := stages.NewCRI(logger, registerer)
-				if err != nil {
-					return nil, err
-				}
-				pipeline.AddStage(cri)
-			case api.Docker:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				docker, err := stages.NewDocker(logger, registerer)
-				if err != nil {
-					return nil, err
-				}
-				pipeline.AddStage(docker)
-			case api.Raw:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-			default:
-
-			}
 		}
 
 		// Add Source value to the static config target groups for unique identification
@@ -147,18 +123,18 @@ func NewFileTargetManager(
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
-		config[cfg.JobName] = cfg.ServiceDiscoveryConfig
+		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
 	}
 
 	go tm.run()
 	go helpers.LogError("running target manager", tm.manager.Run)
 
-	return tm, tm.manager.ApplyConfig(config)
+	return tm, tm.manager.ApplyConfig(configs)
 }
 
 func (tm *FileTargetManager) run() {
-	for targetGoups := range tm.manager.SyncCh() {
-		for jobName, groups := range targetGoups {
+	for targetGroups := range tm.manager.SyncCh() {
+		for jobName, groups := range targetGroups {
 			tm.syncers[jobName].sync(groups)
 		}
 	}
@@ -347,6 +323,7 @@ func (s *targetSyncer) stop() {
 		target.Stop()
 		delete(s.targets, key)
 	}
+	s.entryHandler.Stop()
 }
 
 func hostname() (string, error) {

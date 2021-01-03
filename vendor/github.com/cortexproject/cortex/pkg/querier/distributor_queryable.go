@@ -84,7 +84,9 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	// time range manipulation, otherwise we'll end up returning no series at all for
 	// older time ranges (while in Cortex we do ignore the start/end and always return
 	// series in ingesters).
-	if sp == nil {
+	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
+	// See: https://github.com/prometheus/prometheus/pull/8050
+	if sp == nil || sp.Func == "series" {
 		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 		if err != nil {
 			return storage.ErrSeriesSet(err)
@@ -137,8 +139,9 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 		return storage.ErrSeriesSet(err)
 	}
 
-	if len(results.Timeseries) != 0 {
-		return newTimeSeriesSeriesSet(results.Timeseries)
+	sets := []storage.SeriesSet(nil)
+	if len(results.Timeseries) > 0 {
+		sets = append(sets, newTimeSeriesSeriesSet(results.Timeseries))
 	}
 
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
@@ -156,15 +159,27 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 			return storage.ErrSeriesSet(err)
 		}
 
-		series := &chunkSeries{
+		serieses = append(serieses, &chunkSeries{
 			labels:            ls,
 			chunks:            chunks,
 			chunkIteratorFunc: q.chunkIterFn,
-		}
-		serieses = append(serieses, series)
+			mint:              minT,
+			maxt:              maxT,
+		})
 	}
 
-	return series.NewConcreteSeriesSet(serieses)
+	if len(serieses) > 0 {
+		sets = append(sets, series.NewConcreteSeriesSet(serieses))
+	}
+
+	if len(sets) == 0 {
+		return storage.EmptySeriesSet()
+	}
+	if len(sets) == 1 {
+		return sets[0]
+	}
+	// Sets need to be sorted. Both series.NewConcreteSeriesSet and newTimeSeriesSeriesSet take care of that.
+	return storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

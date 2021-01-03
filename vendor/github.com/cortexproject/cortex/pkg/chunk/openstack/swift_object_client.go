@@ -16,9 +16,8 @@ import (
 )
 
 type SwiftObjectClient struct {
-	conn      *swift.Connection
-	cfg       SwiftConfig
-	delimiter rune
+	conn *swift.Connection
+	cfg  SwiftConfig
 }
 
 // SwiftConfig is config for the Swift Chunk Client.
@@ -55,7 +54,7 @@ func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
-func NewSwiftObjectClient(cfg SwiftConfig, delimiter string) (*SwiftObjectClient, error) {
+func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
 	util.WarnExperimentalUse("OpenStack Swift Storage")
 
 	// Create a connection
@@ -83,14 +82,6 @@ func NewSwiftObjectClient(cfg SwiftConfig, delimiter string) (*SwiftObjectClient
 		c.DomainId = cfg.UserDomainID
 	}
 
-	if len(delimiter) > 1 {
-		return nil, fmt.Errorf("delimiter must be a single character but was %s", delimiter)
-	}
-	var delim rune
-	if len(delimiter) != 0 {
-		delim = []rune(delimiter)[0]
-	}
-
 	// Authenticate
 	err := c.Authenticate()
 	if err != nil {
@@ -103,9 +94,8 @@ func NewSwiftObjectClient(cfg SwiftConfig, delimiter string) (*SwiftObjectClient
 	}
 
 	return &SwiftObjectClient{
-		conn:      c,
-		cfg:       cfg,
-		delimiter: delim,
+		conn: c,
+		cfg:  cfg,
 	}, nil
 }
 
@@ -135,11 +125,19 @@ func (s *SwiftObjectClient) PutObject(ctx context.Context, objectKey string, obj
 }
 
 // List only objects from the store non-recursively
-func (s *SwiftObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
-	objs, err := s.conn.Objects(s.cfg.ContainerName, &swift.ObjectsOpts{
-		Prefix:    prefix,
-		Delimiter: s.delimiter,
-	})
+func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+	if len(delimiter) > 1 {
+		return nil, nil, fmt.Errorf("delimiter must be a single character but was %s", delimiter)
+	}
+
+	opts := &swift.ObjectsOpts{
+		Prefix: prefix,
+	}
+	if len(delimiter) > 0 {
+		opts.Delimiter = []rune(delimiter)[0]
+	}
+
+	objs, err := s.conn.Objects(s.cfg.ContainerName, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -175,8 +173,4 @@ func (s *SwiftObjectClient) DeleteObject(ctx context.Context, objectKey string) 
 		return chunk.ErrStorageObjectNotFound
 	}
 	return err
-}
-
-func (s *SwiftObjectClient) PathSeparator() string {
-	return string(s.delimiter)
 }

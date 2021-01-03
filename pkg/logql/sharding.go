@@ -8,7 +8,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
@@ -32,41 +31,32 @@ which can then take advantage of our sharded execution model.
 type ShardedEngine struct {
 	timeout        time.Duration
 	downstreamable Downstreamable
+	limits         Limits
 	metrics        *ShardingMetrics
 }
 
 // NewShardedEngine constructs a *ShardedEngine
-func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics) *ShardedEngine {
+func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits) *ShardedEngine {
 	opts.applyDefault()
 	return &ShardedEngine{
 		timeout:        opts.Timeout,
 		downstreamable: downstreamable,
 		metrics:        metrics,
+		limits:         limits,
 	}
 
 }
 
 // Query constructs a Query
-func (ng *ShardedEngine) Query(p Params, shards int) Query {
+func (ng *ShardedEngine) Query(p Params, mapped Expr) Query {
 	return &query{
 		timeout:   ng.timeout,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),
-		parse: func(ctx context.Context, query string) (Expr, error) {
-			logger := spanlogger.FromContext(ctx)
-			mapper, err := NewShardMapper(shards, ng.metrics)
-			if err != nil {
-				return nil, err
-			}
-			noop, parsed, err := mapper.Parse(query)
-			if err != nil {
-				level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", query)
-				return nil, err
-			}
-
-			level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
-			return parsed, nil
+		parse: func(_ context.Context, _ string) (Expr, error) {
+			return mapped, nil
 		},
+		limits: ng.limits,
 	}
 }
 
@@ -205,7 +195,7 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 // Evaluator returns a StepEvaluator for a given SampleExpr
 func (ev *DownstreamEvaluator) StepEvaluator(
 	ctx context.Context,
-	nextEv Evaluator,
+	nextEv SampleEvaluator,
 	expr SampleExpr,
 	params Params,
 ) (StepEvaluator, error) {

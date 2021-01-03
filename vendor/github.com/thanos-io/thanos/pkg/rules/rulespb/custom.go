@@ -6,14 +6,13 @@ package rulespb
 import (
 	"encoding/json"
 	"math/big"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 )
 
 const (
@@ -72,22 +71,22 @@ func NewAlertingRule(a *Alert) *Rule {
 	}
 }
 
-func (r *Rule) GetLabels() []storepb.Label {
+func (r *Rule) GetLabels() labels.Labels {
 	switch {
 	case r.GetRecording() != nil:
-		return r.GetRecording().Labels.Labels
+		return r.GetRecording().Labels.PromLabels()
 	case r.GetAlert() != nil:
-		return r.GetAlert().Labels.Labels
+		return r.GetAlert().Labels.PromLabels()
 	default:
 		return nil
 	}
 }
 
-func (r *Rule) SetLabels(ls []storepb.Label) {
-	var result PromLabels
+func (r *Rule) SetLabels(ls labels.Labels) {
+	var result labelpb.ZLabelSet
 
 	if len(ls) > 0 {
-		result = PromLabels{Labels: ls}
+		result = labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(ls)}
 	}
 
 	switch {
@@ -160,7 +159,7 @@ func (r1 *Rule) Compare(r2 *Rule) int {
 		return d
 	}
 
-	if d := storepb.CompareLabels(r1.GetLabels(), r2.GetLabels()); d != 0 {
+	if d := labels.Compare(r1.GetLabels(), r2.GetLabels()); d != 0 {
 		return d
 	}
 
@@ -184,6 +183,25 @@ func (r *RuleGroups) MarshalJSON() ([]byte, error) {
 	}
 	type plain RuleGroups
 	return json.Marshal((*plain)(r))
+}
+
+// Compare compares rule group x and y and returns:
+//
+//   < 0 if x < y   if rule group r1 is not equal and lexically before rule group r2
+//     0 if x == y  if rule group r1 is logically equal to r2 (r1 and r2 are the "same" rule groups)
+//   > 0 if x > y   if rule group r1 is not equal and lexically after rule group r2
+func (r1 *RuleGroup) Compare(r2 *RuleGroup) int {
+	return strings.Compare(r1.Key(), r2.Key())
+}
+
+// Key returns the group key similar resembling Prometheus logic.
+// See https://github.com/prometheus/prometheus/blob/869f1bc587e667b79721852d5badd9f70a39fc3f/rules/manager.go#L1062-L1065
+func (r *RuleGroup) Key() string {
+	if r == nil {
+		return ""
+	}
+
+	return r.File + ";" + r.Name
 }
 
 func (m *Rule) UnmarshalJSON(entry []byte) error {
@@ -239,6 +257,15 @@ func (m *Rule) MarshalJSON() ([]byte, error) {
 		Alert: a,
 		Type:  RuleAlertingType,
 	})
+}
+
+func (r *RuleGroup) MarshalJSON() ([]byte, error) {
+	if r.Rules == nil {
+		// Ensure that empty slices are marshaled as '[]' and not 'null'.
+		r.Rules = make([]*Rule, 0)
+	}
+	type plain RuleGroup
+	return json.Marshal((*plain)(r))
 }
 
 func (x *AlertState) UnmarshalJSON(entry []byte) error {
@@ -300,20 +327,4 @@ func (a1 *Alert) Compare(a2 *Alert) int {
 	}
 
 	return 0
-}
-
-func (m *PromLabels) UnmarshalJSON(entry []byte) error {
-	lbls := labels.Labels{}
-	if err := lbls.UnmarshalJSON(entry); err != nil {
-		return errors.Wrapf(err, "labels: labels field unmarshal: %v", string(entry))
-	}
-	m.Labels = storepb.PromLabelsToLabels(lbls)
-	sort.Slice(m.Labels, func(i, j int) bool {
-		return m.Labels[i].Name < m.Labels[j].Name
-	})
-	return nil
-}
-
-func (m *PromLabels) MarshalJSON() ([]byte, error) {
-	return storepb.LabelsToPromLabels(m.Labels).MarshalJSON()
 }

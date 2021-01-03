@@ -39,6 +39,7 @@ type Limits struct {
 
 	// Querier enforced limits.
 	MaxChunksPerQuery          int           `yaml:"max_chunks_per_query"`
+	MaxQuerySeries             int           `yaml:"max_query_series"`
 	MaxQueryLength             time.Duration `yaml:"max_query_length"`
 	MaxQueryParallelism        int           `yaml:"max_query_parallelism"`
 	CardinalityLimit           int           `yaml:"cardinality_limit"`
@@ -75,6 +76,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
+	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series returned by a metric query. When the limit is reached an error is returned.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
@@ -202,6 +204,11 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxQueryLength
+}
+
+// MaxQueryLength returns the limit of the series of metric queries.
+func (o *Overrides) MaxQuerySeries(userID string) int {
+	return o.getOverridesForUser(userID).MaxQuerySeries
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the

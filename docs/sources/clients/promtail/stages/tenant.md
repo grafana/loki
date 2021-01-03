@@ -77,7 +77,7 @@ Given the following log line:
 The pipeline would:
 
 1. Decode the JSON log
-2. Set the label `app="api"`
-3. Process the `match` stage checking if the `{app="api"}` selector matches
+1. Set the label `app="api"`
+1. Process the `match` stage checking if the `{app="api"}` selector matches
    and - whenever it matches - run the sub stages. The `tenant` sub stage
    would override the tenant with the value `"team-api"`.

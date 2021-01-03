@@ -12,6 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/client/fake"
 )
 
 var (
@@ -38,6 +42,9 @@ pipeline_stages:
         action:
         service:
         status_code: "status"
+- match:
+    selector: "{match=\"false\"}"
+    action: drop
 `
 
 var testLabelsFromJSONYaml = `
@@ -51,6 +58,24 @@ pipeline_stages:
 - output:
     source: message
 `
+
+func withInboundEntries(entries ...Entry) chan Entry {
+	in := make(chan Entry, len(entries))
+	defer close(in)
+	for _, e := range entries {
+		in <- e
+	}
+	return in
+}
+
+func processEntries(s Stage, entries ...Entry) []Entry {
+	out := s.Run(withInboundEntries(entries...))
+	var res []Entry
+	for e := range out {
+		res = append(res, e)
+	}
+	return res
+}
 
 func loadConfig(yml string) PipelineStages {
 	var config map[string]interface{}
@@ -67,7 +92,7 @@ func TestNewPipeline(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	require.Equal(t, 1, len(p.stages))
+	require.Len(t, p.stages, 2)
 }
 
 func TestPipeline_Process(t *testing.T) {
@@ -178,12 +203,11 @@ func TestPipeline_Process(t *testing.T) {
 			p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 
-			extracted := map[string]interface{}{}
-			p.Process(tt.initialLabels, extracted, &tt.t, &tt.entry)
+			out := processEntries(p, newEntry(nil, tt.initialLabels, tt.entry, tt.t))[0]
 
-			assert.Equal(t, tt.expectedLabels, tt.initialLabels, "did not get expected labels")
-			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
-			if tt.t.Unix() != tt.expectedT.Unix() {
+			assert.Equal(t, tt.expectedLabels, out.Labels, "did not get expected labels")
+			assert.Equal(t, tt.expectedEntry, out.Line, "did not receive expected log entry")
+			if out.Timestamp.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}
 		})
@@ -224,22 +248,22 @@ func BenchmarkPipeline(b *testing.B) {
 			}
 			lb := model.LabelSet{}
 			ts := time.Now()
+
+			in := make(chan Entry)
+			out := pl.Run(in)
+			b.ResetTimer()
+
+			go func() {
+				for range out {
+
+				}
+			}()
 			for i := 0; i < b.N; i++ {
-				entry := bm.entry
-				extracted := map[string]interface{}{}
-				pl.Process(lb, extracted, &ts, &entry)
+				in <- newEntry(nil, lb, bm.entry, ts)
 			}
+			close(in)
 		})
 	}
-}
-
-type stubHandler struct {
-	bool
-}
-
-func (s *stubHandler) Handle(labels model.LabelSet, time time.Time, entry string) error {
-	s.bool = true
-	return nil
 }
 
 func TestPipeline_Wrap(t *testing.T) {
@@ -260,10 +284,10 @@ func TestPipeline_Wrap(t *testing.T) {
 	}{
 		"should drop": {
 			map[model.LabelName]model.LabelValue{
-				dropLabel:     "true",
 				"stream":      "stderr",
 				"action":      "GET",
 				"status_code": "200",
+				"match":       "false",
 			},
 			false,
 		},
@@ -281,14 +305,25 @@ func TestPipeline_Wrap(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			extracted := map[string]interface{}{}
-			p.Process(tt.labels, extracted, &now, &rawTestLine)
-			stub := &stubHandler{}
-			handler := p.Wrap(stub)
-			if err := handler.Handle(tt.labels, now, rawTestLine); err != nil {
-				t.Fatalf("failed to handle entry: %v", err)
+			c := fake.New(func() {})
+			handler := p.Wrap(c)
+
+			handler.Chan() <- api.Entry{
+				Labels: tt.labels,
+				Entry: logproto.Entry{
+					Line:      rawTestLine,
+					Timestamp: now,
+				},
 			}
-			assert.Equal(t, stub.bool, tt.shouldSend)
+			handler.Stop()
+			c.Stop()
+			var received bool
+
+			if len(c.Received()) != 0 {
+				received = true
+			}
+
+			assert.Equal(t, tt.shouldSend, received)
 
 		})
 	}

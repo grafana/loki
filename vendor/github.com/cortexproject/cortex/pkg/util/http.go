@@ -73,7 +73,7 @@ func CompressionTypeFor(version string) CompressionType {
 }
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
-func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) ([]byte, error) {
+func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) error {
 	var body []byte
 	var err error
 	sp := opentracing.SpanFromContext(ctx)
@@ -83,7 +83,7 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 	var buf bytes.Buffer
 	if expectedSize > 0 {
 		if expectedSize > maxSize {
-			return nil, fmt.Errorf("message expected size larger than max (%d vs %d)", expectedSize, maxSize)
+			return fmt.Errorf("message expected size larger than max (%d vs %d)", expectedSize, maxSize)
 		}
 		buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
 	}
@@ -108,10 +108,10 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 		}
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if len(body) > maxSize {
-		return nil, fmt.Errorf("received message larger than max (%d vs %d)", len(body), maxSize)
+		return fmt.Errorf("received message larger than max (%d vs %d)", len(body), maxSize)
 	}
 
 	if sp != nil {
@@ -128,10 +128,10 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 		err = proto.NewBuffer(body).Unmarshal(req)
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return body, nil
+	return nil
 }
 
 // SerializeProtoResponse serializes a protobuf response into an HTTP response.

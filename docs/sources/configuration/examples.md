@@ -162,6 +162,7 @@ or expanded config can be used.
 ```yaml
 storage_config:
   aws:
+    bucketnames: bucket_name1, bucket_name2
     endpoint: s3.endpoint.com
     region: s3_region
     access_key_id: s3_access_key_id
@@ -179,7 +180,7 @@ storage_config:
 
 This is a configuration to deploy Loki depending only on storage solution, e.g. an
 S3-compatible API like minio. The ring configuration is based on the gossip memberlist
-and the index is shipped to storage via [boltdb-shipper](../../operations/storage/boltdb-shipper/).
+and the index is shipped to storage via [Single Store (boltdb-shipper)](../../operations/storage/boltdb-shipper/).
 
 ```yaml
 auth_enabled: false

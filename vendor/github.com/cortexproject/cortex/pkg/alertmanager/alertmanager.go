@@ -67,20 +67,16 @@ type Alertmanager struct {
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
 
+	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
+	// Given its metrics don't have any variable labels we need to re-use the same metrics.
+	dispatcherMetrics *dispatch.DispatcherMetrics
+
 	activeMtx sync.Mutex
 	active    bool
 }
 
 var (
 	webReload = make(chan chan error)
-
-	// In order to workaround a bug in the alertmanager, which doesn't register the
-	// metrics in the input registry but to the global default one, we do define a
-	// singleton dispatcher metrics instance that is going to be shared across all
-	// tenants alertmanagers.
-	// TODO change this once the vendored alertmanager will have this PR merged into:
-	//      https://github.com/prometheus/alertmanager/pull/2200
-	dispatcherMetrics = dispatch.NewDispatcherMetrics(prometheus.NewRegistry())
 )
 
 func init() {
@@ -158,6 +154,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		Silences:   am.silences,
 		StatusFunc: am.marker.Status,
 		Peer:       cfg.Peer,
+		Registry:   am.registry,
 		Logger:     log.With(am.logger, "component", "api"),
 		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
 			return am.dispatcher.Groups(f1, f2)
@@ -172,6 +169,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
 
+	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
 	return am, nil
 }
 
@@ -240,7 +238,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		am.marker,
 		timeoutFunc,
 		log.With(am.logger, "component", "dispatcher"),
-		dispatcherMetrics,
+		am.dispatcherMetrics,
 	)
 
 	go am.dispatcher.Run()

@@ -8,8 +8,9 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
 func Test_GetFileFromStorage(t *testing.T) {
@@ -51,7 +52,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 }
 
 func Test_CompressFile(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-compaction")
+	tempDir, err := ioutil.TempDir("", "compress-file")
 	require.NoError(t, err)
 
 	defer func() {

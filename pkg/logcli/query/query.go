@@ -12,6 +12,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
@@ -83,7 +84,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		if q.Limit < q.BatchSize {
 			q.BatchSize = q.Limit
 		}
-		resultLength := q.BatchSize
+		resultLength := 0
 		total := 0
 		start := q.Start
 		end := q.End
@@ -113,7 +114,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 				break
 			}
 			// Also no result, wouldn't expect to hit this.
-			if lastEntry == nil || len(lastEntry) == 0 {
+			if len(lastEntry) == 0 {
 				break
 			}
 			// Can only happen if all the results return in one request
@@ -177,7 +178,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if q.LocalConfig == "" {
 		return errors.New("no supplied config file")
 	}
-	if err := cfg.YAML(q.LocalConfig)(&conf); err != nil {
+	if err := cfg.YAML(q.LocalConfig, false)(&conf); err != nil {
 		return err
 	}
 
@@ -190,12 +191,17 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
+	chunkStore, err := cortex_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util.Logger)
 	if err != nil {
 		return err
 	}
 
-	eng := logql.NewEngine(conf.Querier.Engine, querier)
+	querier, err := storage.NewStore(conf.StorageConfig, conf.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
+	if err != nil {
+		return err
+	}
+
+	eng := logql.NewEngine(conf.Querier.Engine, querier, limits)
 	var query logql.Query
 
 	if q.isInstant() {
@@ -315,7 +321,7 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 	printed := 0
 	for _, e := range allEntries {
 		// Skip the last entry if it overlaps, this happens because batching includes the last entry from the last batch
-		if lastEntry != nil && len(lastEntry) > 0 && e.entry.Timestamp == lastEntry[0].Timestamp {
+		if len(lastEntry) > 0 && e.entry.Timestamp == lastEntry[0].Timestamp {
 			skip := false
 			// Because many logs can share a timestamp in the unlucky event a batch ends with a timestamp
 			// shared by multiple entries we have to check all that were stored to see if we've already

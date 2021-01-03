@@ -1,6 +1,5 @@
 .DEFAULT_GOAL := all
 .PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources touch-protos
-.PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
@@ -39,7 +38,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.10.0
+BUILD_IMAGE_VERSION := 0.12.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -150,6 +149,9 @@ touch-protobuf-sources:
 
 logcli: yacc cmd/logcli/logcli
 
+logcli-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
+
 cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
@@ -177,6 +179,14 @@ loki-canary: protos yacc cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+#################
+# Loki-QueryTee #
+#################
+
+loki-querytee: $(APP_GO_FILES) cmd/querytee/main.go
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o ./cmd/querytee/$@ ./cmd/querytee/
 	$(NETGO_CHECK)
 
 ############
@@ -257,11 +267,12 @@ clean:
 	rm -rf cmd/loki/loki
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/loki-canary/loki-canary
+	rm -rf cmd/querytee/querytee
 	rm -rf .cache
 	rm -rf cmd/docker-driver/rootfs
 	rm -rf dist/
-	rm -rf cmd/fluent-bit/out_loki.h
-	rm -rf cmd/fluent-bit/out_loki.so
+	rm -rf cmd/fluent-bit/out_grafana_loki.h
+	rm -rf cmd/fluent-bit/out_grafana_loki.so
 	go clean $(MOD_FLAG) ./...
 
 #########
@@ -317,61 +328,12 @@ else
 endif
 
 
-########
-# Helm #
-########
-
-CHARTS := production/helm/loki production/helm/promtail production/helm/fluent-bit production/helm/loki-stack
-
-helm: PACKAGE_ARGS ?=
-helm:
-	-rm -f production/helm/*/requirements.lock
-	@set -e; \
-	helm init -c; \
-	helm repo add elastic https://helm.elastic.co ; \
-	for chart in $(CHARTS); do \
-		helm dependency build $$chart; \
-		helm lint $$chart; \
-		helm package $(PACKAGE_ARGS) $$chart; \
-	done
-	rm -f production/helm/*/requirements.lock
-
-helm-install:
-	kubectl apply -f tools/helm.yaml
-	helm init --wait --service-account helm --upgrade
-	HELM_ARGS="$(HELM_ARGS)" $(MAKE) helm-upgrade
-
-helm-install-fluent-bit:
-	HELM_ARGS="--set fluent-bit.enabled=true,promtail.enabled=false" $(MAKE) helm-install
-
-
-helm-upgrade: helm
-	helm upgrade --wait --install $(ARGS) loki-stack ./production/helm/loki-stack \
-	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) --set fluent-bit.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml $(HELM_ARGS)
-
-helm-publish: helm
-	cp production/helm/README.md index.md
-	git config user.email "$CIRCLE_USERNAME@users.noreply.github.com"
-	git config user.name "${CIRCLE_USERNAME}"
-	git checkout gh-pages || (git checkout --orphan gh-pages && git rm -rf . > /dev/null)
-	mkdir -p charts
-	mv *.tgz *.tgz.prov index.md charts/
-	helm repo index charts/
-	git add charts/
-	git commit -m "[skip ci] Publishing helm charts: ${CIRCLE_SHA1}"
-	git push origin gh-pages
-
-helm-debug: ARGS=--dry-run --debug
-helm-debug: helm-upgrade
-
-helm-clean:
-	-helm delete --purge loki-stack
-
 #################
 # Docker Driver #
 #################
 
 # optionally set the tag or the arch suffix (-arm64)
+LOKI_DOCKER_DRIVER ?= "grafana/loki-docker-driver"
 PLUGIN_TAG ?= $(IMAGE_TAG)
 PLUGIN_ARCH ?=
 
@@ -382,31 +344,31 @@ docker-driver: docker-driver-clean
 	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH) cmd/docker-driver
-	docker plugin create grafana/loki-docker-driver:latest$(PLUGIN_ARCH) cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH) cmd/docker-driver
 
 cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
-	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	docker plugin push grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
+	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	docker plugin push $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
 
 docker-driver-enable:
-	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	docker plugin enable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 
 docker-driver-clean:
-	-docker plugin disable grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	-docker plugin rm grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	-docker plugin rm grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
+	-docker plugin disable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	-docker plugin rm $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	-docker plugin rm $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
 	rm -rf cmd/docker-driver/rootfs
 
 #####################
 # fluent-bit plugin #
 #####################
 fluent-bit-plugin:
-	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o cmd/fluent-bit/out_loki.so ./cmd/fluent-bit/
+	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o cmd/fluent-bit/out_grafana_loki.so ./cmd/fluent-bit/
 
 fluent-bit-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f cmd/fluent-bit/Dockerfile .
@@ -531,6 +493,14 @@ loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+
+# loki-querytee
+loki-querytee-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
+loki-querytee-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
+loki-querytee-push: loki-querytee-image-cross
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG)
 
 # build-image (only amd64)
 build-image: OCI_PLATFORMS=

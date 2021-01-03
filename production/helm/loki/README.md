@@ -1,4 +1,6 @@
-# Loki Helm Chart
+# ⚠️  DEPRECATED - Loki Helm Chart
+
+This chart was moved to <https://github.com/grafana/helm-charts>.
 
 ## Prerequisites
 
@@ -60,3 +62,8 @@ tls:
     - {{ .Values.ingress.host }}
 ```
 
+## Use Loki Alerting
+
+You can add your own alerting rules with `alerting_groups` in `values.yaml`. This will create a ConfigMap with your rules and additional volumes and mounts for Loki.
+
+This does **not** enable the Loki `ruler` component which does the evaluation of your rules. The `values.yaml` file does contain a simple example. For more details take a look at the official [alerting docs](https://grafana.com/docs/loki/latest/alerting/).

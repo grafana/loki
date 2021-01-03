@@ -108,14 +108,13 @@ func dummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 	return chunk
 }
 
-func SetupTestChunkStore() (chunk.Store, error) {
+func SetupTestChunkStoreWithClients(indexClient chunk.IndexClient, chunksClient chunk.Client, tableClient chunk.TableClient) (chunk.Store, error) {
 	var (
 		tbmConfig chunk.TableManagerConfig
 		schemaCfg = chunk.DefaultSchemaConfig("", "v10", 0)
 	)
 	flagext.DefaultValues(&tbmConfig)
-	storage := chunk.NewMockStorage()
-	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, storage, nil, nil, nil)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, tableClient, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -137,12 +136,17 @@ func SetupTestChunkStore() (chunk.Store, error) {
 	flagext.DefaultValues(&storeCfg)
 
 	store := chunk.NewCompositeStore(nil)
-	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides, cache.NewNoopCache(), cache.NewNoopCache())
+	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], indexClient, chunksClient, overrides, cache.NewNoopCache(), cache.NewNoopCache())
 	if err != nil {
 		return nil, err
 	}
 
 	return store, nil
+}
+
+func SetupTestChunkStore() (chunk.Store, error) {
+	storage := chunk.NewMockStorage()
+	return SetupTestChunkStoreWithClients(storage, storage, storage)
 }
 
 func SetupTestObjectStore() (chunk.ObjectClient, error) {

@@ -3,7 +3,7 @@ title: Pipelines
 ---
 # Pipelines
 
-A detailed look at how to setup Promtail to process your log lines, including
+A detailed look at how to set up Promtail to process your log lines, including
 extracting metrics and labels.
 
 ## Pipeline
@@ -14,14 +14,14 @@ stages:
 
 1. **Parsing stages** parse the current log line and extract data out of it. The
    extracted data is then available for use by other stages.
-2. **Transform stages** transform extracted data from previous stages.
-3. **Action stages** take extracted data from previous stages and do something
+1. **Transform stages** transform extracted data from previous stages.
+1. **Action stages** take extracted data from previous stages and do something
    with them. Actions can:
     1. Add or modify existing labels to the log line
-    2. Change the timestamp of the log line
-    3. Change the content of the log line
-    4. Create a metric based on the extracted data
-4. **Filtering stages** optionally apply a subset of stages or drop entries based on some
+    1. Change the timestamp of the log line
+    1. Change the content of the log line
+    1. Create a metric based on the extracted data
+1. **Filtering stages** optionally apply a subset of stages or drop entries based on some
    condition.
 
 Typical pipelines will start with a parsing stage (such as a
@@ -37,7 +37,7 @@ Note that pipelines can not currently be used to deduplicate logs; Loki will
 receive the same log line multiple times if, for example:
 
 1. Two scrape configs read from the same file
-2. Duplicate log lines in a file are sent through a pipeline. Deduplication is
+1. Duplicate log lines in a file are sent through a pipeline. Deduplication is
    not done.
 
 However, Loki will perform some deduplication at query time for logs that have
@@ -130,7 +130,7 @@ scrape_configs:
           component:
 
   # This stage will only run if the scraped target has a label "app"
-  # with a value of "some-app" and the log line doesn't contains the word "info"
+  # with a value of "some-app" and the log line doesn't contain the word "info"
   - match:
       selector: '{app="some-app"} != "info"'
       stages:
@@ -199,24 +199,25 @@ given log entry.
 
 Parsing stages:
 
-  * [docker](../stages/docker/): Extract data by parsing the log line using the standard Docker format.
-  * [cri](../stages/cri/): Extract data by parsing the log line using the standard CRI format.
-  * [regex](../stages/regex/): Extract data using a regular expression.
-  * [json](../stages/json/): Extract data by parsing the log line as JSON.
+  - [docker](../stages/docker/): Extract data by parsing the log line using the standard Docker format.
+  - [cri](../stages/cri/): Extract data by parsing the log line using the standard CRI format.
+  - [regex](../stages/regex/): Extract data using a regular expression.
+  - [json](../stages/json/): Extract data by parsing the log line as JSON.
 
 Transform stages:
 
-  * [template](../stages/template/): Use Go templates to modify extracted data.
+  - [multiline](../stages/multiline/): Merges multiple lines, e.g. stack traces, into multiline blocks.
+  - [template](../stages/template/): Use Go templates to modify extracted data.
 
 Action stages:
 
-  * [timestamp](../stages/timestamp/): Set the timestamp value for the log entry.
-  * [output](../stages/output/): Set the log line text.
-  * [labels](../stages/labels/): Update the label set for the log entry.
-  * [metrics](../stages/metrics/): Calculate metrics based on extracted data.
-  * [tenant](../stages/tenant/): Set the tenant ID value to use for the log entry.
+  - [timestamp](../stages/timestamp/): Set the timestamp value for the log entry.
+  - [output](../stages/output/): Set the log line text.
+  - [labels](../stages/labels/): Update the label set for the log entry.
+  - [metrics](../stages/metrics/): Calculate metrics based on extracted data.
+  - [tenant](../stages/tenant/): Set the tenant ID value to use for the log entry.
 
 Filtering stages:
 
-  * [match](../stages/match/): Conditionally run stages based on the label set.
-  * [drop](../stages/drop/): Conditionally drop log lines based on several options.
+  - [match](../stages/match/): Conditionally run stages based on the label set.
+  - [drop](../stages/drop/): Conditionally drop log lines based on several options.

@@ -8,22 +8,29 @@ import (
 
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util"
 )
 
 const bufferSizeForTailResponse = 5
 
+type TailServer interface {
+	Send(*logproto.TailResponse) error
+	Context() context.Context
+}
+
 type tailer struct {
-	id       uint32
-	orgID    string
-	matchers []*labels.Matcher
-	filter   logql.LineFilter
-	expr     logql.Expr
+	id          uint32
+	orgID       string
+	matchers    []*labels.Matcher
+	pipeline    logql.Pipeline
+	expr        logql.Expr
+	pipelineMtx sync.Mutex
 
 	sendChan chan *logproto.Stream
 
@@ -36,15 +43,15 @@ type tailer struct {
 	blockedMtx     sync.RWMutex
 	droppedStreams []*logproto.DroppedStream
 
-	conn logproto.Querier_TailServer
+	conn TailServer
 }
 
-func newTailer(orgID, query string, conn logproto.Querier_TailServer) (*tailer, error) {
+func newTailer(orgID, query string, conn TailServer) (*tailer, error) {
 	expr, err := logql.ParseLogSelector(query)
 	if err != nil {
 		return nil, err
 	}
-	filter, err := expr.Filter()
+	pipeline, err := expr.Pipeline()
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +60,7 @@ func newTailer(orgID, query string, conn logproto.Querier_TailServer) (*tailer, 
 	return &tailer{
 		orgID:          orgID,
 		matchers:       matchers,
-		filter:         filter,
+		pipeline:       pipeline,
 		sendChan:       make(chan *logproto.Stream, bufferSizeForTailResponse),
 		conn:           conn,
 		droppedStreams: []*logproto.DroppedStream{},
@@ -103,7 +110,7 @@ func (t *tailer) loop() {
 	}
 }
 
-func (t *tailer) send(stream logproto.Stream) {
+func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 	if t.isClosed() {
 		return
 	}
@@ -118,38 +125,59 @@ func (t *tailer) send(stream logproto.Stream) {
 		return
 	}
 
-	t.filterEntriesInStream(&stream)
-
-	if len(stream.Entries) == 0 {
+	streams := t.processStream(stream, lbs)
+	if len(streams) == 0 {
 		return
 	}
-
-	select {
-	case t.sendChan <- &stream:
-	default:
-		t.dropStream(stream)
+	for _, s := range streams {
+		select {
+		case t.sendChan <- s:
+		default:
+			t.dropStream(*s)
+		}
 	}
 }
 
-func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
+func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*logproto.Stream {
 	// Optimization: skip filtering entirely, if no filter is set
-	if t.filter == nil {
-		return
+	if log.IsNoopPipeline(t.pipeline) {
+		return []*logproto.Stream{&stream}
 	}
+	// pipeline are not thread safe and tailer can process multiple stream at once.
+	t.pipelineMtx.Lock()
+	defer t.pipelineMtx.Unlock()
 
-	var filteredEntries []logproto.Entry
+	streams := map[uint64]*logproto.Stream{}
+
+	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		if t.filter.Filter([]byte(e.Line)) {
-			filteredEntries = append(filteredEntries, e)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Line)
+		if !ok {
+			continue
 		}
+		var stream *logproto.Stream
+		if stream, ok = streams[parsedLbs.Hash()]; !ok {
+			stream = &logproto.Stream{
+				Labels: parsedLbs.String(),
+			}
+			streams[parsedLbs.Hash()] = stream
+		}
+		stream.Entries = append(stream.Entries, logproto.Entry{
+			Timestamp: e.Timestamp,
+			Line:      newLine,
+		})
 	}
-	stream.Entries = filteredEntries
+	streamsResult := make([]*logproto.Stream, 0, len(streams))
+	for _, stream := range streams {
+		streamsResult = append(streamsResult, stream)
+	}
+	return streamsResult
 }
 
 // Returns true if tailer is interested in the passed labelset
-func (t *tailer) isWatchingLabels(metric model.Metric) bool {
+func (t *tailer) isWatchingLabels(lbs labels.Labels) bool {
 	for _, matcher := range t.matchers {
-		if !matcher.Matches(string(metric[model.LabelName(matcher.Name)])) {
+		if !matcher.Matches(lbs.Get(matcher.Name)) {
 			return false
 		}
 	}
@@ -197,12 +225,12 @@ func (t *tailer) dropStream(stream logproto.Stream) {
 		blockedAt := time.Now()
 		t.blockedAt = &blockedAt
 	}
-	droppedStream := logproto.DroppedStream{
+
+	t.droppedStreams = append(t.droppedStreams, &logproto.DroppedStream{
 		From:   stream.Entries[0].Timestamp,
 		To:     stream.Entries[len(stream.Entries)-1].Timestamp,
 		Labels: stream.Labels,
-	}
-	t.droppedStreams = append(t.droppedStreams, &droppedStream)
+	})
 }
 
 func (t *tailer) popDroppedStreams() []*logproto.DroppedStream {

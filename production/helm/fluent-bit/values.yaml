@@ -10,10 +10,12 @@ config:
   port: 2020
   tenantID: '""'
   batchWait: 1
-  batchSize: 10240
+  batchSize: 1048576
   loglevel: warn
   lineFormat: json
+  k8sLoggingExclude: "Off"
   k8sLoggingParser: "Off"
+  memBufLimit: "5MB"
   removeKeys:
     - kubernetes
     - stream

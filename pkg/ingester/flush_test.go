@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -196,6 +197,7 @@ func defaultIngesterTestConfig(t *testing.T) Config {
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
+	cfg.LifecyclerConfig.MinReadyDuration = 0
 	return cfg
 }
 
@@ -235,6 +237,14 @@ func (s *testStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 
 func (s *testStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, nil
+}
+
+func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	return nil, nil, nil
+}
+
+func (s *testStore) GetSchemaConfigs() []chunk.PeriodConfig {
+	return nil
 }
 
 func (s *testStore) Stop() {}
@@ -311,12 +321,12 @@ func (s *testStore) getChunksForUser(userID string) []chunk.Chunk {
 	return s.chunks[userID]
 }
 
-func buildStreamsFromChunk(t *testing.T, labels string, chk chunkenc.Chunk) logproto.Stream {
-	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, nil)
+func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logproto.Stream {
+	it, err := chk.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	require.NoError(t, err)
 
 	stream := logproto.Stream{
-		Labels: labels,
+		Labels: lbs,
 	}
 	for it.Next() {
 		stream.Entries = append(stream.Entries, it.Entry())

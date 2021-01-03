@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"strings"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
@@ -28,22 +27,24 @@ func init() {
 	prometheus.MustRegister(version.NewCollector("loki"))
 }
 
-var lineReplacer = strings.NewReplacer("\n", "\\n  ")
-
 type Config struct {
-	loki.Config  `yaml:",inline"`
-	printVersion bool
-	printConfig  bool
-	logConfig    bool
-	configFile   string
+	loki.Config     `yaml:",inline"`
+	printVersion    bool
+	verifyConfig    bool
+	printConfig     bool
+	logConfig       bool
+	configFile      string
+	configExpandEnv bool
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.printVersion, "version", false, "Print this builds version information")
+	f.BoolVar(&c.verifyConfig, "verify-config", false, "Verify config file and exits")
 	f.BoolVar(&c.printConfig, "print-config-stderr", false, "Dump the entire Loki config object to stderr")
 	f.BoolVar(&c.logConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
+	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }
 
@@ -85,6 +86,11 @@ func main() {
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "validating config", "err", err.Error())
 		os.Exit(1)
+	}
+
+	if config.verifyConfig {
+		level.Info(util.Logger).Log("msg", "config is valid")
+		os.Exit(0)
 	}
 
 	if config.printConfig {

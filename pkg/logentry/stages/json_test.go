@@ -8,7 +8,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
@@ -87,12 +86,8 @@ func TestPipeline_JSON(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			lbls := model.LabelSet{}
-			ts := time.Now()
-			entry := testData.entry
-			extracted := map[string]interface{}{}
-			pl.Process(lbls, extracted, &ts, &entry)
-			assert.Equal(t, testData.expectedExtract, extracted)
+			out := processEntries(pl, newEntry(nil, nil, testData.entry, time.Now()))[0]
+			assert.Equal(t, testData.expectedExtract, out.Extracted)
 		})
 	}
 }
@@ -364,12 +359,9 @@ func TestJSONParser_Parse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}
-			lbs := model.LabelSet{}
-			extr := tt.extracted
-			ts := time.Now()
-			p.Process(lbs, extr, &ts, &tt.entry)
+			out := processEntries(p, newEntry(tt.extracted, nil, tt.entry, time.Now()))[0]
 
-			assert.Equal(t, tt.expectedExtract, extr)
+			assert.Equal(t, tt.expectedExtract, out.Extracted)
 		})
 	}
 }

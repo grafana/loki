@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
-// SyslogTargetManager manages a series of PushTargets.
+// PushTargetManager manages a series of PushTargets.
 type PushTargetManager struct {
 	logger  log.Logger
 	targets map[string]*PushTarget
@@ -66,9 +66,8 @@ func validateJobName(scrapeConfigs []scrapeconfig.Config) error {
 		if _, ok := jobNames[cfg.JobName]; ok {
 			return fmt.Errorf("`job_name` must be unique for each `push` scrape_config, "+
 				"a duplicate `job_name` of %s was found", cfg.JobName)
-		} else {
-			jobNames[cfg.JobName] = struct{}{}
 		}
+		jobNames[cfg.JobName] = struct{}{}
 
 		scrapeConfigs[i].JobName = strings.Replace(cfg.JobName, " ", "_", -1)
 	}

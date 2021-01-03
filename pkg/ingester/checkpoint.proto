@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package ingester;
+
+option go_package = "ingester";
+
+import "google/protobuf/timestamp.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+
+// Chunk is a {de,}serializable intermediate type for chunkDesc which allows
+// efficient loading/unloading to disk during WAL checkpoint recovery.
+message Chunk {
+  google.protobuf.Timestamp from = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp to = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp flushedAt = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp lastUpdated = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  bool closed = 5;
+  bool synced = 6;
+  // data to be unmarshaled into a MemChunk
+  bytes data = 7;
+  // data to be unmarshaled into a MemChunk's headBlock
+  bytes head = 8;
+}
+
+// Series is a {de,}serializable intermediate type for Series.
+message Series {
+  string userID = 1;
+  // post mapped fingerprint is necessary because subsequent wal writes will reference it.
+  uint64 fingerprint = 2;
+  repeated cortex.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
+  repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
+}

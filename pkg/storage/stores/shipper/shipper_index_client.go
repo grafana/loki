@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -40,12 +41,13 @@ const (
 
 	StorageKeyPrefix = "index/"
 
-	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
-	UploadInterval = 15 * time.Minute
+	// UploadInterval defines interval for when we check if there are new index files to upload.
+	// It's also used to snapshot the currently written index tables so the snapshots can be used for reads.
+	UploadInterval = 1 * time.Minute
 )
 
 type boltDBIndexClient interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 	NewWriteBatch() chunk.WriteBatch
 	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
 	Stop()
@@ -57,6 +59,7 @@ type Config struct {
 	CacheLocation        string        `yaml:"cache_location"`
 	CacheTTL             time.Duration `yaml:"cache_ttl"`
 	ResyncInterval       time.Duration `yaml:"resync_interval"`
+	QueryReadyNumDays    int           `yaml:"query_ready_num_days"`
 	IngesterName         string        `yaml:"-"`
 	Mode                 int           `yaml:"-"`
 }
@@ -68,6 +71,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.CacheLocation, "boltdb.shipper.cache-location", "", "Cache location for restoring boltDB files for queries")
 	f.DurationVar(&cfg.CacheTTL, "boltdb.shipper.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
+	f.IntVar(&cfg.QueryReadyNumDays, "boltdb.shipper.query-ready-num-days", 0, "Number of days of index to be kept downloaded for queries. Works only with tables created with 24h period.")
 }
 
 type Shipper struct {
@@ -76,7 +80,8 @@ type Shipper struct {
 	uploadsManager    *uploads.TableManager
 	downloadsManager  *downloads.TableManager
 
-	metrics *metrics
+	metrics  *metrics
+	stopOnce sync.Once
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
@@ -122,6 +127,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			Uploader:       uploader,
 			IndexDir:       s.cfg.ActiveIndexDirectory,
 			UploadInterval: UploadInterval,
+			DBRetainPeriod: s.cfg.ResyncInterval + 2*time.Minute,
 		}
 		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
 		if err != nil {
@@ -133,9 +139,10 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 
 	if s.cfg.Mode != ModeWriteOnly {
 		cfg := downloads.Config{
-			CacheDir:     s.cfg.CacheLocation,
-			SyncInterval: s.cfg.ResyncInterval,
-			CacheTTL:     s.cfg.CacheTTL,
+			CacheDir:          s.cfg.CacheLocation,
+			SyncInterval:      s.cfg.ResyncInterval,
+			CacheTTL:          s.cfg.CacheTTL,
+			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
 		if err != nil {
@@ -179,6 +186,10 @@ func (s *Shipper) getUploaderName() (string, error) {
 }
 
 func (s *Shipper) Stop() {
+	s.stopOnce.Do(s.stop)
+}
+
+func (s *Shipper) stop() {
 	if s.uploadsManager != nil {
 		s.uploadsManager.Stop()
 	}
@@ -195,7 +206,9 @@ func (s *Shipper) NewWriteBatch() chunk.WriteBatch {
 }
 
 func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-	return s.uploadsManager.BatchWrite(ctx, batch)
+	return instrument.CollectedRequest(ctx, "WRITE", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		return s.uploadsManager.BatchWrite(ctx, batch)
+	})
 }
 
 func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {

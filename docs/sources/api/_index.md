@@ -37,12 +37,28 @@ The HTTP API includes the following endpoints:
     - [Examples](#examples-8)
   - [`GET /ready`](#get-ready)
   - [`POST /flush`](#post-flush)
+  - [`POST /ingester/shutdown`](#post-shutdown)
   - [`GET /metrics`](#get-metrics)
   - [Series](#series)
     - [Examples](#examples-9)
   - [Statistics](#statistics)
-
-## Microservices Mode
+  - [`GET /ruler/ring`](#ruler-ring-status)
+  - [`GET /loki/api/v1/rules`](#list-rule-groups)
+  - [`GET /loki/api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
+  - [`GET /loki/api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
+  - [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
+  - [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
+  - [`DELETE /loki/api/v1/rules/{namespace}`](#delete-namespace)
+  - [`GET /api/prom/rules`](#list-rule-groups)
+  - [`GET /api/prom/rules/{namespace}`](#get-rule-groups-by-namespace)
+  - [`GET /api/prom/rules/{namespace}/{groupName}`](#get-rule-group)
+  - [`POST /api/prom/rules/{namespace}`](#set-rule-group)
+  - [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
+  - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
+  - [`GET /prometheus/api/v1/rules`](#list-rules)
+  - [`GET /prometheus/api/v1/alerts`](#list-alerts)
+  
+## Microservices mode
 
 When deploying Loki in microservices mode, the set of endpoints exposed by each
 component is different.
@@ -92,12 +108,31 @@ While these endpoints are exposed by just the distributor:
 And these endpoints are exposed by just the ingester:
 
 - [`POST /flush`](#post-flush)
+- [`POST /ingester/shutdown`](#post-shutdown)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
+These endpoints are exposed by the ruler:
+
+- [`GET /ruler/ring`](#ruler-ring-status)
+- [`GET /loki/api/v1/rules`](#list-rule-groups)
+- [`GET /loki/api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
+- [`GET /loki/api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
+- [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
+- [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
+- [`DELETE /loki/api/v1/rules/{namespace}`](#delete-namespace)
+- [`GET /api/prom/rules`](#list-rule-groups)
+- [`GET /api/prom/rules/{namespace}`](#get-rule-groups-by-namespace)
+- [`GET /api/prom/rules/{namespace}/{groupName}`](#get-rule-group)
+- [`POST /api/prom/rules/{namespace}`](#set-rule-group)
+- [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
+- [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
+- [`GET /prometheus/api/v1/rules`](#list-rules)
+- [`GET /prometheus/api/v1/alerts`](#list-alerts)
+
 A [list of clients](../clients) can be found in the clients documentation.
 
-## Matrix, Vector, And Streams
+## Matrix, vector, and streams
 
 Some Loki API endpoints return a result of a matrix, a vector, or a stream:
 
@@ -811,6 +846,14 @@ backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
+## `POST /ingester/shutdown`
+
+`/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
+This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,
+but instead flushed to our chunk backend.
+
+In microservices mode, the `/ingester/shutdown` endpoint is exposed by the ingester.
+
 ## `GET /metrics`
 
 `/metrics` exposes Prometheus metrics. See
@@ -936,3 +979,171 @@ The example belows show all possible statistics returned with their respective d
   }
 }
 ```
+
+## Ruler
+
+The ruler API endpoints require to configure a backend object storage to store the recording rules and alerts. The ruler API uses the concept of a "namespace" when creating rule groups. This is a stand-in for the name of the rule file in Prometheus. Rule groups must be named uniquely within a namespace.
+
+### Ruler ring status
+
+```
+GET /ruler/ring
+```
+
+Displays a web page with the ruler hash ring status, including the state, healthy and last heartbeat time of each ruler.
+
+### List rule groups
+
+```
+GET /loki/api/v1/rules
+```
+
+List all rules configured for the authenticated tenant. This endpoint returns a YAML dictionary with all the rule groups for each namespace and `200` status code on success.
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+#### Example response
+
+```yaml
+---
+<namespace1>:
+- name: <string>
+  interval: <duration;optional>
+  rules:
+  - alert: <string>
+      expr: <string>
+      for: <duration>
+      annotations:
+      <annotation_name>: <string>
+      labels:
+      <label_name>: <string>
+- name: <string>
+  interval: <duration;optional>
+  rules:
+  - alert: <string>
+      expr: <string>
+      for: <duration>
+      annotations:
+      <annotation_name>: <string>
+      labels:
+      <label_name>: <string>
+<namespace2>:
+- name: <string>
+  interval: <duration;optional>
+  rules:
+  - alert: <string>
+      expr: <string>
+      for: <duration>
+      annotations:
+      <annotation_name>: <string>
+      labels:
+      <label_name>: <string>
+```
+
+### Get rule groups by namespace
+
+```
+GET /loki/api/v1/rules/{namespace}
+```
+
+Returns the rule groups defined for a given namespace.
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+#### Example response
+
+```yaml
+name: <string>
+interval: <duration;optional>
+rules:
+  - alert: <string>
+    expr: <string>
+    for: <duration>
+    annotations:
+      <annotation_name>: <string>
+    labels:
+      <label_name>: <string>
+```
+
+### Get rule group
+
+```
+GET /loki/api/v1/rules/{namespace}/{groupName}
+```
+
+Returns the rule group matching the request namespace and group name.
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+### Set rule group
+
+```
+POST /loki/api/v1/rules/{namespace}
+```
+
+Creates or updates a rule group. This endpoint expects a request with `Content-Type: application/yaml` header and the rules **YAML** definition in the request body, and returns `202` on success.
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+#### Example request
+
+Request headers:
+- `Content-Type: application/yaml`
+
+Request body:
+
+```yaml
+name: <string>
+interval: <duration;optional>
+rules:
+  - alert: <string>
+    expr: <string>
+    for: <duration>
+    annotations:
+      <annotation_name>: <string>
+    labels:
+      <label_name>: <string>
+```
+
+### Delete rule group
+
+```
+DELETE /loki/api/v1/rules/{namespace}/{groupName}
+
+```
+
+Deletes a rule group by namespace and group name. This endpoints returns `202` on success.
+
+### Delete namespace
+
+```
+DELETE /loki/api/v1/rules/{namespace}
+```
+
+Deletes all the rule groups in a namespace (including the namespace itself). This endpoint returns `202` on success.
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+### List rules
+
+```
+GET /prometheus/api/v1/rules
+```
+
+Prometheus-compatible rules endpoint to list alerting and recording rules that are currently loaded.
+
+For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+### List alerts
+
+```
+GET /prometheus/api/v1/alerts
+```
+
+Prometheus-compatible rules endpoint to list all active alerts.
+
+_For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation._
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._

@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/promtail/client/fake"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/targets/testutils"
 )
@@ -41,10 +42,8 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
+	defer client.Stop()
 
 	f, err := os.Create(logFile)
 	if err != nil {
@@ -67,7 +66,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.Messages) != 10 && countdown > 0 {
+	for len(client.Received()) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -94,13 +93,13 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	// Assert the number of messages the handler received is correct.
-	if len(client.Messages) != 10 {
-		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.Messages))
+	if len(client.Received()) != 10 {
+		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.Received()))
 	}
 
 	// Spot check one of the messages.
-	if client.Messages[0].Log != "test" {
-		t.Error("Expected first log message to be 'test' but was", client.Messages[0])
+	if client.Received()[0].Line != "test" {
+		t.Error("Expected first log message to be 'test' but was", client.Received()[0])
 	}
 
 }
@@ -134,10 +133,8 @@ func TestWatchEntireDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
+	defer client.Stop()
 
 	f, err := os.Create(logFileDir + "test.log")
 	if err != nil {
@@ -160,7 +157,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.Messages) != 10 && countdown > 0 {
+	for len(client.Received()) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -187,13 +184,13 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	// Assert the number of messages the handler received is correct.
-	if len(client.Messages) != 10 {
-		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.Messages))
+	if len(client.Received()) != 10 {
+		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.Received()))
 	}
 
 	// Spot check one of the messages.
-	if client.Messages[0].Log != "test" {
-		t.Error("Expected first log message to be 'test' but was", client.Messages[0])
+	if client.Received()[0].Line != "test" {
+		t.Error("Expected first log message to be 'test' but was", client.Received()[0])
 	}
 
 }
@@ -223,10 +220,8 @@ func TestFileRolls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
+	defer client.Stop()
 
 	f, err := os.Create(logFile)
 	if err != nil {
@@ -249,7 +244,7 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.Messages) != 10 && countdown > 0 {
+	for len(client.Received()) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -273,7 +268,7 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	countdown = 10000
-	for len(client.Messages) != 20 && countdown > 0 {
+	for len(client.Received()) != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -281,18 +276,18 @@ func TestFileRolls(t *testing.T) {
 	target.Stop()
 	positions.Stop()
 
-	if len(client.Messages) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Messages))
+	if len(client.Received()) != 20 {
+		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Received()))
 	}
 
 	// Spot check one of the messages.
-	if client.Messages[0].Log != "test1" {
-		t.Error("Expected first log message to be 'test1' but was", client.Messages[0])
+	if client.Received()[0].Line != "test1" {
+		t.Error("Expected first log message to be 'test1' but was", client.Received()[0])
 	}
 
 	// Spot check the first message from the second file.
-	if client.Messages[10].Log != "test2" {
-		t.Error("Expected first log message to be 'test2' but was", client.Messages[10])
+	if client.Received()[10].Line != "test2" {
+		t.Error("Expected first log message to be 'test2' but was", client.Received()[10])
 	}
 }
 
@@ -321,10 +316,8 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
+	defer client.Stop()
 
 	f, err := os.Create(logFile)
 	if err != nil {
@@ -347,7 +340,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.Messages) != 10 && countdown > 0 {
+	for len(client.Received()) != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -381,7 +374,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	countdown = 10000
-	for len(client.Messages) != 20 && countdown > 0 {
+	for len(client.Received()) != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -389,18 +382,18 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	target2.Stop()
 	ps2.Stop()
 
-	if len(client.Messages) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Messages))
+	if len(client.Received()) != 20 {
+		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Received()))
 	}
 
 	// Spot check one of the messages.
-	if client.Messages[0].Log != "test1" {
-		t.Error("Expected first log message to be 'test1' but was", client.Messages[0])
+	if client.Received()[0].Line != "test1" {
+		t.Error("Expected first log message to be 'test1' but was", client.Received()[0])
 	}
 
 	// Spot check the first message from the second file.
-	if client.Messages[10].Log != "test2" {
-		t.Error("Expected first log message to be 'test2' but was", client.Messages[10])
+	if client.Received()[10].Line != "test2" {
+		t.Error("Expected first log message to be 'test2' but was", client.Received()[10])
 	}
 }
 
@@ -430,10 +423,8 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
+	defer client.Stop()
 
 	f1, err := os.Create(logFile1)
 	if err != nil {
@@ -466,7 +457,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.Messages) != 20 && countdown > 0 {
+	for len(client.Received()) != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -500,8 +491,8 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 
 	// Assert the number of messages the handler received is correct.
-	if len(client.Messages) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Messages))
+	if len(client.Received()) != 20 {
+		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Received()))
 	}
 
 }
@@ -533,10 +524,8 @@ func TestFileTargetSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &testutils.TestClient{
-		Log:      logger,
-		Messages: make([]*testutils.Entry, 0),
-	}
+	client := fake.New(func() {})
+	defer client.Stop()
 
 	target, err := NewFileTarget(logger, client, ps, logDir1+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,

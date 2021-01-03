@@ -8,6 +8,12 @@ import (
 	"testing"
 	"time"
 
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+
+	"github.com/grafana/loki/pkg/ingester/client"
+
+	"github.com/grafana/loki/pkg/storage"
+
 	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/prometheus/common/model"
@@ -28,6 +34,14 @@ const (
 	// Custom query timeout used in tests
 	queryTimeout = 12 * time.Second
 )
+
+func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
+	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory)
+	if err != nil {
+		return nil, err
+	}
+	return New(cfg, store, iq, limits)
+}
 
 func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	startTime := time.Now().Add(-1 * time.Minute)
@@ -131,99 +145,6 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	assert.WithinDuration(t, deadline, time.Now().Add(queryTimeout), 1*time.Second)
 
 	store.AssertExpectations(t)
-}
-
-func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		connectedIngestersAddr []string
-		ringIngesters          []ring.IngesterDesc
-		expectedClientsAddr    []string
-	}{
-		"no connected ingesters and empty ring": {
-			connectedIngestersAddr: []string{},
-			ringIngesters:          []ring.IngesterDesc{},
-			expectedClientsAddr:    []string{},
-		},
-		"no connected ingesters and ring containing new ingesters": {
-			connectedIngestersAddr: []string{},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
-			expectedClientsAddr:    []string{"1.1.1.1"},
-		},
-		"connected ingesters and ring contain the same ingesters": {
-			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("2.2.2.2", ring.ACTIVE), mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
-			expectedClientsAddr:    []string{},
-		},
-		"ring contains new ingesters compared to the connected one": {
-			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE)},
-			expectedClientsAddr:    []string{"2.2.2.2", "3.3.3.3"},
-		},
-		"connected ingesters contain ingesters not in the ring anymore": {
-			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE)},
-			expectedClientsAddr:    []string{},
-		},
-		"connected ingesters contain ingesters not in the ring anymore and the ring contains new ingesters too": {
-			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE), mockIngesterDesc("4.4.4.4", ring.ACTIVE)},
-			expectedClientsAddr:    []string{"4.4.4.4"},
-		},
-		"ring contains ingester in LEAVING state not listed in the connected ingesters": {
-			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.LEAVING)},
-			expectedClientsAddr:    []string{},
-		},
-		"ring contains ingester in PENDING state not listed in the connected ingesters": {
-			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.PENDING)},
-			expectedClientsAddr:    []string{},
-		},
-	}
-
-	for testName, testData := range tests {
-		testData := testData
-
-		t.Run(testName, func(t *testing.T) {
-			req := logproto.TailRequest{
-				Query:    "{type=\"test\"}",
-				DelayFor: 0,
-				Limit:    10,
-				Start:    time.Now(),
-			}
-
-			// For this test's purpose, whenever a new ingester client needs to
-			// be created, the factory will always return the same mock instance
-			ingesterClient := newQuerierClientMock()
-			ingesterClient.On("Tail", mock.Anything, &req, mock.Anything).Return(newTailClientMock(), nil)
-
-			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-			require.NoError(t, err)
-
-			q, err := newQuerier(
-				mockQuerierConfig(),
-				mockIngesterClientConfig(),
-				newIngesterClientMockFactory(ingesterClient),
-				newReadRingMock(testData.ringIngesters),
-				newStoreMock(), limits)
-			require.NoError(t, err)
-
-			actualClients, err := q.tailDisconnectedIngesters(context.Background(), &req, testData.connectedIngestersAddr)
-			require.NoError(t, err)
-
-			actualClientsAddr := make([]string, 0, len(actualClients))
-			for addr, client := range actualClients {
-				actualClientsAddr = append(actualClientsAddr, addr)
-
-				// The returned map of clients should never contain nil values
-				assert.NotNil(t, client)
-			}
-
-			assert.ElementsMatch(t, testData.expectedClientsAddr, actualClientsAddr)
-		})
-	}
 }
 
 func mockQuerierConfig() Config {
@@ -600,6 +521,177 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "test")
 			_, err = q.Tail(ctx, &request)
 			assert.Equal(t, testData.expectedError, err)
+		})
+	}
+}
+
+func TestQuerier_buildQueryIntervals(t *testing.T) {
+	// For simplicity it is always assumed that ingesterQueryStoreMaxLookback and queryIngestersWithin both would be set upto 11 hours so
+	// overlappingQuery has range of last 11 hours while nonOverlappingQuery has range older than last 11 hours.
+	// We would test the cases below with both the queries.
+	overlappingQuery := interval{
+		start: time.Now().Add(-6 * time.Hour),
+		end:   time.Now(),
+	}
+
+	nonOverlappingQuery := interval{
+		start: time.Now().Add(-24 * time.Hour),
+		end:   time.Now().Add(-12 * time.Hour),
+	}
+
+	type response struct {
+		ingesterQueryInterval *interval
+		storeQueryInterval    *interval
+	}
+
+	compareResponse := func(t *testing.T, expectedResponse, actualResponse response) {
+		if expectedResponse.ingesterQueryInterval == nil {
+			require.Nil(t, actualResponse.ingesterQueryInterval)
+		} else {
+			require.InDelta(t, expectedResponse.ingesterQueryInterval.start.Unix(), actualResponse.ingesterQueryInterval.start.Unix(), 1)
+			require.InDelta(t, expectedResponse.ingesterQueryInterval.end.Unix(), actualResponse.ingesterQueryInterval.end.Unix(), 1)
+		}
+
+		if expectedResponse.storeQueryInterval == nil {
+			require.Nil(t, actualResponse.storeQueryInterval)
+		} else {
+			require.InDelta(t, expectedResponse.storeQueryInterval.start.Unix(), actualResponse.storeQueryInterval.start.Unix(), 1)
+			require.InDelta(t, expectedResponse.storeQueryInterval.end.Unix(), actualResponse.storeQueryInterval.end.Unix(), 1)
+		}
+	}
+
+	for _, tc := range []struct {
+		name                                string
+		ingesterQueryStoreMaxLookback       time.Duration
+		queryIngestersWithin                time.Duration
+		overlappingQueryExpectedResponse    response
+		nonOverlappingQueryExpectedResponse response
+	}{
+		{
+			name: "default values, query ingesters and store for whole duration",
+			overlappingQueryExpectedResponse: response{ // query both store and ingesters
+				ingesterQueryInterval: &overlappingQuery,
+				storeQueryInterval:    &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query both store and ingesters
+				ingesterQueryInterval: &nonOverlappingQuery,
+				storeQueryInterval:    &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 1h",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
+				ingesterQueryInterval: &interval{
+					start: time.Now().Add(-time.Hour),
+					end:   overlappingQuery.end,
+				},
+				storeQueryInterval: &interval{
+					start: overlappingQuery.start,
+					end:   time.Now().Add(-time.Hour),
+				},
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 10h",
+			ingesterQueryStoreMaxLookback: 10 * time.Hour,
+			overlappingQueryExpectedResponse: response{ // query just the ingesters.
+				ingesterQueryInterval: &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 1h and queryIngestersWithin set to 2h, ingesterQueryStoreMaxLookback takes precedence",
+			ingesterQueryStoreMaxLookback: time.Hour,
+			queryIngestersWithin:          2 * time.Hour,
+			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
+				ingesterQueryInterval: &interval{
+					start: time.Now().Add(-time.Hour),
+					end:   overlappingQuery.end,
+				},
+				storeQueryInterval: &interval{
+					start: overlappingQuery.start,
+					end:   time.Now().Add(-time.Hour),
+				},
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to 2h and queryIngestersWithin set to 1h, ingesterQueryStoreMaxLookback takes precedence",
+			ingesterQueryStoreMaxLookback: 2 * time.Hour,
+			queryIngestersWithin:          time.Hour,
+			overlappingQueryExpectedResponse: response{ // query ingesters for last 2h and store until last 2h.
+				ingesterQueryInterval: &interval{
+					start: time.Now().Add(-2 * time.Hour),
+					end:   overlappingQuery.end,
+				},
+				storeQueryInterval: &interval{
+					start: overlappingQuery.start,
+					end:   time.Now().Add(-2 * time.Hour),
+				},
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                          "ingesterQueryStoreMaxLookback set to -1, query just ingesters",
+			ingesterQueryStoreMaxLookback: -1,
+			overlappingQueryExpectedResponse: response{
+				ingesterQueryInterval: &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{
+				ingesterQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                 "queryIngestersWithin set to 1h",
+			queryIngestersWithin: time.Hour,
+			overlappingQueryExpectedResponse: response{ // query both store and ingesters since query overlaps queryIngestersWithin
+				ingesterQueryInterval: &overlappingQuery,
+				storeQueryInterval:    &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store since query doesn't overlap queryIngestersWithin
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+		{
+			name:                 "queryIngestersWithin set to 10h",
+			queryIngestersWithin: 10 * time.Hour,
+			overlappingQueryExpectedResponse: response{ // query both store and ingesters since query overlaps queryIngestersWithin
+				ingesterQueryInterval: &overlappingQuery,
+				storeQueryInterval:    &overlappingQuery,
+			},
+			nonOverlappingQueryExpectedResponse: response{ // query just the store since query doesn't overlap queryIngestersWithin
+				storeQueryInterval: &nonOverlappingQuery,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := Querier{cfg: Config{
+				IngesterQueryStoreMaxLookback: tc.ingesterQueryStoreMaxLookback,
+				QueryIngestersWithin:          tc.queryIngestersWithin,
+			}}
+
+			ingesterQueryInterval, storeQueryInterval := querier.buildQueryIntervals(overlappingQuery.start, overlappingQuery.end)
+			compareResponse(t, tc.overlappingQueryExpectedResponse, response{
+				ingesterQueryInterval: ingesterQueryInterval,
+				storeQueryInterval:    storeQueryInterval,
+			})
+
+			ingesterQueryInterval, storeQueryInterval = querier.buildQueryIntervals(nonOverlappingQuery.start, nonOverlappingQuery.end)
+			compareResponse(t, tc.nonOverlappingQueryExpectedResponse, response{
+				ingesterQueryInterval: ingesterQueryInterval,
+				storeQueryInterval:    storeQueryInterval,
+			})
+
 		})
 	}
 }

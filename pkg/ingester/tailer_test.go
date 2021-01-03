@@ -1,11 +1,13 @@
 package ingester
 
 import (
+	"context"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -34,7 +36,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 		go assert.NotPanics(t, func() {
 			defer routines.Done()
 			time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
-			tailer.send(stream)
+			tailer.send(stream, labels.Labels{{Name: "type", Value: "test"}})
 		})
 
 		go assert.NotPanics(t, func() {
@@ -45,4 +47,32 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 
 		routines.Wait()
 	}
+}
+
+type fakeTailServer struct{}
+
+func (f *fakeTailServer) Send(*logproto.TailResponse) error { return nil }
+func (f *fakeTailServer) Context() context.Context          { return context.Background() }
+
+func Test_TailerSendRace(t *testing.T) {
+	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 1; i <= 20; i++ {
+		wg.Add(1)
+		go func() {
+			lbs := makeRandomLabels()
+			tail.send(logproto.Stream{
+				Labels: lbs.String(),
+				Entries: []logproto.Entry{
+					{Timestamp: time.Unix(0, 1), Line: "1"},
+					{Timestamp: time.Unix(0, 2), Line: "2"},
+					{Timestamp: time.Unix(0, 3), Line: "3"},
+				},
+			}, lbs)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }

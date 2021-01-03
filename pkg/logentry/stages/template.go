@@ -74,7 +74,7 @@ func validateTemplateConfig(cfg *TemplateConfig) (*template.Template, error) {
 }
 
 // newTemplateStage creates a new templateStage
-func newTemplateStage(logger log.Logger, config interface{}) (*templateStage, error) {
+func newTemplateStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg := &TemplateConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -85,11 +85,11 @@ func newTemplateStage(logger log.Logger, config interface{}) (*templateStage, er
 		return nil, err
 	}
 
-	return &templateStage{
+	return toStage(&templateStage{
 		cfgs:     cfg,
 		logger:   logger,
 		template: t,
-	}, nil
+	}), nil
 }
 
 // templateStage will mutate the incoming entry and set it from extracted data

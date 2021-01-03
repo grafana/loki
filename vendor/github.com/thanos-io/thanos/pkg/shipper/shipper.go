@@ -282,6 +282,7 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 			return 0, errors.Wrap(err, "check exists")
 		}
 		if ok {
+			meta.Uploaded = append(meta.Uploaded, m.ULID)
 			continue
 		}
 
@@ -358,6 +359,7 @@ func (s *Shipper) upload(ctx context.Context, meta *metadata.Meta) error {
 		meta.Thanos.Labels = lset.Map()
 	}
 	meta.Thanos.Source = s.source
+	meta.Thanos.SegmentFiles = block.GetSegmentFiles(updir)
 	if err := metadata.Write(s.logger, updir, meta); err != nil {
 		return errors.Wrap(err, "write meta file")
 	}

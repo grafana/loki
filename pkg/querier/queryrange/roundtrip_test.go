@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -38,7 +39,6 @@ var (
 		MaxRetries:             3,
 		CacheResults:           true,
 		ResultsCacheConfig: queryrange.ResultsCacheConfig{
-			LegacyMaxCacheFreshness: 1 * time.Minute,
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
@@ -93,7 +93,7 @@ var (
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxSeries: math.MaxInt32}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -385,7 +385,7 @@ func TestRegexpParamsSupport(t *testing.T) {
 	count, h := promqlResult(streams)
 	rt.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		// the query params should contain the filter.
-		require.Contains(t, r.URL.Query().Get("query"), `|~"foo"`)
+		require.Contains(t, r.URL.Query().Get("query"), `|~ "foo"`)
 		h.ServeHTTP(rw, r)
 	}))
 	_, err = tpw(rt).RoundTrip(req)
@@ -494,6 +494,7 @@ func TestEntriesLimitWithZeroTripperware(t *testing.T) {
 type fakeLimits struct {
 	maxQueryParallelism     int
 	maxEntriesLimitPerQuery int
+	maxSeries               int
 	splits                  map[string]time.Duration
 }
 
@@ -517,6 +518,10 @@ func (f fakeLimits) MaxQueryParallelism(string) int {
 
 func (f fakeLimits) MaxEntriesLimitPerQuery(string) int {
 	return f.maxEntriesLimitPerQuery
+}
+
+func (f fakeLimits) MaxQuerySeries(string) int {
+	return f.maxSeries
 }
 
 func (f fakeLimits) MaxCacheFreshness(string) time.Duration {

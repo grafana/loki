@@ -302,6 +302,7 @@ func Repair(logger log.Logger, dir string, id ulid.ULID, source metadata.SourceT
 	if err := rewrite(logger, indexr, chunkr, indexw, chunkw, &resmeta, ignoreChkFns); err != nil {
 		return resid, errors.Wrap(err, "rewrite block")
 	}
+	resmeta.Thanos.SegmentFiles = GetSegmentFiles(resdir)
 	if err := metadata.Write(logger, resdir, &resmeta); err != nil {
 		return resid, err
 	}

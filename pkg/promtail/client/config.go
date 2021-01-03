@@ -11,6 +11,16 @@ import (
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
+// NOTE the helm chart for promtail and fluent-bit also have defaults for these values, please update to match if you make changes here.
+const (
+	BatchWait      = 1 * time.Second
+	BatchSize  int = 1024 * 1024
+	MinBackoff     = 500 * time.Millisecond
+	MaxBackoff     = 5 * time.Minute
+	MaxRetries int = 10
+	Timeout        = 10 * time.Second
+)
+
 // Config describes configuration for a HTTP pusher client.
 type Config struct {
 	URL       flagext.URLValue
@@ -33,13 +43,13 @@ type Config struct {
 // prefix. If prefix is a non-empty string, prefix should end with a period.
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&c.URL, prefix+"client.url", "URL of log server")
-	f.DurationVar(&c.BatchWait, prefix+"client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
-	f.IntVar(&c.BatchSize, prefix+"client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
+	f.DurationVar(&c.BatchWait, prefix+"client.batch-wait", BatchWait, "Maximum wait period before sending batch.")
+	f.IntVar(&c.BatchSize, prefix+"client.batch-size-bytes", BatchSize, "Maximum batch size to accrue before sending. ")
 	// Default backoff schedule: 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s(4.267m) For a total time of 511.5s(8.5m) before logs are lost
-	f.IntVar(&c.BackoffConfig.MaxRetries, prefix+"client.max-retries", 10, "Maximum number of retires when sending batches.")
-	f.DurationVar(&c.BackoffConfig.MinBackoff, prefix+"client.min-backoff", 500*time.Millisecond, "Initial backoff time between retries.")
-	f.DurationVar(&c.BackoffConfig.MaxBackoff, prefix+"client.max-backoff", 5*time.Minute, "Maximum backoff time between retries.")
-	f.DurationVar(&c.Timeout, prefix+"client.timeout", 10*time.Second, "Maximum time to wait for server to respond to a request")
+	f.IntVar(&c.BackoffConfig.MaxRetries, prefix+"client.max-retries", MaxRetries, "Maximum number of retires when sending batches.")
+	f.DurationVar(&c.BackoffConfig.MinBackoff, prefix+"client.min-backoff", MinBackoff, "Initial backoff time between retries.")
+	f.DurationVar(&c.BackoffConfig.MaxBackoff, prefix+"client.max-backoff", MaxBackoff, "Maximum backoff time between retries.")
+	f.DurationVar(&c.Timeout, prefix+"client.timeout", Timeout, "Maximum time to wait for server to respond to a request")
 	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2)")
 
 	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki.")
@@ -61,13 +71,13 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		// force sane defaults.
 		cfg = raw{
 			BackoffConfig: util.BackoffConfig{
-				MaxBackoff: 5 * time.Minute,
-				MaxRetries: 10,
-				MinBackoff: 500 * time.Millisecond,
+				MaxBackoff: MaxBackoff,
+				MaxRetries: MaxRetries,
+				MinBackoff: MinBackoff,
 			},
-			BatchSize: 100 * 1024,
-			BatchWait: 1 * time.Second,
-			Timeout:   10 * time.Second,
+			BatchSize: BatchSize,
+			BatchWait: BatchWait,
+			Timeout:   Timeout,
 		}
 	}
 

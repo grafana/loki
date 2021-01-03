@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -33,6 +34,7 @@ func TestLazyChunkIterator(t *testing.T) {
 			}),
 			[]logproto.Stream{
 				{
+					Labels: fooLabels,
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -44,7 +46,7 @@ func TestLazyChunkIterator(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, logql.TrueFilter, nil)
+			it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
 			require.Nil(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			require.Nil(t, err)
@@ -168,12 +170,14 @@ type fakeBlock struct {
 	mint, maxt int64
 }
 
-func (fakeBlock) Entries() int                                                  { return 0 }
-func (fakeBlock) Offset() int                                                   { return 0 }
-func (f fakeBlock) MinTime() int64                                              { return f.mint }
-func (f fakeBlock) MaxTime() int64                                              { return f.maxt }
-func (fakeBlock) Iterator(context.Context, logql.LineFilter) iter.EntryIterator { return nil }
-func (fakeBlock) SampleIterator(context.Context, logql.LineFilter, logql.SampleExtractor) iter.SampleIterator {
+func (fakeBlock) Entries() int     { return 0 }
+func (fakeBlock) Offset() int      { return 0 }
+func (f fakeBlock) MinTime() int64 { return f.mint }
+func (f fakeBlock) MaxTime() int64 { return f.maxt }
+func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterator {
+	return nil
+}
+func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 

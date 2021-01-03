@@ -11,7 +11,6 @@ import (
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -26,9 +25,9 @@ import (
 )
 
 var (
-	currentBoltdbShipperNon24HoursErr  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
-	upcomingBoltdbShipperNon24HoursErr = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
-	zeroLengthConfigError              = errors.New("Must specify at least one schema configuration.")
+	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
+	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
+	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
 )
 
 // Config is the loki storage configuration
@@ -53,18 +52,18 @@ type SchemaConfig struct {
 // Validate the schema config and returns an error if the validation doesn't pass
 func (cfg *SchemaConfig) Validate() error {
 	if len(cfg.Configs) == 0 {
-		return zeroLengthConfigError
+		return errZeroLengthConfig
 	}
-	activePCIndex := ActivePeriodConfig(*cfg)
+	activePCIndex := ActivePeriodConfig((*cfg).Configs)
 
 	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
 	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex].IndexTables.Period != 24*time.Hour && len(cfg.Configs)-1 == activePCIndex {
-		return currentBoltdbShipperNon24HoursErr
+		return errCurrentBoltdbShipperNon24Hours
 	}
 
 	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
 	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType && cfg.Configs[activePCIndex+1].IndexTables.Period != 24*time.Hour) {
-		return upcomingBoltdbShipperNon24HoursErr
+		return errUpcomingBoltdbShipperNon24Hours
 	}
 
 	return cfg.SchemaConfig.Validate()
@@ -76,24 +75,23 @@ type Store interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	GetSchemaConfigs() []chunk.PeriodConfig
 }
 
 type store struct {
 	chunk.Store
 	cfg          Config
 	chunkMetrics *ChunkMetrics
+	schemaCfg    SchemaConfig
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg.SchemaConfig, limits, registerer, nil, pkg_util.Logger)
-	if err != nil {
-		return nil, err
-	}
+func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, registerer prometheus.Registerer) (Store, error) {
 	return &store{
-		Store:        s,
+		Store:        chunkStore,
 		cfg:          cfg,
 		chunkMetrics: NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
+		schemaCfg:    schemaCfg,
 	}, nil
 }
 
@@ -109,28 +107,24 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 
 // decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
 // and adds the "__cortex_shard__" label if this is a sharded query.
-func decodeReq(req logql.QueryParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
+// todo(cyriltovena) refactor this.
+func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
-		return nil, nil, 0, 0, err
-	}
-
-	filter, err := expr.Filter()
-	if err != nil {
-		return nil, nil, 0, 0, err
+		return nil, 0, 0, err
 	}
 
 	matchers := expr.Matchers()
 	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
 	if err != nil {
-		return nil, nil, 0, 0, err
+		return nil, 0, 0, err
 	}
 	matchers = append(matchers, nameLabelMatcher)
 
 	if shards := req.GetShards(); shards != nil {
 		parsed, err := logql.ParseShards(shards)
 		if err != nil {
-			return nil, nil, 0, 0, err
+			return nil, 0, 0, err
 		}
 		for _, s := range parsed {
 			shardMatcher, err := labels.NewMatcher(
@@ -139,7 +133,7 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, logql.LineFilter, mode
 				s.String(),
 			)
 			if err != nil {
-				return nil, nil, 0, 0, err
+				return nil, 0, 0, err
 			}
 			matchers = append(matchers, shardMatcher)
 
@@ -151,7 +145,7 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, logql.LineFilter, mode
 	}
 
 	from, through := util.RoundToMilliseconds(req.GetStart(), req.GetEnd())
-	return matchers, filter, from, through, nil
+	return matchers, from, through, nil
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
@@ -205,7 +199,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 		matchers = []*labels.Matcher{nameLabelMatcher}
 	} else {
 		var err error
-		matchers, _, from, through, err = decodeReq(req)
+		matchers, from, through, err = decodeReq(req)
 		if err != nil {
 			return nil, err
 		}
@@ -273,7 +267,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	matchers, filter, from, through, err := decodeReq(req)
+	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
 	}
@@ -283,16 +277,26 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
+	expr, err := req.LogSelector()
+	if err != nil {
+		return nil, err
+	}
+
+	pipeline, err := expr.Pipeline()
+	if err != nil {
+		return nil, err
+	}
+
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
 
-	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.Direction, req.Start, req.End)
+	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End)
 
 }
 
 func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
-	matchers, filter, from, through, err := decodeReq(req)
+	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +319,11 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
-	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, extractor, req.Start, req.End)
+	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End)
+}
+
+func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {
+	return s.schemaCfg.Configs
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
@@ -360,10 +368,10 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 
 // ActivePeriodConfig returns index of active PeriodicConfig which would be applicable to logs that would be pushed starting now.
 // Note: Another PeriodicConfig might be applicable for future logs which can change index type.
-func ActivePeriodConfig(cfg SchemaConfig) int {
+func ActivePeriodConfig(configs []chunk.PeriodConfig) int {
 	now := model.Now()
-	i := sort.Search(len(cfg.Configs), func(i int) bool {
-		return cfg.Configs[i].From.Time > now
+	i := sort.Search(len(configs), func(i int) bool {
+		return configs[i].From.Time > now
 	})
 	if i > 0 {
 		i--
@@ -372,10 +380,10 @@ func ActivePeriodConfig(cfg SchemaConfig) int {
 }
 
 // UsingBoltdbShipper checks whether current or the next index type is boltdb-shipper, returns true if yes.
-func UsingBoltdbShipper(cfg SchemaConfig) bool {
-	activePCIndex := ActivePeriodConfig(cfg)
-	if cfg.Configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
-		(len(cfg.Configs)-1 > activePCIndex && cfg.Configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
+func UsingBoltdbShipper(configs []chunk.PeriodConfig) bool {
+	activePCIndex := ActivePeriodConfig(configs)
+	if configs[activePCIndex].IndexType == shipper.BoltDBShipperType ||
+		(len(configs)-1 > activePCIndex && configs[activePCIndex+1].IndexType == shipper.BoltDBShipperType) {
 		return true
 	}
 

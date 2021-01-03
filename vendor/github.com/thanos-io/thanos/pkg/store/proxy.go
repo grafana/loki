@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,11 +21,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/thanos-io/thanos/pkg/component"
-	"github.com/thanos-io/thanos/pkg/promclient"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -42,7 +42,7 @@ type Client interface {
 	storepb.StoreClient
 
 	// LabelSets that each apply to some data exposed by the backing store.
-	LabelSets() []storepb.LabelSet
+	LabelSets() []labels.Labels
 
 	// Minimum and maximum time range of data in the store.
 	TimeRange() (mint int64, maxt int64)
@@ -78,6 +78,12 @@ func newProxyStoreMetrics(reg prometheus.Registerer) *proxyStoreMetrics {
 	return &m
 }
 
+func RegisterStoreServer(storeSrv storepb.StoreServer) func(*grpc.Server) {
+	return func(s *grpc.Server) {
+		storepb.RegisterStoreServer(s, storeSrv)
+	}
+}
+
 // NewProxyStore returns a new ProxyStore that uses the given clients that implements storeAPI to fan-in all series to the client.
 // Note that there is no deduplication support. Deduplication should be done on the highest level (just before PromQL).
 func NewProxyStore(
@@ -107,8 +113,8 @@ func NewProxyStore(
 // Info returns store information about the external labels this store have.
 func (s *ProxyStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.InfoResponse, error) {
 	res := &storepb.InfoResponse{
-		Labels:    make([]storepb.Label, 0, len(s.selectorLabels)),
 		StoreType: s.component.ToProto(),
+		Labels:    labelpb.ZLabelsFromPromLabels(s.selectorLabels),
 	}
 
 	minTime := int64(math.MaxInt64)
@@ -136,26 +142,17 @@ func (s *ProxyStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.I
 	res.MaxTime = maxTime
 	res.MinTime = minTime
 
-	for _, l := range s.selectorLabels {
-		res.Labels = append(res.Labels, storepb.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
-	}
-
-	labelSets := make(map[uint64][]storepb.Label, len(stores))
+	labelSets := make(map[uint64]labelpb.ZLabelSet, len(stores))
 	for _, st := range stores {
-		for _, labelSet := range st.LabelSets() {
-			mergedLabelSet := mergeLabels(labelSet.Labels, s.selectorLabels)
-			ls := storepb.LabelsToPromLabels(mergedLabelSet)
-			sort.Sort(ls)
-			labelSets[ls.Hash()] = mergedLabelSet
+		for _, lset := range st.LabelSets() {
+			mergedLabelSet := labelpb.ExtendLabels(lset, s.selectorLabels)
+			labelSets[mergedLabelSet.Hash()] = labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(mergedLabelSet)}
 		}
 	}
 
-	res.LabelSets = make([]storepb.LabelSet, 0, len(labelSets))
+	res.LabelSets = make([]labelpb.ZLabelSet, 0, len(labelSets))
 	for _, v := range labelSets {
-		res.LabelSets = append(res.LabelSets, storepb.LabelSet{Labels: v})
+		res.LabelSets = append(res.LabelSets, v)
 	}
 
 	// We always want to enforce announcing the subset of data that
@@ -163,30 +160,10 @@ func (s *ProxyStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.I
 	// store-proxy's discovered stores, then we still want to enforce
 	// announcing this subset by announcing the selector as the label-set.
 	if len(res.LabelSets) == 0 && len(res.Labels) > 0 {
-		res.LabelSets = append(res.LabelSets, storepb.LabelSet{Labels: res.Labels})
+		res.LabelSets = append(res.LabelSets, labelpb.ZLabelSet{Labels: res.Labels})
 	}
 
 	return res, nil
-}
-
-// mergeLabels merges label-set a and label-selector b with the selector's
-// labels having precedence. The types are distinct because of the inputs at
-// hand where this function is used.
-func mergeLabels(a []storepb.Label, b labels.Labels) []storepb.Label {
-	ls := map[string]string{}
-	for _, l := range a {
-		ls[l.Name] = l.Value
-	}
-	for _, l := range b {
-		ls[l.Name] = l.Value
-	}
-
-	res := []storepb.Label{}
-	for k, v := range ls {
-		res = append(res, storepb.Label{Name: k, Value: v})
-	}
-
-	return res
 }
 
 // cancelableRespSender is a response channel that does need to be exhausted on cancel.
@@ -260,20 +237,20 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 			// NOTE: all matchers are validated in matchesExternalLabels method so we explicitly ignore error.
 			var ok bool
 			tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
-				storeMatcher := [][]storepb.LabelMatcher{}
+				var storeDebugMatcher [][]*labels.Matcher
 				if ctxVal := srv.Context().Value(StoreMatcherKey); ctxVal != nil {
-					if value, ok := ctxVal.([][]storepb.LabelMatcher); ok {
-						storeMatcher = value
+					if value, ok := ctxVal.([][]*labels.Matcher); ok {
+						storeDebugMatcher = value
 					}
 				}
 				// We can skip error, we already translated matchers once.
-				ok, _ = storeMatches(st, r.MinTime, r.MaxTime, storeMatcher, r.Matchers...)
+				ok, _ = storeMatches(st, r.MinTime, r.MaxTime, storeDebugMatcher, r.Matchers...)
 			})
 			if !ok {
 				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s filtered out", st))
 				continue
 			}
-			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s queried", st))
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
 
 			// This is used to cancel this stream when one operations takes too long.
 			seriesCtx, closeSeries := context.WithCancel(gctx)
@@ -284,7 +261,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 
 			sc, err := st.Series(seriesCtx, r)
 			if err != nil {
-				storeID := storepb.LabelSetsToString(st.LabelSets())
+				storeID := labelpb.PromLabelSetsToString(st.LabelSets())
 				if storeID == "" {
 					storeID = "Store Gateway"
 				}
@@ -318,9 +295,8 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 		// Series are not necessarily merged across themselves.
 		mergedSet := storepb.MergeSeriesSets(seriesSet...)
 		for mergedSet.Next() {
-			var series storepb.Series
-			series.Labels, series.Chunks = mergedSet.At()
-			respSender.send(storepb.NewSeriesResponse(&series))
+			lset, chk := mergedSet.At()
+			respSender.send(storepb.NewSeriesResponse(&storepb.Series{Labels: labelpb.ZLabelsFromPromLabels(lset), Chunks: chk}))
 		}
 		return mergedSet.Err()
 	})
@@ -494,11 +470,11 @@ func (s *streamSeriesSet) Next() (ok bool) {
 	return ok
 }
 
-func (s *streamSeriesSet) At() ([]storepb.Label, []storepb.AggrChunk) {
+func (s *streamSeriesSet) At() (labels.Labels, []storepb.AggrChunk) {
 	if s.currSeries == nil {
 		return nil, nil
 	}
-	return s.currSeries.Labels, s.currSeries.Chunks
+	return s.currSeries.PromLabels(), s.currSeries.Chunks
 }
 
 func (s *streamSeriesSet) Err() error {
@@ -507,79 +483,56 @@ func (s *streamSeriesSet) Err() error {
 	return errors.Wrap(s.err, s.name)
 }
 
-// matchStore returns true if the given store may hold data for the given label
-// matchers.
-func storeMatches(s Client, mint, maxt int64, storeMatcher [][]storepb.LabelMatcher, matchers ...storepb.LabelMatcher) (bool, error) {
+// matchStore returns true if the given store may hold data for the given label matchers.
+func storeMatches(s Client, mint, maxt int64, storeDebugMatchers [][]*labels.Matcher, matchers ...storepb.LabelMatcher) (bool, error) {
 	storeMinTime, storeMaxTime := s.TimeRange()
-	if mint > storeMaxTime || maxt < storeMinTime {
+	if mint > storeMaxTime || maxt <= storeMinTime {
 		return false, nil
 	}
-	match, err := storeMatchMetadata(s, storeMatcher)
-	if err != nil || !match {
-		return match, err
+
+	if !storeMatchDebugMetadata(s, storeDebugMatchers) {
+		return false, nil
 	}
-	return labelSetsMatch(s.LabelSets(), matchers)
+
+	promMatchers, err := storepb.TranslateFromPromMatchers(matchers...)
+	if err != nil {
+		return false, err
+	}
+	return labelSetsMatch(promMatchers, s.LabelSets()...), nil
 }
 
-// storeMatch return true if the store's metadata labels match the storeMatcher.
-func storeMatchMetadata(s Client, storeMatcher [][]storepb.LabelMatcher) (bool, error) {
-	clientLabels := generateMetadataClientLabels(s)
-	if len(storeMatcher) == 0 {
-		return true, nil
+// storeMatchDebugMetadata return true if the store's address match the storeDebugMatchers.
+func storeMatchDebugMetadata(s Client, storeDebugMatchers [][]*labels.Matcher) bool {
+	if len(storeDebugMatchers) == 0 {
+		return true
 	}
-	res := false
-	for _, stm := range storeMatcher {
-		stmMatch, err := labelSetMatches(clientLabels, stm)
-		if err != nil {
-			return false, err
-		}
-		res = res || stmMatch
+
+	match := false
+	for _, sm := range storeDebugMatchers {
+		match = match || labelSetsMatch(sm, labels.FromStrings("__address__", s.Addr()))
 	}
-	return res, nil
+	return match
 }
 
-func generateMetadataClientLabels(s Client) storepb.LabelSet {
-	l := storepb.Label{Name: "__address__", Value: s.Addr()}
-	return storepb.LabelSet{Labels: []storepb.Label{l}}
-}
-
-// labelSetsMatch returns false if all label-set do not match the matchers.
-func labelSetsMatch(lss []storepb.LabelSet, matchers []storepb.LabelMatcher) (bool, error) {
+// labelSetsMatch returns false if all label-set do not match the matchers (aka: OR is between all label-sets).
+func labelSetsMatch(matchers []*labels.Matcher, lss ...labels.Labels) bool {
 	if len(lss) == 0 {
-		return true, nil
+		return true
 	}
 
-	res := false
 	for _, ls := range lss {
-		lsMatch, err := labelSetMatches(ls, matchers)
-		if err != nil {
-			return false, err
-		}
-		res = res || lsMatch
-	}
-	return res, nil
-}
-
-// labelSetMatches returns false if any matcher matches negatively against the
-// respective label-value for the matcher's label-name.
-func labelSetMatches(ls storepb.LabelSet, matchers []storepb.LabelMatcher) (bool, error) {
-	for _, m := range matchers {
-		for _, l := range ls.Labels {
-			if l.Name != m.Name {
-				continue
-			}
-
-			m, err := promclient.TranslateMatcher(m)
-			if err != nil {
-				return false, err
-			}
-
-			if !m.Matches(l.Value) {
-				return false, nil
+		notMatched := false
+		for _, m := range matchers {
+			if lv := ls.Get(m.Name); lv != "" && !m.Matches(lv) {
+				notMatched = true
+				break
 			}
 		}
+		if !notMatched {
+			return true
+		}
 	}
-	return true, nil
+	return false
 }
 
 // LabelNames returns all known label names.
@@ -587,14 +540,32 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 	*storepb.LabelNamesResponse, error,
 ) {
 	var (
-		warnings []string
-		names    [][]string
-		mtx      sync.Mutex
-		g, gctx  = errgroup.WithContext(ctx)
+		warnings       []string
+		names          [][]string
+		mtx            sync.Mutex
+		g, gctx        = errgroup.WithContext(ctx)
+		storeDebugMsgs []string
 	)
 
 	for _, st := range s.stores() {
 		st := st
+		var ok bool
+		tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
+			var storeDebugMatcher [][]*labels.Matcher
+			if ctxVal := ctx.Value(StoreMatcherKey); ctxVal != nil {
+				if value, ok := ctxVal.([][]*labels.Matcher); ok {
+					storeDebugMatcher = value
+				}
+			}
+			// We can skip error, we already translated matchers once.
+			ok, _ = storeMatches(st, r.Start, r.End, storeDebugMatcher)
+		})
+		if !ok {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out", st))
+			continue
+		}
+		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
+
 		g.Go(func() error {
 			resp, err := st.LabelNames(gctx, &storepb.LabelNamesRequest{
 				PartialResponseDisabled: r.PartialResponseDisabled,
@@ -626,6 +597,7 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 		return nil, err
 	}
 
+	level.Debug(s.logger).Log("msg", strings.Join(storeDebugMsgs, ";"))
 	return &storepb.LabelNamesResponse{
 		Names:    strutil.MergeUnsortedSlices(names...),
 		Warnings: warnings,
@@ -637,14 +609,32 @@ func (s *ProxyStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequ
 	*storepb.LabelValuesResponse, error,
 ) {
 	var (
-		warnings []string
-		all      [][]string
-		mtx      sync.Mutex
-		g, gctx  = errgroup.WithContext(ctx)
+		warnings       []string
+		all            [][]string
+		mtx            sync.Mutex
+		g, gctx        = errgroup.WithContext(ctx)
+		storeDebugMsgs []string
 	)
 
 	for _, st := range s.stores() {
 		store := st
+		var ok bool
+		tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
+			var storeDebugMatcher [][]*labels.Matcher
+			if ctxVal := ctx.Value(StoreMatcherKey); ctxVal != nil {
+				if value, ok := ctxVal.([][]*labels.Matcher); ok {
+					storeDebugMatcher = value
+				}
+			}
+			// We can skip error, we already translated matchers once.
+			ok, _ = storeMatches(st, r.Start, r.End, storeDebugMatcher)
+		})
+		if !ok {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out", st))
+			continue
+		}
+		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
+
 		g.Go(func() error {
 			resp, err := store.LabelValues(gctx, &storepb.LabelValuesRequest{
 				Label:                   r.Label,
@@ -677,6 +667,7 @@ func (s *ProxyStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequ
 		return nil, err
 	}
 
+	level.Debug(s.logger).Log("msg", strings.Join(storeDebugMsgs, ";"))
 	return &storepb.LabelValuesResponse{
 		Values:   strutil.MergeUnsortedSlices(all...),
 		Warnings: warnings,

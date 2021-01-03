@@ -94,7 +94,7 @@ type HATrackerConfig struct {
 	// more than this duration
 	FailoverTimeout time.Duration `yaml:"ha_tracker_failover_timeout"`
 
-	KVStore kv.Config
+	KVStore kv.Config `yaml:"kvstore" doc:"description=Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes."`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -273,9 +273,6 @@ func replicasNotMatchError(replica, elected string) error {
 	return httpgrpc.Errorf(http.StatusAccepted, "replicas did not mach, rejecting sample: replica=%s, elected=%s", replica, elected)
 }
 
-// Modifies the labels parameter in place, removing labels that match
-// the replica or cluster label and returning their values. Returns an error
-// if we find one but not both of the labels.
 func findHALabels(replicaLabel, clusterLabel string, labels []client.LabelAdapter) (string, string) {
 	var cluster, replica string
 	var pair client.LabelAdapter

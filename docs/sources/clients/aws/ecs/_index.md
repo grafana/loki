@@ -1,5 +1,5 @@
 ---
-title: ecs
+title: ECS
 ---
 # Sending Logs From AWS Elastic Container Service (ECS)
 
@@ -43,7 +43,7 @@ We will also need an [IAM Role to run containers][ecs iam] with, let's create a 
 > You might already have this `ecsTaskExecutionRole` role in your AWS account if that's the case you can skip this step.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/docs/aws/ecs/ecs-role.json > ecs-role.json
+curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ecs/ecs-role.json > ecs-role.json
 aws iam create-role --role-name ecsTaskExecutionRole  --assume-role-policy-document file://ecs-role.json
 
 {
@@ -83,7 +83,7 @@ aws iam attach-role-policy --role-name ecsTaskExecutionRole --policy-arn "arn:aw
 
 Amazon [Firelens][Firelens] is a log router (usually `fluentd` or `fluentbit`) you run along the same task definition next to your application containers to route their logs to Loki.
 
-In this example we will use [fluentbit][fluentbit] (with the [Loki plugin][fluentbit loki] installed) but if you prefer [fluentd][fluentd] make sure to check the [documentation][fluentd loki].
+In this example we will use [fluentbit][fluentbit] (with the [Loki plugin][fluentbit loki] installed) but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
 
 > We recommend you to use [fluentbit][fluentbit] as it's less resources consuming than [fluentd][fluentd].
 
@@ -92,13 +92,13 @@ Our [task definition][task] will be made of two containers, the [Firelens][Firel
 Let's download the task definition, we'll go through the most important parts.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/docs/aws/ecs/ecs-task.json > ecs-task.json
+curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ecs/ecs-task.json > ecs-task.json
 ```
 
 ```json
  {
     "essential": true,
-    "image": "grafana/fluent-bit-plugin-loki:1.6.0-amd64",
+    "image": "grafana/fluent-bit-plugin-loki:2.0.0-amd64",
     "name": "log_router",
     "firelensConfiguration": {
         "type": "fluentbit",
@@ -154,7 +154,7 @@ All `options` of the `logConfiguration` will be automatically translated into [f
 
 ```conf
 [OUTPUT]
-    Name loki
+    Name grafana-loki
     Match awsfirelens*
     Url https://<userid>:<grafancloud apikey>@logs-prod-us-central1.grafana.net/loki/api/v1/push
     Labels {job="firelens"}
@@ -163,7 +163,7 @@ All `options` of the `logConfiguration` will be automatically translated into [f
     LineFormat key_value
 ```
 
-This `OUTPUT` config will forward logs to [GrafanaCloud][GrafanaCloud] Loki, to learn more about those options make sure to read the [documentation of the Loki output][fluentbit loki].
+This `OUTPUT` config will forward logs to [GrafanaCloud][GrafanaCloud] Loki, to learn more about those options make sure to read the [fluentbit output plugin][fluentbit loki] documentation.
 We've kept some interesting and useful labels such as `container_name`, `ecs_task_definition` , `source` and `ecs_cluster` but you can statically add more via the `Labels` option.
 
 > If you want run multiple containers in your task, all of them needs a `logConfiguration` section, this give you the opportunity to add different labels depending on the container.

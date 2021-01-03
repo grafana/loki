@@ -1,6 +1,6 @@
 image:
   repository: grafana/loki
-  tag: 1.6.0
+  tag: 2.0.0
   pullPolicy: IfNotPresent
 
   ## Optionally specify an array of imagePullSecrets.
@@ -71,18 +71,21 @@ config:
     reject_old_samples_max_age: 168h
   schema_config:
     configs:
-    - from: 2018-04-15
-      store: boltdb
+    - from: 2020-10-24
+      store: boltdb-shipper
       object_store: filesystem
-      schema: v9
+      schema: v11
       index:
         prefix: index_
-        period: 168h
+        period: 24h
   server:
     http_listen_port: 3100
   storage_config:
-    boltdb:
-      directory: /data/loki/index
+    boltdb_shipper:
+      active_index_directory: /data/loki/boltdb-shipper-active
+      cache_location: /data/loki/boltdb-shipper-cache
+      cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+      shared_store: filesystem
     filesystem:
       directory: /data/loki/chunks
   chunk_store_config:
@@ -90,6 +93,22 @@ config:
   table_manager:
     retention_deletes_enabled: false
     retention_period: 0s
+  compactor:
+    working_directory: /data/loki/boltdb-shipper-compactor
+    shared_store: filesystem
+# Needed for Alerting: https://grafana.com/docs/loki/latest/alerting/
+# This is just a simple example, for more details: https://grafana.com/docs/loki/latest/configuration/#ruler_config
+#  ruler:
+#    storage:
+#      type: local
+#      local:
+#        directory: /rules
+#    rule_path: /tmp/scratch
+#    alertmanager_url: http://alertmanager.svc.namespace:9093
+#    ring:
+#      kvstore:
+#        store: inmemory
+#    enable_api: true
 
 ## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
 extraArgs: {}
@@ -122,6 +141,9 @@ persistence:
   - ReadWriteOnce
   size: 10Gi
   annotations: {}
+  # selector:
+  #   matchLabels:
+  #     app.kubernetes.io/name: loki
   # subPath: ""
   # existingClaim:
 
@@ -170,6 +192,7 @@ service:
   port: 3100
   annotations: {}
   labels: {}
+  targetPort: http-metrics
 
 serviceAccount:
   create: true
@@ -239,3 +262,12 @@ extraPorts: []
 
 # Extra env variables to pass to the loki container
 env: []
+
+# Specify Loki Alerting rules based on this documentation: https://grafana.com/docs/loki/latest/alerting/
+# When specified, you also need to add a ruler config section above. An example is shown in the alerting docs.
+alerting_groups: []
+#  - name: example
+#    rules:
+#    - alert: HighThroughputLogStreams
+#      expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
+#      for: 2m

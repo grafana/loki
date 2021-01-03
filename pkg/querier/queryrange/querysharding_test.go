@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"testing"
@@ -146,6 +147,7 @@ func Test_astMapper(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		fakeLimits{maxSeries: math.MaxInt32},
 	)
 
 	resp, err := mware.Do(context.Background(), defaultReq().WithQuery(`{food="bar"}`))
@@ -157,6 +159,30 @@ func Test_astMapper(t *testing.T) {
 	require.Equal(t, called, 2)
 	require.Equal(t, expected.(*LokiResponse).Data, resp.(*LokiResponse).Data)
 
+}
+
+func Test_ShardingByPass(t *testing.T) {
+	called := 0
+	handler := queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+		called++
+		return nil, nil
+	})
+
+	mware := newASTMapperware(
+		queryrange.ShardingConfigs{
+			chunk.PeriodConfig{
+				RowShards: 2,
+			},
+		},
+		handler,
+		log.NewNopLogger(),
+		nilShardingMetrics,
+		fakeLimits{maxSeries: math.MaxInt32},
+	)
+
+	_, err := mware.Do(context.Background(), defaultReq().WithQuery(`1+1`))
+	require.Nil(t, err)
+	require.Equal(t, called, 1)
 }
 
 func Test_hasShards(t *testing.T) {

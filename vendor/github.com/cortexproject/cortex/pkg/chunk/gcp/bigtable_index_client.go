@@ -47,7 +47,7 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Project, "bigtable.project", "", "Bigtable project ID.")
-	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
+	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID. Please refer to https://cloud.google.com/docs/authentication/production for more information about how to configure authentication.")
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 
@@ -116,7 +116,7 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 			// We hash the row key and prepend it back to the key for better distribution.
 			// We preserve the existing key to make migrations and o11y easier.
 			if cfg.DistributeKeys {
-				hashValue = hashPrefix(hashValue) + "-" + hashValue
+				hashValue = HashPrefix(hashValue) + "-" + hashValue
 			}
 
 			return hashValue, string(rangeValue)
@@ -124,9 +124,9 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 	}
 }
 
-// hashPrefix calculates a 64bit hash of the input string and hex-encodes
+// HashPrefix calculates a 64bit hash of the input string and hex-encodes
 // the result, taking care to zero pad etc.
-func hashPrefix(input string) string {
+func HashPrefix(input string) string {
 	prefix := hashAdd(hashNew(), input)
 	var encodedUint64 [8]byte
 	binary.LittleEndian.PutUint64(encodedUint64[:], prefix)

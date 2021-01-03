@@ -5,6 +5,7 @@
 *.output
 *.tgz
 *.exe
+__debug_bin
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
@@ -26,6 +27,7 @@ dist
 coverage.txt
 .DS_Store
 .aws-sam
+.idea
 
 # emacs
 .#*

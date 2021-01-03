@@ -34,7 +34,7 @@ func validateOutputConfig(cfg *OutputConfig) error {
 }
 
 // newOutputStage creates a new outputStage
-func newOutputStage(logger log.Logger, config interface{}) (*outputStage, error) {
+func newOutputStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg := &OutputConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -44,10 +44,10 @@ func newOutputStage(logger log.Logger, config interface{}) (*outputStage, error)
 	if err != nil {
 		return nil, err
 	}
-	return &outputStage{
+	return toStage(&outputStage{
 		cfgs:   cfg,
 		logger: logger,
-	}, nil
+	}), nil
 }
 
 // outputStage will mutate the incoming entry and set it from extracted data

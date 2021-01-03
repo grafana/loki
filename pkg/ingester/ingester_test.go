@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -17,6 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -271,6 +275,14 @@ func (s *mockStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return nil, nil
 }
 
+func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	return nil, nil, nil
+}
+
+func (s *mockStore) GetSchemaConfigs() []chunk.PeriodConfig {
+	return nil
+}
+
 type mockQuerierServer struct {
 	ctx   context.Context
 	resps []*logproto.QueryResponse
@@ -353,6 +365,129 @@ func TestIngester_buildStoreRequest(t *testing.T) {
 			}
 			require.Equal(t, tc.expectedEnd, end, "end")
 			require.Equal(t, tc.expectedStart, start, "start")
+		})
+	}
+}
+
+func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
+	now := model.Now()
+
+	for _, tc := range []struct {
+		name                string
+		periodicConfigs     []chunk.PeriodConfig
+		expectedMaxLookBack time.Duration
+	}{
+		{
+			name: "not using boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "bigtable",
+				},
+			},
+		},
+		{
+			name: "just one periodic config with boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+			},
+			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
+		},
+		{
+			name: "active config boltdb-shipper, previous config non boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					IndexType: "bigtable",
+				},
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+			},
+			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
+		},
+		{
+			name: "current and previous config both using boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+			},
+			expectedMaxLookBack: time.Since(now.Add(-48 * time.Hour).Time()),
+		},
+		{
+			name: "active config non boltdb-shipper, previous config boltdb-shipper",
+			periodicConfigs: []chunk.PeriodConfig{
+				{
+					From:      chunk.DayTime{Time: now.Add(-48 * time.Hour)},
+					IndexType: "boltdb-shipper",
+				},
+				{
+					From:      chunk.DayTime{Time: now.Add(-24 * time.Hour)},
+					IndexType: "bigtable",
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ingester := Ingester{periodicConfigs: tc.periodicConfigs}
+			mlb := ingester.boltdbShipperMaxLookBack()
+			require.InDelta(t, tc.expectedMaxLookBack, mlb, float64(time.Second))
+		})
+	}
+}
+
+func TestValidate(t *testing.T) {
+
+	for i, tc := range []struct {
+		in       Config
+		err      bool
+		expected Config
+	}{
+		{
+			in: Config{
+				MaxChunkAge:   time.Minute,
+				ChunkEncoding: chunkenc.EncGZIP.String(),
+			},
+			expected: Config{
+				MaxChunkAge:    time.Minute,
+				ChunkEncoding:  chunkenc.EncGZIP.String(),
+				parsedEncoding: chunkenc.EncGZIP,
+			},
+		},
+		{
+			in: Config{
+				ChunkEncoding: chunkenc.EncSnappy.String(),
+			},
+			expected: Config{
+				ChunkEncoding:  chunkenc.EncSnappy.String(),
+				parsedEncoding: chunkenc.EncSnappy,
+			},
+		},
+		{
+			in: Config{
+				ChunkEncoding: "bad-enc",
+			},
+			err: true,
+		},
+	} {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			err := tc.in.Validate()
+			if tc.err {
+				require.NotNil(t, err)
+				return
+			}
+			require.Nil(t, err)
+			require.Equal(t, tc.expected, tc.in)
 		})
 	}
 }

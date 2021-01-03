@@ -65,6 +65,7 @@ Commonly used sections:
 
 If you have any questions or feedback regarding Loki:
 
+- Search existing thread in the Grafana Labs community forum for Loki: [https://community.grafana.com](https://community.grafana.com/c/grafana-loki/)
 - Ask a question on the Loki Slack channel. To invite yourself to the Grafana Slack, visit [https://slack.grafana.com/](https://slack.grafana.com/) and join the #loki channel.
 - [File an issue](https://github.com/grafana/loki/issues/new) for bugs, issues and feature suggestions.
 - Send an email to [lokiproject@googlegroups.com](mailto:lokiproject@googlegroups.com), or use the [web interface](https://groups.google.com/forum/#!forum/lokiproject).
@@ -99,7 +100,7 @@ Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-You need `go` [v1.10+](https://golang.org/dl/) installed locally.
+You need `go`, we recommend using the version found in [our build Dockerfile](https://github.com/grafana/loki/blob/master/loki-build-image/Dockerfile)
 
 ```bash
 

@@ -132,6 +132,12 @@ func WithTraceID(traceID string, l log.Logger) log.Logger {
 	return log.With(l, "traceID", traceID)
 }
 
+// WithSourceIPs returns a Logger that has information about the source IPs in
+// its details.
+func WithSourceIPs(sourceIPs string, l log.Logger) log.Logger {
+	return log.With(l, "sourceIPs", sourceIPs)
+}
+
 // CheckFatal prints an error and exits with error code 1 if err is non-nil
 func CheckFatal(location string, err error) {
 	if err != nil {

@@ -85,7 +85,7 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 }
 
 // newMetricStage creates a new set of metrics to process for each log entry
-func newMetricStage(logger log.Logger, config interface{}, registry prometheus.Registerer) (*metricStage, error) {
+func newMetricStage(logger log.Logger, config interface{}, registry prometheus.Registerer) (Stage, error) {
 	cfgs := &MetricsConfig{}
 	err := mapstructure.Decode(config, cfgs)
 	if err != nil {
@@ -128,11 +128,11 @@ func newMetricStage(logger log.Logger, config interface{}, registry prometheus.R
 			metrics[name] = collector
 		}
 	}
-	return &metricStage{
+	return toStage(&metricStage{
 		logger:  logger,
 		cfg:     *cfgs,
 		metrics: metrics,
-	}, nil
+	}), nil
 }
 
 // metricStage creates and updates prometheus metrics based on extracted pipeline data
@@ -144,9 +144,6 @@ type metricStage struct {
 
 // Process implements Stage
 func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	if _, ok := labels[dropLabel]; ok {
-		return
-	}
 	for name, collector := range m.metrics {
 		// There is a special case for counters where we count even if there is no match in the extracted map.
 		if c, ok := collector.(*metric.Counters); ok {

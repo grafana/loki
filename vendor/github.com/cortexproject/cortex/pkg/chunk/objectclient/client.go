@@ -111,5 +111,9 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 
 // GetChunks retrieves the specified chunks from the configured backend
 func (o *Client) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	return o.store.DeleteObject(ctx, chunkID)
+	key := chunkID
+	if o.keyEncoder != nil {
+		key = o.keyEncoder(key)
+	}
+	return o.store.DeleteObject(ctx, key)
 }

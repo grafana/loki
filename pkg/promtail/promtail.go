@@ -98,6 +98,11 @@ func (p *Promtail) Run() error {
 	return p.server.Run()
 }
 
+// Client returns the underlying client Promtail uses to write to Loki.
+func (p *Promtail) Client() client.Client {
+	return p.client
+}
+
 // Shutdown the promtail.
 func (p *Promtail) Shutdown() {
 	p.mtx.Lock()
@@ -109,5 +114,6 @@ func (p *Promtail) Shutdown() {
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
+	// todo work out the stop.
 	p.client.Stop()
 }

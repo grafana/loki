@@ -65,11 +65,11 @@ func newRegexStage(logger log.Logger, config interface{}) (Stage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &regexStage{
+	return toStage(&regexStage{
 		cfg:        cfg,
 		expression: expression,
 		logger:     log.With(logger, "component", "stage", "type", "regex"),
-	}, nil
+	}), nil
 }
 
 // parseRegexConfig processes an incoming configuration into a RegexConfig

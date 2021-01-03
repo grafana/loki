@@ -24,6 +24,7 @@ func NewQueryShardMiddleware(
 	minShardingLookback time.Duration,
 	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
+	limits logql.Limits,
 ) queryrange.Middleware {
 
 	noshards := !hasShards(confs)
@@ -38,7 +39,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return newASTMapperware(confs, next, logger, shardingMetrics)
+		return newASTMapperware(confs, next, logger, shardingMetrics, limits)
 	})
 
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
@@ -60,21 +61,24 @@ func newASTMapperware(
 	next queryrange.Handler,
 	logger log.Logger,
 	metrics *logql.ShardingMetrics,
+	limits logql.Limits,
 ) *astMapperware {
 
 	return &astMapperware{
-		confs:  confs,
-		logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
-		next:   next,
-		ng:     logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics),
+		confs:   confs,
+		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
+		next:    next,
+		ng:      logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits),
+		metrics: metrics,
 	}
 }
 
 type astMapperware struct {
-	confs  queryrange.ShardingConfigs
-	logger log.Logger
-	next   queryrange.Handler
-	ng     *logql.ShardedEngine
+	confs   queryrange.ShardingConfigs
+	logger  log.Logger
+	next    queryrange.Handler
+	ng      *logql.ShardedEngine
+	metrics *logql.ShardingMetrics
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
@@ -92,8 +96,26 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	if !ok {
 		return nil, fmt.Errorf("expected *LokiRequest, got (%T)", r)
 	}
-	params := paramsFromRequest(req)
-	query := ast.ng.Query(params, int(conf.RowShards))
+
+	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)
+	if err != nil {
+		return nil, err
+	}
+
+	noop, parsed, err := mapper.Parse(r.GetQuery())
+	if err != nil {
+		level.Warn(shardedLog).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
+		return nil, err
+	}
+	level.Debug(shardedLog).Log("no-op", noop, "mapped", parsed.String())
+
+	if noop {
+		// the ast can't be mapped to a sharded equivalent
+		// so we can bypass the sharding engine.
+		return ast.next.Do(ctx, r)
+	}
+
+	query := ast.ng.Query(paramsFromRequest(req), parsed)
 
 	res, err := query.Exec(ctx)
 	if err != nil {

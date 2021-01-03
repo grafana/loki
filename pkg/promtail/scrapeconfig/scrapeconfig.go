@@ -6,25 +6,117 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/discovery"
+	"github.com/prometheus/prometheus/discovery/azure"
+	"github.com/prometheus/prometheus/discovery/consul"
+	"github.com/prometheus/prometheus/discovery/digitalocean"
+	"github.com/prometheus/prometheus/discovery/dns"
+	"github.com/prometheus/prometheus/discovery/dockerswarm"
+	"github.com/prometheus/prometheus/discovery/ec2"
+	"github.com/prometheus/prometheus/discovery/file"
+	"github.com/prometheus/prometheus/discovery/gce"
+	"github.com/prometheus/prometheus/discovery/kubernetes"
+	"github.com/prometheus/prometheus/discovery/marathon"
+	"github.com/prometheus/prometheus/discovery/openstack"
+	"github.com/prometheus/prometheus/discovery/triton"
+	"github.com/prometheus/prometheus/discovery/zookeeper"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/weaveworks/common/server"
 
-	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/pkg/relabel"
-
 	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName                string                           `yaml:"job_name,omitempty"`
-	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
-	PipelineStages         stages.PipelineStages            `yaml:"pipeline_stages,omitempty"`
-	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
-	SyslogConfig           *SyslogTargetConfig              `yaml:"syslog,omitempty"`
-	PushConfig             *PushTargetConfig                `yaml:"loki_push_api,omitempty"`
-	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
-	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+	JobName                string                 `yaml:"job_name,omitempty"`
+	PipelineStages         stages.PipelineStages  `yaml:"pipeline_stages,omitempty"`
+	JournalConfig          *JournalTargetConfig   `yaml:"journal,omitempty"`
+	SyslogConfig           *SyslogTargetConfig    `yaml:"syslog,omitempty"`
+	PushConfig             *PushTargetConfig      `yaml:"loki_push_api,omitempty"`
+	RelabelConfigs         []*relabel.Config      `yaml:"relabel_configs,omitempty"`
+	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
+}
+
+type ServiceDiscoveryConfig struct {
+	// List of labeled target groups for this job.
+	StaticConfigs discovery.StaticConfig `yaml:"static_configs"`
+	// List of DNS service discovery configurations.
+	DNSSDConfigs []*dns.SDConfig `yaml:"dns_sd_configs,omitempty"`
+	// List of file service discovery configurations.
+	FileSDConfigs []*file.SDConfig `yaml:"file_sd_configs,omitempty"`
+	// List of Consul service discovery configurations.
+	ConsulSDConfigs []*consul.SDConfig `yaml:"consul_sd_configs,omitempty"`
+	// List of DigitalOcean service discovery configurations.
+	DigitalOceanSDConfigs []*digitalocean.SDConfig `yaml:"digitalocean_sd_configs,omitempty"`
+	// List of Docker Swarm service discovery configurations.
+	DockerSwarmSDConfigs []*dockerswarm.SDConfig `yaml:"dockerswarm_sd_configs,omitempty"`
+	// List of Serverset service discovery configurations.
+	ServersetSDConfigs []*zookeeper.ServersetSDConfig `yaml:"serverset_sd_configs,omitempty"`
+	// NerveSDConfigs is a list of Nerve service discovery configurations.
+	NerveSDConfigs []*zookeeper.NerveSDConfig `yaml:"nerve_sd_configs,omitempty"`
+	// MarathonSDConfigs is a list of Marathon service discovery configurations.
+	MarathonSDConfigs []*marathon.SDConfig `yaml:"marathon_sd_configs,omitempty"`
+	// List of Kubernetes service discovery configurations.
+	KubernetesSDConfigs []*kubernetes.SDConfig `yaml:"kubernetes_sd_configs,omitempty"`
+	// List of GCE service discovery configurations.
+	GCESDConfigs []*gce.SDConfig `yaml:"gce_sd_configs,omitempty"`
+	// List of EC2 service discovery configurations.
+	EC2SDConfigs []*ec2.SDConfig `yaml:"ec2_sd_configs,omitempty"`
+	// List of OpenStack service discovery configurations.
+	OpenstackSDConfigs []*openstack.SDConfig `yaml:"openstack_sd_configs,omitempty"`
+	// List of Azure service discovery configurations.
+	AzureSDConfigs []*azure.SDConfig `yaml:"azure_sd_configs,omitempty"`
+	// List of Triton service discovery configurations.
+	TritonSDConfigs []*triton.SDConfig `yaml:"triton_sd_configs,omitempty"`
+}
+
+func (cfg ServiceDiscoveryConfig) Configs() (res discovery.Configs) {
+	if x := cfg.StaticConfigs; len(x) > 0 {
+		res = append(res, x)
+	}
+	for _, x := range cfg.DNSSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.FileSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.ConsulSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.DigitalOceanSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.DockerSwarmSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.ServersetSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.NerveSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.MarathonSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.KubernetesSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.GCESDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.EC2SDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.OpenstackSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.AzureSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.TritonSDConfigs {
+		res = append(res, x)
+	}
+	return res
 }
 
 // JournalTargetConfig describes systemd journal records to scrape.
@@ -66,6 +158,10 @@ type SyslogTargetConfig struct {
 
 	// Labels optionally holds labels to associate with each record read from syslog.
 	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming syslog mesages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
 // PushTargetConfig describes a scrape config that listens for Loki push messages.
@@ -82,24 +178,32 @@ type PushTargetConfig struct {
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
-	EntryParser: api.Docker,
+	PipelineStages: []interface{}{
+		map[interface{}]interface{}{
+			stages.StageTypeDocker: nil,
+		},
+	},
 }
 
 // HasServiceDiscoveryConfig checks to see if the service discovery used for
 // file targets is non-zero.
 func (c *Config) HasServiceDiscoveryConfig() bool {
-	return !reflect.DeepEqual(c.ServiceDiscoveryConfig, sd_config.ServiceDiscoveryConfig{})
+	return !reflect.DeepEqual(c.ServiceDiscoveryConfig, ServiceDiscoveryConfig{})
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+
 	*c = DefaultScrapeConfig
+
 	type plain Config
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
+
 	if len(c.JobName) == 0 {
 		return fmt.Errorf("job_name is empty")
 	}
+
 	return nil
 }

@@ -106,12 +106,8 @@ func TestPipeline_Regex(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			lbls := model.LabelSet{}
-			ts := time.Now()
-			entry := testData.entry
-			extracted := map[string]interface{}{}
-			pl.Process(lbls, extracted, &ts, &entry)
-			assert.Equal(t, testData.expectedExtract, extracted)
+			out := processEntries(pl, newEntry(nil, nil, testData.entry, time.Now()))[0]
+			assert.Equal(t, testData.expectedExtract, out.Extracted)
 		})
 	}
 }
@@ -124,12 +120,9 @@ func TestPipelineWithMissingKey_Regex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lbls := model.LabelSet{}
 	Debug = true
-	ts := time.Now()
-	entry := testRegexLogLineWithMissingKey
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
+	_ = processEntries(pl, newEntry(nil, nil, testRegexLogLineWithMissingKey, time.Now()))[0]
+
 	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"Can't convert <nil> to string\" type=null"
 	if !(strings.Contains(buf.String(), expectedLog)) {
 		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
@@ -333,11 +326,8 @@ func TestRegexParser_Parse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create regex parser: %s", err)
 			}
-			lbs := model.LabelSet{}
-			extr := tt.extracted
-			ts := time.Now()
-			p.Process(lbs, extr, &ts, &tt.entry)
-			assert.Equal(t, tt.expectedExtract, extr)
+			out := processEntries(p, newEntry(tt.extracted, nil, tt.entry, time.Now()))[0]
+			assert.Equal(t, tt.expectedExtract, out.Extracted)
 
 		})
 	}
@@ -378,10 +368,18 @@ func BenchmarkRegexStage(b *testing.B) {
 			labels := model.LabelSet{}
 			ts := time.Now()
 			extr := map[string]interface{}{}
+
+			in := make(chan Entry)
+			out := stage.Run(in)
+			go func() {
+				for range out {
+
+				}
+			}()
 			for i := 0; i < b.N; i++ {
-				entry := bm.entry
-				stage.Process(labels, extr, &ts, &entry)
+				in <- newEntry(extr, labels, bm.entry, ts)
 			}
+			close(in)
 		})
 	}
 }

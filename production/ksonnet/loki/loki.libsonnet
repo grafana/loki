@@ -15,4 +15,10 @@
 (import 'ruler.libsonnet') +
 
 // Supporting services
-(import 'memcached.libsonnet')
+(import 'memcached.libsonnet') +
+
+// WAL support
+(import 'wal.libsonnet') +
+
+// BoltDB Shipper support. This should be the last one to get imported.
+(import 'boltdb_shipper.libsonnet')

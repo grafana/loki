@@ -1,4 +1,4 @@
-FROM golang:1.14.2 as build
+FROM golang:1.15.3 as build
 # TOUCH_PROTOS signifies if we should touch the compiled proto files and thus not regenerate them.
 # This is helpful when file system timestamps can't be trusted with make
 ARG TOUCH_PROTOS
@@ -15,7 +15,8 @@ COPY cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
 
 RUN addgroup -g 10001 -S loki && \
     adduser -u 10001 -S loki -G loki
-RUN mkdir -p /loki && \
+RUN mkdir -p /loki/rules && \
+    mkdir -p /loki/tmprules && \
     chown -R loki:loki /etc/loki /loki
 
 # See https://github.com/grafana/loki/issues/1928

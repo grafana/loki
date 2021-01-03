@@ -4,27 +4,25 @@ import (
 	"context"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -59,9 +57,13 @@ var (
 type instance struct {
 	cfg        *Config
 	streamsMtx sync.RWMutex
-	streams    map[model.Fingerprint]*stream // we use 'mapped' fingerprints here.
-	index      *index.InvertedIndex
-	mapper     *fpMapper // using of mapper needs streamsMtx because it calls back
+
+	buf         []byte // buffer used to compute fps.
+	streams     map[string]*stream
+	streamsByFP map[model.Fingerprint]*stream
+
+	index  *index.InvertedIndex
+	mapper *fpMapper // using of mapper needs streamsMtx because it calls back
 
 	instanceID string
 
@@ -72,29 +74,35 @@ type instance struct {
 	tailerMtx sync.RWMutex
 
 	limiter *Limiter
-	factory func() chunkenc.Chunk
 
-	// sync
-	syncPeriod  time.Duration
-	syncMinUtil float64
+	wal WAL
+
+	metrics *ingesterMetrics
 }
 
-func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, limiter *Limiter, syncPeriod time.Duration, syncMinUtil float64) *instance {
+func newInstance(
+	cfg *Config,
+	instanceID string,
+	limiter *Limiter,
+	wal WAL,
+	metrics *ingesterMetrics,
+) *instance {
 	i := &instance{
-		cfg:        cfg,
-		streams:    map[model.Fingerprint]*stream{},
-		index:      index.New(),
-		instanceID: instanceID,
+		cfg:         cfg,
+		streams:     map[string]*stream{},
+		streamsByFP: map[model.Fingerprint]*stream{},
+		buf:         make([]byte, 0, 1024),
+		index:       index.New(),
+		instanceID:  instanceID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
-		factory: factory,
 		tailers: map[uint32]*tailer{},
 		limiter: limiter,
 
-		syncPeriod:  syncPeriod,
-		syncMinUtil: syncMinUtil,
+		wal:     wal,
+		metrics: metrics,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -102,18 +110,19 @@ func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, 
 
 // consumeChunk manually adds a chunk that was received during ingester chunk
 // transfer.
-func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapter, chunk *logproto.Chunk) error {
+func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *logproto.Chunk) error {
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
-	rawFp := client.FastFingerprint(labels)
-	fp := i.mapper.mapFP(rawFp, labels)
+	fp := i.getHashForLabels(ls)
 
-	stream, ok := i.streams[fp]
+	stream, ok := i.streamsByFP[fp]
 	if !ok {
-		sortedLabels := i.index.Add(labels, fp)
-		stream = newStream(i.cfg, fp, sortedLabels, i.factory)
-		i.streams[fp] = stream
+
+		sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(ls), fp)
+		stream = newStream(i.cfg, fp, sortedLabels, i.metrics)
+		i.streamsByFP[fp] = stream
+		i.streams[stream.labelsString] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Inc()
 		i.addTailersToNewStream(stream)
@@ -128,44 +137,56 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 }
 
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	record := recordPool.GetRecord()
+	record.UserID = i.instanceID
+	defer recordPool.PutRecord(record)
+
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
 	var appendErr error
 	for _, s := range req.Streams {
 
-		stream, err := i.getOrCreateStream(s)
+		stream, err := i.getOrCreateStream(s, false, record)
 		if err != nil {
 			appendErr = err
 			continue
 		}
 
-		prevNumChunks := len(stream.chunks)
-		if err := stream.Push(ctx, s.Entries, i.syncPeriod, i.syncMinUtil); err != nil {
+		if err := stream.Push(ctx, s.Entries, record); err != nil {
 			appendErr = err
 			continue
 		}
+	}
 
-		memoryChunks.Add(float64(len(stream.chunks) - prevNumChunks))
+	if !record.IsEmpty() {
+		if err := i.wal.Log(record); err != nil {
+			return err
+		}
 	}
 
 	return appendErr
 }
 
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, error) {
-	labels, err := util.ToClientLabels(pushReqStream.Labels)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+// getOrCreateStream returns the stream or creates it. Must hold streams mutex if not asked to lock.
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, record *WALRecord) (*stream, error) {
+	if lock {
+		i.streamsMtx.Lock()
+		defer i.streamsMtx.Unlock()
 	}
-	rawFp := client.FastFingerprint(labels)
-	fp := i.mapper.mapFP(rawFp, labels)
+	stream, ok := i.streams[pushReqStream.Labels]
 
-	stream, ok := i.streams[fp]
 	if ok {
 		return stream, nil
 	}
 
-	err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
+	// reducing the stream limits, for instance.
+	var err error
+	if record != nil {
+		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+	}
+
 	if err != nil {
 		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
 		bytes := 0
@@ -176,9 +197,28 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
 	}
 
-	sortedLabels := i.index.Add(labels, fp)
-	stream = newStream(i.cfg, fp, sortedLabels, i.factory)
-	i.streams[fp] = stream
+	labels, err := logql.ParseLabels(pushReqStream.Labels)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	fp := i.getHashForLabels(labels)
+
+	sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(labels), fp)
+	stream = newStream(i.cfg, fp, sortedLabels, i.metrics)
+	i.streams[pushReqStream.Labels] = stream
+	i.streamsByFP[fp] = stream
+
+	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
+	if record != nil {
+		record.Series = append(record.Series, tsdb_record.RefSeries{
+			Ref:    uint64(fp),
+			Labels: sortedLabels,
+		})
+	} else {
+		// If the record is nil, this is a WAL recovery.
+		i.metrics.recoveredStreamsTotal.Inc()
+	}
+
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)
@@ -186,9 +226,15 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, er
 	return stream, nil
 }
 
+func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
+	var fp uint64
+	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
+	return i.mapper.mapFP(model.Fingerprint(fp), ls)
+}
+
 // Return labels associated with given fingerprint. Used by fingerprint mapper. Must hold streamsMtx.
 func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
-	s := i.streams[fp]
+	s := i.streamsByFP[fp]
 	if s == nil {
 		return nil
 	}
@@ -200,7 +246,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 	if err != nil {
 		return nil, err
 	}
-	filter, err := expr.Filter()
+	pipeline, err := expr.Pipeline()
 	if err != nil {
 		return nil, err
 	}
@@ -210,8 +256,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 	err = i.forMatchingStreams(
 		expr.Matchers(),
 		func(stream *stream) error {
-			ingStats.TotalChunksMatched += int64(len(stream.chunks))
-			iter, err := stream.Iterator(ctx, req.Start, req.End, req.Direction, filter)
+			iter, err := stream.Iterator(ctx, ingStats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -231,21 +276,17 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	if err != nil {
 		return nil, err
 	}
-	filter, err := expr.Selector().Filter()
-	if err != nil {
-		return nil, err
-	}
 	extractor, err := expr.Extractor()
 	if err != nil {
 		return nil, err
 	}
+
 	ingStats := stats.GetIngesterData(ctx)
 	var iters []iter.SampleIterator
 	err = i.forMatchingStreams(
 		expr.Selector().Matchers(),
 		func(stream *stream) error {
-			ingStats.TotalChunksMatched += int64(len(stream.chunks))
-			iter, err := stream.SampleIterator(ctx, req.Start, req.End, filter, extractor)
+			iter, err := stream.SampleIterator(ctx, ingStats, req.Start, req.End, extractor.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -335,6 +376,13 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 	return &logproto.SeriesResponse{Series: series}, nil
 }
 
+func (i *instance) numStreams() int {
+	i.streamsMtx.RLock()
+	defer i.streamsMtx.RUnlock()
+
+	return len(i.streams)
+}
+
 // forAllStreams will execute a function for all streams in the instance.
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forAllStreams(fn func(*stream) error) error {
@@ -364,7 +412,7 @@ func (i *instance) forMatchingStreams(
 
 outer:
 	for _, streamID := range ids {
-		stream, ok := i.streams[streamID]
+		stream, ok := i.streamsByFP[streamID]
 		if !ok {
 			return ErrStreamMissing
 		}
@@ -524,10 +572,9 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 }
 
 func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {
-	firstchunkFrom, _ := stream.chunks[0].chunk.Bounds()
-	_, lastChunkTo := stream.chunks[len(stream.chunks)-1].chunk.Bounds()
+	from, to := stream.Bounds()
 
-	if req.End.UnixNano() > firstchunkFrom.UnixNano() && req.Start.UnixNano() <= lastChunkTo.UnixNano() {
+	if req.End.UnixNano() > from.UnixNano() && req.Start.UnixNano() <= to.UnixNano() {
 		return true
 	}
 	return false

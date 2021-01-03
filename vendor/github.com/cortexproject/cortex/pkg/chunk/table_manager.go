@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/instrument"
@@ -38,45 +39,35 @@ type tableManagerMetrics struct {
 
 func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	m := tableManagerMetrics{}
-	m.syncTableDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	m.syncTableDuration = promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_sync_duration_seconds",
 		Help:      "Time spent synching tables.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
 
-	m.tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	m.tableCapacity = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_capacity_units",
 		Help:      "Per-table capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
 
-	m.createFailures = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.createFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_create_failures",
 		Help:      "Number of table creation failures during the last table-manager reconciliation",
 	})
-	m.deleteFailures = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.deleteFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_delete_failures",
 		Help:      "Number of table deletion failures during the last table-manager reconciliation",
 	})
 
-	m.lastSuccessfulSync = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.lastSuccessfulSync = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_sync_success_timestamp_seconds",
 		Help:      "Timestamp of the last successful table manager sync.",
 	})
-
-	if r != nil {
-		r.MustRegister(
-			m.syncTableDuration,
-			m.tableCapacity,
-			m.createFailures,
-			m.deleteFailures,
-			m.lastSuccessfulSync,
-		)
-	}
 
 	return &m
 }

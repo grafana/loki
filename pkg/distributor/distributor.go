@@ -24,6 +24,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -205,7 +206,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
-		if err := d.validator.ValidateLabels(userID, stream); err != nil {
+		ls, err := logql.ParseLabels(stream.Labels)
+		if err != nil {
+			validationErr = httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
+			continue
+		}
+		// ensure labels are correctly sorted.
+		// todo(ctovena) we should lru cache this
+		stream.Labels = ls.String()
+		if err := d.validator.ValidateLabels(userID, ls, stream); err != nil {
 			validationErr = err
 			continue
 		}
@@ -263,8 +272,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	tracker := pushTracker{
-		done:           make(chan struct{}),
-		err:            make(chan error),
+		done: make(chan struct{}),
+		err:  make(chan error),
 	}
 	tracker.samplesPending.Store(int32(len(streams)))
 	for ingester, samples := range samplesByIngester {

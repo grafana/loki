@@ -1,4 +1,4 @@
-local apps = ['loki', 'loki-canary', 'promtail'];
+local apps = ['loki', 'loki-canary', 'promtail','logcli'];
 local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');

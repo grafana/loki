@@ -67,14 +67,14 @@ const (
 
 var (
 	defaultClientConfig = client.Config{
-		BatchWait: 1 * time.Second,
-		BatchSize: 100 * 1024,
+		BatchWait: client.BatchWait,
+		BatchSize: client.BatchSize,
 		BackoffConfig: cortex_util.BackoffConfig{
-			MinBackoff: 100 * time.Millisecond,
-			MaxBackoff: 10 * time.Second,
-			MaxRetries: 10,
+			MinBackoff: client.MinBackoff,
+			MaxBackoff: client.MaxBackoff,
+			MaxRetries: client.MaxRetries,
 		},
-		Timeout: 10 * time.Second,
+		Timeout: client.Timeout,
 	}
 )
 
@@ -241,7 +241,9 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	}
 
 	// other labels coming from docker labels or env selected by user labels, labels-regex, env, env-regex config.
-	attrs, err := logCtx.ExtraAttributes(nil)
+	attrs, err := logCtx.ExtraAttributes(func(label string) string {
+		return strings.ReplaceAll(strings.ReplaceAll(label, "-", "_"), ".", "_")
+	})
 	if err != nil {
 		return nil, err
 	}

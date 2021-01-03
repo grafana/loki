@@ -8,14 +8,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
 
 var testReplaceYamlSingleStageWithoutSource = `
-pipeline_stages: 
-- replace: 
+pipeline_stages:
+- replace:
     expression: "11.11.11.11 - (\\S+) .*"
     replace: "dummy"
 `
@@ -32,19 +31,19 @@ pipeline_stages:
 `
 
 var testReplaceYamlWithNamedCaputedGroupWithTemplate = `
---- 
-pipeline_stages: 
-  - 
-    replace: 
+---
+pipeline_stages:
+  -
+    replace:
       expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
       replace: '{{ if eq .Value "200" }}{{ Replace .Value "200" "HttpStatusOk" -1 }}{{ else }}{{ .Value | ToUpper }}{{ end }}'
 `
 
 var testReplaceYamlWithTemplate = `
---- 
-pipeline_stages: 
-  - 
-    replace: 
+---
+pipeline_stages:
+  -
+    replace:
       expression: "^(\\S+) (\\S+) (\\S+) \\[([\\w:/]+\\s[+\\-]\\d{4})\\] \"(\\S+)\\s?(\\S+)?\\s?(\\S+)?\" (\\d{3}|-) (\\d+|-)\\s?\"?([^\"]*)\"?\\s?\"?([^\"]*)?\"?$"
       replace: '{{ if eq .Value "200" }}{{ Replace .Value "200" "HttpStatusOk" -1 }}{{ else }}{{ .Value | ToUpper }}{{ end }}'
 `
@@ -108,12 +107,12 @@ func TestPipeline_Replace(t *testing.T) {
 			map[string]interface{}{},
 			`11.11.11.11 - FRANK [25/JAN/2000:14:00:01 -0500] "GET /1986.JS HTTP/1.1" HttpStatusOk 932 "-" "MOZILLA/5.0 (WINDOWS; U; WINDOWS NT 5.1; DE; RV:1.9.1.7) GECKO/20091221 FIREFOX/3.5.7 GTB6"`,
 		},
-        "successfully run a pipeline with empty replace value": {
-            testReplaceYamlWithEmptyReplace,
-            testReplaceLogLine,
-            map[string]interface{}{},
-            `11.11.11.11 - [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`,
-        },
+		"successfully run a pipeline with empty replace value": {
+			testReplaceYamlWithEmptyReplace,
+			testReplaceLogLine,
+			map[string]interface{}{},
+			`11.11.11.11 - [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -126,14 +125,9 @@ func TestPipeline_Replace(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			lbls := model.LabelSet{}
-			ts := time.Now()
-			entry := testData.entry
-			extracted := map[string]interface{}{}
-			pl.Process(lbls, extracted, &ts, &entry)
-			assert.Equal(t, testData.expectedEntry, entry)
-			assert.Equal(t, testData.extracted, extracted)
+			out := processEntries(pl, newEntry(nil, nil, testData.entry, time.Now()))[0]
+			assert.Equal(t, testData.expectedEntry, out.Line)
+			assert.Equal(t, testData.extracted, out.Extracted)
 		})
 	}
 }

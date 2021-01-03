@@ -83,7 +83,9 @@ func (h *splitByInterval) Process(
 	parallelism int,
 	threshold int64,
 	input []*lokiResult,
-) (responses []queryrange.Response, err error) {
+	userID string,
+) ([]queryrange.Response, error) {
+	var responses []queryrange.Response
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -101,8 +103,10 @@ func (h *splitByInterval) Process(
 		p = len(input)
 	}
 
+	// per request wrapped handler for limiting the amount of series.
+	next := newSeriesLimiter(h.limits.MaxQuerySeries(userID)).Wrap(h.next)
 	for i := 0; i < p; i++ {
-		go h.loop(ctx, ch)
+		go h.loop(ctx, ch, next)
 	}
 
 	for _, x := range input {
@@ -111,7 +115,7 @@ func (h *splitByInterval) Process(
 			return nil, ctx.Err()
 		case data := <-x.ch:
 			if data.err != nil {
-				return nil, err
+				return nil, data.err
 			}
 
 			responses = append(responses, data.resp)
@@ -133,14 +137,14 @@ func (h *splitByInterval) Process(
 	return responses, nil
 }
 
-func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult) {
+func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrange.Handler) {
 
 	for data := range ch {
 
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
 		data.req.LogToSpan(sp)
 
-		resp, err := h.next.Do(ctx, data.req)
+		resp, err := next.Do(ctx, data.req)
 
 		select {
 		case <-ctx.Done():
@@ -202,7 +206,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 		})
 	}
 
-	resps, err := h.Process(ctx, h.limits.MaxQueryParallelism(userid), limit, input)
+	resps, err := h.Process(ctx, h.limits.MaxQueryParallelism(userid), limit, input, userid)
 	if err != nil {
 		return nil, err
 	}

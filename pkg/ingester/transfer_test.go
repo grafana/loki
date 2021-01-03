@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func TestTransferOut(t *testing.T) {
@@ -92,10 +92,11 @@ func TestTransferOut(t *testing.T) {
 		for _, stream := range ing2.instances["test"].streams {
 			it, err := stream.Iterator(
 				context.TODO(),
+				nil,
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,
-				logql.LineFilterFunc(func([]byte) bool { return true }),
+				log.NewNoopPipeline().ForStream(stream.labels),
 			)
 			if !assert.NoError(t, err) {
 				continue

@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -26,9 +27,11 @@ import (
 )
 
 const (
-	millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
-	statusSuccess     = "success"
-	statusFail        = "fail"
+	millisecondPerDay           = int64(24 * time.Hour / time.Millisecond)
+	statusSuccess               = "success"
+	statusFail                  = "fail"
+	loadRequestsInterval        = time.Hour
+	retryFailedRequestsInterval = 15 * time.Minute
 )
 
 type purgerMetrics struct {
@@ -186,8 +189,11 @@ func (p *Purger) loop(ctx context.Context) error {
 	// load requests on startup instead of waiting for first ticker
 	loadRequests()
 
-	loadRequestsTicker := time.NewTicker(time.Hour)
+	loadRequestsTicker := time.NewTicker(loadRequestsInterval)
 	defer loadRequestsTicker.Stop()
+
+	retryFailedRequestsTicker := time.NewTicker(retryFailedRequestsInterval)
+	defer retryFailedRequestsTicker.Stop()
 
 	for {
 		select {
@@ -195,6 +201,8 @@ func (p *Purger) loop(ctx context.Context) error {
 			loadRequests()
 		case <-p.pullNewRequestsChan:
 			loadRequests()
+		case <-retryFailedRequestsTicker.C:
+			p.retryFailedRequests()
 		case <-ctx.Done():
 			return nil
 		}
@@ -205,6 +213,25 @@ func (p *Purger) loop(ctx context.Context) error {
 func (p *Purger) stop(_ error) error {
 	p.wg.Wait()
 	return nil
+}
+
+func (p *Purger) retryFailedRequests() {
+	userIDsWithFailedRequest := p.inProcessRequests.listUsersWithFailedRequest()
+
+	for _, userID := range userIDsWithFailedRequest {
+		deleteRequest := p.inProcessRequests.get(userID)
+		if deleteRequest == nil {
+			level.Error(util.Logger).Log("msg", "expected an in-process delete request", "user", userID)
+			continue
+		}
+
+		p.inProcessRequests.unsetFailedRequestForUser(userID)
+		err := p.resumeStalledRequest(*deleteRequest)
+		if err != nil {
+			reqWithLogger := makeDeleteRequestWithLogger(*deleteRequest, util.Logger)
+			level.Error(reqWithLogger.logger).Log("msg", "failed to resume failed request", "err", err)
+		}
+	}
 }
 
 func (p *Purger) workerJobCleanup(job workerJob) {
@@ -296,8 +323,14 @@ func (p *Purger) worker() {
 	}
 }
 
-func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Logger) error {
+func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Logger) (err error) {
 	logger = log.With(logger, "plan_no", planNo)
+
+	defer func() {
+		if err != nil {
+			p.inProcessRequests.setFailedRequestForUser(userID)
+		}
+	}()
 
 	plan, err := p.getDeletePlan(context.Background(), userID, requestID, planNo)
 	if err != nil {
@@ -354,32 +387,14 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 
 	level.Info(logger).Log("msg", "finished execution of plan")
 
-	return nil
+	return
 }
 
 // we need to load all in process delete requests on startup to finish them first
 func (p *Purger) loadInprocessDeleteRequests() error {
-	requestsWithBuildingPlanStatus, err := p.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusBuildingPlan)
+	inprocessRequests, err := p.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusBuildingPlan)
 	if err != nil {
 		return err
-	}
-
-	for i := range requestsWithBuildingPlanStatus {
-		deleteRequest := requestsWithBuildingPlanStatus[i]
-		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
-		p.inProcessRequests.set(deleteRequest.UserID, &deleteRequest)
-
-		level.Info(req.logger).Log("msg", "loaded in process delete requests with status building plan")
-
-		err := p.buildDeletePlan(req)
-		if err != nil {
-			p.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
-			level.Error(req.logger).Log("msg", "error building delete plan", "err", err)
-			continue
-		}
-
-		level.Info(req.logger).Log("msg", "sending delete request for execution")
-		p.executePlansChan <- req
 	}
 
 	requestsWithDeletingStatus, err := p.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusDeleting)
@@ -387,12 +402,39 @@ func (p *Purger) loadInprocessDeleteRequests() error {
 		return err
 	}
 
-	for i := range requestsWithDeletingStatus {
-		deleteRequest := requestsWithDeletingStatus[i]
-		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
-		level.Info(req.logger).Log("msg", "loaded in process delete requests with status deleting")
+	inprocessRequests = append(inprocessRequests, requestsWithDeletingStatus...)
 
+	for i := range inprocessRequests {
+		deleteRequest := inprocessRequests[i]
 		p.inProcessRequests.set(deleteRequest.UserID, &deleteRequest)
+		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+
+		level.Info(req.logger).Log("msg", "resuming in process delete requests", "status", deleteRequest.Status)
+		err = p.resumeStalledRequest(deleteRequest)
+		if err != nil {
+			level.Error(req.logger).Log("msg", "failed to resume stalled request", "err", err)
+		}
+
+	}
+
+	return nil
+}
+
+func (p *Purger) resumeStalledRequest(deleteRequest DeleteRequest) error {
+	req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+
+	if deleteRequest.Status == StatusBuildingPlan {
+		err := p.buildDeletePlan(req)
+		if err != nil {
+			p.metrics.deleteRequestsProcessingFailures.WithLabelValues(deleteRequest.UserID).Inc()
+			return errors.Wrap(err, "failed to build delete plan")
+		}
+
+		deleteRequest.Status = StatusDeleting
+	}
+
+	if deleteRequest.Status == StatusDeleting {
+		level.Info(req.logger).Log("msg", "sending delete request for execution")
 		p.executePlansChan <- req
 	}
 
@@ -448,6 +490,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 			return err
 		}
 
+		deleteRequest.Status = StatusBuildingPlan
 		p.inProcessRequests.set(deleteRequest.UserID, &deleteRequest)
 		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
 
@@ -483,9 +526,18 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 // A days plan will include chunk ids and labels of all the chunks which are supposed to be deleted.
 // Chunks are grouped together by labels to avoid storing labels repetitively.
 // After building delete plans it updates status of delete request to StatusDeleting and sends it for execution
-func (p *Purger) buildDeletePlan(req deleteRequestWithLogger) error {
+func (p *Purger) buildDeletePlan(req deleteRequestWithLogger) (err error) {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, req.UserID)
+
+	defer func() {
+		if err != nil {
+			p.inProcessRequests.setFailedRequestForUser(req.UserID)
+		} else {
+			req.Status = StatusDeleting
+			p.inProcessRequests.set(req.UserID, &req.DeleteRequest)
+		}
+	}()
 
 	perDayTimeRange := splitByDay(req.StartTime, req.EndTime)
 	level.Info(req.logger).Log("msg", "building delete plan", "num_plans", len(perDayTimeRange))
@@ -531,21 +583,21 @@ func (p *Purger) buildDeletePlan(req deleteRequestWithLogger) error {
 		plans[i] = pb
 	}
 
-	err := p.putDeletePlans(ctx, req.UserID, req.RequestID, plans)
+	err = p.putDeletePlans(ctx, req.UserID, req.RequestID, plans)
 	if err != nil {
-		return err
+		return
 	}
 
 	err = p.deleteStore.UpdateStatus(ctx, req.UserID, req.RequestID, StatusDeleting)
 	if err != nil {
-		return err
+		return
 	}
 
 	p.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(req.UserID).Add(float64(len(includedChunkIDs)))
 
 	level.Info(req.logger).Log("msg", "built delete plans", "num_plans", len(perDayTimeRange))
 
-	return nil
+	return
 }
 
 func (p *Purger) putDeletePlans(ctx context.Context, userID, requestID string, plans [][]byte) error {
@@ -695,12 +747,16 @@ func makeDeleteRequestWithLogger(deleteRequest DeleteRequest, l log.Logger) dele
 // inProcessRequestsCollection stores DeleteRequests which are in process by each user.
 // Currently we only allow processing of one delete request per user so it stores single DeleteRequest per user.
 type inProcessRequestsCollection struct {
-	requests map[string]*DeleteRequest
-	mtx      sync.RWMutex
+	requests                map[string]*DeleteRequest
+	usersWithFailedRequests map[string]struct{}
+	mtx                     sync.RWMutex
 }
 
 func newInProcessRequestsCollection() *inProcessRequestsCollection {
-	return &inProcessRequestsCollection{requests: map[string]*DeleteRequest{}}
+	return &inProcessRequestsCollection{
+		requests:                map[string]*DeleteRequest{},
+		usersWithFailedRequests: map[string]struct{}{},
+	}
 }
 
 func (i *inProcessRequestsCollection) set(userID string, request *DeleteRequest) {
@@ -743,4 +799,30 @@ func (i *inProcessRequestsCollection) getOldest() *DeleteRequest {
 	}
 
 	return oldestRequest
+}
+
+func (i *inProcessRequestsCollection) setFailedRequestForUser(userID string) {
+	i.mtx.Lock()
+	defer i.mtx.Unlock()
+
+	i.usersWithFailedRequests[userID] = struct{}{}
+}
+
+func (i *inProcessRequestsCollection) unsetFailedRequestForUser(userID string) {
+	i.mtx.Lock()
+	defer i.mtx.Unlock()
+
+	delete(i.usersWithFailedRequests, userID)
+}
+
+func (i *inProcessRequestsCollection) listUsersWithFailedRequest() []string {
+	i.mtx.RLock()
+	defer i.mtx.RUnlock()
+
+	userIDs := make([]string, 0, len(i.usersWithFailedRequests))
+	for userID := range i.usersWithFailedRequests {
+		userIDs = append(userIDs, userID)
+	}
+
+	return userIDs
 }

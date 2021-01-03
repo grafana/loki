@@ -66,11 +66,11 @@ func newReplaceStage(logger log.Logger, config interface{}) (Stage, error) {
 		return nil, err
 	}
 
-	return &replaceStage{
+	return toStage(&replaceStage{
 		cfg:        cfg,
 		expression: expression,
 		logger:     log.With(logger, "component", "stage", "type", "replace"),
-	}, nil
+	}), nil
 }
 
 // parseReplaceConfig processes an incoming configuration into a ReplaceConfig

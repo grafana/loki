@@ -1,0 +1,88 @@
+version: "3.8"
+
+networks:
+  loki:
+
+services:
+
+  grafana:
+    image: grafana/grafana:7.3.4
+    ports:
+      - "3000:3000"
+    networks:
+      - loki
+
+  promtail:
+    image: grafana/promtail:2.0.0
+    volumes:
+      - /var/log:/var/log
+      - ./config:/etc/promtail/
+    ports:
+      - "9080:9080"
+    command: -config.file=/etc/promtail/promtail-gateway.yaml
+    networks:
+      - loki
+
+  loki-gateway:
+    image: nginx:1.19
+    volumes:
+      - ./config/nginx-loki-gateway.conf:/etc/nginx/nginx.conf
+    ports:
+      - "80"
+      - "3100"
+    networks:
+      - loki
+
+  loki-frontend:
+    image: grafana/loki:2.0.0
+    volumes:
+        - ./config:/etc/loki/
+    ports:
+        - "3100"
+    command: "-config.file=/etc/loki/loki-docker-memberlist-boltdb-shipper.yaml -target=query-frontend"
+    networks:
+      - loki
+    deploy:
+      mode: replicated
+      replicas: 2
+
+  loki-1:
+    image: grafana/loki:2.0.0
+    volumes:
+      - ./config:/etc/loki/
+      - ./chunks:/loki/chunks/
+    ports:
+      - "3100"
+      - "7946"
+    command: "-config.file=/etc/loki/loki-docker-memberlist-boltdb-shipper.yaml -target=all"
+    networks:
+      - loki
+    restart: on-failure
+
+  loki-2:
+    image: grafana/loki:2.0.0
+    volumes:
+      - ./config:/etc/loki/
+      - ./chunks:/loki/chunks/
+    ports:
+      - "3100"
+      - "7946"
+    command: "-config.file=/etc/loki/loki-docker-memberlist-boltdb-shipper.yaml -target=all"
+    # command: "-config.file=/etc/loki/loki-config.yaml"
+    networks:
+      - loki
+    restart: on-failure
+
+  loki-3:
+    image: grafana/loki:2.0.0
+    volumes:
+      - ./config:/etc/loki/
+      - ./chunks:/loki/chunks/
+    ports:
+      - "3100"
+      - "7946"
+    command: "-config.file=/etc/loki/loki-docker-memberlist-boltdb-shipper.yaml -target=all"
+    # command: "-config.file=/etc/loki/loki-config.yaml"
+    networks:
+      - loki
+    restart: on-failure

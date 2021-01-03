@@ -20,6 +20,7 @@ package prometheus_copy;
 option go_package = "prompb";
 
 import "gogoproto/gogo.proto";
+import "store/labelpb/types.proto";
 
 // Do not generate XXX fields to reduce memory footprint and opening a door
 // for zero-copy casts to/from prometheus data types.
@@ -34,17 +35,9 @@ message Sample {
 
 // TimeSeries represents samples and labels for a single time series.
 message TimeSeries {
-  repeated Label labels   = 1 [(gogoproto.nullable) = false];
-  repeated Sample samples = 2 [(gogoproto.nullable) = false];
-}
-
-message Label {
-  string name  = 1;
-  string value = 2;
-}
-
-message Labels {
-  repeated Label labels = 1 [(gogoproto.nullable) = false];
+  // TODO(bwplotka): Don't use zero copy ZLabels, see https://github.com/thanos-io/thanos/pull/3279 for details.
+  repeated thanos.Label labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
+  repeated Sample samples      = 2 [(gogoproto.nullable) = false];
 }
 
 // Matcher specifies a rule, which can match or set of labels or not.
@@ -88,7 +81,7 @@ message Chunk {
 // ChunkedSeries represents single, encoded time series.
 message ChunkedSeries {
   // Labels should be sorted.
-  repeated Label labels = 1 [(gogoproto.nullable) = false];
+  repeated thanos.Label labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
   // Chunks will be in start time order and may overlap.
   repeated Chunk chunks = 2 [(gogoproto.nullable) = false];
 }

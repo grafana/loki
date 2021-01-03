@@ -42,7 +42,7 @@ helm upgrade --install loki loki/loki-stack \
 ```
 
 This will automatically scrape all pods logs in the cluster and send them to Loki with Kubernetes metadata attached as labels.
-You can use the [`values.yaml`](../../../production/helm/loki-stack/values.yaml) file as a starting point for your own configuration.
+You can use the [`values.yaml`](https://github.com/grafana/helm-charts/blob/main/charts/loki-stack/values.yaml) file as a starting point for your own configuration.
 
 ## Usage and Configuration
 
@@ -100,7 +100,7 @@ A logstash event as shown below.
 
 Contains a `message` and `@timestamp` fields, which are respectively used to form the Loki entry log line and timestamp.
 
-> You can use a different property for the log line by using the configuration property [`message_field`](message_field). If you also need to change the timestamp value use the Logstash `date` filter to change the `@timestamp` field.
+> You can use a different property for the log line by using the configuration property [`message_field`](#message_field). If you also need to change the timestamp value use the Logstash `date` filter to change the `@timestamp` field.
 
 All other fields (except nested fields) will form the label set (key value pairs) attached to the log line. [This means you're responsible for mutating and dropping high cardinality labels](https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/) such as client IPs.
 You can usually do so by using a [`mutate`](https://www.elastic.co/guide/en/logstash/current/plugins-filters-mutate.html) filter.

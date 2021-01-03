@@ -6,11 +6,10 @@ import (
 	"strings"
 	"time"
 
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -53,16 +52,7 @@ func (v Validator) ValidateEntry(userID string, labels string, entry logproto.En
 }
 
 // Validate labels returns an error if the labels are invalid
-func (v Validator) ValidateLabels(userID string, stream logproto.Stream) error {
-	ls, err := util.ToClientLabels(stream.Labels)
-	if err != nil {
-		// I wish we didn't return httpgrpc errors here as it seems
-		// an orthogonal concept (we need not use ValidateLabels in this context)
-		// but the upstream cortex_validation pkg uses it, so we keep this
-		// for parity.
-		return httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
-	}
-
+func (v Validator) ValidateLabels(userID string, ls labels.Labels, stream logproto.Stream) error {
 	numLabelNames := len(ls)
 	if numLabelNames > v.MaxLabelNamesPerSeries(userID) {
 		validation.DiscardedSamples.WithLabelValues(validation.MaxLabelNamesPerSeries, userID).Inc()
@@ -71,7 +61,7 @@ func (v Validator) ValidateLabels(userID string, stream logproto.Stream) error {
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.MaxLabelNamesPerSeries, userID).Add(float64(bytes))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg(cortex_client.FromLabelAdaptersToMetric(ls).String(), numLabelNames, v.MaxLabelNamesPerSeries(userID)))
+		return httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg(stream.Labels, numLabelNames, v.MaxLabelNamesPerSeries(userID)))
 	}
 
 	maxLabelNameLength := v.MaxLabelNameLength(userID)

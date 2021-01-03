@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/imdario/mergo"
@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/distributor"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
@@ -80,7 +81,7 @@ func (t *PushTarget) run() error {
 	// We don't want the /debug and /metrics endpoints running
 	t.config.Server.RegisterInstrumentation = false
 
-	util.InitLogger(&t.config.Server)
+	cortex_util.InitLogger(&t.config.Server)
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {
@@ -109,18 +110,13 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	var lastErr error
 	for _, stream := range req.Streams {
-		matchers, err := logql.ParseMatchers(stream.Labels)
+		ls, err := logql.ParseLabels(stream.Labels)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
-		lb := labels.NewBuilder(make(labels.Labels, 0, len(matchers)+len(t.config.Labels)))
-
-		// Add stream labels
-		for i := range matchers {
-			lb.Set(matchers[i].Name, matchers[i].Value)
-		}
+		lb := labels.NewBuilder(ls)
 
 		// Add configured labels
 		for k, v := range t.config.Labels {
@@ -144,17 +140,18 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, entry := range stream.Entries {
-			var err error
+			e := api.Entry{
+				Labels: filtered.Clone(),
+				Entry: logproto.Entry{
+					Line: entry.Line,
+				},
+			}
 			if t.config.KeepTimestamp {
-				err = t.handler.Handle(filtered.Clone(), entry.Timestamp, entry.Line)
+				e.Timestamp = entry.Timestamp
 			} else {
-				err = t.handler.Handle(filtered.Clone(), time.Now(), entry.Line)
+				e.Timestamp = time.Now()
 			}
-
-			if err != nil {
-				lastErr = err
-				continue
-			}
+			t.handler.Chan() <- e
 		}
 	}
 
@@ -165,7 +162,6 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 // Type returns PushTargetType.
@@ -199,5 +195,6 @@ func (t *PushTarget) Details() interface{} {
 func (t *PushTarget) Stop() error {
 	level.Info(t.logger).Log("msg", "stopping push server", "job", t.jobName)
 	t.server.Shutdown()
+	t.handler.Stop()
 	return nil
 }

@@ -32,6 +32,7 @@ type Store interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+	GetChunkFetcher(tm model.Time) *Fetcher
 
 	// DeleteChunk deletes a chunks index entry and then deletes the actual chunk from chunk storage.
 	// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
@@ -174,6 +175,22 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 	return chunkIDs, fetchers, err
 }
 
+func (c compositeStore) GetChunkFetcher(tm model.Time) *Fetcher {
+	// find the schema with the lowest start _after_ tm
+	j := sort.Search(len(c.stores), func(j int) bool {
+		return c.stores[j].start > tm
+	})
+
+	// reduce it by 1 because we want a schema with start <= tm
+	j--
+
+	if 0 <= j && j < len(c.stores) {
+		return c.stores[j].GetChunkFetcher(tm)
+	}
+
+	return nil
+}
+
 // DeleteSeriesIDs deletes series IDs from index in series store
 func (c CompositeStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
 	return c.forStores(ctx, userID, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
@@ -231,12 +248,6 @@ func (c compositeStore) forStores(ctx context.Context, userID string, from, thro
 		nextSchemaStarts := model.Latest
 		if i+1 < len(c.stores) {
 			nextSchemaStarts = c.stores[i+1].start
-		}
-
-		// If the next schema starts at the same time as this one,
-		// skip this one.
-		if nextSchemaStarts == c.stores[i].start {
-			continue
 		}
 
 		end := min(through, nextSchemaStarts-1)

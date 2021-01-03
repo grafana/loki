@@ -1,4 +1,6 @@
-# Promtail Helm Chart
+# ⚠️  DEPRECATED - Promtail Helm Chart
+
+This chart was moved to <https://github.com/grafana/helm-charts>.
 
 ## Deploy Promtail only
 

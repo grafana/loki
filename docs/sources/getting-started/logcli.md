@@ -3,7 +3,7 @@ title: LogCLI
 ---
 # Querying Loki with LogCLI
 
-If you prefer a command line interface, LogCLI also allows users to run LogQL
+If you prefer a command line interface, LogCLI also allows users to run [LogQL]({{< relref "../logql/_index.md" >}})
 queries against a Loki server.
 
 ## Installation

@@ -63,19 +63,34 @@ func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc 
 
 }
 
+// MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
+func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) ruler.MultiTenantManager {
+	return &MultiTenantManager{mgr}
+}
+
+// MultiTenantManager wraps a cortex MultiTenantManager but validates loki rules
+type MultiTenantManager struct {
+	ruler.MultiTenantManager
+}
+
+// ValidateRuleGroup validates a rulegroup
+func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
+	return ValidateGroups(grp)
+}
+
 func MemstoreTenantManager(
 	cfg ruler.Config,
 	engine *logql.Engine,
 ) ruler.ManagerFactory {
 	var metrics *Metrics
 
-	return func(
+	return ruler.ManagerFactory(func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
 		logger log.Logger,
 		reg prometheus.Registerer,
-	) *rules.Manager {
+	) ruler.RulesManager {
 
 		// We'll ignore the passed registere and use the default registerer to avoid prefix issues and other weirdness.
 		// This closure prevents re-registering.
@@ -98,19 +113,19 @@ func MemstoreTenantManager(
 			OutageTolerance: cfg.OutageTolerance,
 			ForGracePeriod:  cfg.ForGracePeriod,
 			ResendDelay:     cfg.ResendDelay,
-			GroupLoader:     groupLoader{},
+			GroupLoader:     GroupLoader{},
 		})
 
 		// initialize memStore, bound to the manager's alerting rules
 		memStore.Start(mgr)
 
 		return mgr
-	}
+	})
 }
 
-type groupLoader struct{}
+type GroupLoader struct{}
 
-func (groupLoader) Parse(query string) (parser.Expr, error) {
+func (GroupLoader) Parse(query string) (parser.Expr, error) {
 	expr, err := logql.ParseExpr(query)
 	if err != nil {
 		return nil, err
@@ -119,7 +134,7 @@ func (groupLoader) Parse(query string) (parser.Expr, error) {
 	return exprAdapter{expr}, nil
 }
 
-func (g groupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
+func (g GroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
 	b, err := ioutil.ReadFile(identifier)
 	if err != nil {
 		return nil, []error{errors.Wrap(err, identifier)}
@@ -131,7 +146,7 @@ func (g groupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
 	return rgs, errs
 }
 
-func (groupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
+func (GroupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
 	var (
 		groups rulefmt.RuleGroups
 		errs   []error
@@ -148,13 +163,13 @@ func (groupLoader) parseRules(content []byte) (*rulefmt.RuleGroups, []error) {
 		return nil, errs
 	}
 
-	return &groups, validateGroup(&groups)
+	return &groups, ValidateGroups(groups.Groups...)
 }
 
-func validateGroup(grps *rulefmt.RuleGroups) (errs []error) {
+func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 	set := map[string]struct{}{}
 
-	for i, g := range grps.Groups {
+	for i, g := range grps {
 		if g.Name == "" {
 			errs = append(errs, errors.Errorf("group %d: Groupname must not be empty", i))
 		}

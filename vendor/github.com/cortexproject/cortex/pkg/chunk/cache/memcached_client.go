@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/sony/gobreaker"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -35,6 +36,8 @@ type serverSelector interface {
 // memcachedClient is a memcache client that gets its server list from SRV
 // records, and periodically updates that ServerList.
 type memcachedClient struct {
+	sync.Mutex
+	name string
 	*memcache.Client
 	serverList serverSelector
 
@@ -43,6 +46,11 @@ type memcachedClient struct {
 
 	addresses []string
 	provider  *dns.Provider
+
+	cbs        map[ /*address*/ string]*gobreaker.CircuitBreaker
+	cbFailures uint
+	cbTimeout  time.Duration
+	cbInterval time.Duration
 
 	quit chan struct{}
 	wait sync.WaitGroup
@@ -61,6 +69,9 @@ type MemcachedClientConfig struct {
 	MaxIdleConns   int           `yaml:"max_idle_conns"`
 	UpdateInterval time.Duration `yaml:"update_interval"`
 	ConsistentHash bool          `yaml:"consistent_hash"`
+	CBFailures     uint          `yaml:"circuit_breaker_consecutive_failures"`
+	CBTimeout      time.Duration `yaml:"circuit_breaker_timeout"`  // reset error count after this long
+	CBInterval     time.Duration `yaml:"circuit_breaker_interval"` // remain closed for this long after CBFailures errors
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -72,6 +83,9 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
 	f.BoolVar(&cfg.ConsistentHash, prefix+"memcached.consistent-hash", true, description+"Use consistent hashing to distribute to memcache servers.")
+	f.UintVar(&cfg.CBFailures, prefix+"memcached.circuit-breaker-consecutive-failures", 10, description+"Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).")
+	f.DurationVar(&cfg.CBTimeout, prefix+"memcached.circuit-breaker-timeout", 10*time.Second, description+"Duration circuit-breaker remains open after tripping (if zero then 60 seconds is used).")
+	f.DurationVar(&cfg.CBInterval, prefix+"memcached.circuit-breaker-interval", 10*time.Second, description+"Reset circuit-breaker counts after this long (if zero then never reset).")
 }
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
@@ -93,12 +107,17 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}, r))
 
 	newClient := &memcachedClient{
+		name:       name,
 		Client:     client,
 		serverList: selector,
 		hostname:   cfg.Host,
 		service:    cfg.Service,
 		logger:     logger,
 		provider:   dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
+		cbs:        make(map[string]*gobreaker.CircuitBreaker),
+		cbFailures: cfg.CBFailures,
+		cbInterval: cfg.CBInterval,
+		cbTimeout:  cfg.CBTimeout,
 		quit:       make(chan struct{}),
 
 		numServers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
@@ -107,6 +126,9 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 			Help:        "The number of memcache servers discovered.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
+	}
+	if cfg.CBFailures > 0 {
+		newClient.Client.DialTimeout = newClient.dialViaCircuitBreaker
 	}
 
 	if len(cfg.Addresses) > 0 {
@@ -122,6 +144,36 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	newClient.wait.Add(1)
 	go newClient.updateLoop(cfg.UpdateInterval)
 	return newClient
+}
+
+func (c *memcachedClient) circuitBreakerStateChange(name string, from gobreaker.State, to gobreaker.State) {
+	level.Info(c.logger).Log("msg", "circuit-breaker state change", "name", name, "from-state", from, "to-state", to)
+}
+
+func (c *memcachedClient) dialViaCircuitBreaker(network, address string, timeout time.Duration) (net.Conn, error) {
+	c.Lock()
+	cb := c.cbs[address]
+	if cb == nil {
+		cb = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+			Name:          c.name + ":" + address,
+			Interval:      c.cbInterval,
+			Timeout:       c.cbTimeout,
+			OnStateChange: c.circuitBreakerStateChange,
+			ReadyToTrip: func(counts gobreaker.Counts) bool {
+				return uint(counts.ConsecutiveFailures) > c.cbFailures
+			},
+		})
+		c.cbs[address] = cb
+	}
+	c.Unlock()
+
+	conn, err := cb.Execute(func() (interface{}, error) {
+		return net.DialTimeout(network, address, timeout)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return conn.(net.Conn), nil
 }
 
 // Stop the memcache client.
@@ -184,6 +236,20 @@ func (c *memcachedClient) updateMemcacheServers() error {
 		for _, srv := range addrs {
 			servers = append(servers, fmt.Sprintf("%s:%d", srv.Target, srv.Port))
 		}
+	}
+
+	if len(servers) > 0 {
+		// Copy across circuit-breakers for current set of addresses, thus
+		// leaving behind any for servers we won't talk to again
+		c.Lock()
+		newCBs := make(map[string]*gobreaker.CircuitBreaker, len(servers))
+		for _, address := range servers {
+			if cb, exists := c.cbs[address]; exists {
+				newCBs[address] = cb
+			}
+		}
+		c.cbs = newCBs
+		c.Unlock()
 	}
 
 	// ServerList deterministically maps keys to _index_ of the server list.

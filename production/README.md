@@ -39,7 +39,9 @@ To test locally, we recommend using the `docker-compose.yaml` file in this direc
 **Note:** When running locally, Promtail starts before Loki is ready. This can lead to the error message "Data source connected, but no labels received." After a couple seconds, Promtail will forward all newly created log messages correctly.
 Until this is fixed we recommend [building and running from source](#build-and-run-from-source).
 
-For instructions on how to query Loki, see [our usage docs](../docs/logql.md).
+For instructions on how to query Loki, see [our usage docs](https://grafana.com/docs/loki/latest/logql/).
+
+To deploy a cluster of loki locally, please refer to this [doc](./docker/)
 
 ## Using Helm to deploy on Kubernetes
 
@@ -62,9 +64,9 @@ Grafana is Loki's UI. To query your logs you need to start Grafana as well:
 $ docker run -ti -p 3000:3000 grafana/grafana:master
 ```
 
-Grafana should now be available at http://localhost:3000/. Follow the [steps for configuring the datasource in Grafana](../docs/getting-started/grafana.md) and set the URL field to `http://host.docker.internal:3100`.
+Grafana should now be available at http://localhost:3000/. Follow the [steps for configuring the datasource in Grafana](https://grafana.com/docs/loki/latest/getting-started/grafana/) and set the URL field to `http://host.docker.internal:3100`.
 
-For instructions on how to use Loki, see [our usage docs](../docs/logql.md).
+For instructions on how to use Loki, see [our usage docs](https://grafana.com/docs/loki/latest/logql/).
 
 ## Get inspired by our production setup
 

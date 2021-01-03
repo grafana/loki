@@ -72,40 +72,50 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 }
 
+// RulesLimits defines limits used by Ruler.
+type RulesLimits interface {
+	EvaluationDelay(userID string) time.Duration
+	RulerTenantShardSize(userID string) int
+	RulerMaxRuleGroupsPerTenant(userID string) int
+	RulerMaxRulesPerRuleGroup(userID string) int
+}
+
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *promql.Engine, q storage.Queryable, delay time.Duration) rules.QueryFunc {
-	orig := rules.EngineQueryFunc(engine, q)
+func engineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		return orig(ctx, qs, t.Add(-delay))
+		orig := rules.EngineQueryFunc(engine, q)
+		// Delay the evaluation of all rules by a set interval to give a buffer
+		// to metric that haven't been forwarded to cortex yet.
+		evaluationDelay := overrides.EvaluationDelay(userID)
+		return orig(ctx, qs, t.Add(-evaluationDelay))
 	}
 }
 
-type ManagerFactory = func(
-	ctx context.Context,
-	userID string,
-	notifier *notifier.Manager,
-	logger log.Logger,
-	reg prometheus.Registerer,
-) *rules.Manager
+// This interface mimicks rules.Manager API. Interface is used to simplify tests.
+type RulesManager interface {
+	// Starts rules manager. Blocks until Stop is called.
+	Run()
 
-func DefaultTenantManagerFactory(
-	cfg Config,
-	p Pusher,
-	q storage.Queryable,
-	engine *promql.Engine,
-) ManagerFactory {
-	return func(
-		ctx context.Context,
-		userID string,
-		notifier *notifier.Manager,
-		logger log.Logger,
-		reg prometheus.Registerer,
-	) *rules.Manager {
+	// Stops rules manager. (Unblocks Run.)
+	Stop()
+
+	// Updates rules manager state.
+	Update(interval time.Duration, files []string, externalLabels labels.Labels) error
+
+	// Returns current rules groups.
+	RuleGroups() []*rules.Group
+}
+
+// ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
+type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
+
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits) ManagerFactory {
+	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      &PusherAppendable{pusher: p, userID: userID},
 			Queryable:       q,
-			QueryFunc:       engineQueryFunc(engine, q, cfg.EvaluationDelay),
+			QueryFunc:       engineQueryFunc(engine, q, overrides, userID),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

@@ -44,10 +44,11 @@ var (
 
 // TimestampConfig configures timestamp extraction
 type TimestampConfig struct {
-	Source          string  `mapstructure:"source"`
-	Format          string  `mapstructure:"format"`
-	Location        *string `mapstructure:"location"`
-	ActionOnFailure *string `mapstructure:"action_on_failure"`
+	Source          string   `mapstructure:"source"`
+	Format          string   `mapstructure:"format"`
+	FallbackFormats []string `mapstructure:"fallback_formats"`
+	Location        *string  `mapstructure:"location"`
+	ActionOnFailure *string  `mapstructure:"action_on_failure"`
 }
 
 // parser can convert the time string into a time.Time value
@@ -82,11 +83,27 @@ func validateTimestampConfig(cfg *TimestampConfig) (parser, error) {
 		}
 	}
 
+	if len(cfg.FallbackFormats) > 0 {
+		multiConvertDateLayout := func(input string) (time.Time, error) {
+			orignalTime, originalErr := convertDateLayout(cfg.Format, loc)(input)
+			if originalErr == nil {
+				return orignalTime, originalErr
+			}
+			for i := 0; i < len(cfg.FallbackFormats); i++ {
+				if t, err := convertDateLayout(cfg.FallbackFormats[i], loc)(input); err == nil {
+					return t, err
+				}
+			}
+			return orignalTime, originalErr
+		}
+		return multiConvertDateLayout, nil
+	}
+
 	return convertDateLayout(cfg.Format, loc), nil
 }
 
 // newTimestampStage creates a new timestamp extraction pipeline stage.
-func newTimestampStage(logger log.Logger, config interface{}) (*timestampStage, error) {
+func newTimestampStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg := &TimestampConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -105,12 +122,12 @@ func newTimestampStage(logger log.Logger, config interface{}) (*timestampStage, 
 		}
 	}
 
-	return &timestampStage{
+	return toStage(&timestampStage{
 		cfg:                 cfg,
 		logger:              logger,
 		parser:              parser,
 		lastKnownTimestamps: lastKnownTimestamps,
-	}, nil
+	}), nil
 }
 
 // timestampStage will set the timestamp using extracted data

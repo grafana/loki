@@ -24,15 +24,16 @@ data:
         Path           /var/log/containers/*.log
         Parser         docker
         DB             /run/fluent-bit/flb_kube.db
-        Mem_Buf_Limit  5MB
+        Mem_Buf_Limit  {{ .Values.config.memBufLimit }}
     [FILTER]
         Name           kubernetes
         Match          kube.*
         Kube_URL       https://kubernetes.default.svc:443
         Merge_Log On
+        K8S-Logging.Exclude {{ .Values.config.k8sLoggingExclude }}
         K8S-Logging.Parser {{ .Values.config.k8sLoggingParser }}
     [Output]
-        Name loki
+        Name grafana-loki
         Match *
         {{- if and .Values.loki.user .Values.loki.password }}
         Url {{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}{{ .Values.loki.servicePath }}
@@ -41,7 +42,7 @@ data:
         {{- end }}
         TenantID {{ .Values.config.tenantID }}
         BatchWait {{ .Values.config.batchWait }}
-        BatchSize {{ .Values.config.batchSize }}
+        BatchSize {{ int .Values.config.batchSize }}
         Labels {{ .Values.config.labels }}
         RemoveKeys {{ include "helm-toolkit.utils.joinListWithComma" .Values.config.removeKeys }}
         AutoKubernetesLabels {{ .Values.config.autoKubernetesLabels }}

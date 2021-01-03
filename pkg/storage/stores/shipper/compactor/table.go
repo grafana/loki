@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -61,7 +60,9 @@ func newTable(ctx context.Context, workingDirectory string, objectClient chunk.O
 }
 
 func (t *table) compact() error {
-	objects, _, err := t.storageClient.List(t.ctx, t.name+"/")
+	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
+	// This is due to the object stores not having a concept of directories.
+	objects, _, err := t.storageClient.List(t.ctx, t.name+delimiter, delimiter)
 	if err != nil {
 		return err
 	}
@@ -80,7 +81,7 @@ func (t *table) compact() error {
 		}
 	}()
 
-	t.compactedDB, err = local.OpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
+	t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
 	if err != nil {
 		return err
 	}
@@ -91,7 +92,7 @@ func (t *table) compact() error {
 	readObjectChan := make(chan string)
 	n := util.Min(len(objects), readDBsParallelism)
 
-	// read files parallely
+	// read files parallelly
 	for i := 0; i < n; i++ {
 		go func() {
 			var err error
@@ -155,12 +156,10 @@ func (t *table) compact() error {
 
 	// read all the errors
 	for i := 0; i < n; i++ {
-		select {
-		case err := <-errChan:
-			if err != nil && firstErr == nil {
-				firstErr = err
-				close(t.quit)
-			}
+		err := <-errChan
+		if err != nil && firstErr == nil {
+			firstErr = err
+			close(t.quit)
 		}
 	}
 
@@ -221,7 +220,7 @@ func (t *table) writeBatch(batch []indexEntry) error {
 func (t *table) readFile(path string) error {
 	level.Debug(util.Logger).Log("msg", "reading file for compaction", "path", path)
 
-	db, err := local.OpenBoltdbFile(path)
+	db, err := shipper_util.SafeOpenBoltdbFile(path)
 	if err != nil {
 		return err
 	}

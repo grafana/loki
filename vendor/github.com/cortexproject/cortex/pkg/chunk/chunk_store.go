@@ -77,6 +77,7 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Limit how long back data can be queried")
 }
 
+// Validate validates the store config.
 func (cfg *StoreConfig) Validate() error {
 	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
 		return err
@@ -138,7 +139,7 @@ func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Cli
 	}, nil
 }
 
-// Put implements ChunkStore
+// Put implements Store
 func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
 		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
@@ -148,7 +149,7 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	return nil
 }
 
-// PutOne implements ChunkStore
+// PutOne implements Store
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
 	defer log.Finish()
@@ -460,16 +461,6 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if matcher.Type == labels.MatchEqual {
 		labelName = matcher.Name
 		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
-	} else if matcher.Type == labels.MatchRegexp && len(FindSetMatches(matcher.Value)) > 0 {
-		set := FindSetMatches(matcher.Value)
-		for _, v := range set {
-			var qs []IndexQuery
-			qs, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, v)
-			if err != nil {
-				break
-			}
-			queries = append(queries, qs...)
-		}
 	} else {
 		labelName = matcher.Name
 		queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
@@ -550,11 +541,32 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 		return nil, nil
 	}
 
+	matchSet := map[string]struct{}{}
+	if matcher != nil && matcher.Type == labels.MatchRegexp {
+		set := FindSetMatches(matcher.Value)
+		for _, v := range set {
+			matchSet[v] = struct{}{}
+		}
+	}
+
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
+		}
+
+		// If the matcher is like a set (=~"a|b|c|d|...") and
+		// the label value is not in that set move on.
+		if len(matchSet) > 0 {
+			if _, ok := matchSet[string(labelValue)]; !ok {
+				continue
+			}
+
+			// If its in the set, then add it to set, we don't need to run
+			// matcher on it again.
+			result = append(result, chunkKey)
+			continue
 		}
 
 		if matcher != nil && !matcher.Matches(string(labelValue)) {
@@ -702,4 +714,8 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 func (c *store) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
 	// SeriesID is something which is only used in SeriesStore so we need not do anything here
 	return nil
+}
+
+func (c *baseStore) GetChunkFetcher(_ model.Time) *Fetcher {
+	return c.fetcher
 }

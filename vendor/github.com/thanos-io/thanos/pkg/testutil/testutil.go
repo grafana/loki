@@ -8,12 +8,15 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/pkg/errors"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"go.uber.org/goleak"
 )
 
 // Assert fails the test if the condition is false.
@@ -73,7 +76,15 @@ func Equals(tb testing.TB, exp, act interface{}, v ...interface{}) {
 	if len(v) > 0 {
 		msg = fmt.Sprintf(v[0].(string), v[1:]...)
 	}
-	tb.Fatalf("\033[31m%s:%d:"+msg+"\n\n\texp: %#v\n\n\tgot: %#v%s\033[39m\n\n", filepath.Base(file), line, exp, act, diff(exp, act))
+	tb.Fatal(sprintfWithLimit("\033[31m%s:%d:"+msg+"\n\n\texp: %#v\n\n\tgot: %#v%s\033[39m\n\n", filepath.Base(file), line, exp, act, diff(exp, act)))
+}
+
+func sprintfWithLimit(act string, v ...interface{}) string {
+	s := fmt.Sprintf(act, v...)
+	if len(s) > 10000 {
+		return s[:10000] + "...(output trimmed)"
+	}
+	return s
 }
 
 func typeAndKind(v interface{}) (reflect.Type, reflect.Kind) {
@@ -151,4 +162,44 @@ func GatherAndCompare(t *testing.T, g1 prometheus.Gatherer, g2 prometheus.Gather
 		}
 	}
 	Equals(t, m1.String(), m2.String())
+}
+
+// TolerantVerifyLeakMain verifies go leaks but excludes the go routines that are
+// launched as side effects of some of our dependencies.
+func TolerantVerifyLeakMain(m *testing.M) {
+	goleak.VerifyTestMain(m,
+		// https://github.com/census-instrumentation/opencensus-go/blob/d7677d6af5953e0506ac4c08f349c62b917a443a/stats/view/worker.go#L34
+		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
+		// https://github.com/kubernetes/klog/blob/c85d02d1c76a9ebafa81eb6d35c980734f2c4727/klog.go#L417
+		goleak.IgnoreTopFunction("k8s.io/klog/v2.(*loggingT).flushDaemon"),
+		goleak.IgnoreTopFunction("k8s.io/klog.(*loggingT).flushDaemon"),
+	)
+}
+
+// TolerantVerifyLeak verifies go leaks but excludes the go routines that are
+// launched as side effects of some of our dependencies.
+func TolerantVerifyLeak(t *testing.T) {
+	goleak.VerifyNone(t,
+		// https://github.com/census-instrumentation/opencensus-go/blob/d7677d6af5953e0506ac4c08f349c62b917a443a/stats/view/worker.go#L34
+		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
+		// https://github.com/kubernetes/klog/blob/c85d02d1c76a9ebafa81eb6d35c980734f2c4727/klog.go#L417
+		goleak.IgnoreTopFunction("k8s.io/klog/v2.(*loggingT).flushDaemon"),
+		goleak.IgnoreTopFunction("k8s.io/klog.(*loggingT).flushDaemon"),
+	)
+}
+
+// FaultOrPanicToErr returns error if panic of fault was triggered during execution of function.
+func FaultOrPanicToErr(f func()) (err error) {
+	// Set this go routine to panic on segfault to allow asserting on those.
+	debug.SetPanicOnFault(true)
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.Errorf("invoked function panicked or caused segmentation fault: %v", r)
+		}
+		debug.SetPanicOnFault(false)
+	}()
+
+	f()
+
+	return err
 }

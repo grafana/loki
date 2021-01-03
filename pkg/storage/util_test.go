@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/util"
 )
 
 var fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
@@ -88,15 +87,14 @@ func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
 }
 
 func newChunk(stream logproto.Stream) chunk.Chunk {
-	lbs, err := util.ToClientLabels(stream.Labels)
+	lbs, err := logql.ParseLabels(stream.Labels)
 	if err != nil {
 		panic(err)
 	}
-	l := client.FromLabelAdaptersToLabels(lbs)
-	if !l.Has(labels.MetricName) {
-		builder := labels.NewBuilder(l)
+	if !lbs.Has(labels.MetricName) {
+		builder := labels.NewBuilder(lbs)
 		builder.Set(labels.MetricName, "logs")
-		l = builder.Labels()
+		lbs = builder.Labels()
 	}
 	from, through := model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano()), model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano())
 	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
@@ -110,7 +108,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		_ = chk.Append(&e)
 	}
 	chk.Close()
-	c := chunk.NewChunk("fake", client.Fingerprint(l), l, chunkenc.NewFacade(chk, 0, 0), from, through)
+	c := chunk.NewChunk("fake", client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through)
 	// force the checksum creation
 	if err := c.Encode(); err != nil {
 		panic(err)
@@ -188,6 +186,9 @@ func (m *mockChunkStore) DeleteSeriesIDs(ctx context.Context, from, through mode
 func (m *mockChunkStore) Stop() {}
 func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
+}
+func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
+	return nil
 }
 
 func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
