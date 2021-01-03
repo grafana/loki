@@ -60,7 +60,7 @@ data:
 
     frontend:
       log_queries_longer_than: 5s
-      downstream_url: querier.<namespace>.svc.cluster.local:3100
+      downstream_url: http://querier.<namespace>.svc.cluster.local:3100
       compress_responses: true
 ```
 

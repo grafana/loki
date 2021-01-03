@@ -313,7 +313,7 @@ The query_frontend_config configures the Loki query-frontend.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = false]
 
-# URL of downstream Prometheus.
+# URL of downstream Loki.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
 
