@@ -29,6 +29,7 @@ func TestQueryType(t *testing.T) {
 		{"limited", `{app="foo"}`, QueryTypeLimited, false},
 		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, QueryTypeLimited, false},
 		{"limited with parser", `{app="foo" ,fuzz=~"foo"} | logfmt`, QueryTypeLimited, false},
+		{"limited with dedup", `{app="foo"} | dedup by (bar)`, QueryTypeLimited, false},
 		{"filter", `{app="foo"} |= "foo"`, QueryTypeFilter, false},
 		{"filter string extracted label", `{app="foo"} | json | foo="a"`, QueryTypeFilter, false},
 		{"filter duration", `{app="foo"} | json | duration > 5s`, QueryTypeFilter, false},

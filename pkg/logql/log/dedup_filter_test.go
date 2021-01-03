@@ -3,85 +3,110 @@ package log
 import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
-	"sort"
+	"math/rand"
 	"testing"
 )
 
-type entry struct {
-	line string
-	lbs  *labels.Labels
-}
-
 var (
-	labelSetA = labels.Labels{
+	devLabels = &labels.Labels{
 		{Name: "namespace", Value: "dev"},
 		{Name: "cluster", Value: "us-central1"},
-		{Name: "role", Value: "testing"},
+		{Name: "role", Value: "dev"},
 	}
-	labelSetB = labels.Labels{
-		{Name: "namespace", Value: "prod"},
-		{Name: "cluster", Value: "us-central1"},
-	}
-	labelSetC = labels.Labels{
+	qaLabels = &labels.Labels{
 		{Name: "namespace", Value: "dev"},
 		{Name: "cluster", Value: "us-central1"},
 		{Name: "role", Value: "qa"},
 	}
-
-	refLineA = "this is reference line A"
-	refLineB = "this is reference line B"
-	refLineC = "this is reference line C"
-	refLineD = "this is reference line D"
-	refLineE = "this is reference line E"
-	refLineF = "this is reference line F"
-	refLineG = "this is reference line G"
-
-	labelEntryMap = map[*labels.Labels][]string{
-		&labelSetA: {refLineA, refLineC, refLineD, refLineF},
-		&labelSetB: {refLineB, refLineE},
-		&labelSetC: {refLineG},
+	prodLabels = &labels.Labels{
+		{Name: "namespace", Value: "prod"},
+		{Name: "cluster", Value: "us-central1"},
 	}
 
-	entries = buildEntries(labelEntryMap)
+	data = &testData{
+		Dev:  newLineLabelMap(devLabels, 5),
+		QA:   newLineLabelMap(qaLabels, 2),
+		Prod: newLineLabelMap(prodLabels, 5),
+	}
+
+	entries = data.allEntries()
 )
 
-func Test_deduplication(t *testing.T) {
+func Test_Deduplication(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		wantLines    []string
-		entries      []entry
+		wantLines    [][]byte
 		labelFilters []string
 		inverted     bool
 	}{
 		{
 			name: "dedup by (namespace)",
-			wantLines: []string{
-				refLineA, // first for labelSetA (labelSetC has same "namespace")
-				refLineB, // first for labelSetB
-			},
-			entries:      entries,
 			labelFilters: []string{"namespace"},
 			inverted:     false,
+			wantLines: [][]byte{
+				data.Dev.first(),  // first for devLabels (qaLabels has same "namespace")
+				data.Prod.first(), // first for prodLabels
+			},
 		},
 		{
 			name: "dedup by (role)",
-			wantLines: append(
-				[]string{refLineA, refLineG},  // only first entries with different "role" label
-				labelEntryMap[&labelSetB]...), // include all of labelSetB since it has no "role" label
-			entries:      entries,
 			labelFilters: []string{"role"},
 			inverted:     false,
+			wantLines: append(
+				[][]byte{data.Dev.first(), data.QA.first()}, // only first entries with different "role" label
+				data.Prod.all()...), 						 // include all of prodLabels since it has no "role" label
 		},
 		{
 			name: "dedup without (role)",
-			wantLines: append(
-				[]string{refLineA, refLineG},
-				labelEntryMap[&labelSetB]...,
-			),
-			entries:      entries,
 			labelFilters: []string{"role"},
+			inverted:     true,
+			// dedup without (x) will dedup by all labels that are not "x",
+			// so this will dedup by "namespace" and "cluster"
+			wantLines:    [][]byte{data.Dev.first(), data.Prod.first()},
+		},
+		{
+			name: "dedup without (unknown)",
+			labelFilters: []string{"unknown"},
+			inverted:     true,
+			// dedup without a label missing to all entries will result in a dedup by all present labels
+			wantLines:    [][]byte{data.Dev.first(), data.QA.first(), data.Prod.first()},
+		},
+		{
+			name: "dedup by (unknown)",
+			labelFilters: []string{"unknown"},
 			inverted:     false,
+			// dedup by a label missing to all entries is effectively a noop
+			wantLines:    data.allLines(),
+		},
+		{
+			name: "dedup by (cluster, namespace)",
+			labelFilters: []string{"cluster", "namespace"},
+			inverted:     false,
+			// dedup by multiple labels
+			wantLines:    [][]byte{data.Dev.first(), data.Prod.first()},
+		},
+		{
+			name: "dedup without (role, namespace)",
+			labelFilters: []string{"role", "namespace"},
+			inverted:     true,
+			// dedup without multiple labels
+			// - all lines have the same "cluster" label so only the first is returned
+			wantLines:    [][]byte{data.Dev.first()},
+		},
+		{
+			name: "dedup by ()",
+			labelFilters: nil,
+			inverted:     false,
+			// dedup without labels is effectively a noop
+			wantLines:    data.allLines(),
+		},
+		{
+			name: "dedup without ()",
+			labelFilters: nil,
+			inverted:     true,
+			// dedup without labels will result in a dedup by all present labels
+			wantLines:    [][]byte{data.Dev.first(), data.QA.first(), data.Prod.first()},
 		},
 	}
 
@@ -89,33 +114,108 @@ func Test_deduplication(t *testing.T) {
 		d := NewLineDedupFilter(tt.labelFilters, tt.inverted)
 
 		t.Run(tt.name, func(t *testing.T) {
-			var outLines []string
+			var outLines [][]byte
 
-			for _, entry := range tt.entries {
+			for _, entry := range entries {
 				b := NewBaseLabelsBuilder().ForLabels(*entry.lbs, entry.lbs.Hash())
 				b.Reset()
 
-				//fmt.Printf("%+v | %s\n", entry.lbs, entry.line)
-				if line, ok := d.Process([]byte(entry.line), b); ok {
-					outLines = append(outLines, string(line))
+				if line, ok := d.Process(entry.line, b); ok {
+					outLines = append(outLines, line)
 				}
 			}
 
-			sort.Strings(outLines)
-			sort.Strings(tt.wantLines)
-			require.Equal(t, tt.wantLines, outLines)
+			require.ElementsMatch(t, tt.wantLines, outLines)
 		})
 	}
 }
 
-func buildEntries(mapping map[*labels.Labels][]string) []entry {
-	var entries []entry
+func Benchmark_Deduplication(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
 
-	for labelSet, lines := range mapping {
-		for _, line := range lines {
-			entries = append(entries, entry{line: line, lbs: labelSet})
+	d := NewLineDedupFilter([]string{"cluster"}, false)
+
+	l := labels.Labels{
+		{Name: "cluster", Value: "us-central1"},
+	}
+
+	lbs := NewBaseLabelsBuilder().ForLabels(l, l.Hash())
+	lbs.Reset()
+
+	line := randomLine(10)
+
+	var outLines [][]byte
+	for n := 0; n < b.N; n++ {
+		if out, ok := d.Process(line, lbs); ok {
+			outLines = append(outLines, out)
 		}
 	}
 
+	require.Len(b, outLines, 1)
+}
+
+type entry struct {
+	lbs  *labels.Labels
+	line []byte
+}
+
+type lineLabelMap struct {
+	labelSet *labels.Labels
+	lines    [][]byte
+}
+
+type testData struct {
+	Dev  *lineLabelMap
+	QA   *lineLabelMap
+	Prod *lineLabelMap
+}
+
+func (t *testData) allEntries() []entry {
+	return append(append(t.Dev.toEntries(), t.Prod.toEntries()...), t.QA.toEntries()...)
+}
+
+func (t *testData) allLines() [][]byte {
+	return append(append(t.Dev.lines, t.Prod.lines...), t.QA.lines...)
+}
+
+func newLineLabelMap(labelSet *labels.Labels, lineCount int) *lineLabelMap {
+	var lines [][]byte
+	for i := 0; i < lineCount; i++ {
+		lines = append(lines, randomLine(10))
+	}
+
+	return &lineLabelMap{
+		lines:    lines,
+		labelSet: labelSet,
+	}
+}
+
+func (l *lineLabelMap) first() []byte {
+	return l.lines[0]
+}
+
+func (l *lineLabelMap) all() [][]byte {
+	return l.lines
+}
+
+func (l *lineLabelMap) toEntries() []entry {
+	var entries []entry
+
+	for _, line := range l.lines {
+		entries = append(entries, entry{line: line, lbs: l.labelSet})
+	}
+
 	return entries
+}
+
+func randomLine(n int) []byte {
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .;")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+
+	return []byte(string(b))
 }

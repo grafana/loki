@@ -5,10 +5,9 @@ import (
 )
 
 type LineDedupFilter struct {
-	labels           map[string]interface{}
-
-	inverted bool
-	seen     map[uint64]uint64
+	labels     map[string]interface{}
+	inverted   bool
+	hashLookup map[uint64]struct{}
 }
 
 func NewLineDedupFilter(labelFilters []string, inverted bool) *LineDedupFilter {
@@ -19,9 +18,9 @@ func NewLineDedupFilter(labelFilters []string, inverted bool) *LineDedupFilter {
 	}
 
 	return &LineDedupFilter{
-		labels:   filterMap,
-		inverted: inverted,
-		seen:     make(map[uint64]uint64),
+		labels:     filterMap,
+		inverted:   inverted,
+		hashLookup: make(map[uint64]struct{}),
 	}
 }
 
@@ -40,11 +39,12 @@ func (l *LineDedupFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool
 	}
 
 	hash := filterLabels.Hash()
-	if _, beenSeen := l.seen[hash]; beenSeen {
+	if _, found := l.hashLookup[hash]; found {
+		// don't return the line if the same labels have been seen already (i.e. this is a duplicate)
 		return nil, false
 	}
 
-	l.seen[hash]++
+	l.hashLookup[hash] = struct{}{}
 	return line, true
 }
 

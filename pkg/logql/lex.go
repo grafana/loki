@@ -59,6 +59,7 @@ var tokens = map[string]int{
 	OpFmtLabel: LABEL_FMT,
 	OpFmtLine:  LINE_FMT,
 
+	// line dedup filter
 	OpDedup: DEDUP,
 }
 

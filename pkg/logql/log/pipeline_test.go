@@ -67,6 +67,7 @@ func Benchmark_Pipeline(b *testing.B) {
 		NewJSONParser(),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, ErrorLabel, errJSON)),
 		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
+		NewLineDedupFilter([]string{"namespace"}, false),
 	})
 	line := []byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 org_id=29 traceID=29a0f088b047eb8c latency=fast query="{stream=\"stdout\",pod=\"loki-canary-xmjzp\"}" query_type=limited range_type=range length=20s step=1s duration=58.126671ms status=200 throughput_mb=2.496547 total_bytes_mb=0.145116`)
 	lbs := labels.Labels{

@@ -1158,36 +1158,6 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `{app="foo"} | json | dedup by (status_code)`,
-			exp: &pipelineExpr{
-				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
-				pipeline: MultiStageExpr{
-					newLabelParserExpr(OpParserTypeJSON, ""),
-					&lineDedupFilterExpr{
-						grouping: &grouping{
-							without: false,
-							groups: []string{"status_code"},
-						},
-					},
-				},
-			},
-		},
-		{
-			in: `{app="foo"} | json | dedup without (status_code)`,
-			exp: &pipelineExpr{
-				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
-				pipeline: MultiStageExpr{
-					newLabelParserExpr(OpParserTypeJSON, ""),
-					&lineDedupFilterExpr{
-						grouping: &grouping{
-							without: true,
-							groups: []string{"status_code"},
-						},
-					},
-				},
-			},
-		},
-		{
 			in: `{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 				| foo="bar" buzz!="blip", blop=~"boop" or fuzz==5`,
 			exp: &pipelineExpr{
@@ -2175,6 +2145,66 @@ func TestParse(t *testing.T) {
 		{
 			in:  `quantile_over_time(foo,{namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
 			err: ParseError{msg: "syntax error: unexpected IDENTIFIER, expecting NUMBER or { or (", line: 1, col: 20},
+		},
+		{
+			in: `{app="foo"} | json | dedup by ()`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					newLineDedupFilterExpr(&grouping{without: false, groups: nil}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json | dedup without ()`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					newLineDedupFilterExpr(&grouping{without: true, groups: nil}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json | dedup by (status_code)`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					newLineDedupFilterExpr(&grouping{without: false, groups: []string{"status_code"}}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json | dedup by (status_code, latency)`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					newLineDedupFilterExpr(&grouping{without: false, groups: []string{"status_code", "latency"}}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json | dedup without (status_code)`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					newLineDedupFilterExpr(&grouping{without: true, groups: []string{"status_code"}}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json | dedup without (status_code, latency)`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					newLineDedupFilterExpr(&grouping{without: true, groups: []string{"status_code", "latency"}}),
+				},
+			},
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
