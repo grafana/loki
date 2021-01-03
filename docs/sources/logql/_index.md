@@ -88,6 +88,7 @@ A log pipeline can be composed of:
 - [Line Format Expression](#Line-Format-Expression)
 - [Labels Format Expression](#Labels-Format-Expression)
 - [Unwrap Expression](#Unwrap-Expression)
+- [Dedup Filter Expression](#Dedup-Filter-Expression)
 
 The [unwrap Expression](#Unwrap-Expression) is a special expression that should only be used within metric queries.
 
@@ -682,3 +683,62 @@ quantile_over_time(
 ```
 
 >Metric queries cannot contains errors, in case errors are found during execution, Loki will return an error and appropriate status code.
+
+#### Dedup Filter Expression
+
+The line deduplication filter (`dedup`) will reduce the number of log lines returned by filtering on a given set of label dimensions. 
+Each log line will be examined, and the first line with unique values for these label dimensions will be returned.
+
+`dedup` uses the same label grouping syntax as aggregations (`sum`, `avg`, etc).
+
+```logql
+dedup without|by (<label list>)
+```
+
+`dedup` is useful when a set of log lines is required, for example with Grafana's [annotations](https://grafana.com/docs/grafana/latest/dashboards/annotations/#annotations) feature using [Loki as a datasource](https://grafana.com/docs/grafana/latest/datasources/loki/#annotations).
+
+**NOTE**: log lines are not _necessarily_ processed chronologically, so the order is not guaranteed. 
+
+#### Dedup Examples
+
+Given these log lines:
+
+```log
+level=info  ts=2020-10-23T20:32:16.094668233Z org_id=29
+level=info  ts=2020-10-23T20:32:17.068866235Z org_id=12
+level=debug ts=2020-10-23T20:32:18.068866235Z org_id=29
+level=info  ts=2020-10-23T20:32:19.068866235Z org_id=29
+```
+
+If we apply a `dedup` filter by the `org_id` label:
+
+```logql
+{app="foo"}
+    | logfmt
+    | dedup by (org_id)
+```
+
+...this will reduce the log lines to:
+
+```log
+level=info  ts=2020-10-23T20:32:16.094668233Z org_id=29
+level=info  ts=2020-10-23T20:32:17.068866235Z org_id=12
+```
+
+Multiple labels can be used with a `dedup`:
+
+```logql
+{app="foo"}
+    | logfmt
+    | dedup by (level, org_id)
+```
+
+`dedup without (<label list>)` will use all labels except the given ones to perform this filtering.
+
+```logql
+{app="foo"}
+    | logfmt
+    | dedup without (org_id)
+```
+
+The resulting log lines will be identical; since we are excluding the `org_id` label, filtering is now performed on the `level` and `ts` labels. `ts` is unique for each log line, so all log lines are returned.
