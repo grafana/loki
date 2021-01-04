@@ -222,10 +222,14 @@ func (i *Ingester) starting(ctx context.Context) error {
 		}
 		defer checkpointCloser.Close()
 
-		if err = RecoverCheckpoint(checkpointReader, recoverer); err != nil {
+		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
+		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util.Logger).Log("msg", "failed to recover from checkpoint", "elapsed", time.Since(start).String())
-			return err
+			level.Error(util.Logger).Log(
+				"msg", "failed to recover from checkpoint",
+				"elapsed", time.Since(start).String(),
+				"errors", checkpointRecoveryErr != nil,
+			)
 		}
 		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "elapsed", time.Since(start).String())
 
@@ -236,16 +240,20 @@ func (i *Ingester) starting(ctx context.Context) error {
 		}
 		defer segmentCloser.Close()
 
-		if err = RecoverWAL(segmentReader, recoverer); err != nil {
+		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
+		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(util.Logger).Log("msg", "failed to recover from WAL segments", "elapsed", time.Since(start).String())
-			return err
 		}
-		level.Info(util.Logger).Log("msg", "recovered from WAL segments", "elapsed", time.Since(start).String())
+		level.Info(util.Logger).Log(
+			"msg", "WAL segment recovery finished",
+			"elapsed", time.Since(start).String(),
+			"errors", segmentRecoveryErr != nil,
+		)
 
 		elapsed := time.Since(start)
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
-		level.Info(util.Logger).Log("msg", "recovery completed", "time", elapsed.String())
+		level.Info(util.Logger).Log("msg", "recovery finished", "time", elapsed.String())
 
 	}
 
