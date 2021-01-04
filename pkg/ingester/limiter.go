@@ -25,15 +25,20 @@ type Limiter struct {
 	ring              RingCount
 	replicationFactor int
 
-	mtx     sync.RWMutex
-	started bool
+	mtx      sync.RWMutex
+	disabled bool
 }
 
-// Begins Begin
-func (l *Limiter) Begin() {
+func (l *Limiter) Disable() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
-	l.started = true
+	l.disabled = true
+}
+
+func (l *Limiter) Enable() {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	l.disabled = false
 }
 
 // NewLimiter makes a new limiter
@@ -52,7 +57,7 @@ func (l *Limiter) AssertMaxStreamsPerUser(userID string, streams int) error {
 	// This is used to disable limits while recovering from the WAL.
 	l.mtx.RLock()
 	defer l.mtx.RUnlock()
-	if !l.started {
+	if l.disabled {
 		return nil
 	}
 

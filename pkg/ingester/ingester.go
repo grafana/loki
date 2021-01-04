@@ -210,6 +210,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 func (i *Ingester) starting(ctx context.Context) error {
 	if i.cfg.WAL.Recover {
+		// Disable the in process stream limit checks while replaying the WAL
+		i.limiter.Disable()
+		defer i.limiter.Enable()
+
 		recoverer := newIngesterRecoverer(i)
 		defer recoverer.Close()
 
@@ -248,9 +252,6 @@ func (i *Ingester) starting(ctx context.Context) error {
 		level.Info(util.Logger).Log("msg", "recovery completed", "time", elapsed.String())
 
 	}
-
-	// Once the WAL has replayed, signal the stream limiter to start.
-	i.limiter.Begin()
 
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
