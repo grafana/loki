@@ -121,8 +121,9 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 	for n := 0; n < b.N; n++ {
 		request := makeWriteRequest(10, 10)
-		request.Streams[0].Labels = `{buzz="f", a="b"}`
-		d.parseStreamLabels("123", request.Streams[0].Labels, &request.Streams[0])
+		stream := request.Streams[0]
+		stream.Labels = `{buzz="f", a="b"}`
+		d.parseStreamLabels("123", stream.Labels, &stream)
 	}
 }
 

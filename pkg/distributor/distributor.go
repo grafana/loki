@@ -360,20 +360,18 @@ func (*Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckReques
 
 func (d *Distributor) parseStreamLabels(userID string, key string, stream *logproto.Stream) (string, error) {
 	labelVal, ok := d.labelCache.Get(key)
-	if !ok {
-		ls, err := logql.ParseLabels(key)
-		if err != nil {
-			return "", httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
-		}
-		// ensure labels are correctly sorted.
-		lsVal := ls.String()
-		if err := d.validator.ValidateLabels(userID, ls, *stream); err != nil {
-			return "", err
-		}
-		d.labelCache.Add(key, lsVal)
-		return lsVal, nil
-	} else {
+	if ok {
 		return labelVal.(string), nil
 	}
-
+	ls, err := logql.ParseLabels(key)
+	if err != nil {
+		return "", httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
+	}
+	// ensure labels are correctly sorted.
+	lsVal := ls.String()
+	if err := d.validator.ValidateLabels(userID, ls, *stream); err != nil {
+		return "", err
+	}
+	d.labelCache.Add(key, lsVal)
+	return lsVal, nil
 }
