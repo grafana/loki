@@ -249,6 +249,9 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	}
 
+	// Once the WAL has replayed, signal the stream limiter to start.
+	i.limiter.Begin()
+
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)

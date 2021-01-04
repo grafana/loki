@@ -3,6 +3,7 @@ package ingester
 import (
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -23,6 +24,16 @@ type Limiter struct {
 	limits            *validation.Overrides
 	ring              RingCount
 	replicationFactor int
+
+	mtx     sync.RWMutex
+	started bool
+}
+
+// Begins Begin
+func (l *Limiter) Begin() {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	l.started = true
 }
 
 // NewLimiter makes a new limiter
@@ -37,6 +48,14 @@ func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor 
 // AssertMaxStreamsPerUser ensures limit has not been reached compared to the current
 // number of streams in input and returns an error if so.
 func (l *Limiter) AssertMaxStreamsPerUser(userID string, streams int) error {
+	// Until the limiter actually starts, all accesses are successful.
+	// This is used to disable limits while recovering from the WAL.
+	l.mtx.RLock()
+	defer l.mtx.RUnlock()
+	if !l.started {
+		return nil
+	}
+
 	// Start by setting the local limit either from override or default
 	localLimit := l.limits.MaxLocalStreamsPerUser(userID)
 
