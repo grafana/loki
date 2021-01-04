@@ -249,7 +249,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(util.Logger).Log(
 				"msg",
-				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions. No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
+				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
 			)
 		}
