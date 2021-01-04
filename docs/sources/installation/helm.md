@@ -5,8 +5,7 @@ title: Helm
 
 ## Prerequisites
 
-Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-helm) and
-[deployed](https://helm.sh/docs/using_helm/#installing-tiller) to your cluster.
+Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-helm).
 
 Add [Loki's chart repository](https://github.com/grafana/helm-charts) to Helm:
 

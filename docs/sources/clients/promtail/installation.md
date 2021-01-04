@@ -21,12 +21,11 @@ docker pull grafana/promtail:2.0.0
 ## Helm
 
 Make sure that Helm is
-[installed](https://helm.sh/docs/using_helm/#installing-helm) and
-[deployed](https://helm.sh/docs/using_helm/#installing-tiller) to your cluster.
-Then you can add Loki's chart repository to Helm:
+[installed](https://helm.sh/docs/using_helm/#installing-helm).
+Then you can add Grafana's chart repository to Helm:
 
 ```bash
-helm repo add loki https://grafana.github.io/loki/charts
+helm repo add grafana https://grafana.github.io/helm-charts
 ```
 
 And the chart repository can be updated by running:
@@ -38,7 +37,7 @@ helm repo update
 Finally, Promtail can be deployed with:
 
 ```bash
-$ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
+$ helm upgrade --install promtail grafana/promtail --set "loki.serviceName=loki"
 ```
 
 ## Kubernetes

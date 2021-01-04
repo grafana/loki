@@ -55,8 +55,6 @@ To ship all your pods logs we're going to set up [Promtail](../../promtail/) as 
 
 What's nice about Promtail is that it uses the same [service discovery as Prometheus][prometheus conf], you should make sure the `scrape_configs` of Promtail matches the Prometheus one. Not only this is simpler to configure, but this also means Metrics and Logs will have the same metadata (labels) attached by the Prometheus service discovery. When querying Grafana you will be able to correlate metrics and logs very quickly, you can read more about this on our [blogpost][correlate].
 
-We'll use helm 3, but if you want to use helm 2 it's also fine just make sure you have properly [installed tiller][tiller install].
-
 Let's add the Loki repository and list all available charts.
 
 ```bash
@@ -245,7 +243,6 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [GrafanaCloud]: https://grafana.com/signup/
 [blog ship log with fargate]: https://aws.amazon.com/blogs/containers/how-to-capture-application-logs-when-using-amazon-eks-on-aws-fargate/
 [correlate]: https://grafana.com/blog/2020/03/31/how-to-successfully-correlate-metrics-logs-and-traces-in-grafana/
-[tiller install]: https://v2.helm.sh/docs/using_helm/
 [default value file]: https://github.com/grafana/helm-charts/blob/main/charts/promtail/values.yaml
 [systemd]: ../../../installation/helm#run-promtail-with-systemd-journal-support
 [grafana logs namespace]: namespace-grafana.png
