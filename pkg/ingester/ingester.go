@@ -225,13 +225,13 @@ func (i *Ingester) starting(ctx context.Context) error {
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util.Logger).Log(
-				"msg", "failed to recover from checkpoint",
-				"elapsed", time.Since(start).String(),
-				"errors", checkpointRecoveryErr != nil,
-			)
+			level.Error(util.Logger).Log("msg", "failed to recover from checkpoint", "elapsed", time.Since(start).String())
 		}
-		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "elapsed", time.Since(start).String())
+		level.Info(util.Logger).Log(
+			"msg", "recovered WAL checkpoint recovery finished",
+			"elapsed", time.Since(start).String(),
+			"errors", checkpointRecoveryErr != nil,
+		)
 
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
