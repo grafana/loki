@@ -2,10 +2,6 @@
 
 package dynamodb
 
-import (
-	"github.com/aws/aws-sdk-go/private/protocol"
-)
-
 const (
 
 	// ErrCodeBackupInUseException for service response error code
@@ -92,7 +88,7 @@ const (
 	// if the table or index specifications are complex, DynamoDB might temporarily
 	// reduce the number of concurrent operations.
 	//
-	// There is a soft account quota of 256 tables.
+	// There is a soft account limit of 256 tables.
 	ErrCodeLimitExceededException = "LimitExceededException"
 
 	// ErrCodePointInTimeRecoveryUnavailableException for service response error code
@@ -127,9 +123,9 @@ const (
 	// ErrCodeRequestLimitExceeded for service response error code
 	// "RequestLimitExceeded".
 	//
-	// Throughput exceeds the current throughput quota for your account. Please
+	// Throughput exceeds the current throughput limit for your account. Please
 	// contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
-	// a quota increase.
+	// a limit increase.
 	ErrCodeRequestLimitExceeded = "RequestLimitExceeded"
 
 	// ErrCodeResourceInUseException for service response error code
@@ -188,6 +184,8 @@ const (
 	//    index (LSI) becomes too large, or a similar validation error occurs because
 	//    of changes made by the transaction.
 	//
+	//    * The aggregate size of the items in the transaction exceeds 4 MBs.
+	//
 	//    * There is a user error, such as an invalid data format.
 	//
 	// DynamoDB cancels a TransactGetItems request under the following circumstances:
@@ -201,6 +199,8 @@ const (
 	//
 	//    * There is insufficient provisioned capacity for the transaction to be
 	//    completed.
+	//
+	//    * The aggregate size of the items in the transaction exceeds 4 MBs.
 	//
 	//    * There is a user error, such as an invalid data format.
 	//
@@ -268,31 +268,3 @@ const (
 	// The transaction with the given request token is already in progress.
 	ErrCodeTransactionInProgressException = "TransactionInProgressException"
 )
-
-var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
-	"BackupInUseException":                     newErrorBackupInUseException,
-	"BackupNotFoundException":                  newErrorBackupNotFoundException,
-	"ConditionalCheckFailedException":          newErrorConditionalCheckFailedException,
-	"ContinuousBackupsUnavailableException":    newErrorContinuousBackupsUnavailableException,
-	"GlobalTableAlreadyExistsException":        newErrorGlobalTableAlreadyExistsException,
-	"GlobalTableNotFoundException":             newErrorGlobalTableNotFoundException,
-	"IdempotentParameterMismatchException":     newErrorIdempotentParameterMismatchException,
-	"IndexNotFoundException":                   newErrorIndexNotFoundException,
-	"InternalServerError":                      newErrorInternalServerError,
-	"InvalidRestoreTimeException":              newErrorInvalidRestoreTimeException,
-	"ItemCollectionSizeLimitExceededException": newErrorItemCollectionSizeLimitExceededException,
-	"LimitExceededException":                   newErrorLimitExceededException,
-	"PointInTimeRecoveryUnavailableException":  newErrorPointInTimeRecoveryUnavailableException,
-	"ProvisionedThroughputExceededException":   newErrorProvisionedThroughputExceededException,
-	"ReplicaAlreadyExistsException":            newErrorReplicaAlreadyExistsException,
-	"ReplicaNotFoundException":                 newErrorReplicaNotFoundException,
-	"RequestLimitExceeded":                     newErrorRequestLimitExceeded,
-	"ResourceInUseException":                   newErrorResourceInUseException,
-	"ResourceNotFoundException":                newErrorResourceNotFoundException,
-	"TableAlreadyExistsException":              newErrorTableAlreadyExistsException,
-	"TableInUseException":                      newErrorTableInUseException,
-	"TableNotFoundException":                   newErrorTableNotFoundException,
-	"TransactionCanceledException":             newErrorTransactionCanceledException,
-	"TransactionConflictException":             newErrorTransactionConflictException,
-	"TransactionInProgressException":           newErrorTransactionInProgressException,
-}

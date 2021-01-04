@@ -72,6 +72,8 @@ replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 
+replace github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.23.13
+
 // Keeping this same as Cortex to avoid dependency issues.
 replace k8s.io/client-go => k8s.io/client-go v0.19.2
 

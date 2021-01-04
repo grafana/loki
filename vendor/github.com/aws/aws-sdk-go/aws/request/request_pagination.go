@@ -17,13 +17,11 @@ import (
 // does the pagination between API operations, and Paginator defines the
 // configuration that will be used per page request.
 //
-//     for p.Next() {
+//     cont := true
+//     for p.Next() && cont {
 //         data := p.Page().(*s3.ListObjectsOutput)
 //         // process the page's data
-//         // ...
-//         // break out of loop to stop fetching additional pages
 //     }
-//
 //     return p.Err()
 //
 // See service client API operation Pages methods for examples how the SDK will

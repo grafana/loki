@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -88,14 +87,7 @@ func NewCredentialsWithClient(client *ec2metadata.EC2Metadata, options ...func(*
 // Error will be returned if the request fails, or unable to extract
 // the desired credentials.
 func (m *EC2RoleProvider) Retrieve() (credentials.Value, error) {
-	return m.RetrieveWithContext(aws.BackgroundContext())
-}
-
-// RetrieveWithContext retrieves credentials from the EC2 service.
-// Error will be returned if the request fails, or unable to extract
-// the desired credentials.
-func (m *EC2RoleProvider) RetrieveWithContext(ctx credentials.Context) (credentials.Value, error) {
-	credsList, err := requestCredList(ctx, m.Client)
+	credsList, err := requestCredList(m.Client)
 	if err != nil {
 		return credentials.Value{ProviderName: ProviderName}, err
 	}
@@ -105,7 +97,7 @@ func (m *EC2RoleProvider) RetrieveWithContext(ctx credentials.Context) (credenti
 	}
 	credsName := credsList[0]
 
-	roleCreds, err := requestCred(ctx, m.Client, credsName)
+	roleCreds, err := requestCred(m.Client, credsName)
 	if err != nil {
 		return credentials.Value{ProviderName: ProviderName}, err
 	}
@@ -138,8 +130,8 @@ const iamSecurityCredsPath = "iam/security-credentials/"
 
 // requestCredList requests a list of credentials from the EC2 service.
 // If there are no credentials, or there is an error making or receiving the request
-func requestCredList(ctx aws.Context, client *ec2metadata.EC2Metadata) ([]string, error) {
-	resp, err := client.GetMetadataWithContext(ctx, iamSecurityCredsPath)
+func requestCredList(client *ec2metadata.EC2Metadata) ([]string, error) {
+	resp, err := client.GetMetadata(iamSecurityCredsPath)
 	if err != nil {
 		return nil, awserr.New("EC2RoleRequestError", "no EC2 instance role found", err)
 	}
@@ -162,8 +154,8 @@ func requestCredList(ctx aws.Context, client *ec2metadata.EC2Metadata) ([]string
 //
 // If the credentials cannot be found, or there is an error reading the response
 // and error will be returned.
-func requestCred(ctx aws.Context, client *ec2metadata.EC2Metadata, credsName string) (ec2RoleCredRespBody, error) {
-	resp, err := client.GetMetadataWithContext(ctx, sdkuri.PathJoin(iamSecurityCredsPath, credsName))
+func requestCred(client *ec2metadata.EC2Metadata, credsName string) (ec2RoleCredRespBody, error) {
+	resp, err := client.GetMetadata(sdkuri.PathJoin(iamSecurityCredsPath, credsName))
 	if err != nil {
 		return ec2RoleCredRespBody{},
 			awserr.New("EC2RoleRequestError",

@@ -3,8 +3,7 @@ package s3
 import (
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/internal/s3shared/arn"
-	"github.com/aws/aws-sdk-go/internal/s3shared/s3err"
+	"github.com/aws/aws-sdk-go/internal/s3err"
 )
 
 func init() {
@@ -14,7 +13,7 @@ func init() {
 
 func defaultInitClientFn(c *client.Client) {
 	// Support building custom endpoints based on config
-	c.Handlers.Build.PushFront(endpointHandler)
+	c.Handlers.Build.PushFront(updateEndpointForS3Config)
 
 	// Require SSL when using SSE keys
 	c.Handlers.Validate.PushBack(validateSSERequiresSSL)
@@ -28,11 +27,17 @@ func defaultInitClientFn(c *client.Client) {
 }
 
 func defaultInitRequestFn(r *request.Request) {
-	// Add request handlers for specific platforms.
+	// Add reuest handlers for specific platforms.
 	// e.g. 100-continue support for PUT requests using Go 1.6
 	platformRequestHandlers(r)
 
 	switch r.Operation.Name {
+	case opPutBucketCors, opPutBucketLifecycle, opPutBucketPolicy,
+		opPutBucketTagging, opDeleteObjects, opPutBucketLifecycleConfiguration,
+		opPutObjectLegalHold, opPutObjectRetention, opPutObjectLockConfiguration,
+		opPutBucketReplication:
+		// These S3 operations require Content-MD5 to be set
+		r.Handlers.Build.PushBack(contentMD5)
 	case opGetBucketLocation:
 		// GetBucketLocation has custom parsing logic
 		r.Handlers.Unmarshal.PushFront(buildGetBucketLocation)
@@ -67,11 +72,4 @@ type sseCustomerKeyGetter interface {
 // "CopySourceSSECustomerKey" field from an S3 type.
 type copySourceSSECustomerKeyGetter interface {
 	getCopySourceSSECustomerKey() string
-}
-
-// endpointARNGetter is an accessor interface to grab the
-// the field corresponding to an endpoint ARN input.
-type endpointARNGetter interface {
-	getEndpointARN() (arn.Resource, error)
-	hasEndpointARN() bool
 }

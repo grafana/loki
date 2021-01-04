@@ -52,15 +52,6 @@ func (hs *Headers) Del(name string) {
 	}
 }
 
-// Clone returns a deep copy of the headers
-func (hs Headers) Clone() Headers {
-	o := make(Headers, 0, len(hs))
-	for _, h := range hs {
-		o.Set(h.Name, h.Value)
-	}
-	return o
-}
-
 func decodeHeaders(r io.Reader) (Headers, error) {
 	hs := Headers{}
 

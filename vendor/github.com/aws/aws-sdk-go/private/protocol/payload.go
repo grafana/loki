@@ -64,7 +64,7 @@ func (h HandlerPayloadMarshal) MarshalPayload(w io.Writer, v interface{}) error 
 		metadata.ClientInfo{},
 		request.Handlers{},
 		nil,
-		&request.Operation{HTTPMethod: "PUT"},
+		&request.Operation{HTTPMethod: "GET"},
 		v,
 		nil,
 	)

@@ -19,9 +19,7 @@ type StaticProvider struct {
 }
 
 // NewStaticCredentials returns a pointer to a new Credentials object
-// wrapping a static credentials value provider. Token is only required
-// for temporary security credentials retrieved via STS, otherwise an empty
-// string can be passed for this parameter.
+// wrapping a static credentials value provider.
 func NewStaticCredentials(id, secret, token string) *Credentials {
 	return NewCredentials(&StaticProvider{Value: Value{
 		AccessKeyID:     id,

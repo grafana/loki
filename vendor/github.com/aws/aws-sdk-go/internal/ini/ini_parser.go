@@ -162,7 +162,7 @@ loop:
 			if len(tokens) == 0 {
 				break loop
 			}
-			// if should skip is true, we skip the tokens until should skip is set to false.
+
 			step = SkipTokenState
 		}
 
@@ -218,7 +218,7 @@ loop:
 			// S -> equal_expr' expr_stmt'
 			switch k.Kind {
 			case ASTKindEqualExpr:
-				// assigning a value to some key
+				// assiging a value to some key
 				k.AppendChild(newExpression(tok))
 				stack.Push(newExprStatement(k))
 			case ASTKindExpr:
@@ -249,13 +249,6 @@ loop:
 		case OpenScopeState:
 			if !runeCompare(tok.Raw(), openBrace) {
 				return nil, NewParseError("expected '['")
-			}
-			// If OpenScopeState is not at the start, we must mark the previous ast as complete
-			//
-			// for example: if previous ast was a skip statement;
-			// we should mark it as complete before we create a new statement
-			if k.Kind != ASTKindStart {
-				stack.MarkComplete(k)
 			}
 
 			stmt := newStatement()
