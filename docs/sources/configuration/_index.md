@@ -69,7 +69,7 @@ non-list parameters the value is set to the specified default.
 > **Note:** This feature is only available in Loki 2.1+.
 
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
-To do this, use:
+To do this, pass `-config.expand-env=true` and use:
 
 ```
 ${VAR}
