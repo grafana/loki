@@ -108,7 +108,7 @@ While these endpoints are exposed by just the distributor:
 And these endpoints are exposed by just the ingester:
 
 - [`POST /flush`](#post-flush)
-- [`POST /ingester/shutdown`](#post-shutdown)
+- [`POST /ingester/shutdown`](#post-ingestershutdown)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
