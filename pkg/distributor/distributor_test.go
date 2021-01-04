@@ -112,6 +112,20 @@ func Test_SortLabelsOnPush(t *testing.T) {
 	require.Equal(t, `{a="b", buzz="f"}`, ingester.pushed[0].Streams[0].Labels)
 }
 
+func Benchmark_SortLabelsOnPush(b *testing.B) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.EnforceMetricName = false
+	ingester := &mockIngester{}
+	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	for n := 0; n < b.N; n++ {
+		request := makeWriteRequest(10, 10)
+		request.Streams[0].Labels = `{buzz="f", a="b"}`
+		d.parseStreamLabels("123", request.Streams[0].Labels, &request.Streams[0])
+	}
+}
+
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	type testPush struct {
 		bytes         int

@@ -215,25 +215,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
-		label, ok := d.labelCache.Get(stream.Labels)
-		if !ok {
-			ls, err := logql.ParseLabels(stream.Labels)
-			if err != nil {
-				validationErr = httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
-				continue
-			}
-			// ensure labels are correctly sorted.
-			// todo(ctovena) we should lru cache this
-			stream.Labels = ls.String()
-			if err := d.validator.ValidateLabels(userID, ls, stream); err != nil {
-				validationErr = err
-				continue
-			}
-			d.labelCache.Add(stream.Labels, stream.Labels)
-		} else {
-			stream.Labels = label.(string)
+		stream.Labels, err = d.parseStreamLabels(userID, stream.Labels, &stream)
+		if err != nil {
+			validationErr = err
+			continue
 		}
-
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
 			if err := d.validator.ValidateEntry(userID, stream.Labels, entry); err != nil {
@@ -370,4 +356,24 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 // Check implements the grpc healthcheck
 func (*Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+func (d *Distributor) parseStreamLabels(userID string, key string, stream *logproto.Stream) (string, error) {
+	labelVal, ok := d.labelCache.Get(key)
+	if !ok {
+		ls, err := logql.ParseLabels(key)
+		if err != nil {
+			return "", httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
+		}
+		// ensure labels are correctly sorted.
+		lsVal := ls.String()
+		if err := d.validator.ValidateLabels(userID, ls, *stream); err != nil {
+			return "", err
+		}
+		d.labelCache.Add(key, lsVal)
+		return lsVal, nil
+	} else {
+		return labelVal.(string), nil
+	}
+
 }
