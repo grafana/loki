@@ -2128,6 +2128,47 @@ func TestParse(t *testing.T) {
 			in:  `quantile_over_time(foo,{namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
 			err: ParseError{msg: "syntax error: unexpected IDENTIFIER, expecting NUMBER or { or (", line: 1, col: 20},
 		},
+		{
+			in: `{app="foo"}
+					# |= "bar"
+					| json`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+				},
+			},
+		},
+		{
+			in: `{app="foo"}
+					#
+					|= "bar"
+					| json`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+				},
+			},
+		},
+		{
+			in:  `{app="foo"} # |= "bar" | json`,
+			exp: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+		},
+		{
+			in: `{app="foo"} | json #`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+				},
+			},
+		},
+		{
+			in: `#{app="foo"} | json`,
+			err: ParseError{msg: "syntax error: unexpected $end", line: 1, col: 20},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
