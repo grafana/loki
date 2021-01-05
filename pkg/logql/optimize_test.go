@@ -22,7 +22,6 @@ func Test_optimizeSampleExpr(t *testing.T) {
 
 		// remove line_format that is not required.
 		{`sum by(name)(rate({region="us-east1"} | line_format "something else"[5m]))`, `sum by(name)(rate({region="us-east1"}[5m]))`},
-		{`sum by(name)(rate({region="us-east1"} | line_format "something else"[5m]))`, `sum by(name)(rate({region="us-east1"}[5m]))`},
 		{`sum by(name)(rate({region="us-east1"} | json | line_format "something else" | unwrap foo[5m]))`, `sum by(name)(rate({region="us-east1"} | json | unwrap foo[5m]))`},
 		{`quantile_over_time(1,{region="us-east1"} | json | line_format "something else" | unwrap foo[5m])`, `quantile_over_time(1,{region="us-east1"} | json | unwrap foo[5m])`},
 		{`sum by(name)(count_over_time({region="us-east1"} | json | line_format "something else" | label_format foo=bar | line_format "boo"[5m]))`, `sum by(name)(count_over_time({region="us-east1"} | json | label_format foo=bar[5m]))`},
