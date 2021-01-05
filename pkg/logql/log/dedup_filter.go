@@ -48,6 +48,8 @@ func (l *LineDedupFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool
 	return line, true
 }
 
+func (l *LineDedupFilter) RequiredLabelNames() []string { return []string{} }
+
 func includeLabel(found, inverted bool) bool {
 	// exclude a label if it has been found but search is inverted, or
 	// exclude a label if it has not been found and search is not inverted
