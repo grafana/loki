@@ -51,7 +51,8 @@ func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, w
 	s := ReduceStages(stages)
 	var expectedLabels []string
 	if !without {
-		expectedLabels = uniqueString(append(s.RequiredLabelNames(), groups...))
+		expectedLabels = append(expectedLabels, s.RequiredLabelNames()...)
+		expectedLabels = uniqueString(append(expectedLabels, groups...))
 	}
 	return &lineSampleExtractor{
 		Stage:            s,
@@ -137,14 +138,16 @@ func LabelExtractorWithStages(
 		groups = append(groups, labelName)
 		sort.Strings(groups)
 	}
+	preStage := ReduceStages(preStages)
 	var expectedLabels []string
 	if !without {
-		expectedLabels = append(postFilter.RequiredLabelNames(), groups...)
+		expectedLabels = append(expectedLabels, preStage.RequiredLabelNames()...)
+		expectedLabels = append(expectedLabels, groups...)
 		expectedLabels = append(expectedLabels, postFilter.RequiredLabelNames()...)
 		expectedLabels = uniqueString(expectedLabels)
 	}
 	return &labelSampleExtractor{
-		preStage:         ReduceStages(preStages),
+		preStage:         preStage,
 		conversionFn:     convFn,
 		labelName:        labelName,
 		postFilter:       postFilter,

@@ -58,7 +58,7 @@ func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 func (j *JSONParser) readObject(it *jsoniter.Iterator) error {
 	// we only care about object and values.
 	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
-		return errors.New("not a json object")
+		return fmt.Errorf("expecting json object(%d), got %d", jsoniter.ObjectValue, nextType)
 	}
 	_ = it.ReadMapCB(j.parseMap(""))
 	if it.Error != nil && it.Error != io.EOF {

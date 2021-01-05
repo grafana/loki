@@ -131,7 +131,7 @@ func (b *LabelsBuilder) Reset() {
 	b.err = ""
 }
 
-// ExpectedLabels returns a limited list of expected labels to extract for metric queries.
+// ParserLabelHints returns a limited list of expected labels to extract for metric queries.
 // Returns nil when it's impossible to hint labels extractions.
 func (b *BaseLabelsBuilder) ParserLabelHints() []string {
 	return b.parserKeyHints
