@@ -53,7 +53,7 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
 
-	maxLabelCacheSize = 10000
+	maxLabelCacheSize = 100000
 )
 
 // Config for a Distributor.
@@ -368,10 +368,10 @@ func (d *Distributor) parseStreamLabels(userID string, key string, stream *logpr
 		return "", httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
 	}
 	// ensure labels are correctly sorted.
-	lsVal := ls.String()
 	if err := d.validator.ValidateLabels(userID, ls, *stream); err != nil {
 		return "", err
 	}
+	lsVal := ls.String()
 	d.labelCache.Add(key, lsVal)
 	return lsVal, nil
 }

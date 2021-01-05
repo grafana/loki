@@ -119,8 +119,8 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	ingester := &mockIngester{}
 	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	request := makeWriteRequest(10, 10)
 	for n := 0; n < b.N; n++ {
-		request := makeWriteRequest(10, 10)
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
 		_, err := d.parseStreamLabels("123", stream.Labels, &stream)
