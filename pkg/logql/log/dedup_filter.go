@@ -5,16 +5,16 @@ import (
 )
 
 type LineDedupFilter struct {
-	labels     map[string]interface{}
+	labels     map[string]struct{}
 	inverted   bool
 	hashLookup map[uint64]struct{}
 }
 
 func NewLineDedupFilter(labelFilters []string, inverted bool) *LineDedupFilter {
 	// create a map of labelFilters for O(1) lookups instead of O(n)
-	var filterMap = make(map[string]interface{})
+	var filterMap = make(map[string]struct{})
 	for _, group := range labelFilters {
-		filterMap[group] = nil
+		filterMap[group] = struct{}{}
 	}
 
 	return &LineDedupFilter{

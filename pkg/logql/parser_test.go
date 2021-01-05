@@ -747,20 +747,20 @@ func TestParse(t *testing.T) {
 		},
 		{
 			// missing "by" clause
-			in: `{foo="bar"} dedup (label)`,
+			in: `{foo="bar"} | dedup (label)`,
 			err: ParseError{
-				msg:  "syntax error: unexpected dedup",
+				msg:  "syntax error: unexpected (, expecting by or without",
 				line: 1,
-				col:  13,
+				col:  21,
 			},
 		},
 		{
 			// misspelling of "dedup"
-			in: `{foo="bar"} dedupe by (label)`,
+			in: `{foo="bar"} | dedupe by (label)`,
 			err: ParseError{
-				msg:  "syntax error: unexpected IDENTIFIER",
+				msg:  "syntax error: unexpected by",
 				line: 1,
-				col:  13,
+				col:  22,
 			},
 		},
 		{

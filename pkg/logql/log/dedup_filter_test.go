@@ -119,7 +119,6 @@ func Test_Deduplication(t *testing.T) {
 
 			for _, entry := range entries {
 				b := NewBaseLabelsBuilder().ForLabels(*entry.lbs, entry.lbs.Hash())
-				b.Reset()
 
 				if line, ok := d.Process(entry.line, b); ok {
 					outLines = append(outLines, line)
@@ -142,7 +141,6 @@ func Benchmark_Deduplication(b *testing.B) {
 	}
 
 	lbs := NewBaseLabelsBuilder().ForLabels(l, l.Hash())
-	lbs.Reset()
 
 	line := randomLine(10)
 
