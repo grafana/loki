@@ -129,6 +129,103 @@ func TestIngesterWAL(t *testing.T) {
 
 }
 
+func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
+	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
+	require.Nil(t, err)
+	defer os.RemoveAll(walDir)
+
+	ingesterConfig := defaultIngesterTestConfig(t)
+	ingesterConfig.MaxTransferRetries = 0
+	ingesterConfig.WAL = WALConfig{
+		Enabled:            true,
+		Dir:                walDir,
+		Recover:            true,
+		CheckpointDuration: time.Second,
+	}
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	newStore := func() *mockStore {
+		return &mockStore{
+			chunks: map[string][]chunk.Chunk{},
+		}
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="bar",bar="baz2"}`,
+			},
+		},
+	}
+
+	start := time.Now()
+	steps := 10
+	end := start.Add(time.Second * time.Duration(steps))
+
+	for i := 0; i < steps; i++ {
+		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: start.Add(time.Duration(i) * time.Second),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+			Timestamp: start.Add(time.Duration(i) * time.Second),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	ensureIngesterData(ctx, t, start, end, i)
+
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Limit all streams except those written during WAL recovery.
+	limitCfg := defaultLimitsTestConfig()
+	limitCfg.MaxLocalStreamsPerUser = -1
+	limits, err = validation.NewOverrides(limitCfg, nil)
+	require.NoError(t, err)
+
+	// restart the ingester
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// ensure we've recovered data from wal segments
+	ensureIngesterData(ctx, t, start, end, i)
+
+	req = logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="new"}`,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: start,
+						Line:      "hi",
+					},
+				},
+			},
+		},
+	}
+
+	ctx = user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	// Ensure regular pushes error due to stream limits.
+	require.Error(t, err)
+
+}
+
 func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
 	fs, err := ioutil.ReadDir(walDir)
 	require.Nil(t, err)
