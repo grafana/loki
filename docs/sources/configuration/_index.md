@@ -89,6 +89,8 @@ ${VAR:default_value}
 
 Where default_value is the value to use if the environment variable is undefined.
 
+Pass the `-config.expand-env` flag at the command line to enable this way of setting configs.
+
 ### Generic placeholders:
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
