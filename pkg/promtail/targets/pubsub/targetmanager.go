@@ -143,7 +143,7 @@ func (t *PubsubTarget) run() error {
 		case <-t.ctx.Done():
 			return t.ctx.Err()
 		case m := <-t.msgs:
-			entry, err := t.format(m)
+			entry, err := format(m, t.config.Labels)
 			if err != nil {
 				level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
 				break

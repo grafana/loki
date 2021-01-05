@@ -29,7 +29,7 @@ type GCPLogEntry struct {
 	// TODO(kavi): Add other meta data fields as well if needed.
 }
 
-func (t *PubsubTarget) format(m *pubsub.Message) (api.Entry, error) {
+func format(m *pubsub.Message, other model.LabelSet) (api.Entry, error) {
 	var ge GCPLogEntry
 
 	if err := json.Unmarshal(m.Data, &ge); err != nil {
@@ -44,8 +44,8 @@ func (t *PubsubTarget) format(m *pubsub.Message) (api.Entry, error) {
 		labels[model.LabelName(k)] = model.LabelValue(v)
 	}
 
-	// add labes from config as well.
-	labels = labels.Merge(t.config.Labels)
+	// add labels from config as well.
+	labels = labels.Merge(other)
 
 	ts := ge.Timestamp
 	if ts == "" {

@@ -11,8 +11,8 @@ clients:
 scrape_configs:
   - job_name: pubsub-test
     pubsub:
-      projectID: "grafanalabs-dev"
+      project_id: "grafanalabs-dev"
       subscription: "dev-logs-pull"
-      credentialsPath: "/Users/kaviraj/Dropbox/notes/Grafana-keys/ops-tools-1203-05e9ed53e705.json"
+      credentials_path: "/Users/kaviraj/Dropbox/notes/Grafana-keys/ops-tools-1203-05e9ed53e705.json"
       labels:
         job: pubsub-gcp

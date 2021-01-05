@@ -166,10 +166,10 @@ type SyslogTargetConfig struct {
 }
 
 type PubsubTargetConfig struct {
-	ProjectID       string         `yaml:"projectID"`
+	ProjectID       string         `yaml:"project_id"`
 	Subscription    string         `yaml:"subscription"`
 	Labels          model.LabelSet `yaml:"labels"`
-	CredentialsPath string         `yaml:"credentialsPath"`
+	CredentialsPath string         `yaml:"credentials_path"`
 
 	// TODO(kavi):
 	// 1. Other configs like, exclusion filter, batch pull, concurrency, ordering
