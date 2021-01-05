@@ -21,29 +21,22 @@ const applicationJSON = "application/json"
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
-	util.Logger.Log("event", "inside push handler")
-
 	req, err := ParseRequest(r)
 	if err != nil {
-		util.Logger.Log("event", "bad thing happened", "message", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	util.Logger.Log("event", "pushing request")
 	_, err = d.Push(r.Context(), req)
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	util.Logger.Log("event", "parsing response")
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
-		util.Logger.Log("event", "ok response", "status", int(resp.Code), "body", string(resp.Body))
 		http.Error(w, string(resp.Body), int(resp.Code))
 	} else {
-		util.Logger.Log("event", "failed response", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

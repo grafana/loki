@@ -29,15 +29,13 @@ type GCPLogEntry struct {
 	// TODO(kavi): Add other meta data fields as well if needed.
 }
 
-func format(m *pubsub.Message) (api.Entry, error) {
+func (t *PubsubTarget) format(m *pubsub.Message) (api.Entry, error) {
 	var ge GCPLogEntry
 
 	if err := json.Unmarshal(m.Data, &ge); err != nil {
 		return api.Entry{}, err
 	}
 
-	// may this labels combination can lead to unique stream without timestamp conflic or out-of-order.
-	// TODO(kavi): Should I add logname as label?
 	labels := model.LabelSet{
 		"logName":      model.LabelValue(ge.LogName),
 		"resourceType": model.LabelValue(ge.Resource.Type),
@@ -46,24 +44,27 @@ func format(m *pubsub.Message) (api.Entry, error) {
 		labels[model.LabelName(k)] = model.LabelValue(v)
 	}
 
-	t := ge.Timestamp
-	if t == "" {
-		t = ge.ReceiveTimestamp
+	// add labes from config as well.
+	labels = labels.Merge(t.config.Labels)
+
+	ts := ge.Timestamp
+	if ts == "" {
+		ts = ge.ReceiveTimestamp
 	}
 
-	ts, err := time.Parse(time.RFC3339, t)
+	tt, err := time.Parse(time.RFC3339, ts)
 	if err != nil {
 		return api.Entry{}, fmt.Errorf("invalid timestamp format: %w", err)
 	}
 
-	if ts.IsZero() {
+	if tt.IsZero() {
 		return api.Entry{}, fmt.Errorf("no timestamp found in the log")
 	}
 
 	return api.Entry{
 		Labels: labels,
 		Entry: logproto.Entry{
-			Timestamp: ts,
+			Timestamp: time.Now(), // rewrite timestamp to avoid out-of-order
 			Line:      string(m.Data),
 		},
 	}, nil

@@ -129,10 +129,7 @@ func (t *PubsubTarget) run() error {
 
 	sub := t.ps.SubscriptionInProject(t.config.Subscription, t.config.ProjectID)
 	go func() {
-		// TODO(kavi): add support for streaming pull
 		err := sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
-			level.Info(t.logger).Log("orderingKey", m.OrderingKey)
-			m.Ack()
 			t.msgs <- m
 		})
 		if err != nil {
@@ -142,21 +139,17 @@ func (t *PubsubTarget) run() error {
 	}()
 
 	for {
-		level.Info(t.logger).Log("event", "listening for new message")
 		select {
 		case <-t.ctx.Done():
 			return t.ctx.Err()
 		case m := <-t.msgs:
-			level.Info(t.logger).Log("event", "sending log entry", "message", string(m.Data))
-			// TODO(kavi): add proper formatter
-			entry, err := format(m)
-			level.Info(t.logger).Log("event", "formatted", "timestamp", entry.Timestamp)
+			entry, err := t.format(m)
 			if err != nil {
 				level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
+				break
 			}
-			level.Debug(t.logger).Log("event", "about sending")
 			send <- entry
-			level.Debug(t.logger).Log("event", "after sending")
+			m.Ack() // Ack only log is sent to Loki.
 		}
 	}
 }
