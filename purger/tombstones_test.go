@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -133,6 +134,70 @@ func TestTombstonesLoader(t *testing.T) {
 	}
 }
 
+func TestTombstonesLoader_GetCacheGenNumber(t *testing.T) {
+	s := &store{
+		numbers: map[string]*cacheGenNumbers{
+			"tenant-a": {
+				results: "1000",
+				store:   "2050",
+			},
+			"tenant-b": {
+				results: "1050",
+				store:   "2000",
+			},
+			"tenant-c": {
+				results: "",
+				store:   "",
+			},
+			"tenant-d": {
+				results: "results-c",
+				store:   "store-c",
+			},
+		},
+	}
+	tombstonesLoader := NewTombstonesLoader(s, nil)
+
+	for _, tc := range []struct {
+		name                          string
+		expectedResultsCacheGenNumber string
+		expectedStoreCacheGenNumber   string
+		tenantIDs                     []string
+	}{
+		{
+			name:                          "single tenant with numeric values",
+			tenantIDs:                     []string{"tenant-a"},
+			expectedResultsCacheGenNumber: "1000",
+			expectedStoreCacheGenNumber:   "2050",
+		},
+		{
+			name:                          "single tenant with non-numeric values",
+			tenantIDs:                     []string{"tenant-d"},
+			expectedResultsCacheGenNumber: "results-c",
+			expectedStoreCacheGenNumber:   "store-c",
+		},
+		{
+			name:                          "multiple tenants with numeric values",
+			tenantIDs:                     []string{"tenant-a", "tenant-b"},
+			expectedResultsCacheGenNumber: "1050",
+			expectedStoreCacheGenNumber:   "2050",
+		},
+		{
+			name:                          "multiple tenants with numeric and non-numeric values",
+			tenantIDs:                     []string{"tenant-d", "tenant-c", "tenant-b", "tenant-a"},
+			expectedResultsCacheGenNumber: "1050",
+			expectedStoreCacheGenNumber:   "2050",
+		},
+		{
+			name: "no tenants", // not really an expected call, edge case check to avoid any panics
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expectedResultsCacheGenNumber, tombstonesLoader.GetResultsCacheGenNumber(tc.tenantIDs))
+			assert.Equal(t, tc.expectedStoreCacheGenNumber, tombstonesLoader.GetStoreCacheGenNumber(tc.tenantIDs))
+		})
+	}
+}
+
 func TestTombstonesReloadDoesntDeadlockOnFailure(t *testing.T) {
 	s := &store{}
 	tombstonesLoader := NewTombstonesLoader(s, nil)
@@ -146,10 +211,17 @@ func TestTombstonesReloadDoesntDeadlockOnFailure(t *testing.T) {
 }
 
 type store struct {
-	err error
+	numbers map[string]*cacheGenNumbers
+	err     error
 }
 
 func (f *store) getCacheGenerationNumbers(ctx context.Context, user string) (*cacheGenNumbers, error) {
+	if f.numbers != nil {
+		number, ok := f.numbers[user]
+		if ok {
+			return number, nil
+		}
+	}
 	return &cacheGenNumbers{}, f.err
 }
 
