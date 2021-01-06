@@ -454,7 +454,7 @@ func (i *instance) addTailersToNewStream(stream *stream) {
 			continue
 		}
 
-		if stream.matchesTailer(t) {
+		if isMatching(stream.labels, t.matchers) {
 			stream.addTailer(t)
 		}
 	}

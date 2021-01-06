@@ -76,3 +76,20 @@ func Test_TailerSendRace(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func Test_IsMatching(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		lbs      labels.Labels
+		matchers []*labels.Matcher
+		matches  bool
+	}{
+		{"not in lbs", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}, false},
+		{"equal", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{{Type: labels.MatchEqual, Name: "job", Value: "foo"}}, true},
+		{"regex", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "job", ".+oo")}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.matches, isMatching(tt.lbs, tt.matchers))
+		})
+	}
+}
