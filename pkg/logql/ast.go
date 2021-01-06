@@ -933,7 +933,7 @@ func (e *labelReplaceExpr) Extractor() (SampleExtractor, error) {
 }
 
 func (e *labelReplaceExpr) Operations() []string {
-	return e.left.Operations()
+	return append([]string{OpLabelReplace}, e.left.Operations()...)
 }
 
 func (e *labelReplaceExpr) String() string {
