@@ -2166,7 +2166,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `#{app="foo"} | json`,
+			in:  `#{app="foo"} | json`,
 			err: ParseError{msg: "syntax error: unexpected $end", line: 1, col: 20},
 		},
 	} {
