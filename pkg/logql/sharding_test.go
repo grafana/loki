@@ -39,7 +39,6 @@ func TestMappingEquivalence(t *testing.T) {
 		{`rate({a=~".*"}[1s])`, false},
 		{`sum by (a) (rate({a=~".*"}[1s]))`, false},
 		{`sum(rate({a=~".*"}[1s]))`, false},
-
 		{`max without (a) (rate({a=~".*"}[1s]))`, false},
 		{`count(rate({a=~".*"}[1s]))`, false},
 		{`avg(rate({a=~".*"}[1s]))`, true},
@@ -51,9 +50,18 @@ func TestMappingEquivalence(t *testing.T) {
 		{
 			`
 		sum without (a) (
+		    sum without(z) (
+		      rate({a=~".*"}[5m])
+		    )
+		)
+		`, false,
+		},
+		{
+			`
+		sum without (a) (
 		  label_replace(
 		    sum without(z) (
-		      rate({foo="bar"}[5m])
+		      rate({a=~".*"}[5m])
 		    ),
 		    "baz", "buz", "b", "(.*)"
 		  )
