@@ -104,7 +104,8 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	switch r {
 	case '#':
 		// Scan until a newline or EOF is encountered
-		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {}
+		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {
+		}
 
 		return l.Lex(lval)
 
