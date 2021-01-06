@@ -31,11 +31,14 @@ type Config struct {
 	QuerierID string `yaml:"id"`
 
 	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+
+	// The following config is injected internally.
+	QueryStatsEnabled bool `yaml:"-"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.SchedulerAddress, "querier.scheduler-address", "", "Hostname (and port) of scheduler that querier will periodically resolve, connect to and receive queries from. If set, takes precedence over -querier.frontend-address.")
-	f.StringVar(&cfg.FrontendAddress, "querier.frontend-address", "", "Address of query frontend service, in host:port format. If -querier.scheduler-address is set as well, querier will use scheduler instead. If neither -querier.frontend-address or -querier.scheduler-address is set, queries must arrive via HTTP endpoint.")
+	f.StringVar(&cfg.SchedulerAddress, "querier.scheduler-address", "", "Hostname (and port) of scheduler that querier will periodically resolve, connect to and receive queries from. Only one of -querier.frontend-address or -querier.scheduler-address can be set. If neither is set, queries are only received via HTTP endpoint.")
+	f.StringVar(&cfg.FrontendAddress, "querier.frontend-address", "", "Address of query frontend service, in host:port format. If -querier.scheduler-address is set as well, querier will use scheduler instead. Only one of -querier.frontend-address or -querier.scheduler-address can be set. If neither is set, queries are only received via HTTP endpoint.")
 
 	f.DurationVar(&cfg.DNSLookupPeriod, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS for query-frontend or query-scheduler address.")
 
@@ -47,6 +50,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate(log log.Logger) error {
+	if cfg.FrontendAddress != "" && cfg.SchedulerAddress != "" {
+		return errors.New("frontend address and scheduler address are mutually exclusive, please use only one")
+	}
 	return cfg.GRPCClientConfig.Validate(log)
 }
 

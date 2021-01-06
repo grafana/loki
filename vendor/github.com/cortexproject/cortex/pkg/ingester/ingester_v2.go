@@ -24,14 +24,16 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -47,6 +49,36 @@ type Shipper interface {
 	Sync(ctx context.Context) (uploaded int, err error)
 }
 
+type tsdbState int
+
+const (
+	active          tsdbState = iota // Pushes are allowed only in this state.
+	forceCompacting                  // TSDB is being force-compacted.
+	closing                          // Used while closing idle TSDB.
+	closed                           // Used to avoid setting closing back to active in closeAndDeleteIdleUsers method.
+)
+
+// Describes result of TSDB-close check. String is used as metric label.
+type tsdbCloseCheckResult string
+
+const (
+	tsdbIdle                    tsdbCloseCheckResult = "idle" // Not reported via metrics. Metrics use tsdbIdleClosed on success.
+	tsdbShippingDisabled        tsdbCloseCheckResult = "shipping_disabled"
+	tsdbNotIdle                 tsdbCloseCheckResult = "not_idle"
+	tsdbNotCompacted            tsdbCloseCheckResult = "not_compacted"
+	tsdbNotShipped              tsdbCloseCheckResult = "not_shipped"
+	tsdbCheckFailed             tsdbCloseCheckResult = "check_failed"
+	tsdbCloseFailed             tsdbCloseCheckResult = "close_failed"
+	tsdbNotActive               tsdbCloseCheckResult = "not_active"
+	tsdbDataRemovalFailed       tsdbCloseCheckResult = "data_removal_failed"
+	tsdbTenantMarkedForDeletion tsdbCloseCheckResult = "tenant_marked_for_deletion"
+	tsdbIdleClosed              tsdbCloseCheckResult = "idle_closed" // Success.
+)
+
+func (r tsdbCloseCheckResult) shouldClose() bool {
+	return r == tsdbIdle || r == tsdbTenantMarkedForDeletion
+}
+
 type userTSDB struct {
 	db             *tsdb.DB
 	userID         string
@@ -55,16 +87,22 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
-	forcedCompactionInProgressMtx sync.RWMutex
-	forcedCompactionInProgress    bool
-
-	pushesInFlight sync.WaitGroup
+	stateMtx       sync.RWMutex
+	state          tsdbState
+	pushesInFlight sync.WaitGroup // Increased with Read lock held, only if state == active.
 
 	// Used to detect idle TSDBs.
-	lastUpdate *atomic.Int64
+	lastUpdate atomic.Int64
 
 	// Thanos shipper used to ship blocks to the storage.
 	shipper Shipper
+
+	// When deletion marker is found for the tenant (checked before shipping),
+	// shipping stops and TSDB is closed before reaching idle timeout time (if enabled).
+	deletionMarkFound atomic.Bool
+
+	// Unix timestamp of last deletion mark check.
+	lastDeletionMarkCheck atomic.Int64
 
 	// for statistics
 	ingestedAPISamples  *ewmaRate
@@ -101,16 +139,25 @@ func (u *userTSDB) StartTime() (int64, error) {
 	return u.db.StartTime()
 }
 
+func (u *userTSDB) casState(from, to tsdbState) bool {
+	u.stateMtx.Lock()
+	defer u.stateMtx.Unlock()
+
+	if u.state != from {
+		return false
+	}
+	u.state = to
+	return true
+}
+
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
 func (u *userTSDB) compactHead(blockDuration int64) error {
-	u.forcedCompactionInProgressMtx.Lock()
-	u.forcedCompactionInProgress = true
-	u.forcedCompactionInProgressMtx.Unlock()
-	defer func() {
-		u.forcedCompactionInProgressMtx.Lock()
-		u.forcedCompactionInProgress = false
-		u.forcedCompactionInProgressMtx.Unlock()
-	}()
+	if !u.casState(active, forceCompacting) {
+		return errors.New("TSDB head cannot be compacted because it is not in active state (possibly being closed)")
+	}
+
+	defer u.casState(forceCompacting, active)
+
 	// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks.
 	// So we wait for existing in-flight requests to finish. Future push requests would fail until compaction is over.
 	u.pushesInFlight.Wait()
@@ -189,7 +236,7 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 		return deletable
 	}
 
-	shipperMeta, err := shipper.ReadMetaFile(u.db.Dir())
+	shippedBlocks, err := u.getShippedBlocks()
 	if err != nil {
 		// If there is any issue with the shipper, we should be conservative and not delete anything.
 		level.Error(util.Logger).Log("msg", "failed to read shipper meta during deletion of blocks", "user", u.userID, "err", err)
@@ -197,12 +244,21 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 	}
 
 	result := map[ulid.ULID]struct{}{}
-	for _, shippedID := range shipperMeta.Uploaded {
+	for _, shippedID := range shippedBlocks {
 		if _, ok := deletable[shippedID]; ok {
 			result[shippedID] = struct{}{}
 		}
 	}
 	return result
+}
+
+func (u *userTSDB) getShippedBlocks() ([]ulid.ULID, error) {
+	shipperMeta, err := shipper.ReadMetaFile(u.db.Dir())
+	if err != nil {
+		return nil, err
+	}
+
+	return shipperMeta.Uploaded, nil
 }
 
 func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
@@ -213,6 +269,41 @@ func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
 
 func (u *userTSDB) setLastUpdate(t time.Time) {
 	u.lastUpdate.Store(t.Unix())
+}
+
+// Checks if TSDB can be closed.
+func (u *userTSDB) shouldCloseTSDB(idleTimeout time.Duration) (tsdbCloseCheckResult, error) {
+	if u.deletionMarkFound.Load() {
+		return tsdbTenantMarkedForDeletion, nil
+	}
+
+	if !u.isIdle(time.Now(), idleTimeout) {
+		return tsdbNotIdle, nil
+	}
+
+	// If head is not compacted, we cannot close this yet.
+	if u.Head().NumSeries() > 0 {
+		return tsdbNotCompacted, nil
+	}
+
+	// Verify that all blocks have been shipped.
+	shipped, err := u.getShippedBlocks()
+	if err != nil {
+		return tsdbCheckFailed, errors.Wrapf(err, "failed to read shipper meta")
+	}
+
+	shippedMap := make(map[ulid.ULID]bool, len(shipped))
+	for _, b := range shipped {
+		shippedMap[b] = true
+	}
+
+	for _, b := range u.Blocks() {
+		if !shippedMap[b.Meta().ULID] {
+			return tsdbNotShipped, nil
+		}
+	}
+
+	return tsdbIdle, nil
 }
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -237,9 +328,26 @@ type TSDBState struct {
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
 	refCachePurgeDuration  prometheus.Histogram
+	idleTsdbChecks         *prometheus.CounterVec
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
+	idleTsdbChecks := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_idle_tsdb_checks_total",
+		Help: "The total number of various results for idle TSDB checks.",
+	}, []string{"result"})
+
+	idleTsdbChecks.WithLabelValues(string(tsdbShippingDisabled))
+	idleTsdbChecks.WithLabelValues(string(tsdbNotIdle))
+	idleTsdbChecks.WithLabelValues(string(tsdbNotCompacted))
+	idleTsdbChecks.WithLabelValues(string(tsdbNotShipped))
+	idleTsdbChecks.WithLabelValues(string(tsdbCheckFailed))
+	idleTsdbChecks.WithLabelValues(string(tsdbCloseFailed))
+	idleTsdbChecks.WithLabelValues(string(tsdbNotActive))
+	idleTsdbChecks.WithLabelValues(string(tsdbDataRemovalFailed))
+	idleTsdbChecks.WithLabelValues(string(tsdbTenantMarkedForDeletion))
+	idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))
+
 	return TSDBState{
 		dbs:                 make(map[string]*userTSDB),
 		bucket:              bucketClient,
@@ -276,12 +384,14 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 			Help:    "The total time it takes to purge the TSDB series reference cache for a single tenant.",
 			Buckets: prometheus.DefBuckets,
 		}),
+
+		idleTsdbChecks: idleTsdbChecks,
 	}
 }
 
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -334,7 +444,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 // Special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
 // on Flush method and flush all openened TSDBs when called.
 func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -391,6 +501,15 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 	if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
 		shippingService := services.NewBasicService(nil, i.shipBlocksLoop, nil)
 		servs = append(servs, shippingService)
+	}
+
+	if i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout > 0 {
+		interval := i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval
+		if interval == 0 {
+			interval = cortex_tsdb.DefaultCloseIdleTSDBInterval
+		}
+		closeIdleService := services.NewTimerService(interval, nil, i.closeAndDeleteIdleUserTSDBs, nil)
+		servs = append(servs, closeIdleService)
 	}
 
 	var err error
@@ -505,7 +624,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	// retain anything from `req` past the call to ReuseSlice
 	defer client.ReuseSlice(req.Timeseries)
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}
@@ -679,11 +798,18 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 }
 
 func (u *userTSDB) acquireAppendLock() error {
-	u.forcedCompactionInProgressMtx.RLock()
-	defer u.forcedCompactionInProgressMtx.RUnlock()
+	u.stateMtx.RLock()
+	defer u.stateMtx.RUnlock()
 
-	if u.forcedCompactionInProgress {
-		return errors.New("forced compaction in progress")
+	if u.state != active {
+		switch u.state {
+		case forceCompacting:
+			return errors.New("forced compaction in progress")
+		case closing:
+			return errors.New("TSDB is closing")
+		default:
+			return errors.New("TSDB is not active")
+		}
 	}
 
 	u.pushesInFlight.Add(1)
@@ -695,7 +821,7 @@ func (u *userTSDB) releaseAppendLock() {
 }
 
 func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -751,7 +877,7 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 }
 
 func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -783,7 +909,7 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 }
 
 func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -815,7 +941,7 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 }
 
 func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -876,7 +1002,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 }
 
 func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -925,7 +1051,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	log, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
 	defer log.Finish()
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -1089,20 +1215,20 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
-		lastUpdate:          atomic.NewInt64(0),
 	}
 
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
-		RetentionDuration:       i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
-		MinBlockDuration:        blockRanges[0],
-		MaxBlockDuration:        blockRanges[len(blockRanges)-1],
-		NoLockfile:              true,
-		StripeSize:              i.cfg.BlocksStorageConfig.TSDB.StripeSize,
-		WALCompression:          i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
-		WALSegmentSize:          i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
-		SeriesLifecycleCallback: userDB,
-		BlocksToDelete:          userDB.blocksToDelete,
+		RetentionDuration:         i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
+		MinBlockDuration:          blockRanges[0],
+		MaxBlockDuration:          blockRanges[len(blockRanges)-1],
+		NoLockfile:                true,
+		StripeSize:                i.cfg.BlocksStorageConfig.TSDB.StripeSize,
+		HeadChunksWriteBufferSize: i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteBufferSize,
+		WALCompression:            i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
+		WALSegmentSize:            i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
+		SeriesLifecycleCallback:   userDB,
+		BlocksToDelete:            userDB.blocksToDelete,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
@@ -1122,7 +1248,15 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter
-	userDB.setLastUpdate(time.Now()) // After WAL replay.
+
+	if db.Head().NumSeries() > 0 {
+		// If there are series in the head, use max time from head. If this time is too old,
+		// TSDB will be eligible for flushing and closing sooner, unless more data is pushed to it quickly.
+		userDB.setLastUpdate(util.TimeFromMillis(db.Head().MaxTime()))
+	} else {
+		// If head is empty (eg. new TSDB), don't close it right after.
+		userDB.setLastUpdate(time.Now())
+	}
 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading
@@ -1143,7 +1277,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			userLogger,
 			tsdbPromReg,
 			udir,
-			cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket),
+			bucket.NewUserBucketClient(userID, i.TSDBState.bucket),
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			false, // No need to upload compacted blocks. Cortex compactor takes care of that.
@@ -1339,11 +1473,32 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 
 	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
 	// of tenants in a large cluster.
-	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(userID string) {
+	_ = concurrency.ForEachUser(ctx, i.getTSDBUsers(), i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(ctx context.Context, userID string) error {
 		// Get the user's DB. If the user doesn't exist, we skip it.
 		userDB := i.getTSDB(userID)
 		if userDB == nil || userDB.shipper == nil {
-			return
+			return nil
+		}
+
+		if userDB.deletionMarkFound.Load() {
+			return nil
+		}
+
+		if time.Since(time.Unix(userDB.lastDeletionMarkCheck.Load(), 0)) > cortex_tsdb.DeletionMarkCheckInterval {
+			// Even if check fails with error, we don't want to repeat it too often.
+			userDB.lastDeletionMarkCheck.Store(time.Now().Unix())
+
+			deletionMarkExists, err := cortex_tsdb.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
+			if err != nil {
+				// If we cannot check for deletion mark, we continue anyway, even though in production shipper will likely fail too.
+				// This however simplifies unit tests, where tenant deletion check is enabled by default, but tests don't setup bucket.
+				level.Warn(util.Logger).Log("msg", "failed to check for tenant deletion mark before shipping blocks", "user", userID, "err", err)
+			} else if deletionMarkExists {
+				userDB.deletionMarkFound.Store(true)
+
+				level.Info(util.Logger).Log("msg", "tenant deletion mark exists, not shipping blocks", "user", userID)
+				return nil
+			}
 		}
 
 		// Run the shipper's Sync() to upload unshipped blocks.
@@ -1352,6 +1507,8 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 		} else {
 			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
 		}
+
+		return nil
 	})
 }
 
@@ -1391,16 +1548,16 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		}
 	}
 
-	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(userID string) {
+	_ = concurrency.ForEachUser(ctx, i.getTSDBUsers(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(ctx context.Context, userID string) error {
 		userDB := i.getTSDB(userID)
 		if userDB == nil {
-			return
+			return nil
 		}
 
 		// Don't do anything, if there is nothing to compact.
 		h := userDB.Head()
 		if h.NumSeries() == 0 {
-			return
+			return nil
 		}
 
 		var err error
@@ -1429,39 +1586,92 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		} else {
 			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
 		}
+
+		return nil
 	})
 }
 
-func (i *Ingester) runConcurrentUserWorkers(ctx context.Context, concurrency int, userFunc func(userID string)) {
-	wg := sync.WaitGroup{}
-	ch := make(chan string)
-
-	for ix := 0; ix < concurrency; ix++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for userID := range ch {
-				userFunc(userID)
-			}
-		}()
-	}
-
-sendLoop:
+func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
 	for _, userID := range i.getTSDBUsers() {
-		select {
-		case ch <- userID:
-			// ok
-		case <-ctx.Done():
-			// don't start new tasks.
-			break sendLoop
+		if ctx.Err() != nil {
+			return nil
 		}
+
+		result := i.closeAndDeleteUserTSDBIfIdle(userID)
+
+		i.TSDBState.idleTsdbChecks.WithLabelValues(string(result)).Inc()
 	}
 
-	close(ch)
+	return nil
+}
 
-	// wait for ongoing workers to finish.
-	wg.Wait()
+func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckResult {
+	userDB := i.getTSDB(userID)
+	if userDB == nil || userDB.shipper == nil {
+		// We will not delete local data when not using shipping to storage.
+		return tsdbShippingDisabled
+	}
+
+	if result, err := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "cannot close idle TSDB", "user", userID, "err", err)
+		}
+		return result
+	}
+
+	// This disables pushes and force-compactions.
+	if !userDB.casState(active, closing) {
+		return tsdbNotActive
+	}
+
+	// If TSDB is fully closed, we will set state to 'closed', which will prevent this defered closing -> active transition.
+	defer userDB.casState(closing, active)
+
+	// Make sure we don't ignore any possible inflight pushes.
+	userDB.pushesInFlight.Wait()
+
+	// Verify again, things may have changed during the checks and pushes.
+	tenantDeleted := false
+	if result, err := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "cannot close idle TSDB", "user", userID, "err", err)
+		}
+		return result
+	} else if result == tsdbTenantMarkedForDeletion {
+		tenantDeleted = true
+	}
+
+	dir := userDB.db.Dir()
+
+	if err := userDB.Close(); err != nil {
+		level.Error(util.Logger).Log("msg", "failed to close idle TSDB", "user", userID, "err", err)
+		return tsdbCloseFailed
+	}
+
+	level.Info(util.Logger).Log("msg", "closed idle TSDB", "user", userID)
+
+	// This will prevent going back to "active" state in deferred statement.
+	userDB.casState(closing, closed)
+
+	i.userStatesMtx.Lock()
+	delete(i.TSDBState.dbs, userID)
+	i.userStatesMtx.Unlock()
+
+	i.TSDBState.tsdbMetrics.removeRegistryForUser(userID)
+
+	// And delete local data.
+	if err := os.RemoveAll(dir); err != nil {
+		level.Error(util.Logger).Log("msg", "failed to delete local TSDB", "user", userID, "err", err)
+		return tsdbDataRemovalFailed
+	}
+
+	if tenantDeleted {
+		level.Info(util.Logger).Log("msg", "deleted local TSDB, user marked for deletion", "user", userID, "dir", dir)
+		return tsdbTenantMarkedForDeletion
+	}
+
+	level.Info(util.Logger).Log("msg", "deleted local TSDB, due to being idle", "user", userID, "dir", dir)
+	return tsdbIdleClosed
 }
 
 // This method will flush all data. It is called as part of Lifecycler's shutdown (if flush on shutdown is configured), or from the flusher.

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
+	"math"
 	"math/rand"
 	"path/filepath"
 	"sort"
@@ -29,7 +30,7 @@ import (
 
 // VerifyIndex does a full run over a block index and verifies that it fulfills the order invariants.
 func VerifyIndex(logger log.Logger, fn string, minTime int64, maxTime int64) error {
-	stats, err := GatherIndexIssueStats(logger, fn, minTime, maxTime)
+	stats, err := GatherIndexHealthStats(logger, fn, minTime, maxTime)
 	if err != nil {
 		return err
 	}
@@ -37,9 +38,9 @@ func VerifyIndex(logger log.Logger, fn string, minTime int64, maxTime int64) err
 	return stats.AnyErr()
 }
 
-type Stats struct {
+type HealthStats struct {
 	// TotalSeries represents total number of series in block.
-	TotalSeries int
+	TotalSeries int64
 	// OutOfOrderSeries represents number of series that have out of order chunks.
 	OutOfOrderSeries int
 
@@ -60,12 +61,41 @@ type Stats struct {
 	// OutOfOrderLabels represents the number of postings that contained out
 	// of order labels, a bug present in Prometheus 2.8.0 and below.
 	OutOfOrderLabels int
+
+	// Debug Statistics.
+	SeriesMinLifeDuration time.Duration
+	SeriesAvgLifeDuration time.Duration
+	SeriesMaxLifeDuration time.Duration
+
+	SeriesMinLifeDurationWithoutSingleSampleSeries time.Duration
+	SeriesAvgLifeDurationWithoutSingleSampleSeries time.Duration
+	SeriesMaxLifeDurationWithoutSingleSampleSeries time.Duration
+
+	SeriesMinChunks int64
+	SeriesAvgChunks int64
+	SeriesMaxChunks int64
+
+	TotalChunks int64
+
+	ChunkMinDuration time.Duration
+	ChunkAvgDuration time.Duration
+	ChunkMaxDuration time.Duration
+
+	ChunkMinSize int64
+	ChunkAvgSize int64
+	ChunkMaxSize int64
+
+	SingleSampleSeries int64
+	SingleSampleChunks int64
+
+	LabelNamesCount        int64
+	MetricLabelValuesCount int64
 }
 
-// PrometheusIssue5372Err returns an error if the Stats object indicates
+// PrometheusIssue5372Err returns an error if the HealthStats object indicates
 // postings with out of order labels.  This is corrected by Prometheus Issue
 // #5372 and affects Prometheus versions 2.8.0 and below.
-func (i Stats) PrometheusIssue5372Err() error {
+func (i HealthStats) PrometheusIssue5372Err() error {
 	if i.OutOfOrderLabels > 0 {
 		return errors.Errorf("index contains %d postings with out of order labels",
 			i.OutOfOrderLabels)
@@ -74,7 +104,7 @@ func (i Stats) PrometheusIssue5372Err() error {
 }
 
 // Issue347OutsideChunksErr returns error if stats indicates issue347 block issue, that is repaired explicitly before compaction (on plan block).
-func (i Stats) Issue347OutsideChunksErr() error {
+func (i HealthStats) Issue347OutsideChunksErr() error {
 	if i.Issue347OutsideChunks > 0 {
 		return errors.Errorf("found %d chunks outside the block time range introduced by https://github.com/prometheus/tsdb/issues/347", i.Issue347OutsideChunks)
 	}
@@ -82,7 +112,7 @@ func (i Stats) Issue347OutsideChunksErr() error {
 }
 
 // CriticalErr returns error if stats indicates critical block issue, that might solved only by manual repair procedure.
-func (i Stats) CriticalErr() error {
+func (i HealthStats) CriticalErr() error {
 	var errMsg []string
 
 	if i.OutOfOrderSeries > 0 {
@@ -113,7 +143,7 @@ func (i Stats) CriticalErr() error {
 }
 
 // AnyErr returns error if stats indicates any block issue.
-func (i Stats) AnyErr() error {
+func (i HealthStats) AnyErr() error {
 	var errMsg []string
 
 	if err := i.CriticalErr(); err != nil {
@@ -135,11 +165,44 @@ func (i Stats) AnyErr() error {
 	return nil
 }
 
-// GatherIndexIssueStats returns useful counters as well as outsider chunks (chunks outside of block time range) that
+type minMaxSumInt64 struct {
+	sum int64
+	min int64
+	max int64
+
+	cnt int64
+}
+
+func newMinMaxSumInt64() minMaxSumInt64 {
+	return minMaxSumInt64{
+		min: math.MaxInt64,
+		max: math.MinInt64,
+	}
+}
+
+func (n *minMaxSumInt64) Add(v int64) {
+	n.cnt++
+	n.sum += v
+	if n.min > v {
+		n.min = v
+	}
+	if n.max < v {
+		n.max = v
+	}
+}
+
+func (n *minMaxSumInt64) Avg() int64 {
+	if n.cnt == 0 {
+		return 0
+	}
+	return n.sum / n.cnt
+}
+
+// GatherIndexHealthStats returns useful counters as well as outsider chunks (chunks outside of block time range) that
 // helps to assess index health.
 // It considers https://github.com/prometheus/tsdb/issues/347 as something that Thanos can handle.
-// See Stats.Issue347OutsideChunks for details.
-func GatherIndexIssueStats(logger log.Logger, fn string, minTime int64, maxTime int64) (stats Stats, err error) {
+// See HealthStats.Issue347OutsideChunks for details.
+func GatherIndexHealthStats(logger log.Logger, fn string, minTime int64, maxTime int64) (stats HealthStats, err error) {
 	r, err := index.NewFileReader(fn)
 	if err != nil {
 		return stats, errors.Wrap(err, "open index file")
@@ -154,7 +217,25 @@ func GatherIndexIssueStats(logger log.Logger, fn string, minTime int64, maxTime 
 		lastLset labels.Labels
 		lset     labels.Labels
 		chks     []chunks.Meta
+
+		seriesLifeDuration                          = newMinMaxSumInt64()
+		seriesLifeDurationWithoutSingleSampleSeries = newMinMaxSumInt64()
+		seriesChunks                                = newMinMaxSumInt64()
+		chunkDuration                               = newMinMaxSumInt64()
+		chunkSize                                   = newMinMaxSumInt64()
 	)
+
+	lnames, err := r.LabelNames()
+	if err != nil {
+		return stats, errors.Wrap(err, "label names")
+	}
+	stats.LabelNamesCount = int64(len(lnames))
+
+	lvals, err := r.LabelValues("__name__")
+	if err != nil {
+		return stats, errors.Wrap(err, "metric label values")
+	}
+	stats.MetricLabelValuesCount = int64(len(lvals))
 
 	// Per series.
 	for p.Next() {
@@ -189,8 +270,23 @@ func GatherIndexIssueStats(logger log.Logger, fn string, minTime int64, maxTime 
 		}
 
 		ooo := 0
+		seriesLifeTimeMs := int64(0)
 		// Per chunk in series.
 		for i, c := range chks {
+			stats.TotalChunks++
+
+			chkDur := c.MaxTime - c.MinTime
+			seriesLifeTimeMs += chkDur
+			chunkDuration.Add(chkDur)
+			if chkDur == 0 {
+				stats.SingleSampleChunks++
+			}
+
+			// Approximate size.
+			if i < len(chks)-2 {
+				chunkSize.Add(int64(chks[i+1].Ref - c.Ref))
+			}
+
 			// Chunk vs the block ranges.
 			if c.MinTime < minTime || c.MaxTime > maxTime {
 				stats.OutsideChunks++
@@ -226,11 +322,39 @@ func GatherIndexIssueStats(logger log.Logger, fn string, minTime int64, maxTime 
 			stats.OutOfOrderSeries++
 			stats.OutOfOrderChunks += ooo
 		}
+
+		seriesChunks.Add(int64(len(chks)))
+		seriesLifeDuration.Add(seriesLifeTimeMs)
+
+		if seriesLifeTimeMs == 0 {
+			stats.SingleSampleSeries++
+		} else {
+			seriesLifeDurationWithoutSingleSampleSeries.Add(seriesLifeTimeMs)
+		}
 	}
 	if p.Err() != nil {
 		return stats, errors.Wrap(err, "walk postings")
 	}
 
+	stats.SeriesMaxLifeDuration = time.Duration(seriesLifeDuration.max) * time.Millisecond
+	stats.SeriesAvgLifeDuration = time.Duration(seriesLifeDuration.Avg()) * time.Millisecond
+	stats.SeriesMinLifeDuration = time.Duration(seriesLifeDuration.min) * time.Millisecond
+
+	stats.SeriesMaxLifeDurationWithoutSingleSampleSeries = time.Duration(seriesLifeDurationWithoutSingleSampleSeries.max) * time.Millisecond
+	stats.SeriesAvgLifeDurationWithoutSingleSampleSeries = time.Duration(seriesLifeDurationWithoutSingleSampleSeries.Avg()) * time.Millisecond
+	stats.SeriesMinLifeDurationWithoutSingleSampleSeries = time.Duration(seriesLifeDurationWithoutSingleSampleSeries.min) * time.Millisecond
+
+	stats.SeriesMaxChunks = seriesChunks.max
+	stats.SeriesAvgChunks = seriesChunks.Avg()
+	stats.SeriesMinChunks = seriesChunks.min
+
+	stats.ChunkMaxSize = chunkSize.max
+	stats.ChunkAvgSize = chunkSize.Avg()
+	stats.ChunkMinSize = chunkSize.min
+
+	stats.ChunkMaxDuration = time.Duration(chunkDuration.max) * time.Millisecond
+	stats.ChunkAvgDuration = time.Duration(chunkDuration.Avg()) * time.Millisecond
+	stats.ChunkMinDuration = time.Duration(chunkDuration.min) * time.Millisecond
 	return stats, nil
 }
 
@@ -252,7 +376,7 @@ func Repair(logger log.Logger, dir string, id ulid.ULID, source metadata.SourceT
 	entropy := rand.New(rand.NewSource(time.Now().UnixNano()))
 	resid = ulid.MustNew(ulid.Now(), entropy)
 
-	meta, err := metadata.Read(bdir)
+	meta, err := metadata.ReadFromDir(bdir)
 	if err != nil {
 		return resid, errors.Wrap(err, "read meta file")
 	}
@@ -303,12 +427,12 @@ func Repair(logger log.Logger, dir string, id ulid.ULID, source metadata.SourceT
 		return resid, errors.Wrap(err, "rewrite block")
 	}
 	resmeta.Thanos.SegmentFiles = GetSegmentFiles(resdir)
-	if err := metadata.Write(logger, resdir, &resmeta); err != nil {
+	if err := resmeta.WriteToDir(logger, resdir); err != nil {
 		return resid, err
 	}
 	// TSDB may rewrite metadata in bdir.
 	// TODO: This is not needed in newer TSDB code. See https://github.com/prometheus/tsdb/pull/637.
-	if err := metadata.Write(logger, bdir, meta); err != nil {
+	if err := meta.WriteToDir(logger, bdir); err != nil {
 		return resid, err
 	}
 	return resid, nil
@@ -435,9 +559,9 @@ func rewrite(
 		series   = []seriesRepair{}
 	)
 
+	var lset labels.Labels
+	var chks []chunks.Meta
 	for all.Next() {
-		var lset labels.Labels
-		var chks []chunks.Meta
 		id := all.At()
 
 		if err := indexr.Series(id, &lset, &chks); err != nil {

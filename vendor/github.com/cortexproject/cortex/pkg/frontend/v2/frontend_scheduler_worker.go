@@ -12,6 +12,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -210,7 +211,7 @@ func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb
 			continue
 		}
 
-		loopErr = w.schedulerLoop(ctx, loop)
+		loopErr = w.schedulerLoop(loop)
 		if closeErr := loop.CloseSend(); closeErr != nil {
 			level.Debug(w.log).Log("msg", "failed to close frontend loop", "err", loopErr, "addr", w.schedulerAddr)
 		}
@@ -225,7 +226,7 @@ func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb
 	}
 }
 
-func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop schedulerpb.SchedulerForFrontend_FrontendLoopClient) error {
+func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFrontend_FrontendLoopClient) error {
 	if err := loop.Send(&schedulerpb.FrontendToScheduler{
 		Type:            schedulerpb.INIT,
 		FrontendAddress: w.frontendAddr,
@@ -237,12 +238,20 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop schedu
 		if err != nil {
 			return err
 		}
-		return errors.Errorf("unexpected status received: %v", resp.Status)
+		return errors.Errorf("unexpected status received for init: %v", resp.Status)
 	}
+
+	ctx := loop.Context()
 
 	for {
 		select {
 		case <-ctx.Done():
+			// No need to report error if our internal context is canceled. This can happen during shutdown,
+			// or when scheduler is no longer resolvable. (It would be nice if this context reported "done" also when
+			// connection scheduler stops the call, but that doesn't seem to be the case).
+			//
+			// Reporting error here would delay reopening the stream (if the worker context is not done yet).
+			level.Debug(w.log).Log("msg", "stream context finished", "err", ctx.Err())
 			return nil
 
 		case req := <-w.requestCh:
@@ -277,16 +286,20 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop schedu
 
 			case schedulerpb.ERROR:
 				req.enqueue <- enqueueResult{status: waitForResponse}
-				req.response <- &httpgrpc.HTTPResponse{
-					Code: http.StatusInternalServerError,
-					Body: []byte(err.Error()),
+				req.response <- &frontendv2pb.QueryResultRequest{
+					HttpResponse: &httpgrpc.HTTPResponse{
+						Code: http.StatusInternalServerError,
+						Body: []byte(err.Error()),
+					},
 				}
 
 			case schedulerpb.TOO_MANY_REQUESTS_PER_TENANT:
 				req.enqueue <- enqueueResult{status: waitForResponse}
-				req.response <- &httpgrpc.HTTPResponse{
-					Code: http.StatusTooManyRequests,
-					Body: []byte("too many outstanding requests"),
+				req.response <- &frontendv2pb.QueryResultRequest{
+					HttpResponse: &httpgrpc.HTTPResponse{
+						Code: http.StatusTooManyRequests,
+						Body: []byte("too many outstanding requests"),
+					},
 				}
 			}
 
@@ -300,10 +313,14 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop schedu
 				return err
 			}
 
-			// Not interested in cancellation response.
-			_, err = loop.Recv()
+			resp, err := loop.Recv()
 			if err != nil {
 				return err
+			}
+
+			// Scheduler may be shutting down, report that.
+			if resp.Status != schedulerpb.OK {
+				return errors.Errorf("unexpected status received for cancellation: %v", resp.Status)
 			}
 		}
 	}

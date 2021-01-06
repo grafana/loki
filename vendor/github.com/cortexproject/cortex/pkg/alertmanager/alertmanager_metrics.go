@@ -1,8 +1,6 @@
 package alertmanager
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -11,18 +9,18 @@ import (
 // This struct aggregates metrics exported by Alertmanager
 // and re-exports those aggregates as Cortex metrics.
 type alertmanagerMetrics struct {
-	// Maps userID -> registry
-	regsMu sync.Mutex
-	regs   map[string]*prometheus.Registry
+	regs *util.UserRegistries
 
 	// exported metrics, gathered from Alertmanager API
 	alertsReceived *prometheus.Desc
 	alertsInvalid  *prometheus.Desc
 
 	// exported metrics, gathered from Alertmanager PipelineBuilder
-	numNotifications           *prometheus.Desc
-	numFailedNotifications     *prometheus.Desc
-	notificationLatencySeconds *prometheus.Desc
+	numNotifications                   *prometheus.Desc
+	numFailedNotifications             *prometheus.Desc
+	numNotificationRequestsTotal       *prometheus.Desc
+	numNotificationRequestsFailedTotal *prometheus.Desc
+	notificationLatencySeconds         *prometheus.Desc
 
 	// exported metrics, gathered from Alertmanager nflog
 	nflogGCDuration              *prometheus.Desc
@@ -52,8 +50,7 @@ type alertmanagerMetrics struct {
 
 func newAlertmanagerMetrics() *alertmanagerMetrics {
 	return &alertmanagerMetrics{
-		regs:   map[string]*prometheus.Registry{},
-		regsMu: sync.Mutex{},
+		regs: util.NewUserRegistries(),
 		alertsReceived: prometheus.NewDesc(
 			"cortex_alertmanager_alerts_received_total",
 			"The total number of received alerts.",
@@ -69,6 +66,14 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		numFailedNotifications: prometheus.NewDesc(
 			"cortex_alertmanager_notifications_failed_total",
 			"The total number of failed notifications.",
+			[]string{"user", "integration"}, nil),
+		numNotificationRequestsTotal: prometheus.NewDesc(
+			"cortex_alertmanager_notification_requests_total",
+			"The total number of attempted notification requests.",
+			[]string{"user", "integration"}, nil),
+		numNotificationRequestsFailedTotal: prometheus.NewDesc(
+			"cortex_alertmanager_notification_requests_failed_total",
+			"The total number of failed notification requests.",
 			[]string{"user", "integration"}, nil),
 		notificationLatencySeconds: prometheus.NewDesc(
 			"cortex_alertmanager_notification_latency_seconds",
@@ -146,21 +151,7 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 }
 
 func (m *alertmanagerMetrics) addUserRegistry(user string, reg *prometheus.Registry) {
-	m.regsMu.Lock()
-	m.regs[user] = reg
-	m.regsMu.Unlock()
-}
-
-func (m *alertmanagerMetrics) registries() map[string]*prometheus.Registry {
-	regs := map[string]*prometheus.Registry{}
-
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-	for uid, r := range m.regs {
-		regs[uid] = r
-	}
-
-	return regs
+	m.regs.AddUserRegistry(user, reg)
 }
 
 func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
@@ -168,6 +159,8 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.alertsInvalid
 	out <- m.numNotifications
 	out <- m.numFailedNotifications
+	out <- m.numNotificationRequestsTotal
+	out <- m.numNotificationRequestsFailedTotal
 	out <- m.notificationLatencySeconds
 	out <- m.markerAlerts
 	out <- m.nflogGCDuration
@@ -189,13 +182,15 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 }
 
 func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
-	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.registries())
+	data := m.regs.BuildMetricFamiliesPerUser()
 
 	data.SendSumOfCountersPerUser(out, m.alertsReceived, "alertmanager_alerts_received_total")
 	data.SendSumOfCountersPerUser(out, m.alertsInvalid, "alertmanager_alerts_invalid_total")
 
 	data.SendSumOfCountersPerUserWithLabels(out, m.numNotifications, "alertmanager_notifications_total", "integration")
 	data.SendSumOfCountersPerUserWithLabels(out, m.numFailedNotifications, "alertmanager_notifications_failed_total", "integration")
+	data.SendSumOfCountersPerUserWithLabels(out, m.numNotificationRequestsTotal, "alertmanager_notification_requests_total", "integration")
+	data.SendSumOfCountersPerUserWithLabels(out, m.numNotificationRequestsFailedTotal, "alertmanager_notification_requests_failed_total", "integration")
 	data.SendSumOfHistograms(out, m.notificationLatencySeconds, "alertmanager_notification_latency_seconds")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.markerAlerts, "alertmanager_alerts", "state")
 

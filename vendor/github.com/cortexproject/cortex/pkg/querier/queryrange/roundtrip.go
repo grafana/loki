@@ -34,6 +34,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
 const day = 24 * time.Hour
@@ -217,7 +218,7 @@ func NewTripperware(
 					op = "query_range"
 				}
 
-				user, err := user.ExtractOrgID(r.Context())
+				user, err := tenant.TenantID(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
 					return nil, err

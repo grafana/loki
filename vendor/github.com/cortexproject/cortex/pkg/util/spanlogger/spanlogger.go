@@ -12,37 +12,63 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+type loggerCtxMarker struct{}
+
+var (
+	loggerCtxKey = &loggerCtxMarker{}
+)
+
 // SpanLogger unifies tracing and logging, to reduce repetition.
 type SpanLogger struct {
 	log.Logger
 	opentracing.Span
 }
 
-// New makes a new SpanLogger.
+// New makes a new SpanLogger, where logs will be sent to the global logger.
 func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
+	return NewWithLogger(ctx, util.Logger, method, kvps...)
+}
+
+// NewWithLogger makes a new SpanLogger with a custom log.Logger to send logs
+// to. The provided context will have the logger attached to it and can be
+// retrieved with FromContext or FromContextWithFallback.
+func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, method)
 	logger := &SpanLogger{
-		Logger: log.With(util.WithContext(ctx, util.Logger), "method", method),
+		Logger: log.With(util.WithContext(ctx, l), "method", method),
 		Span:   span,
 	}
 	if len(kvps) > 0 {
 		level.Debug(logger).Log(kvps...)
 	}
+
+	ctx = context.WithValue(ctx, loggerCtxKey, l)
 	return logger, ctx
 }
 
-// FromContext returns a span logger using the current parent span.
-// If there is no parent span, the Spanlogger will only log to global logger.
+// FromContext returns a span logger using the current parent span. If there
+// is no parent span, the SpanLogger will only log to the logger
+// in the context. If the context doesn't have a logger, the global logger
+// is used.
 func FromContext(ctx context.Context) *SpanLogger {
+	return FromContextWithFallback(ctx, util.Logger)
+}
+
+// FromContextWithFallback returns a span logger using the current parent span.
+// IF there is no parent span, the SpanLogger will only log to the logger
+// within the context. If the context doesn't have a logger, the fallback
+// logger is used.
+func FromContextWithFallback(ctx context.Context, fallback log.Logger) *SpanLogger {
+	logger, ok := ctx.Value(loggerCtxKey).(log.Logger)
+	if !ok {
+		logger = fallback
+	}
 	sp := opentracing.SpanFromContext(ctx)
 	if sp == nil {
-		return &SpanLogger{
-			Logger: util.WithContext(ctx, util.Logger),
-			Span:   defaultNoopSpan,
-		}
+		sp = defaultNoopSpan
 	}
 	return &SpanLogger{
-		Logger: util.WithContext(ctx, util.Logger),
+		Logger: util.WithContext(ctx, logger),
 		Span:   sp,
 	}
 }

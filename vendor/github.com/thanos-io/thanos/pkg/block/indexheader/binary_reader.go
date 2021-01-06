@@ -637,8 +637,8 @@ func newBinaryTOCFromByteSlice(bs index.ByteSlice) (*BinaryTOC, error) {
 	}, nil
 }
 
-func (r BinaryReader) IndexVersion() int {
-	return r.indexVersion
+func (r BinaryReader) IndexVersion() (int, error) {
+	return r.indexVersion, nil
 }
 
 // TODO(bwplotka): Get advantage of multi value offset fetch.
@@ -871,7 +871,7 @@ func yoloString(b []byte) string {
 	return *((*string)(unsafe.Pointer(&b)))
 }
 
-func (r BinaryReader) LabelNames() []string {
+func (r BinaryReader) LabelNames() ([]string, error) {
 	allPostingsKeyName, _ := index.AllPostingsKey()
 	labelNames := make([]string, 0, len(r.postings))
 	for name := range r.postings {
@@ -882,7 +882,7 @@ func (r BinaryReader) LabelNames() []string {
 		labelNames = append(labelNames, name)
 	}
 	sort.Strings(labelNames)
-	return labelNames
+	return labelNames, nil
 }
 
 func (r *BinaryReader) Close() error { return r.c.Close() }

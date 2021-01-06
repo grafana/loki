@@ -8,6 +8,7 @@ option go_package = "frontendv1pb";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+import "github.com/cortexproject/cortex/pkg/querier/stats/stats.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -31,4 +32,5 @@ message FrontendToClient {
 message ClientToFrontend {
   httpgrpc.HTTPResponse httpResponse = 1;
   string clientID = 2;
+  stats.Stats stats = 3;
 }

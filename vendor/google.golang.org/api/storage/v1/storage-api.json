@@ -26,7 +26,7 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"-2NioU2H8y8siEzrBOV_qzRI6kQ/sPMqcoPqdFD0a_Hhegm2T9RGrZc\"",
+  "etag": "\"3133373531323239383338313531333236393038\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -1781,7 +1781,7 @@
               "type": "string"
             },
             "kmsKeyName": {
-              "description": "Not currently supported. Specifying the parameter causes the request to fail with status code 400 - Bad Request.",
+              "description": "Resource name of the Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that will be used to encrypt the object. Overrides the object metadata's kms_key_name value, if any.",
               "location": "query",
               "type": "string"
             },
@@ -3229,7 +3229,7 @@
       }
     }
   },
-  "revision": "20200826",
+  "revision": "20200927",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "Bucket": {
@@ -3579,10 +3579,6 @@
             "type": "string"
           },
           "type": "array"
-        },
-        "zoneSeparation": {
-          "description": "If set, objects placed in this bucket are required to be separated by disaster domain.",
-          "type": "boolean"
         }
       },
       "type": "object"
@@ -4096,7 +4092,7 @@
           "type": "string"
         },
         "kmsKeyName": {
-          "description": "Cloud KMS Key used to encrypt this object, if the object is encrypted by such a key.",
+          "description": "Not currently supported. Specifying the parameter causes the request to fail with status code 400 - Bad Request.",
           "type": "string"
         },
         "md5Hash": {

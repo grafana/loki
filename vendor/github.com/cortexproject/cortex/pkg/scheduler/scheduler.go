@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -156,6 +157,10 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 	for s.State() == services.Running {
 		msg, err := frontend.Recv()
 		if err != nil {
+			// No need to report this as error, it is expected when query-frontend performs SendClose() (as frontendSchedulerWorker does).
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
 

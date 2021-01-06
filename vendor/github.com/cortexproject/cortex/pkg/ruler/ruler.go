@@ -30,10 +30,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -62,8 +63,8 @@ const (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
-	// TLS parameters for the GRPC Client
-	ClientTLSConfig tls.ClientConfig `yaml:"ruler_client"`
+	// GRPC Client configuration.
+	ClientTLSConfig grpcclient.ConfigWithTLS `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
 	// Deprecated. Replaced with pkg/util/validation/Limits.RulerEvaluationDelay field.
@@ -109,7 +110,7 @@ type Config struct {
 }
 
 // Validate config and returns error on failure
-func (cfg *Config) Validate(limits validation.Limits) error {
+func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
 		return errInvalidShardingStrategy
 	}
@@ -120,6 +121,9 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 
 	if err := cfg.StoreConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
+	}
+	if err := cfg.ClientTLSConfig.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid ruler gRPC client config")
 	}
 	return nil
 }
@@ -584,7 +588,7 @@ func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring rin
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
 func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
@@ -694,14 +698,14 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	rgs := []*GroupStateDesc{}
+	var rgs []*GroupStateDesc
 
 	for _, rlr := range rulers.Ingesters {
-		dialOpts, err := r.cfg.ClientTLSConfig.GetGRPCDialOptions()
+		dialOpts, err := r.cfg.ClientTLSConfig.DialOption(nil, nil)
 		if err != nil {
 			return nil, err
 		}
-		conn, err := grpc.Dial(rlr.Addr, dialOpts...)
+		conn, err := grpc.DialContext(ctx, rlr.Addr, dialOpts...)
 		if err != nil {
 			return nil, err
 		}
@@ -724,7 +728,7 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 
 // Rules implements the rules service
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}

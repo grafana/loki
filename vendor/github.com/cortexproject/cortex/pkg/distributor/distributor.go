@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -384,7 +385,7 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +511,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			continue
 		}
 
-		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricName))
+		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricFamilyName))
 		validatedMetadata = append(validatedMetadata, m)
 	}
 
@@ -672,6 +673,10 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 	for v := range valueSet {
 		values = append(values, v)
 	}
+
+	// We need the values returned to be sorted.
+	sort.Strings(values)
+
 	return values, nil
 }
 
@@ -704,9 +709,8 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]st
 	for v := range valueSet {
 		values = append(values, v)
 	}
-	sort.Slice(values, func(i, j int) bool {
-		return values[i] < values[j]
-	})
+
+	sort.Strings(values)
 
 	return values, nil
 }
@@ -776,7 +780,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 			dedupTracker[*m] = struct{}{}
 
 			result = append(result, scrape.MetricMetadata{
-				Metric: m.MetricName,
+				Metric: m.MetricFamilyName,
 				Help:   m.Help,
 				Unit:   m.Unit,
 				Type:   client.MetricMetadataMetricTypeToMetricType(m.GetType()),

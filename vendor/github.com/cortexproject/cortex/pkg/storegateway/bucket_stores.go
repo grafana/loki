@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -247,6 +248,42 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	})
 }
 
+// LabelNames implements the Storegateway proto service.
+func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelNames")
+	defer spanLog.Span.Finish()
+
+	userID := getUserIDFromGRPCContext(spanCtx)
+	if userID == "" {
+		return nil, fmt.Errorf("no userID")
+	}
+
+	store := u.getStore(userID)
+	if store == nil {
+		return &storepb.LabelNamesResponse{}, nil
+	}
+
+	return store.LabelNames(ctx, req)
+}
+
+// LabelValues implements the Storegateway proto service.
+func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelValues")
+	defer spanLog.Span.Finish()
+
+	userID := getUserIDFromGRPCContext(spanCtx)
+	if userID == "" {
+		return nil, fmt.Errorf("no userID")
+	}
+
+	store := u.getStore(userID)
+	if store == nil {
+		return &storepb.LabelValuesResponse{}, nil
+	}
+
+	return store.LabelValues(ctx, req)
+}
+
 // scanUsers in the bucket and return the list of found users. If an error occurs while
 // iterating the bucket, it may return both an error and a subset of the users in the bucket.
 func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
@@ -291,7 +328,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 
 	level.Info(userLogger).Log("msg", "creating user bucket store")
 
-	userBkt := tsdb.NewUserBucketClient(userID, u.bucket)
+	userBkt := bucket.NewUserBucketClient(userID, u.bucket)
 
 	// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
 	// belong to the store-gateway shard. We need to run the BucketStore synching anyway
@@ -310,7 +347,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		// The sharding strategy filter MUST be before the ones we create here (order matters).
 		append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
 			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
-			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay),
+			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),
 			// The duplicate filter has been intentionally omitted because it could cause troubles with
 			// the consistency check done on the querier. The duplicate filter removes redundant blocks
 			// but if the store-gateway removes redundant blocks before the querier discovers them, the
@@ -344,9 +381,10 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
-		u.cfg.BucketStore.IndexCache.PostingsCompression,
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
+		u.cfg.BucketStore.IndexHeaderLazyLoadingEnabled,
+		u.cfg.BucketStore.IndexHeaderLazyLoadingIdleTimeout,
 	)
 	if err != nil {
 		return nil, err

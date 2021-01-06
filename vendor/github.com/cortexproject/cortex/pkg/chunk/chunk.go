@@ -183,8 +183,14 @@ var writerPool = sync.Pool{
 
 // Encode writes the chunk into a buffer, and calculates the checksum.
 func (c *Chunk) Encode() error {
-	var buf bytes.Buffer
+	return c.EncodeTo(nil)
+}
 
+// EncodeTo is like Encode but you can provide your own buffer to use.
+func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
+	if buf == nil {
+		buf = bytes.NewBuffer(nil)
+	}
 	// Write 4 empty bytes first - we will come back and put the len in here.
 	metadataLenBytes := [4]byte{}
 	if _, err := buf.Write(metadataLenBytes[:]); err != nil {
@@ -194,7 +200,7 @@ func (c *Chunk) Encode() error {
 	// Encode chunk metadata into snappy-compressed buffer
 	writer := writerPool.Get().(*snappy.Writer)
 	defer writerPool.Put(writer)
-	writer.Reset(&buf)
+	writer.Reset(buf)
 	json := jsoniter.ConfigFastest
 	if err := json.NewEncoder(writer).Encode(c); err != nil {
 		return err
@@ -214,7 +220,7 @@ func (c *Chunk) Encode() error {
 	}
 
 	// And now the chunk data
-	if err := c.Data.Marshal(&buf); err != nil {
+	if err := c.Data.Marshal(buf); err != nil {
 		return err
 	}
 

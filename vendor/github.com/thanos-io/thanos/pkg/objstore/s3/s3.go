@@ -161,36 +161,54 @@ func NewBucket(logger log.Logger, conf []byte, component string) (*Bucket, error
 	return NewBucketWithConfig(logger, config, component)
 }
 
+type overrideSignerType struct {
+	credentials.Provider
+	signerType credentials.SignatureType
+}
+
+func (s *overrideSignerType) Retrieve() (credentials.Value, error) {
+	v, err := s.Provider.Retrieve()
+	if err != nil {
+		return v, err
+	}
+	if !v.SignerType.IsAnonymous() {
+		v.SignerType = s.signerType
+	}
+	return v, nil
+}
+
 // NewBucketWithConfig returns a new Bucket using the provided s3 config values.
 func NewBucketWithConfig(logger log.Logger, config Config, component string) (*Bucket, error) {
 	var chain []credentials.Provider
+
+	// TODO(bwplotka): Don't do flags as they won't scale, use actual params like v2, v4 instead
+	wrapCredentialsProvider := func(p credentials.Provider) credentials.Provider { return p }
+	if config.SignatureV2 {
+		wrapCredentialsProvider = func(p credentials.Provider) credentials.Provider {
+			return &overrideSignerType{Provider: p, signerType: credentials.SignatureV2}
+		}
+	}
 
 	if err := validate(config); err != nil {
 		return nil, err
 	}
 	if config.AccessKey != "" {
-		signature := credentials.SignatureV4
-		// TODO(bwplotka): Don't do flags, use actual v2, v4 params.
-		if config.SignatureV2 {
-			signature = credentials.SignatureV2
-		}
-
-		chain = []credentials.Provider{&credentials.Static{
+		chain = []credentials.Provider{wrapCredentialsProvider(&credentials.Static{
 			Value: credentials.Value{
 				AccessKeyID:     config.AccessKey,
 				SecretAccessKey: config.SecretKey,
-				SignerType:      signature,
+				SignerType:      credentials.SignatureV4,
 			},
-		}}
+		})}
 	} else {
 		chain = []credentials.Provider{
-			&credentials.EnvAWS{},
-			&credentials.FileAWSCredentials{},
-			&credentials.IAM{
+			wrapCredentialsProvider(&credentials.EnvAWS{}),
+			wrapCredentialsProvider(&credentials.FileAWSCredentials{}),
+			wrapCredentialsProvider(&credentials.IAM{
 				Client: &http.Client{
 					Transport: http.DefaultTransport,
 				},
-			},
+			}),
 		}
 	}
 

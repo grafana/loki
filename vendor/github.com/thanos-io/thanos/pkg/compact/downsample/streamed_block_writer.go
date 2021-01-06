@@ -201,12 +201,12 @@ func (w *streamedBlockWriter) syncDir() (err error) {
 
 // writeMetaFile writes meta file.
 func (w *streamedBlockWriter) writeMetaFile() error {
-	w.meta.Version = metadata.MetaVersion1
+	w.meta.Version = metadata.TSDBVersion1
 	w.meta.Thanos.Source = metadata.CompactorSource
 	w.meta.Thanos.SegmentFiles = block.GetSegmentFiles(w.blockDir)
 	w.meta.Stats.NumChunks = w.totalChunks
 	w.meta.Stats.NumSamples = w.totalSamples
 	w.meta.Stats.NumSeries = w.seriesRefs
 
-	return metadata.Write(w.logger, w.blockDir, &w.meta)
+	return w.meta.WriteToDir(w.logger, w.blockDir)
 }

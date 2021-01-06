@@ -16,10 +16,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
@@ -79,7 +80,7 @@ type frontendRequest struct {
 	cancel context.CancelFunc
 
 	enqueue  chan enqueueResult
-	response chan *httpgrpc.HTTPResponse
+	response chan *frontendv2pb.QueryResultRequest
 }
 
 type enqueueStatus int
@@ -151,7 +152,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +179,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		// Buffer of 1 to ensure response or error can be written to the channel
 		// even if this goroutine goes away due to client context cancellation.
 		enqueue:  make(chan enqueueResult, 1),
-		response: make(chan *httpgrpc.HTTPResponse, 1),
+		response: make(chan *frontendv2pb.QueryResultRequest, 1),
 	}
 
 	f.requests.put(freq)
@@ -228,12 +229,17 @@ enqueueAgain:
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-		return resp, nil
+		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+			stats := stats.FromContext(ctx)
+			stats.Merge(resp.Stats) // Safe if stats is nil.
+		}
+
+		return resp.HttpResponse, nil
 	}
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +250,7 @@ func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryRes
 	// To avoid mixing results from different queries, we randomize queryID counter on start.
 	if req != nil && req.userID == userID {
 		select {
-		case req.response <- qrReq.HttpResponse:
+		case req.response <- qrReq:
 			// Should always be possible, unless QueryResult is called multiple times with the same queryID.
 		default:
 			level.Warn(f.log).Log("msg", "failed to write query result to the response channel", "queryID", qrReq.QueryID, "user", userID)

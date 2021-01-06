@@ -21,6 +21,12 @@ const (
 	// bucket access control lists (ACLs).
 	ErrCodeBucketAlreadyOwnedByYou = "BucketAlreadyOwnedByYou"
 
+	// ErrCodeInvalidObjectState for service response error code
+	// "InvalidObjectState".
+	//
+	// Object is archived and inaccessible until restored.
+	ErrCodeInvalidObjectState = "InvalidObjectState"
+
 	// ErrCodeNoSuchBucket for service response error code
 	// "NoSuchBucket".
 	//

@@ -1,8 +1,6 @@
 package ingester
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -256,13 +254,12 @@ type tsdbMetrics struct {
 	memSeriesCreatedTotal *prometheus.Desc
 	memSeriesRemovedTotal *prometheus.Desc
 
-	regsMu sync.RWMutex                    // custom mutex for shipper registry, to avoid blocking main user state mutex on collection
-	regs   map[string]*prometheus.Registry // One prometheus registry per tenant
+	regs *util.UserRegistries
 }
 
 func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 	m := &tsdbMetrics{
-		regs: make(map[string]*prometheus.Registry),
+		regs: util.NewUserRegistries(),
 
 		dirSyncs: prometheus.NewDesc(
 			"cortex_ingester_shipper_dir_syncs_total",
@@ -415,11 +412,10 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 
 	out <- sm.memSeriesCreatedTotal
 	out <- sm.memSeriesRemovedTotal
-
 }
 
 func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
-	data := util.BuildMetricFamiliesPerUserFromUserRegistries(sm.registries())
+	data := sm.regs.BuildMetricFamiliesPerUser()
 
 	// OK, we have it all. Let's build results.
 	data.SendSumOfCounters(out, sm.dirSyncs, "thanos_shipper_dir_syncs_total")
@@ -455,20 +451,10 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUser(out, sm.memSeriesRemovedTotal, "prometheus_tsdb_head_series_removed_total")
 }
 
-// make a copy of the map, so that metrics can be gathered while the new registry is being added.
-func (sm *tsdbMetrics) registries() map[string]*prometheus.Registry {
-	sm.regsMu.RLock()
-	defer sm.regsMu.RUnlock()
-
-	regs := make(map[string]*prometheus.Registry, len(sm.regs))
-	for u, r := range sm.regs {
-		regs[u] = r
-	}
-	return regs
+func (sm *tsdbMetrics) setRegistryForUser(userID string, registry *prometheus.Registry) {
+	sm.regs.AddUserRegistry(userID, registry)
 }
 
-func (sm *tsdbMetrics) setRegistryForUser(userID string, registry *prometheus.Registry) {
-	sm.regsMu.Lock()
-	sm.regs[userID] = registry
-	sm.regsMu.Unlock()
+func (sm *tsdbMetrics) removeRegistryForUser(userID string) {
+	sm.regs.RemoveUserRegistry(userID, false)
 }

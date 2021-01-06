@@ -112,6 +112,7 @@ type Config struct {
 	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
 	ReplicationFactor    int           `yaml:"replication_factor"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
+	ExtendWrites         bool          `yaml:"extend_writes"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -126,6 +127,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, prefix+"distributor.zone-awareness-enabled", false, "True to enable the zone-awareness and replicate ingested samples across different availability zones.")
+	f.BoolVar(&cfg.ExtendWrites, prefix+"distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 }
 
 // Ring holds the information about the members of the consistent hash ring.
@@ -178,7 +180,7 @@ func New(cfg Config, name, key string, reg prometheus.Registerer) (*Ring, error)
 		return nil, err
 	}
 
-	return NewWithStoreClientAndStrategy(cfg, name, key, store, &DefaultReplicationStrategy{})
+	return NewWithStoreClientAndStrategy(cfg, name, key, store, NewDefaultReplicationStrategy(cfg.ExtendWrites))
 }
 
 func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client, strategy ReplicationStrategy) (*Ring, error) {
@@ -363,29 +365,74 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	// Calculate the number of required ingesters;
-	// ensure we always require at least RF-1 when RF=3.
-	numRequired := len(r.ringDesc.Ingesters)
-	if numRequired < r.cfg.ReplicationFactor {
-		numRequired = r.cfg.ReplicationFactor
-	}
-	maxUnavailable := r.cfg.ReplicationFactor / 2
-	numRequired -= maxUnavailable
-
-	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	// Build the initial replication set, excluding unhealthy instances.
+	healthyInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	zoneFailures := make(map[string]struct{})
 	for _, ingester := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&ingester, op) {
-			ingesters = append(ingesters, ingester)
+			healthyInstances = append(healthyInstances, ingester)
+		} else {
+			zoneFailures[ingester.Zone] = struct{}{}
 		}
 	}
 
-	if len(ingesters) < numRequired {
-		return ReplicationSet{}, ErrTooManyFailedIngesters
+	// Max errors and max unavailable zones are mutually exclusive. We initialise both
+	// to 0 and then we update them whether zone-awareness is enabled or not.
+	maxErrors := 0
+	maxUnavailableZones := 0
+
+	if r.cfg.ZoneAwarenessEnabled {
+		// Given data is replicated to RF different zones, we can tolerate a number of
+		// RF/2 failing zones. However, we need to protect from the case the ring currently
+		// contains instances in a number of zones < RF.
+		numReplicatedZones := util.Min(len(r.ringZones), r.cfg.ReplicationFactor)
+		minSuccessZones := (numReplicatedZones / 2) + 1
+		maxUnavailableZones = minSuccessZones - 1
+
+		if len(zoneFailures) > maxUnavailableZones {
+			return ReplicationSet{}, ErrTooManyFailedIngesters
+		}
+
+		if len(zoneFailures) > 0 {
+			// We remove all instances (even healthy ones) from zones with at least
+			// 1 failing ingester. Due to how replication works when zone-awareness is
+			// enabled (data is replicated to RF different zones), there's no benefit in
+			// querying healthy instances from "failing zones". A zone is considered
+			// failed if there is single error.
+			filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+			for _, ingester := range healthyInstances {
+				if _, ok := zoneFailures[ingester.Zone]; !ok {
+					filteredInstances = append(filteredInstances, ingester)
+				}
+			}
+
+			healthyInstances = filteredInstances
+		}
+
+		// Since we removed all instances from zones containing at least 1 failing
+		// instance, we have to decrease the max unavailable zones accordingly.
+		maxUnavailableZones -= len(zoneFailures)
+	} else {
+		// Calculate the number of required ingesters;
+		// ensure we always require at least RF-1 when RF=3.
+		numRequired := len(r.ringDesc.Ingesters)
+		if numRequired < r.cfg.ReplicationFactor {
+			numRequired = r.cfg.ReplicationFactor
+		}
+		// We can tolerate this many failures
+		numRequired -= r.cfg.ReplicationFactor / 2
+
+		if len(healthyInstances) < numRequired {
+			return ReplicationSet{}, ErrTooManyFailedIngesters
+		}
+
+		maxErrors = len(healthyInstances) - numRequired
 	}
 
 	return ReplicationSet{
-		Ingesters: ingesters,
-		MaxErrors: len(ingesters) - numRequired,
+		Ingesters:           healthyInstances,
+		MaxErrors:           maxErrors,
+		MaxUnavailableZones: maxUnavailableZones,
 	}, nil
 }
 

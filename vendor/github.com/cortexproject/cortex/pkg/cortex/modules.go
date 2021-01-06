@@ -72,6 +72,8 @@ const (
 	Compactor                string = "compactor"
 	StoreGateway             string = "store-gateway"
 	MemberlistKV             string = "memberlist-kv"
+	ChunksPurger             string = "chunks-purger"
+	BlocksPurger             string = "blocks-purger"
 	Purger                   string = "purger"
 	QueryScheduler           string = "query-scheduler"
 	All                      string = "all"
@@ -304,6 +306,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}
 
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
+	t.Cfg.Worker.QueryStatsEnabled = t.Cfg.Frontend.Handler.QueryStatsEnabled
 	return querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(internalQuerierRouter), util.Logger, prometheus.DefaultRegisterer)
 }
 
@@ -437,7 +440,7 @@ func (t *Cortex) initChunkStore() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
-	if !t.Cfg.PurgerConfig.Enable {
+	if t.Cfg.Storage.Engine != storage.StorageEngineChunks || !t.Cfg.PurgerConfig.Enable {
 		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
 		t.TombstonesLoader = purger.NewTombstonesLoader(nil, nil)
 
@@ -518,7 +521,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	// Wrap roundtripper into Tripperware.
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
-	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util.Logger)
+	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util.Logger, prometheus.DefaultRegisterer)
 	if t.Cfg.Frontend.CompressResponses {
 		handler = gziphandler.GzipHandler(handler)
 	}
@@ -725,8 +728,8 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	return t.MemberlistKV, nil
 }
 
-func (t *Cortex) initPurger() (services.Service, error) {
-	if !t.Cfg.PurgerConfig.Enable {
+func (t *Cortex) initChunksPurger() (services.Service, error) {
+	if t.Cfg.Storage.Engine != storage.StorageEngineChunks || !t.Cfg.PurgerConfig.Enable {
 		return nil, nil
 	}
 
@@ -740,9 +743,23 @@ func (t *Cortex) initPurger() (services.Service, error) {
 		return nil, err
 	}
 
-	t.API.RegisterPurger(t.DeletesStore, t.Cfg.PurgerConfig.DeleteRequestCancelPeriod)
+	t.API.RegisterChunksPurger(t.DeletesStore, t.Cfg.PurgerConfig.DeleteRequestCancelPeriod)
 
 	return t.Purger, nil
+}
+
+func (t *Cortex) initBlocksPurger() (services.Service, error) {
+	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
+		return nil, nil
+	}
+
+	purgerAPI, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, util.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	t.API.RegisterBlocksPurger(purgerAPI)
+	return nil, nil
 }
 
 func (t *Cortex) initQueryScheduler() (services.Service, error) {
@@ -785,7 +802,9 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(AlertManager, t.initAlertManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
-	mm.RegisterModule(Purger, t.initPurger)
+	mm.RegisterModule(ChunksPurger, t.initChunksPurger, modules.UserInvisibleModule)
+	mm.RegisterModule(BlocksPurger, t.initBlocksPurger, modules.UserInvisibleModule)
+	mm.RegisterModule(Purger, nil)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(All, nil)
 
@@ -812,7 +831,9 @@ func (t *Cortex) setupModuleManager() error {
 		AlertManager:             {API},
 		Compactor:                {API, MemberlistKV},
 		StoreGateway:             {API, Overrides, MemberlistKV},
-		Purger:                   {Store, DeleteRequestsStore, API},
+		ChunksPurger:             {Store, DeleteRequestsStore, API},
+		BlocksPurger:             {Store, API},
+		Purger:                   {ChunksPurger, BlocksPurger},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {

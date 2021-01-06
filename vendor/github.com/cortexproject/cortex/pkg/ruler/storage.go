@@ -54,6 +54,9 @@ func (cfg *RuleStoreConfig) Validate() error {
 	if err := cfg.Azure.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
 	}
+	if err := cfg.S3.Validate(); err != nil {
+		return errors.Wrap(err, "invalid S3 Storage config")
+	}
 	return nil
 }
 

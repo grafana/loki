@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
-	storetestutil "github.com/thanos-io/thanos/pkg/store/storepb/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,6 +22,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
+
+const RemoteReadFrameLimit = 1048576
 
 type TSDBReader interface {
 	storage.ChunkQueryable
@@ -62,7 +63,7 @@ func NewTSDBStore(logger log.Logger, _ prometheus.Registerer, db TSDBReader, com
 		db:               db,
 		component:        component,
 		externalLabels:   externalLabels,
-		maxBytesPerFrame: storetestutil.RemoteReadFrameLimit,
+		maxBytesPerFrame: RemoteReadFrameLimit,
 	}
 }
 

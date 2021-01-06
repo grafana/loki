@@ -360,7 +360,7 @@ func (s *Shipper) upload(ctx context.Context, meta *metadata.Meta) error {
 	}
 	meta.Thanos.Source = s.source
 	meta.Thanos.SegmentFiles = block.GetSegmentFiles(updir)
-	if err := metadata.Write(s.logger, updir, meta); err != nil {
+	if err := meta.WriteToDir(s.logger, updir); err != nil {
 		return errors.Wrap(err, "write meta file")
 	}
 	return block.Upload(ctx, s.logger, s.bucket, updir)
@@ -390,7 +390,7 @@ func (s *Shipper) blockMetasFromOldest() (metas []*metadata.Meta, _ error) {
 		if !fi.IsDir() {
 			continue
 		}
-		m, err := metadata.Read(dir)
+		m, err := metadata.ReadFromDir(dir)
 		if err != nil {
 			return nil, errors.Wrapf(err, "read metadata for block %v", dir)
 		}

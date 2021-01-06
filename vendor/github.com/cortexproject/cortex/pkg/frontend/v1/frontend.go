@@ -14,10 +14,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 )
 
@@ -185,7 +186,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 
 		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
-		resps := make(chan *httpgrpc.HTTPResponse, 1)
+		resps := make(chan *frontendv1pb.ClientToFrontend, 1)
 		errs := make(chan error, 1)
 		go func() {
 			err = server.Send(&frontendv1pb.FrontendToClient{
@@ -203,7 +204,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 				return
 			}
 
-			resps <- resp.HttpResponse
+			resps <- resp
 		}()
 
 		select {
@@ -219,9 +220,14 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 			req.err <- err
 			return err
 
-		// Happy path: propagate the response.
+		// Happy path: merge the stats and propagate the response.
 		case resp := <-resps:
-			req.response <- resp
+			if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+				stats := stats.FromContext(req.originalCtx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
+
+			req.response <- resp.HttpResponse
 		}
 	}
 }
@@ -250,7 +256,7 @@ func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 }
 
 func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}

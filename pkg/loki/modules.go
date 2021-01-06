@@ -396,7 +396,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.stopper = stopper
 
 	roundTripper = tripperware(roundTripper)
-	frontendHandler := transport.NewHandler(t.cfg.Frontend.Handler, roundTripper, util.Logger)
+	frontendHandler := transport.NewHandler(t.cfg.Frontend.Handler, roundTripper, util.Logger, prometheus.DefaultRegisterer)
 	if t.cfg.Frontend.CompressResponses {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}

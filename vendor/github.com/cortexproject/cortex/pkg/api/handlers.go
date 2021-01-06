@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -77,7 +78,7 @@ func (pc *IndexPageContent) GetContent() map[string]map[string]string {
 	return result
 }
 
-var indexPageTemplate = ` 
+var indexPageTemplate = `
 <!DOCTYPE html>
 <html>
 	<head>
@@ -242,7 +243,10 @@ func NewQuerierHandler(
 	router.Path(legacyPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
 
 	// Add a middleware to extract the trace context and add a header.
-	return nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
+	handler := nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
 		return "internalQuerier"
 	}))
+
+	// Track execution time.
+	return stats.NewWallTimeMiddleware().Wrap(handler)
 }
