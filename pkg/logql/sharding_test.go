@@ -47,27 +47,6 @@ func TestMappingEquivalence(t *testing.T) {
 		{`sum(max(rate({a=~".*"}[1s])))`, false},
 		{`max(count(rate({a=~".*"}[1s])))`, false},
 		{`max(sum by (cluster) (rate({a=~".*"}[1s]))) / count(rate({a=~".*"}[1s]))`, false},
-		{
-			`
-		sum without (a) (
-		    sum without(z) (
-		      rate({a=~".*"}[5m])
-		    )
-		)
-		`, false,
-		},
-		{
-			`
-		sum without (a) (
-		  label_replace(
-		    sum without(z) (
-		      rate({a=~".*"}[5m])
-		    ),
-		    "baz", "buz", "b", "(.*)"
-		  )
-		)
-		`, false,
-		},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
