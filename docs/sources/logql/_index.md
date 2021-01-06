@@ -82,14 +82,14 @@ Some expressions can mutate the log content and respective labels (e.g `| line_f
 
 A log pipeline can be composed of:
 
-- [Line Filter Expression](#Line-Filter-Expression).
-- [Parser Expression](#Parser-Expression)
-- [Label Filter Expression](#Label-Filter-Expression)
-- [Line Format Expression](#Line-Format-Expression)
-- [Labels Format Expression](#Labels-Format-Expression)
-- [Unwrap Expression](#Unwrap-Expression)
+- [Line Filter Expression](#line-filter-expression).
+- [Parser Expression](#parser-expression)
+- [Label Filter Expression](#label-filter-expression)
+- [Line Format Expression](#line-format-expression)
+- [Labels Format Expression](#labels-format-expression)
+- [Unwrap Expression](#unwrapped-range-aggregations)
 
-The [unwrap Expression](#Unwrap-Expression) is a special expression that should only be used within metric queries.
+The [unwrap Expression](#unwrapped-range-aggregations) is a special expression that should only be used within metric queries.
 
 #### Line Filter Expression
 
@@ -126,7 +126,7 @@ For example, while the result will be the same, the following query `{job="mysql
 
 #### Parser Expression
 
-Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#Label-Filter-Expression) or for [metric aggregations](#Metric-Queries).
+Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](#metric-queries).
 
 Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
 
@@ -141,7 +141,7 @@ For instance, the pipeline `| json` will produce the following mapping:
 
 In case of errors, for instance if the line is not in the expected format, the log line won't be filtered but instead will get a new `__error__` label added.
 
-If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#Labels-Format-Expression). However if an extracted key appears twice, only the latest label value will be kept.
+If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However if an extracted key appears twice, only the latest label value will be kept.
 
 We support currently support json, logfmt and regexp parsers.
 
@@ -219,7 +219,7 @@ those labels:
 "duration" => "1.5s"
 ```
 
-It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#Multiple-parsers))
+It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
 
 #### Label Filter Expression
 
@@ -236,7 +236,7 @@ We support multiple **value** types which are automatically inferred from the qu
 - **Number** are floating-point number (64bits), such as`250`, `89.923`.
 - **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5Kib" or "20b". Valid bytes units are "b", "kib", "kb", "mib", "mb", "gib",  "gb", "tib", "tb", "pib", "pb", "eib", "eb".
 
-String type work exactly like Prometheus label matchers use in [log stream selector](#Log-Stream-Selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
+String type work exactly like Prometheus label matchers use in [log stream selector](#log-stream-selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
 
 > The string type is the only one that can filter out a log line with a label `__error__`.
 
@@ -249,7 +249,7 @@ Using Duration, Number and Bytes will convert the label value prior to comparisi
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](#Pipeline-Errors) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](#pipeline-errors) section.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
@@ -278,7 +278,7 @@ It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `me
 | duration >= 20ms or (method="GET" and size <= 20KB)
 ```
 
-> Label filter expressions are the only expression allowed after the [unwrap expression](#Unwrap-Expression). This is mainly to allow filtering errors from the metric extraction (see [errors](#Pipeline-Errors)).
+> Label filter expressions are the only expression allowed after the [unwrap expression](#unwrapped-range-aggregations). This is mainly to allow filtering errors from the metric extraction (see [errors](#pipeline-errors)).
 
 #### Line Format Expression
 
@@ -310,7 +310,6 @@ In both cases, if the destination label doesn't exist, then a new one is created
 The renaming form `dst=src` will _drop_ the `src` label after remapping it to the `dst` label. However, the _template_ form will preserve the referenced labels, such that  `dst="{{.src}}"` results in both `dst` and `src` having the same value.
 
 > A single label name can only appear once per expression. This means `| label_format foo=bar,foo="new"` is not allowed but you can use two expressions for the desired effect: `| label_format foo=bar | label_format foo="new"`
-
 
 ### Log Queries Examples
 
@@ -373,7 +372,7 @@ LogQL also supports wrapping a log query with functions that allow for creating 
 
 Metric queries can be used to calculate things such as the rate of error messages, or the top N log sources with the most amount of logs over the last 3 hours.
 
-Combined with log [parsers](#Parser-Expression), metrics queries can also be used to calculate metrics from a sample value within the log line such latency or request size.
+Combined with log [parsers](#parser-expression), metrics queries can also be used to calculate metrics from a sample value within the log line such latency or request size.
 Furthermore all labels, including extracted ones, will be available for aggregations and generation of new series.
 
 ### Range Vector aggregation
@@ -410,7 +409,7 @@ It returns the per-second rate of all non-timeout errors within the last minutes
 
 #### Unwrapped Range Aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be use within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#Pipeline-Errors).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be use within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
