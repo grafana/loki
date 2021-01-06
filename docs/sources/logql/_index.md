@@ -647,6 +647,23 @@ More details can be found in the [Golang language documentation](https://golang.
 
 `2 * 3 % 2` is evaluated as `(2 * 3) % 2`.
 
+### Comments
+
+LogQL queries can be commented using the `#` character:
+
+```logql
+{app="foo"} # anything that comes after will not be interpreted in your query
+```
+
+With multi-line LogQL queries, the query parser can exclude whole or partial lines using `#`:
+
+```logql
+{app="foo"}
+    | json
+    # this line will be ignored
+    | bar="baz" # this checks if bar = "baz"
+```
+
 ### Pipeline Errors
 
 There are multiple reasons which cause pipeline processing errors, such as:
