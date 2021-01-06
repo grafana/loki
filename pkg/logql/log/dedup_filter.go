@@ -12,7 +12,7 @@ type LineDedupFilter struct {
 
 func NewLineDedupFilter(labelFilters []string, inverted bool) *LineDedupFilter {
 	// create a map of labelFilters for O(1) lookups instead of O(n)
-	var filterMap = make(map[string]struct{})
+	var filterMap = make(map[string]struct{}, len(labelFilters))
 	for _, group := range labelFilters {
 		filterMap[group] = struct{}{}
 	}
@@ -27,7 +27,7 @@ func NewLineDedupFilter(labelFilters []string, inverted bool) *LineDedupFilter {
 func (l *LineDedupFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	var filterLabels labels.Labels
 
-	for _, label := range append(lbs.base, lbs.add...) {
+	for _, label := range lbs.Labels() {
 		if _, found := l.labels[label.Name]; includeLabel(found, l.inverted) {
 			filterLabels = append(filterLabels, label)
 		}
