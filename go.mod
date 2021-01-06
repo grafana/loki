@@ -92,5 +92,6 @@ replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-
 // Fix errors like too many arguments in call to "github.com/go-openapi/errors".Required
 //   have (string, string)
 //   want (string, string, interface {})
-replace	github.com/go-openapi/errors => github.com/go-openapi/errors v0.19.4
-replace	github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8
+replace github.com/go-openapi/errors => github.com/go-openapi/errors v0.19.4
+
+replace github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8
