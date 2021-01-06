@@ -158,7 +158,7 @@ config:
       type: Counter
       description: "total number of log lines"
       prefix: my_promtail_custom_
-      max_idle_duration: 1d
+      max_idle_duration: 24h
       config:
         match_all: true
         action: inc
@@ -166,7 +166,7 @@ config:
       type: Counter
       description: "total bytes of log lines"
       prefix: my_promtail_custom_
-      max_idle_duration: 1d
+      max_idle_duration: 24h
       config:
         match_all: true
         count_entry_bytes: true
@@ -179,7 +179,7 @@ by using the `match_all: true` parameter.
 It also creates a `log_bytes_total` counter which adds the byte size of every log line received
 to the counter by using the `count_entry_bytes: true` parameter.
 
-Those two metrics will disappear after 1d if they don't receive new entries, this is useful to reduce the building up of stage metrics.
+Those two metrics will disappear after 24h if they don't receive new entries, this is useful to reduce the building up of stage metrics.
 
 The combination of these two metric stages will give you two counters to track the volume of
 every log stream in both number of lines and bytes, which can be useful in identifying sources
