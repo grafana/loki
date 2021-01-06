@@ -25,7 +25,6 @@ const (
 	typeFailWithData          = "%s in %s must be of type %s: %q"
 	typeFailWithError         = "%s in %s must be of type %s, because: %s"
 	requiredFail              = "%s in %s is required"
-	readOnlyFail              = "%s in %s is readOnly"
 	tooLongMessage            = "%s in %s should be at most %d chars long"
 	tooShortMessage           = "%s in %s should be at least %d chars long"
 	patternFail               = "%s in %s should match '%s'"
@@ -42,7 +41,6 @@ const (
 	typeFailWithDataNoIn      = "%s must be of type %s: %q"
 	typeFailWithErrorNoIn     = "%s must be of type %s, because: %s"
 	requiredFailNoIn          = "%s is required"
-	readOnlyFailNoIn          = "%s is readOnly"
 	tooLongMessageNoIn        = "%s should be at most %d chars long"
 	tooShortMessageNoIn       = "%s should be at least %d chars long"
 	patternFailNoIn           = "%s should match '%s'"
@@ -93,7 +91,6 @@ const (
 	UnallowedPropertyCode
 	FailedAllPatternPropsCode
 	MultipleOfMustBePositiveCode
-	ReadOnlyFailCode
 )
 
 // CompositeError is an error that groups several errors together
@@ -271,7 +268,7 @@ func DuplicateItems(name, in string) *Validation {
 }
 
 // TooManyItems error for when an array contains too many items
-func TooManyItems(name, in string, max int64, value interface{}) *Validation {
+func TooManyItems(name, in string, max int64) *Validation {
 	msg := fmt.Sprintf(maxItemsFail, name, in, max)
 	if in == "" {
 		msg = fmt.Sprintf(maxItemsFailNoIn, name, max)
@@ -281,13 +278,12 @@ func TooManyItems(name, in string, max int64, value interface{}) *Validation {
 		code:    MaxItemsFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
 		message: msg,
 	}
 }
 
 // TooFewItems error for when an array contains too few items
-func TooFewItems(name, in string, min int64, value interface{}) *Validation {
+func TooFewItems(name, in string, min int64) *Validation {
 	msg := fmt.Sprintf(minItemsFail, name, in, min)
 	if in == "" {
 		msg = fmt.Sprintf(minItemsFailNoIn, name, min)
@@ -296,13 +292,12 @@ func TooFewItems(name, in string, min int64, value interface{}) *Validation {
 		code:    MinItemsFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
 		message: msg,
 	}
 }
 
 // ExceedsMaximumInt error for when maximum validation fails
-func ExceedsMaximumInt(name, in string, max int64, exclusive bool, value interface{}) *Validation {
+func ExceedsMaximumInt(name, in string, max int64, exclusive bool) *Validation {
 	var message string
 	if in == "" {
 		m := maxIncFailNoIn
@@ -321,13 +316,13 @@ func ExceedsMaximumInt(name, in string, max int64, exclusive bool, value interfa
 		code:    MaxFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
+		Value:   max,
 		message: message,
 	}
 }
 
 // ExceedsMaximumUint error for when maximum validation fails
-func ExceedsMaximumUint(name, in string, max uint64, exclusive bool, value interface{}) *Validation {
+func ExceedsMaximumUint(name, in string, max uint64, exclusive bool) *Validation {
 	var message string
 	if in == "" {
 		m := maxIncFailNoIn
@@ -346,13 +341,13 @@ func ExceedsMaximumUint(name, in string, max uint64, exclusive bool, value inter
 		code:    MaxFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
+		Value:   max,
 		message: message,
 	}
 }
 
 // ExceedsMaximum error for when maximum validation fails
-func ExceedsMaximum(name, in string, max float64, exclusive bool, value interface{}) *Validation {
+func ExceedsMaximum(name, in string, max float64, exclusive bool) *Validation {
 	var message string
 	if in == "" {
 		m := maxIncFailNoIn
@@ -371,13 +366,13 @@ func ExceedsMaximum(name, in string, max float64, exclusive bool, value interfac
 		code:    MaxFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
+		Value:   max,
 		message: message,
 	}
 }
 
 // ExceedsMinimumInt error for when minimum validation fails
-func ExceedsMinimumInt(name, in string, min int64, exclusive bool, value interface{}) *Validation {
+func ExceedsMinimumInt(name, in string, min int64, exclusive bool) *Validation {
 	var message string
 	if in == "" {
 		m := minIncFailNoIn
@@ -396,13 +391,13 @@ func ExceedsMinimumInt(name, in string, min int64, exclusive bool, value interfa
 		code:    MinFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
+		Value:   min,
 		message: message,
 	}
 }
 
 // ExceedsMinimumUint error for when minimum validation fails
-func ExceedsMinimumUint(name, in string, min uint64, exclusive bool, value interface{}) *Validation {
+func ExceedsMinimumUint(name, in string, min uint64, exclusive bool) *Validation {
 	var message string
 	if in == "" {
 		m := minIncFailNoIn
@@ -421,13 +416,13 @@ func ExceedsMinimumUint(name, in string, min uint64, exclusive bool, value inter
 		code:    MinFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
+		Value:   min,
 		message: message,
 	}
 }
 
 // ExceedsMinimum error for when minimum validation fails
-func ExceedsMinimum(name, in string, min float64, exclusive bool, value interface{}) *Validation {
+func ExceedsMinimum(name, in string, min float64, exclusive bool) *Validation {
 	var message string
 	if in == "" {
 		m := minIncFailNoIn
@@ -446,13 +441,13 @@ func ExceedsMinimum(name, in string, min float64, exclusive bool, value interfac
 		code:    MinFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
+		Value:   min,
 		message: message,
 	}
 }
 
 // NotMultipleOf error for when multiple of validation fails
-func NotMultipleOf(name, in string, multiple, value interface{}) *Validation {
+func NotMultipleOf(name, in string, multiple interface{}) *Validation {
 	var msg string
 	if in == "" {
 		msg = fmt.Sprintf(multipleOfFailNoIn, name, multiple)
@@ -463,7 +458,7 @@ func NotMultipleOf(name, in string, multiple, value interface{}) *Validation {
 		code:    MultipleOfFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
+		Value:   multiple,
 		message: msg,
 	}
 }
@@ -488,7 +483,7 @@ func EnumFail(name, in string, value interface{}, values []interface{}) *Validat
 }
 
 // Required error for when a value is missing
-func Required(name, in string, value interface{}) *Validation {
+func Required(name, in string) *Validation {
 	var msg string
 	if in == "" {
 		msg = fmt.Sprintf(requiredFailNoIn, name)
@@ -499,30 +494,12 @@ func Required(name, in string, value interface{}) *Validation {
 		code:    RequiredFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
-		message: msg,
-	}
-}
-
-// ReadOnly error for when a value is present in request
-func ReadOnly(name, in string, value interface{}) *Validation {
-	var msg string
-	if in == "" {
-		msg = fmt.Sprintf(readOnlyFailNoIn, name)
-	} else {
-		msg = fmt.Sprintf(readOnlyFail, name, in)
-	}
-	return &Validation{
-		code:    ReadOnlyFailCode,
-		Name:    name,
-		In:      in,
-		Value:   value,
 		message: msg,
 	}
 }
 
 // TooLong error for when a string is too long
-func TooLong(name, in string, max int64, value interface{}) *Validation {
+func TooLong(name, in string, max int64) *Validation {
 	var msg string
 	if in == "" {
 		msg = fmt.Sprintf(tooLongMessageNoIn, name, max)
@@ -533,13 +510,12 @@ func TooLong(name, in string, max int64, value interface{}) *Validation {
 		code:    TooLongFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
 		message: msg,
 	}
 }
 
 // TooShort error for when a string is too short
-func TooShort(name, in string, min int64, value interface{}) *Validation {
+func TooShort(name, in string, min int64) *Validation {
 	var msg string
 	if in == "" {
 		msg = fmt.Sprintf(tooShortMessageNoIn, name, min)
@@ -551,14 +527,13 @@ func TooShort(name, in string, min int64, value interface{}) *Validation {
 		code:    TooShortFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
 		message: msg,
 	}
 }
 
 // FailedPattern error for when a string fails a regex pattern match
 // the pattern that is returned is the ECMA syntax version of the pattern not the golang version.
-func FailedPattern(name, in, pattern string, value interface{}) *Validation {
+func FailedPattern(name, in, pattern string) *Validation {
 	var msg string
 	if in == "" {
 		msg = fmt.Sprintf(patternFailNoIn, name, pattern)
@@ -570,7 +545,6 @@ func FailedPattern(name, in, pattern string, value interface{}) *Validation {
 		code:    PatternFailCode,
 		Name:    name,
 		In:      in,
-		Value:   value,
 		message: msg,
 	}
 }

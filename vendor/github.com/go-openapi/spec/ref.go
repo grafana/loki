@@ -68,7 +68,7 @@ func (r *Ref) IsValidURI(basepaths ...string) bool {
 	}
 
 	if r.HasFullURL {
-		//nolint:noctx,gosec
+		//#nosec
 		rr, err := http.Get(v)
 		if err != nil {
 			return false

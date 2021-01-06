@@ -4,7 +4,6 @@ package buffer
 
 import (
 	"io"
-	"net"
 	"sync"
 )
 
@@ -53,12 +52,14 @@ func putBuf(buf []byte) {
 
 // getBuf gets a chunk from reuse pool or creates a new one if reuse failed.
 func getBuf(size int) []byte {
-	if size >= config.PooledSize {
-		if c := buffers[size]; c != nil {
-			v := c.Get()
-			if v != nil {
-				return v.([]byte)
-			}
+	if size < config.PooledSize {
+		return make([]byte, 0, size)
+	}
+
+	if c := buffers[size]; c != nil {
+		v := c.Get()
+		if v != nil {
+			return v.([]byte)
 		}
 	}
 	return make([]byte, 0, size)
@@ -77,12 +78,9 @@ type Buffer struct {
 // EnsureSpace makes sure that the current chunk contains at least s free bytes,
 // possibly creating a new chunk.
 func (b *Buffer) EnsureSpace(s int) {
-	if cap(b.Buf)-len(b.Buf) < s {
-		b.ensureSpaceSlow(s)
+	if cap(b.Buf)-len(b.Buf) >= s {
+		return
 	}
-}
-
-func (b *Buffer) ensureSpaceSlow(s int) {
 	l := len(b.Buf)
 	if l > 0 {
 		if cap(b.toPool) != cap(b.Buf) {
@@ -107,22 +105,18 @@ func (b *Buffer) ensureSpaceSlow(s int) {
 
 // AppendByte appends a single byte to buffer.
 func (b *Buffer) AppendByte(data byte) {
-	b.EnsureSpace(1)
+	if cap(b.Buf) == len(b.Buf) { // EnsureSpace won't be inlined.
+		b.EnsureSpace(1)
+	}
 	b.Buf = append(b.Buf, data)
 }
 
 // AppendBytes appends a byte slice to buffer.
 func (b *Buffer) AppendBytes(data []byte) {
-	if len(data) <= cap(b.Buf)-len(b.Buf) {
-		b.Buf = append(b.Buf, data...) // fast path
-	} else {
-		b.appendBytesSlow(data)
-	}
-}
-
-func (b *Buffer) appendBytesSlow(data []byte) {
 	for len(data) > 0 {
-		b.EnsureSpace(1)
+		if cap(b.Buf) == len(b.Buf) { // EnsureSpace won't be inlined.
+			b.EnsureSpace(1)
+		}
 
 		sz := cap(b.Buf) - len(b.Buf)
 		if sz > len(data) {
@@ -134,18 +128,12 @@ func (b *Buffer) appendBytesSlow(data []byte) {
 	}
 }
 
-// AppendString appends a string to buffer.
+// AppendBytes appends a string to buffer.
 func (b *Buffer) AppendString(data string) {
-	if len(data) <= cap(b.Buf)-len(b.Buf) {
-		b.Buf = append(b.Buf, data...) // fast path
-	} else {
-		b.appendStringSlow(data)
-	}
-}
-
-func (b *Buffer) appendStringSlow(data string) {
 	for len(data) > 0 {
-		b.EnsureSpace(1)
+		if cap(b.Buf) == len(b.Buf) { // EnsureSpace won't be inlined.
+			b.EnsureSpace(1)
+		}
 
 		sz := cap(b.Buf) - len(b.Buf)
 		if sz > len(data) {
@@ -168,14 +156,18 @@ func (b *Buffer) Size() int {
 
 // DumpTo outputs the contents of a buffer to a writer and resets the buffer.
 func (b *Buffer) DumpTo(w io.Writer) (written int, err error) {
-	bufs := net.Buffers(b.bufs)
-	if len(b.Buf) > 0 {
-		bufs = append(bufs, b.Buf)
-	}
-	n, err := bufs.WriteTo(w)
-
+	var n int
 	for _, buf := range b.bufs {
+		if err == nil {
+			n, err = w.Write(buf)
+			written += n
+		}
 		putBuf(buf)
+	}
+
+	if err == nil {
+		n, err = w.Write(b.Buf)
+		written += n
 	}
 	putBuf(b.toPool)
 
@@ -183,7 +175,7 @@ func (b *Buffer) DumpTo(w io.Writer) (written int, err error) {
 	b.Buf = nil
 	b.toPool = nil
 
-	return int(n), err
+	return
 }
 
 // BuildBytes creates a single byte slice with all the contents of the buffer. Data is
@@ -200,7 +192,7 @@ func (b *Buffer) BuildBytes(reuse ...[]byte) []byte {
 	var ret []byte
 	size := b.Size()
 
-	// If we got a buffer as argument and it is big enough, reuse it.
+	// If we got a buffer as argument and it is big enought, reuse it.
 	if len(reuse) == 1 && cap(reuse[0]) >= size {
 		ret = reuse[0][:0]
 	} else {

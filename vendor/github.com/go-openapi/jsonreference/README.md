@@ -4,7 +4,7 @@
 An implementation of JSON Reference - Go language
 
 ## Status
-Feature complete. Stable API
+Work in progress ( 90% done )
 
 ## Dependencies
 https://github.com/go-openapi/jsonpointer

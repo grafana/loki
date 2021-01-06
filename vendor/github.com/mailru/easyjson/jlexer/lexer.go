@@ -5,7 +5,6 @@
 package jlexer
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,8 +14,6 @@ import (
 	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
-
-	"github.com/josharian/intern"
 )
 
 // tokenKind determines type of a token.
@@ -35,10 +32,9 @@ const (
 type token struct {
 	kind tokenKind // Type of a token.
 
-	boolValue       bool   // Value if a boolean literal token.
-	byteValueCloned bool   // true if byteValue was allocated and does not refer to original json body
-	byteValue       []byte // Raw value of a token.
-	delimValue      byte
+	boolValue  bool   // Value if a boolean literal token.
+	byteValue  []byte // Raw value of a token.
+	delimValue byte
 }
 
 // Lexer is a JSON lexer: it iterates over JSON tokens in a byte slice.
@@ -244,65 +240,23 @@ func (r *Lexer) fetchNumber() {
 
 // findStringLen tries to scan into the string literal for ending quote char to determine required size.
 // The size will be exact if no escapes are present and may be inexact if there are escaped chars.
-func findStringLen(data []byte) (isValid bool, length int) {
-	for {
-		idx := bytes.IndexByte(data, '"')
-		if idx == -1 {
-			return false, len(data)
+func findStringLen(data []byte) (isValid, hasEscapes bool, length int) {
+	delta := 0
+
+	for i := 0; i < len(data); i++ {
+		switch data[i] {
+		case '\\':
+			i++
+			delta++
+			if i < len(data) && data[i] == 'u' {
+				delta++
+			}
+		case '"':
+			return true, (delta > 0), (i - delta)
 		}
-		if idx == 0 || (idx > 0 && data[idx-1] != '\\') {
-			return true, length + idx
-		}
-
-		// count \\\\\\\ sequences. even number of slashes means quote is not really escaped
-		cnt := 1
-		for idx-cnt-1 >= 0 && data[idx-cnt-1] == '\\' {
-			cnt++
-		}
-		if cnt%2 == 0 {
-			return true, length + idx
-		}
-
-		length += idx + 1
-		data = data[idx+1:]
-	}
-}
-
-// unescapeStringToken performs unescaping of string token.
-// if no escaping is needed, original string is returned, otherwise - a new one allocated
-func (r *Lexer) unescapeStringToken() (err error) {
-	data := r.token.byteValue
-	var unescapedData []byte
-
-	for {
-		i := bytes.IndexByte(data, '\\')
-		if i == -1 {
-			break
-		}
-
-		escapedRune, escapedBytes, err := decodeEscape(data[i:])
-		if err != nil {
-			r.errParse(err.Error())
-			return err
-		}
-
-		if unescapedData == nil {
-			unescapedData = make([]byte, 0, len(r.token.byteValue))
-		}
-
-		var d [4]byte
-		s := utf8.EncodeRune(d[:], escapedRune)
-		unescapedData = append(unescapedData, data[:i]...)
-		unescapedData = append(unescapedData, d[:s]...)
-
-		data = data[i+escapedBytes:]
 	}
 
-	if unescapedData != nil {
-		r.token.byteValue = append(unescapedData, data...)
-		r.token.byteValueCloned = true
-	}
-	return
+	return false, false, len(data)
 }
 
 // getu4 decodes \uXXXX from the beginning of s, returning the hex value,
@@ -332,30 +286,36 @@ func getu4(s []byte) rune {
 	return val
 }
 
-// decodeEscape processes a single escape sequence and returns number of bytes processed.
-func decodeEscape(data []byte) (decoded rune, bytesProcessed int, err error) {
+// processEscape processes a single escape sequence and returns number of bytes processed.
+func (r *Lexer) processEscape(data []byte) (int, error) {
 	if len(data) < 2 {
-		return 0, 0, errors.New("incorrect escape symbol \\ at the end of token")
+		return 0, fmt.Errorf("syntax error at %v", string(data))
 	}
 
 	c := data[1]
 	switch c {
 	case '"', '/', '\\':
-		return rune(c), 2, nil
+		r.token.byteValue = append(r.token.byteValue, c)
+		return 2, nil
 	case 'b':
-		return '\b', 2, nil
+		r.token.byteValue = append(r.token.byteValue, '\b')
+		return 2, nil
 	case 'f':
-		return '\f', 2, nil
+		r.token.byteValue = append(r.token.byteValue, '\f')
+		return 2, nil
 	case 'n':
-		return '\n', 2, nil
+		r.token.byteValue = append(r.token.byteValue, '\n')
+		return 2, nil
 	case 'r':
-		return '\r', 2, nil
+		r.token.byteValue = append(r.token.byteValue, '\r')
+		return 2, nil
 	case 't':
-		return '\t', 2, nil
+		r.token.byteValue = append(r.token.byteValue, '\t')
+		return 2, nil
 	case 'u':
 		rr := getu4(data)
 		if rr < 0 {
-			return 0, 0, errors.New("incorrectly escaped \\uXXXX sequence")
+			return 0, errors.New("syntax error")
 		}
 
 		read := 6
@@ -368,10 +328,13 @@ func decodeEscape(data []byte) (decoded rune, bytesProcessed int, err error) {
 				rr = unicode.ReplacementChar
 			}
 		}
-		return rr, read, nil
+		var d [4]byte
+		s := utf8.EncodeRune(d[:], rr)
+		r.token.byteValue = append(r.token.byteValue, d[:s]...)
+		return read, nil
 	}
 
-	return 0, 0, errors.New("incorrectly escaped bytes")
+	return 0, errors.New("syntax error")
 }
 
 // fetchString scans a string literal token.
@@ -379,14 +342,43 @@ func (r *Lexer) fetchString() {
 	r.pos++
 	data := r.Data[r.pos:]
 
-	isValid, length := findStringLen(data)
+	isValid, hasEscapes, length := findStringLen(data)
 	if !isValid {
 		r.pos += length
 		r.errParse("unterminated string literal")
 		return
 	}
-	r.token.byteValue = data[:length]
-	r.pos += length + 1 // skip closing '"' as well
+	if !hasEscapes {
+		r.token.byteValue = data[:length]
+		r.pos += length + 1
+		return
+	}
+
+	r.token.byteValue = make([]byte, 0, length)
+	p := 0
+	for i := 0; i < len(data); {
+		switch data[i] {
+		case '"':
+			r.pos += i + 1
+			r.token.byteValue = append(r.token.byteValue, data[p:i]...)
+			i++
+			return
+
+		case '\\':
+			r.token.byteValue = append(r.token.byteValue, data[p:i]...)
+			off, err := r.processEscape(data[i:])
+			if err != nil {
+				r.errParse(err.Error())
+				return
+			}
+			i += off
+			p = i
+
+		default:
+			i++
+		}
+	}
+	r.errParse("unterminated string literal")
 }
 
 // scanToken scans the next token if no token is currently available in the lexer.
@@ -610,7 +602,7 @@ func (r *Lexer) Consumed() {
 	}
 }
 
-func (r *Lexer) unsafeString(skipUnescape bool) (string, []byte) {
+func (r *Lexer) unsafeString() (string, []byte) {
 	if r.token.kind == tokenUndef && r.Ok() {
 		r.FetchToken()
 	}
@@ -618,13 +610,6 @@ func (r *Lexer) unsafeString(skipUnescape bool) (string, []byte) {
 		r.errInvalidToken("string")
 		return "", nil
 	}
-	if !skipUnescape {
-		if err := r.unescapeStringToken(); err != nil {
-			r.errInvalidToken("string")
-			return "", nil
-		}
-	}
-
 	bytes := r.token.byteValue
 	ret := bytesToStr(r.token.byteValue)
 	r.consume()
@@ -636,19 +621,13 @@ func (r *Lexer) unsafeString(skipUnescape bool) (string, []byte) {
 // Warning: returned string may point to the input buffer, so the string should not outlive
 // the input buffer. Intended pattern of usage is as an argument to a switch statement.
 func (r *Lexer) UnsafeString() string {
-	ret, _ := r.unsafeString(false)
+	ret, _ := r.unsafeString()
 	return ret
 }
 
 // UnsafeBytes returns the byte slice if the token is a string literal.
 func (r *Lexer) UnsafeBytes() []byte {
-	_, ret := r.unsafeString(false)
-	return ret
-}
-
-// UnsafeFieldName returns current member name string token
-func (r *Lexer) UnsafeFieldName(skipUnescape bool) string {
-	ret, _ := r.unsafeString(skipUnescape)
+	_, ret := r.unsafeString()
 	return ret
 }
 
@@ -661,34 +640,7 @@ func (r *Lexer) String() string {
 		r.errInvalidToken("string")
 		return ""
 	}
-	if err := r.unescapeStringToken(); err != nil {
-		r.errInvalidToken("string")
-		return ""
-	}
-	var ret string
-	if r.token.byteValueCloned {
-		ret = bytesToStr(r.token.byteValue)
-	} else {
-		ret = string(r.token.byteValue)
-	}
-	r.consume()
-	return ret
-}
-
-// StringIntern reads a string literal, and performs string interning on it.
-func (r *Lexer) StringIntern() string {
-	if r.token.kind == tokenUndef && r.Ok() {
-		r.FetchToken()
-	}
-	if !r.Ok() || r.token.kind != tokenString {
-		r.errInvalidToken("string")
-		return ""
-	}
-	if err := r.unescapeStringToken(); err != nil {
-		r.errInvalidToken("string")
-		return ""
-	}
-	ret := intern.Bytes(r.token.byteValue)
+	ret := string(r.token.byteValue)
 	r.consume()
 	return ret
 }
@@ -887,7 +839,7 @@ func (r *Lexer) Int() int {
 }
 
 func (r *Lexer) Uint8Str() uint8 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -904,7 +856,7 @@ func (r *Lexer) Uint8Str() uint8 {
 }
 
 func (r *Lexer) Uint16Str() uint16 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -921,7 +873,7 @@ func (r *Lexer) Uint16Str() uint16 {
 }
 
 func (r *Lexer) Uint32Str() uint32 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -938,7 +890,7 @@ func (r *Lexer) Uint32Str() uint32 {
 }
 
 func (r *Lexer) Uint64Str() uint64 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -963,7 +915,7 @@ func (r *Lexer) UintptrStr() uintptr {
 }
 
 func (r *Lexer) Int8Str() int8 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -980,7 +932,7 @@ func (r *Lexer) Int8Str() int8 {
 }
 
 func (r *Lexer) Int16Str() int16 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -997,7 +949,7 @@ func (r *Lexer) Int16Str() int16 {
 }
 
 func (r *Lexer) Int32Str() int32 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -1014,7 +966,7 @@ func (r *Lexer) Int32Str() int32 {
 }
 
 func (r *Lexer) Int64Str() int64 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -1052,7 +1004,7 @@ func (r *Lexer) Float32() float32 {
 }
 
 func (r *Lexer) Float32Str() float32 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}
@@ -1085,7 +1037,7 @@ func (r *Lexer) Float64() float64 {
 }
 
 func (r *Lexer) Float64Str() float64 {
-	s, b := r.unsafeString(false)
+	s, b := r.unsafeString()
 	if !r.Ok() {
 		return 0
 	}

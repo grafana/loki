@@ -366,18 +366,18 @@ github.com/go-kit/kit/log/level
 github.com/go-logfmt/logfmt
 # github.com/go-logr/logr v0.2.0
 github.com/go-logr/logr
-# github.com/go-openapi/analysis v0.19.14
+# github.com/go-openapi/analysis v0.19.10
 github.com/go-openapi/analysis
 github.com/go-openapi/analysis/internal
-# github.com/go-openapi/errors v0.19.8
+# github.com/go-openapi/errors v0.19.8 => github.com/go-openapi/errors v0.19.4
 github.com/go-openapi/errors
-# github.com/go-openapi/jsonpointer v0.19.5
+# github.com/go-openapi/jsonpointer v0.19.3
 github.com/go-openapi/jsonpointer
-# github.com/go-openapi/jsonreference v0.19.4
+# github.com/go-openapi/jsonreference v0.19.3
 github.com/go-openapi/jsonreference
-# github.com/go-openapi/loads v0.19.6
+# github.com/go-openapi/loads v0.19.5
 github.com/go-openapi/loads
-# github.com/go-openapi/runtime v0.19.24
+# github.com/go-openapi/runtime v0.19.15
 github.com/go-openapi/runtime
 github.com/go-openapi/runtime/flagext
 github.com/go-openapi/runtime/logger
@@ -386,13 +386,13 @@ github.com/go-openapi/runtime/middleware/denco
 github.com/go-openapi/runtime/middleware/header
 github.com/go-openapi/runtime/middleware/untyped
 github.com/go-openapi/runtime/security
-# github.com/go-openapi/spec v0.19.14
+# github.com/go-openapi/spec v0.19.8
 github.com/go-openapi/spec
 # github.com/go-openapi/strfmt v0.19.11
 github.com/go-openapi/strfmt
-# github.com/go-openapi/swag v0.19.12
+# github.com/go-openapi/swag v0.19.9
 github.com/go-openapi/swag
-# github.com/go-openapi/validate v0.19.14
+# github.com/go-openapi/validate v0.19.14 => github.com/go-openapi/validate v0.19.8
 github.com/go-openapi/validate
 # github.com/go-redis/redis/v8 v8.2.3
 github.com/go-redis/redis/v8
@@ -568,8 +568,6 @@ github.com/jonboulle/clockwork
 # github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 ## explicit
 github.com/joncrlsn/dque
-# github.com/josharian/intern v1.0.0
-github.com/josharian/intern
 # github.com/jpillora/backoff v1.0.0
 github.com/jpillora/backoff
 # github.com/json-iterator/go v1.1.10
@@ -600,7 +598,7 @@ github.com/leodido/ragel-machinery/parser
 github.com/lib/pq
 github.com/lib/pq/oid
 github.com/lib/pq/scram
-# github.com/mailru/easyjson v0.7.6
+# github.com/mailru/easyjson v0.7.1
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
@@ -1472,3 +1470,5 @@ sigs.k8s.io/yaml
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
+# github.com/go-openapi/errors => github.com/go-openapi/errors v0.19.4
+# github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8
