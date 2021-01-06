@@ -2169,6 +2169,30 @@ func TestParse(t *testing.T) {
 			in:  `#{app="foo"} | json`,
 			err: ParseError{msg: "syntax error: unexpected $end", line: 1, col: 20},
 		},
+		{
+			in:  `{app="#"}`,
+			exp: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "#"}}),
+		},
+		{
+			in: `{app="foo"} |= "#"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "#"),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | bar="#"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					&labelFilterExpr{
+						LabelFilterer: log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "bar", "#")),
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
