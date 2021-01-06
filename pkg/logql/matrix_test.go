@@ -26,6 +26,7 @@ func TestMatrixStepper(t *testing.T) {
 				{T: start.Add(3*step).UnixNano() / int64(time.Millisecond), V: 3},
 				{T: start.Add(4*step).UnixNano() / int64(time.Millisecond), V: 4},
 				{T: start.Add(5*step).UnixNano() / int64(time.Millisecond), V: 5},
+				{T: start.Add(6*step).UnixNano() / int64(time.Millisecond), V: 6},
 			},
 		},
 		promql.Series{
@@ -100,9 +101,19 @@ func TestMatrixStepper(t *testing.T) {
 				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
 			},
 		},
+		{
+			promql.Sample{
+				Point:  promql.Point{T: start.Add(6*step).UnixNano() / int64(time.Millisecond), V: 6},
+				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
+			},
+			promql.Sample{
+				Point:  promql.Point{T: start.Add(6*step).UnixNano() / int64(time.Millisecond), V: 0},
+				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
+			},
+		},
 	}
 
-	for i := 0; i < int(end.Sub(start)/step); i++ {
+	for i := 0; i <= int(end.Sub(start)/step); i++ {
 		ok, ts, vec := s.Next()
 		require.Equal(t, ok, true)
 		require.Equal(t, start.Add(step*time.Duration(i)).UnixNano()/int64(time.Millisecond), ts)
