@@ -207,6 +207,11 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 		return nil, err
 	}
 
+	expr, err = optimizeSampleExpr(expr)
+	if err != nil {
+		return nil, err
+	}
+
 	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
