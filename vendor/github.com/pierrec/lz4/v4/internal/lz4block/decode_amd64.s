@@ -26,6 +26,8 @@ TEXT ·decodeBlock(SB), NOSPLIT, $64-56
 
 	MOVQ src_base+24(FP), SI
 	MOVQ src_len+32(FP), R9
+	CMPQ R9, $0
+	JE   err_corrupt
 	ADDQ SI, R9
 
 	// shortcut ends
