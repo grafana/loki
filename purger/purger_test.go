@@ -435,9 +435,15 @@ func TestPurger_Metrics(t *testing.T) {
 		return testutil.ToFloat64(purger.metrics.deleteRequestsProcessedTotal)
 	})
 
-	// there must be 0 pending delete requests so the age for oldest pending must be 0
-	require.InDelta(t, float64(0), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
-	require.Equal(t, float64(0), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
+	// wait until oldest pending request age becomes 0
+	test.Poll(t, 2*time.Second, float64(0), func() interface{} {
+		return testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds)
+	})
+
+	// wait until pending delete requests count becomes 0
+	test.Poll(t, 2*time.Second, float64(0), func() interface{} {
+		return testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount)
+	})
 }
 
 func TestPurger_retryFailedRequests(t *testing.T) {
