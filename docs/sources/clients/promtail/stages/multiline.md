@@ -30,6 +30,8 @@ multiline:
 
 ## Examples
 
+### Predefined Log Format
+
 Let's say we have the following logs from a very simple [flask](https://flask.palletsprojects.com) service.
 
 ```
@@ -60,8 +62,65 @@ We would like to collapse all lines of the traceback into one multiline block. I
 
 ```yaml
 multiline:
-  # Identify timestamps as first line of a multiline block.
-  firstline: "^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]"
+  # Identify timestamps as first line of a multiline block. Note the string should be in single quotes.
+  firstline: '^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]'
 
   max_wait_time: 3s
 ```
+
+### Custom Log Format
+
+The previous example assumed you had no control over the log format. Thus it required a more ellaborrate regular expression to match the first line. However, if you can control the log format of the system under observation we can simplify the first line matching.
+
+This time we are looking at the logs of a simple [Akka HTTP service](https://doc.akka.io/docs/akka-http/current/introduction.html).
+
+```
+​​[2021-01-07 14:17:43,494] [DEBUG] [akka.io.TcpListener] [HelloAkkaHttpServer-akka.actor.default-dispatcher-26] [akka://HelloAkkaHttpServer/system/IO-TCP/selectors/$a/0] - New connection accepted
+​​[2021-01-07 14:17:43,499] [ERROR] [akka.actor.ActorSystemImpl] [HelloAkkaHttpServer-akka.actor.default-dispatcher-3] [akka.actor.ActorSystemImpl(HelloAkkaHttpServer)] - Error during processing of request: 'oh no! oh is unknown'. Completing with 500 Internal Server Error response. To change default exception handling behavior, provide a custom ExceptionHandler.
+java.lang.Exception: oh no! oh is unknown
+	at com.grafana.UserRoutes.$anonfun$userRoutes$6(UserRoutes.scala:28)
+	at akka.http.scaladsl.server.Directive$.$anonfun$addByNameNullaryApply$2(Directive.scala:166)
+	at akka.http.scaladsl.server.ConjunctionMagnet$$anon$2.$anonfun$apply$3(Directive.scala:234)
+	at akka.http.scaladsl.server.directives.BasicDirectives.$anonfun$mapRouteResult$2(BasicDirectives.scala:68)
+	at akka.http.scaladsl.server.directives.BasicDirectives.$anonfun$textract$2(BasicDirectives.scala:161)
+	at akka.http.scaladsl.server.RouteConcatenation$RouteWithConcatenation.$anonfun$$tilde$2(RouteConcatenation.scala:47)
+	at akka.http.scaladsl.util.FastFuture$.strictTransform$1(FastFuture.scala:40)
+  ...
+```
+
+At first sight these seem be like the others. Let's look at the log format.
+
+```xml
+<configuration>
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>crasher.log</file>
+        <append>true</append>
+        <encoder>
+            <pattern>&ZeroWidthSpace;[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="STDOUT" />
+    </appender>
+
+    <root level="DEBUG">
+        <appender-ref ref="ASYNC"/>
+    </root>
+
+</configuration>
+```
+
+There is nothing special for a [Logback](http://logback.qos.ch/) configurations except for `&ZeroWidthSpace;` at the beginning of each log line. This is the HTML-code for the [Zero-width space](https://en.wikipedia.org/wiki/Zero-width_space) character. It makes identifying first lines much simpler and is not visible. Thus it will not change the view of the log. The new first line matching regular expression is then `\x{200B}\[`. `200B` is the Uncode code point for the zero-width space character.
+
+```yaml
+multiline:
+  # Identify zero-width space as first line of a multiline block. Note the string should be in single quotes.
+  firstline: '^\x{200B}\['
+
+  max_wait_time: 3s
+```
+
+Zero-width space micht not suite everyone. Any special character that is unlikely to be part of your regular logs should do just fine.
