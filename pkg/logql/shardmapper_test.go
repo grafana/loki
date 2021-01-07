@@ -175,6 +175,19 @@ func TestMappingStrings(t *testing.T) {
 			in:  `sum by (cluster) (stddev_over_time({foo="bar"} |= "id=123" | logfmt | unwrap latency [5m]))`,
 			out: `sum by (cluster) (stddev_over_time({foo="bar"} |= "id=123" | logfmt | unwrap latency [5m]))`,
 		},
+		{
+			in: `
+		sum without (a) (
+		  label_replace(
+		    sum without (b) (
+		      rate({foo="bar"}[5m])
+		    ),
+		    "baz", "buz", "foo", "(.*)"
+		  )
+		)
+		`,
+			out: `sum without(a)(label_replace(sum without(b)(downstream<sum without(b)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sum without(b)(rate({foo="bar"}[5m])),shard=1_of_2>),"baz","buz","foo","(.*)"))`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
