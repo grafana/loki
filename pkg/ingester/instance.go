@@ -3,7 +3,9 @@ package ingester
 import (
 	"context"
 	"net/http"
+	"os"
 	"sync"
+	"syscall"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -161,8 +163,13 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 	if !record.IsEmpty() {
 		if err := i.wal.Log(record); err != nil {
-			return err
+			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
+				i.metrics.walDiskFullFailures.Inc()
+			} else {
+				return err
+			}
 		}
+
 	}
 
 	return appendErr
