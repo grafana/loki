@@ -113,7 +113,7 @@ At first sight these seem be like the others. Let's look at the log format.
 </configuration>
 ```
 
-There is nothing special for a [Logback](http://logback.qos.ch/) configurations except for `&ZeroWidthSpace;` at the beginning of each log line. This is the HTML-code for the [Zero-width space](https://en.wikipedia.org/wiki/Zero-width_space) character. It makes identifying first lines much simpler and is not visible. Thus it will not change the view of the log. The new first line matching regular expression is then `\x{200B}\[`. `200B` is the Uncode code point for the zero-width space character.
+There is nothing special for a [Logback](http://logback.qos.ch/) configuration except for `&ZeroWidthSpace;` at the beginning of each log line. This is the HTML-code for the [Zero-width space](https://en.wikipedia.org/wiki/Zero-width_space) character. It makes identifying first lines much simpler and is not visible. Thus it will not change the view of the log. The new first line matching regular expression is then `\x{200B}\[`. `200B` is the Unicode code point for the zero-width space character.
 
 ```yaml
 multiline:
