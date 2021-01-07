@@ -135,7 +135,7 @@ func (m MultiStageExpr) String() string {
 	return sb.String()
 }
 
-func (MultiStageExpr) logQLExpr() {}
+func (MultiStageExpr) logQLExpr() {} // nolint:unused
 
 type matchersExpr struct {
 	matchers []*labels.Matcher
