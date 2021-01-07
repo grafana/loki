@@ -146,6 +146,10 @@ type Ingester struct {
 
 	limiter *Limiter
 
+	// Denotes whether the ingester should flush on shutdown.
+	// Currently only used by the WAL to signal when the disk is full.
+	flushOnShutdownSwitch *OnceSwitch
+
 	metrics *ingesterMetrics
 
 	wal WAL
@@ -169,15 +173,16 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	metrics := newIngesterMetrics(registerer)
 
 	i := &Ingester{
-		cfg:             cfg,
-		clientConfig:    clientConfig,
-		instances:       map[string]*instance{},
-		store:           store,
-		periodicConfigs: store.GetSchemaConfigs(),
-		loopQuit:        make(chan struct{}),
-		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		tailersQuit:     make(chan struct{}),
-		metrics:         metrics,
+		cfg:                   cfg,
+		clientConfig:          clientConfig,
+		instances:             map[string]*instance{},
+		store:                 store,
+		periodicConfigs:       store.GetSchemaConfigs(),
+		loopQuit:              make(chan struct{}),
+		flushQueues:           make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		tailersQuit:           make(chan struct{}),
+		metrics:               metrics,
+		flushOnShutdownSwitch: &OnceSwitch{},
 	}
 
 	if cfg.WAL.Enabled {
@@ -319,6 +324,10 @@ func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
 	var errs errUtil.MultiError
 	errs.Add(i.wal.Stop())
+
+	if i.flushOnShutdownSwitch.Get() {
+		i.lifecycler.SetFlushOnShutdown(true)
+	}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
 	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
@@ -384,7 +393,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.limiter, i.wal, i.metrics)
+		inst = newInstance(&i.cfg, instanceID, i.limiter, i.wal, i.metrics, i.flushOnShutdownSwitch)
 		i.instances[instanceID] = inst
 	}
 	return inst

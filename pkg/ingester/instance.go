@@ -3,8 +3,11 @@ package ingester
 import (
 	"context"
 	"net/http"
+	"os"
 	"sync"
+	"syscall"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -15,6 +18,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
+	"github.com/cortexproject/cortex/pkg/util"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -77,6 +81,10 @@ type instance struct {
 
 	wal WAL
 
+	// Denotes whether the ingester should flush on shutdown.
+	// Currently only used by the WAL to signal when the disk is full.
+	flushOnShutdownSwitch *OnceSwitch
+
 	metrics *ingesterMetrics
 }
 
@@ -86,6 +94,7 @@ func newInstance(
 	limiter *Limiter,
 	wal WAL,
 	metrics *ingesterMetrics,
+	flushOnShutdownSwitch *OnceSwitch,
 ) *instance {
 	i := &instance{
 		cfg:         cfg,
@@ -101,8 +110,9 @@ func newInstance(
 		tailers: map[uint32]*tailer{},
 		limiter: limiter,
 
-		wal:     wal,
-		metrics: metrics,
+		wal:                   wal,
+		metrics:               metrics,
+		flushOnShutdownSwitch: flushOnShutdownSwitch,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -161,8 +171,19 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 	if !record.IsEmpty() {
 		if err := i.wal.Log(record); err != nil {
-			return err
+			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
+				i.metrics.walDiskFullFailures.Inc()
+				i.flushOnShutdownSwitch.TriggerAnd(func() {
+					level.Error(util.Logger).Log(
+						"msg",
+						"Error writing to WAL, disk full, no further messages will be logged for this error",
+					)
+				})
+			} else {
+				return err
+			}
 		}
+
 	}
 
 	return appendErr
@@ -577,4 +598,34 @@ func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {
 		return true
 	}
 	return false
+}
+
+// OnceSwitch is a write optimized switch that can only ever be switched "on".
+// It uses a RWMutex underneath the hood to quickly and effectively (in a concurrent environment)
+// check if the switch has already been triggered, only actually acquiring the mutex for writing if not.
+type OnceSwitch struct {
+	sync.RWMutex
+	toggle bool
+}
+
+func (o *OnceSwitch) Get() bool {
+	o.RLock()
+	defer o.RUnlock()
+	return o.toggle
+}
+
+// TriggerAnd will ensure the switch is on and run the provided function if
+// the switch was not already toggled on.
+func (o *OnceSwitch) TriggerAnd(fn func()) {
+	o.RLock()
+	if o.toggle {
+		o.RUnlock()
+		return
+	}
+
+	o.RUnlock()
+	o.Lock()
+	o.toggle = true
+	o.Unlock()
+	fn()
 }
