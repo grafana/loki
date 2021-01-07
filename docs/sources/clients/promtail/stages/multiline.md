@@ -123,4 +123,4 @@ multiline:
   max_wait_time: 3s
 ```
 
-Zero-width space micht not suite everyone. Any special character that is unlikely to be part of your regular logs should do just fine.
+Zero-width space might not suite everyone. Any special character that is unlikely to be part of your regular logs should do just fine.
