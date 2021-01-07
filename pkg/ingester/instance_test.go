@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"sort"
 	"sync"
 	"testing"
@@ -333,4 +334,28 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 		}
 	})
 
+}
+
+func Benchmark_OnceSwitch(b *testing.B) {
+	threads := runtime.GOMAXPROCS(0)
+
+	// limit threads
+	if threads > 4 {
+		threads = 4
+	}
+
+	for n := 0; n < b.N; n++ {
+		x := &OnceSwitch{}
+		var wg sync.WaitGroup
+		for i := 0; i < threads; i++ {
+			wg.Add(1)
+			go func() {
+				for i := 0; i < 1000; i++ {
+					x.Trigger()
+				}
+				wg.Done()
+			}()
+		}
+		wg.Wait()
+	}
 }

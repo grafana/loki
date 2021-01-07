@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
@@ -600,32 +601,26 @@ func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {
 	return false
 }
 
-// OnceSwitch is a write optimized switch that can only ever be switched "on".
-// It uses a RWMutex underneath the hood to quickly and effectively (in a concurrent environment)
-// check if the switch has already been triggered, only actually acquiring the mutex for writing if not.
+// OnceSwitch is an optimized switch that can only ever be switched "on" in a concurrent environment.
 type OnceSwitch struct {
-	sync.RWMutex
-	toggle bool
+	triggered atomic.Bool
 }
 
 func (o *OnceSwitch) Get() bool {
-	o.RLock()
-	defer o.RUnlock()
-	return o.toggle
+	return o.triggered.Load()
+}
+
+func (o *OnceSwitch) Trigger() {
+	o.TriggerAnd(nil)
 }
 
 // TriggerAnd will ensure the switch is on and run the provided function if
 // the switch was not already toggled on.
 func (o *OnceSwitch) TriggerAnd(fn func()) {
-	o.RLock()
-	if o.toggle {
-		o.RUnlock()
-		return
+
+	triggeredPrior := o.triggered.Swap(true)
+	if !triggeredPrior && fn != nil {
+		fn()
 	}
 
-	o.RUnlock()
-	o.Lock()
-	o.toggle = true
-	o.Unlock()
-	fn()
 }
