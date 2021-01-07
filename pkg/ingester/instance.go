@@ -7,6 +7,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
+	"github.com/cortexproject/cortex/pkg/util"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -171,7 +173,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		if err := i.wal.Log(record); err != nil {
 			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
 				i.metrics.walDiskFullFailures.Inc()
-				i.flushOnShutdownSwitch.Trigger()
+				i.flushOnShutdownSwitch.TriggerAnd(func() {
+					level.Error(util.Logger).Log(
+						"msg",
+						"Error writing to WAL, disk full, no further messages will be logged for this error",
+					)
+				})
 			} else {
 				return err
 			}
@@ -607,7 +614,9 @@ func (o *OnceSwitch) Get() bool {
 	return o.toggle
 }
 
-func (o *OnceSwitch) Trigger() {
+// TriggerAnd will ensure the switch is on and run the provided function if
+// the switch was not already toggled on.
+func (o *OnceSwitch) TriggerAnd(fn func()) {
 	o.RLock()
 	if o.toggle {
 		o.RUnlock()
@@ -618,4 +627,5 @@ func (o *OnceSwitch) Trigger() {
 	o.Lock()
 	o.toggle = true
 	o.Unlock()
+	fn()
 }
