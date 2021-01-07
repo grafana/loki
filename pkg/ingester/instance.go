@@ -79,6 +79,10 @@ type instance struct {
 
 	wal WAL
 
+	// Denotes whether the ingester should flush on shutdown.
+	// Currently only used by the WAL to signal when the disk is full.
+	flushOnShutdownSwitch *OnceSwitch
+
 	metrics *ingesterMetrics
 }
 
@@ -88,6 +92,7 @@ func newInstance(
 	limiter *Limiter,
 	wal WAL,
 	metrics *ingesterMetrics,
+	flushOnShutdownSwitch *OnceSwitch,
 ) *instance {
 	i := &instance{
 		cfg:         cfg,
@@ -103,8 +108,9 @@ func newInstance(
 		tailers: map[uint32]*tailer{},
 		limiter: limiter,
 
-		wal:     wal,
-		metrics: metrics,
+		wal:                   wal,
+		metrics:               metrics,
+		flushOnShutdownSwitch: flushOnShutdownSwitch,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -165,6 +171,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		if err := i.wal.Log(record); err != nil {
 			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
 				i.metrics.walDiskFullFailures.Inc()
+				i.flushOnShutdownSwitch.Trigger()
 			} else {
 				return err
 			}
@@ -584,4 +591,31 @@ func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {
 		return true
 	}
 	return false
+}
+
+// OnceSwitch is a write optimized switch that can only ever be switched "on".
+// It uses a RWMutex underneath the hood to quickly and effectively (in a concurrent environment)
+// check if the switch has already been triggered, only actually acquiring the mutex for writing if not.
+type OnceSwitch struct {
+	sync.RWMutex
+	toggle bool
+}
+
+func (o *OnceSwitch) Get() bool {
+	o.RLock()
+	defer o.RUnlock()
+	return o.toggle
+}
+
+func (o *OnceSwitch) Trigger() {
+	o.RLock()
+	if o.toggle {
+		o.RUnlock()
+		return
+	}
+
+	o.RUnlock()
+	o.Lock()
+	o.toggle = true
+	o.Unlock()
 }

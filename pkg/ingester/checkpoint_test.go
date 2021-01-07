@@ -38,12 +38,7 @@ func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time,
 	require.Len(t, result.resps[0].Streams[1].Entries, ln)
 }
 
-func TestIngesterWAL(t *testing.T) {
-
-	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
-	require.Nil(t, err)
-	defer os.RemoveAll(walDir)
-
+func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	ingesterConfig.MaxTransferRetries = 0
 	ingesterConfig.WAL = WALConfig{
@@ -52,6 +47,18 @@ func TestIngesterWAL(t *testing.T) {
 		Recover:            true,
 		CheckpointDuration: time.Second,
 	}
+
+	return ingesterConfig
+}
+
+func TestIngesterWAL(t *testing.T) {
+
+	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
+	require.Nil(t, err)
+	defer os.RemoveAll(walDir)
+
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
@@ -134,14 +141,8 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	require.Nil(t, err)
 	defer os.RemoveAll(walDir)
 
-	ingesterConfig := defaultIngesterTestConfig(t)
-	ingesterConfig.MaxTransferRetries = 0
-	ingesterConfig.WAL = WALConfig{
-		Enabled:            true,
-		Dir:                walDir,
-		Recover:            true,
-		CheckpointDuration: time.Second,
-	}
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
