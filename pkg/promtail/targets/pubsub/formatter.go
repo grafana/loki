@@ -2,7 +2,6 @@ package pubsub
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"cloud.google.com/go/pubsub"
@@ -46,20 +45,6 @@ func format(m *pubsub.Message, other model.LabelSet) (api.Entry, error) {
 
 	// add labels from config as well.
 	labels = labels.Merge(other)
-
-	ts := ge.Timestamp
-	if ts == "" {
-		ts = ge.ReceiveTimestamp
-	}
-
-	tt, err := time.Parse(time.RFC3339, ts)
-	if err != nil {
-		return api.Entry{}, fmt.Errorf("invalid timestamp format: %w", err)
-	}
-
-	if tt.IsZero() {
-		return api.Entry{}, fmt.Errorf("no timestamp found in the log")
-	}
 
 	return api.Entry{
 		Labels: labels,

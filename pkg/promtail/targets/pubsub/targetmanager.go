@@ -7,12 +7,13 @@ import (
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
-	"google.golang.org/api/option"
 )
 
 var (
@@ -35,7 +36,16 @@ func NewPubsubTargetManager(
 	}
 
 	for _, cf := range scrape {
-		t, err := NewPubsubTarget(logger, client, cf.RelabelConfigs, cf.JobName, cf.PubsubConfig)
+		if cf.PubsubConfig == nil {
+			continue
+		}
+		registerer := prometheus.DefaultRegisterer
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pubsub_pipeline"), cf.PipelineStages, &cf.JobName, registerer)
+		if err != nil {
+			return nil, err
+		}
+
+		t, err := NewPubsubTarget(logger, pipeline.Wrap(client), cf.RelabelConfigs, cf.JobName, cf.PubsubConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create pubsub target: %w", err)
 		}
@@ -101,7 +111,7 @@ func NewPubsubTarget(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ps, err := pubsub.NewClient(ctx, config.ProjectID, option.WithCredentialsFile(config.CredentialsPath))
+	ps, err := pubsub.NewClient(ctx, config.ProjectID)
 	if err != nil {
 		return nil, err
 	}

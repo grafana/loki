@@ -13,6 +13,5 @@ scrape_configs:
     pubsub:
       project_id: "grafanalabs-dev"
       subscription: "dev-logs-pull"
-      credentials_path: "/Users/kaviraj/Dropbox/notes/Grafana-keys/ops-tools-1203-05e9ed53e705.json"
       labels:
         job: pubsub-gcp

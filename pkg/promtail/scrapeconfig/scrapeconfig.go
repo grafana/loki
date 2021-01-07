@@ -165,14 +165,16 @@ type SyslogTargetConfig struct {
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
+// PubsubTargetConfig describes a scrape config to pull logs from any pubsub topic.
 type PubsubTargetConfig struct {
-	ProjectID       string         `yaml:"project_id"`
-	Subscription    string         `yaml:"subscription"`
-	Labels          model.LabelSet `yaml:"labels"`
-	CredentialsPath string         `yaml:"credentials_path"`
+	// ProjectID is the Cloud project id
+	ProjectID string `yaml:"project_id"`
 
-	// TODO(kavi):
-	// 1. Other configs like, exclusion filter, batch pull, concurrency, ordering
+	// Subscription is the scription name we use to pull logs from a pubsub topic.
+	Subscription string `yaml:"subscription"`
+
+	// Labels are the additional labels to be added to log entry while pushing it to Loki server.
+	Labels model.LabelSet `yaml:"labels"`
 }
 
 // PushTargetConfig describes a scrape config that listens for Loki push messages.
