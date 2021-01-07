@@ -206,7 +206,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
-	if shardable := isShardable(expr.Operations()); !shardable {
+	if !expr.Shardable() {
 		subMapped, err := m.Map(expr.left, r)
 		if err != nil {
 			return nil, err
@@ -322,16 +322,6 @@ func hasLabelModifier(expr *rangeAggregationExpr) bool {
 		}
 	}
 	return false
-}
-
-// isShardable returns false if any of the listed operation types are not shardable and true otherwise
-func isShardable(ops []string) bool {
-	for _, op := range ops {
-		if shardable := shardableOps[op]; !shardable {
-			return false
-		}
-	}
-	return true
 }
 
 // shardableOps lists the operations which may be sharded.
