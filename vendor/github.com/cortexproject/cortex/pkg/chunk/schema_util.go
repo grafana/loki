@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"sync"
 
 	"fmt"
 
@@ -82,8 +83,8 @@ func rangeValuePrefix(ss ...[]byte) []byte {
 	return buildRangeValue(0, ss...)
 }
 
-func decodeRangeKey(value []byte) [][]byte {
-	components := make([][]byte, 0, 5)
+func decodeRangeKey(value []byte, components [][]byte) [][]byte {
+	components = components[:0]
 	i, j := 0, 0
 	for j < len(value) {
 		if value[j] != 0 {
@@ -134,7 +135,10 @@ func encodeTime(t uint32) []byte {
 // range values. Currently checks range value key and returns the value as the
 // metric name.
 func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValue, error) {
-	components := decodeRangeKey(rangeValue)
+	componentRef := componentsPool.Get().(*componentRef)
+	defer componentsPool.Put(componentRef)
+	components := decodeRangeKey(rangeValue, componentRef.components)
+
 	switch {
 	case len(components) < 4:
 		return "", fmt.Errorf("invalid metric name range value: %x", rangeValue)
@@ -151,7 +155,10 @@ func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValu
 // parseSeriesRangeValue returns the model.Metric stored in metric fingerprint
 // range values.
 func parseSeriesRangeValue(rangeValue []byte, value []byte) (model.Metric, error) {
-	components := decodeRangeKey(rangeValue)
+	componentRef := componentsPool.Get().(*componentRef)
+	defer componentsPool.Put(componentRef)
+	components := decodeRangeKey(rangeValue, componentRef.components)
+
 	switch {
 	case len(components) < 4:
 		return nil, fmt.Errorf("invalid metric range value: %x", rangeValue)
@@ -169,12 +176,24 @@ func parseSeriesRangeValue(rangeValue []byte, value []byte) (model.Metric, error
 	}
 }
 
+type componentRef struct {
+	components [][]byte
+}
+
+var componentsPool = sync.Pool{
+	New: func() interface{} {
+		return &componentRef{components: make([][]byte, 0, 5)}
+	},
+}
+
 // parseChunkTimeRangeValue returns the chunkID and labelValue for chunk time
 // range values.
 func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
-	chunkID string, labelValue model.LabelValue, isSeriesID bool, err error,
+	chunkID string, labelValue model.LabelValue, err error,
 ) {
-	components := decodeRangeKey(rangeValue)
+	componentRef := componentsPool.Get().(*componentRef)
+	defer componentsPool.Put(componentRef)
+	components := decodeRangeKey(rangeValue, componentRef.components)
 
 	switch {
 	case len(components) < 3:
@@ -225,13 +244,11 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 		// v9 schema actually return series IDs
 		case seriesRangeKeyV1:
 			chunkID = string(components[0])
-			isSeriesID = true
 			return
 
 		case labelSeriesRangeKeyV1:
 			chunkID = string(components[1])
 			labelValue = model.LabelValue(value)
-			isSeriesID = true
 			return
 		}
 	}

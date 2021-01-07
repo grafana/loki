@@ -210,6 +210,10 @@ func (b *bigchunk) Slice(start, end model.Time) Chunk {
 	}
 }
 
+func (b *bigchunk) Rebound(start, end model.Time) (Chunk, error) {
+	return reboundChunk(b, start, end)
+}
+
 type writer struct {
 	io.Writer
 }

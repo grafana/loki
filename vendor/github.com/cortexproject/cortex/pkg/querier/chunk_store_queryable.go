@@ -7,12 +7,12 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
 type chunkIteratorFunc func(chunks []chunk.Chunk, from, through model.Time) chunkenc.Iterator
@@ -39,10 +39,18 @@ type chunkStoreQuerier struct {
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	userID, err := user.ExtractOrgID(q.ctx)
+	userID, err := tenant.TenantID(q.ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
+
+	// We will hit this for /series lookup when -querier.query-store-for-labels-enabled is set.
+	// If we don't skip here, it'll make /series lookups extremely slow as all the chunks will be loaded.
+	// That flag is only to be set with blocks storage engine, and this is a protective measure.
+	if sp == nil || sp.Func == "series" {
+		return storage.EmptySeriesSet()
+	}
+
 	chunks, err := q.store.Get(q.ctx, userID, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
 		return storage.ErrSeriesSet(err)

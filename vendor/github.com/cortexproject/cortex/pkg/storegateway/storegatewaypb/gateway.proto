@@ -14,4 +14,10 @@ service StoreGateway {
     //
     // Series are sorted.
     rpc Series(thanos.SeriesRequest) returns (stream thanos.SeriesResponse);
+
+    // LabelNames returns all label names that is available.
+    rpc LabelNames(thanos.LabelNamesRequest) returns (thanos.LabelNamesResponse);
+
+    // LabelValues returns all label values for given label name.
+    rpc LabelValues(thanos.LabelValuesRequest) returns (thanos.LabelValuesResponse);
 }

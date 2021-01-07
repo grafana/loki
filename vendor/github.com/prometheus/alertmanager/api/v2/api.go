@@ -551,7 +551,7 @@ func matchFilterLabels(matchers []*labels.Matcher, sms map[string]string) bool {
 			if m.Value == "" && !prs {
 				continue
 			}
-			if !prs || !m.Matches(v) {
+			if !m.Matches(v) {
 				return false
 			}
 		}

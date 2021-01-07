@@ -15,14 +15,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
-	"github.com/thanos-io/thanos/pkg/runutil"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/thanos-io/thanos/pkg/component"
+	"github.com/thanos-io/thanos/pkg/errutil"
+	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/tracing"
@@ -168,7 +168,7 @@ func (s *tenantSeriesSetServer) Delegate(closer io.Closer) {
 }
 
 func (s *tenantSeriesSetServer) Close() error {
-	var merr tsdb_errors.MultiError
+	var merr errutil.MultiError
 	for _, c := range s.closers {
 		merr.Add(c.Close())
 	}

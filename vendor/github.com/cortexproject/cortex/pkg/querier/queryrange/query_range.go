@@ -76,7 +76,7 @@ type Request interface {
 	// GetCachingOptions returns the caching options.
 	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
-	WithStartEnd(int64, int64) Request
+	WithStartEnd(startTime int64, endTime int64) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
 	proto.Message
@@ -135,15 +135,20 @@ func (resp *PrometheusResponse) minTime() int64 {
 	return result[0].Samples[0].TimestampMs
 }
 
+// NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
+func NewEmptyPrometheusResponse() *PrometheusResponse {
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: model.ValMatrix.String(),
+			Result:     []SampleStream{},
+		},
+	}
+}
+
 func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	if len(responses) == 0 {
-		return &PrometheusResponse{
-			Status: StatusSuccess,
-			Data: PrometheusData{
-				ResultType: model.ValMatrix.String(),
-				Result:     []SampleStream{},
-			},
-		}, nil
+		return NewEmptyPrometheusResponse(), nil
 	}
 
 	promResponses := make([]*PrometheusResponse, 0, len(responses))

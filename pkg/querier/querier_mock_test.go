@@ -319,7 +319,11 @@ func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.Replic
 	return []ring.ReplicationSet{r.replicationSet}, nil
 }
 
-func (r *readRingMock) GetAll(op ring.Operation) (ring.ReplicationSet, error) {
+func (r *readRingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 

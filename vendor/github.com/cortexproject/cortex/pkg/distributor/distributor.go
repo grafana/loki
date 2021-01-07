@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
@@ -25,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -383,7 +385,7 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -446,6 +448,11 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
 
+		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
+			l := relabel.Process(client.FromLabelAdaptersToLabels(ts.Labels), mrc...)
+			ts.Labels = client.FromLabelsToLabelAdapters(l)
+		}
+
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
 		// series we're trying to dedupe when HA tracking moves over to a different replica.
@@ -504,7 +511,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			continue
 		}
 
-		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricName))
+		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricFamilyName))
 		validatedMetadata = append(validatedMetadata, m)
 	}
 
@@ -637,14 +644,16 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
-func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) ([]string, error) {
+func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName) ([]string, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	req := &client.LabelValuesRequest{
-		LabelName: string(labelName),
+		LabelName:        string(labelName),
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
 	}
 	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
@@ -664,17 +673,24 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 	for v := range valueSet {
 		values = append(values, v)
 	}
+
+	// We need the values returned to be sorted.
+	sort.Strings(values)
+
 	return values, nil
 }
 
 // LabelNames returns all of the label names.
-func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
+func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &client.LabelNamesRequest{}
+	req := &client.LabelNamesRequest{
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
+	}
 	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelNames(ctx, req)
 	})
@@ -693,9 +709,8 @@ func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
 	for v := range valueSet {
 		values = append(values, v)
 	}
-	sort.Slice(values, func(i, j int) bool {
-		return values[i] < values[j]
-	})
+
+	sort.Strings(values)
 
 	return values, nil
 }
@@ -765,7 +780,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 			dedupTracker[*m] = struct{}{}
 
 			result = append(result, scrape.MetricMetadata{
-				Metric: m.MetricName,
+				Metric: m.MetricFamilyName,
 				Help:   m.Help,
 				Unit:   m.Unit,
 				Type:   client.MetricMetadataMetricTypeToMetricType(m.GetType()),
@@ -824,7 +839,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.ForReplicationSet(), so we can fail after first error.
-	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
+	replicationSet, err := d.ingestersRing.GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
 	}

@@ -6,7 +6,7 @@ import (
 
 func NewRingServiceDiscovery(r ring.ReadRing) PoolServiceDiscovery {
 	return func() ([]string, error) {
-		replicationSet, err := r.GetAll(ring.Read)
+		replicationSet, err := r.GetAllHealthy(ring.Reporting)
 		if err != nil {
 			return nil, err
 		}
