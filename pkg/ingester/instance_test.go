@@ -305,3 +305,32 @@ func Benchmark_PushInstance(b *testing.B) {
 		})
 	}
 }
+
+func Benchmark_instance_addNewTailer(b *testing.B) {
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 100000}, nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+
+	ctx := context.Background()
+
+	inst := newInstance(&Config{}, "test", limiter, noopWAL{}, NilMetrics)
+	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil)
+	require.NoError(b, err)
+	for i := 0; i < 10000; i++ {
+		require.NoError(b, inst.Push(ctx, &logproto.PushRequest{
+			Streams: []logproto.Stream{},
+		}))
+	}
+	b.Run("addNewTailer", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_ = inst.addNewTailer(t)
+		}
+	})
+	lbs := makeRandomLabels()
+	b.Run("addTailersToNewStream", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			inst.addTailersToNewStream(newStream(nil, 0, lbs, NilMetrics))
+		}
+	})
+
+}
