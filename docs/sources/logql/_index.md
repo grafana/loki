@@ -391,6 +391,7 @@ The first type uses log entries to compute values and supported functions for op
 - `count_over_time(log-range)`: counts the entries for each log stream within the given range.
 - `bytes_rate(log-range)`: calculates the number of bytes per second for each stream.
 - `bytes_over_time(log-range)`: counts the amount of bytes used by each log stream for a given range.
+- `absent_over_time(log-range)`: returns an empty vector if the range vector passed to it has any elements and a 1-element vector with the value 1 if the range vector passed to it has no elements. (`absent_over_time` is useful for alerting on when no time series and logs stream exist for label combination for a certain amount of time.)
 
 ##### Log  Examples
 

@@ -74,7 +74,7 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 	}
 	// otherwise we extract metrics from the log line.
 	switch r.operation {
-	case OpRangeTypeRate, OpRangeTypeCount:
+	case OpRangeTypeRate, OpRangeTypeCount, OpRangeTypeAbsent:
 		return log.NewLineSampleExtractor(log.CountExtractor, stages, groups, without, noLabels)
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
 		return log.NewLineSampleExtractor(log.BytesExtractor, stages, groups, without, noLabels)
