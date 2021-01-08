@@ -93,7 +93,7 @@ services:
       - ./config:/etc/promtail/
     ports:
       - "9080:9080"
-    command: -config.file=/etc/promtail/promtail-gateway.yaml
+    command: -config.file=/etc/promtail/promtail-gateway.yaml  -config.expand-env=true
     networks:
       - loki
     restart: always
