@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/pkg/errors"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/configdb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/local"
@@ -41,6 +43,14 @@ func (cfg *AlertStoreConfig) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.GCS.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("alertmanager.storage.", f)
+}
+
+// Validate config and returns error on failure
+func (cfg *AlertStoreConfig) Validate() error {
+	if err := cfg.S3.Validate(); err != nil {
+		return errors.Wrap(err, "invalid S3 Storage config")
+	}
+	return nil
 }
 
 // NewAlertStore returns a new rule storage backend poller and store

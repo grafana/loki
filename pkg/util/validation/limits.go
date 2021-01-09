@@ -40,6 +40,7 @@ type Limits struct {
 	// Querier enforced limits.
 	MaxChunksPerQuery          int           `yaml:"max_chunks_per_query"`
 	MaxQuerySeries             int           `yaml:"max_query_series"`
+	MaxQueryLookback           time.Duration `yaml:"max_query_lookback"`
 	MaxQueryLength             time.Duration `yaml:"max_query_length"`
 	MaxQueryParallelism        int           `yaml:"max_query_parallelism"`
 	CardinalityLimit           int           `yaml:"cardinality_limit"`
@@ -77,6 +78,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series returned by a metric query. When the limit is reached an error is returned.")
+	f.DurationVar(&l.MaxQueryLookback, "querier.max-query-lookback", 0, "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
@@ -254,6 +256,11 @@ func (o *Overrides) MaxEntriesLimitPerQuery(userID string) int {
 
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxCacheFreshness
+}
+
+// MaxQueryLookback returns the max lookback period of queries.
+func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
+	return o.getOverridesForUser(userID).MaxQueryLookback
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

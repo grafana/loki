@@ -66,6 +66,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
+		`topk by (name)(10,sum(rate({region="us-east1"}[5m])))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
 		`avg(min_over_time({job="nginx"} |= "GET" | unwrap foo[10s])) by (region)`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m]))`,

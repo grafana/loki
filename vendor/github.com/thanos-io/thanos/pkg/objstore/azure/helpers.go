@@ -19,6 +19,17 @@ const DirDelim = "/"
 
 var errorCodeRegex = regexp.MustCompile(`X-Ms-Error-Code:\D*\[(\w+)\]`)
 
+func init() {
+	// Disable `ForceLog` in Azure storage module
+	// As the time of this patch, the logging function in the storage module isn't correctly
+	// detecting expected REST errors like 404 and so outputs them to syslog along with a stacktrace.
+	// https://github.com/Azure/azure-storage-blob-go/issues/214
+	//
+	// This needs to be done at startup because the underlying variable is not thread safe.
+	// https://github.com/Azure/azure-pipeline-go/blob/dc95902f1d32034f8f743ccc6c3f2eb36b84da27/pipeline/core.go#L276-L283
+	pipeline.SetForceLogEnabled(false)
+}
+
 func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error) {
 	c, err := blob.NewSharedKeyCredential(conf.StorageAccountName, conf.StorageAccountKey)
 	if err != nil {

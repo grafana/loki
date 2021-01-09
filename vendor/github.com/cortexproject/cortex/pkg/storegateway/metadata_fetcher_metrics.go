@@ -1,8 +1,6 @@
 package storegateway
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -11,9 +9,7 @@ import (
 // This struct aggregates metrics exported by Thanos MetaFetcher
 // and re-exports those aggregates as Cortex metrics.
 type MetadataFetcherMetrics struct {
-	// Maps userID -> registry
-	regsMu sync.Mutex
-	regs   map[string]*prometheus.Registry
+	regs *util.UserRegistries
 
 	// Exported metrics, gathered from Thanos MetaFetcher
 	syncs                *prometheus.Desc
@@ -29,7 +25,7 @@ type MetadataFetcherMetrics struct {
 
 func NewMetadataFetcherMetrics() *MetadataFetcherMetrics {
 	return &MetadataFetcherMetrics{
-		regs: map[string]*prometheus.Registry{},
+		regs: util.NewUserRegistries(),
 
 		syncs: prometheus.NewDesc(
 			"cortex_blocks_meta_syncs_total",
@@ -55,25 +51,10 @@ func NewMetadataFetcherMetrics() *MetadataFetcherMetrics {
 }
 
 func (m *MetadataFetcherMetrics) AddUserRegistry(user string, reg *prometheus.Registry) {
-	m.regsMu.Lock()
-	m.regs[user] = reg
-	m.regsMu.Unlock()
-}
-
-func (m *MetadataFetcherMetrics) registries() map[string]*prometheus.Registry {
-	regs := map[string]*prometheus.Registry{}
-
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-	for uid, r := range m.regs {
-		regs[uid] = r
-	}
-
-	return regs
+	m.regs.AddUserRegistry(user, reg)
 }
 
 func (m *MetadataFetcherMetrics) Describe(out chan<- *prometheus.Desc) {
-
 	out <- m.syncs
 	out <- m.syncFailures
 	out <- m.syncDuration
@@ -82,7 +63,7 @@ func (m *MetadataFetcherMetrics) Describe(out chan<- *prometheus.Desc) {
 }
 
 func (m *MetadataFetcherMetrics) Collect(out chan<- prometheus.Metric) {
-	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.registries())
+	data := m.regs.BuildMetricFamiliesPerUser()
 
 	data.SendSumOfCounters(out, m.syncs, "blocks_meta_syncs_total")
 	data.SendSumOfCounters(out, m.syncFailures, "blocks_meta_sync_failures_total")

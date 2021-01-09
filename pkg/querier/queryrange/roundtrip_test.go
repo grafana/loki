@@ -15,7 +15,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -405,22 +404,22 @@ func TestPostQueries(t *testing.T) {
 	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
 	require.NoError(t, err)
 	_, err = newRoundTripper(
-		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected default roundtripper called")
 			return nil, nil
 		}),
-		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, nil
 		}),
-		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected metric roundtripper called")
 			return nil, nil
 		}),
-		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected series roundtripper called")
 			return nil, nil
 		}),
-		frontend.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected labels roundtripper called")
 			return nil, nil
 		}),
@@ -526,6 +525,10 @@ func (f fakeLimits) MaxQuerySeries(string) int {
 
 func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
 	return 1 * time.Minute
+}
+
+func (f fakeLimits) MaxQueryLookback(string) time.Duration {
+	return 0
 }
 
 func counter() (*int, http.Handler) {

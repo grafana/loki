@@ -11,14 +11,15 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -27,6 +28,7 @@ type BlocksCleanerConfig struct {
 	MetaSyncConcurrency int
 	DeletionDelay       time.Duration
 	CleanupInterval     time.Duration
+	CleanupConcurrency  int
 }
 
 type BlocksCleaner struct {
@@ -35,7 +37,7 @@ type BlocksCleaner struct {
 	cfg          BlocksCleanerConfig
 	logger       log.Logger
 	bucketClient objstore.Bucket
-	usersScanner *UsersScanner
+	usersScanner *cortex_tsdb.UsersScanner
 
 	// Metrics.
 	runsStarted        prometheus.Counter
@@ -46,7 +48,7 @@ type BlocksCleaner struct {
 	blocksFailedTotal  prometheus.Counter
 }
 
-func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *UsersScanner, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
+func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
 	c := &BlocksCleaner{
 		cfg:          cfg,
 		bucketClient: bucketClient,
@@ -98,49 +100,91 @@ func (c *BlocksCleaner) ticker(ctx context.Context) error {
 }
 
 func (c *BlocksCleaner) runCleanup(ctx context.Context) {
-	level.Info(c.logger).Log("msg", "started hard deletion of blocks marked for deletion")
+	level.Info(c.logger).Log("msg", "started hard deletion of blocks marked for deletion, and blocks for tenants marked for deletion")
 	c.runsStarted.Inc()
 
 	if err := c.cleanUsers(ctx); err == nil {
-		level.Info(c.logger).Log("msg", "successfully completed hard deletion of blocks marked for deletion")
+		level.Info(c.logger).Log("msg", "successfully completed hard deletion of blocks marked for deletion, and blocks for tenants marked for deletion")
 		c.runsCompleted.Inc()
 		c.runsLastSuccess.SetToCurrentTime()
 	} else if errors.Is(err, context.Canceled) {
-		level.Info(c.logger).Log("msg", "canceled hard deletion of blocks marked for deletion", "err", err)
+		level.Info(c.logger).Log("msg", "canceled hard deletion of blocks marked for deletion, and blocks for tenants marked for deletion", "err", err)
 		return
 	} else {
-		level.Error(c.logger).Log("msg", "failed to hard delete blocks marked for deletion", "err", err.Error())
+		level.Error(c.logger).Log("msg", "failed to hard delete blocks marked for deletion, and blocks for tenants marked for deletion", "err", err.Error())
 		c.runsFailed.Inc()
 	}
 }
 
 func (c *BlocksCleaner) cleanUsers(ctx context.Context) error {
-	users, err := c.usersScanner.ScanUsers(ctx)
+	users, deleted, err := c.usersScanner.ScanUsers(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to discover users from bucket")
 	}
 
-	errs := tsdb_errors.MultiError{}
-	for _, userID := range users {
-		// Ensure the context has not been canceled (ie. shutdown has been triggered).
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		if err = c.cleanUser(ctx, userID); err != nil {
-			errs.Add(errors.Wrapf(err, "failed to delete user blocks (user: %s)", userID))
-			continue
-		}
+	isDeleted := map[string]bool{}
+	for _, userID := range deleted {
+		isDeleted[userID] = true
 	}
 
-	return errs.Err()
+	allUsers := append(users, deleted...)
+	return concurrency.ForEachUser(ctx, allUsers, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+		if isDeleted[userID] {
+			return errors.Wrapf(c.deleteUser(ctx, userID), "failed to delete blocks for user marked for deletion: %s", userID)
+		}
+		return errors.Wrapf(c.cleanUser(ctx, userID), "failed to delete blocks for user: %s", userID)
+	})
+}
+
+// Remove all blocks for user marked for deletion.
+func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
+	userLogger := util.WithUserID(userID, c.logger)
+	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
+
+	level.Info(userLogger).Log("msg", "deleting blocks for user marked for deletion")
+
+	var deleted, failed int
+	err := userBucket.Iter(ctx, "", func(name string) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		id, ok := block.IsBlockDir(name)
+		if !ok {
+			return nil
+		}
+
+		err := block.Delete(ctx, userLogger, userBucket, id)
+		if err != nil {
+			failed++
+			c.blocksFailedTotal.Inc()
+			level.Warn(userLogger).Log("msg", "failed to delete block", "block", id, "err", err)
+			return nil // Continue with other blocks.
+		}
+
+		deleted++
+		c.blocksCleanedTotal.Inc()
+		level.Info(userLogger).Log("msg", "deleted block", "block", id)
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if failed > 0 {
+		return errors.Errorf("failed to delete %d blocks", failed)
+	}
+
+	level.Info(userLogger).Log("msg", "finished deleting blocks for user marked for deletion", "deletedBlocks", deleted)
+	return nil
 }
 
 func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 	userLogger := util.WithUserID(userID, c.logger)
-	userBucket := cortex_tsdb.NewUserBucketClient(userID, c.bucketClient)
+	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
 
-	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, c.cfg.DeletionDelay)
+	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, c.cfg.DeletionDelay, c.cfg.MetaSyncConcurrency)
 
 	fetcher, err := block.NewMetaFetcher(
 		userLogger,
@@ -188,7 +232,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, userBucket *cortex_tsdb.UserBucketClient, userLogger log.Logger) {
+func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
 	for blockID, blockErr := range partials {
 		// We can safely delete only blocks which are partial because the meta.json is missing.
 		if blockErr != block.ErrorSyncMetaNotFound {
@@ -196,8 +240,8 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 		}
 
 		// We can safely delete only partial blocks with a deletion mark.
-		_, err := metadata.ReadDeletionMark(ctx, userBucket, userLogger, blockID.String())
-		if err == metadata.ErrorDeletionMarkNotFound {
+		err := metadata.ReadMarker(ctx, userLogger, userBucket, blockID.String(), &metadata.DeletionMark{})
+		if err == metadata.ErrorMarkerNotFound {
 			continue
 		}
 		if err != nil {

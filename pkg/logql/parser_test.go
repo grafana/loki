@@ -2147,6 +2147,71 @@ func TestParse(t *testing.T) {
 			err: ParseError{msg: "syntax error: unexpected IDENTIFIER, expecting NUMBER or { or (", line: 1, col: 20},
 		},
 		{
+			in: `{app="foo"}
+					# |= "bar"
+					| json`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+				},
+			},
+		},
+		{
+			in: `{app="foo"}
+					#
+					|= "bar"
+					| json`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+				},
+			},
+		},
+		{
+			in:  `{app="foo"} # |= "bar" | json`,
+			exp: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+		},
+		{
+			in: `{app="foo"} | json #`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+				},
+			},
+		},
+		{
+			in:  `#{app="foo"} | json`,
+			err: ParseError{msg: "syntax error: unexpected $end", line: 1, col: 20},
+		},
+		{
+			in:  `{app="#"}`,
+			exp: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "#"}}),
+		},
+		{
+			in: `{app="foo"} |= "#"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "#"),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | bar="#"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					&labelFilterExpr{
+						LabelFilterer: log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "bar", "#")),
+					},
+				},
+			},
+		},
+		{
 			in: `{app="foo"} | json | dedup by ()`,
 			exp: &pipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),

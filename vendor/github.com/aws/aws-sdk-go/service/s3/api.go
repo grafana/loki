@@ -1212,6 +1212,106 @@ func (c *S3) DeleteBucketEncryptionWithContext(ctx aws.Context, input *DeleteBuc
 	return out, req.Send()
 }
 
+const opDeleteBucketIntelligentTieringConfiguration = "DeleteBucketIntelligentTieringConfiguration"
+
+// DeleteBucketIntelligentTieringConfigurationRequest generates a "aws/request.Request" representing the
+// client's request for the DeleteBucketIntelligentTieringConfiguration operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See DeleteBucketIntelligentTieringConfiguration for more information on using the DeleteBucketIntelligentTieringConfiguration
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the DeleteBucketIntelligentTieringConfigurationRequest method.
+//    req, resp := client.DeleteBucketIntelligentTieringConfigurationRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/DeleteBucketIntelligentTieringConfiguration
+func (c *S3) DeleteBucketIntelligentTieringConfigurationRequest(input *DeleteBucketIntelligentTieringConfigurationInput) (req *request.Request, output *DeleteBucketIntelligentTieringConfigurationOutput) {
+	op := &request.Operation{
+		Name:       opDeleteBucketIntelligentTieringConfiguration,
+		HTTPMethod: "DELETE",
+		HTTPPath:   "/{Bucket}?intelligent-tiering",
+	}
+
+	if input == nil {
+		input = &DeleteBucketIntelligentTieringConfigurationInput{}
+	}
+
+	output = &DeleteBucketIntelligentTieringConfigurationOutput{}
+	req = c.newRequest(op, input, output)
+	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	return
+}
+
+// DeleteBucketIntelligentTieringConfiguration API operation for Amazon Simple Storage Service.
+//
+// Deletes the S3 Intelligent-Tiering configuration from the specified bucket.
+//
+// The S3 Intelligent-Tiering storage class is designed to optimize storage
+// costs by automatically moving data to the most cost-effective storage access
+// tier, without additional operational overhead. S3 Intelligent-Tiering delivers
+// automatic cost savings by moving data between access tiers, when access patterns
+// change.
+//
+// The S3 Intelligent-Tiering storage class is suitable for objects larger than
+// 128 KB that you plan to store for at least 30 days. If the size of an object
+// is less than 128 KB, it is not eligible for auto-tiering. Smaller objects
+// can be stored, but they are always charged at the frequent access tier rates
+// in the S3 Intelligent-Tiering storage class.
+//
+// If you delete an object before the end of the 30-day minimum storage duration
+// period, you are charged for 30 days. For more information, see Storage class
+// for automatically optimizing frequently and infrequently accessed objects
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html#sc-dynamic-data-access).
+//
+// Operations related to DeleteBucketIntelligentTieringConfiguration include:
+//
+//    * GetBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketIntelligentTieringConfiguration.html)
+//
+//    * PutBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketIntelligentTieringConfiguration.html)
+//
+//    * ListBucketIntelligentTieringConfigurations (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBucketIntelligentTieringConfigurations.html)
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation DeleteBucketIntelligentTieringConfiguration for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/DeleteBucketIntelligentTieringConfiguration
+func (c *S3) DeleteBucketIntelligentTieringConfiguration(input *DeleteBucketIntelligentTieringConfigurationInput) (*DeleteBucketIntelligentTieringConfigurationOutput, error) {
+	req, out := c.DeleteBucketIntelligentTieringConfigurationRequest(input)
+	return out, req.Send()
+}
+
+// DeleteBucketIntelligentTieringConfigurationWithContext is the same as DeleteBucketIntelligentTieringConfiguration with the addition of
+// the ability to pass a context and additional request options.
+//
+// See DeleteBucketIntelligentTieringConfiguration for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) DeleteBucketIntelligentTieringConfigurationWithContext(ctx aws.Context, input *DeleteBucketIntelligentTieringConfigurationInput, opts ...request.Option) (*DeleteBucketIntelligentTieringConfigurationOutput, error) {
+	req, out := c.DeleteBucketIntelligentTieringConfigurationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opDeleteBucketInventoryConfiguration = "DeleteBucketInventoryConfiguration"
 
 // DeleteBucketInventoryConfigurationRequest generates a "aws/request.Request" representing the
@@ -2798,6 +2898,105 @@ func (c *S3) GetBucketEncryptionWithContext(ctx aws.Context, input *GetBucketEnc
 	return out, req.Send()
 }
 
+const opGetBucketIntelligentTieringConfiguration = "GetBucketIntelligentTieringConfiguration"
+
+// GetBucketIntelligentTieringConfigurationRequest generates a "aws/request.Request" representing the
+// client's request for the GetBucketIntelligentTieringConfiguration operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetBucketIntelligentTieringConfiguration for more information on using the GetBucketIntelligentTieringConfiguration
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the GetBucketIntelligentTieringConfigurationRequest method.
+//    req, resp := client.GetBucketIntelligentTieringConfigurationRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetBucketIntelligentTieringConfiguration
+func (c *S3) GetBucketIntelligentTieringConfigurationRequest(input *GetBucketIntelligentTieringConfigurationInput) (req *request.Request, output *GetBucketIntelligentTieringConfigurationOutput) {
+	op := &request.Operation{
+		Name:       opGetBucketIntelligentTieringConfiguration,
+		HTTPMethod: "GET",
+		HTTPPath:   "/{Bucket}?intelligent-tiering",
+	}
+
+	if input == nil {
+		input = &GetBucketIntelligentTieringConfigurationInput{}
+	}
+
+	output = &GetBucketIntelligentTieringConfigurationOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// GetBucketIntelligentTieringConfiguration API operation for Amazon Simple Storage Service.
+//
+// Gets the S3 Intelligent-Tiering configuration from the specified bucket.
+//
+// The S3 Intelligent-Tiering storage class is designed to optimize storage
+// costs by automatically moving data to the most cost-effective storage access
+// tier, without additional operational overhead. S3 Intelligent-Tiering delivers
+// automatic cost savings by moving data between access tiers, when access patterns
+// change.
+//
+// The S3 Intelligent-Tiering storage class is suitable for objects larger than
+// 128 KB that you plan to store for at least 30 days. If the size of an object
+// is less than 128 KB, it is not eligible for auto-tiering. Smaller objects
+// can be stored, but they are always charged at the frequent access tier rates
+// in the S3 Intelligent-Tiering storage class.
+//
+// If you delete an object before the end of the 30-day minimum storage duration
+// period, you are charged for 30 days. For more information, see Storage class
+// for automatically optimizing frequently and infrequently accessed objects
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html#sc-dynamic-data-access).
+//
+// Operations related to GetBucketIntelligentTieringConfiguration include:
+//
+//    * DeleteBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketIntelligentTieringConfiguration.html)
+//
+//    * PutBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketIntelligentTieringConfiguration.html)
+//
+//    * ListBucketIntelligentTieringConfigurations (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBucketIntelligentTieringConfigurations.html)
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation GetBucketIntelligentTieringConfiguration for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetBucketIntelligentTieringConfiguration
+func (c *S3) GetBucketIntelligentTieringConfiguration(input *GetBucketIntelligentTieringConfigurationInput) (*GetBucketIntelligentTieringConfigurationOutput, error) {
+	req, out := c.GetBucketIntelligentTieringConfigurationRequest(input)
+	return out, req.Send()
+}
+
+// GetBucketIntelligentTieringConfigurationWithContext is the same as GetBucketIntelligentTieringConfiguration with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetBucketIntelligentTieringConfiguration for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) GetBucketIntelligentTieringConfigurationWithContext(ctx aws.Context, input *GetBucketIntelligentTieringConfigurationInput, opts ...request.Option) (*GetBucketIntelligentTieringConfigurationOutput, error) {
+	req, out := c.GetBucketIntelligentTieringConfigurationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opGetBucketInventoryConfiguration = "GetBucketInventoryConfiguration"
 
 // GetBucketInventoryConfigurationRequest generates a "aws/request.Request" representing the
@@ -4314,9 +4513,10 @@ func (c *S3) GetObjectRequest(input *GetObjectInput) (req *request.Request, outp
 // For more information about returning the ACL of an object, see GetObjectAcl
 // (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html).
 //
-// If the object you are retrieving is stored in the GLACIER or DEEP_ARCHIVE
-// storage classes, before you can retrieve the object you must first restore
-// a copy using RestoreObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html).
+// If the object you are retrieving is stored in the S3 Glacier, S3 Glacier
+// Deep Archive, S3 Intelligent-Tiering Archive, or S3 Intelligent-Tiering Deep
+// Archive storage classes, before you can retrieve the object you must first
+// restore a copy using RestoreObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html).
 // Otherwise, this operation returns an InvalidObjectStateError error. For information
 // about restoring archived objects, see Restoring Archived Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html).
 //
@@ -4428,6 +4628,9 @@ func (c *S3) GetObjectRequest(input *GetObjectInput) (req *request.Request, outp
 // Returned Error Codes:
 //   * ErrCodeNoSuchKey "NoSuchKey"
 //   The specified key does not exist.
+//
+//   * ErrCodeInvalidObjectState "InvalidObjectState"
+//   Object is archived and inaccessible until restored.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObject
 func (c *S3) GetObject(input *GetObjectInput) (*GetObjectOutput, error) {
@@ -5374,6 +5577,105 @@ func (c *S3) ListBucketAnalyticsConfigurations(input *ListBucketAnalyticsConfigu
 // for more information on using Contexts.
 func (c *S3) ListBucketAnalyticsConfigurationsWithContext(ctx aws.Context, input *ListBucketAnalyticsConfigurationsInput, opts ...request.Option) (*ListBucketAnalyticsConfigurationsOutput, error) {
 	req, out := c.ListBucketAnalyticsConfigurationsRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opListBucketIntelligentTieringConfigurations = "ListBucketIntelligentTieringConfigurations"
+
+// ListBucketIntelligentTieringConfigurationsRequest generates a "aws/request.Request" representing the
+// client's request for the ListBucketIntelligentTieringConfigurations operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See ListBucketIntelligentTieringConfigurations for more information on using the ListBucketIntelligentTieringConfigurations
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the ListBucketIntelligentTieringConfigurationsRequest method.
+//    req, resp := client.ListBucketIntelligentTieringConfigurationsRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ListBucketIntelligentTieringConfigurations
+func (c *S3) ListBucketIntelligentTieringConfigurationsRequest(input *ListBucketIntelligentTieringConfigurationsInput) (req *request.Request, output *ListBucketIntelligentTieringConfigurationsOutput) {
+	op := &request.Operation{
+		Name:       opListBucketIntelligentTieringConfigurations,
+		HTTPMethod: "GET",
+		HTTPPath:   "/{Bucket}?intelligent-tiering",
+	}
+
+	if input == nil {
+		input = &ListBucketIntelligentTieringConfigurationsInput{}
+	}
+
+	output = &ListBucketIntelligentTieringConfigurationsOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// ListBucketIntelligentTieringConfigurations API operation for Amazon Simple Storage Service.
+//
+// Lists the S3 Intelligent-Tiering configuration from the specified bucket.
+//
+// The S3 Intelligent-Tiering storage class is designed to optimize storage
+// costs by automatically moving data to the most cost-effective storage access
+// tier, without additional operational overhead. S3 Intelligent-Tiering delivers
+// automatic cost savings by moving data between access tiers, when access patterns
+// change.
+//
+// The S3 Intelligent-Tiering storage class is suitable for objects larger than
+// 128 KB that you plan to store for at least 30 days. If the size of an object
+// is less than 128 KB, it is not eligible for auto-tiering. Smaller objects
+// can be stored, but they are always charged at the frequent access tier rates
+// in the S3 Intelligent-Tiering storage class.
+//
+// If you delete an object before the end of the 30-day minimum storage duration
+// period, you are charged for 30 days. For more information, see Storage class
+// for automatically optimizing frequently and infrequently accessed objects
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html#sc-dynamic-data-access).
+//
+// Operations related to ListBucketIntelligentTieringConfigurations include:
+//
+//    * DeleteBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketIntelligentTieringConfiguration.html)
+//
+//    * PutBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketIntelligentTieringConfiguration.html)
+//
+//    * GetBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketIntelligentTieringConfiguration.html)
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation ListBucketIntelligentTieringConfigurations for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ListBucketIntelligentTieringConfigurations
+func (c *S3) ListBucketIntelligentTieringConfigurations(input *ListBucketIntelligentTieringConfigurationsInput) (*ListBucketIntelligentTieringConfigurationsOutput, error) {
+	req, out := c.ListBucketIntelligentTieringConfigurationsRequest(input)
+	return out, req.Send()
+}
+
+// ListBucketIntelligentTieringConfigurationsWithContext is the same as ListBucketIntelligentTieringConfigurations with the addition of
+// the ability to pass a context and additional request options.
+//
+// See ListBucketIntelligentTieringConfigurations for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) ListBucketIntelligentTieringConfigurationsWithContext(ctx aws.Context, input *ListBucketIntelligentTieringConfigurationsInput, opts ...request.Option) (*ListBucketIntelligentTieringConfigurationsOutput, error) {
+	req, out := c.ListBucketIntelligentTieringConfigurationsRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -7066,6 +7368,106 @@ func (c *S3) PutBucketEncryptionWithContext(ctx aws.Context, input *PutBucketEnc
 	return out, req.Send()
 }
 
+const opPutBucketIntelligentTieringConfiguration = "PutBucketIntelligentTieringConfiguration"
+
+// PutBucketIntelligentTieringConfigurationRequest generates a "aws/request.Request" representing the
+// client's request for the PutBucketIntelligentTieringConfiguration operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See PutBucketIntelligentTieringConfiguration for more information on using the PutBucketIntelligentTieringConfiguration
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the PutBucketIntelligentTieringConfigurationRequest method.
+//    req, resp := client.PutBucketIntelligentTieringConfigurationRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutBucketIntelligentTieringConfiguration
+func (c *S3) PutBucketIntelligentTieringConfigurationRequest(input *PutBucketIntelligentTieringConfigurationInput) (req *request.Request, output *PutBucketIntelligentTieringConfigurationOutput) {
+	op := &request.Operation{
+		Name:       opPutBucketIntelligentTieringConfiguration,
+		HTTPMethod: "PUT",
+		HTTPPath:   "/{Bucket}?intelligent-tiering",
+	}
+
+	if input == nil {
+		input = &PutBucketIntelligentTieringConfigurationInput{}
+	}
+
+	output = &PutBucketIntelligentTieringConfigurationOutput{}
+	req = c.newRequest(op, input, output)
+	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	return
+}
+
+// PutBucketIntelligentTieringConfiguration API operation for Amazon Simple Storage Service.
+//
+// Puts a S3 Intelligent-Tiering configuration to the specified bucket.
+//
+// The S3 Intelligent-Tiering storage class is designed to optimize storage
+// costs by automatically moving data to the most cost-effective storage access
+// tier, without additional operational overhead. S3 Intelligent-Tiering delivers
+// automatic cost savings by moving data between access tiers, when access patterns
+// change.
+//
+// The S3 Intelligent-Tiering storage class is suitable for objects larger than
+// 128 KB that you plan to store for at least 30 days. If the size of an object
+// is less than 128 KB, it is not eligible for auto-tiering. Smaller objects
+// can be stored, but they are always charged at the frequent access tier rates
+// in the S3 Intelligent-Tiering storage class.
+//
+// If you delete an object before the end of the 30-day minimum storage duration
+// period, you are charged for 30 days. For more information, see Storage class
+// for automatically optimizing frequently and infrequently accessed objects
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html#sc-dynamic-data-access).
+//
+// Operations related to PutBucketIntelligentTieringConfiguration include:
+//
+//    * DeleteBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketIntelligentTieringConfiguration.html)
+//
+//    * GetBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketIntelligentTieringConfiguration.html)
+//
+//    * ListBucketIntelligentTieringConfigurations (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBucketIntelligentTieringConfigurations.html)
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation PutBucketIntelligentTieringConfiguration for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutBucketIntelligentTieringConfiguration
+func (c *S3) PutBucketIntelligentTieringConfiguration(input *PutBucketIntelligentTieringConfigurationInput) (*PutBucketIntelligentTieringConfigurationOutput, error) {
+	req, out := c.PutBucketIntelligentTieringConfigurationRequest(input)
+	return out, req.Send()
+}
+
+// PutBucketIntelligentTieringConfigurationWithContext is the same as PutBucketIntelligentTieringConfiguration with the addition of
+// the ability to pass a context and additional request options.
+//
+// See PutBucketIntelligentTieringConfiguration for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) PutBucketIntelligentTieringConfigurationWithContext(ctx aws.Context, input *PutBucketIntelligentTieringConfigurationInput, opts ...request.Option) (*PutBucketIntelligentTieringConfigurationOutput, error) {
+	req, out := c.PutBucketIntelligentTieringConfigurationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opPutBucketInventoryConfiguration = "PutBucketInventoryConfiguration"
 
 // PutBucketInventoryConfigurationRequest generates a "aws/request.Request" representing the
@@ -7950,14 +8352,14 @@ func (c *S3) PutBucketOwnershipControlsRequest(input *PutBucketOwnershipControls
 // PutBucketOwnershipControls API operation for Amazon Simple Storage Service.
 //
 // Creates or modifies OwnershipControls for an Amazon S3 bucket. To use this
-// operation, you must have the s3:GetBucketOwnershipControls permission. For
+// operation, you must have the s3:PutBucketOwnershipControls permission. For
 // more information about Amazon S3 permissions, see Specifying Permissions
 // in a Policy (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html).
 //
 // For information about Amazon S3 Object Ownership, see Using Object Ownership
 // (https://docs.aws.amazon.com/AmazonS3/latest/dev/about-object-ownership.html).
 //
-// The following operations are related to GetBucketOwnershipControls:
+// The following operations are related to PutBucketOwnershipControls:
 //
 //    * GetBucketOwnershipControls
 //
@@ -9599,58 +10001,56 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //
 // Restoring Archives
 //
-// Objects in the GLACIER and DEEP_ARCHIVE storage classes are archived. To
-// access an archived object, you must first initiate a restore request. This
-// restores a temporary copy of the archived object. In a restore request, you
-// specify the number of days that you want the restored copy to exist. After
-// the specified period, Amazon S3 deletes the temporary copy but the object
-// remains archived in the GLACIER or DEEP_ARCHIVE storage class that object
-// was restored from.
+// Objects that you archive to the S3 Glacier, S3 Glacier Deep Archive, S3 Intelligent-Tiering
+// Archive, or S3 Intelligent-Tiering Deep Archive storage classes are not accessible
+// in real time. For objects in Archive Access tier or Deep Archive Access tier
+// you must first initiate a restore request, and then wait until the object
+// is moved into the Frequent Access tier. For objects in S3 Glacier or S3 Glacier
+// Deep Archive you must first initiate a restore request, and then wait until
+// a temporary copy of the object is available. To access an archived object,
+// you must restore the object for the duration (number of days) that you specify.
 //
 // To restore a specific object version, you can provide a version ID. If you
 // don't provide a version ID, Amazon S3 restores the current version.
-//
-// The time it takes restore jobs to finish depends on which storage class the
-// object is being restored from and which data access tier you specify.
 //
 // When restoring an archived object (or using a select request), you can specify
 // one of the following data access tier options in the Tier element of the
 // request body:
 //
 //    * Expedited - Expedited retrievals allow you to quickly access your data
-//    stored in the GLACIER storage class when occasional urgent requests for
-//    a subset of archives are required. For all but the largest archived objects
-//    (250 MB+), data accessed using Expedited retrievals are typically made
-//    available within 1–5 minutes. Provisioned capacity ensures that retrieval
-//    capacity for Expedited retrievals is available when you need it. Expedited
-//    retrievals and provisioned capacity are not available for the DEEP_ARCHIVE
-//    storage class.
+//    stored in the S3 Glacier or S3 Intelligent-Tiering Archive storage class
+//    when occasional urgent requests for a subset of archives are required.
+//    For all but the largest archived objects (250 MB+), data accessed using
+//    Expedited retrievals is typically made available within 1–5 minutes.
+//    Provisioned capacity ensures that retrieval capacity for Expedited retrievals
+//    is available when you need it. Expedited retrievals and provisioned capacity
+//    are not available for objects stored in the S3 Glacier Deep Archive or
+//    S3 Intelligent-Tiering Deep Archive storage class.
 //
-//    * Standard - S3 Standard retrievals allow you to access any of your archived
-//    objects within several hours. This is the default option for the GLACIER
-//    and DEEP_ARCHIVE retrieval requests that do not specify the retrieval
-//    option. S3 Standard retrievals typically complete within 3-5 hours from
-//    the GLACIER storage class and typically complete within 12 hours from
-//    the DEEP_ARCHIVE storage class.
+//    * Standard - Standard retrievals allow you to access any of your archived
+//    objects within several hours. This is the default option for retrieval
+//    requests that do not specify the retrieval option. Standard retrievals
+//    typically finish within 3–5 hours for objects stored in the S3 Glacier
+//    or S3 Intelligent-Tiering Archive storage class. They typically finish
+//    within 12 hours for objects stored in the S3 Glacier Deep Archive or S3
+//    Intelligent-Tiering Deep Archive storage class. Standard retrievals are
+//    free for objects stored in S3 Intelligent-Tiering.
 //
-//    * Bulk - Bulk retrievals are Amazon S3 Glacier’s lowest-cost retrieval
-//    option, enabling you to retrieve large amounts, even petabytes, of data
-//    inexpensively in a day. Bulk retrievals typically complete within 5-12
-//    hours from the GLACIER storage class and typically complete within 48
-//    hours from the DEEP_ARCHIVE storage class.
+//    * Bulk - Bulk retrievals are the lowest-cost retrieval option in S3 Glacier,
+//    enabling you to retrieve large amounts, even petabytes, of data inexpensively.
+//    Bulk retrievals typically finish within 5–12 hours for objects stored
+//    in the S3 Glacier or S3 Intelligent-Tiering Archive storage class. They
+//    typically finish within 48 hours for objects stored in the S3 Glacier
+//    Deep Archive or S3 Intelligent-Tiering Deep Archive storage class. Bulk
+//    retrievals are free for objects stored in S3 Intelligent-Tiering.
 //
 // For more information about archive retrieval options and provisioned capacity
 // for Expedited data access, see Restoring Archived Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // You can use Amazon S3 restore speed upgrade to change the restore speed to
-// a faster speed while it is in progress. You upgrade the speed of an in-progress
-// restoration by issuing another restore request to the same object, setting
-// a new Tier request element. When issuing a request to upgrade the restore
-// tier, you must choose a tier that is faster than the tier that the in-progress
-// restore is using. You must not change any other parameters, such as the Days
-// request element. For more information, see Upgrading the Speed of an In-Progress
-// Restore (https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html#restoring-objects-upgrade-tier.title.html)
+// a faster speed while it is in progress. For more information, see Upgrading
+// the speed of an in-progress restore (https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html#restoring-objects-upgrade-tier.title.html)
 // in the Amazon Simple Storage Service Developer Guide.
 //
 // To get the status of object restoration, you can send a HEAD request. Operations
@@ -9679,11 +10079,11 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //
 // A successful operation returns either the 200 OK or 202 Accepted status code.
 //
-//    * If the object copy is not previously restored, then Amazon S3 returns
-//    202 Accepted in the response.
+//    * If the object is not previously restored, then Amazon S3 returns 202
+//    Accepted in the response.
 //
-//    * If the object copy is previously restored, Amazon S3 returns 200 OK
-//    in the response.
+//    * If the object is previously restored, Amazon S3 returns 200 OK in the
+//    response.
 //
 // Special Errors
 //
@@ -9691,11 +10091,11 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //    (This error does not apply to SELECT type requests.) HTTP Status Code:
 //    409 Conflict SOAP Fault Code Prefix: Client
 //
-//    * Code: GlacierExpeditedRetrievalNotAvailable Cause: S3 Glacier expedited
-//    retrievals are currently not available. Try again later. (Returned if
-//    there is insufficient capacity to process the Expedited request. This
-//    error applies only to Expedited retrievals and not to S3 Standard or Bulk
-//    retrievals.) HTTP Status Code: 503 SOAP Fault Code Prefix: N/A
+//    * Code: GlacierExpeditedRetrievalNotAvailable Cause: expedited retrievals
+//    are currently not available. Try again later. (Returned if there is insufficient
+//    capacity to process the Expedited request. This error applies only to
+//    Expedited retrievals and not to S3 Standard or Bulk retrievals.) HTTP
+//    Status Code: 503 SOAP Fault Code Prefix: N/A
 //
 // Related Resources
 //
@@ -10564,12 +10964,14 @@ func (s *AbortMultipartUploadInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *AbortMultipartUploadInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s AbortMultipartUploadInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type AbortMultipartUploadOutput struct {
@@ -11701,12 +12103,14 @@ func (s *CompleteMultipartUploadInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *CompleteMultipartUploadInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s CompleteMultipartUploadInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type CompleteMultipartUploadOutput struct {
@@ -12505,12 +12909,14 @@ func (s *CopyObjectInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *CopyObjectInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s CopyObjectInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type CopyObjectOutput struct {
@@ -13244,12 +13650,14 @@ func (s *CreateMultipartUploadInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *CreateMultipartUploadInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s CreateMultipartUploadInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type CreateMultipartUploadOutput struct {
@@ -13600,12 +14008,14 @@ func (s *DeleteBucketAnalyticsConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketAnalyticsConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketAnalyticsConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketAnalyticsConfigurationOutput struct {
@@ -13698,12 +14108,14 @@ func (s *DeleteBucketCorsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketCorsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketCorsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketCorsOutput struct {
@@ -13797,12 +14209,14 @@ func (s *DeleteBucketEncryptionInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketEncryptionInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketEncryptionInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketEncryptionOutput struct {
@@ -13895,12 +14309,118 @@ func (s *DeleteBucketInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
+	return &s, nil
+}
+
+type DeleteBucketIntelligentTieringConfigurationInput struct {
+	_ struct{} `locationName:"DeleteBucketIntelligentTieringConfigurationRequest" type:"structure"`
+
+	// The name of the Amazon S3 bucket whose configuration you want to modify or
+	// retrieve.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// The ID used to identify the S3 Intelligent-Tiering configuration.
+	//
+	// Id is a required field
+	Id *string `location:"querystring" locationName:"id" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s DeleteBucketIntelligentTieringConfigurationInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DeleteBucketIntelligentTieringConfigurationInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *DeleteBucketIntelligentTieringConfigurationInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "DeleteBucketIntelligentTieringConfigurationInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+	if s.Id == nil {
+		invalidParams.Add(request.NewErrParamRequired("Id"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
 	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *DeleteBucketIntelligentTieringConfigurationInput) SetBucket(v string) *DeleteBucketIntelligentTieringConfigurationInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *DeleteBucketIntelligentTieringConfigurationInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetId sets the Id field's value.
+func (s *DeleteBucketIntelligentTieringConfigurationInput) SetId(v string) *DeleteBucketIntelligentTieringConfigurationInput {
+	s.Id = &v
+	return s
+}
+
+func (s *DeleteBucketIntelligentTieringConfigurationInput) getEndpointARN() (arn.Resource, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	return parseEndpointARN(*s.Bucket)
+}
+
+func (s *DeleteBucketIntelligentTieringConfigurationInput) hasEndpointARN() bool {
+	if s.Bucket == nil {
+		return false
+	}
+	return arn.IsARN(*s.Bucket)
+}
+
+// updateArnableField updates the value of the input field that
+// takes an ARN as an input. This method is useful to backfill
+// the parsed resource name from ARN into the input member.
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketIntelligentTieringConfigurationInput) updateArnableField(v string) (interface{}, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	s.Bucket = aws.String(v)
+	return &s, nil
+}
+
+type DeleteBucketIntelligentTieringConfigurationOutput struct {
+	_ struct{} `type:"structure"`
+}
+
+// String returns the string representation
+func (s DeleteBucketIntelligentTieringConfigurationOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DeleteBucketIntelligentTieringConfigurationOutput) GoString() string {
+	return s.String()
 }
 
 type DeleteBucketInventoryConfigurationInput struct {
@@ -13993,12 +14513,14 @@ func (s *DeleteBucketInventoryConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketInventoryConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketInventoryConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketInventoryConfigurationOutput struct {
@@ -14091,12 +14613,14 @@ func (s *DeleteBucketLifecycleInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketLifecycleInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketLifecycleInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketLifecycleOutput struct {
@@ -14203,12 +14727,14 @@ func (s *DeleteBucketMetricsConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketMetricsConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketMetricsConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketMetricsConfigurationOutput struct {
@@ -14247,6 +14773,9 @@ type DeleteBucketOwnershipControlsInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// The account id of the expected bucket owner. If the bucket is owned by a
+	// different account, the request will fail with an HTTP 403 (Access Denied)
+	// error.
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -14312,12 +14841,14 @@ func (s *DeleteBucketOwnershipControlsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketOwnershipControlsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketOwnershipControlsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketOwnershipControlsOutput struct {
@@ -14410,12 +14941,14 @@ func (s *DeleteBucketPolicyInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketPolicyInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketPolicyInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketPolicyOutput struct {
@@ -14508,12 +15041,14 @@ func (s *DeleteBucketReplicationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketReplicationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketReplicationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketReplicationOutput struct {
@@ -14606,12 +15141,14 @@ func (s *DeleteBucketTaggingInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketTaggingInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketTaggingInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketTaggingOutput struct {
@@ -14704,12 +15241,14 @@ func (s *DeleteBucketWebsiteInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteBucketWebsiteInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteBucketWebsiteInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteBucketWebsiteOutput struct {
@@ -14787,24 +15326,25 @@ func (s *DeleteMarkerEntry) SetVersionId(v string) *DeleteMarkerEntry {
 	return s
 }
 
-// Specifies whether Amazon S3 replicates the delete markers. If you specify
-// a Filter, you must specify this element. However, in the latest version of
-// replication configuration (when Filter is specified), Amazon S3 doesn't replicate
-// delete markers. Therefore, the DeleteMarkerReplication element can contain
-// only <Status>Disabled</Status>. For an example configuration, see Basic Rule
-// Configuration (https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-add-config.html#replication-config-min-rule-config).
+// Specifies whether Amazon S3 replicates delete markers. If you specify a Filter
+// in your replication configuration, you must also include a DeleteMarkerReplication
+// element. If your Filter includes a Tag element, the DeleteMarkerReplication
+// Status must be set to Disabled, because Amazon S3 does not support replicating
+// delete markers for tag-based rules. For an example configuration, see Basic
+// Rule Configuration (https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-add-config.html#replication-config-min-rule-config).
 //
-// If you don't specify the Filter element, Amazon S3 assumes that the replication
-// configuration is the earlier version, V1. In the earlier version, Amazon
-// S3 handled replication of delete markers differently. For more information,
+// For more information about delete marker replication, see Basic Rule Configuration
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/delete-marker-replication.html).
+//
+// If you are using an earlier version of the replication configuration, Amazon
+// S3 handles replication of delete markers differently. For more information,
 // see Backward Compatibility (https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-add-config.html#replication-backward-compat-considerations).
 type DeleteMarkerReplication struct {
 	_ struct{} `type:"structure"`
 
 	// Indicates whether to replicate delete markers.
 	//
-	// In the current implementation, Amazon S3 doesn't replicate the delete markers.
-	// The status must be Disabled.
+	// Indicates whether to replicate delete markers.
 	Status *string `type:"string" enum:"DeleteMarkerReplicationStatus"`
 }
 
@@ -14976,12 +15516,14 @@ func (s *DeleteObjectInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteObjectInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteObjectInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteObjectOutput struct {
@@ -15145,12 +15687,14 @@ func (s *DeleteObjectTaggingInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteObjectTaggingInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteObjectTaggingInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteObjectTaggingOutput struct {
@@ -15322,12 +15866,14 @@ func (s *DeleteObjectsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeleteObjectsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeleteObjectsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeleteObjectsOutput struct {
@@ -15450,12 +15996,14 @@ func (s *DeletePublicAccessBlockInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *DeletePublicAccessBlockInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s DeletePublicAccessBlockInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type DeletePublicAccessBlockOutput struct {
@@ -15557,9 +16105,8 @@ type Destination struct {
 	// is specified, you must specify this element.
 	EncryptionConfiguration *EncryptionConfiguration `type:"structure"`
 
-	// A container specifying replication metrics-related settings enabling metrics
-	// and Amazon S3 events for S3 Replication Time Control (S3 RTC). Must be specified
-	// together with a ReplicationTime block.
+	// A container specifying replication metrics-related settings enabling replication
+	// metrics and events.
 	Metrics *Metrics `type:"structure"`
 
 	// A container specifying S3 Replication Time Control (S3 RTC), including whether
@@ -16394,12 +16941,14 @@ func (s *GetBucketAccelerateConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketAccelerateConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketAccelerateConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketAccelerateConfigurationOutput struct {
@@ -16501,12 +17050,14 @@ func (s *GetBucketAclInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketAclInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketAclInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketAclOutput struct {
@@ -16631,12 +17182,14 @@ func (s *GetBucketAnalyticsConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketAnalyticsConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketAnalyticsConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketAnalyticsConfigurationOutput struct {
@@ -16738,12 +17291,14 @@ func (s *GetBucketCorsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketCorsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketCorsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketCorsOutput struct {
@@ -16847,12 +17402,14 @@ func (s *GetBucketEncryptionInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketEncryptionInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketEncryptionInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketEncryptionOutput struct {
@@ -16875,6 +17432,119 @@ func (s GetBucketEncryptionOutput) GoString() string {
 // SetServerSideEncryptionConfiguration sets the ServerSideEncryptionConfiguration field's value.
 func (s *GetBucketEncryptionOutput) SetServerSideEncryptionConfiguration(v *ServerSideEncryptionConfiguration) *GetBucketEncryptionOutput {
 	s.ServerSideEncryptionConfiguration = v
+	return s
+}
+
+type GetBucketIntelligentTieringConfigurationInput struct {
+	_ struct{} `locationName:"GetBucketIntelligentTieringConfigurationRequest" type:"structure"`
+
+	// The name of the Amazon S3 bucket whose configuration you want to modify or
+	// retrieve.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// The ID used to identify the S3 Intelligent-Tiering configuration.
+	//
+	// Id is a required field
+	Id *string `location:"querystring" locationName:"id" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s GetBucketIntelligentTieringConfigurationInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s GetBucketIntelligentTieringConfigurationInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *GetBucketIntelligentTieringConfigurationInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "GetBucketIntelligentTieringConfigurationInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+	if s.Id == nil {
+		invalidParams.Add(request.NewErrParamRequired("Id"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *GetBucketIntelligentTieringConfigurationInput) SetBucket(v string) *GetBucketIntelligentTieringConfigurationInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *GetBucketIntelligentTieringConfigurationInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetId sets the Id field's value.
+func (s *GetBucketIntelligentTieringConfigurationInput) SetId(v string) *GetBucketIntelligentTieringConfigurationInput {
+	s.Id = &v
+	return s
+}
+
+func (s *GetBucketIntelligentTieringConfigurationInput) getEndpointARN() (arn.Resource, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	return parseEndpointARN(*s.Bucket)
+}
+
+func (s *GetBucketIntelligentTieringConfigurationInput) hasEndpointARN() bool {
+	if s.Bucket == nil {
+		return false
+	}
+	return arn.IsARN(*s.Bucket)
+}
+
+// updateArnableField updates the value of the input field that
+// takes an ARN as an input. This method is useful to backfill
+// the parsed resource name from ARN into the input member.
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketIntelligentTieringConfigurationInput) updateArnableField(v string) (interface{}, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	s.Bucket = aws.String(v)
+	return &s, nil
+}
+
+type GetBucketIntelligentTieringConfigurationOutput struct {
+	_ struct{} `type:"structure" payload:"IntelligentTieringConfiguration"`
+
+	// Container for S3 Intelligent-Tiering configuration.
+	IntelligentTieringConfiguration *IntelligentTieringConfiguration `type:"structure"`
+}
+
+// String returns the string representation
+func (s GetBucketIntelligentTieringConfigurationOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s GetBucketIntelligentTieringConfigurationOutput) GoString() string {
+	return s.String()
+}
+
+// SetIntelligentTieringConfiguration sets the IntelligentTieringConfiguration field's value.
+func (s *GetBucketIntelligentTieringConfigurationOutput) SetIntelligentTieringConfiguration(v *IntelligentTieringConfiguration) *GetBucketIntelligentTieringConfigurationOutput {
+	s.IntelligentTieringConfiguration = v
 	return s
 }
 
@@ -16968,12 +17638,14 @@ func (s *GetBucketInventoryConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketInventoryConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketInventoryConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketInventoryConfigurationOutput struct {
@@ -17075,12 +17747,14 @@ func (s *GetBucketLifecycleConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketLifecycleConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketLifecycleConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketLifecycleConfigurationOutput struct {
@@ -17182,12 +17856,14 @@ func (s *GetBucketLifecycleInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketLifecycleInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketLifecycleInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketLifecycleOutput struct {
@@ -17289,12 +17965,14 @@ func (s *GetBucketLocationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketLocationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketLocationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketLocationOutput struct {
@@ -17398,12 +18076,14 @@ func (s *GetBucketLoggingInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketLoggingInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketLoggingInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketLoggingOutput struct {
@@ -17522,12 +18202,14 @@ func (s *GetBucketMetricsConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketMetricsConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketMetricsConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketMetricsConfigurationOutput struct {
@@ -17629,12 +18311,14 @@ func (s *GetBucketNotificationConfigurationRequest) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketNotificationConfigurationRequest) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketNotificationConfigurationRequest) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketOwnershipControlsInput struct {
@@ -17645,6 +18329,9 @@ type GetBucketOwnershipControlsInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// The account id of the expected bucket owner. If the bucket is owned by a
+	// different account, the request will fail with an HTTP 403 (Access Denied)
+	// error.
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 }
 
@@ -17710,12 +18397,14 @@ func (s *GetBucketOwnershipControlsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketOwnershipControlsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketOwnershipControlsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketOwnershipControlsOutput struct {
@@ -17818,12 +18507,14 @@ func (s *GetBucketPolicyInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketPolicyInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketPolicyInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketPolicyOutput struct {
@@ -17925,12 +18616,14 @@ func (s *GetBucketPolicyStatusInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketPolicyStatusInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketPolicyStatusInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketPolicyStatusOutput struct {
@@ -18032,12 +18725,14 @@ func (s *GetBucketReplicationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketReplicationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketReplicationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketReplicationOutput struct {
@@ -18140,12 +18835,14 @@ func (s *GetBucketRequestPaymentInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketRequestPaymentInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketRequestPaymentInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketRequestPaymentOutput struct {
@@ -18247,12 +18944,14 @@ func (s *GetBucketTaggingInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketTaggingInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketTaggingInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketTaggingOutput struct {
@@ -18356,12 +19055,14 @@ func (s *GetBucketVersioningInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketVersioningInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketVersioningInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketVersioningOutput struct {
@@ -18474,12 +19175,14 @@ func (s *GetBucketWebsiteInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetBucketWebsiteInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetBucketWebsiteInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetBucketWebsiteOutput struct {
@@ -18655,12 +19358,14 @@ func (s *GetObjectAclInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetObjectAclInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetObjectAclInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetObjectAclOutput struct {
@@ -18994,12 +19699,14 @@ func (s *GetObjectInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetObjectInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetObjectInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetObjectLegalHoldInput struct {
@@ -19125,12 +19832,14 @@ func (s *GetObjectLegalHoldInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetObjectLegalHoldInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetObjectLegalHoldInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetObjectLegalHoldOutput struct {
@@ -19239,12 +19948,14 @@ func (s *GetObjectLockConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetObjectLockConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetObjectLockConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetObjectLockConfigurationOutput struct {
@@ -19714,12 +20425,14 @@ func (s *GetObjectRetentionInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetObjectRetentionInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetObjectRetentionInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetObjectRetentionOutput struct {
@@ -19862,12 +20575,14 @@ func (s *GetObjectTaggingInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetObjectTaggingInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetObjectTaggingInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetObjectTaggingOutput struct {
@@ -20011,12 +20726,14 @@ func (s *GetObjectTorrentInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetObjectTorrentInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetObjectTorrentInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetObjectTorrentOutput struct {
@@ -20129,12 +20846,14 @@ func (s *GetPublicAccessBlockInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *GetPublicAccessBlockInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s GetPublicAccessBlockInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type GetPublicAccessBlockOutput struct {
@@ -20165,7 +20884,7 @@ func (s *GetPublicAccessBlockOutput) SetPublicAccessBlockConfiguration(v *Public
 type GlacierJobParameters struct {
 	_ struct{} `type:"structure"`
 
-	// S3 Glacier retrieval tier at which the restore will be processed.
+	// Retrieval tier at which the restore will be processed.
 	//
 	// Tier is a required field
 	Tier *string `type:"string" required:"true" enum:"Tier"`
@@ -20437,12 +21156,14 @@ func (s *HeadBucketInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *HeadBucketInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s HeadBucketInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type HeadBucketOutput struct {
@@ -20695,12 +21416,14 @@ func (s *HeadObjectInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *HeadObjectInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s HeadObjectInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type HeadObjectOutput struct {
@@ -20708,6 +21431,9 @@ type HeadObjectOutput struct {
 
 	// Indicates that a range of bytes was specified.
 	AcceptRanges *string `location:"header" locationName:"accept-ranges" type:"string"`
+
+	// The archive state of the head object.
+	ArchiveStatus *string `location:"header" locationName:"x-amz-archive-status" type:"string" enum:"ArchiveStatus"`
 
 	// Specifies caching behavior along the request/reply chain.
 	CacheControl *string `location:"header" locationName:"Cache-Control" type:"string"`
@@ -20877,6 +21603,12 @@ func (s HeadObjectOutput) GoString() string {
 // SetAcceptRanges sets the AcceptRanges field's value.
 func (s *HeadObjectOutput) SetAcceptRanges(v string) *HeadObjectOutput {
 	s.AcceptRanges = &v
+	return s
+}
+
+// SetArchiveStatus sets the ArchiveStatus field's value.
+func (s *HeadObjectOutput) SetArchiveStatus(v string) *HeadObjectOutput {
+	s.ArchiveStatus = &v
 	return s
 }
 
@@ -21168,6 +21900,224 @@ func (s *InputSerialization) SetJSON(v *JSONInput) *InputSerialization {
 // SetParquet sets the Parquet field's value.
 func (s *InputSerialization) SetParquet(v *ParquetInput) *InputSerialization {
 	s.Parquet = v
+	return s
+}
+
+// A container for specifying S3 Intelligent-Tiering filters. The filters determine
+// the subset of objects to which the rule applies.
+type IntelligentTieringAndOperator struct {
+	_ struct{} `type:"structure"`
+
+	// An object key name prefix that identifies the subset of objects to which
+	// the configuration applies.
+	Prefix *string `type:"string"`
+
+	// All of these tags must exist in the object's tag set in order for the configuration
+	// to apply.
+	Tags []*Tag `locationName:"Tag" locationNameList:"Tag" type:"list" flattened:"true"`
+}
+
+// String returns the string representation
+func (s IntelligentTieringAndOperator) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s IntelligentTieringAndOperator) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *IntelligentTieringAndOperator) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "IntelligentTieringAndOperator"}
+	if s.Tags != nil {
+		for i, v := range s.Tags {
+			if v == nil {
+				continue
+			}
+			if err := v.Validate(); err != nil {
+				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "Tags", i), err.(request.ErrInvalidParams))
+			}
+		}
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetPrefix sets the Prefix field's value.
+func (s *IntelligentTieringAndOperator) SetPrefix(v string) *IntelligentTieringAndOperator {
+	s.Prefix = &v
+	return s
+}
+
+// SetTags sets the Tags field's value.
+func (s *IntelligentTieringAndOperator) SetTags(v []*Tag) *IntelligentTieringAndOperator {
+	s.Tags = v
+	return s
+}
+
+// Specifies the S3 Intelligent-Tiering configuration for an Amazon S3 bucket.
+//
+// For information about the S3 Intelligent-Tiering storage class, see Storage
+// class for automatically optimizing frequently and infrequently accessed objects
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html#sc-dynamic-data-access).
+type IntelligentTieringConfiguration struct {
+	_ struct{} `type:"structure"`
+
+	// Specifies a bucket filter. The configuration only includes objects that meet
+	// the filter's criteria.
+	Filter *IntelligentTieringFilter `type:"structure"`
+
+	// The ID used to identify the S3 Intelligent-Tiering configuration.
+	//
+	// Id is a required field
+	Id *string `type:"string" required:"true"`
+
+	// Specifies the status of the configuration.
+	//
+	// Status is a required field
+	Status *string `type:"string" required:"true" enum:"IntelligentTieringStatus"`
+
+	// Specifies the S3 Intelligent-Tiering storage class tier of the configuration.
+	//
+	// Tierings is a required field
+	Tierings []*Tiering `locationName:"Tiering" type:"list" flattened:"true" required:"true"`
+}
+
+// String returns the string representation
+func (s IntelligentTieringConfiguration) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s IntelligentTieringConfiguration) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *IntelligentTieringConfiguration) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "IntelligentTieringConfiguration"}
+	if s.Id == nil {
+		invalidParams.Add(request.NewErrParamRequired("Id"))
+	}
+	if s.Status == nil {
+		invalidParams.Add(request.NewErrParamRequired("Status"))
+	}
+	if s.Tierings == nil {
+		invalidParams.Add(request.NewErrParamRequired("Tierings"))
+	}
+	if s.Filter != nil {
+		if err := s.Filter.Validate(); err != nil {
+			invalidParams.AddNested("Filter", err.(request.ErrInvalidParams))
+		}
+	}
+	if s.Tierings != nil {
+		for i, v := range s.Tierings {
+			if v == nil {
+				continue
+			}
+			if err := v.Validate(); err != nil {
+				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "Tierings", i), err.(request.ErrInvalidParams))
+			}
+		}
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetFilter sets the Filter field's value.
+func (s *IntelligentTieringConfiguration) SetFilter(v *IntelligentTieringFilter) *IntelligentTieringConfiguration {
+	s.Filter = v
+	return s
+}
+
+// SetId sets the Id field's value.
+func (s *IntelligentTieringConfiguration) SetId(v string) *IntelligentTieringConfiguration {
+	s.Id = &v
+	return s
+}
+
+// SetStatus sets the Status field's value.
+func (s *IntelligentTieringConfiguration) SetStatus(v string) *IntelligentTieringConfiguration {
+	s.Status = &v
+	return s
+}
+
+// SetTierings sets the Tierings field's value.
+func (s *IntelligentTieringConfiguration) SetTierings(v []*Tiering) *IntelligentTieringConfiguration {
+	s.Tierings = v
+	return s
+}
+
+// The Filter is used to identify objects that the S3 Intelligent-Tiering configuration
+// applies to.
+type IntelligentTieringFilter struct {
+	_ struct{} `type:"structure"`
+
+	// A conjunction (logical AND) of predicates, which is used in evaluating a
+	// metrics filter. The operator must have at least two predicates, and an object
+	// must match all of the predicates in order for the filter to apply.
+	And *IntelligentTieringAndOperator `type:"structure"`
+
+	// An object key name prefix that identifies the subset of objects to which
+	// the rule applies.
+	Prefix *string `type:"string"`
+
+	// A container of a key value name pair.
+	Tag *Tag `type:"structure"`
+}
+
+// String returns the string representation
+func (s IntelligentTieringFilter) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s IntelligentTieringFilter) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *IntelligentTieringFilter) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "IntelligentTieringFilter"}
+	if s.And != nil {
+		if err := s.And.Validate(); err != nil {
+			invalidParams.AddNested("And", err.(request.ErrInvalidParams))
+		}
+	}
+	if s.Tag != nil {
+		if err := s.Tag.Validate(); err != nil {
+			invalidParams.AddNested("Tag", err.(request.ErrInvalidParams))
+		}
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetAnd sets the And field's value.
+func (s *IntelligentTieringFilter) SetAnd(v *IntelligentTieringAndOperator) *IntelligentTieringFilter {
+	s.And = v
+	return s
+}
+
+// SetPrefix sets the Prefix field's value.
+func (s *IntelligentTieringFilter) SetPrefix(v string) *IntelligentTieringFilter {
+	s.Prefix = &v
+	return s
+}
+
+// SetTag sets the Tag field's value.
+func (s *IntelligentTieringFilter) SetTag(v *Tag) *IntelligentTieringFilter {
+	s.Tag = v
 	return s
 }
 
@@ -22166,12 +23116,14 @@ func (s *ListBucketAnalyticsConfigurationsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *ListBucketAnalyticsConfigurationsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListBucketAnalyticsConfigurationsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type ListBucketAnalyticsConfigurationsOutput struct {
@@ -22225,6 +23177,147 @@ func (s *ListBucketAnalyticsConfigurationsOutput) SetIsTruncated(v bool) *ListBu
 
 // SetNextContinuationToken sets the NextContinuationToken field's value.
 func (s *ListBucketAnalyticsConfigurationsOutput) SetNextContinuationToken(v string) *ListBucketAnalyticsConfigurationsOutput {
+	s.NextContinuationToken = &v
+	return s
+}
+
+type ListBucketIntelligentTieringConfigurationsInput struct {
+	_ struct{} `locationName:"ListBucketIntelligentTieringConfigurationsRequest" type:"structure"`
+
+	// The name of the Amazon S3 bucket whose configuration you want to modify or
+	// retrieve.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// The ContinuationToken that represents a placeholder from where this request
+	// should begin.
+	ContinuationToken *string `location:"querystring" locationName:"continuation-token" type:"string"`
+}
+
+// String returns the string representation
+func (s ListBucketIntelligentTieringConfigurationsInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ListBucketIntelligentTieringConfigurationsInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ListBucketIntelligentTieringConfigurationsInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "ListBucketIntelligentTieringConfigurationsInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *ListBucketIntelligentTieringConfigurationsInput) SetBucket(v string) *ListBucketIntelligentTieringConfigurationsInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *ListBucketIntelligentTieringConfigurationsInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetContinuationToken sets the ContinuationToken field's value.
+func (s *ListBucketIntelligentTieringConfigurationsInput) SetContinuationToken(v string) *ListBucketIntelligentTieringConfigurationsInput {
+	s.ContinuationToken = &v
+	return s
+}
+
+func (s *ListBucketIntelligentTieringConfigurationsInput) getEndpointARN() (arn.Resource, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	return parseEndpointARN(*s.Bucket)
+}
+
+func (s *ListBucketIntelligentTieringConfigurationsInput) hasEndpointARN() bool {
+	if s.Bucket == nil {
+		return false
+	}
+	return arn.IsARN(*s.Bucket)
+}
+
+// updateArnableField updates the value of the input field that
+// takes an ARN as an input. This method is useful to backfill
+// the parsed resource name from ARN into the input member.
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListBucketIntelligentTieringConfigurationsInput) updateArnableField(v string) (interface{}, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	s.Bucket = aws.String(v)
+	return &s, nil
+}
+
+type ListBucketIntelligentTieringConfigurationsOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The ContinuationToken that represents a placeholder from where this request
+	// should begin.
+	ContinuationToken *string `type:"string"`
+
+	// The list of S3 Intelligent-Tiering configurations for a bucket.
+	IntelligentTieringConfigurationList []*IntelligentTieringConfiguration `locationName:"IntelligentTieringConfiguration" type:"list" flattened:"true"`
+
+	// Indicates whether the returned list of analytics configurations is complete.
+	// A value of true indicates that the list is not complete and the NextContinuationToken
+	// will be provided for a subsequent request.
+	IsTruncated *bool `type:"boolean"`
+
+	// The marker used to continue this inventory configuration listing. Use the
+	// NextContinuationToken from this response to continue the listing in a subsequent
+	// request. The continuation token is an opaque value that Amazon S3 understands.
+	NextContinuationToken *string `type:"string"`
+}
+
+// String returns the string representation
+func (s ListBucketIntelligentTieringConfigurationsOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ListBucketIntelligentTieringConfigurationsOutput) GoString() string {
+	return s.String()
+}
+
+// SetContinuationToken sets the ContinuationToken field's value.
+func (s *ListBucketIntelligentTieringConfigurationsOutput) SetContinuationToken(v string) *ListBucketIntelligentTieringConfigurationsOutput {
+	s.ContinuationToken = &v
+	return s
+}
+
+// SetIntelligentTieringConfigurationList sets the IntelligentTieringConfigurationList field's value.
+func (s *ListBucketIntelligentTieringConfigurationsOutput) SetIntelligentTieringConfigurationList(v []*IntelligentTieringConfiguration) *ListBucketIntelligentTieringConfigurationsOutput {
+	s.IntelligentTieringConfigurationList = v
+	return s
+}
+
+// SetIsTruncated sets the IsTruncated field's value.
+func (s *ListBucketIntelligentTieringConfigurationsOutput) SetIsTruncated(v bool) *ListBucketIntelligentTieringConfigurationsOutput {
+	s.IsTruncated = &v
+	return s
+}
+
+// SetNextContinuationToken sets the NextContinuationToken field's value.
+func (s *ListBucketIntelligentTieringConfigurationsOutput) SetNextContinuationToken(v string) *ListBucketIntelligentTieringConfigurationsOutput {
 	s.NextContinuationToken = &v
 	return s
 }
@@ -22317,12 +23410,14 @@ func (s *ListBucketInventoryConfigurationsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *ListBucketInventoryConfigurationsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListBucketInventoryConfigurationsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type ListBucketInventoryConfigurationsOutput struct {
@@ -22468,12 +23563,14 @@ func (s *ListBucketMetricsConfigurationsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *ListBucketMetricsConfigurationsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListBucketMetricsConfigurationsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type ListBucketMetricsConfigurationsOutput struct {
@@ -22752,12 +23849,14 @@ func (s *ListMultipartUploadsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *ListMultipartUploadsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListMultipartUploadsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type ListMultipartUploadsOutput struct {
@@ -23054,12 +24153,14 @@ func (s *ListObjectVersionsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *ListObjectVersionsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListObjectVersionsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type ListObjectVersionsOutput struct {
@@ -23368,12 +24469,14 @@ func (s *ListObjectsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *ListObjectsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListObjectsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type ListObjectsOutput struct {
@@ -23678,12 +24781,14 @@ func (s *ListObjectsV2Input) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *ListObjectsV2Input) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListObjectsV2Input) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type ListObjectsV2Output struct {
@@ -24010,12 +25115,14 @@ func (s *ListPartsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *ListPartsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s ListPartsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type ListPartsOutput struct {
@@ -24432,17 +25539,14 @@ func (s *MetadataEntry) SetValue(v string) *MetadataEntry {
 	return s
 }
 
-// A container specifying replication metrics-related settings enabling metrics
-// and Amazon S3 events for S3 Replication Time Control (S3 RTC). Must be specified
-// together with a ReplicationTime block.
+// A container specifying replication metrics-related settings enabling replication
+// metrics and events.
 type Metrics struct {
 	_ struct{} `type:"structure"`
 
 	// A container specifying the time threshold for emitting the s3:Replication:OperationMissedThreshold
 	// event.
-	//
-	// EventThreshold is a required field
-	EventThreshold *ReplicationTimeValue `type:"structure" required:"true"`
+	EventThreshold *ReplicationTimeValue `type:"structure"`
 
 	// Specifies whether the replication metrics are enabled.
 	//
@@ -24463,9 +25567,6 @@ func (s Metrics) GoString() string {
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *Metrics) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "Metrics"}
-	if s.EventThreshold == nil {
-		invalidParams.Add(request.NewErrParamRequired("EventThreshold"))
-	}
 	if s.Status == nil {
 		invalidParams.Add(request.NewErrParamRequired("Status"))
 	}
@@ -25736,8 +26837,8 @@ type PublicAccessBlockConfiguration struct {
 
 	// Specifies whether Amazon S3 should restrict public bucket policies for this
 	// bucket. Setting this element to TRUE restricts access to this bucket to only
-	// AWS services and authorized users within this account if the bucket has a
-	// public policy.
+	// AWS service principals and authorized users within this account if the bucket
+	// has a public policy.
 	//
 	// Enabling this setting doesn't affect previously stored bucket policies, except
 	// that public and cross-account access within any public bucket policy, including
@@ -25869,12 +26970,14 @@ func (s *PutBucketAccelerateConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketAccelerateConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketAccelerateConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketAccelerateConfigurationOutput struct {
@@ -26036,12 +27139,14 @@ func (s *PutBucketAclInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketAclInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketAclInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketAclOutput struct {
@@ -26167,12 +27272,14 @@ func (s *PutBucketAnalyticsConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketAnalyticsConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketAnalyticsConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketAnalyticsConfigurationOutput struct {
@@ -26287,12 +27394,14 @@ func (s *PutBucketCorsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketCorsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketCorsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketCorsOutput struct {
@@ -26408,12 +27517,14 @@ func (s *PutBucketEncryptionInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketEncryptionInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketEncryptionInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketEncryptionOutput struct {
@@ -26427,6 +27538,129 @@ func (s PutBucketEncryptionOutput) String() string {
 
 // GoString returns the string representation
 func (s PutBucketEncryptionOutput) GoString() string {
+	return s.String()
+}
+
+type PutBucketIntelligentTieringConfigurationInput struct {
+	_ struct{} `locationName:"PutBucketIntelligentTieringConfigurationRequest" type:"structure" payload:"IntelligentTieringConfiguration"`
+
+	// The name of the Amazon S3 bucket whose configuration you want to modify or
+	// retrieve.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// The ID used to identify the S3 Intelligent-Tiering configuration.
+	//
+	// Id is a required field
+	Id *string `location:"querystring" locationName:"id" type:"string" required:"true"`
+
+	// Container for S3 Intelligent-Tiering configuration.
+	//
+	// IntelligentTieringConfiguration is a required field
+	IntelligentTieringConfiguration *IntelligentTieringConfiguration `locationName:"IntelligentTieringConfiguration" type:"structure" required:"true" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
+}
+
+// String returns the string representation
+func (s PutBucketIntelligentTieringConfigurationInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s PutBucketIntelligentTieringConfigurationInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *PutBucketIntelligentTieringConfigurationInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "PutBucketIntelligentTieringConfigurationInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+	if s.Id == nil {
+		invalidParams.Add(request.NewErrParamRequired("Id"))
+	}
+	if s.IntelligentTieringConfiguration == nil {
+		invalidParams.Add(request.NewErrParamRequired("IntelligentTieringConfiguration"))
+	}
+	if s.IntelligentTieringConfiguration != nil {
+		if err := s.IntelligentTieringConfiguration.Validate(); err != nil {
+			invalidParams.AddNested("IntelligentTieringConfiguration", err.(request.ErrInvalidParams))
+		}
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *PutBucketIntelligentTieringConfigurationInput) SetBucket(v string) *PutBucketIntelligentTieringConfigurationInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *PutBucketIntelligentTieringConfigurationInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetId sets the Id field's value.
+func (s *PutBucketIntelligentTieringConfigurationInput) SetId(v string) *PutBucketIntelligentTieringConfigurationInput {
+	s.Id = &v
+	return s
+}
+
+// SetIntelligentTieringConfiguration sets the IntelligentTieringConfiguration field's value.
+func (s *PutBucketIntelligentTieringConfigurationInput) SetIntelligentTieringConfiguration(v *IntelligentTieringConfiguration) *PutBucketIntelligentTieringConfigurationInput {
+	s.IntelligentTieringConfiguration = v
+	return s
+}
+
+func (s *PutBucketIntelligentTieringConfigurationInput) getEndpointARN() (arn.Resource, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	return parseEndpointARN(*s.Bucket)
+}
+
+func (s *PutBucketIntelligentTieringConfigurationInput) hasEndpointARN() bool {
+	if s.Bucket == nil {
+		return false
+	}
+	return arn.IsARN(*s.Bucket)
+}
+
+// updateArnableField updates the value of the input field that
+// takes an ARN as an input. This method is useful to backfill
+// the parsed resource name from ARN into the input member.
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketIntelligentTieringConfigurationInput) updateArnableField(v string) (interface{}, error) {
+	if s.Bucket == nil {
+		return nil, fmt.Errorf("member Bucket is nil")
+	}
+	s.Bucket = aws.String(v)
+	return &s, nil
+}
+
+type PutBucketIntelligentTieringConfigurationOutput struct {
+	_ struct{} `type:"structure"`
+}
+
+// String returns the string representation
+func (s PutBucketIntelligentTieringConfigurationOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s PutBucketIntelligentTieringConfigurationOutput) GoString() string {
 	return s.String()
 }
 
@@ -26539,12 +27773,14 @@ func (s *PutBucketInventoryConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketInventoryConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketInventoryConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketInventoryConfigurationOutput struct {
@@ -26651,12 +27887,14 @@ func (s *PutBucketLifecycleConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketLifecycleConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketLifecycleConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketLifecycleConfigurationOutput struct {
@@ -26761,12 +27999,14 @@ func (s *PutBucketLifecycleInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketLifecycleInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketLifecycleInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketLifecycleOutput struct {
@@ -26878,12 +28118,14 @@ func (s *PutBucketLoggingInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketLoggingInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketLoggingInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketLoggingOutput struct {
@@ -27009,12 +28251,14 @@ func (s *PutBucketMetricsConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketMetricsConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketMetricsConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketMetricsConfigurationOutput struct {
@@ -27127,12 +28371,14 @@ func (s *PutBucketNotificationConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketNotificationConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketNotificationConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketNotificationConfigurationOutput struct {
@@ -27239,12 +28485,14 @@ func (s *PutBucketNotificationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketNotificationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketNotificationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketNotificationOutput struct {
@@ -27269,6 +28517,9 @@ type PutBucketOwnershipControlsInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// The account id of the expected bucket owner. If the bucket is owned by a
+	// different account, the request will fail with an HTTP 403 (Access Denied)
+	// error.
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
 	// The OwnershipControls (BucketOwnerPreferred or ObjectWriter) that you want
@@ -27354,12 +28605,14 @@ func (s *PutBucketOwnershipControlsInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketOwnershipControlsInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketOwnershipControlsInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketOwnershipControlsOutput struct {
@@ -27476,12 +28729,14 @@ func (s *PutBucketPolicyInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketPolicyInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketPolicyInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketPolicyOutput struct {
@@ -27517,6 +28772,7 @@ type PutBucketReplicationInput struct {
 	// ReplicationConfiguration is a required field
 	ReplicationConfiguration *ReplicationConfiguration `locationName:"ReplicationConfiguration" type:"structure" required:"true" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
 
+	// A token to allow Object Lock to be enabled for an existing bucket.
 	Token *string `location:"header" locationName:"x-amz-bucket-object-lock-token" type:"string"`
 }
 
@@ -27602,12 +28858,14 @@ func (s *PutBucketReplicationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketReplicationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketReplicationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketReplicationOutput struct {
@@ -27719,12 +28977,14 @@ func (s *PutBucketRequestPaymentInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketRequestPaymentInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketRequestPaymentInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketRequestPaymentOutput struct {
@@ -27836,12 +29096,14 @@ func (s *PutBucketTaggingInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketTaggingInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketTaggingInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketTaggingOutput struct {
@@ -27958,12 +29220,14 @@ func (s *PutBucketVersioningInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketVersioningInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketVersioningInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketVersioningOutput struct {
@@ -28075,12 +29339,14 @@ func (s *PutBucketWebsiteInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutBucketWebsiteInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutBucketWebsiteInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutBucketWebsiteOutput struct {
@@ -28313,12 +29579,14 @@ func (s *PutObjectAclInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutObjectAclInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutObjectAclInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutObjectAclOutput struct {
@@ -28785,12 +30053,14 @@ func (s *PutObjectInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutObjectInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutObjectInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutObjectLegalHoldInput struct {
@@ -28926,12 +30196,14 @@ func (s *PutObjectLegalHoldInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutObjectLegalHoldInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutObjectLegalHoldInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutObjectLegalHoldOutput struct {
@@ -29065,12 +30337,14 @@ func (s *PutObjectLockConfigurationInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutObjectLockConfigurationInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutObjectLockConfigurationInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutObjectLockConfigurationOutput struct {
@@ -29352,12 +30626,14 @@ func (s *PutObjectRetentionInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutObjectRetentionInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutObjectRetentionInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutObjectRetentionOutput struct {
@@ -29520,12 +30796,14 @@ func (s *PutObjectTaggingInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutObjectTaggingInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutObjectTaggingInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutObjectTaggingOutput struct {
@@ -29646,12 +30924,14 @@ func (s *PutPublicAccessBlockInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *PutPublicAccessBlockInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s PutPublicAccessBlockInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type PutPublicAccessBlockOutput struct {
@@ -30043,16 +31323,18 @@ func (s *ReplicationConfiguration) SetRules(v []*ReplicationRule) *ReplicationCo
 type ReplicationRule struct {
 	_ struct{} `type:"structure"`
 
-	// Specifies whether Amazon S3 replicates the delete markers. If you specify
-	// a Filter, you must specify this element. However, in the latest version of
-	// replication configuration (when Filter is specified), Amazon S3 doesn't replicate
-	// delete markers. Therefore, the DeleteMarkerReplication element can contain
-	// only <Status>Disabled</Status>. For an example configuration, see Basic Rule
-	// Configuration (https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-add-config.html#replication-config-min-rule-config).
+	// Specifies whether Amazon S3 replicates delete markers. If you specify a Filter
+	// in your replication configuration, you must also include a DeleteMarkerReplication
+	// element. If your Filter includes a Tag element, the DeleteMarkerReplication
+	// Status must be set to Disabled, because Amazon S3 does not support replicating
+	// delete markers for tag-based rules. For an example configuration, see Basic
+	// Rule Configuration (https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-add-config.html#replication-config-min-rule-config).
 	//
-	// If you don't specify the Filter element, Amazon S3 assumes that the replication
-	// configuration is the earlier version, V1. In the earlier version, Amazon
-	// S3 handled replication of delete markers differently. For more information,
+	// For more information about delete marker replication, see Basic Rule Configuration
+	// (https://docs.aws.amazon.com/AmazonS3/latest/dev/delete-marker-replication.html).
+	//
+	// If you are using an earlier version of the replication configuration, Amazon
+	// S3 handles replication of delete markers differently. For more information,
 	// see Backward Compatibility (https://docs.aws.amazon.com/AmazonS3/latest/dev/replication-add-config.html#replication-backward-compat-considerations).
 	DeleteMarkerReplication *DeleteMarkerReplication `type:"structure"`
 
@@ -30498,7 +31780,7 @@ func (s *RequestProgress) SetEnabled(v bool) *RequestProgress {
 type RestoreObjectInput struct {
 	_ struct{} `locationName:"RestoreObjectRequest" type:"structure" payload:"RestoreRequest"`
 
-	// The bucket name or containing the object to restore.
+	// The bucket name containing the object to restore.
 	//
 	// When using this API with an access point, you must direct requests to the
 	// access point hostname. The access point hostname takes the form AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com.
@@ -30639,12 +31921,14 @@ func (s *RestoreObjectInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *RestoreObjectInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s RestoreObjectInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type RestoreObjectOutput struct {
@@ -30687,6 +31971,9 @@ type RestoreRequest struct {
 
 	// Lifetime of the active copy in days. Do not use with restores that specify
 	// OutputLocation.
+	//
+	// The Days element is required for regular restores, and must not be provided
+	// for select requests.
 	Days *int64 `type:"integer"`
 
 	// The optional description for the job.
@@ -30702,7 +31989,7 @@ type RestoreRequest struct {
 	// Describes the parameters for Select job types.
 	SelectParameters *SelectParameters `type:"structure"`
 
-	// S3 Glacier retrieval tier at which the restore will be processed.
+	// Retrieval tier at which the restore will be processed.
 	Tier *string `type:"string" enum:"Tier"`
 
 	// Type of restore request.
@@ -31463,12 +32750,14 @@ func (s *SelectObjectContentInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *SelectObjectContentInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s SelectObjectContentInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type SelectObjectContentOutput struct {
@@ -32176,6 +33465,65 @@ func (s *TargetGrant) SetPermission(v string) *TargetGrant {
 	return s
 }
 
+// The S3 Intelligent-Tiering storage class is designed to optimize storage
+// costs by automatically moving data to the most cost-effective storage access
+// tier, without additional operational overhead.
+type Tiering struct {
+	_ struct{} `type:"structure"`
+
+	// S3 Intelligent-Tiering access tier. See Storage class for automatically optimizing
+	// frequently and infrequently accessed objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html#sc-dynamic-data-access)
+	// for a list of access tiers in the S3 Intelligent-Tiering storage class.
+	//
+	// AccessTier is a required field
+	AccessTier *string `type:"string" required:"true" enum:"IntelligentTieringAccessTier"`
+
+	// The number of days that you want your archived data to be accessible. The
+	// minimum number of days specified in the restore request must be at least
+	// 90 days. If a smaller value is specifed it will be ignored.
+	//
+	// Days is a required field
+	Days *int64 `type:"integer" required:"true"`
+}
+
+// String returns the string representation
+func (s Tiering) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s Tiering) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *Tiering) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "Tiering"}
+	if s.AccessTier == nil {
+		invalidParams.Add(request.NewErrParamRequired("AccessTier"))
+	}
+	if s.Days == nil {
+		invalidParams.Add(request.NewErrParamRequired("Days"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetAccessTier sets the AccessTier field's value.
+func (s *Tiering) SetAccessTier(v string) *Tiering {
+	s.AccessTier = &v
+	return s
+}
+
+// SetDays sets the Days field's value.
+func (s *Tiering) SetDays(v int64) *Tiering {
+	s.Days = &v
+	return s
+}
+
 // A container for specifying the configuration for publication of messages
 // to an Amazon Simple Notification Service (Amazon SNS) topic when Amazon S3
 // detects specified events.
@@ -32694,12 +34042,14 @@ func (s *UploadPartCopyInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *UploadPartCopyInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s UploadPartCopyInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type UploadPartCopyOutput struct {
@@ -33010,12 +34360,14 @@ func (s *UploadPartInput) hasEndpointARN() bool {
 // updateArnableField updates the value of the input field that
 // takes an ARN as an input. This method is useful to backfill
 // the parsed resource name from ARN into the input member.
-func (s *UploadPartInput) updateArnableField(v string) error {
+// It returns a pointer to a modified copy of input and an error.
+// Note that original input is not modified.
+func (s UploadPartInput) updateArnableField(v string) (interface{}, error) {
 	if s.Bucket == nil {
-		return fmt.Errorf("member Bucket is nil")
+		return nil, fmt.Errorf("member Bucket is nil")
 	}
 	s.Bucket = aws.String(v)
-	return nil
+	return &s, nil
 }
 
 type UploadPartOutput struct {
@@ -33227,6 +34579,22 @@ const (
 func AnalyticsS3ExportFileFormat_Values() []string {
 	return []string{
 		AnalyticsS3ExportFileFormatCsv,
+	}
+}
+
+const (
+	// ArchiveStatusArchiveAccess is a ArchiveStatus enum value
+	ArchiveStatusArchiveAccess = "ARCHIVE_ACCESS"
+
+	// ArchiveStatusDeepArchiveAccess is a ArchiveStatus enum value
+	ArchiveStatusDeepArchiveAccess = "DEEP_ARCHIVE_ACCESS"
+)
+
+// ArchiveStatus_Values returns all elements of the ArchiveStatus enum
+func ArchiveStatus_Values() []string {
+	return []string{
+		ArchiveStatusArchiveAccess,
+		ArchiveStatusDeepArchiveAccess,
 	}
 }
 
@@ -33622,6 +34990,38 @@ func FilterRuleName_Values() []string {
 	return []string{
 		FilterRuleNamePrefix,
 		FilterRuleNameSuffix,
+	}
+}
+
+const (
+	// IntelligentTieringAccessTierArchiveAccess is a IntelligentTieringAccessTier enum value
+	IntelligentTieringAccessTierArchiveAccess = "ARCHIVE_ACCESS"
+
+	// IntelligentTieringAccessTierDeepArchiveAccess is a IntelligentTieringAccessTier enum value
+	IntelligentTieringAccessTierDeepArchiveAccess = "DEEP_ARCHIVE_ACCESS"
+)
+
+// IntelligentTieringAccessTier_Values returns all elements of the IntelligentTieringAccessTier enum
+func IntelligentTieringAccessTier_Values() []string {
+	return []string{
+		IntelligentTieringAccessTierArchiveAccess,
+		IntelligentTieringAccessTierDeepArchiveAccess,
+	}
+}
+
+const (
+	// IntelligentTieringStatusEnabled is a IntelligentTieringStatus enum value
+	IntelligentTieringStatusEnabled = "Enabled"
+
+	// IntelligentTieringStatusDisabled is a IntelligentTieringStatus enum value
+	IntelligentTieringStatusDisabled = "Disabled"
+)
+
+// IntelligentTieringStatus_Values returns all elements of the IntelligentTieringStatus enum
+func IntelligentTieringStatus_Values() []string {
+	return []string{
+		IntelligentTieringStatusEnabled,
+		IntelligentTieringStatusDisabled,
 	}
 }
 

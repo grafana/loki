@@ -3,8 +3,11 @@ package ingester
 import (
 	"context"
 	"net/http"
+	"os"
 	"sync"
+	"syscall"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -12,9 +15,11 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
+	"github.com/cortexproject/cortex/pkg/util"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -77,6 +82,10 @@ type instance struct {
 
 	wal WAL
 
+	// Denotes whether the ingester should flush on shutdown.
+	// Currently only used by the WAL to signal when the disk is full.
+	flushOnShutdownSwitch *OnceSwitch
+
 	metrics *ingesterMetrics
 }
 
@@ -86,6 +95,7 @@ func newInstance(
 	limiter *Limiter,
 	wal WAL,
 	metrics *ingesterMetrics,
+	flushOnShutdownSwitch *OnceSwitch,
 ) *instance {
 	i := &instance{
 		cfg:         cfg,
@@ -101,8 +111,9 @@ func newInstance(
 		tailers: map[uint32]*tailer{},
 		limiter: limiter,
 
-		wal:     wal,
-		metrics: metrics,
+		wal:                   wal,
+		metrics:               metrics,
+		flushOnShutdownSwitch: flushOnShutdownSwitch,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -161,8 +172,19 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 	if !record.IsEmpty() {
 		if err := i.wal.Log(record); err != nil {
-			return err
+			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
+				i.metrics.walDiskFullFailures.Inc()
+				i.flushOnShutdownSwitch.TriggerAnd(func() {
+					level.Error(util.Logger).Log(
+						"msg",
+						"Error writing to WAL, disk full, no further messages will be logged for this error",
+					)
+				})
+			} else {
+				return err
+			}
 		}
+
 	}
 
 	return appendErr
@@ -430,18 +452,17 @@ outer:
 	return nil
 }
 
-func (i *instance) addNewTailer(t *tailer) {
-	i.streamsMtx.RLock()
-	for _, stream := range i.streams {
-		if stream.matchesTailer(t) {
-			stream.addTailer(t)
-		}
+func (i *instance) addNewTailer(t *tailer) error {
+	if err := i.forMatchingStreams(t.matchers, func(s *stream) error {
+		s.addTailer(t)
+		return nil
+	}); err != nil {
+		return err
 	}
-	i.streamsMtx.RUnlock()
-
 	i.tailerMtx.Lock()
 	defer i.tailerMtx.Unlock()
 	i.tailers[t.getID()] = t
+	return nil
 }
 
 func (i *instance) addTailersToNewStream(stream *stream) {
@@ -455,7 +476,7 @@ func (i *instance) addTailersToNewStream(stream *stream) {
 			continue
 		}
 
-		if stream.matchesTailer(t) {
+		if isMatching(stream.labels, t.matchers) {
 			stream.addTailer(t)
 		}
 	}
@@ -578,4 +599,28 @@ func shouldConsiderStream(stream *stream, req *logproto.SeriesRequest) bool {
 		return true
 	}
 	return false
+}
+
+// OnceSwitch is an optimized switch that can only ever be switched "on" in a concurrent environment.
+type OnceSwitch struct {
+	triggered atomic.Bool
+}
+
+func (o *OnceSwitch) Get() bool {
+	return o.triggered.Load()
+}
+
+func (o *OnceSwitch) Trigger() {
+	o.TriggerAnd(nil)
+}
+
+// TriggerAnd will ensure the switch is on and run the provided function if
+// the switch was not already toggled on.
+func (o *OnceSwitch) TriggerAnd(fn func()) {
+
+	triggeredPrior := o.triggered.Swap(true)
+	if !triggeredPrior && fn != nil {
+		fn()
+	}
+
 }

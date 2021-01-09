@@ -63,7 +63,7 @@ func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryD
 // forAllIngesters runs f, in parallel, for all ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	replicationSet, err := q.ring.GetAll(ring.Read)
+	replicationSet, err := q.ring.GetReplicationSetForOperation(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	}
 
 	// Get the current replication set from the ring
-	replicationSet, err := q.ring.GetAll(ring.Read)
+	replicationSet, err := q.ring.GetReplicationSetForOperation(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +226,7 @@ func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesReques
 }
 
 func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
-	replicationSet, err := q.ring.GetAll(ring.Read)
+	replicationSet, err := q.ring.GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
 	}

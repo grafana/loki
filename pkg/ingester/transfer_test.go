@@ -165,7 +165,7 @@ func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T)
 		}, nil
 	}
 
-	_, ing := newTestStore(f.t, cfg)
+	_, ing := newTestStore(f.t, cfg, nil)
 	f.ingesters[fmt.Sprintf("%s:0", cfg.LifecyclerConfig.ID)] = ing
 
 	// NB there's some kind of race condition with the in-memory KV client when

@@ -10,11 +10,11 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -25,8 +25,8 @@ import (
 type Distributor interface {
 	Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
 	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
-	LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error)
-	LabelNames(context.Context) ([]string, error)
+	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName) ([]string, error)
+	LabelNames(context.Context, model.Time, model.Time) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
@@ -129,7 +129,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 }
 
 func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	userID, err := user.ExtractOrgID(q.ctx)
+	userID, err := tenant.TenantID(q.ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
@@ -183,12 +183,13 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	lv, err := q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
-	return lv, nil, err
+	lvs, err := q.distributor.LabelValuesForLabelName(q.ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name))
+
+	return lvs, nil, err
 }
 
 func (q *distributorQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	ln, err := q.distributor.LabelNames(q.ctx)
+	ln, err := q.distributor.LabelNames(q.ctx, model.Time(q.mint), model.Time(q.maxt))
 	return ln, nil, err
 }
 

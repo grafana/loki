@@ -118,7 +118,7 @@ func TryToGetSize(r io.Reader) (int64, error) {
 	case *strings.Reader:
 		return f.Size(), nil
 	}
-	return 0, errors.New("unsupported type of io.Reader")
+	return 0, errors.Errorf("unsupported type of io.Reader: %T", r)
 }
 
 // UploadDir uploads all files in srcdir to the bucket with into a top-level directory

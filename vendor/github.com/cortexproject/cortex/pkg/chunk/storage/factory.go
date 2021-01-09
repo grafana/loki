@@ -117,6 +117,9 @@ func (cfg *Config) Validate() error {
 	if err := cfg.AzureStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
 	}
+	if err := cfg.AWSStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid AWS Storage config")
+	}
 	return nil
 }
 

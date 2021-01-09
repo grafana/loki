@@ -1,8 +1,14 @@
 package builder
 
-import "reflect"
+import (
+	"reflect"
+	"sync"
+)
 
-var registry = make(map[reflect.Type]reflect.Type)
+var (
+	registry = make(map[reflect.Type]reflect.Type)
+	registryMux sync.RWMutex
+)
 
 // RegisterType maps the given builderType to a structType.
 // This mapping affects the type of slices returned by Get and is required for
@@ -13,6 +19,8 @@ var registry = make(map[reflect.Type]reflect.Type)
 // RegisterType will panic if builderType's underlying type is not Builder or
 // if structType's Kind is not Struct.
 func RegisterType(builderType reflect.Type, structType reflect.Type) *reflect.Value {
+	registryMux.Lock()
+	defer registryMux.Unlock()
 	structType.NumField() // Panic if structType is not a struct
 	registry[builderType] = structType
 	emptyValue := emptyBuilderValue.Convert(builderType)
@@ -23,7 +31,7 @@ func RegisterType(builderType reflect.Type, structType reflect.Type) *reflect.Va
 //
 // Returns an empty instance of the registered builder type which can be used
 // as the initial value for builder expressions. See example.
-func Register(builderProto interface{}, structProto interface{}) interface{} {
+func Register(builderProto, structProto interface{}) interface{} {
 	empty := RegisterType(
 		reflect.TypeOf(builderProto),
 		reflect.TypeOf(structProto),
@@ -32,6 +40,8 @@ func Register(builderProto interface{}, structProto interface{}) interface{} {
 }
 
 func getBuilderStructType(builderType reflect.Type) *reflect.Type {
+	registryMux.RLock()
+	defer registryMux.RUnlock()
 	structType, ok := registry[builderType]
 	if !ok {
 		return nil

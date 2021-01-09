@@ -85,7 +85,7 @@ type deleteRequestWithLogger struct {
 	logger log.Logger // logger is initialized with userID and requestID to add context to every log generated using this
 }
 
-// Config holds config for Purger
+// Config holds config for chunks Purger
 type Config struct {
 	Enable                    bool          `yaml:"enable"`
 	NumWorkers                int           `yaml:"num_workers"`
@@ -108,7 +108,7 @@ type workerJob struct {
 	logger          log.Logger
 }
 
-// Purger does the purging of data which is requested to be deleted
+// Purger does the purging of data which is requested to be deleted. Purger only works for chunks.
 type Purger struct {
 	services.Service
 

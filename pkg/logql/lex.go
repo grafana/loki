@@ -103,7 +103,15 @@ type lexer struct {
 
 func (l *lexer) Lex(lval *exprSymType) int {
 	r := l.Scan()
+
 	switch r {
+	case '#':
+		// Scan until a newline or EOF is encountered
+		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {
+		}
+
+		return l.Lex(lval)
+
 	case scanner.EOF:
 		return 0
 

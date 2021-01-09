@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package stats;
+
+option go_package = "stats";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message Stats {
+  // The sum of all wall time spent in the querier to execute the query.
+  google.protobuf.Duration wall_time = 1 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+}

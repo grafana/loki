@@ -1,13 +1,11 @@
-// Package lz4 implements reading and writing lz4 compressed data (a frame),
-// as specified in http://fastcompression.blogspot.fr/2013/04/lz4-streaming-format-final.html.
+// Package lz4 implements reading and writing lz4 compressed data.
 //
-// Although the block level compression and decompression functions are exposed and are fully compatible
-// with the lz4 block format definition, they are low level and should not be used directly.
-// For a complete description of an lz4 compressed block, see:
-// http://fastcompression.blogspot.fr/2011/05/lz4-explained.html
+// The package supports both the LZ4 stream format,
+// as specified in http://fastcompression.blogspot.fr/2013/04/lz4-streaming-format-final.html,
+// and the LZ4 block format, defined at
+// http://fastcompression.blogspot.fr/2011/05/lz4-explained.html.
 //
 // See https://github.com/lz4/lz4 for the reference C implementation.
-//
 package lz4
 
 import (
@@ -40,6 +38,29 @@ func UncompressBlock(src, dst []byte) (int, error) {
 	return lz4block.UncompressBlock(src, dst)
 }
 
+// A Compressor compresses data into the LZ4 block format.
+// It uses a fast compression algorithm.
+//
+// A Compressor is not safe for concurrent use by multiple goroutines.
+//
+// Use a Writer to compress into the LZ4 stream format.
+type Compressor struct{ c lz4block.Compressor }
+
+// CompressBlock compresses the source buffer src into the destination dst.
+//
+// If compression is successful, the first return value is the size of the
+// compressed data, which is always >0.
+//
+// If dst has length at least CompressBlockBound(len(src)), compression always
+// succeeds. Otherwise, the first return value is zero. The error return is
+// non-nil if the compressed data does not fit in dst, but it might fit in a
+// larger buffer that is still smaller than CompressBlockBound(len(src)). The
+// return value (0, nil) means the data is likely incompressible and a buffer
+// of length CompressBlockBound(len(src)) should be passed in.
+func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
+	return c.c.CompressBlock(src, dst)
+}
+
 // CompressBlock compresses the source buffer into the destination one.
 // This is the fast version of LZ4 compression and also the default one.
 //
@@ -53,23 +74,50 @@ func UncompressBlock(src, dst []byte) (int, error) {
 // the compressed size is 0 and no error, then the data is incompressible.
 //
 // An error is returned if the destination buffer is too small.
-func CompressBlock(src, dst []byte, hashTable []int) (int, error) {
-	return lz4block.CompressBlock(src, dst, hashTable)
+
+// CompressBlock is equivalent to Compressor.CompressBlock.
+// The final argument is ignored and should be set to nil.
+//
+// This function is deprecated. Use a Compressor instead.
+func CompressBlock(src, dst []byte, _ []int) (int, error) {
+	return lz4block.CompressBlock(src, dst)
 }
 
-// CompressBlockHC compresses the source buffer src into the destination dst
-// with max search depth (use 0 or negative value for no max).
+// A CompressorHC compresses data into the LZ4 block format.
+// Its compression ratio is potentially better than that of a Compressor,
+// but it is also slower and requires more memory.
 //
-// CompressBlockHC compression ratio is better than CompressBlock but it is also slower.
+// A Compressor is not safe for concurrent use by multiple goroutines.
 //
-// The size of the compressed data is returned.
+// Use a Writer to compress into the LZ4 stream format.
+type CompressorHC struct {
+	// Level is the maximum search depth for compression.
+	// Values <= 0 mean no maximum.
+	Level CompressionLevel
+	c     lz4block.CompressorHC
+}
+
+// CompressBlock compresses the source buffer src into the destination dst.
 //
-// If the destination buffer size is lower than CompressBlockBound and
-// the compressed size is 0 and no error, then the data is incompressible.
+// If compression is successful, the first return value is the size of the
+// compressed data, which is always >0.
 //
-// An error is returned if the destination buffer is too small.
-func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable, chainTable []int) (int, error) {
-	return lz4block.CompressBlockHC(src, dst, lz4block.CompressionLevel(depth), hashTable, chainTable)
+// If dst has length at least CompressBlockBound(len(src)), compression always
+// succeeds. Otherwise, the first return value is zero. The error return is
+// non-nil if the compressed data does not fit in dst, but it might fit in a
+// larger buffer that is still smaller than CompressBlockBound(len(src)). The
+// return value (0, nil) means the data is likely incompressible and a buffer
+// of length CompressBlockBound(len(src)) should be passed in.
+func (c *CompressorHC) CompressBlock(src, dst []byte) (int, error) {
+	return c.c.CompressBlock(src, dst, lz4block.CompressionLevel(c.Level))
+}
+
+// CompressBlockHC is equivalent to CompressorHC.CompressBlock.
+// The final two arguments are ignored and should be set to nil.
+//
+// This function is deprecated. Use a CompressorHC instead.
+func CompressBlockHC(src, dst []byte, depth CompressionLevel, _, _ []int) (int, error) {
+	return lz4block.CompressBlockHC(src, dst, lz4block.CompressionLevel(depth))
 }
 
 const (

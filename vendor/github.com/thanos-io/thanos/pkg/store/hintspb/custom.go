@@ -10,3 +10,15 @@ func (m *SeriesResponseHints) AddQueriedBlock(id ulid.ULID) {
 		Id: id.String(),
 	})
 }
+
+func (m *LabelNamesResponseHints) AddQueriedBlock(id ulid.ULID) {
+	m.QueriedBlocks = append(m.QueriedBlocks, Block{
+		Id: id.String(),
+	})
+}
+
+func (m *LabelValuesResponseHints) AddQueriedBlock(id ulid.ULID) {
+	m.QueriedBlocks = append(m.QueriedBlocks, Block{
+		Id: id.String(),
+	})
+}

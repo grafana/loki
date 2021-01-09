@@ -10,12 +10,12 @@ After this tutorial you will able to query all your logs in one place using Graf
 <!-- TOC -->
 
 - [Sending logs from EKS with Promtail](#sending-logs-from-eks-with-promtail)
-  - [Requirements](#requirements)
-  - [Setting up the cluster](#setting-up-the-cluster)
-  - [Adding Promtail DaemonSet](#adding-promtail-daemonset)
-  - [Fetching kubelet logs with systemd](#fetching-kubelet-logs-with-systemd)
-  - [Adding Kubernetes events](#adding-kubernetes-events)
-  - [Conclusion](#conclusion)
+    - [Requirements](#requirements)
+    - [Setting up the cluster](#setting-up-the-cluster)
+    - [Adding Promtail DaemonSet](#adding-promtail-daemonset)
+    - [Fetching kubelet logs with systemd](#fetching-kubelet-logs-with-systemd)
+    - [Adding Kubernetes events](#adding-kubernetes-events)
+    - [Conclusion](#conclusion)
 
 <!-- /TOC -->
 
@@ -248,7 +248,7 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [grafana logs namespace]: namespace-grafana.png
 [relabel_configs]:https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
 [syslog]: ../../../installation/helm#run-promtail-with-syslog-support
-[Filters]: https://grafana.com/docs/loki/latest/logql/#filter-expression
+[Filters]: https://grafana.com/docs/loki/latest/logql/#line-filter-expression
 [kubelet]: https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/#:~:text=The%20kubelet%20works%20in%20terms,PodSpecs%20are%20running%20and%20healthy.
 [LogQL]: https://grafana.com/docs/loki/latest/logql/
 [blog events]: https://grafana.com/blog/2019/08/21/how-grafana-labs-effectively-pairs-loki-and-kubernetes-events/

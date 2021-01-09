@@ -4,11 +4,29 @@ title: Write Ahead Log
 
 # Write Ahead Log (WAL)
 
+Ingesters temporarily store data in memory. In the event of a crash, there could be data loss. The WAL helps fill this gap in reliability.
 
-Ingesters store all their data in memory. If there is a crash, there can be data loss. The WAL helps fill this gap in reliability.
-This section will use Kubernetes as a reference.
+The WAL in Loki records incoming data and stores it on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash. Upon restart, Loki will "replay" all of the data in the log before registering itself as ready for subsequent writes. This allows Loki to maintain the performance & cost benefits of buffering data in memory _and_ durability benefits (it won't lose data once a write has been acknowledged).
 
-To use the WAL, there are some changes that needs to be made.
+This section will use Kubernetes as a reference deployment paradigm in the examples.
+
+## Disclaimer & WAL nuances
+
+The Write Ahead Log in Loki takes a few particular tradeoffs compared to other WALs you may be familiar with. The WAL aims to add additional durability guarantees, but _not at the expense of availability_. Particularly, there are two scenarios where the WAL sacrifices these guarantees.
+
+1) Corruption/Deletion of the WAL prior to replaying it
+
+In the event the WAL is corrupted/partially deleted, Loki will not be able to recover all of it's data. In this case, Loki will attempt to recover any data it can, but will not prevent Loki from starting.
+
+Note: the Prometheus metric `loki_ingester_wal_corruptions_total` can be used to track and alert when this happens.
+
+1) No space left on disk
+
+In the event the underlying WAL disk is full, Loki will not fail incoming writes, but neither will it log them to the WAL. In this case, the persistence guarantees across process restarts will not hold.
+
+Note: the Prometheus metric `loki_ingester_wal_disk_full_failures_total` can be used to track and alert when this happens.
+
+### Metrics
 
 ## Changes to deployment
 
@@ -60,7 +78,7 @@ When scaling down, we must ensure existing data on the leaving ingesters are flu
 
 Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are `ingester-3` and then `ingester-2`.
 
-Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/shutdown`](../../api#post-ingestershutdown) endpoint. This will flush the chunks and shut down the ingesters (while also removing itself from the ring).
+Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/flush_shutdown`](../../api#post-ingesterflush_shutdown) endpoint. This will flush the chunks and shut down the ingesters (while also removing itself from the ring).
 
 After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters to 2.
 

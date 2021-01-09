@@ -214,27 +214,30 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesSize := 0
 	validatedSamplesCount := 0
 
+	validationContext := d.validator.getValidationContextFor(userID)
+
 	for _, stream := range req.Streams {
-		stream.Labels, err = d.parseStreamLabels(userID, stream.Labels, &stream)
+		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
 			continue
 		}
-		entries := make([]logproto.Entry, 0, len(stream.Entries))
+		n := 0
 		for _, entry := range stream.Entries {
-			if err := d.validator.ValidateEntry(userID, stream.Labels, entry); err != nil {
+			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
 				validationErr = err
 				continue
 			}
-			entries = append(entries, entry)
+			stream.Entries[n] = entry
+			n++
 			validatedSamplesSize += len(entry.Line)
 			validatedSamplesCount++
 		}
+		stream.Entries = stream.Entries[:n]
 
-		if len(entries) == 0 {
+		if len(stream.Entries) == 0 {
 			continue
 		}
-		stream.Entries = entries
 		keys = append(keys, util.TokenFor(userID, stream.Labels))
 		streams = append(streams, streamTracker{
 			stream: stream,
@@ -358,7 +361,7 @@ func (*Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckReques
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
-func (d *Distributor) parseStreamLabels(userID string, key string, stream *logproto.Stream) (string, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {
 	labelVal, ok := d.labelCache.Get(key)
 	if ok {
 		return labelVal.(string), nil
@@ -368,7 +371,7 @@ func (d *Distributor) parseStreamLabels(userID string, key string, stream *logpr
 		return "", httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
 	}
 	// ensure labels are correctly sorted.
-	if err := d.validator.ValidateLabels(userID, ls, *stream); err != nil {
+	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
 		return "", err
 	}
 	lsVal := ls.String()

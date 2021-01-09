@@ -63,6 +63,8 @@ message QueryStreamResponse {
 
 message LabelValuesRequest {
   string label_name = 1;
+  int64 start_timestamp_ms = 2;
+  int64 end_timestamp_ms = 3;
 }
 
 message LabelValuesResponse {
@@ -70,6 +72,8 @@ message LabelValuesResponse {
 }
 
 message LabelNamesRequest {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
 }
 
 message LabelNamesResponse {
@@ -161,7 +165,7 @@ message MetricMetadata {
   }
 
   MetricType type = 1;
-  string metric_name = 2;
+  string metric_family_name = 2;
   string help = 4;
   string unit = 5;
 }
