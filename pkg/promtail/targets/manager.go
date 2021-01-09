@@ -10,9 +10,9 @@ import (
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/file"
+	"github.com/grafana/loki/pkg/promtail/targets/gcplog"
 	"github.com/grafana/loki/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/pkg/promtail/targets/lokipush"
-	"github.com/grafana/loki/pkg/promtail/targets/pubsub"
 	"github.com/grafana/loki/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/pkg/promtail/targets/syslog"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
@@ -22,7 +22,7 @@ const (
 	FileScrapeConfigs    = "fileScrapeConfigs"
 	JournalScrapeConfigs = "journalScrapeConfigs"
 	SyslogScrapeConfigs  = "syslogScrapeConfigs"
-	PubsubScrapeConfigs  = "pubsubScrapeConfigs"
+	GcplogScrapeConfigs  = "gcplogScrapeConfigs"
 	PushScrapeConfigs    = "pushScrapeConfigs"
 )
 
@@ -75,8 +75,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[JournalScrapeConfigs] = append(targetScrapeConfigs[JournalScrapeConfigs], cfg)
 		case cfg.SyslogConfig != nil:
 			targetScrapeConfigs[SyslogScrapeConfigs] = append(targetScrapeConfigs[SyslogScrapeConfigs], cfg)
-		case cfg.PubsubConfig != nil:
-			targetScrapeConfigs[PubsubScrapeConfigs] = append(targetScrapeConfigs[PubsubScrapeConfigs], cfg)
+		case cfg.GcplogConfig != nil:
+			targetScrapeConfigs[GcplogScrapeConfigs] = append(targetScrapeConfigs[GcplogScrapeConfigs], cfg)
 		case cfg.PushConfig != nil:
 			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
 		default:
@@ -133,8 +133,8 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make syslog target manager")
 			}
 			targetManagers = append(targetManagers, syslogTargetManager)
-		case PubsubScrapeConfigs:
-			pubsubTargetManager, err := pubsub.NewPubsubTargetManager(
+		case GcplogScrapeConfigs:
+			pubsubTargetManager, err := gcplog.NewGcplogTargetManager(
 				logger,
 				client,
 				scrapeConfigs,

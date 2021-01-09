@@ -154,6 +154,28 @@ Keep in mind that labels prefixed with `__` will be dropped, so relabeling is re
     target_label: syslog_identifier
 ```
 
+## Gcplog scraping
+Promtail supports scraping cloud resource logs(say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
+Configs are set in `gcplog` section in `scrape_config`
+
+```yaml
+  - job_name: gcplog
+    gcplog:
+      project_id: "my-gcp-project"
+      subscription: "my-pubsub-subscription"
+      use_incoming_timestamp: false # default rewrite timestamps.
+      labels:
+        job: "gcplog"
+```
+Here `project_id` and `subscription` are the only required fields.
+
+- `project_id` is the GCP project id.
+- `subscription` is the GCP pubsub subscription where promtail can consume log entries from.
+
+Before using `gcplog` target, GCP should be configured with pubsub subscription to receive logs from.
+
+It also support `relabeling` and `pipeline` stages just like other targets.
+
 ## Syslog Receiver
 
 Promtail supports receiving [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)

@@ -10,8 +10,9 @@ clients:
 
 scrape_configs:
   - job_name: pubsub-test
-    pubsub:
+    gcplog:
       project_id: "grafanalabs-dev"
       subscription: "dev-logs-pull"
+      use_incoming_timestamp: false # default rewrite timestamp.
       labels:
         job: pubsub-gcp

@@ -1,4 +1,4 @@
-package pubsub
+package gcplog
 
 import (
 	"testing"
@@ -14,13 +14,36 @@ import (
 
 func TestFormat(t *testing.T) {
 	cases := []struct {
-		name     string
-		msg      *pubsub.Message
-		labels   model.LabelSet
-		expected api.Entry
+		name                 string
+		msg                  *pubsub.Message
+		labels               model.LabelSet
+		useIncomingTimestamp bool
+		expected             api.Entry
 	}{
 		{
-			name: "with all fields",
+			name: "use-original-timestamp",
+			msg: &pubsub.Message{
+				Data: []byte(withAllFields),
+			},
+			labels: model.LabelSet{
+				"jobname": "pubsub-test",
+			},
+			useIncomingTimestamp: true,
+			expected: api.Entry{
+				Labels: model.LabelSet{
+					"jobname":      "pubsub-test",
+					"logName":      "https://project/gcs",
+					"resourceType": "gcs",
+					"instanceId":   "344555",
+				},
+				Entry: logproto.Entry{
+					Timestamp: mustTime(t, "2020-12-22T15:01:23.045123456Z"),
+					Line:      withAllFields,
+				},
+			},
+		},
+		{
+			name: "rewrite-timestamp",
 			msg: &pubsub.Message{
 				Data: []byte(withAllFields),
 			},
@@ -35,7 +58,7 @@ func TestFormat(t *testing.T) {
 					"instanceId":   "344555",
 				},
 				Entry: logproto.Entry{
-					Timestamp: mustTime(t, "2020-12-22T15:01:23.045123456Z"),
+					Timestamp: time.Now(),
 					Line:      withAllFields,
 				},
 			},
@@ -44,13 +67,19 @@ func TestFormat(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := format(c.msg, c.labels)
+			got, err := format(c.msg, c.labels, c.useIncomingTimestamp)
 
 			require.NoError(t, err)
 
 			assert.Equal(t, c.expected.Labels, got.Labels)
 			assert.Equal(t, c.expected.Line, got.Line)
-
+			if c.useIncomingTimestamp {
+				assert.Equal(t, c.expected.Entry.Timestamp, got.Timestamp)
+			} else {
+				if got.Timestamp.Sub(c.expected.Timestamp).Seconds() > 1 {
+					assert.Fail(t, "timestamp shouldn't differ much when rewriting log entry timestamp.")
+				}
+			}
 		})
 	}
 }

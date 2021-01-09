@@ -31,7 +31,7 @@ type Config struct {
 	JobName                string                 `yaml:"job_name,omitempty"`
 	PipelineStages         stages.PipelineStages  `yaml:"pipeline_stages,omitempty"`
 	JournalConfig          *JournalTargetConfig   `yaml:"journal,omitempty"`
-	PubsubConfig           *PubsubTargetConfig    `yaml:"pubsub,omitempty"`
+	GcplogConfig           *GcplogTargetConfig    `yaml:"gcplog,omitempty"`
 	SyslogConfig           *SyslogTargetConfig    `yaml:"syslog,omitempty"`
 	PushConfig             *PushTargetConfig      `yaml:"loki_push_api,omitempty"`
 	RelabelConfigs         []*relabel.Config      `yaml:"relabel_configs,omitempty"`
@@ -165,8 +165,8 @@ type SyslogTargetConfig struct {
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
-// PubsubTargetConfig describes a scrape config to pull logs from any pubsub topic.
-type PubsubTargetConfig struct {
+// GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.
+type GcplogTargetConfig struct {
 	// ProjectID is the Cloud project id
 	ProjectID string `yaml:"project_id"`
 
@@ -175,6 +175,11 @@ type PubsubTargetConfig struct {
 
 	// Labels are the additional labels to be added to log entry while pushing it to Loki server.
 	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp represents whether to keep the timestamp same as actual log entry coming in or replace it with
+	// current timestamp at the time of processing.
+	// Its default value(`false`) denotes, replace it with current timestamp at the time of processing.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
 // PushTargetConfig describes a scrape config that listens for Loki push messages.

@@ -1,12 +1,14 @@
-package pubsub
+package gcplog
 
 import (
-	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
+	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 )
 
@@ -25,10 +27,13 @@ type GCPLogEntry struct {
 	// Its important that `Timestamp` is optional in GCE log entry.
 	ReceiveTimestamp string `json:"receiveTimestamp"`
 
-	// TODO(kavi): Add other meta data fields as well if needed.
+	TextPayload string `json:"textPayload"`
+
+	// NOTE(kavi): There are other fields on GCPLogEntry. but we need only need above fields for now
+	// anyway we will be sending the entire entry to Loki.
 }
 
-func format(m *pubsub.Message, other model.LabelSet) (api.Entry, error) {
+func format(m *pubsub.Message, other model.LabelSet, useIncomingTimestamp bool) (api.Entry, error) {
 	var ge GCPLogEntry
 
 	if err := json.Unmarshal(m.Data, &ge); err != nil {
@@ -40,17 +45,44 @@ func format(m *pubsub.Message, other model.LabelSet) (api.Entry, error) {
 		"resourceType": model.LabelValue(ge.Resource.Type),
 	}
 	for k, v := range ge.Resource.Labels {
+		if !model.LabelName(k).IsValid() || !model.LabelValue(k).IsValid() {
+			continue
+		}
 		labels[model.LabelName(k)] = model.LabelValue(v)
 	}
 
 	// add labels from config as well.
 	labels = labels.Merge(other)
 
+	ts := time.Now()
+	line := string(m.Data)
+
+	if useIncomingTimestamp {
+		tt := ge.Timestamp
+		if tt == "" {
+			tt = ge.ReceiveTimestamp
+		}
+		var err error
+		ts, err = time.Parse(time.RFC3339, tt)
+		if err != nil {
+			return api.Entry{}, fmt.Errorf("invalid timestamp format: %w", err)
+		}
+
+		if ts.IsZero() {
+			return api.Entry{}, fmt.Errorf("no timestamp found in the log entry")
+		}
+	}
+
+	// Send only `ge.textPaylload` as log line if its present.
+	if strings.TrimSpace(ge.TextPayload) != "" {
+		line = ge.TextPayload
+	}
+
 	return api.Entry{
 		Labels: labels,
 		Entry: logproto.Entry{
-			Timestamp: time.Now(), // rewrite timestamp to avoid out-of-order
-			Line:      string(m.Data),
+			Timestamp: ts,
+			Line:      line,
 		},
 	}, nil
 }
