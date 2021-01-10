@@ -5,14 +5,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"log"
 	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	gokit "github.com/go-kit/kit/log"
@@ -44,24 +47,27 @@ func main() {
 	dest := flag.String("dest.tenant", "fake", "Destination tenant identifier, default is `fake` for single tenant Loki")
 	match := flag.String("match", "", "Optional label match")
 
-	batch := flag.Int("batchLen", 1000, "Specify how many chunks to read/write in one batch")
+	batch := flag.Int("batchLen", 500, "Specify how many chunks to read/write in one batch")
 	shardBy := flag.Duration("shardBy", 6*time.Hour, "Break down the total interval into shards of this size, making this too small can lead to syncing a lot of duplicate chunks")
-	parallel := flag.Int("parallel", 4, "How many parallel threads to process each shard")
+	parallel := flag.Int("parallel", 8, "How many parallel threads to process each shard")
 	flag.Parse()
 
+	// Create a set of defaults
 	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults()); err != nil {
 		log.Println("Failed parsing defaults config:", err)
 		os.Exit(1)
 	}
 
+	// Copy each defaults to a source and dest config
 	sourceConfig := defaultsConfig
 	destConfig := defaultsConfig
 
-	if err := cfg.YAML(sf)(&sourceConfig); err != nil {
+	// Load each from provided files
+	if err := cfg.YAML(*sf, true)(&sourceConfig); err != nil {
 		log.Printf("Failed parsing source config file %v: %v\n", *sf, err)
 		os.Exit(1)
 	}
-	if err := cfg.YAML(df)(&destConfig); err != nil {
+	if err := cfg.YAML(*df, true)(&destConfig); err != nil {
 		log.Printf("Failed parsing dest config file %v: %v\n", *df, err)
 		os.Exit(1)
 	}
@@ -81,15 +87,19 @@ func main() {
 		log.Println("Failed to validate dest store config:", err)
 		os.Exit(1)
 	}
+	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits)
+	sourceStore, err := cortex_storage.NewStore(sourceConfig.StorageConfig.Config, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, cortex_util.Logger)
+	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.SchemaConfig, sourceStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
 		os.Exit(1)
 	}
 
+	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits)
+	destStore, err := cortex_storage.NewStore(destConfig.StorageConfig.Config, destConfig.ChunkStoreConfig, destConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, cortex_util.Logger)
+	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.SchemaConfig, destStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
 		os.Exit(1)
@@ -113,6 +123,7 @@ func main() {
 	}
 
 	ctx := context.Background()
+	// This is a little weird but it was the easiest way to guarantee the userID is in the right format
 	ctx = user.InjectOrgID(ctx, *source)
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {

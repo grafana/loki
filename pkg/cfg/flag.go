@@ -11,6 +11,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Defaults registers flags to the command line using dst as the
+// flagext.Registerer
+func Defaults() Source {
+	return dDefaults(flag.CommandLine)
+}
+
 // dDefaults registers flags to the flagSet using dst as the flagext.Registerer
 func dDefaults(fs *flag.FlagSet) Source {
 	return func(dst Cloneable) error {
