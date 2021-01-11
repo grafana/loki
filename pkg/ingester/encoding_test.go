@@ -88,6 +88,38 @@ func Test_Encoding_Entries(t *testing.T) {
 	require.Equal(t, record, decoded)
 }
 
+func Benchmark_EncodeEntries(b *testing.B) {
+	var entries []logproto.Entry
+	for i := int64(0); i < 10000; i++ {
+		entries = append(entries, logproto.Entry{
+			Timestamp: time.Unix(0, i),
+			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
+		})
+	}
+	record := &WALRecord{
+		entryIndexMap: make(map[uint64]int),
+		UserID:        "123",
+		RefEntries: []RefEntries{
+			{
+				Ref:     456,
+				Entries: entries,
+			},
+			{
+				Ref:     789,
+				Entries: entries,
+			},
+		},
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	buf := recordPool.GetBytes()[:0]
+	defer recordPool.PutBytes(buf)
+
+	for n := 0; n < b.N; n++ {
+		record.encodeEntries(buf)
+	}
+}
+
 func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
 	t.Helper()
 	var i, inserted int64
@@ -115,7 +147,6 @@ func dummyConf() *Config {
 }
 
 func Test_EncodingChunks(t *testing.T) {
-
 	conf := dummyConf()
 	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
 	fillChunk(t, c)
