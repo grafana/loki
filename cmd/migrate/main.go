@@ -395,10 +395,3 @@ func mustParse(t string) time.Time {
 
 	return ret
 }
-
-type logger struct{}
-
-func (l *logger) Log(keyvals ...interface{}) error {
-	log.Println(keyvals)
-	return nil
-}
