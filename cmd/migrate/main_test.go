@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_calcSyncRanges(t *testing.T) {
@@ -25,7 +26,7 @@ func Test_calcSyncRanges(t *testing.T) {
 				shardBy: 10,
 			},
 			want: []*syncRange{
-				&syncRange{
+				{
 					from: 0,
 					to:   10,
 				},

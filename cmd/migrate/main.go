@@ -76,6 +76,10 @@ func main() {
 	sourceConfig.LimitsConfig.CardinalityLimit = 1e9
 	sourceConfig.LimitsConfig.MaxQueryLength = 0
 	limits, err := validation.NewOverrides(sourceConfig.LimitsConfig, nil)
+	if err != nil {
+		log.Println("Failed to create limit overrides:", err)
+		os.Exit(1)
+	}
 	lg := gokit.NewLogfmtLogger(gokit.NewSyncWriter(os.Stdout))
 	err = sourceConfig.Validate(lg)
 	if err != nil {
@@ -90,6 +94,10 @@ func main() {
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	sourceStore, err := cortex_storage.NewStore(sourceConfig.StorageConfig.Config, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, cortex_util.Logger)
+	if err != nil {
+		log.Println("Failed to create source store:", err)
+		os.Exit(1)
+	}
 	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.SchemaConfig, sourceStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
@@ -99,6 +107,10 @@ func main() {
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	destStore, err := cortex_storage.NewStore(destConfig.StorageConfig.Config, destConfig.ChunkStoreConfig, destConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, cortex_util.Logger)
+	if err != nil {
+		log.Println("Failed to create destination store:", err)
+		os.Exit(1)
+	}
 	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.SchemaConfig, destStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
@@ -172,7 +184,7 @@ func main() {
 		wg.Add(1)
 		go func(threadId int) {
 			defer wg.Done()
-			cm.moveChunks(threadId, cancelContext, syncChan, errorChan, statsChan)
+			cm.moveChunks(cancelContext, threadId, syncChan, errorChan, statsChan)
 		}(i)
 	}
 
@@ -198,7 +210,7 @@ func main() {
 			processedChunks += stat.totalChunks
 			processedBytes += stat.totalBytes
 		}
-		log.Printf("Transfering %v chunks totalling %v bytes in %v\n", processedChunks, processedBytes, time.Now().Sub(start))
+		log.Printf("Transferring %v chunks totalling %v bytes in %v\n", processedChunks, processedBytes, time.Since(start))
 		log.Println("Exiting stats thread")
 	}()
 
@@ -275,26 +287,26 @@ func newChunkMover(ctx context.Context, source, dest storage.Store, sourceUser, 
 	return cm
 }
 
-func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <-chan *syncRange, errCh chan<- error, statsCh chan<- stats) {
+func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <-chan *syncRange, errCh chan<- error, statsCh chan<- stats) {
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println(threadId, "Requested to be done, context cancelled, quitting.")
+			log.Println(threadID, "Requested to be done, context cancelled, quitting.")
 			return
 		case sr := <-syncRangeCh:
 			start := time.Now()
 			totalBytes := 0
 			totalChunks := 0
-			log.Println(threadId, "Processing", time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
+			log.Println(threadID, "Processing", time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
 			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
-				log.Println(threadId, "Error querying index for chunk refs:", err)
+				log.Println(threadID, "Error querying index for chunk refs:", err)
 				errCh <- err
 				return
 			}
 			for i, f := range fetchers {
-				log.Printf("%v Processing Schema %v which contains %v chunks\n", threadId, i, len(schemaGroups[i]))
+				log.Printf("%v Processing Schema %v which contains %v chunks\n", threadID, i, len(schemaGroups[i]))
 
 				//Slice up into batches
 				for j := 0; j < len(schemaGroups[i]); j += m.batch {
@@ -304,7 +316,7 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 					}
 
 					chunks := schemaGroups[i][j:k]
-					log.Printf("%v Processing chunks %v-%v of %v\n", threadId, j, k, len(schemaGroups[i]))
+					log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))
 
 					keys := make([]string, 0, len(chunks))
 					chks := make([]chunk.Chunk, 0, len(chunks))
@@ -320,12 +332,11 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 						chks, err = f.FetchChunks(m.ctx, chks, keys)
 						if err != nil {
 							if retry == 0 {
-								log.Println(threadId, "Final error retrieving chunks, giving up:", err)
+								log.Println(threadID, "Final error retrieving chunks, giving up:", err)
 								errCh <- err
 								return
-							} else {
-								log.Println(threadId, "Error fetching chunks, will retry:", err)
 							}
+							log.Println(threadID, "Error fetching chunks, will retry:", err)
 						} else {
 							break
 						}
@@ -340,7 +351,7 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 						if enc, err := chk.Encoded(); err == nil {
 							totalBytes += len(enc)
 						} else {
-							log.Println(threadId, "Error encoding a chunk:", err)
+							log.Println(threadID, "Error encoding a chunk:", err)
 							errCh <- err
 							return
 						}
@@ -349,7 +360,7 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 							nc := chunk.NewChunk(m.destUser, chk.Fingerprint, chk.Metric, chk.Data, chk.From, chk.Through)
 							err := nc.Encode()
 							if err != nil {
-								log.Println(threadId, "Failed to encode new chunk with new user:", err)
+								log.Println(threadID, "Failed to encode new chunk with new user:", err)
 								errCh <- err
 								return
 							}
@@ -363,20 +374,19 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 						err = m.dest.Put(m.ctx, output)
 						if err != nil {
 							if retry == 0 {
-								log.Println(threadId, "Final error sending chunks to new store, giving up:", err)
+								log.Println(threadID, "Final error sending chunks to new store, giving up:", err)
 								errCh <- err
 								return
-							} else {
-								log.Println(threadId, "Error sending chunks to new store, will retry:", err)
 							}
+							log.Println(threadID, "Error sending chunks to new store, will retry:", err)
 						} else {
 							break
 						}
 					}
-					log.Println(threadId, "Batch sent successfully")
+					log.Println(threadID, "Batch sent successfully")
 				}
 			}
-			log.Printf("%v Finished processing sync range, %v chunks, %v bytes in %v seconds\n", threadId, totalChunks, totalBytes, time.Now().Sub(start).Seconds())
+			log.Printf("%v Finished processing sync range, %v chunks, %v bytes in %v seconds\n", threadID, totalChunks, totalBytes, time.Since(start).Seconds())
 			statsCh <- stats{
 				totalChunks: totalChunks,
 				totalBytes:  totalBytes,
