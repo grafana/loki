@@ -2,6 +2,7 @@ package unmarshal
 
 import (
 	"io"
+	"unsafe"
 
 	json "github.com/json-iterator/go"
 
@@ -13,12 +14,9 @@ import (
 func DecodePushRequest(b io.Reader, r *logproto.PushRequest) error {
 	var request loghttp.PushRequest
 
-	err := json.NewDecoder(b).Decode(&request)
-
-	if err != nil {
+	if err := json.NewDecoder(b).Decode(&request); err != nil {
 		return err
 	}
-
 	*r = NewPushRequest(request)
 
 	return nil
@@ -39,22 +37,8 @@ func NewPushRequest(r loghttp.PushRequest) logproto.PushRequest {
 
 // NewStream constructs a logproto.Stream from a Stream
 func NewStream(s *loghttp.Stream) logproto.Stream {
-	ret := logproto.Stream{
-		Entries: make([]logproto.Entry, len(s.Entries)),
+	return logproto.Stream{
+		Entries: *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries)),
 		Labels:  s.Labels.String(),
-	}
-
-	for i, e := range s.Entries {
-		ret.Entries[i] = NewEntry(e)
-	}
-
-	return ret
-}
-
-// NewEntry constructs a logproto.Entry from a Entry
-func NewEntry(e loghttp.Entry) logproto.Entry {
-	return logproto.Entry{
-		Timestamp: e.Timestamp,
-		Line:      e.Line,
 	}
 }
