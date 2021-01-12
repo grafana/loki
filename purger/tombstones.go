@@ -285,7 +285,7 @@ func (tl *TombstonesLoader) getCacheGenNumbersPerTenants(tenantIDs []string) *ca
 		if numbers.results != "" {
 			results, err := strconv.Atoi(numbers.results)
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error parsing resultsCacheGenNumber", "tenant", tenantID, "err", err)
+				level.Error(util.Logger).Log("msg", "error parsing resultsCacheGenNumber", "user", tenantID, "err", err)
 			} else if maxResults < results {
 				maxResults = results
 				result.results = numbers.results
@@ -296,7 +296,7 @@ func (tl *TombstonesLoader) getCacheGenNumbersPerTenants(tenantIDs []string) *ca
 		if numbers.store != "" {
 			store, err := strconv.Atoi(numbers.store)
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error parsing storeCacheGenNumber", "tenant", tenantID, "err", err)
+				level.Error(util.Logger).Log("msg", "error parsing storeCacheGenNumber", "user", tenantID, "err", err)
 			} else if maxStore < store {
 				maxStore = store
 				result.store = numbers.store
