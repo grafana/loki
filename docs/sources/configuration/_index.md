@@ -588,11 +588,11 @@ storage:
   local:
     # Directory to scan for rules
     # CLI flag: -ruler.storage.local.directory
-    [directory: <string> | default = ""]
+    [directory: <filename> | default = ""]
 
 # File path to store temporary rule files
 # CLI flag: -ruler.rule-path
-[rule_path: <string> | default = "/rules"]
+[rule_path: <filename> | default = "/rules"]
 
 # Comma-separated list of Alertmanager URLs to send notifications to.
 # Each Alertmanager URL is treated as a separate group in the configuration.
@@ -895,6 +895,28 @@ lifecycler:
 # Use a value of -1 to allow the ingester to query the store infinitely far back in time.
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0]
+
+
+# The WAL in ingester records incoming data and stores it on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
+wal:
+  # Enables writing to WAL.
+  # CLI flag: -ingester.wal-enabled
+  [enabled: <boolean> | default = false]
+
+  # Directory where the WAL data should be stored and/or recovered from. 
+  # CLI flag: -ingester.wal-dir
+  [dir: <filename> | default = "wal"]
+  
+  # Recover data from existing WAL dir irrespective of WAL enabled/disabled.
+  # CLI flag: -ingester.recover-from-wal
+  [recover: <boolean> | default = false]
+
+# When WAL is enabled, should chunks be flushed to long-term storage on shutdown.
+# CLI flag: -ingester.flush-on-shutdown
+[flush_on_shutdown: <boolean> | default = false]
+
+# CLI flag: ingester.checkpoint-duration
+[checkpoint_duration: ]
 ```
 
 ## consul_config
