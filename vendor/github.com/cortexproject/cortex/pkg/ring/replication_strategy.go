@@ -42,12 +42,13 @@ func (s *defaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operati
 	}
 
 	minSuccess := (replicationFactor / 2) + 1
+	now := time.Now()
 
 	// Skip those that have not heartbeated in a while. NB these are still
 	// included in the calculation of minSuccess, so if too many failed ingesters
 	// will cause the whole write to fail.
 	for i := 0; i < len(ingesters); {
-		if ingesters[i].IsHealthy(op, heartbeatTimeout) {
+		if ingesters[i].IsHealthy(op, heartbeatTimeout, now) {
 			i++
 		} else {
 			ingesters = append(ingesters[:i], ingesters[i+1:]...)
@@ -91,8 +92,8 @@ func (s *defaultReplicationStrategy) ShouldExtendReplicaSet(ingester IngesterDes
 }
 
 // IsHealthy checks whether an ingester appears to be alive and heartbeating
-func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation) bool {
-	return ingester.IsHealthy(op, r.cfg.HeartbeatTimeout)
+func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation, now time.Time) bool {
+	return ingester.IsHealthy(op, r.cfg.HeartbeatTimeout, now)
 }
 
 // ReplicationFactor of the ring.

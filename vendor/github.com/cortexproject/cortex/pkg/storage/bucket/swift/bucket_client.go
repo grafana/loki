@@ -2,6 +2,7 @@ package swift
 
 import (
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/swift"
 	yaml "gopkg.in/yaml.v2"
@@ -9,7 +10,8 @@ import (
 
 // NewBucketClient creates a new Swift bucket client
 func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
-	bucketConfig := swift.SwiftConfig{
+	bucketConfig := swift.Config{
+		AuthVersion:       cfg.AuthVersion,
 		AuthUrl:           cfg.AuthURL,
 		Username:          cfg.Username,
 		UserDomainName:    cfg.UserDomainName,
@@ -24,6 +26,13 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		ProjectDomainName: cfg.ProjectDomainName,
 		RegionName:        cfg.RegionName,
 		ContainerName:     cfg.ContainerName,
+		Retries:           cfg.MaxRetries,
+		ConnectTimeout:    model.Duration(cfg.ConnectTimeout),
+		Timeout:           model.Duration(cfg.RequestTimeout),
+
+		// Hard-coded defaults.
+		ChunkSize:              swift.DefaultConfig.ChunkSize,
+		UseDynamicLargeObjects: false,
 	}
 
 	// Thanos currently doesn't support passing the config as is, but expects a YAML,

@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -71,7 +72,10 @@ func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLife
 
 	tokensFromFile, err := LoadTokensFromFile(d.tokensPath)
 	if err != nil {
-		level.Error(d.logger).Log("msg", "error in getting tokens from file", "err", err)
+		if !os.IsNotExist(err) {
+			level.Error(d.logger).Log("msg", "error loading tokens from file", "err", err)
+		}
+
 		return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 	}
 

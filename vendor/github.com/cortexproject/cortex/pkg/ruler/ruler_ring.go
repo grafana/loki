@@ -63,7 +63,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceAddr, "ruler.ring.instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, "ruler.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, "ruler.ring.instance-id", hostname, "Instance ID to register in the ring.")
-	f.IntVar(&cfg.NumTokens, "ruler.ring.num-tokens", 128, "Number of tokens for each ingester.")
+	f.IntVar(&cfg.NumTokens, "ruler.ring.num-tokens", 128, "Number of tokens for each ruler.")
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the ruler
@@ -91,6 +91,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
+	rc.SubringCacheDisabled = true
 
 	// Each rule group is loaded to *exactly* one ruler.
 	rc.ReplicationFactor = 1

@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -30,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -79,6 +81,13 @@ const (
 	All                      string = "all"
 )
 
+func newDefaultConfig() *Config {
+	defaultConfig := &Config{}
+	defaultFS := flag.NewFlagSet("", flag.PanicOnError)
+	defaultConfig.RegisterFlags(defaultFS)
+	return defaultConfig
+}
+
 func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
@@ -89,8 +98,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	}
 
 	t.API = a
-
-	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg)
+	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg, newDefaultConfig())
 
 	return nil, nil
 }
@@ -164,6 +172,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 
 	serv, err := runtimeconfig.NewRuntimeConfigManager(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer)
 	t.RuntimeConfig = serv
+	t.API.RegisterRuntimeConfig(t.RuntimeConfig)
 	return serv, err
 }
 
@@ -203,7 +212,15 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
 
 	// Create a querier queryable and PromQL engine
-	t.QuerierQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer)
+	var queryable prom_storage.SampleAndChunkQueryable
+	queryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer)
+
+	// Enable merge querier if multi tenant query federation is enabled
+	if t.Cfg.TenantFederation.Enabled {
+		queryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(queryable))
+	}
+
+	t.QuerierQueryable = queryable
 
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
@@ -286,9 +303,9 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		// and internal using the default instrumentation when running as a standalone service.
 		internalQuerierRouter = t.Server.HTTPServer.Handler
 	} else {
-		// Single binary mode requires a query frontend endpoint for the worker. If no frontend or scheduler endpoint
+		// Single binary mode requires a query frontend endpoint for the worker. If no frontend and scheduler endpoint
 		// is configured, Cortex will default to using frontend on localhost on it's own GRPC listening port.
-		if t.Cfg.Worker.FrontendAddress == "" || t.Cfg.Worker.SchedulerAddress == "" {
+		if t.Cfg.Worker.FrontendAddress == "" && t.Cfg.Worker.SchedulerAddress == "" {
 			address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
 			level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
 			t.Cfg.Worker.FrontendAddress = address
@@ -306,7 +323,6 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}
 
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
-	t.Cfg.Worker.QueryStatsEnabled = t.Cfg.Frontend.Handler.QueryStatsEnabled
 	return querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(internalQuerierRouter), util.Logger, prometheus.DefaultRegisterer)
 }
 
@@ -717,6 +733,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 		ring.GetCodec(),
 	}
 	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util.Logger)
+	t.API.RegisterMemberlistKV(t.MemberlistKV)
 
 	// Update the config.
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
@@ -811,6 +828,8 @@ func (t *Cortex) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		API:                      {Server},
+		MemberlistKV:             {API},
+		RuntimeConfig:            {API},
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		Overrides:                {RuntimeConfig},
 		Distributor:              {DistributorService, API},

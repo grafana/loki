@@ -2,6 +2,7 @@ package consul
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -209,6 +210,9 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	for backoff.Ongoing() {
 		err := limiter.Wait(ctx)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				break
+			}
 			level.Error(util.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
 			backoff.Wait()
 			continue
@@ -266,6 +270,9 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	for backoff.Ongoing() {
 		err := limiter.Wait(ctx)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				break
+			}
 			level.Error(util.Logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
 			backoff.Wait()
 			continue

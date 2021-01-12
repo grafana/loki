@@ -35,6 +35,7 @@ message Sample {
 
 // TimeSeries represents samples and labels for a single time series.
 message TimeSeries {
+  // Labels have to be sorted by label names and without duplicated label names.
   // TODO(bwplotka): Don't use zero copy ZLabels, see https://github.com/thanos-io/thanos/pull/3279 for details.
   repeated thanos.Label labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
   repeated Sample samples      = 2 [(gogoproto.nullable) = false];

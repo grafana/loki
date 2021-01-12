@@ -152,7 +152,7 @@ func IsWALDirAccessible(dir string) error {
 	return nil
 }
 
-// ExternalLabels returns external labels from /api/v1/status/config Prometheus endpoint.
+// ExternalLabels returns sorted external labels from /api/v1/status/config Prometheus endpoint.
 // Note that configuration can be hot reloadable on Prometheus, so this config might change in runtime.
 func (c *Client) ExternalLabels(ctx context.Context, base *url.URL) (labels.Labels, error) {
 	u := *base
@@ -181,7 +181,10 @@ func (c *Client) ExternalLabels(ctx context.Context, base *url.URL) (labels.Labe
 	if err := yaml.Unmarshal([]byte(d.Data.YAML), &cfg); err != nil {
 		return nil, errors.Wrapf(err, "parse Prometheus config: %v", d.Data.YAML)
 	}
-	return labels.FromMap(cfg.Global.ExternalLabels), nil
+
+	lset := labels.FromMap(cfg.Global.ExternalLabels)
+	sort.Sort(lset)
+	return lset, nil
 }
 
 type Flags struct {
@@ -650,12 +653,12 @@ func (c *Client) get2xxResultWithGRPCErrors(ctx context.Context, spanName string
 
 // SeriesInGRPC returns the labels from Prometheus series API. It uses gRPC errors.
 // NOTE: This method is tested in pkg/store/prometheus_test.go against Prometheus.
-func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []storepb.LabelMatcher, startTime, endTime int64) ([]map[string]string, error) {
+func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []*labels.Matcher, startTime, endTime int64) ([]map[string]string, error) {
 	u := *base
 	u.Path = path.Join(u.Path, "/api/v1/series")
 	q := u.Query()
 
-	q.Add("match[]", storepb.MatchersToString(matchers...))
+	q.Add("match[]", storepb.PromMatchersToString(matchers...))
 	q.Add("start", formatTime(timestamp.Time(startTime)))
 	q.Add("end", formatTime(timestamp.Time(endTime)))
 	u.RawQuery = q.Encode()
@@ -669,11 +672,14 @@ func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []sto
 
 // LabelNames returns all known label names. It uses gRPC errors.
 // NOTE: This method is tested in pkg/store/prometheus_test.go against Prometheus.
-func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL, startTime, endTime int64) ([]string, error) {
+func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL, matchers []storepb.LabelMatcher, startTime, endTime int64) ([]string, error) {
 	u := *base
 	u.Path = path.Join(u.Path, "/api/v1/labels")
 	q := u.Query()
 
+	if len(matchers) > 0 {
+		q.Add("match[]", storepb.MatchersToString(matchers...))
+	}
 	q.Add("start", formatTime(timestamp.Time(startTime)))
 	q.Add("end", formatTime(timestamp.Time(endTime)))
 	u.RawQuery = q.Encode()
@@ -686,11 +692,14 @@ func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL, startTime,
 
 // LabelValuesInGRPC returns all known label values for a given label name. It uses gRPC errors.
 // NOTE: This method is tested in pkg/store/prometheus_test.go against Prometheus.
-func (c *Client) LabelValuesInGRPC(ctx context.Context, base *url.URL, label string, startTime, endTime int64) ([]string, error) {
+func (c *Client) LabelValuesInGRPC(ctx context.Context, base *url.URL, label string, matchers []storepb.LabelMatcher, startTime, endTime int64) ([]string, error) {
 	u := *base
 	u.Path = path.Join(u.Path, "/api/v1/label/", label, "/values")
 	q := u.Query()
 
+	if len(matchers) > 0 {
+		q.Add("match[]", storepb.MatchersToString(matchers...))
+	}
 	q.Add("start", formatTime(timestamp.Time(startTime)))
 	q.Add("end", formatTime(timestamp.Time(endTime)))
 	u.RawQuery = q.Encode()

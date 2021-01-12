@@ -368,7 +368,7 @@ func tokenForGroup(g *store.RuleGroupDesc) uint32 {
 func instanceOwnsRuleGroup(r ring.ReadRing, g *rules.RuleGroupDesc, instanceAddr string) (bool, error) {
 	hash := tokenForGroup(g)
 
-	rlrs, err := r.Get(hash, ring.Ruler, []ring.IngesterDesc{})
+	rlrs, err := r.Get(hash, ring.Ruler, nil, nil, nil)
 	if err != nil {
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}

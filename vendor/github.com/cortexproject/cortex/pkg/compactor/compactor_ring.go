@@ -79,6 +79,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 
 	// Configure lifecycler
 	lc.RingConfig = rc
+	lc.RingConfig.SubringCacheDisabled = true
 	lc.ListenPort = cfg.ListenPort
 	lc.Addr = cfg.InstanceAddr
 	lc.Port = cfg.InstancePort

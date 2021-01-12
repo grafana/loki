@@ -3,6 +3,7 @@ package purger
 import (
 	"context"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -246,14 +247,64 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 }
 
 // GetStoreCacheGenNumber returns store cache gen number for a user
-func (tl *TombstonesLoader) GetStoreCacheGenNumber(userID string) string {
-	return tl.getCacheGenNumbers(userID).store
-
+func (tl *TombstonesLoader) GetStoreCacheGenNumber(tenantIDs []string) string {
+	return tl.getCacheGenNumbersPerTenants(tenantIDs).store
 }
 
 // GetResultsCacheGenNumber returns results cache gen number for a user
-func (tl *TombstonesLoader) GetResultsCacheGenNumber(userID string) string {
-	return tl.getCacheGenNumbers(userID).results
+func (tl *TombstonesLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
+	return tl.getCacheGenNumbersPerTenants(tenantIDs).results
+}
+
+func (tl *TombstonesLoader) getCacheGenNumbersPerTenants(tenantIDs []string) *cacheGenNumbers {
+	var result cacheGenNumbers
+
+	if len(tenantIDs) == 0 {
+		return &result
+	}
+
+	// keep the maximum value that's currently in result
+	var maxResults, maxStore int
+
+	for pos, tenantID := range tenantIDs {
+		numbers := tl.getCacheGenNumbers(tenantID)
+
+		// handle first tenant in the list
+		if pos == 0 {
+			// short cut if there is only one tenant
+			if len(tenantIDs) == 1 {
+				return numbers
+			}
+
+			// set first tenant string whatever happens next
+			result.results = numbers.results
+			result.store = numbers.store
+		}
+
+		// set results number string if it's higher than the ones before
+		if numbers.results != "" {
+			results, err := strconv.Atoi(numbers.results)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error parsing resultsCacheGenNumber", "tenant", tenantID, "err", err)
+			} else if maxResults < results {
+				maxResults = results
+				result.results = numbers.results
+			}
+		}
+
+		// set store number string if it's higher than the ones before
+		if numbers.store != "" {
+			store, err := strconv.Atoi(numbers.store)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error parsing storeCacheGenNumber", "tenant", tenantID, "err", err)
+			} else if maxStore < store {
+				maxStore = store
+				result.store = numbers.store
+			}
+		}
+	}
+
+	return &result
 }
 
 func (tl *TombstonesLoader) getCacheGenNumbers(userID string) *cacheGenNumbers {

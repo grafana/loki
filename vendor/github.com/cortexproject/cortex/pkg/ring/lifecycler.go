@@ -514,8 +514,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 	if i.cfg.TokensFilePath != "" {
 		tokensFromFile, err = LoadTokensFromFile(i.cfg.TokensFilePath)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
+		if err != nil && !os.IsNotExist(err) {
+			level.Error(util.Logger).Log("msg", "error loading tokens from file", "err", err)
 		}
 	} else {
 		level.Info(util.Logger).Log("msg", "not loading tokens from file, tokens file path is empty")
@@ -753,11 +753,13 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	zones := map[string]struct{}{}
 
 	if ringDesc != nil {
+		now := time.Now()
+
 		for _, ingester := range ringDesc.Ingesters {
 			zones[ingester.Zone] = struct{}{}
 
 			// Count the number of healthy instances for Write operation.
-			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
+			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout, now) {
 				healthyInstancesCount++
 			}
 		}

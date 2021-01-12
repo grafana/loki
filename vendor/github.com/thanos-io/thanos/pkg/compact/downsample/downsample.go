@@ -513,7 +513,7 @@ func downsampleAggrBatch(chks []*AggrChunk, buf *[]sample, resolution int64) (ch
 		return chk, err
 	}
 
-	// Handle counters by reading them properly.
+	// Handle counters by applying resets directly.
 	acs := make([]chunkenc.Iterator, 0, len(chks))
 	for _, achk := range chks {
 		c, err := achk.Get(AggrCounter)
@@ -580,6 +580,7 @@ type sample struct {
 // It handles overlapped chunks (removes overlaps).
 // NOTE: It is important to deduplicate with care ensuring that you don't hit
 // issue https://github.com/thanos-io/thanos/issues/2401#issuecomment-621958839.
+// NOTE(bwplotka): This hides resets from PromQL engine. This means it will not work for PromQL resets function.
 type ApplyCounterResetsSeriesIterator struct {
 	chks   []chunkenc.Iterator
 	i      int     // Current chunk.

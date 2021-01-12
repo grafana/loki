@@ -12,9 +12,11 @@ type rulerReplicationStrategy struct {
 }
 
 func (r rulerReplicationStrategy) Filter(instances []ring.IngesterDesc, op ring.Operation, _ int, heartbeatTimeout time.Duration, _ bool) (healthy []ring.IngesterDesc, maxFailures int, err error) {
+	now := time.Now()
+
 	// Filter out unhealthy instances.
 	for i := 0; i < len(instances); {
-		if instances[i].IsHealthy(op, heartbeatTimeout) {
+		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
 			i++
 		} else {
 			instances = append(instances[:i], instances[i+1:]...)

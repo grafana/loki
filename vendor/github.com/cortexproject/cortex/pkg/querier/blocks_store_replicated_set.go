@@ -98,12 +98,11 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 
 	// Find the replication set of each block we need to query.
 	for _, blockID := range blockIDs {
-		// Buffer internally used by the ring (give extra room for a JOINING + LEAVING instance).
 		// Do not reuse the same buffer across multiple Get() calls because we do retain the
 		// returned replication set.
-		buf := make([]ring.IngesterDesc, 0, userRing.ReplicationFactor()+2)
+		bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
-		set, err := userRing.Get(cortex_tsdb.HashBlockID(blockID), ring.BlocksRead, buf)
+		set, err := userRing.Get(cortex_tsdb.HashBlockID(blockID), ring.BlocksRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", blockID.String())
 		}

@@ -92,6 +92,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ReplicationFactor = cfg.ReplicationFactor
 	rc.ZoneAwarenessEnabled = cfg.ZoneAwarenessEnabled
+	rc.SubringCacheDisabled = true
 
 	return rc
 }
