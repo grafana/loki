@@ -194,34 +194,32 @@ func (r *ingesterRecoverer) Done() <-chan struct{} {
 }
 
 func RecoverWAL(reader WALReader, recoverer Recoverer) error {
-	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput, errCh <-chan error) error {
+	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput) error {
 		rec := recordPool.GetRecord()
 		if err := decodeWALRecord(b, rec); err != nil {
 			return err
 		}
 
 		// First process all series to ensure we don't write entries to nonexistant series.
+		var firstErr error
 		for _, s := range rec.Series {
 			if err := recoverer.SetStream(rec.UserID, s); err != nil {
-				return err
+				if firstErr == nil {
+					firstErr = err
+				}
 			}
 
 		}
 
 		for _, entries := range rec.RefEntries {
 			worker := int(entries.Ref % uint64(len(inputs)))
-			select {
-			case err := <-errCh:
-				return err
-
-			case inputs[worker] <- recoveryInput{
+			inputs[worker] <- recoveryInput{
 				userID: rec.UserID,
 				data:   entries,
-			}:
 			}
 		}
 
-		return nil
+		return firstErr
 	}
 
 	process := func(recoverer Recoverer, input <-chan recoveryInput, errCh chan<- error) {
@@ -244,11 +242,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 
 				// Pass the error back, but respect the quit signal.
 				if err != nil {
-					select {
-					case errCh <- err:
-					case <-recoverer.Done():
-					}
-					return
+					errCh <- err
 				}
 			}
 		}
@@ -264,23 +258,17 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 }
 
 func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
-	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput, errCh <-chan error) error {
+	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput) error {
 		s := &Series{}
 		if err := decodeCheckpointRecord(b, s); err != nil {
 			return err
 		}
 
 		worker := int(s.Fingerprint % uint64(len(inputs)))
-		select {
-		case err := <-errCh:
-			return err
-
-		case inputs[worker] <- recoveryInput{
+		inputs[worker] <- recoveryInput{
 			userID: s.UserID,
 			data:   s,
-		}:
 		}
-
 		return nil
 	}
 
@@ -302,13 +290,8 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 					err = recoverer.Series(series)
 				}
 
-				// Pass the error back, but respect the quit signal.
 				if err != nil {
-					select {
-					case errCh <- err:
-					case <-recoverer.Done():
-					}
-					return
+					errCh <- err
 				}
 			}
 		}
@@ -335,11 +318,11 @@ type recoveryInput struct {
 func recoverGeneric(
 	reader WALReader,
 	recoverer Recoverer,
-	dispatch func(Recoverer, []byte, []chan recoveryInput, <-chan error) error,
+	dispatch func(Recoverer, []byte, []chan recoveryInput) error,
 	process func(Recoverer, <-chan recoveryInput, chan<- error),
 ) error {
 	var wg sync.WaitGroup
-	var lastErr error
+	var firstErr error
 	nWorkers := recoverer.NumWorkers()
 
 	if nWorkers < 1 {
@@ -359,26 +342,24 @@ func recoverGeneric(
 
 	}
 
-outer:
-	for reader.Next() {
-		b := reader.Record()
-		if lastErr = reader.Err(); lastErr != nil {
-			break outer
+	go func() {
+		for reader.Next() {
+			b := reader.Record()
+			if err := reader.Err(); err != nil {
+				errCh <- err
+				continue
+			}
+
+			if err := dispatch(recoverer, b, inputs); err != nil {
+				errCh <- err
+				continue
+			}
 		}
 
-		if lastErr = dispatch(recoverer, b, inputs, errCh); lastErr != nil {
-			break outer
+		for _, w := range inputs {
+			close(w)
 		}
-	}
-
-	for _, w := range inputs {
-		close(w)
-	}
-
-	// may have broken loop early
-	if lastErr != nil {
-		return lastErr
-	}
+	}()
 
 	finished := make(chan struct{})
 	go func(finished chan<- struct{}) {
@@ -386,10 +367,14 @@ outer:
 		finished <- struct{}{}
 	}(finished)
 
-	select {
-	case <-finished:
-	case lastErr = <-errCh:
+	for {
+		select {
+		case <-finished:
+			return firstErr
+		case err := <-errCh:
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
-
-	return lastErr
 }

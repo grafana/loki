@@ -69,14 +69,16 @@ type Config struct {
 	Router                        *mux.Router                    `yaml:"-"`
 	DoNotAddDefaultHTTPMiddleware bool                           `yaml:"-"`
 
-	GPRCServerMaxRecvMsgSize        int           `yaml:"grpc_server_max_recv_msg_size"`
-	GRPCServerMaxSendMsgSize        int           `yaml:"grpc_server_max_send_msg_size"`
-	GPRCServerMaxConcurrentStreams  uint          `yaml:"grpc_server_max_concurrent_streams"`
-	GRPCServerMaxConnectionIdle     time.Duration `yaml:"grpc_server_max_connection_idle"`
-	GRPCServerMaxConnectionAge      time.Duration `yaml:"grpc_server_max_connection_age"`
-	GRPCServerMaxConnectionAgeGrace time.Duration `yaml:"grpc_server_max_connection_age_grace"`
-	GRPCServerTime                  time.Duration `yaml:"grpc_server_keepalive_time"`
-	GRPCServerTimeout               time.Duration `yaml:"grpc_server_keepalive_timeout"`
+	GPRCServerMaxRecvMsgSize           int           `yaml:"grpc_server_max_recv_msg_size"`
+	GRPCServerMaxSendMsgSize           int           `yaml:"grpc_server_max_send_msg_size"`
+	GPRCServerMaxConcurrentStreams     uint          `yaml:"grpc_server_max_concurrent_streams"`
+	GRPCServerMaxConnectionIdle        time.Duration `yaml:"grpc_server_max_connection_idle"`
+	GRPCServerMaxConnectionAge         time.Duration `yaml:"grpc_server_max_connection_age"`
+	GRPCServerMaxConnectionAgeGrace    time.Duration `yaml:"grpc_server_max_connection_age_grace"`
+	GRPCServerTime                     time.Duration `yaml:"grpc_server_keepalive_time"`
+	GRPCServerTimeout                  time.Duration `yaml:"grpc_server_keepalive_timeout"`
+	GRPCServerMinTimeBetweenPings      time.Duration `yaml:"grpc_server_min_time_between_pings"`
+	GRPCServerPingWithoutStreamAllowed bool          `yaml:"grpc_server_ping_without_stream_allowed"`
 
 	LogFormat          logging.Format    `yaml:"log_format"`
 	LogLevel           logging.Level     `yaml:"log_level"`
@@ -122,6 +124,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.GRPCServerMaxConnectionAgeGrace, "server.grpc.keepalive.max-connection-age-grace", infinty, "An additive period after max-connection-age after which the connection will be forcibly closed. Default: infinity")
 	f.DurationVar(&cfg.GRPCServerTime, "server.grpc.keepalive.time", time.Hour*2, "Duration after which a keepalive probe is sent in case of no activity over the connection., Default: 2h")
 	f.DurationVar(&cfg.GRPCServerTimeout, "server.grpc.keepalive.timeout", time.Second*20, "After having pinged for keepalive check, the duration after which an idle connection should be closed, Default: 20s")
+	f.DurationVar(&cfg.GRPCServerMinTimeBetweenPings, "server.grpc.keepalive.min-time-between-pings", 5*time.Minute, "Minimum amount of time a client should wait before sending a keepalive ping. If client sends keepalive ping more often, server will send GOAWAY and close the connection.")
+	f.BoolVar(&cfg.GRPCServerPingWithoutStreamAllowed, "server.grpc.keepalive.ping-without-stream-allowed", false, "If true, server allows keepalive pings even when there are no active streams(RPCs). If false, and client sends ping when there are no active streams, server will send GOAWAY and close the connection.")
 	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
 	cfg.LogFormat.RegisterFlags(f)
 	cfg.LogLevel.RegisterFlags(f)
@@ -251,6 +255,11 @@ func New(cfg Config) (*Server, error) {
 		Timeout:               cfg.GRPCServerTimeout,
 	}
 
+	grpcKeepAliveEnforcementPolicy := keepalive.EnforcementPolicy{
+		MinTime:             cfg.GRPCServerMinTimeBetweenPings,
+		PermitWithoutStream: cfg.GRPCServerPingWithoutStreamAllowed,
+	}
+
 	grpcOptions := []grpc.ServerOption{
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			grpcMiddleware...,
@@ -259,6 +268,7 @@ func New(cfg Config) (*Server, error) {
 			grpcStreamMiddleware...,
 		)),
 		grpc.KeepaliveParams(grpcKeepAliveOptions),
+		grpc.KeepaliveEnforcementPolicy(grpcKeepAliveEnforcementPolicy),
 		grpc.MaxRecvMsgSize(cfg.GPRCServerMaxRecvMsgSize),
 		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
 		grpc.MaxConcurrentStreams(uint32(cfg.GPRCServerMaxConcurrentStreams)),
@@ -349,7 +359,9 @@ func New(cfg Config) (*Server, error) {
 
 // RegisterInstrumentation on the given router.
 func RegisterInstrumentation(router *mux.Router) {
-	router.Handle("/metrics", promhttp.Handler())
+	router.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+		EnableOpenMetrics: true,
+	}))
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 }
 

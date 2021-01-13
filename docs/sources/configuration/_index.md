@@ -69,7 +69,7 @@ non-list parameters the value is set to the specified default.
 > **Note:** This feature is only available in Loki 2.1+.
 
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
-To do this, use:
+To do this, pass `-config.expand-env=true` and use:
 
 ```
 ${VAR}
@@ -88,6 +88,8 @@ ${VAR:default_value}
 ```
 
 Where default_value is the value to use if the environment variable is undefined.
+
+Pass the `-config.expand-env` flag at the command line to enable this way of setting configs.
 
 ### Generic placeholders:
 
@@ -313,7 +315,7 @@ The query_frontend_config configures the Loki query-frontend.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = false]
 
-# URL of downstream Prometheus.
+# URL of downstream Loki.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
 
@@ -1427,7 +1429,7 @@ memcached_client:
 
   # The maximum number of idle connections in the memcached client pool.
   # CLI flag: -<prefix>.memcached.max-idle-conns
-  [max_idle_conns: <int> | default = 100]
+  [max_idle_conns: <int> | default = 16]
 
   # The period with which to poll the DNS for memcached servers.
   # CLI flag: -<prefix>.memcached.update-interval

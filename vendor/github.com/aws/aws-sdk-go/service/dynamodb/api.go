@@ -1776,6 +1776,102 @@ func (d *discovererDescribeEndpoints) Handler(r *request.Request) {
 	}
 }
 
+const opDescribeExport = "DescribeExport"
+
+// DescribeExportRequest generates a "aws/request.Request" representing the
+// client's request for the DescribeExport operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See DescribeExport for more information on using the DescribeExport
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the DescribeExportRequest method.
+//    req, resp := client.DescribeExportRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/DescribeExport
+func (c *DynamoDB) DescribeExportRequest(input *DescribeExportInput) (req *request.Request, output *DescribeExportOutput) {
+	op := &request.Operation{
+		Name:       opDescribeExport,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &DescribeExportInput{}
+	}
+
+	output = &DescribeExportOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// DescribeExport API operation for Amazon DynamoDB.
+//
+// Describes an existing table export.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation DescribeExport for usage and error information.
+//
+// Returned Error Types:
+//   * ExportNotFoundException
+//   The specified export was not found.
+//
+//   * LimitExceededException
+//   There is no limit to the number of daily on-demand backups that can be taken.
+//
+//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
+//   and RestoreTableToPointInTime.
+//
+//   The only exception is when you are creating a table with one or more secondary
+//   indexes. You can have up to 25 such requests running at a time; however,
+//   if the table or index specifications are complex, DynamoDB might temporarily
+//   reduce the number of concurrent operations.
+//
+//   There is a soft account quota of 256 tables.
+//
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/DescribeExport
+func (c *DynamoDB) DescribeExport(input *DescribeExportInput) (*DescribeExportOutput, error) {
+	req, out := c.DescribeExportRequest(input)
+	return out, req.Send()
+}
+
+// DescribeExportWithContext is the same as DescribeExport with the addition of
+// the ability to pass a context and additional request options.
+//
+// See DescribeExport for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) DescribeExportWithContext(ctx aws.Context, input *DescribeExportInput, opts ...request.Option) (*DescribeExportOutput, error) {
+	req, out := c.DescribeExportRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opDescribeGlobalTable = "DescribeGlobalTable"
 
 // DescribeGlobalTableRequest generates a "aws/request.Request" representing the
@@ -2469,6 +2565,114 @@ func (c *DynamoDB) DescribeTimeToLiveWithContext(ctx aws.Context, input *Describ
 	return out, req.Send()
 }
 
+const opExportTableToPointInTime = "ExportTableToPointInTime"
+
+// ExportTableToPointInTimeRequest generates a "aws/request.Request" representing the
+// client's request for the ExportTableToPointInTime operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See ExportTableToPointInTime for more information on using the ExportTableToPointInTime
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the ExportTableToPointInTimeRequest method.
+//    req, resp := client.ExportTableToPointInTimeRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/ExportTableToPointInTime
+func (c *DynamoDB) ExportTableToPointInTimeRequest(input *ExportTableToPointInTimeInput) (req *request.Request, output *ExportTableToPointInTimeOutput) {
+	op := &request.Operation{
+		Name:       opExportTableToPointInTime,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &ExportTableToPointInTimeInput{}
+	}
+
+	output = &ExportTableToPointInTimeOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// ExportTableToPointInTime API operation for Amazon DynamoDB.
+//
+// Exports table data to an S3 bucket. The table must have point in time recovery
+// enabled, and you can export data from any time within the point in time recovery
+// window.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation ExportTableToPointInTime for usage and error information.
+//
+// Returned Error Types:
+//   * TableNotFoundException
+//   A source table with the name TableName does not currently exist within the
+//   subscriber's account.
+//
+//   * PointInTimeRecoveryUnavailableException
+//   Point in time recovery has not yet been enabled for this source table.
+//
+//   * LimitExceededException
+//   There is no limit to the number of daily on-demand backups that can be taken.
+//
+//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
+//   and RestoreTableToPointInTime.
+//
+//   The only exception is when you are creating a table with one or more secondary
+//   indexes. You can have up to 25 such requests running at a time; however,
+//   if the table or index specifications are complex, DynamoDB might temporarily
+//   reduce the number of concurrent operations.
+//
+//   There is a soft account quota of 256 tables.
+//
+//   * InvalidExportTimeException
+//   The specified ExportTime is outside of the point in time recovery window.
+//
+//   * ExportConflictException
+//   There was a conflict when writing to the specified S3 bucket.
+//
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/ExportTableToPointInTime
+func (c *DynamoDB) ExportTableToPointInTime(input *ExportTableToPointInTimeInput) (*ExportTableToPointInTimeOutput, error) {
+	req, out := c.ExportTableToPointInTimeRequest(input)
+	return out, req.Send()
+}
+
+// ExportTableToPointInTimeWithContext is the same as ExportTableToPointInTime with the addition of
+// the ability to pass a context and additional request options.
+//
+// See ExportTableToPointInTime for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) ExportTableToPointInTimeWithContext(ctx aws.Context, input *ExportTableToPointInTimeInput, opts ...request.Option) (*ExportTableToPointInTimeOutput, error) {
+	req, out := c.ExportTableToPointInTimeRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opGetItem = "GetItem"
 
 // GetItemRequest generates a "aws/request.Request" representing the
@@ -2844,6 +3048,157 @@ func (c *DynamoDB) ListContributorInsightsPagesWithContext(ctx aws.Context, inpu
 
 	for p.Next() {
 		if !fn(p.Page().(*ListContributorInsightsOutput), !p.HasNextPage()) {
+			break
+		}
+	}
+
+	return p.Err()
+}
+
+const opListExports = "ListExports"
+
+// ListExportsRequest generates a "aws/request.Request" representing the
+// client's request for the ListExports operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See ListExports for more information on using the ListExports
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the ListExportsRequest method.
+//    req, resp := client.ListExportsRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/ListExports
+func (c *DynamoDB) ListExportsRequest(input *ListExportsInput) (req *request.Request, output *ListExportsOutput) {
+	op := &request.Operation{
+		Name:       opListExports,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+		Paginator: &request.Paginator{
+			InputTokens:     []string{"NextToken"},
+			OutputTokens:    []string{"NextToken"},
+			LimitToken:      "MaxResults",
+			TruncationToken: "",
+		},
+	}
+
+	if input == nil {
+		input = &ListExportsInput{}
+	}
+
+	output = &ListExportsOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// ListExports API operation for Amazon DynamoDB.
+//
+// Lists completed exports within the past 90 days.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation ListExports for usage and error information.
+//
+// Returned Error Types:
+//   * LimitExceededException
+//   There is no limit to the number of daily on-demand backups that can be taken.
+//
+//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
+//   and RestoreTableToPointInTime.
+//
+//   The only exception is when you are creating a table with one or more secondary
+//   indexes. You can have up to 25 such requests running at a time; however,
+//   if the table or index specifications are complex, DynamoDB might temporarily
+//   reduce the number of concurrent operations.
+//
+//   There is a soft account quota of 256 tables.
+//
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/ListExports
+func (c *DynamoDB) ListExports(input *ListExportsInput) (*ListExportsOutput, error) {
+	req, out := c.ListExportsRequest(input)
+	return out, req.Send()
+}
+
+// ListExportsWithContext is the same as ListExports with the addition of
+// the ability to pass a context and additional request options.
+//
+// See ListExports for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) ListExportsWithContext(ctx aws.Context, input *ListExportsInput, opts ...request.Option) (*ListExportsOutput, error) {
+	req, out := c.ListExportsRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+// ListExportsPages iterates over the pages of a ListExports operation,
+// calling the "fn" function with the response data for each page. To stop
+// iterating, return false from the fn function.
+//
+// See ListExports method for more information on how to use this operation.
+//
+// Note: This operation can generate multiple requests to a service.
+//
+//    // Example iterating over at most 3 pages of a ListExports operation.
+//    pageNum := 0
+//    err := client.ListExportsPages(params,
+//        func(page *dynamodb.ListExportsOutput, lastPage bool) bool {
+//            pageNum++
+//            fmt.Println(page)
+//            return pageNum <= 3
+//        })
+//
+func (c *DynamoDB) ListExportsPages(input *ListExportsInput, fn func(*ListExportsOutput, bool) bool) error {
+	return c.ListExportsPagesWithContext(aws.BackgroundContext(), input, fn)
+}
+
+// ListExportsPagesWithContext same as ListExportsPages except
+// it takes a Context and allows setting request options on the pages.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) ListExportsPagesWithContext(ctx aws.Context, input *ListExportsInput, fn func(*ListExportsOutput, bool) bool, opts ...request.Option) error {
+	p := request.Pagination{
+		NewRequest: func() (*request.Request, error) {
+			var inCpy *ListExportsInput
+			if input != nil {
+				tmp := *input
+				inCpy = &tmp
+			}
+			req, _ := c.ListExportsRequest(inCpy)
+			req.SetContext(ctx)
+			req.ApplyOptions(opts...)
+			return req, nil
+		},
+	}
+
+	for p.Next() {
+		if !fn(p.Page().(*ListExportsOutput), !p.HasNextPage()) {
 			break
 		}
 	}
@@ -8064,7 +8419,7 @@ func (s *ContinuousBackupsUnavailableException) RequestID() string {
 	return s.RespMetadata.RequestID
 }
 
-// Represents a Contributor Insights summary entry..
+// Represents a Contributor Insights summary entry.
 type ContributorInsightsSummary struct {
 	_ struct{} `type:"structure"`
 
@@ -9800,6 +10155,70 @@ func (s *DescribeEndpointsOutput) SetEndpoints(v []*Endpoint) *DescribeEndpoints
 	return s
 }
 
+type DescribeExportInput struct {
+	_ struct{} `type:"structure"`
+
+	// The Amazon Resource Name (ARN) associated with the export.
+	//
+	// ExportArn is a required field
+	ExportArn *string `min:"37" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s DescribeExportInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DescribeExportInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *DescribeExportInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "DescribeExportInput"}
+	if s.ExportArn == nil {
+		invalidParams.Add(request.NewErrParamRequired("ExportArn"))
+	}
+	if s.ExportArn != nil && len(*s.ExportArn) < 37 {
+		invalidParams.Add(request.NewErrParamMinLen("ExportArn", 37))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetExportArn sets the ExportArn field's value.
+func (s *DescribeExportInput) SetExportArn(v string) *DescribeExportInput {
+	s.ExportArn = &v
+	return s
+}
+
+type DescribeExportOutput struct {
+	_ struct{} `type:"structure"`
+
+	// Represents the properties of the export.
+	ExportDescription *ExportDescription `type:"structure"`
+}
+
+// String returns the string representation
+func (s DescribeExportOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DescribeExportOutput) GoString() string {
+	return s.String()
+}
+
+// SetExportDescription sets the ExportDescription field's value.
+func (s *DescribeExportOutput) SetExportDescription(v *ExportDescription) *DescribeExportOutput {
+	s.ExportDescription = v
+	return s
+}
+
 type DescribeGlobalTableInput struct {
 	_ struct{} `type:"structure"`
 
@@ -10457,6 +10876,511 @@ func (s *ExpectedAttributeValue) SetExists(v bool) *ExpectedAttributeValue {
 // SetValue sets the Value field's value.
 func (s *ExpectedAttributeValue) SetValue(v *AttributeValue) *ExpectedAttributeValue {
 	s.Value = v
+	return s
+}
+
+// There was a conflict when writing to the specified S3 bucket.
+type ExportConflictException struct {
+	_            struct{}                  `type:"structure"`
+	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
+
+	Message_ *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation
+func (s ExportConflictException) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExportConflictException) GoString() string {
+	return s.String()
+}
+
+func newErrorExportConflictException(v protocol.ResponseMetadata) error {
+	return &ExportConflictException{
+		RespMetadata: v,
+	}
+}
+
+// Code returns the exception type name.
+func (s *ExportConflictException) Code() string {
+	return "ExportConflictException"
+}
+
+// Message returns the exception's message.
+func (s *ExportConflictException) Message() string {
+	if s.Message_ != nil {
+		return *s.Message_
+	}
+	return ""
+}
+
+// OrigErr always returns nil, satisfies awserr.Error interface.
+func (s *ExportConflictException) OrigErr() error {
+	return nil
+}
+
+func (s *ExportConflictException) Error() string {
+	return fmt.Sprintf("%s: %s", s.Code(), s.Message())
+}
+
+// Status code returns the HTTP status code for the request's response error.
+func (s *ExportConflictException) StatusCode() int {
+	return s.RespMetadata.StatusCode
+}
+
+// RequestID returns the service's response RequestID for request.
+func (s *ExportConflictException) RequestID() string {
+	return s.RespMetadata.RequestID
+}
+
+// Represents the properties of the exported table.
+type ExportDescription struct {
+	_ struct{} `type:"structure"`
+
+	// The billable size of the table export.
+	BilledSizeBytes *int64 `type:"long"`
+
+	// The client token that was provided for the export task. A client token makes
+	// calls to ExportTableToPointInTimeInput idempotent, meaning that multiple
+	// identical calls have the same effect as one single call.
+	ClientToken *string `type:"string"`
+
+	// The time at which the export task completed.
+	EndTime *time.Time `type:"timestamp"`
+
+	// The Amazon Resource Name (ARN) of the table export.
+	ExportArn *string `min:"37" type:"string"`
+
+	// The format of the exported data. Valid values for ExportFormat are DYNAMODB_JSON
+	// or ION.
+	ExportFormat *string `type:"string" enum:"ExportFormat"`
+
+	// The name of the manifest file for the export task.
+	ExportManifest *string `type:"string"`
+
+	// Export can be in one of the following states: IN_PROGRESS, COMPLETED, or
+	// FAILED.
+	ExportStatus *string `type:"string" enum:"ExportStatus"`
+
+	// Point in time from which table data was exported.
+	ExportTime *time.Time `type:"timestamp"`
+
+	// Status code for the result of the failed export.
+	FailureCode *string `type:"string"`
+
+	// Export failure reason description.
+	FailureMessage *string `type:"string"`
+
+	// The number of items exported.
+	ItemCount *int64 `type:"long"`
+
+	// The name of the Amazon S3 bucket containing the export.
+	S3Bucket *string `type:"string"`
+
+	// The ID of the AWS account that owns the bucket containing the export.
+	S3BucketOwner *string `type:"string"`
+
+	// The Amazon S3 bucket prefix used as the file name and path of the exported
+	// snapshot.
+	S3Prefix *string `type:"string"`
+
+	// Type of encryption used on the bucket where export data is stored. Valid
+	// values for S3SseAlgorithm are:
+	//
+	//    * AES256 - server-side encryption with Amazon S3 managed keys
+	//
+	//    * KMS - server-side encryption with AWS KMS managed keys
+	S3SseAlgorithm *string `type:"string" enum:"S3SseAlgorithm"`
+
+	// The ID of the AWS KMS managed key used to encrypt the S3 bucket where export
+	// data is stored (if applicable).
+	S3SseKmsKeyId *string `min:"1" type:"string"`
+
+	// The time at which the export task began.
+	StartTime *time.Time `type:"timestamp"`
+
+	// The Amazon Resource Name (ARN) of the table that was exported.
+	TableArn *string `type:"string"`
+
+	// Unique ID of the table that was exported.
+	TableId *string `type:"string"`
+}
+
+// String returns the string representation
+func (s ExportDescription) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExportDescription) GoString() string {
+	return s.String()
+}
+
+// SetBilledSizeBytes sets the BilledSizeBytes field's value.
+func (s *ExportDescription) SetBilledSizeBytes(v int64) *ExportDescription {
+	s.BilledSizeBytes = &v
+	return s
+}
+
+// SetClientToken sets the ClientToken field's value.
+func (s *ExportDescription) SetClientToken(v string) *ExportDescription {
+	s.ClientToken = &v
+	return s
+}
+
+// SetEndTime sets the EndTime field's value.
+func (s *ExportDescription) SetEndTime(v time.Time) *ExportDescription {
+	s.EndTime = &v
+	return s
+}
+
+// SetExportArn sets the ExportArn field's value.
+func (s *ExportDescription) SetExportArn(v string) *ExportDescription {
+	s.ExportArn = &v
+	return s
+}
+
+// SetExportFormat sets the ExportFormat field's value.
+func (s *ExportDescription) SetExportFormat(v string) *ExportDescription {
+	s.ExportFormat = &v
+	return s
+}
+
+// SetExportManifest sets the ExportManifest field's value.
+func (s *ExportDescription) SetExportManifest(v string) *ExportDescription {
+	s.ExportManifest = &v
+	return s
+}
+
+// SetExportStatus sets the ExportStatus field's value.
+func (s *ExportDescription) SetExportStatus(v string) *ExportDescription {
+	s.ExportStatus = &v
+	return s
+}
+
+// SetExportTime sets the ExportTime field's value.
+func (s *ExportDescription) SetExportTime(v time.Time) *ExportDescription {
+	s.ExportTime = &v
+	return s
+}
+
+// SetFailureCode sets the FailureCode field's value.
+func (s *ExportDescription) SetFailureCode(v string) *ExportDescription {
+	s.FailureCode = &v
+	return s
+}
+
+// SetFailureMessage sets the FailureMessage field's value.
+func (s *ExportDescription) SetFailureMessage(v string) *ExportDescription {
+	s.FailureMessage = &v
+	return s
+}
+
+// SetItemCount sets the ItemCount field's value.
+func (s *ExportDescription) SetItemCount(v int64) *ExportDescription {
+	s.ItemCount = &v
+	return s
+}
+
+// SetS3Bucket sets the S3Bucket field's value.
+func (s *ExportDescription) SetS3Bucket(v string) *ExportDescription {
+	s.S3Bucket = &v
+	return s
+}
+
+// SetS3BucketOwner sets the S3BucketOwner field's value.
+func (s *ExportDescription) SetS3BucketOwner(v string) *ExportDescription {
+	s.S3BucketOwner = &v
+	return s
+}
+
+// SetS3Prefix sets the S3Prefix field's value.
+func (s *ExportDescription) SetS3Prefix(v string) *ExportDescription {
+	s.S3Prefix = &v
+	return s
+}
+
+// SetS3SseAlgorithm sets the S3SseAlgorithm field's value.
+func (s *ExportDescription) SetS3SseAlgorithm(v string) *ExportDescription {
+	s.S3SseAlgorithm = &v
+	return s
+}
+
+// SetS3SseKmsKeyId sets the S3SseKmsKeyId field's value.
+func (s *ExportDescription) SetS3SseKmsKeyId(v string) *ExportDescription {
+	s.S3SseKmsKeyId = &v
+	return s
+}
+
+// SetStartTime sets the StartTime field's value.
+func (s *ExportDescription) SetStartTime(v time.Time) *ExportDescription {
+	s.StartTime = &v
+	return s
+}
+
+// SetTableArn sets the TableArn field's value.
+func (s *ExportDescription) SetTableArn(v string) *ExportDescription {
+	s.TableArn = &v
+	return s
+}
+
+// SetTableId sets the TableId field's value.
+func (s *ExportDescription) SetTableId(v string) *ExportDescription {
+	s.TableId = &v
+	return s
+}
+
+// The specified export was not found.
+type ExportNotFoundException struct {
+	_            struct{}                  `type:"structure"`
+	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
+
+	Message_ *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation
+func (s ExportNotFoundException) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExportNotFoundException) GoString() string {
+	return s.String()
+}
+
+func newErrorExportNotFoundException(v protocol.ResponseMetadata) error {
+	return &ExportNotFoundException{
+		RespMetadata: v,
+	}
+}
+
+// Code returns the exception type name.
+func (s *ExportNotFoundException) Code() string {
+	return "ExportNotFoundException"
+}
+
+// Message returns the exception's message.
+func (s *ExportNotFoundException) Message() string {
+	if s.Message_ != nil {
+		return *s.Message_
+	}
+	return ""
+}
+
+// OrigErr always returns nil, satisfies awserr.Error interface.
+func (s *ExportNotFoundException) OrigErr() error {
+	return nil
+}
+
+func (s *ExportNotFoundException) Error() string {
+	return fmt.Sprintf("%s: %s", s.Code(), s.Message())
+}
+
+// Status code returns the HTTP status code for the request's response error.
+func (s *ExportNotFoundException) StatusCode() int {
+	return s.RespMetadata.StatusCode
+}
+
+// RequestID returns the service's response RequestID for request.
+func (s *ExportNotFoundException) RequestID() string {
+	return s.RespMetadata.RequestID
+}
+
+// Summary information about an export task.
+type ExportSummary struct {
+	_ struct{} `type:"structure"`
+
+	// The Amazon Resource Name (ARN) of the export.
+	ExportArn *string `min:"37" type:"string"`
+
+	// Export can be in one of the following states: IN_PROGRESS, COMPLETED, or
+	// FAILED.
+	ExportStatus *string `type:"string" enum:"ExportStatus"`
+}
+
+// String returns the string representation
+func (s ExportSummary) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExportSummary) GoString() string {
+	return s.String()
+}
+
+// SetExportArn sets the ExportArn field's value.
+func (s *ExportSummary) SetExportArn(v string) *ExportSummary {
+	s.ExportArn = &v
+	return s
+}
+
+// SetExportStatus sets the ExportStatus field's value.
+func (s *ExportSummary) SetExportStatus(v string) *ExportSummary {
+	s.ExportStatus = &v
+	return s
+}
+
+type ExportTableToPointInTimeInput struct {
+	_ struct{} `type:"structure"`
+
+	// Providing a ClientToken makes the call to ExportTableToPointInTimeInput idempotent,
+	// meaning that multiple identical calls have the same effect as one single
+	// call.
+	//
+	// A client token is valid for 8 hours after the first request that uses it
+	// is completed. After 8 hours, any request with the same client token is treated
+	// as a new request. Do not resubmit the same request with the same client token
+	// for more than 8 hours, or the result might not be idempotent.
+	//
+	// If you submit a request with the same client token but a change in other
+	// parameters within the 8-hour idempotency window, DynamoDB returns an IdempotentParameterMismatch
+	// exception.
+	ClientToken *string `type:"string" idempotencyToken:"true"`
+
+	// The format for the exported data. Valid values for ExportFormat are DYNAMODB_JSON
+	// or ION.
+	ExportFormat *string `type:"string" enum:"ExportFormat"`
+
+	// Time in the past from which to export table data. The table export will be
+	// a snapshot of the table's state at this point in time.
+	ExportTime *time.Time `type:"timestamp"`
+
+	// The name of the Amazon S3 bucket to export the snapshot to.
+	//
+	// S3Bucket is a required field
+	S3Bucket *string `type:"string" required:"true"`
+
+	// The ID of the AWS account that owns the bucket the export will be stored
+	// in.
+	S3BucketOwner *string `type:"string"`
+
+	// The Amazon S3 bucket prefix to use as the file name and path of the exported
+	// snapshot.
+	S3Prefix *string `type:"string"`
+
+	// Type of encryption used on the bucket where export data will be stored. Valid
+	// values for S3SseAlgorithm are:
+	//
+	//    * AES256 - server-side encryption with Amazon S3 managed keys
+	//
+	//    * KMS - server-side encryption with AWS KMS managed keys
+	S3SseAlgorithm *string `type:"string" enum:"S3SseAlgorithm"`
+
+	// The ID of the AWS KMS managed key used to encrypt the S3 bucket where export
+	// data will be stored (if applicable).
+	S3SseKmsKeyId *string `min:"1" type:"string"`
+
+	// The Amazon Resource Name (ARN) associated with the table to export.
+	//
+	// TableArn is a required field
+	TableArn *string `type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s ExportTableToPointInTimeInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExportTableToPointInTimeInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ExportTableToPointInTimeInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "ExportTableToPointInTimeInput"}
+	if s.S3Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("S3Bucket"))
+	}
+	if s.S3SseKmsKeyId != nil && len(*s.S3SseKmsKeyId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("S3SseKmsKeyId", 1))
+	}
+	if s.TableArn == nil {
+		invalidParams.Add(request.NewErrParamRequired("TableArn"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetClientToken sets the ClientToken field's value.
+func (s *ExportTableToPointInTimeInput) SetClientToken(v string) *ExportTableToPointInTimeInput {
+	s.ClientToken = &v
+	return s
+}
+
+// SetExportFormat sets the ExportFormat field's value.
+func (s *ExportTableToPointInTimeInput) SetExportFormat(v string) *ExportTableToPointInTimeInput {
+	s.ExportFormat = &v
+	return s
+}
+
+// SetExportTime sets the ExportTime field's value.
+func (s *ExportTableToPointInTimeInput) SetExportTime(v time.Time) *ExportTableToPointInTimeInput {
+	s.ExportTime = &v
+	return s
+}
+
+// SetS3Bucket sets the S3Bucket field's value.
+func (s *ExportTableToPointInTimeInput) SetS3Bucket(v string) *ExportTableToPointInTimeInput {
+	s.S3Bucket = &v
+	return s
+}
+
+// SetS3BucketOwner sets the S3BucketOwner field's value.
+func (s *ExportTableToPointInTimeInput) SetS3BucketOwner(v string) *ExportTableToPointInTimeInput {
+	s.S3BucketOwner = &v
+	return s
+}
+
+// SetS3Prefix sets the S3Prefix field's value.
+func (s *ExportTableToPointInTimeInput) SetS3Prefix(v string) *ExportTableToPointInTimeInput {
+	s.S3Prefix = &v
+	return s
+}
+
+// SetS3SseAlgorithm sets the S3SseAlgorithm field's value.
+func (s *ExportTableToPointInTimeInput) SetS3SseAlgorithm(v string) *ExportTableToPointInTimeInput {
+	s.S3SseAlgorithm = &v
+	return s
+}
+
+// SetS3SseKmsKeyId sets the S3SseKmsKeyId field's value.
+func (s *ExportTableToPointInTimeInput) SetS3SseKmsKeyId(v string) *ExportTableToPointInTimeInput {
+	s.S3SseKmsKeyId = &v
+	return s
+}
+
+// SetTableArn sets the TableArn field's value.
+func (s *ExportTableToPointInTimeInput) SetTableArn(v string) *ExportTableToPointInTimeInput {
+	s.TableArn = &v
+	return s
+}
+
+type ExportTableToPointInTimeOutput struct {
+	_ struct{} `type:"structure"`
+
+	// Contains a description of the table export.
+	ExportDescription *ExportDescription `type:"structure"`
+}
+
+// String returns the string representation
+func (s ExportTableToPointInTimeOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExportTableToPointInTimeOutput) GoString() string {
+	return s.String()
+}
+
+// SetExportDescription sets the ExportDescription field's value.
+func (s *ExportTableToPointInTimeOutput) SetExportDescription(v *ExportDescription) *ExportTableToPointInTimeOutput {
+	s.ExportDescription = v
 	return s
 }
 
@@ -11709,6 +12633,62 @@ func (s *InternalServerError) RequestID() string {
 	return s.RespMetadata.RequestID
 }
 
+// The specified ExportTime is outside of the point in time recovery window.
+type InvalidExportTimeException struct {
+	_            struct{}                  `type:"structure"`
+	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
+
+	Message_ *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation
+func (s InvalidExportTimeException) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s InvalidExportTimeException) GoString() string {
+	return s.String()
+}
+
+func newErrorInvalidExportTimeException(v protocol.ResponseMetadata) error {
+	return &InvalidExportTimeException{
+		RespMetadata: v,
+	}
+}
+
+// Code returns the exception type name.
+func (s *InvalidExportTimeException) Code() string {
+	return "InvalidExportTimeException"
+}
+
+// Message returns the exception's message.
+func (s *InvalidExportTimeException) Message() string {
+	if s.Message_ != nil {
+		return *s.Message_
+	}
+	return ""
+}
+
+// OrigErr always returns nil, satisfies awserr.Error interface.
+func (s *InvalidExportTimeException) OrigErr() error {
+	return nil
+}
+
+func (s *InvalidExportTimeException) Error() string {
+	return fmt.Sprintf("%s: %s", s.Code(), s.Message())
+}
+
+// Status code returns the HTTP status code for the request's response error.
+func (s *InvalidExportTimeException) StatusCode() int {
+	return s.RespMetadata.StatusCode
+}
+
+// RequestID returns the service's response RequestID for request.
+func (s *InvalidExportTimeException) RequestID() string {
+	return s.RespMetadata.RequestID
+}
+
 // An invalid restore time was specified. RestoreDateTime must be between EarliestRestorableDateTime
 // and LatestRestorableDateTime.
 type InvalidRestoreTimeException struct {
@@ -12398,6 +13378,95 @@ func (s *ListContributorInsightsOutput) SetContributorInsightsSummaries(v []*Con
 
 // SetNextToken sets the NextToken field's value.
 func (s *ListContributorInsightsOutput) SetNextToken(v string) *ListContributorInsightsOutput {
+	s.NextToken = &v
+	return s
+}
+
+type ListExportsInput struct {
+	_ struct{} `type:"structure"`
+
+	// Maximum number of results to return per page.
+	MaxResults *int64 `min:"1" type:"integer"`
+
+	// An optional string that, if supplied, must be copied from the output of a
+	// previous call to ListExports. When provided in this manner, the API fetches
+	// the next page of results.
+	NextToken *string `type:"string"`
+
+	// The Amazon Resource Name (ARN) associated with the exported table.
+	TableArn *string `type:"string"`
+}
+
+// String returns the string representation
+func (s ListExportsInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ListExportsInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ListExportsInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "ListExportsInput"}
+	if s.MaxResults != nil && *s.MaxResults < 1 {
+		invalidParams.Add(request.NewErrParamMinValue("MaxResults", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetMaxResults sets the MaxResults field's value.
+func (s *ListExportsInput) SetMaxResults(v int64) *ListExportsInput {
+	s.MaxResults = &v
+	return s
+}
+
+// SetNextToken sets the NextToken field's value.
+func (s *ListExportsInput) SetNextToken(v string) *ListExportsInput {
+	s.NextToken = &v
+	return s
+}
+
+// SetTableArn sets the TableArn field's value.
+func (s *ListExportsInput) SetTableArn(v string) *ListExportsInput {
+	s.TableArn = &v
+	return s
+}
+
+type ListExportsOutput struct {
+	_ struct{} `type:"structure"`
+
+	// A list of ExportSummary objects.
+	ExportSummaries []*ExportSummary `type:"list"`
+
+	// If this value is returned, there are additional results to be displayed.
+	// To retrieve them, call ListExports again, with NextToken set to this value.
+	NextToken *string `type:"string"`
+}
+
+// String returns the string representation
+func (s ListExportsOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ListExportsOutput) GoString() string {
+	return s.String()
+}
+
+// SetExportSummaries sets the ExportSummaries field's value.
+func (s *ListExportsOutput) SetExportSummaries(v []*ExportSummary) *ListExportsOutput {
+	s.ExportSummaries = v
+	return s
+}
+
+// SetNextToken sets the NextToken field's value.
+func (s *ListExportsOutput) SetNextToken(v string) *ListExportsOutput {
 	s.NextToken = &v
 	return s
 }
@@ -14615,6 +15684,12 @@ type ReplicaDescription struct {
 	//    20 hours, DynamoDB will remove this replica from the replication group.
 	//    The replica will not be deleted and replication will stop from and to
 	//    this region.
+	//
+	//    * INACCESSIBLE_ENCRYPTION_CREDENTIALS - The AWS KMS key used to encrypt
+	//    the table is inaccessible. If the AWS KMS key remains inaccessible for
+	//    more than 20 hours, DynamoDB will remove this replica from the replication
+	//    group. The replica will not be deleted and replication will stop from
+	//    and to this region.
 	ReplicaStatus *string `type:"string" enum:"ReplicaStatus"`
 
 	// Detailed information about the replica status.
@@ -20127,6 +21202,42 @@ func ContributorInsightsStatus_Values() []string {
 }
 
 const (
+	// ExportFormatDynamodbJson is a ExportFormat enum value
+	ExportFormatDynamodbJson = "DYNAMODB_JSON"
+
+	// ExportFormatIon is a ExportFormat enum value
+	ExportFormatIon = "ION"
+)
+
+// ExportFormat_Values returns all elements of the ExportFormat enum
+func ExportFormat_Values() []string {
+	return []string{
+		ExportFormatDynamodbJson,
+		ExportFormatIon,
+	}
+}
+
+const (
+	// ExportStatusInProgress is a ExportStatus enum value
+	ExportStatusInProgress = "IN_PROGRESS"
+
+	// ExportStatusCompleted is a ExportStatus enum value
+	ExportStatusCompleted = "COMPLETED"
+
+	// ExportStatusFailed is a ExportStatus enum value
+	ExportStatusFailed = "FAILED"
+)
+
+// ExportStatus_Values returns all elements of the ExportStatus enum
+func ExportStatus_Values() []string {
+	return []string{
+		ExportStatusInProgress,
+		ExportStatusCompleted,
+		ExportStatusFailed,
+	}
+}
+
+const (
 	// GlobalTableStatusCreating is a GlobalTableStatus enum value
 	GlobalTableStatusCreating = "CREATING"
 
@@ -20244,6 +21355,9 @@ const (
 
 	// ReplicaStatusRegionDisabled is a ReplicaStatus enum value
 	ReplicaStatusRegionDisabled = "REGION_DISABLED"
+
+	// ReplicaStatusInaccessibleEncryptionCredentials is a ReplicaStatus enum value
+	ReplicaStatusInaccessibleEncryptionCredentials = "INACCESSIBLE_ENCRYPTION_CREDENTIALS"
 )
 
 // ReplicaStatus_Values returns all elements of the ReplicaStatus enum
@@ -20255,6 +21369,7 @@ func ReplicaStatus_Values() []string {
 		ReplicaStatusDeleting,
 		ReplicaStatusActive,
 		ReplicaStatusRegionDisabled,
+		ReplicaStatusInaccessibleEncryptionCredentials,
 	}
 }
 
@@ -20348,6 +21463,22 @@ func ReturnValuesOnConditionCheckFailure_Values() []string {
 	return []string{
 		ReturnValuesOnConditionCheckFailureAllOld,
 		ReturnValuesOnConditionCheckFailureNone,
+	}
+}
+
+const (
+	// S3SseAlgorithmAes256 is a S3SseAlgorithm enum value
+	S3SseAlgorithmAes256 = "AES256"
+
+	// S3SseAlgorithmKms is a S3SseAlgorithm enum value
+	S3SseAlgorithmKms = "KMS"
+)
+
+// S3SseAlgorithm_Values returns all elements of the S3SseAlgorithm enum
+func S3SseAlgorithm_Values() []string {
+	return []string{
+		S3SseAlgorithmAes256,
+		S3SseAlgorithmKms,
 	}
 }
 

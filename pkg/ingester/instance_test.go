@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"sort"
 	"sync"
 	"testing"
@@ -35,7 +36,7 @@ func TestLabelsCollisions(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(defaultConfig(), "test", limiter, noopWAL{}, nil)
+	i := newInstance(defaultConfig(), "test", limiter, noopWAL{}, nil, &OnceSwitch{})
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -62,7 +63,7 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{}, NilMetrics)
+	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{})
 
 	const (
 		concurrent          = 10
@@ -120,7 +121,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{}, NilMetrics)
+	inst := newInstance(defaultConfig(), "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{})
 	lbls := makeRandomLabels()
 
 	tt := time.Now()
@@ -160,7 +161,7 @@ func Test_SeriesQuery(t *testing.T) {
 	cfg.SyncPeriod = 1 * time.Minute
 	cfg.SyncMinUtilization = 0.20
 
-	instance := newInstance(cfg, "test", limiter, noopWAL{}, NilMetrics)
+	instance := newInstance(cfg, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{})
 
 	currentTime := time.Now()
 
@@ -271,7 +272,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(&Config{}, "test", limiter, noopWAL{}, NilMetrics)
+	i := newInstance(&Config{}, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{})
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {
@@ -303,5 +304,58 @@ func Benchmark_PushInstance(b *testing.B) {
 				},
 			},
 		})
+	}
+}
+
+func Benchmark_instance_addNewTailer(b *testing.B) {
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 100000}, nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+
+	ctx := context.Background()
+
+	inst := newInstance(&Config{}, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{})
+	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil)
+	require.NoError(b, err)
+	for i := 0; i < 10000; i++ {
+		require.NoError(b, inst.Push(ctx, &logproto.PushRequest{
+			Streams: []logproto.Stream{},
+		}))
+	}
+	b.Run("addNewTailer", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_ = inst.addNewTailer(t)
+		}
+	})
+	lbs := makeRandomLabels()
+	b.Run("addTailersToNewStream", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			inst.addTailersToNewStream(newStream(nil, 0, lbs, NilMetrics))
+		}
+	})
+
+}
+
+func Benchmark_OnceSwitch(b *testing.B) {
+	threads := runtime.GOMAXPROCS(0)
+
+	// limit threads
+	if threads > 4 {
+		threads = 4
+	}
+
+	for n := 0; n < b.N; n++ {
+		x := &OnceSwitch{}
+		var wg sync.WaitGroup
+		for i := 0; i < threads; i++ {
+			wg.Add(1)
+			go func() {
+				for i := 0; i < 1000; i++ {
+					x.Trigger()
+				}
+				wg.Done()
+			}()
+		}
+		wg.Wait()
 	}
 }

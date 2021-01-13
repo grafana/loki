@@ -2,36 +2,20 @@ package tsdb
 
 import (
 	"flag"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/alecthomas/units"
 	"github.com/pkg/errors"
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/thanos-io/thanos/pkg/store"
 
-	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
-	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
-	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
-	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 const (
-	// BackendS3 is the value for the S3 storage backend
-	BackendS3 = "s3"
-
-	// BackendGCS is the value for the GCS storage backend
-	BackendGCS = "gcs"
-
-	// BackendAzure is the value for the Azure storage backend
-	BackendAzure = "azure"
-
-	// BackendFilesystem is the value for the filesystem storge backend
-	BackendFilesystem = "filesystem"
-
 	// TenantIDExternalLabel is the external label containing the tenant ID,
 	// set when shipping blocks to the storage.
 	TenantIDExternalLabel = "__org_id__"
@@ -43,38 +27,29 @@ const (
 	// ShardIDExternalLabel is the external label containing the shard ID
 	// and can be used to shard blocks.
 	ShardIDExternalLabel = "__shard_id__"
+
+	// How often are open TSDBs checked for being idle and closed.
+	DefaultCloseIdleTSDBInterval = 5 * time.Minute
+
+	// How often to check for tenant deletion mark.
+	DeletionMarkCheckInterval = 1 * time.Hour
 )
 
 // Validation errors
 var (
-	supportedBackends = []string{BackendS3, BackendGCS, BackendAzure, BackendFilesystem}
-
-	errUnsupportedStorageBackend    = errors.New("unsupported TSDB storage backend")
 	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
+	errInvalidOpeningConcurrency    = errors.New("invalid TSDB opening concurrency")
 	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
 	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
+	errInvalidWALSegmentSizeBytes   = errors.New("invalid TSDB WAL segment size bytes")
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
 )
 
-// BucketConfig holds configuration for accessing long-term storage.
-type BucketConfig struct {
-	Backend string `yaml:"backend"`
-	// Backends
-	S3         s3.Config         `yaml:"s3"`
-	GCS        gcs.Config        `yaml:"gcs"`
-	Azure      azure.Config      `yaml:"azure"`
-	Filesystem filesystem.Config `yaml:"filesystem"`
-
-	// Not used internally, meant to allow callers to wrap Buckets
-	// created using this config
-	Middlewares []func(objstore.Bucket) (objstore.Bucket, error) `yaml:"-"`
-}
-
 // BlocksStorageConfig holds the config information for the blocks storage.
 //nolint:golint
 type BlocksStorageConfig struct {
-	Bucket      BucketConfig      `yaml:",inline"`
+	Bucket      bucket.Config     `yaml:",inline"`
 	BucketStore BucketStoreConfig `yaml:"bucket_store" doc:"description=This configures how the store-gateway synchronizes blocks stored in the bucket."`
 	TSDB        TSDBConfig        `yaml:"tsdb"`
 }
@@ -116,29 +91,11 @@ func (d *DurationList) ToMilliseconds() []int64 {
 	return values
 }
 
-// RegisterFlags registers the TSDB Backend
-func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.S3.RegisterFlags(f)
-	cfg.GCS.RegisterFlags(f)
-	cfg.Azure.RegisterFlags(f)
-	cfg.Filesystem.RegisterFlags(f)
-
-	f.StringVar(&cfg.Backend, "blocks-storage.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
-}
-
 // RegisterFlags registers the TSDB flags
 func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.Bucket.RegisterFlags(f)
+	cfg.Bucket.RegisterFlagsWithPrefix("blocks-storage.", f)
 	cfg.BucketStore.RegisterFlags(f)
 	cfg.TSDB.RegisterFlags(f)
-}
-
-func (cfg *BucketConfig) Validate() error {
-	if !util.StringsContain(supportedBackends, cfg.Backend) {
-		return errUnsupportedStorageBackend
-	}
-
-	return nil
 }
 
 // Validate the config.
@@ -165,9 +122,12 @@ type TSDBConfig struct {
 	HeadCompactionInterval    time.Duration `yaml:"head_compaction_interval"`
 	HeadCompactionConcurrency int           `yaml:"head_compaction_concurrency"`
 	HeadCompactionIdleTimeout time.Duration `yaml:"head_compaction_idle_timeout"`
+	HeadChunksWriteBufferSize int           `yaml:"head_chunks_write_buffer_size_bytes"`
 	StripeSize                int           `yaml:"stripe_size"`
 	WALCompressionEnabled     bool          `yaml:"wal_compression_enabled"`
+	WALSegmentSizeBytes       int           `yaml:"wal_segment_size_bytes"`
 	FlushBlocksOnShutdown     bool          `yaml:"flush_blocks_on_shutdown"`
+	CloseIdleTSDBTimeout      time.Duration `yaml:"close_idle_tsdb_timeout"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup.
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -175,6 +135,9 @@ type TSDBConfig struct {
 	// If true, user TSDBs are not closed on shutdown. Only for testing.
 	// If false (default), user TSDBs are closed to make sure all resources are released and closed properly.
 	KeepUserTSDBOpenOnShutdown bool `yaml:"-"`
+
+	// How often to check for idle TSDBs for closing. DefaultCloseIdleTSDBInterval is not suitable for testing, so tests can override.
+	CloseIdleTSDBInterval time.Duration `yaml:"-"`
 }
 
 // RegisterFlags registers the TSDBConfig flags.
@@ -192,15 +155,22 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeadCompactionInterval, "blocks-storage.tsdb.head-compaction-interval", 1*time.Minute, "How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range. Must be greater than 0 and max 5 minutes.")
 	f.IntVar(&cfg.HeadCompactionConcurrency, "blocks-storage.tsdb.head-compaction-concurrency", 5, "Maximum number of tenants concurrently compacting TSDB head into a new block")
 	f.DurationVar(&cfg.HeadCompactionIdleTimeout, "blocks-storage.tsdb.head-compaction-idle-timeout", 1*time.Hour, "If TSDB head is idle for this duration, it is compacted. 0 means disabled.")
+	f.IntVar(&cfg.HeadChunksWriteBufferSize, "blocks-storage.tsdb.head-chunks-write-buffer-size-bytes", chunks.DefaultWriteBufferSize, "The write buffer size used by the head chunks mapper. Lower values reduce memory utilisation on clusters with a large number of tenants at the cost of increased disk I/O operations.")
 	f.IntVar(&cfg.StripeSize, "blocks-storage.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
 	f.BoolVar(&cfg.WALCompressionEnabled, "blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
+	f.IntVar(&cfg.WALSegmentSizeBytes, "blocks-storage.tsdb.wal-segment-size-bytes", wal.DefaultSegmentSize, "TSDB WAL segments files max size (bytes).")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
+	f.DurationVar(&cfg.CloseIdleTSDBTimeout, "blocks-storage.tsdb.close-idle-tsdb-timeout", 0, "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. If set to positive value, this value should be equal or higher than -querier.query-ingesters-within flag to make sure that TSDB is not closed prematurely, which could cause partial query results. 0 or negative value disables closing of idle TSDB.")
 }
 
 // Validate the config.
 func (cfg *TSDBConfig) Validate() error {
 	if cfg.ShipInterval > 0 && cfg.ShipConcurrency <= 0 {
 		return errInvalidShipConcurrency
+	}
+
+	if cfg.MaxTSDBOpeningConcurrencyOnStartup <= 0 {
+		return errInvalidOpeningConcurrency
 	}
 
 	if cfg.HeadCompactionInterval <= 0 || cfg.HeadCompactionInterval > 5*time.Minute {
@@ -211,12 +181,20 @@ func (cfg *TSDBConfig) Validate() error {
 		return errInvalidCompactionConcurrency
 	}
 
+	if cfg.HeadChunksWriteBufferSize < chunks.MinWriteBufferSize || cfg.HeadChunksWriteBufferSize > chunks.MaxWriteBufferSize || cfg.HeadChunksWriteBufferSize%1024 != 0 {
+		return errors.Errorf("head chunks write buffer size must be a multiple of 1024 between %d and %d", chunks.MinWriteBufferSize, chunks.MaxWriteBufferSize)
+	}
+
 	if cfg.StripeSize <= 1 || (cfg.StripeSize&(cfg.StripeSize-1)) != 0 { // ensure stripe size is a positive power of 2
 		return errInvalidStripeSize
 	}
 
 	if len(cfg.BlockRanges) == 0 {
 		return errEmptyBlockranges
+	}
+
+	if cfg.WALSegmentSizeBytes <= 0 {
+		return errInvalidWALSegmentSizeBytes
 	}
 
 	return nil
@@ -242,6 +220,11 @@ type BucketStoreConfig struct {
 	ChunksCache              ChunksCacheConfig   `yaml:"chunks_cache"`
 	MetadataCache            MetadataCacheConfig `yaml:"metadata_cache"`
 	IgnoreDeletionMarksDelay time.Duration       `yaml:"ignore_deletion_mark_delay"`
+
+	// Controls whether index-header lazy loading is enabled. This config option is hidden
+	// while it is marked as experimental.
+	IndexHeaderLazyLoadingEnabled     bool          `yaml:"index_header_lazy_loading_enabled" doc:"hidden"`
+	IndexHeaderLazyLoadingIdleTimeout time.Duration `yaml:"index_header_lazy_loading_idle_timeout" doc:"hidden"`
 
 	// Controls what is the ratio of postings offsets store will hold in memory.
 	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
@@ -269,6 +252,8 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 		"The idea of ignore-deletion-marks-delay is to ignore blocks that are marked for deletion with some delay. This ensures store can still serve blocks that are meant to be deleted but do not have a replacement yet. "+
 		"Default is 6h, half of the default value for -compactor.deletion-delay.")
 	f.IntVar(&cfg.PostingOffsetsInMemSampling, "blocks-storage.bucket-store.posting-offsets-in-mem-sampling", store.DefaultPostingOffsetInMemorySampling, "Controls what is the ratio of postings offsets that the store will hold in memory.")
+	f.BoolVar(&cfg.IndexHeaderLazyLoadingEnabled, "blocks-storage.bucket-store.index-header-lazy-loading-enabled", false, "If enabled, store-gateway will lazy load an index-header only once required by a query.")
+	f.DurationVar(&cfg.IndexHeaderLazyLoadingIdleTimeout, "blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout", 20*time.Minute, "If index-header lazy loading is enabled and this setting is > 0, the store-gateway will offload unused index-headers after 'idle timeout' inactivity.")
 }
 
 // Validate the config.

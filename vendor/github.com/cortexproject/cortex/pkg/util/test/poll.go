@@ -21,6 +21,6 @@ func Poll(t testing.TB, d time.Duration, want interface{}, have func() interface
 	}
 	h := have()
 	if !reflect.DeepEqual(want, h) {
-		t.Fatalf("%v != %v", want, h)
+		t.Fatalf("expected %v, got %v", want, h)
 	}
 }

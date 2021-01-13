@@ -350,7 +350,7 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 		}
 	}()
 
-	var errs tsdb_errors.MultiError
+	errs := tsdb_errors.NewMulti()
 
 	files, err := ioutil.ReadDir(w.segmentWAL.Dir())
 	if err != nil {

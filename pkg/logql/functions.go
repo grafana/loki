@@ -74,7 +74,7 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 	}
 	// otherwise we extract metrics from the log line.
 	switch r.operation {
-	case OpRangeTypeRate, OpRangeTypeCount:
+	case OpRangeTypeRate, OpRangeTypeCount, OpRangeTypeAbsent:
 		return log.NewLineSampleExtractor(log.CountExtractor, stages, groups, without, noLabels)
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
 		return log.NewLineSampleExtractor(log.BytesExtractor, stages, groups, without, noLabels)
@@ -86,7 +86,7 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 	switch r.operation {
 	case OpRangeTypeRate:
-		return rateLogs(r.left.interval), nil
+		return rateLogs(r.left.interval, r.left.unwrap != nil), nil
 	case OpRangeTypeCount:
 		return countOverTime, nil
 	case OpRangeTypeBytesRate:
@@ -109,15 +109,24 @@ func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 		return first, nil
 	case OpRangeTypeLast:
 		return last, nil
+	case OpRangeTypeAbsent:
+		return one, nil
 	default:
 		return nil, fmt.Errorf(unsupportedErr, r.operation)
 	}
 }
 
 // rateLogs calculates the per-second rate of log lines.
-func rateLogs(selRange time.Duration) func(samples []promql.Point) float64 {
+func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.Point) float64 {
 	return func(samples []promql.Point) float64 {
-		return float64(len(samples)) / selRange.Seconds()
+		if !computeValues {
+			return float64(len(samples)) / selRange.Seconds()
+		}
+		var total float64
+		for _, p := range samples {
+			total += p.V
+		}
+		return total / selRange.Seconds()
 	}
 }
 
@@ -261,4 +270,8 @@ func last(samples []promql.Point) float64 {
 		return math.NaN()
 	}
 	return samples[len(samples)-1].V
+}
+
+func one(samples []promql.Point) float64 {
+	return 1.0
 }

@@ -213,9 +213,11 @@ type NotificationLog interface {
 }
 
 type metrics struct {
-	numNotifications           *prometheus.CounterVec
-	numFailedNotifications     *prometheus.CounterVec
-	notificationLatencySeconds *prometheus.HistogramVec
+	numNotifications                   *prometheus.CounterVec
+	numTotalFailedNotifications        *prometheus.CounterVec
+	numNotificationRequestsTotal       *prometheus.CounterVec
+	numNotificationRequestsFailedTotal *prometheus.CounterVec
+	notificationLatencySeconds         *prometheus.HistogramVec
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -225,10 +227,20 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "notifications_total",
 			Help:      "The total number of attempted notifications.",
 		}, []string{"integration"}),
-		numFailedNotifications: prometheus.NewCounterVec(prometheus.CounterOpts{
+		numTotalFailedNotifications: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notifications_failed_total",
 			Help:      "The total number of failed notifications.",
+		}, []string{"integration"}),
+		numNotificationRequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "alertmanager",
+			Name:      "notification_requests_total",
+			Help:      "The total number of attempted notification requests.",
+		}, []string{"integration"}),
+		numNotificationRequestsFailedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "alertmanager",
+			Name:      "notification_requests_failed_total",
+			Help:      "The total number of failed notification requests.",
 		}, []string{"integration"}),
 		notificationLatencySeconds: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "alertmanager",
@@ -248,10 +260,16 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		"victorops",
 	} {
 		m.numNotifications.WithLabelValues(integration)
-		m.numFailedNotifications.WithLabelValues(integration)
+		m.numTotalFailedNotifications.WithLabelValues(integration)
+		m.numNotificationRequestsTotal.WithLabelValues(integration)
+		m.numNotificationRequestsFailedTotal.WithLabelValues(integration)
 		m.notificationLatencySeconds.WithLabelValues(integration)
 	}
-	r.MustRegister(m.numNotifications, m.numFailedNotifications, m.notificationLatencySeconds)
+	r.MustRegister(
+		m.numNotifications, m.numTotalFailedNotifications,
+		m.numNotificationRequestsTotal, m.numNotificationRequestsFailedTotal,
+		m.notificationLatencySeconds,
+	)
 	return m
 }
 
@@ -389,7 +407,7 @@ func NewGossipSettleStage(p *cluster.Peer) *GossipSettleStage {
 	return &GossipSettleStage{peer: p}
 }
 
-func (n *GossipSettleStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+func (n *GossipSettleStage) Exec(ctx context.Context, _ log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	if n.peer != nil {
 		n.peer.WaitReady()
 	}
@@ -407,7 +425,7 @@ func NewMuteStage(m types.Muter) *MuteStage {
 }
 
 // Exec implements the Stage interface.
-func (n *MuteStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+func (n *MuteStage) Exec(ctx context.Context, _ log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	var filtered []*types.Alert
 	for _, a := range alerts {
 		// TODO(fabxc): increment total alerts counter.
@@ -434,7 +452,7 @@ func NewWaitStage(wait func() time.Duration) *WaitStage {
 }
 
 // Exec implements the Stage interface.
-func (ws *WaitStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+func (ws *WaitStage) Exec(ctx context.Context, _ log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	select {
 	case <-time.After(ws.wait()):
 	case <-ctx.Done():
@@ -541,7 +559,7 @@ func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint
 }
 
 // Exec implements the Stage interface.
-func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+func (n *DedupStage) Exec(ctx context.Context, _ log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	gkey, ok := GroupKey(ctx)
 	if !ok {
 		return ctx, nil, errors.New("group key missing")
@@ -609,8 +627,16 @@ func NewRetryStage(i Integration, groupName string, metrics *metrics) *RetryStag
 	}
 }
 
-// Exec implements the Stage interface.
 func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+	r.metrics.numNotifications.WithLabelValues(r.integration.Name()).Inc()
+	ctx, alerts, err := r.exec(ctx, l, alerts...)
+	if err != nil {
+		r.metrics.numTotalFailedNotifications.WithLabelValues(r.integration.Name()).Inc()
+	}
+	return ctx, alerts, err
+}
+
+func (r RetryStage) exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	var sent []*types.Alert
 
 	// If we shouldn't send notifications for resolved alerts, but there are only
@@ -663,9 +689,9 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 			now := time.Now()
 			retry, err := r.integration.Notify(ctx, sent...)
 			r.metrics.notificationLatencySeconds.WithLabelValues(r.integration.Name()).Observe(time.Since(now).Seconds())
-			r.metrics.numNotifications.WithLabelValues(r.integration.Name()).Inc()
+			r.metrics.numNotificationRequestsTotal.WithLabelValues(r.integration.Name()).Inc()
 			if err != nil {
-				r.metrics.numFailedNotifications.WithLabelValues(r.integration.Name()).Inc()
+				r.metrics.numNotificationRequestsFailedTotal.WithLabelValues(r.integration.Name()).Inc()
 				if !retry {
 					return ctx, alerts, errors.Wrapf(err, "%s/%s: notify retry canceled due to unrecoverable error after %d attempts", r.groupName, r.integration.String(), i)
 				}

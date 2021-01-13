@@ -2117,7 +2117,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |~ \"(?i)level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |= \"level=error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -2179,7 +2179,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |~ \"(?i)level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |= \"level=error\"",
               "refId": "A"
             }
           ],
@@ -2781,7 +2781,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |~ \"(?i)level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |= \"level=error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -2843,7 +2843,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |~ \"(?i)level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |= \"level=error\"",
               "refId": "A"
             }
           ],
@@ -3727,7 +3727,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |~ \"(?i)level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |= \"level=error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -3789,7 +3789,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |~ \"(?i)level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |= \"level=error\"",
               "refId": "A"
             }
           ],

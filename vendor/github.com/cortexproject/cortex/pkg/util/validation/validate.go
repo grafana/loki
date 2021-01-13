@@ -179,7 +179,7 @@ type MetadataValidationConfig interface {
 
 // ValidateMetadata returns an err if a metric metadata is invalid.
 func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *client.MetricMetadata) error {
-	if cfg.EnforceMetadataMetricName(userID) && metadata.MetricName == "" {
+	if cfg.EnforceMetadataMetricName(userID) && metadata.GetMetricFamilyName() == "" {
 		DiscardedMetadata.WithLabelValues(missingMetricName, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataMissingMetricName)
 	}
@@ -188,10 +188,10 @@ func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *cli
 	var reason string
 	var cause string
 	var metadataType string
-	if len(metadata.MetricName) > maxMetadataValueLength {
+	if len(metadata.GetMetricFamilyName()) > maxMetadataValueLength {
 		metadataType = typeMetricName
 		reason = metricNameTooLong
-		cause = metadata.MetricName
+		cause = metadata.GetMetricFamilyName()
 	} else if len(metadata.Help) > maxMetadataValueLength {
 		metadataType = typeHelp
 		reason = helpTooLong
@@ -204,7 +204,7 @@ func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *cli
 
 	if reason != "" {
 		DiscardedMetadata.WithLabelValues(reason, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataTooLong, metadataType, cause, metadata.MetricName)
+		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataTooLong, metadataType, cause, metadata.GetMetricFamilyName())
 	}
 
 	return nil

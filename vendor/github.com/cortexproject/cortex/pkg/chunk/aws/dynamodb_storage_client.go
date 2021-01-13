@@ -87,6 +87,14 @@ func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3Config.RegisterFlags(f)
 }
 
+// Validate config and returns error on failure
+func (cfg *StorageConfig) Validate() error {
+	if err := cfg.S3Config.Validate(); err != nil {
+		return errors.Wrap(err, "invalid S3 Storage config")
+	}
+	return nil
+}
+
 type dynamoDBStorageClient struct {
 	cfg       DynamoDBConfig
 	schemaCfg chunk.SchemaConfig

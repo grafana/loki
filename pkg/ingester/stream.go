@@ -364,7 +364,3 @@ func (s *stream) addTailer(t *tailer) {
 
 	s.tailers[t.getID()] = t
 }
-
-func (s *stream) matchesTailer(t *tailer) bool {
-	return t.isWatchingLabels(s.labels)
-}

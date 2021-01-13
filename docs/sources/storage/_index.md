@@ -39,10 +39,10 @@ Some more storage details can also be found in the [operations section]({{< relr
   - [Retention](#retention)
   - [Examples](#examples)
     - [Single machine/local development (boltdb+filesystem)](#single-machinelocal-development-boltdbfilesystem)
-    - [GCP deployment (GCS+BigTable)](#gcp-deployment-gcsbigtable)
+    - [GCP deployment (GCS Single Store)](#gcp-deployment-gcs-single-store)
     - [AWS deployment (S3+DynamoDB)](#aws-deployment-s3dynamodb)
     - [On prem deployment (Cassandra+Cassandra)](#on-prem-deployment-cassandracassandra)
-    - [On prem deployment (Cassandra+MinIO)](#on-prem-deployment-cassandraminio)
+    - [On prem deployment (MinIO Single Store)](#on-prem-deployment-minio-single-store)
 
 ## Implementations - Chunks
 
@@ -219,7 +219,7 @@ schema_config:
         period: 24h
 ```
 
-### AWS deployment (S3 Single Store)
+### AWS deployment (S3+DynamoDB)
 
 ```yaml
 storage_config:

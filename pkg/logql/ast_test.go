@@ -58,6 +58,7 @@ func Test_SampleExpr_String(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []string{
 		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
+		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
@@ -65,6 +66,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
+		`topk by (name)(10,sum(rate({region="us-east1"}[5m])))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
 		`avg(min_over_time({job="nginx"} |= "GET" | unwrap foo[10s])) by (region)`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m]))`,
@@ -103,6 +105,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
 		`last_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
 		`first_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
+		`absent_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
 		`sum by (job) (
 			sum_over_time(
 				{namespace="tns"} |= "level=error" | json | avg=5 and bar<25ms | unwrap duration(latency)  | __error__!~".*" [5m]
@@ -110,6 +113,20 @@ func Test_SampleExpr_String(t *testing.T) {
 		/
 			count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
 		)`,
+		`label_replace(
+			sum by (job) (
+				sum_over_time(
+					{namespace="tns"} |= "level=error" | json | avg=5 and bar<25ms | unwrap duration(latency)  | __error__!~".*" [5m]
+				)
+			/
+				count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
+			),
+			"foo",
+			"$1",
+			"service",
+			"(.*):.*"
+		)
+		`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
@@ -142,7 +159,6 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 			require.True(t, ok)
 		})
 	}
-
 }
 
 type linecheck struct {
@@ -344,7 +360,6 @@ func mustNewRegexParser(re string) log.Stage {
 }
 
 func Test_canInjectVectorGrouping(t *testing.T) {
-
 	tests := []struct {
 		vecOp   string
 		rangeOp string

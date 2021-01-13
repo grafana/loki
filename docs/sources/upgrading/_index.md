@@ -19,6 +19,38 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 _add changes here which are unreleased_
 
+## 2.1.0
+
+The upgrade from 2.0.0 to 2.1.0 should be fairly smooth, please be aware of these two things:
+
+### Helm charts have moved!
+
+Helm charts are now located at: https://github.com/grafana/helm-charts/
+
+The helm repo URL is now: https://grafana.github.io/helm-charts
+
+### Fluent Bit plugin renamed
+
+Fluent bit officially supports Loki as an output plugin now! WoooHOOO!
+
+However this created a naming conflict with our existing output plugin (the new native output uses the name `loki`) so we have renamed our plugin.
+
+In time our plan is to deprecate and eliminate our output plugin in favor of the native Loki support. However until then you can continue using the plugin with the following change:
+
+Old:
+
+```
+[Output]
+    Name loki
+```
+
+New:
+
+```
+[Output]
+    Name grafana-loki
+```
+
 ## 2.0.0
 
 This is a major Loki release and there are some very important upgrade considerations.

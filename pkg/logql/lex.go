@@ -12,25 +12,26 @@ import (
 )
 
 var tokens = map[string]int{
-	",":       COMMA,
-	".":       DOT,
-	"{":       OPEN_BRACE,
-	"}":       CLOSE_BRACE,
-	"=":       EQ,
-	OpTypeNEQ: NEQ,
-	"=~":      RE,
-	"!~":      NRE,
-	"|=":      PIPE_EXACT,
-	"|~":      PIPE_MATCH,
-	OpPipe:    PIPE,
-	OpUnwrap:  UNWRAP,
-	"(":       OPEN_PARENTHESIS,
-	")":       CLOSE_PARENTHESIS,
-	"by":      BY,
-	"without": WITHOUT,
-	"bool":    BOOL,
-	"[":       OPEN_BRACKET,
-	"]":       CLOSE_BRACKET,
+	",":            COMMA,
+	".":            DOT,
+	"{":            OPEN_BRACE,
+	"}":            CLOSE_BRACE,
+	"=":            EQ,
+	OpTypeNEQ:      NEQ,
+	"=~":           RE,
+	"!~":           NRE,
+	"|=":           PIPE_EXACT,
+	"|~":           PIPE_MATCH,
+	OpPipe:         PIPE,
+	OpUnwrap:       UNWRAP,
+	"(":            OPEN_PARENTHESIS,
+	")":            CLOSE_PARENTHESIS,
+	"by":           BY,
+	"without":      WITHOUT,
+	"bool":         BOOL,
+	"[":            OPEN_BRACKET,
+	"]":            CLOSE_BRACKET,
+	OpLabelReplace: LABEL_REPLACE,
 
 	// binops
 	OpTypeOr:     OR,
@@ -75,17 +76,19 @@ var functionTokens = map[string]int{
 	OpRangeTypeQuantile:  QUANTILE_OVER_TIME,
 	OpRangeTypeFirst:     FIRST_OVER_TIME,
 	OpRangeTypeLast:      LAST_OVER_TIME,
+	OpRangeTypeAbsent:    ABSENT_OVER_TIME,
 
 	// vec ops
-	OpTypeSum:     SUM,
-	OpTypeAvg:     AVG,
-	OpTypeMax:     MAX,
-	OpTypeMin:     MIN,
-	OpTypeCount:   COUNT,
-	OpTypeStddev:  STDDEV,
-	OpTypeStdvar:  STDVAR,
-	OpTypeBottomK: BOTTOMK,
-	OpTypeTopK:    TOPK,
+	OpTypeSum:      SUM,
+	OpTypeAvg:      AVG,
+	OpTypeMax:      MAX,
+	OpTypeMin:      MIN,
+	OpTypeCount:    COUNT,
+	OpTypeStddev:   STDDEV,
+	OpTypeStdvar:   STDVAR,
+	OpTypeBottomK:  BOTTOMK,
+	OpTypeTopK:     TOPK,
+	OpLabelReplace: LABEL_REPLACE,
 
 	// conversion Op
 	OpConvBytes:           BYTES_CONV,
@@ -100,7 +103,15 @@ type lexer struct {
 
 func (l *lexer) Lex(lval *exprSymType) int {
 	r := l.Scan()
+
 	switch r {
+	case '#':
+		// Scan until a newline or EOF is encountered
+		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {
+		}
+
+		return l.Lex(lval)
+
 	case scanner.EOF:
 		return 0
 
@@ -187,7 +198,7 @@ func (l *lexer) Error(msg string) {
 func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
-	//copy the scanner to avoid advancing it in case it's not a duration.
+	// copy the scanner to avoid advancing it in case it's not a duration.
 	s := *l
 	consumed := 0
 	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
@@ -227,7 +238,7 @@ func isDurationRune(r rune) bool {
 func tryScanBytes(number string, l *scanner.Scanner) (uint64, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
-	//copy the scanner to avoid advancing it in case it's not a duration.
+	// copy the scanner to avoid advancing it in case it's not a duration.
 	s := *l
 	consumed := 0
 	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {

@@ -108,7 +108,7 @@ func (m *Manager) initModule(name string, initMap map[string]bool, servicesMap m
 			if s != nil {
 				// We pass servicesMap, which isn't yet complete. By the time service starts,
 				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
+				serv = newModuleServiceWrapper(servicesMap, n, s, m.DependenciesForModule(n), m.findInverseDependencies(n, deps[ix+1:]))
 			}
 		}
 

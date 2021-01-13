@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -97,13 +98,25 @@ func NewWithTracingClient(logger log.Logger, userAgent string) *Client {
 	)
 }
 
-func (c *Client) get2xx(ctx context.Context, u *url.URL) (_ []byte, _ int, err error) {
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+// req2xx sends a request to the given url.URL. If method is http.MethodPost then
+// the raw query is encoded in the body and the appropriate Content-Type is set.
+func (c *Client) req2xx(ctx context.Context, u *url.URL, method string) (_ []byte, _ int, err error) {
+	var b io.Reader
+	if method == http.MethodPost {
+		rq := u.RawQuery
+		b = strings.NewReader(rq)
+		u.RawQuery = ""
+	}
+
+	req, err := http.NewRequest(method, u.String(), b)
 	if err != nil {
 		return nil, 0, errors.Wrap(err, "create GET request")
 	}
 	if c.userAgent != "" {
 		req.Header.Set("User-Agent", c.userAgent)
+	}
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 
 	resp, err := c.Do(req.WithContext(ctx))
@@ -148,7 +161,7 @@ func (c *Client) ExternalLabels(ctx context.Context, base *url.URL) (labels.Labe
 	span, ctx := tracing.StartSpan(ctx, "/prom_config HTTP[client]")
 	defer span.Finish()
 
-	body, _, err := c.get2xx(ctx, &u)
+	body, _, err := c.req2xx(ctx, &u, http.MethodGet)
 	if err != nil {
 		return nil, err
 	}
@@ -339,6 +352,7 @@ func (c *Client) Snapshot(ctx context.Context, base *url.URL, skipHead bool) (st
 type QueryOptions struct {
 	Deduplicate             bool
 	PartialResponseStrategy storepb.PartialResponseStrategy
+	Method                  string
 }
 
 func (p *QueryOptions) AddTo(values url.Values) error {
@@ -381,7 +395,12 @@ func (c *Client) QueryInstant(ctx context.Context, base *url.URL, query string, 
 	span, ctx := tracing.StartSpan(ctx, "/prom_query_instant HTTP[client]")
 	defer span.Finish()
 
-	body, _, err := c.get2xx(ctx, &u)
+	method := opts.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+
+	body, _, err := c.req2xx(ctx, &u, method)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "read query instant response")
 	}
@@ -483,7 +502,7 @@ func (c *Client) QueryRange(ctx context.Context, base *url.URL, query string, st
 	span, ctx := tracing.StartSpan(ctx, "/prom_query_range HTTP[client]")
 	defer span.Finish()
 
-	body, _, err := c.get2xx(ctx, &u)
+	body, _, err := c.req2xx(ctx, &u, http.MethodGet)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "read query range response")
 	}
@@ -565,7 +584,7 @@ func (c *Client) AlertmanagerAlerts(ctx context.Context, base *url.URL) ([]*mode
 	span, ctx := tracing.StartSpan(ctx, "/alertmanager_alerts HTTP[client]")
 	defer span.Finish()
 
-	body, _, err := c.get2xx(ctx, &u)
+	body, _, err := c.req2xx(ctx, &u, http.MethodGet)
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +611,7 @@ func (c *Client) get2xxResultWithGRPCErrors(ctx context.Context, spanName string
 	span, ctx := tracing.StartSpan(ctx, spanName)
 	defer span.Finish()
 
-	body, code, err := c.get2xx(ctx, u)
+	body, code, err := c.req2xx(ctx, u, http.MethodGet)
 	if err != nil {
 		if code, exists := statusToCode[code]; exists && code != 0 {
 			return status.Error(code, err.Error())

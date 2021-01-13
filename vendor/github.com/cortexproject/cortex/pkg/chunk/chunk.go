@@ -20,15 +20,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
-// Errors that decode can return
 const (
-	ErrInvalidChecksum    = errs.Error("invalid chunk checksum")
-	ErrWrongMetadata      = errs.Error("wrong chunk metadata")
-	ErrMetadataLength     = errs.Error("chunk metadata wrong length")
-	ErrDataLength         = errs.Error("chunk data wrong length")
-	ErrSliceOutOfRange    = errs.Error("chunk can't be sliced out of its data range")
-	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
-	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
+	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
+	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
+	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
+	ErrDataLength      = errs.Error("chunk data wrong length")
+	ErrSliceOutOfRange = errs.Error("chunk can't be sliced out of its data range")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -186,8 +183,14 @@ var writerPool = sync.Pool{
 
 // Encode writes the chunk into a buffer, and calculates the checksum.
 func (c *Chunk) Encode() error {
-	var buf bytes.Buffer
+	return c.EncodeTo(nil)
+}
 
+// EncodeTo is like Encode but you can provide your own buffer to use.
+func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
+	if buf == nil {
+		buf = bytes.NewBuffer(nil)
+	}
 	// Write 4 empty bytes first - we will come back and put the len in here.
 	metadataLenBytes := [4]byte{}
 	if _, err := buf.Write(metadataLenBytes[:]); err != nil {
@@ -197,7 +200,7 @@ func (c *Chunk) Encode() error {
 	// Encode chunk metadata into snappy-compressed buffer
 	writer := writerPool.Get().(*snappy.Writer)
 	defer writerPool.Put(writer)
-	writer.Reset(&buf)
+	writer.Reset(buf)
 	json := jsoniter.ConfigFastest
 	if err := json.NewEncoder(writer).Encode(c); err != nil {
 		return err
@@ -217,7 +220,7 @@ func (c *Chunk) Encode() error {
 	}
 
 	// And now the chunk data
-	if err := c.Data.Marshal(&buf); err != nil {
+	if err := c.Data.Marshal(buf); err != nil {
 		return err
 	}
 
@@ -338,37 +341,9 @@ func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 		return nil, ErrSliceOutOfRange
 	}
 
-	itr := c.Data.NewIterator(nil)
-	if !itr.FindAtOrAfter(from) {
-		return nil, ErrSliceNoDataInRange
-	}
-
-	pc, err := prom_chunk.NewForEncoding(c.Data.Encoding())
+	pc, err := c.Data.Rebound(from, through)
 	if err != nil {
 		return nil, err
-	}
-
-	for !itr.Value().Timestamp.After(through) {
-		oc, err := pc.Add(itr.Value())
-		if err != nil {
-			return nil, err
-		}
-
-		if oc != nil {
-			return nil, ErrSliceChunkOverflow
-		}
-		if !itr.Scan() {
-			break
-		}
-	}
-
-	err = itr.Err()
-	if err != nil {
-		return nil, err
-	}
-
-	if pc.Len() == 0 {
-		return nil, ErrSliceNoDataInRange
 	}
 
 	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
