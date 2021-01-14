@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -105,6 +106,11 @@ func (t *table) compact() error {
 				case objectKey, ok := <-readObjectChan:
 					if !ok {
 						return
+					}
+
+					// The s3 client can also return the directory itself in the ListObjects.
+					if strings.HasSuffix(objectKey, "/") {
+						continue
 					}
 
 					var dbName string
