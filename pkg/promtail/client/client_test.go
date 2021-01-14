@@ -238,9 +238,7 @@ func TestClient_Handle(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			// Reset metrics
-			sentEntries.Reset()
-			droppedEntries.Reset()
+			reg := prometheus.NewRegistry()
 
 			// Create a buffer channel where we do enqueue received requests
 			receivedReqsChan := make(chan receivedReq, 10)
@@ -267,7 +265,7 @@ func TestClient_Handle(t *testing.T) {
 				TenantID:       testData.clientTenantID,
 			}
 
-			c, err := New(cfg, log.NewNopLogger())
+			c, err := New(reg, cfg, log.NewNopLogger())
 			require.NoError(t, err)
 
 			// Send all the input log entries
@@ -301,7 +299,7 @@ func TestClient_Handle(t *testing.T) {
 			require.ElementsMatch(t, testData.expectedReqs, receivedReqs)
 
 			expectedMetrics := strings.Replace(testData.expectedMetrics, "__HOST__", serverURL.Host, -1)
-			err = testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
+			err = testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
 			assert.NoError(t, err)
 		})
 	}
@@ -372,9 +370,7 @@ func TestClient_StopNow(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			// Reset metrics
-			sentEntries.Reset()
-			droppedEntries.Reset()
+			reg := prometheus.NewRegistry()
 
 			// Create a buffer channel where we do enqueue received requests
 			receivedReqsChan := make(chan receivedReq, 10)
@@ -401,7 +397,7 @@ func TestClient_StopNow(t *testing.T) {
 				TenantID:       c.clientTenantID,
 			}
 
-			cl, err := New(cfg, log.NewNopLogger())
+			cl, err := New(reg, cfg, log.NewNopLogger())
 			require.NoError(t, err)
 
 			// Send all the input log entries
@@ -441,7 +437,7 @@ func TestClient_StopNow(t *testing.T) {
 			require.ElementsMatch(t, c.expectedReqs, receivedReqs)
 
 			expectedMetrics := strings.Replace(c.expectedMetrics, "__HOST__", serverURL.Host, -1)
-			err = testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
+			err = testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
 			assert.NoError(t, err)
 		})
 	}

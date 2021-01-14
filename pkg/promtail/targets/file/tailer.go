@@ -18,6 +18,7 @@ import (
 )
 
 type tailer struct {
+	metrics   *Metrics
 	logger    log.Logger
 	handler   api.EntryHandler
 	positions positions.Positions
@@ -34,7 +35,7 @@ type tailer struct {
 	done    chan struct{}
 }
 
-func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
+func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
@@ -66,6 +67,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.
 
 	logger = log.With(logger, "component", "tailer")
 	tailer := &tailer{
+		metrics:   metrics,
 		logger:    logger,
 		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
@@ -80,7 +82,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.
 
 	go tailer.readLines()
 	go tailer.updatePosition()
-	filesActive.Add(1.)
+	metrics.filesActive.Add(1.)
 	return tailer, nil
 }
 
@@ -146,8 +148,8 @@ func (t *tailer) readLines() {
 			continue
 		}
 
-		readLines.WithLabelValues(t.path).Inc()
-		logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(line.Text)))
+		t.metrics.readLines.WithLabelValues(t.path).Inc()
+		t.metrics.logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(line.Text)))
 		entries <- api.Entry{
 			Labels: model.LabelSet{},
 			Entry: logproto.Entry{
@@ -173,13 +175,13 @@ func (t *tailer) markPositionAndSize() error {
 		}
 		return err
 	}
-	totalBytes.WithLabelValues(t.path).Set(float64(size))
+	t.metrics.totalBytes.WithLabelValues(t.path).Set(float64(size))
 
 	pos, err := t.tail.Tell()
 	if err != nil {
 		return err
 	}
-	readBytes.WithLabelValues(t.path).Set(float64(pos))
+	t.metrics.readBytes.WithLabelValues(t.path).Set(float64(pos))
 	t.positions.Put(t.path, pos)
 
 	return nil
@@ -218,9 +220,9 @@ func (t *tailer) isRunning() bool {
 // cleanupMetrics removes all metrics exported by this tailer
 func (t *tailer) cleanupMetrics() {
 	// When we stop tailing the file, also un-export metrics related to the file
-	filesActive.Add(-1.)
-	readLines.DeleteLabelValues(t.path)
-	readBytes.DeleteLabelValues(t.path)
-	totalBytes.DeleteLabelValues(t.path)
-	logLengthHistogram.DeleteLabelValues(t.path)
+	t.metrics.filesActive.Add(-1.)
+	t.metrics.readLines.DeleteLabelValues(t.path)
+	t.metrics.readBytes.DeleteLabelValues(t.path)
+	t.metrics.totalBytes.DeleteLabelValues(t.path)
+	t.metrics.logLengthHistogram.DeleteLabelValues(t.path)
 }

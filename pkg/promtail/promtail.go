@@ -5,6 +5,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
@@ -23,12 +24,20 @@ func WithLogger(log log.Logger) Option {
 	}
 }
 
-// Promtail is the root struct for Promtail...
+// WithRegisterer overrides the default registerer for Promtail.
+func WithRegisterer(reg prometheus.Registerer) Option {
+	return func(p *Promtail) {
+		p.reg = reg
+	}
+}
+
+// Promtail is the root struct for Promtail.
 type Promtail struct {
 	client         client.Client
 	targetManagers *targets.TargetManagers
 	server         server.Server
 	logger         log.Logger
+	reg            prometheus.Registerer
 
 	stopped bool
 	mtx     sync.Mutex
@@ -40,6 +49,7 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 	// them.
 	promtail := &Promtail{
 		logger: util.Logger,
+		reg:    prometheus.DefaultRegisterer,
 	}
 	for _, o := range opts {
 		o(promtail)
@@ -61,19 +71,19 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 
 	var err error
 	if dryRun {
-		promtail.client, err = client.NewLogger(promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
+		promtail.client, err = client.NewLogger(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 		cfg.PositionsConfig.ReadOnly = true
 	} else {
-		promtail.client, err = client.NewMulti(promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
+		promtail.client, err = client.NewMulti(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfig.ExternalLabels, cfg.ClientConfigs...)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	tms, err := targets.NewTargetManagers(promtail, promtail.logger, cfg.PositionsConfig, promtail.client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(promtail, promtail.reg, promtail.logger, cfg.PositionsConfig, promtail.client, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return nil, err
 	}

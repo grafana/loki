@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/util/flagext"
@@ -20,7 +21,7 @@ type MultiClient struct {
 }
 
 // NewMulti creates a new client
-func NewMulti(logger log.Logger, externalLabels flagext.LabelSet, cfgs ...Config) (Client, error) {
+func NewMulti(reg prometheus.Registerer, logger log.Logger, externalLabels flagext.LabelSet, cfgs ...Config) (Client, error) {
 	if len(cfgs) == 0 {
 		return nil, errors.New("at least one client config should be provided")
 	}
@@ -34,7 +35,7 @@ func NewMulti(logger log.Logger, externalLabels flagext.LabelSet, cfgs ...Config
 		// not typically the order of precedence, the assumption here is someone providing a specific config in
 		// yaml is doing so explicitly to make a key specific to a client.
 		cfg.ExternalLabels = flagext.LabelSet{LabelSet: externalLabels.Merge(cfg.ExternalLabels.LabelSet)}
-		client, err := New(cfg, logger)
+		client, err := New(reg, cfg, logger)
 		if err != nil {
 			return nil, err
 		}

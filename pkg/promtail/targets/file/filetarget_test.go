@@ -50,7 +50,8 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, ps, logFile, nil, nil, &Config{
+	metrics := NewMetrics(nil)
+	target, err := NewFileTarget(metrics, logger, client, ps, logFile, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -141,7 +142,8 @@ func TestWatchEntireDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, ps, logFileDir+"*", nil, nil, &Config{
+	metrics := NewMetrics(nil)
+	target, err := NewFileTarget(metrics, logger, client, ps, logFileDir+"*", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -228,7 +230,8 @@ func TestFileRolls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, positions, dirName+"/*.log", nil, nil, &Config{
+	metrics := NewMetrics(nil)
+	target, err := NewFileTarget(metrics, logger, client, positions, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -324,7 +327,8 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, nil, &Config{
+	metrics := NewMetrics(nil)
+	target, err := NewFileTarget(metrics, logger, client, ps, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -358,7 +362,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	// Create a new target, keep the same client so we can track what was sent through the handler.
-	target2, err := NewFileTarget(logger, client, ps2, dirName+"/*.log", nil, nil, &Config{
+	target2, err := NewFileTarget(metrics, logger, client, ps2, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -431,7 +435,8 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, nil, &Config{
+	metrics := NewMetrics(nil)
+	target, err := NewFileTarget(metrics, logger, client, ps, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -527,7 +532,8 @@ func TestFileTargetSync(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	target, err := NewFileTarget(logger, client, ps, logDir1+"/*.log", nil, nil, &Config{
+	metrics := NewMetrics(nil)
+	target, err := NewFileTarget(metrics, logger, client, ps, logDir1+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
