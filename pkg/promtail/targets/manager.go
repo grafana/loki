@@ -4,6 +4,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -39,6 +40,7 @@ type TargetManagers struct {
 // NewTargetManagers makes a new TargetManagers
 func NewTargetManagers(
 	app stdin.Shutdownable,
+	reg prometheus.Registerer,
 	logger log.Logger,
 	positionsConfig positions.Config,
 	client api.EntryHandler,
@@ -50,7 +52,7 @@ func NewTargetManagers(
 
 	if targetConfig.Stdin {
 		level.Debug(logger).Log("msg", "configured to read from stdin")
-		stdin, err := stdin.NewStdinTargetManager(logger, app, client, scrapeConfigs)
+		stdin, err := stdin.NewStdinTargetManager(reg, logger, app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err
 		}
@@ -78,10 +80,22 @@ func NewTargetManagers(
 		}
 	}
 
+	var (
+		fileMetrics   *file.Metrics
+		syslogMetrics *syslog.Metrics
+	)
+	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
+		fileMetrics = file.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[SyslogScrapeConfigs]) > 0 {
+		syslogMetrics = syslog.NewMetrics(reg)
+	}
+
 	for target, scrapeConfigs := range targetScrapeConfigs {
 		switch target {
 		case FileScrapeConfigs:
 			fileTargetManager, err := file.NewFileTargetManager(
+				fileMetrics,
 				logger,
 				positions,
 				client,
@@ -94,6 +108,7 @@ func NewTargetManagers(
 			targetManagers = append(targetManagers, fileTargetManager)
 		case JournalScrapeConfigs:
 			journalTargetManager, err := journal.NewJournalTargetManager(
+				reg,
 				logger,
 				positions,
 				client,
@@ -105,6 +120,7 @@ func NewTargetManagers(
 			targetManagers = append(targetManagers, journalTargetManager)
 		case SyslogScrapeConfigs:
 			syslogTargetManager, err := syslog.NewSyslogTargetManager(
+				syslogMetrics,
 				logger,
 				client,
 				scrapeConfigs,
@@ -115,6 +131,7 @@ func NewTargetManagers(
 			targetManagers = append(targetManagers, syslogTargetManager)
 		case PushScrapeConfigs:
 			pushTargetManager, err := lokipush.NewPushTargetManager(
+				reg,
 				logger,
 				client,
 				scrapeConfigs,

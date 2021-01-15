@@ -9,6 +9,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/promtail/api"
@@ -36,9 +37,9 @@ type logger struct {
 }
 
 // NewLogger creates a new client logger that logs entries instead of sending them.
-func NewLogger(log log.Logger, externalLabels lokiflag.LabelSet, cfgs ...Config) (Client, error) {
+func NewLogger(reg prometheus.Registerer, log log.Logger, externalLabels lokiflag.LabelSet, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
-	c, err := NewMulti(log, externalLabels, cfgs...)
+	c, err := NewMulti(reg, log, externalLabels, cfgs...)
 	if err != nil {
 		return nil, err
 	}

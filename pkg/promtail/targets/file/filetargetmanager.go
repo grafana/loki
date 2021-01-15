@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
@@ -32,19 +31,6 @@ const (
 	kubernetesPodNodeField = "spec.nodeName"
 )
 
-var (
-	failedTargets = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "targets_failed_total",
-		Help:      "Number of failed targets.",
-	}, []string{"reason"})
-	targetsActive = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "promtail",
-		Name:      "targets_active_total",
-		Help:      "Number of active total.",
-	})
-)
-
 // FileTargetManager manages a set of targets.
 // nolint:golint
 type FileTargetManager struct {
@@ -56,12 +42,18 @@ type FileTargetManager struct {
 
 // NewFileTargetManager creates a new TargetManager.
 func NewFileTargetManager(
+	metrics *Metrics,
 	logger log.Logger,
 	positions positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *Config,
 ) (*FileTargetManager, error) {
+	reg := metrics.reg
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
+
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
 		log:     logger,
@@ -81,8 +73,7 @@ func NewFileTargetManager(
 			continue
 		}
 
-		registerer := prometheus.DefaultRegisterer
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "file_pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "file_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
 		if err != nil {
 			return nil, err
 		}
@@ -113,6 +104,7 @@ func NewFileTargetManager(
 		}
 
 		s := &targetSyncer{
+			metrics:        metrics,
 			log:            logger,
 			positions:      positions,
 			relabelConfig:  cfg.RelabelConfigs,
@@ -181,6 +173,7 @@ func (tm *FileTargetManager) AllTargets() map[string][]target.Target {
 
 // targetSyncer sync targets based on service discovery changes.
 type targetSyncer struct {
+	metrics      *Metrics
 	log          log.Logger
 	positions    positions.Positions
 	entryHandler api.EntryHandler
@@ -223,7 +216,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			if processedLabels == nil {
 				dropped = append(dropped, target.NewDroppedTarget("dropping target, no labels", discoveredLabels))
 				level.Debug(s.log).Log("msg", "dropping target, no labels")
-				failedTargets.WithLabelValues("empty_labels").Inc()
+				s.metrics.failedTargets.WithLabelValues("empty_labels").Inc()
 				continue
 			}
 
@@ -231,7 +224,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			if ok && string(host) != s.hostname {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("ignoring target, wrong host (labels:%s hostname:%s)", labels.String(), s.hostname), discoveredLabels))
 				level.Debug(s.log).Log("msg", "ignoring target, wrong host", "labels", labels.String(), "hostname", s.hostname)
-				failedTargets.WithLabelValues("wrong_host").Inc()
+				s.metrics.failedTargets.WithLabelValues("wrong_host").Inc()
 				continue
 			}
 
@@ -239,7 +232,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			if !ok {
 				dropped = append(dropped, target.NewDroppedTarget("no path for target", discoveredLabels))
 				level.Info(s.log).Log("msg", "no path for target", "labels", labels.String())
-				failedTargets.WithLabelValues("no_path").Inc()
+				s.metrics.failedTargets.WithLabelValues("no_path").Inc()
 				continue
 			}
 
@@ -254,7 +247,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			if _, ok := s.targets[key]; ok {
 				dropped = append(dropped, target.NewDroppedTarget("ignoring target, already exists", discoveredLabels))
 				level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
-				failedTargets.WithLabelValues("exists").Inc()
+				s.metrics.failedTargets.WithLabelValues("exists").Inc()
 				continue
 			}
 
@@ -263,11 +256,11 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			if err != nil {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("Failed to create target: %s", err.Error()), discoveredLabels))
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
-				failedTargets.WithLabelValues("error").Inc()
+				s.metrics.failedTargets.WithLabelValues("error").Inc()
 				continue
 			}
 
-			targetsActive.Add(1.)
+			s.metrics.targetsActive.Add(1.)
 			s.targets[key] = t
 		}
 	}
@@ -276,7 +269,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 		if _, ok := targets[key]; !ok {
 			level.Info(s.log).Log("msg", "Removing target", "key", key)
 			target.Stop()
-			targetsActive.Add(-1.)
+			s.metrics.targetsActive.Add(-1.)
 			delete(s.targets, key)
 		}
 	}
@@ -284,7 +277,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 }
 
 func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet) (*FileTarget, error) {
-	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig)
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

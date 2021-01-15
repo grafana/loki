@@ -16,12 +16,11 @@ import (
 )
 
 func TestNewLogger(t *testing.T) {
-	_, err := NewLogger(util.Logger, flagext.LabelSet{}, []Config{}...)
+	_, err := NewLogger(nil, util.Logger, flagext.LabelSet{}, []Config{}...)
 	require.Error(t, err)
 
-	l, err := NewLogger(util.Logger, flagext.LabelSet{}, []Config{{URL: cortexflag.URLValue{URL: &url.URL{Host: "string"}}}}...)
+	l, err := NewLogger(nil, util.Logger, flagext.LabelSet{}, []Config{{URL: cortexflag.URLValue{URL: &url.URL{Host: "string"}}}}...)
 	require.NoError(t, err)
 	l.Chan() <- api.Entry{Labels: model.LabelSet{"foo": "bar"}, Entry: logproto.Entry{Timestamp: time.Now(), Line: "entry"}}
 	l.Stop()
-
 }
