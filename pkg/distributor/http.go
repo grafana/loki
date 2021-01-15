@@ -60,11 +60,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
-	userID, err := user.ExtractOrgID(r.Context())
-	if err != nil {
-		return nil, err
-	}
-
+	userID, _ := user.ExtractOrgID(r.Context())
 	logger := util.WithContext(r.Context(), util.Logger)
 	body := lokiutil.NewSizeReader(r.Body)
 	contentType := r.Header.Get(contentType)
@@ -85,8 +81,8 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 			}
 		}
 
-		// incrementing tenant metrics.
-		if totalEntries != 0 {
+		// incrementing tenant metrics if we have a tenant.
+		if totalEntries != 0 && userID != "" {
 			bytesIngested.WithLabelValues(userID).Add(float64(entriesSize))
 			linesIngested.WithLabelValues(userID).Add(float64(totalEntries))
 		}
