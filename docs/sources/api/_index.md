@@ -95,7 +95,6 @@ These endpoints are exposed by the querier and the frontend:
   - [`POST /api/prom/push`](#post-apiprompush)
     - [Examples](#examples-8)
   - [`GET /ready`](#get-ready)
-  - [`POST /flush`](#post-flush)
   - [`GET /metrics`](#get-metrics)
   - [Series](#series)
     - [Examples](#examples-9)
