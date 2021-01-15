@@ -916,7 +916,8 @@ wal:
 [flush_on_shutdown: <boolean> | default = false]
 
 # CLI flag: ingester.checkpoint-duration
-[checkpoint_duration: ]
+# Interval at which checkpoints should be created.
+[checkpoint_duration: <duration> | default = 5m]
 ```
 
 ## consul_config
