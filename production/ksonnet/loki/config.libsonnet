@@ -16,7 +16,7 @@
 
     // flags for running ingesters/queriers as a statefulset instead of deployment type.
     stateful_ingesters: false,
-    ingester_pvc_size: '5Gi',
+    ingester_pvc_size: '10Gi',
     ingester_pvc_class: 'fast',
 
     stateful_queriers: false,
