@@ -42,17 +42,6 @@ var (
 		Help:      "The total number of failed batch appends sent to ingesters.",
 	}, []string{"ingester"})
 
-	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "distributor_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant",
-	}, []string{"tenant"})
-	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "distributor_lines_received_total",
-		Help:      "The total number of lines received per tenant",
-	}, []string{"tenant"})
-
 	maxLabelCacheSize = 100000
 )
 
@@ -192,18 +181,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-
-	// Track metrics.
-	bytesCount := 0
-	lineCount := 0
-	for _, stream := range req.Streams {
-		for _, entry := range stream.Entries {
-			bytesCount += len(entry.Line)
-			lineCount++
-		}
-	}
-	bytesIngested.WithLabelValues(userID).Add(float64(bytesCount))
-	linesIngested.WithLabelValues(userID).Add(float64(lineCount))
 
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
