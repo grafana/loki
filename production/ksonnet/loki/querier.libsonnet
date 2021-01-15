@@ -44,6 +44,7 @@
   querier_statefulset: if $._config.stateful_queriers then
     statefulSet.new('querier', 3, [$.querier_container], $.querier_data_pvc) +
     statefulSet.mixin.spec.withServiceName('querier') +
+    statefulSet.mixin.spec.withPodManagementPolicy('Parallel') +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
