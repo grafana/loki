@@ -897,7 +897,7 @@ lifecycler:
 [query_store_max_look_back_period: <duration> | default = 0]
 
 
-# The WAL in ingester records incoming data and stores it on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
+# The ingester WAL records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
 wal:
   # Enables writing to WAL.
   # CLI flag: -ingester.wal-enabled
