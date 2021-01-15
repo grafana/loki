@@ -6,7 +6,10 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -17,7 +20,20 @@ import (
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
-var contentType = http.CanonicalHeaderKey("Content-Type")
+var (
+	contentType = http.CanonicalHeaderKey("Content-Type")
+
+	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "distributor_bytes_received_total",
+		Help:      "The total number of uncompressed bytes received per tenant",
+	}, []string{"tenant"})
+	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "distributor_lines_received_total",
+		Help:      "The total number of lines received per tenant",
+	}, []string{"tenant"})
+)
 
 const applicationJSON = "application/json"
 
@@ -44,11 +60,15 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
-	var req logproto.PushRequest
+	userID, err := user.ExtractOrgID(r.Context())
+	if err != nil {
+		return nil, err
+	}
 
 	logger := util.WithContext(r.Context(), util.Logger)
 	body := lokiutil.NewSizeReader(r.Body)
 	contentType := r.Header.Get(contentType)
+	var req logproto.PushRequest
 
 	defer func() {
 		var (
@@ -64,11 +84,18 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 				entriesSize += int64(len(e.Line))
 			}
 		}
+
+		// incrementing tenant metrics.
+		if totalEntries != 0 {
+			bytesIngested.WithLabelValues(userID).Add(float64(entriesSize))
+			linesIngested.WithLabelValues(userID).Add(float64(totalEntries))
+		}
+
 		level.Debug(logger).Log(
 			"msg", "push request parsed",
 			"path", r.URL.Path,
-			"content-type", contentType,
-			"body-size", humanize.Bytes(uint64(body.Size())),
+			"contentType", contentType,
+			"bodySize", humanize.Bytes(uint64(body.Size())),
 			"streams", len(req.Streams),
 			"entries", totalEntries,
 			"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
