@@ -22,28 +22,12 @@
       storage_config+: {
         boltdb_shipper: {
           shared_store: $._config.boltdb_shipper_shared_store,
+          active_index_directory: '/data/index',
+          cache_location: '/data/boltdb-cache',
         },
       },
     } else {},
   },
-
-  ingester_args+:: if $._config.using_boltdb_shipper then {
-    // Persist index in pvc
-    'boltdb.shipper.active-index-directory': '/data/index',
-
-    // Use PVC for caching
-    'boltdb.shipper.cache-location': '/data/boltdb-cache',
-  } else {},
-
-  querier_args+:: if $._config.using_boltdb_shipper then {
-    // Use PVC for caching
-    'boltdb.shipper.cache-location': '/data/boltdb-cache',
-  } else {},
-
-  ruler_args+:: if $._config.using_boltdb_shipper then {
-    // Use PVC for caching
-    'boltdb.shipper.cache-location': '/data/boltdb-cache',
-  } else {},
 
   // we don't dedupe index writes when using boltdb-shipper so don't deploy a cache for it.
   memcached_index_writes: if $._config.using_boltdb_shipper then {} else super.memcached_index_writes,
