@@ -6,13 +6,14 @@ import (
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
+
+	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 var (
@@ -31,6 +32,7 @@ var (
 
 // GcplogTarget represents the target specific to GCP project.
 // It collects logs from GCP and push it to Loki.
+// nolint:golint
 type GcplogTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
@@ -52,6 +54,7 @@ type GcplogTarget struct {
 // and push it Loki via given `api.EntryHandler.`
 // It starts the `run` loop to consume log entries that can be
 // stopped via `target.Stop()`
+// nolint:golint,govet
 func NewGcplogTarget(
 	logger log.Logger,
 	handler api.EntryHandler,
@@ -67,16 +70,16 @@ func NewGcplogTarget(
 		return nil, err
 	}
 
-	target, err := newGcplogTarget(logger, handler, relabel, jobName, config, ps, ctx, cancel)
-	if err != nil {
-		return nil, err
-	}
+	target := newGcplogTarget(logger, handler, relabel, jobName, config, ps, ctx, cancel)
 
-	go target.run()
+	go func() {
+		_ = target.run()
+	}()
 
 	return target, nil
 }
 
+// nolint: golint
 func newGcplogTarget(
 	logger log.Logger,
 	handler api.EntryHandler,
@@ -86,9 +89,9 @@ func newGcplogTarget(
 	pubsubClient *pubsub.Client,
 	ctx context.Context,
 	cancel func(),
-) (*GcplogTarget, error) {
+) *GcplogTarget {
 
-	pt := &GcplogTarget{
+	return &GcplogTarget{
 		logger:        logger,
 		handler:       handler,
 		relabelConfig: relabel,
@@ -99,8 +102,6 @@ func newGcplogTarget(
 		ps:            pubsubClient,
 		msgs:          make(chan *pubsub.Message),
 	}
-
-	return pt, nil
 }
 
 func (t *GcplogTarget) run() error {

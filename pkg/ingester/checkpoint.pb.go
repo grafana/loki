@@ -14,7 +14,6 @@ import (
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	io "io"
 	math "math"
-	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 	time "time"
@@ -30,7 +29,7 @@ var _ = time.Kitchen
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 // Chunk is a {de,}serializable intermediate type for chunkDesc which allows
 // efficient loading/unloading to disk during WAL checkpoint recovery.
@@ -60,7 +59,7 @@ func (m *Chunk) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Chunk.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -157,7 +156,7 @@ func (m *Series) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Series.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -353,9 +352,9 @@ func (this *Series) GoString() string {
 	s = append(s, "Fingerprint: "+fmt.Sprintf("%#v", this.Fingerprint)+",\n")
 	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
 	if this.Chunks != nil {
-		vs := make([]Chunk, len(this.Chunks))
+		vs := make([]*Chunk, len(this.Chunks))
 		for i := range vs {
-			vs[i] = this.Chunks[i]
+			vs[i] = &this.Chunks[i]
 		}
 		s = append(s, "Chunks: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
@@ -373,7 +372,7 @@ func valueToGoStringCheckpoint(v interface{}, typ string) string {
 func (m *Chunk) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -381,88 +380,81 @@ func (m *Chunk) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Chunk) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if len(m.Head) > 0 {
-		i -= len(m.Head)
-		copy(dAtA[i:], m.Head)
-		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.Head)))
-		i--
-		dAtA[i] = 0x42
+	dAtA[i] = 0xa
+	i++
+	i = encodeVarintCheckpoint(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.From)))
+	n1, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.From, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
-	if len(m.Data) > 0 {
-		i -= len(m.Data)
-		copy(dAtA[i:], m.Data)
-		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.Data)))
-		i--
-		dAtA[i] = 0x3a
+	i += n1
+	dAtA[i] = 0x12
+	i++
+	i = encodeVarintCheckpoint(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.To)))
+	n2, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.To, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
-	if m.Synced {
-		i--
-		if m.Synced {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x30
+	i += n2
+	dAtA[i] = 0x1a
+	i++
+	i = encodeVarintCheckpoint(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.FlushedAt)))
+	n3, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.FlushedAt, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
+	i += n3
+	dAtA[i] = 0x22
+	i++
+	i = encodeVarintCheckpoint(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.LastUpdated)))
+	n4, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LastUpdated, dAtA[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n4
 	if m.Closed {
-		i--
+		dAtA[i] = 0x28
+		i++
 		if m.Closed {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
 		}
-		i--
-		dAtA[i] = 0x28
+		i++
 	}
-	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LastUpdated, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.LastUpdated):])
-	if err1 != nil {
-		return 0, err1
+	if m.Synced {
+		dAtA[i] = 0x30
+		i++
+		if m.Synced {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i++
 	}
-	i -= n1
-	i = encodeVarintCheckpoint(dAtA, i, uint64(n1))
-	i--
-	dAtA[i] = 0x22
-	n2, err2 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.FlushedAt, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.FlushedAt):])
-	if err2 != nil {
-		return 0, err2
+	if len(m.Data) > 0 {
+		dAtA[i] = 0x3a
+		i++
+		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.Data)))
+		i += copy(dAtA[i:], m.Data)
 	}
-	i -= n2
-	i = encodeVarintCheckpoint(dAtA, i, uint64(n2))
-	i--
-	dAtA[i] = 0x1a
-	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.To, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.To):])
-	if err3 != nil {
-		return 0, err3
+	if len(m.Head) > 0 {
+		dAtA[i] = 0x42
+		i++
+		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.Head)))
+		i += copy(dAtA[i:], m.Head)
 	}
-	i -= n3
-	i = encodeVarintCheckpoint(dAtA, i, uint64(n3))
-	i--
-	dAtA[i] = 0x12
-	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.From, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.From):])
-	if err4 != nil {
-		return 0, err4
-	}
-	i -= n4
-	i = encodeVarintCheckpoint(dAtA, i, uint64(n4))
-	i--
-	dAtA[i] = 0xa
-	return len(dAtA) - i, nil
+	return i, nil
 }
 
 func (m *Series) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -470,68 +462,56 @@ func (m *Series) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Series) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if len(m.Chunks) > 0 {
-		for iNdEx := len(m.Chunks) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Chunks[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintCheckpoint(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x22
-		}
-	}
-	if len(m.Labels) > 0 {
-		for iNdEx := len(m.Labels) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size := m.Labels[iNdEx].Size()
-				i -= size
-				if _, err := m.Labels[iNdEx].MarshalTo(dAtA[i:]); err != nil {
-					return 0, err
-				}
-				i = encodeVarintCheckpoint(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x1a
-		}
+	if len(m.UserID) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.UserID)))
+		i += copy(dAtA[i:], m.UserID)
 	}
 	if m.Fingerprint != 0 {
-		i = encodeVarintCheckpoint(dAtA, i, uint64(m.Fingerprint))
-		i--
 		dAtA[i] = 0x10
+		i++
+		i = encodeVarintCheckpoint(dAtA, i, uint64(m.Fingerprint))
 	}
-	if len(m.UserID) > 0 {
-		i -= len(m.UserID)
-		copy(dAtA[i:], m.UserID)
-		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.UserID)))
-		i--
-		dAtA[i] = 0xa
+	if len(m.Labels) > 0 {
+		for _, msg := range m.Labels {
+			dAtA[i] = 0x1a
+			i++
+			i = encodeVarintCheckpoint(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
 	}
-	return len(dAtA) - i, nil
+	if len(m.Chunks) > 0 {
+		for _, msg := range m.Chunks {
+			dAtA[i] = 0x22
+			i++
+			i = encodeVarintCheckpoint(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	return i, nil
 }
 
 func encodeVarintCheckpoint(dAtA []byte, offset int, v uint64) int {
-	offset -= sovCheckpoint(v)
-	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return base
+	return offset + 1
 }
 func (m *Chunk) Size() (n int) {
 	if m == nil {
@@ -593,7 +573,14 @@ func (m *Series) Size() (n int) {
 }
 
 func sovCheckpoint(x uint64) (n int) {
-	return (math_bits.Len64(x|1) + 6) / 7
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
 }
 func sozCheckpoint(x uint64) (n int) {
 	return sovCheckpoint(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -603,10 +590,10 @@ func (this *Chunk) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&Chunk{`,
-		`From:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.From), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`To:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.To), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`FlushedAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.FlushedAt), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`LastUpdated:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.LastUpdated), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`To:` + strings.Replace(strings.Replace(this.To.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`FlushedAt:` + strings.Replace(strings.Replace(this.FlushedAt.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`LastUpdated:` + strings.Replace(strings.Replace(this.LastUpdated.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Closed:` + fmt.Sprintf("%v", this.Closed) + `,`,
 		`Synced:` + fmt.Sprintf("%v", this.Synced) + `,`,
 		`Data:` + fmt.Sprintf("%v", this.Data) + `,`,
@@ -619,16 +606,11 @@ func (this *Series) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForChunks := "[]Chunk{"
-	for _, f := range this.Chunks {
-		repeatedStringForChunks += strings.Replace(strings.Replace(f.String(), "Chunk", "Chunk", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForChunks += "}"
 	s := strings.Join([]string{`&Series{`,
 		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
 		`Fingerprint:` + fmt.Sprintf("%v", this.Fingerprint) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
-		`Chunks:` + repeatedStringForChunks + `,`,
+		`Chunks:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Chunks), "Chunk", "Chunk", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1109,7 +1091,6 @@ func (m *Series) Unmarshal(dAtA []byte) error {
 func skipCheckpoint(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
-	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -1141,8 +1122,10 @@ func skipCheckpoint(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
+			return iNdEx, nil
 		case 1:
 			iNdEx += 8
+			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -1163,30 +1146,55 @@ func skipCheckpoint(dAtA []byte) (n int, err error) {
 				return 0, ErrInvalidLengthCheckpoint
 			}
 			iNdEx += length
-		case 3:
-			depth++
-		case 4:
-			if depth == 0 {
-				return 0, ErrUnexpectedEndOfGroupCheckpoint
+			if iNdEx < 0 {
+				return 0, ErrInvalidLengthCheckpoint
 			}
-			depth--
+			return iNdEx, nil
+		case 3:
+			for {
+				var innerWire uint64
+				var start int = iNdEx
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return 0, ErrIntOverflowCheckpoint
+					}
+					if iNdEx >= l {
+						return 0, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					innerWire |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				innerWireType := int(innerWire & 0x7)
+				if innerWireType == 4 {
+					break
+				}
+				next, err := skipCheckpoint(dAtA[start:])
+				if err != nil {
+					return 0, err
+				}
+				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthCheckpoint
+				}
+			}
+			return iNdEx, nil
+		case 4:
+			return iNdEx, nil
 		case 5:
 			iNdEx += 4
+			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
-		if iNdEx < 0 {
-			return 0, ErrInvalidLengthCheckpoint
-		}
-		if depth == 0 {
-			return iNdEx, nil
-		}
 	}
-	return 0, io.ErrUnexpectedEOF
+	panic("unreachable")
 }
 
 var (
-	ErrInvalidLengthCheckpoint        = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowCheckpoint          = fmt.Errorf("proto: integer overflow")
-	ErrUnexpectedEndOfGroupCheckpoint = fmt.Errorf("proto: unexpected end of group")
+	ErrInvalidLengthCheckpoint = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowCheckpoint   = fmt.Errorf("proto: integer overflow")
 )

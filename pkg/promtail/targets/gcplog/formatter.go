@@ -6,15 +6,17 @@ import (
 	"time"
 
 	"cloud.google.com/go/pubsub"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // LogEntry that will be written to the pubsub topic.
 // According to the following spec.
 // https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry
+// nolint: golint
 type GCPLogEntry struct {
 	LogName  string `json:"logName"`
 	Resource struct {

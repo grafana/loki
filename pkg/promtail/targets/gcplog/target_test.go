@@ -9,14 +9,15 @@ import (
 	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/pubsub/pstest"
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/promtail/client/fake"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/promtail/client/fake"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
 func TestGcplogTarget_Run(t *testing.T) {
@@ -31,13 +32,14 @@ func TestGcplogTarget_Run(t *testing.T) {
 	_, err = pubsubClient.CreateSubscription(ctx, subscription, pubsub.SubscriptionConfig{
 		Topic: tp,
 	})
+	require.NoError(t, err)
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		tt.run()
+		_ = tt.run()
 	}()
 
 	publishMessage(t, tp)
@@ -72,7 +74,7 @@ func TestGcplogTarget_Stop(t *testing.T) {
 	}()
 
 	// invoke stop
-	tt.Stop()
+	_ = tt.Stop()
 
 	// wait till run returns
 	wg.Wait()
@@ -119,7 +121,7 @@ func testGcplogTarget(t *testing.T) (*GcplogTarget, *fake.Client, *pubsub.Client
 
 	fakeClient := fake.New(func() {})
 
-	target, err := newGcplogTarget(
+	target := newGcplogTarget(
 		log.NewNopLogger(),
 		fakeClient,
 		nil,
@@ -129,7 +131,6 @@ func testGcplogTarget(t *testing.T) (*GcplogTarget, *fake.Client, *pubsub.Client
 		ctx,
 		cancel,
 	)
-	require.NoError(t, err)
 
 	// cleanup
 	return target, fakeClient, mockpubsubClient, func() {
