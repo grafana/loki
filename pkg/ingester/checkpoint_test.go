@@ -9,10 +9,13 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -52,7 +55,6 @@ func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 }
 
 func TestIngesterWAL(t *testing.T) {
-
 	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
 	require.Nil(t, err)
 	defer os.RemoveAll(walDir)
@@ -133,7 +135,6 @@ func TestIngesterWAL(t *testing.T) {
 
 	// ensure we've recovered data from checkpoint+wal segments
 	ensureIngesterData(ctx, t, start, end, i)
-
 }
 
 func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
@@ -224,7 +225,6 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	_, err = i.Push(ctx, &req)
 	// Ensure regular pushes error due to stream limits.
 	require.Error(t, err)
-
 }
 
 func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
@@ -238,4 +238,46 @@ func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
 	}
 
 	require.True(t, found == shouldExist)
+}
+
+type noOpWalLogger struct{}
+
+func (noOpWalLogger) Log(recs ...[]byte) error { return nil }
+func (noOpWalLogger) Close() error             { return nil }
+func (noOpWalLogger) Dir() string              { return "" }
+
+func Benchmark_CheckpointWrite(b *testing.B) {
+	writer := WALCheckpointWriter{
+		metrics:       NilMetrics,
+		checkpointWAL: noOpWalLogger{},
+	}
+	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
+	chunks := buildChunks(10, b)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		require.NoError(b, writer.Write(&Series{
+			UserID:      "foo",
+			Fingerprint: lbs.Hash(),
+			Labels:      cortex_client.FromLabelsToLabelAdapters(lbs),
+			Chunks:      chunks,
+		}))
+	}
+}
+
+func buildChunks(size int, t testing.TB) []Chunk {
+	descs := make([]chunkDesc, 0, size)
+
+	for i := 0; i < size; i++ {
+		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 1500*1024)
+		fillChunk(t, c)
+		descs = append(descs, chunkDesc{
+			chunk: c,
+		})
+	}
+
+	there, err := toWireChunks(descs, nil)
+	require.NoError(t, err)
+	return there
 }

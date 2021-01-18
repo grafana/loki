@@ -80,7 +80,7 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 
 // nolint:interfacer
 func decodeCheckpointRecord(rec []byte, s *Series) error {
-	//TODO(owen-d): reduce allocs
+	// TODO(owen-d): reduce allocs
 	// The proto unmarshaling code will retain references to the underlying []byte it's passed
 	// in order to reduce allocs. This is harmful to us because when reading from a WAL, the []byte
 	// is only guaranteed to be valid between calls to Next().
@@ -96,7 +96,7 @@ func decodeCheckpointRecord(rec []byte, s *Series) error {
 	}
 }
 
-func encodeWithTypeHeader(m proto.Message, typ RecordType) ([]byte, error) {
+func encodeWithTypeHeader(m *Series, typ RecordType) ([]byte, error) {
 	buf, err := proto.Marshal(m)
 	if err != nil {
 		return nil, err
@@ -120,12 +120,16 @@ type SeriesIter interface {
 }
 
 type ingesterSeriesIter struct {
-	ing *Ingester
+	ing ingesterInstances
 
 	done chan struct{}
 }
 
-func newIngesterSeriesIter(ing *Ingester) *ingesterSeriesIter {
+type ingesterInstances interface {
+	getInstances() []*instance
+}
+
+func newIngesterSeriesIter(ing ingesterInstances) *ingesterSeriesIter {
 	return &ingesterSeriesIter{
 		ing:  ing,
 		done: make(chan struct{}),
@@ -202,11 +206,17 @@ type CheckpointWriter interface {
 	Close(abort bool) error
 }
 
+type walLogger interface {
+	Log(recs ...[]byte) error
+	Close() error
+	Dir() string
+}
+
 type WALCheckpointWriter struct {
 	metrics    *ingesterMetrics
 	segmentWAL *wal.WAL
 
-	checkpointWAL *wal.WAL
+	checkpointWAL walLogger
 	lastSegment   int    // name of the last segment guaranteed to be covered by the checkpoint
 	final         string // filename to atomically rotate upon completion
 	bufSize       int
@@ -274,7 +284,6 @@ func (w *WALCheckpointWriter) Write(s *Series) error {
 		if err := w.flush(); err != nil {
 			return err
 		}
-
 	}
 	return nil
 }
@@ -369,7 +378,6 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 }
 
 func (w *WALCheckpointWriter) Close(abort bool) error {
-
 	if len(w.recs) > 0 {
 		if err := w.flush(); err != nil {
 			return err
