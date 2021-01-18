@@ -145,12 +145,10 @@ func (t *GcplogTarget) Type() target.TargetType {
 }
 
 func (t *GcplogTarget) Ready() bool {
-	// TODO(kavi): anyway to ping topic to see no connection issue?
 	return true
 }
 
 func (t *GcplogTarget) DiscoveredLabels() model.LabelSet {
-	// TODO(kavi): should be discoverable by labels?
 	return nil
 }
 
