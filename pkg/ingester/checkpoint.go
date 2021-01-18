@@ -11,10 +11,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/pkg/pool"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -96,16 +98,17 @@ func decodeCheckpointRecord(rec []byte, s *Series) error {
 	}
 }
 
-func encodeWithTypeHeader(m *Series, typ RecordType) ([]byte, error) {
-	buf, err := proto.Marshal(m)
+func encodeWithTypeHeader(m *Series, typ RecordType, buf []byte) ([]byte, error) {
+	size := m.Size()
+	if cap(buf) < size+1 {
+		buf = make([]byte, size+1)
+	}
+	_, err := m.MarshalTo(buf[1 : size+1])
 	if err != nil {
 		return nil, err
 	}
-
-	b := make([]byte, 0, len(buf)+1)
-	b = append(b, byte(typ))
-	b = append(b, buf...)
-	return b, nil
+	buf[0] = byte(typ)
+	return buf[:size+1], nil
 }
 
 type SeriesWithErr struct {
@@ -270,17 +273,24 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	return false, nil
 }
 
+// Buckets [64KB to 256MB] by 2
+var recordBufferPool = pool.New(1<<16, 1<<28, 2, func(size int) interface{} { return make([]byte, 0, size) })
+
 func (w *WALCheckpointWriter) Write(s *Series) error {
-	b, err := encodeWithTypeHeader(s, CheckpointRecord)
+	size := s.Size() + 1 // +1 for header
+	buf := recordBufferPool.Get(size).([]byte)[:size]
+
+	b, err := encodeWithTypeHeader(s, CheckpointRecord, buf)
 	if err != nil {
 		return err
 	}
 
 	w.recs = append(w.recs, b)
 	w.bufSize += len(b)
+	level.Debug(util.Logger).Log("msg", "writing series", "size", humanize.Bytes(uint64(len(b))))
 
 	// 1MB
-	if w.bufSize > 1>>20 {
+	if w.bufSize > 1<<20 {
 		if err := w.flush(); err != nil {
 			return err
 		}
@@ -289,10 +299,14 @@ func (w *WALCheckpointWriter) Write(s *Series) error {
 }
 
 func (w *WALCheckpointWriter) flush() error {
+	level.Debug(util.Logger).Log("msg", "flushing series", "totalSize", humanize.Bytes(uint64(w.bufSize)), "series", len(w.recs))
 	if err := w.checkpointWAL.Log(w.recs...); err != nil {
 		return err
 	}
 	w.metrics.checkpointLoggedBytesTotal.Add(float64(w.bufSize))
+	for _, b := range w.recs {
+		recordBufferPool.Put(b)
+	}
 	w.recs = w.recs[:0]
 	w.bufSize = 0
 	return nil
