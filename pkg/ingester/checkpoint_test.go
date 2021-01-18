@@ -252,7 +252,7 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 		checkpointWAL: noOpWalLogger{},
 	}
 	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
-	chunks := buildChunks(10, b)
+	chunks := buildChunks(b, 10)
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -266,10 +266,11 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 	}
 }
 
-func buildChunks(size int, t testing.TB) []Chunk {
+func buildChunks(t testing.TB, size int) []Chunk {
 	descs := make([]chunkDesc, 0, size)
 
 	for i := 0; i < size; i++ {
+		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
 		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 1500*1024)
 		fillChunk(t, c)
 		descs = append(descs, chunkDesc{
