@@ -130,6 +130,7 @@ func (t *GcplogTarget) run() error {
 			entry, err := format(m, t.config.Labels, t.config.UseIncomingTimestamp)
 			if err != nil {
 				level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
+				m.Ack()
 				break
 			}
 			send <- entry
@@ -145,7 +146,7 @@ func (t *GcplogTarget) Type() target.TargetType {
 }
 
 func (t *GcplogTarget) Ready() bool {
-	return true
+	return t.ctx.Err() == nil
 }
 
 func (t *GcplogTarget) DiscoveredLabels() model.LabelSet {
