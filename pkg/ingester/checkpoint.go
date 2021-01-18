@@ -80,7 +80,7 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 
 // nolint:interfacer
 func decodeCheckpointRecord(rec []byte, s *Series) error {
-	//TODO(owen-d): reduce allocs
+	// TODO(owen-d): reduce allocs
 	// The proto unmarshaling code will retain references to the underlying []byte it's passed
 	// in order to reduce allocs. This is harmful to us because when reading from a WAL, the []byte
 	// is only guaranteed to be valid between calls to Next().
@@ -120,12 +120,16 @@ type SeriesIter interface {
 }
 
 type ingesterSeriesIter struct {
-	ing *Ingester
+	ing ingesterInstances
 
 	done chan struct{}
 }
 
-func newIngesterSeriesIter(ing *Ingester) *ingesterSeriesIter {
+type ingesterInstances interface {
+	getInstances() []*instance
+}
+
+func newIngesterSeriesIter(ing ingesterInstances) *ingesterSeriesIter {
 	return &ingesterSeriesIter{
 		ing:  ing,
 		done: make(chan struct{}),
@@ -192,6 +196,16 @@ func (i *ingesterSeriesIter) Iter() <-chan *SeriesWithErr {
 		close(ch)
 	}()
 	return ch
+}
+
+type seriesIterator struct {
+	instances     []*instance
+	instanceIndex int
+}
+
+func (s *seriesIterator) Next() bool {
+	s.instanceIndex++
+	return s.instanceIndex < len(s.instances)
 }
 
 type CheckpointWriter interface {
@@ -274,7 +288,6 @@ func (w *WALCheckpointWriter) Write(s *Series) error {
 		if err := w.flush(); err != nil {
 			return err
 		}
-
 	}
 	return nil
 }
@@ -369,7 +382,6 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 }
 
 func (w *WALCheckpointWriter) Close(abort bool) error {
-
 	if len(w.recs) > 0 {
 		if err := w.flush(); err != nil {
 			return err

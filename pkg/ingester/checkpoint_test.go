@@ -52,7 +52,6 @@ func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 }
 
 func TestIngesterWAL(t *testing.T) {
-
 	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
 	require.Nil(t, err)
 	defer os.RemoveAll(walDir)
@@ -133,7 +132,6 @@ func TestIngesterWAL(t *testing.T) {
 
 	// ensure we've recovered data from checkpoint+wal segments
 	ensureIngesterData(ctx, t, start, end, i)
-
 }
 
 func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
@@ -224,7 +222,6 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	_, err = i.Push(ctx, &req)
 	// Ensure regular pushes error due to stream limits.
 	require.Error(t, err)
-
 }
 
 func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
@@ -238,4 +235,68 @@ func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
 	}
 
 	require.True(t, found == shouldExist)
+}
+
+type ingesterInstancesFunc func() []*instance
+
+func (i ingesterInstancesFunc) getInstances() []*instance {
+	return i()
+}
+
+var currentSeries *SeriesWithErr
+
+func buildStreams() []logproto.Stream {
+	streams := make([]logproto.Stream, 10)
+	for i := range streams {
+		labels := makeRandomLabels().String()
+		entries := make([]logproto.Entry, 15*1e3)
+		for j := range entries {
+			entries[j] = logproto.Entry{
+				Timestamp: time.Unix(0, int64(j)),
+				Line:      fmt.Sprintf("entry for line %d", j),
+			}
+		}
+		streams[i] = logproto.Stream{
+			Labels:  labels,
+			Entries: entries,
+		}
+	}
+	return streams
+}
+
+func Benchmark_SeriesIterator(b *testing.B) {
+	streams := buildStreams()
+	instances := make([]*instance, 10)
+
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxLocalStreamsPerUser: 1000,
+		IngestionRateMB:        1e4,
+		IngestionBurstSizeMB:   1e4,
+	}, nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+
+	for i := range instances {
+		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, noopWAL{}, NilMetrics, nil)
+
+		require.NoError(b,
+			inst.Push(context.Background(), &logproto.PushRequest{
+				Streams: streams,
+			}),
+		)
+		instances[i] = inst
+	}
+	it := newIngesterSeriesIter(ingesterInstancesFunc(func() []*instance {
+		return instances
+	}))
+	defer it.Stop()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		for s := range it.Iter() {
+			currentSeries = s
+		}
+	}
 }
