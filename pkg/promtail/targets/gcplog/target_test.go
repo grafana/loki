@@ -122,6 +122,7 @@ func testGcplogTarget(t *testing.T) (*GcplogTarget, *fake.Client, *pubsub.Client
 	fakeClient := fake.New(func() {})
 
 	target := newGcplogTarget(
+		NewMetrics(nil),
 		log.NewNopLogger(),
 		fakeClient,
 		nil,

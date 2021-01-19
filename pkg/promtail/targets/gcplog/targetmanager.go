@@ -20,10 +20,16 @@ type GcplogTargetManager struct {
 }
 
 func NewGcplogTargetManager(
+	metrics *Metrics,
 	logger log.Logger,
 	client api.EntryHandler,
 	scrape []scrapeconfig.Config,
 ) (*GcplogTargetManager, error) {
+	reg := metrics.reg
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
+
 	tm := &GcplogTargetManager{
 		logger:  logger,
 		targets: make(map[string]*GcplogTarget),
@@ -33,13 +39,12 @@ func NewGcplogTargetManager(
 		if cf.GcplogConfig == nil {
 			continue
 		}
-		registerer := prometheus.DefaultRegisterer
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pubsub_pipeline"), cf.PipelineStages, &cf.JobName, registerer)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pubsub_pipeline"), cf.PipelineStages, &cf.JobName, reg)
 		if err != nil {
 			return nil, err
 		}
 
-		t, err := NewGcplogTarget(logger, pipeline.Wrap(client), cf.RelabelConfigs, cf.JobName, cf.GcplogConfig)
+		t, err := NewGcplogTarget(metrics, logger, pipeline.Wrap(client), cf.RelabelConfigs, cf.JobName, cf.GcplogConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create pubsub target: %w", err)
 		}

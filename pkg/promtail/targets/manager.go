@@ -87,12 +87,16 @@ func NewTargetManagers(
 	var (
 		fileMetrics   *file.Metrics
 		syslogMetrics *syslog.Metrics
+		gcplogMetrics *gcplog.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
 	}
 	if len(targetScrapeConfigs[SyslogScrapeConfigs]) > 0 {
 		syslogMetrics = syslog.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[GcplogScrapeConfigs]) > 0 {
+		gcplogMetrics = gcplog.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -135,6 +139,7 @@ func NewTargetManagers(
 			targetManagers = append(targetManagers, syslogTargetManager)
 		case GcplogScrapeConfigs:
 			pubsubTargetManager, err := gcplog.NewGcplogTargetManager(
+				gcplogMetrics,
 				logger,
 				client,
 				scrapeConfigs,
