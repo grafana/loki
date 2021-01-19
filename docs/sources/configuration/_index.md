@@ -915,8 +915,8 @@ wal:
 # CLI flag: -ingester.flush-on-shutdown
 [flush_on_shutdown: <boolean> | default = false]
 
-# CLI flag: ingester.checkpoint-duration
 # Interval at which checkpoints should be created.
+# CLI flag: ingester.checkpoint-duration
 [checkpoint_duration: <duration> | default = 5m]
 ```
 
