@@ -227,6 +227,20 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 
 }
 
+func TestUnflushedChunks(t *testing.T) {
+	chks := []chunkDesc{
+		{
+			flushed: time.Now(),
+		},
+		{},
+		{
+			flushed: time.Now(),
+		},
+	}
+
+	require.Equal(t, 1, len(unflushedChunks(chks)))
+}
+
 func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
 	fs, err := ioutil.ReadDir(walDir)
 	require.Nil(t, err)
