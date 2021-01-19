@@ -10,11 +10,15 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -243,7 +247,7 @@ func (i ingesterInstancesFunc) getInstances() []*instance {
 	return i()
 }
 
-var currentSeries *SeriesWithErr
+var currentSeries *Series
 
 func buildStreams() []logproto.Stream {
 	streams := make([]logproto.Stream, 10)
@@ -262,6 +266,110 @@ func buildStreams() []logproto.Stream {
 		}
 	}
 	return streams
+}
+
+func Test_SeriesIterator(t *testing.T) {
+	var instances []*instance
+
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxLocalStreamsPerUser: 1000,
+		IngestionRateMB:        1e4,
+		IngestionBurstSizeMB:   1e4,
+	}, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+
+	for i := 0; i < 3; i++ {
+		inst := newInstance(defaultConfig(), fmt.Sprintf("%d", i), limiter, noopWAL{}, NilMetrics, nil)
+
+		require.NoError(t,
+			inst.Push(context.Background(), &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: labels.Labels{labels.Label{Name: "stream1", Value: fmt.Sprintf("%d", i)}}.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 1),
+								Line:      "1",
+							},
+							{
+								Timestamp: time.Unix(0, 2),
+								Line:      "2",
+							},
+						},
+					},
+				},
+			}),
+		)
+		require.NoError(t,
+			inst.Push(context.Background(), &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: labels.Labels{labels.Label{Name: "stream2", Value: fmt.Sprintf("%d", i)}}.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 3),
+								Line:      "3",
+							},
+							{
+								Timestamp: time.Unix(0, 4),
+								Line:      "4",
+							},
+						},
+					},
+				},
+			}),
+		)
+
+		instances = append(instances, inst)
+	}
+
+	iter := newStreamsIterator(ingesterInstancesFunc(func() []*instance {
+		return instances
+	}))
+
+	for i := 0; i < 3; i++ {
+		iter.Next()
+		assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
+		assert.Equal(t, "stream1", iter.Stream().Labels[0].Name)
+		assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().Labels[0].Value)
+
+		memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, 0, 0)
+		require.NoError(t, err)
+		it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+		require.NoError(t, err)
+		assert.Equal(t, true, it.Next())
+		assert.Equal(t, "1", it.Entry().Line)
+		assert.Equal(t, int64(1), it.Entry().Timestamp.UnixNano())
+		assert.Equal(t, true, it.Next())
+		assert.Equal(t, "2", it.Entry().Line)
+		assert.Equal(t, int64(2), it.Entry().Timestamp.UnixNano())
+
+		assert.Equal(t, false, it.Next())
+		require.NoError(t, it.Error())
+
+		iter.Next()
+		assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
+		assert.Equal(t, "stream2", iter.Stream().Labels[0].Name)
+		assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().Labels[0].Value)
+
+		memchunk, err = chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, 0, 0)
+		require.NoError(t, err)
+		it, err = memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+		require.NoError(t, err)
+		assert.Equal(t, true, it.Next())
+		assert.Equal(t, "3", it.Entry().Line)
+		assert.Equal(t, int64(3), it.Entry().Timestamp.UnixNano())
+		assert.Equal(t, true, it.Next())
+		assert.Equal(t, "4", it.Entry().Line)
+		assert.Equal(t, int64(4), it.Entry().Timestamp.UnixNano())
+
+		assert.Equal(t, false, it.Next())
+		require.NoError(t, it.Error())
+	}
+
+	require.False(t, iter.Next())
+	require.Nil(t, iter.Error())
 }
 
 func Benchmark_SeriesIterator(b *testing.B) {
@@ -295,8 +403,10 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
-		for s := range it.Iter() {
-			currentSeries = s
+		iter := it.Iter()
+		for iter.Next() {
+			currentSeries = iter.Stream()
 		}
+		require.NoError(b, iter.Error())
 	}
 }
