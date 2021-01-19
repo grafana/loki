@@ -38,7 +38,7 @@ const (
 )
 
 func init() {
-	//util.Logger = log.NewLogfmtLogger(os.Stdout)
+	// util.Logger = log.NewLogfmtLogger(os.Stdout)
 }
 
 func TestChunkFlushingIdle(t *testing.T) {
@@ -67,6 +67,44 @@ type fullWAL struct{}
 
 func (fullWAL) Log(_ *WALRecord) error { return &os.PathError{Err: syscall.ENOSPC} }
 func (fullWAL) Stop() error            { return nil }
+
+func Benchmark_FlushLoop(b *testing.B) {
+	var (
+		chunkMtx sync.RWMutex
+		descs    = buildChunkDecs(b)
+		lbs      = makeRandomLabels()
+		ctx      = user.InjectOrgID(context.Background(), "foo")
+		_, ing   = newTestStore(b, defaultIngesterTestConfig(b), nil)
+	)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		var wg sync.WaitGroup
+		for i := 0; i < 5; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				require.NoError(b, ing.flushChunks(ctx, 0, lbs, descs, &chunkMtx))
+			}()
+		}
+		wg.Wait()
+	}
+}
+
+func buildChunkDecs(t testing.TB) []*chunkDesc {
+	res := make([]*chunkDesc, 10)
+	for i := range res {
+		res[i] = &chunkDesc{
+			closed: true,
+			chunk:  chunkenc.NewMemChunk(chunkenc.EncSnappy, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+		}
+		fillChunk(t, res[i].chunk)
+		require.NoError(t, res[i].chunk.Close())
+	}
+	return res
+}
 
 func TestWALFullFlush(t *testing.T) {
 	// technically replaced with a fake wal, but the ingester New() function creates a regular wal first,
@@ -211,7 +249,7 @@ func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, 
 }
 
 // nolint
-func defaultIngesterTestConfig(t *testing.T) Config {
+func defaultIngesterTestConfig(t testing.TB) Config {
 	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil)
 	require.NoError(t, err)
 

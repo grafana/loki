@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	bytes "bytes"
 	"fmt"
 	"net/http"
 	"sync"
@@ -309,6 +310,11 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 		instance.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(instance.instanceID).Dec()
 	}
+}
+
+type chunkWithBuffer struct {
+	chunk.Chunk
+	*bytes.Buffer
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, chunkMtx sync.Locker) error {

@@ -120,7 +120,7 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	}
 }
 
-func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
+func fillChunk(t testing.TB, c chunkenc.Chunk) int64 {
 	t.Helper()
 	var i, inserted int64
 	entry := &logproto.Entry{
