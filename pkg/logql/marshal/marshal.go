@@ -18,9 +18,7 @@ import (
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
 func WriteQueryResponseJSON(v logql.Result, w io.Writer) error {
-
 	value, err := NewResultValue(v.Data)
-
 	if err != nil {
 		return err
 	}
@@ -52,7 +50,6 @@ func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 // then writes it to the provided connection.
 func WriteTailResponseJSON(r legacy.TailResponse, c *websocket.Conn) error {
 	v1Response, err := NewTailResponse(r)
-
 	if err != nil {
 		return err
 	}

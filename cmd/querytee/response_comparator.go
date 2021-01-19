@@ -6,6 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/pkg/loghttp"
 )
@@ -13,11 +14,11 @@ import (
 func compareStreams(expectedRaw, actualRaw json.RawMessage, tolerance float64) error {
 	var expected, actual loghttp.Streams
 
-	err := json.Unmarshal(expectedRaw, &expected)
+	err := jsoniter.Unmarshal(expectedRaw, &expected)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(actualRaw, &actual)
+	err = jsoniter.Unmarshal(actualRaw, &actual)
 	if err != nil {
 		return err
 	}

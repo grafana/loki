@@ -466,7 +466,6 @@ func Test_TailResponseMarshalLoop(t *testing.T) {
 }
 
 func Test_WriteSeriesResponseJSON(t *testing.T) {
-
 	for i, tc := range []struct {
 		input    logproto.SeriesResponse
 		expected string
@@ -511,4 +510,14 @@ func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string
 	require.NoError(t, err)
 
 	require.Equalf(t, expectedValue, actualValue, msg, args)
+}
+
+func Benchmark_Encode(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+
+	for n := 0; n < b.N; n++ {
+		for _, queryTest := range queryTests {
+			require.NoError(b, WriteQueryResponseJSON(logql.Result{Data: queryTest.actual}, buf))
+		}
+	}
 }

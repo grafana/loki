@@ -20,7 +20,6 @@ const applicationJSON = "application/json"
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-
 	req, err := ParseRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -48,6 +47,8 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 	case applicationJSON:
 		var err error
 
+		// todo once https://github.com/weaveworks/common/commit/73225442af7da93ec8f6a6e2f7c8aafaee3f8840 is in Loki.
+		// We can try to pass the body as bytes.buffer instead to avoid reading into another buffer.
 		if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
 			err = unmarshal.DecodePushRequest(r.Body, &req)
 		} else {
