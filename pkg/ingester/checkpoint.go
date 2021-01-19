@@ -167,6 +167,7 @@ func (i *ingesterSeriesIter) Iter() <-chan *SeriesWithErr {
 				}
 
 				// TODO(owen-d): use a pool
+				// Only send chunks for checkpointing that have yet to be flushed.
 				chunks, err := toWireChunks(unflushedChunks(stream.chunks), nil)
 				stream.chunkMtx.RUnlock()
 
