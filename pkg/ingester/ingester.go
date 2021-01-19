@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -150,6 +151,10 @@ type Ingester struct {
 	// Currently only used by the WAL to signal when the disk is full.
 	flushOnShutdownSwitch *OnceSwitch
 
+	// Only used by WAL & flusher to coordinate backpressure during replay.
+	currentReplayBytes atomic.Int64
+	replayCond         *sync.Cond
+
 	metrics *ingesterMetrics
 
 	wal WAL
@@ -183,6 +188,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		tailersQuit:           make(chan struct{}),
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
+		replayCond:            sync.NewCond(&sync.Mutex{}),
 	}
 
 	if cfg.WAL.Enabled {
@@ -214,6 +220,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
+		go i.flushLoop(j)
+	}
+
 	if i.cfg.WAL.Recover {
 		// Disable the in process stream limit checks while replaying the WAL
 		i.limiter.Disable()
@@ -272,12 +284,6 @@ func (i *Ingester) starting(ctx context.Context) error {
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 		level.Info(util.Logger).Log("msg", "recovery finished", "time", elapsed.String())
 
-	}
-
-	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
-	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
-		go i.flushLoop(j)
 	}
 
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done

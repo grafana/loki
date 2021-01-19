@@ -292,15 +292,21 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
 	prevNumChunks := len(stream.chunks)
+	var subtracted int
 	for len(stream.chunks) > 0 {
 		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) < i.cfg.RetainPeriod {
 			break
 		}
 
+		subtracted += stream.chunks[0].chunk.UncompressedSize()
 		stream.chunks[0].chunk = nil // erase reference so the chunk can be garbage-collected
 		stream.chunks = stream.chunks[1:]
 	}
 	memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
+
+	// Signal how much data has been flushed to lessen any WAL replay pressure.
+	i.metrics.setRecoveryBytesInUse(i.currentReplayBytes.Sub(int64(subtracted)))
+	i.replayCond.Broadcast()
 
 	if len(stream.chunks) == 0 {
 		delete(instance.streamsByFP, stream.fp)

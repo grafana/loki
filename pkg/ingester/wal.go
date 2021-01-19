@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"flag"
+	fmt "fmt"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 var (
@@ -20,13 +22,15 @@ var (
 )
 
 const walSegmentSize = wal.DefaultSegmentSize * 4
+const defaultCeiling = 8 << 30 // 8GB
 
 type WALConfig struct {
-	Enabled            bool          `yaml:"enabled"`
-	Dir                string        `yaml:"dir"`
-	Recover            bool          `yaml:"recover"`
-	CheckpointDuration time.Duration `yaml:"checkpoint_duration"`
-	FlushOnShutdown    bool          `yaml:"flush_on_shutdown"`
+	Enabled             bool             `yaml:"enabled"`
+	Dir                 string           `yaml:"dir"`
+	Recover             bool             `yaml:"recover"`
+	CheckpointDuration  time.Duration    `yaml:"checkpoint_duration"`
+	FlushOnShutdown     bool             `yaml:"flush_on_shutdown"`
+	ReplayMemoryCeiling flagext.ByteSize `yaml:"replay_memory_ceiling"`
 }
 
 func (cfg *WALConfig) Validate() error {
@@ -43,6 +47,10 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 5*time.Minute, "Interval at which checkpoints should be created.")
 	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown.")
+
+	// Need to set default here
+	cfg.ReplayMemoryCeiling = flagext.ByteSize(defaultCeiling)
+	f.Var(&cfg.ReplayMemoryCeiling, "ingester.wal-replay-memory-ceiling", fmt.Sprintf("How much memory the WAL may use during replay before it needs to flush chunks to storage, i.e. 10GB. Defaults to %s.", flagext.ByteSize(defaultCeiling).String()))
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.

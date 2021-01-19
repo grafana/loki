@@ -164,7 +164,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		if err := stream.Push(ctx, s.Entries, record); err != nil {
+		if _, err := stream.Push(ctx, s.Entries, record); err != nil {
 			appendErr = err
 			continue
 		}
