@@ -25,11 +25,6 @@ func NewGcplogTargetManager(
 	client api.EntryHandler,
 	scrape []scrapeconfig.Config,
 ) (*GcplogTargetManager, error) {
-	reg := metrics.reg
-	if reg == nil {
-		reg = prometheus.DefaultRegisterer
-	}
-
 	tm := &GcplogTargetManager{
 		logger:  logger,
 		targets: make(map[string]*GcplogTarget),
@@ -39,7 +34,7 @@ func NewGcplogTargetManager(
 		if cf.GcplogConfig == nil {
 			continue
 		}
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pubsub_pipeline"), cf.PipelineStages, &cf.JobName, reg)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pubsub_pipeline"), cf.PipelineStages, &cf.JobName, metrics.reg)
 		if err != nil {
 			return nil, err
 		}
