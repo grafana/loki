@@ -3,6 +3,7 @@ module github.com/grafana/loki
 go 1.15
 
 require (
+	cloud.google.com/go/pubsub v1.3.1
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/aws/aws-lambda-go v1.17.0
 	github.com/blang/semver v3.5.1+incompatible // indirect
@@ -61,6 +62,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+	google.golang.org/api v0.35.0
 	google.golang.org/grpc v1.33.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
