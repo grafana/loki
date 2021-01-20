@@ -111,12 +111,15 @@ func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 func (r *ingesterRecoverer) withBackPressure(fn func() error) error {
 	// Account for backpressure and wait until there's enough memory to continue replaying the WAL
 	r.ing.replayCond.L.Lock()
-	defer r.ing.replayCond.L.Unlock()
 
 	// use 90% as a threshold since we'll be adding to it.
 	for r.ing.currentReplayBytes.Load() > int64(r.ing.cfg.WAL.ReplayMemoryCeiling)*9/10 {
 		r.ing.replayCond.Wait()
 	}
+
+	// Don't hold the lock while executing the provided function.
+	// This ensures we can run functions concurrently.
+	r.ing.replayCond.L.Unlock()
 
 	return fn()
 }
