@@ -120,9 +120,9 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	}
 }
 
-func fillChunk(t testing.TB, c chunkenc.Chunk) int64 {
+func fillChunk(t testing.TB, c chunkenc.Chunk) {
 	t.Helper()
-	var i, inserted int64
+	var i int64
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      "entry for line 0",
@@ -131,11 +131,9 @@ func fillChunk(t testing.TB, c chunkenc.Chunk) int64 {
 	for c.SpaceFor(entry) {
 		require.NoError(t, c.Append(entry))
 		i++
-		inserted += int64(len(entry.Line))
 		entry.Timestamp = time.Unix(0, i)
 		entry.Line = fmt.Sprintf("entry for line %d", i)
 	}
-	return inserted
 }
 
 func dummyConf() *Config {

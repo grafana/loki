@@ -104,7 +104,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 			closed: true,
 			chunk:  chunkenc.NewMemChunk(chunkenc.EncSnappy, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 		}
-		_ = fillChunk(t, res[i].chunk)
+		fillChunk(t, res[i].chunk)
 		require.NoError(t, res[i].chunk.Close())
 	}
 	return res
