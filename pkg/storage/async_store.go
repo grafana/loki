@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -23,13 +24,15 @@ type IngesterQuerier interface {
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
 	chunk.Store
-	ingesterQuerier IngesterQuerier
+	ingesterQuerier      IngesterQuerier
+	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(store chunk.Store, querier IngesterQuerier) *AsyncStore {
+func NewAsyncStore(store chunk.Store, querier IngesterQuerier, queryIngestersWithin time.Duration) *AsyncStore {
 	return &AsyncStore{
-		Store:           store,
-		ingesterQuerier: querier,
+		Store:                store,
+		ingesterQuerier:      querier,
+		queryIngestersWithin: queryIngestersWithin,
 	}
 }
 
@@ -49,8 +52,25 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var ingesterChunks []string
 
 	go func() {
+		ingesterQueryFrom := from
+		if a.queryIngestersWithin != 0 {
+			oldestIngesterQueryFrom := model.Now().Add(-a.queryIngestersWithin)
+			// don't query ingesters if the query end is not after oldest allowed start time.
+			if !through.After(oldestIngesterQueryFrom) {
+				level.Debug(pkg_util.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
+				errs <- nil
+				return
+			}
+
+			// if ingesterQueryFrom is older than oldest allowed ingester query start then reduce it to oldest allowed start time.
+			if ingesterQueryFrom.Before(oldestIngesterQueryFrom) {
+				ingesterQueryFrom = oldestIngesterQueryFrom
+				level.Debug(pkg_util.Logger).Log("msg", "reducing query from time for ingesters to get chunk ids", "original-from", from, "modified-from", ingesterQueryFrom)
+			}
+		}
+
 		var err error
-		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
+		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, ingesterQueryFrom, through, matchers...)
 
 		if err == nil {
 			level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))

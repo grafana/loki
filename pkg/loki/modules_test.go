@@ -86,3 +86,53 @@ func Test_calculateMaxLookBack(t *testing.T) {
 		})
 	}
 }
+
+func Test_calculateAsyncStoreQueryIngestersWithin(t *testing.T) {
+	type args struct {
+		queryIngestersWithin             time.Duration
+		maxChunkAge                      time.Duration
+		querierBoltDBFilesResyncInterval time.Duration
+	}
+	tests := []struct {
+		name string
+		args args
+		want time.Duration
+	}{
+		{
+			name: "default",
+			args: args{
+				0,
+				time.Hour,
+				5 * time.Minute,
+			},
+			want: 0,
+		},
+		{
+			name: "queryIngestersWithin more than min val",
+			args: args{
+				3 * time.Hour,
+				time.Hour,
+				5 * time.Minute,
+			},
+			want: 3 * time.Hour,
+		},
+		{
+			name: "queryIngestersWithin less than min val",
+			args: args{
+				time.Hour,
+				time.Hour,
+				5 * time.Minute,
+			},
+			want: 81 * time.Minute,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := calculateAsyncStoreQueryIngestersWithin(tt.args.queryIngestersWithin, tt.args.maxChunkAge, tt.args.querierBoltDBFilesResyncInterval)
+
+			if got != tt.want {
+				t.Errorf("calculateAsyncStoreQueryIngestersWithin() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
