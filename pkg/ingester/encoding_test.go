@@ -166,7 +166,11 @@ func Test_EncodingChunks(t *testing.T) {
 	}
 	there, err := toWireChunks(from, nil)
 	require.Nil(t, err)
-	backAgain, err := fromWireChunks(conf, there)
+	chunks := make([]Chunk, 0, len(there))
+	for _, c := range there {
+		chunks = append(chunks, c.Chunk)
+	}
+	backAgain, err := fromWireChunks(conf, chunks)
 	require.Nil(t, err)
 
 	for i, to := range backAgain {

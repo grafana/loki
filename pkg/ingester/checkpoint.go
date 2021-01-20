@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	fmt "fmt"
 	"io/ioutil"
 	"os"
@@ -20,38 +21,67 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/util/pool"
 )
 
+var (
+	// todo(ctovena) those pools should be in factor of the actual configuration (blocksize, targetsize).
+	// Starting with something sane first then we can refine with more experience.
+
+	// Buckets [1KB 2KB 4KB 16KB 32KB  to 4MB] by 2
+	blocksBufferPool = pool.NewBuffer(1024, 4*1024*1024, 2)
+	// Buckets [64B 128B 256B 512B... to 2MB] by 2
+	headBufferPool = pool.NewBuffer(64, 2*1024*1024, 2)
+)
+
+type chunkWithBuffer struct {
+	blocks, head *bytes.Buffer
+	Chunk
+}
+
 // The passed wireChunks slice is for re-use.
-func toWireChunks(descs []chunkDesc, wireChunks []Chunk) ([]Chunk, error) {
+func toWireChunks(descs []chunkDesc, wireChunks []chunkWithBuffer) ([]chunkWithBuffer, error) {
+	// release memory from previous list of chunks.
+	for _, wc := range wireChunks {
+		blocksBufferPool.Put(wc.blocks)
+		headBufferPool.Put(wc.head)
+		wc.Data = nil
+		wc.Head = nil
+	}
+
 	if cap(wireChunks) < len(descs) {
-		wireChunks = make([]Chunk, len(descs))
+		wireChunks = make([]chunkWithBuffer, len(descs))
 	} else {
 		wireChunks = wireChunks[:len(descs)]
 	}
+
 	for i, d := range descs {
 		from, to := d.chunk.Bounds()
-		wireChunk := Chunk{
-			From:        from,
-			To:          to,
-			Closed:      d.closed,
-			FlushedAt:   d.flushed,
-			LastUpdated: d.lastUpdated,
-			Synced:      d.synced,
+		chunkSize, headSize := d.chunk.CheckpointSize()
+
+		wireChunk := chunkWithBuffer{
+			Chunk: Chunk{
+				From:        from,
+				To:          to,
+				Closed:      d.closed,
+				FlushedAt:   d.flushed,
+				LastUpdated: d.lastUpdated,
+				Synced:      d.synced,
+			},
+			blocks: blocksBufferPool.Get(chunkSize),
+			head:   headBufferPool.Get(headSize),
 		}
 
-		slice := wireChunks[i].Data[:0] // try to re-use the memory from last time
-		if cap(slice) < d.chunk.CompressedSize() {
-			slice = make([]byte, 0, d.chunk.CompressedSize())
-		}
-
-		chk, head, err := d.chunk.SerializeForCheckpoint(slice)
+		err := d.chunk.SerializeForCheckpointTo(
+			wireChunk.blocks,
+			wireChunk.head,
+		)
 		if err != nil {
 			return nil, err
 		}
 
-		wireChunk.Data = chk
-		wireChunk.Head = head
+		wireChunk.Data = wireChunk.blocks.Bytes()
+		wireChunk.Head = wireChunk.head.Bytes()
 		wireChunks[i] = wireChunk
 	}
 	return wireChunks, nil
@@ -80,7 +110,7 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 
 // nolint:interfacer
 func decodeCheckpointRecord(rec []byte, s *Series) error {
-	//TODO(owen-d): reduce allocs
+	// TODO(owen-d): reduce allocs
 	// The proto unmarshaling code will retain references to the underlying []byte it's passed
 	// in order to reduce allocs. This is harmful to us because when reading from a WAL, the []byte
 	// is only guaranteed to be valid between calls to Next().
@@ -115,17 +145,21 @@ type SeriesWithErr struct {
 
 type SeriesIter interface {
 	Count() int
-	Iter() <-chan *SeriesWithErr
+	Iter() *streamIterator
 	Stop()
 }
 
 type ingesterSeriesIter struct {
-	ing *Ingester
+	ing ingesterInstances
 
 	done chan struct{}
 }
 
-func newIngesterSeriesIter(ing *Ingester) *ingesterSeriesIter {
+type ingesterInstances interface {
+	getInstances() []*instance
+}
+
+func newIngesterSeriesIter(ing ingesterInstances) *ingesterSeriesIter {
 	return &ingesterSeriesIter{
 		ing:  ing,
 		done: make(chan struct{}),
@@ -143,55 +177,108 @@ func (i *ingesterSeriesIter) Stop() {
 	close(i.done)
 }
 
-func (i *ingesterSeriesIter) Iter() <-chan *SeriesWithErr {
-	ch := make(chan *SeriesWithErr)
-	go func() {
-		for _, inst := range i.ing.getInstances() {
-			inst.streamsMtx.RLock()
-			// Need to buffer streams internally so the read lock isn't held trying to write to a blocked channel.
-			streams := make([]*stream, 0, len(inst.streams))
-			inst.streamsMtx.RUnlock()
-			_ = inst.forAllStreams(func(stream *stream) error {
-				streams = append(streams, stream)
-				return nil
-			})
+func (i *ingesterSeriesIter) Iter() *streamIterator {
+	return newStreamsIterator(i.ing)
+}
 
-			for _, stream := range streams {
-				stream.chunkMtx.RLock()
-				if len(stream.chunks) < 1 {
-					stream.chunkMtx.RUnlock()
-					// it's possible the stream has been flushed to storage
-					// in between starting the checkpointing process and
-					// checkpointing this stream.
-					continue
-				}
+type streamInstance struct {
+	id      string
+	streams []*stream
+}
 
-				// TODO(owen-d): use a pool
-				chunks, err := toWireChunks(stream.chunks, nil)
-				stream.chunkMtx.RUnlock()
+type streamIterator struct {
+	instances []streamInstance
 
-				var s *Series
-				if err == nil {
-					s = &Series{
-						UserID:      inst.instanceID,
-						Fingerprint: uint64(stream.fp),
-						Labels:      client.FromLabelsToLabelAdapters(stream.labels),
-						Chunks:      chunks,
-					}
-				}
-				select {
-				case ch <- &SeriesWithErr{
-					Err:    err,
-					Series: s,
-				}:
-				case <-i.done:
-					return
-				}
-			}
+	current Series
+	buffer  []chunkWithBuffer
+	err     error
+}
+
+// newStreamsIterator returns a new stream iterators that iterates over one instance at a time, then
+// each stream per instances.
+func newStreamsIterator(ing ingesterInstances) *streamIterator {
+	instances := ing.getInstances()
+	streamInstances := make([]streamInstance, len(instances))
+	for i, inst := range ing.getInstances() {
+		inst.streamsMtx.RLock()
+		streams := make([]*stream, 0, len(inst.streams))
+		inst.streamsMtx.RUnlock()
+		_ = inst.forAllStreams(func(s *stream) error {
+			streams = append(streams, s)
+			return nil
+		})
+		streamInstances[i] = streamInstance{
+			streams: streams,
+			id:      inst.instanceID,
 		}
-		close(ch)
-	}()
-	return ch
+	}
+	return &streamIterator{
+		instances: streamInstances,
+	}
+}
+
+// Next loads the next stream of the current instance.
+// If the instance is empty, it moves to the next instance until there is no more.
+// Return true if there's a next stream, each successful calls will replace the current stream.
+func (s *streamIterator) Next() bool {
+	if len(s.instances) == 0 {
+		s.instances = nil
+		return false
+	}
+	currentInstance := s.instances[0]
+	if len(currentInstance.streams) == 0 {
+		s.instances = s.instances[1:]
+		return s.Next()
+	}
+
+	// current stream
+	stream := currentInstance.streams[0]
+
+	// remove the first stream
+	s.instances[0].streams = s.instances[0].streams[1:]
+
+	stream.chunkMtx.RLock()
+	defer stream.chunkMtx.RUnlock()
+
+	if len(stream.chunks) < 1 {
+		// it's possible the stream has been flushed to storage
+		// in between starting the checkpointing process and
+		// checkpointing this stream.
+		return s.Next()
+	}
+	chunks, err := toWireChunks(stream.chunks, s.buffer)
+	if err != nil {
+		s.err = err
+		return false
+	}
+	s.buffer = chunks
+
+	s.current.Chunks = s.current.Chunks[:0]
+	if cap(s.current.Chunks) == 0 {
+		s.current.Chunks = make([]Chunk, 0, len(chunks))
+	}
+
+	for _, c := range chunks {
+		s.current.Chunks = append(s.current.Chunks, c.Chunk)
+	}
+
+	s.current.UserID = currentInstance.id
+	s.current.Fingerprint = uint64(stream.fp)
+	s.current.Labels = client.FromLabelsToLabelAdapters(stream.labels)
+
+	return true
+}
+
+// Err returns an errors thrown while iterating over the streams.
+func (s *streamIterator) Error() error {
+	return s.err
+}
+
+// Stream is serializable (for checkpointing) stream of chunks.
+// NOTE: the series is re-used between successful Next calls.
+// This means you should make a copy or use the data before calling Next.
+func (s *streamIterator) Stream() *Series {
+	return &s.current
 }
 
 type CheckpointWriter interface {
@@ -274,7 +361,6 @@ func (w *WALCheckpointWriter) Write(s *Series) error {
 		if err := w.flush(); err != nil {
 			return err
 		}
-
 	}
 	return nil
 }
@@ -369,7 +455,6 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 }
 
 func (w *WALCheckpointWriter) Close(abort bool) error {
-
 	if len(w.recs) > 0 {
 		if err := w.flush(); err != nil {
 			return err
@@ -460,11 +545,10 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 		level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 		c.metrics.checkpointDuration.Observe(elapsed.Seconds())
 	}()
-	for s := range c.iter.Iter() {
-		if s.Err != nil {
-			return s.Err
-		}
-		if err := c.writer.Write(s.Series); err != nil {
+
+	iter := c.iter.Iter()
+	for iter.Next() {
+		if err := c.writer.Write(iter.Stream()); err != nil {
 			return err
 		}
 
@@ -483,6 +567,10 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 		case <-ticker.C:
 		}
 
+	}
+
+	if iter.Error() != nil {
+		return iter.Error()
 	}
 
 	return c.writer.Close(false)
