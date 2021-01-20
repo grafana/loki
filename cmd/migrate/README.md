@@ -4,7 +4,7 @@
 
 This is sort of a bare minimum code hooked directly into the store interfaces within Loki.
 
-Two stores are created, a source store and dest store.
+Two stores are created, a source store and destination (abbreviated dest) store.
 
 Chunks are queried from the source store and written to the dest store, new index entries are created in the dest store as well.
 
