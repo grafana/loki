@@ -161,9 +161,10 @@ func (hb *headBlock) CheckpointBytes(version byte, b []byte) ([]byte, error) {
 
 // CheckpointSize returns the estimated size of the headblock checkpoint.
 func (hb *headBlock) CheckpointSize(version byte) int {
-	size := 1                                           // version
-	size += binary.MaxVarintLen64 * 4                   // metadata
-	size += binary.MaxVarintLen64 * len(hb.entries) * 2 // 2 int64 by log line.
+	size := 1                                                                 // version
+	size += binary.MaxVarintLen32 * 2                                         // total entries + total size
+	size += binary.MaxVarintLen64 * 2                                         // mint,maxt
+	size += (binary.MaxVarintLen64 + binary.MaxVarintLen32) * len(hb.entries) // ts + len of log line.
 
 	for _, e := range hb.entries {
 		size += len(e.s)
@@ -383,9 +384,25 @@ func (c *MemChunk) BytesSize() int {
 		size++ // chunk format v2+ has a byte for encoding.
 	}
 
+	// blocks
 	for _, b := range c.blocks {
-		size += len(b.b) + crc32.Size
+		size += len(b.b) + crc32.Size // size + crc
+
+		size += binary.MaxVarintLen32 // num entries
+		size += binary.MaxVarintLen64 // mint
+		size += binary.MaxVarintLen64 // maxt
+		size += binary.MaxVarintLen32 // offset
+		if c.format == chunkFormatV3 {
+			size += binary.MaxVarintLen32 // uncompressed size
+		}
+		size += binary.MaxVarintLen32 // len(b)
 	}
+
+	// blockmeta
+	size += binary.MaxVarintLen32 // len  blocks
+
+	size += crc32.Size // metablock crc
+	size += 8          // metaoffset
 	return size
 }
 
