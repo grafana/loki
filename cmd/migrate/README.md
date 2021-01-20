@@ -16,7 +16,7 @@ You should be able to:
 * Change tenant ID during migration
 * Migrate data between schemas
 
-All data is read and re-written (even when migrating within the same cluster), there are really no optimizations in this code for performance, there are much faster ways to move data depending on what you want to change.
+All data is read and re-written (even when migrating within the same cluster). There are really no optimizations in this code for performance and there are much faster ways to move data depending on what you want to change.
 
 This is simple and because it uses the storage interfaces should be complete and should stay working, but it's not optimized to be fast.
 
