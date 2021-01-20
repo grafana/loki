@@ -8,7 +8,7 @@ Two stores are created, a source store and destination (abbreviated dest) store.
 
 Chunks are queried from the source store and written to the dest store, new index entries are created in the dest store as well.
 
-This _should_ handle schema changes and different schemas on both the source and dest store, I say should because for the original use this was created this use case was not tested, but there is no reason it shouldn't work for this.
+This _should_ handle schema changes and different schemas on both the source and dest store.
 
 You should be able to:
 
