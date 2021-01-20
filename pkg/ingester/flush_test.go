@@ -70,24 +70,28 @@ func (fullWAL) Stop() error            { return nil }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
-		chunkMtx sync.RWMutex
-		descs    = buildChunkDecs(b)
-		lbs      = makeRandomLabels()
-		ctx      = user.InjectOrgID(context.Background(), "foo")
-		_, ing   = newTestStore(b, defaultIngesterTestConfig(b), nil)
+		size   = 5
+		descs  [][]*chunkDesc
+		lbs    = makeRandomLabels()
+		ctx    = user.InjectOrgID(context.Background(), "foo")
+		_, ing = newTestStore(b, defaultIngesterTestConfig(b), nil)
 	)
+
+	for i := 0; i < size; i++ {
+		descs = append(descs, buildChunkDecs(b))
+	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
 		var wg sync.WaitGroup
-		for i := 0; i < 5; i++ {
+		for i := 0; i < size; i++ {
 			wg.Add(1)
-			go func() {
+			go func(loop int) {
 				defer wg.Done()
-				require.NoError(b, ing.flushChunks(ctx, 0, lbs, descs, &chunkMtx))
-			}()
+				require.NoError(b, ing.flushChunks(ctx, 0, lbs, descs[loop], &sync.RWMutex{}))
+			}(i)
 		}
 		wg.Wait()
 	}
@@ -100,7 +104,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 			closed: true,
 			chunk:  chunkenc.NewMemChunk(chunkenc.EncSnappy, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 		}
-		fillChunk(t, res[i].chunk)
+		_ = fillChunk(t, res[i].chunk)
 		require.NoError(t, res[i].chunk.Close())
 	}
 	return res
