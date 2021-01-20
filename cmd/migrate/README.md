@@ -2,7 +2,7 @@
 
 **WARNING: THIS TOOL IS NOT WELL TESTED, ALWAYS MAKE BACKUPS AND TEST ON LESS IMPORTANT DATA FIRST!**
 
-This is sort of a bare minimum code hooked directly into the store interfaces within Loki.a
+This is sort of a bare minimum code hooked directly into the store interfaces within Loki.
 
 Two stores are created, a source store and dest store.
 
@@ -54,4 +54,3 @@ Migrate tenant ID within a cluster
 ```
 migrate -source.config.file=/etc/loki-us-west1/config/config.yaml -dest.config.file=/etc/loki-us-west1/config/config.yaml -source.tenant=fake -dest.tenant=1 -from=2020-06-16T14:00:00-00:00 -to=2020-07-01T00:00:00-00:00
 ```
-
