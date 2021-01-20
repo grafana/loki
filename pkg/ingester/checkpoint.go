@@ -29,7 +29,7 @@ var (
 	// Starting with something sane first then we can refine with more experience.
 
 	// Buckets [1KB 2KB 4KB 16KB 32KB  to 4MB] by 2
-	blocksBufferPool = pool.NewBuffer(1024, 4*1024*1024, 2)
+	chunksBufferPool = pool.NewBuffer(1024, 4*1024*1024, 2)
 	// Buckets [64B 128B 256B 512B... to 2MB] by 2
 	headBufferPool = pool.NewBuffer(64, 2*1024*1024, 2)
 )
@@ -43,7 +43,7 @@ type chunkWithBuffer struct {
 func toWireChunks(descs []chunkDesc, wireChunks []chunkWithBuffer) ([]chunkWithBuffer, error) {
 	// release memory from previous list of chunks.
 	for _, wc := range wireChunks {
-		blocksBufferPool.Put(wc.blocks)
+		chunksBufferPool.Put(wc.blocks)
 		headBufferPool.Put(wc.head)
 		wc.Data = nil
 		wc.Head = nil
@@ -68,7 +68,7 @@ func toWireChunks(descs []chunkDesc, wireChunks []chunkWithBuffer) ([]chunkWithB
 				LastUpdated: d.lastUpdated,
 				Synced:      d.synced,
 			},
-			blocks: blocksBufferPool.Get(chunkSize),
+			blocks: chunksBufferPool.Get(chunkSize),
 			head:   headBufferPool.Get(headSize),
 		}
 
