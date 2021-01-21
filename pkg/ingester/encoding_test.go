@@ -218,7 +218,7 @@ func Test_EncodingCheckpoint(t *testing.T) {
 		},
 	}
 
-	b, err := encodeWithTypeHeader(s, CheckpointRecord)
+	b, err := encodeWithTypeHeader(s, CheckpointRecord, nil)
 	require.Nil(t, err)
 
 	out := &Series{}

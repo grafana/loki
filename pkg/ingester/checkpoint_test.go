@@ -230,6 +230,20 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestUnflushedChunks(t *testing.T) {
+	chks := []chunkDesc{
+		{
+			flushed: time.Now(),
+		},
+		{},
+		{
+			flushed: time.Now(),
+		},
+	}
+
+	require.Equal(t, 1, len(unflushedChunks(chks)))
+}
+
 func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
 	fs, err := ioutil.ReadDir(walDir)
 	require.Nil(t, err)
@@ -385,4 +399,51 @@ func Benchmark_SeriesIterator(b *testing.B) {
 		}
 		require.NoError(b, iter.Error())
 	}
+}
+
+type noOpWalLogger struct{}
+
+func (noOpWalLogger) Log(recs ...[]byte) error { return nil }
+func (noOpWalLogger) Close() error             { return nil }
+func (noOpWalLogger) Dir() string              { return "" }
+
+func Benchmark_CheckpointWrite(b *testing.B) {
+	writer := WALCheckpointWriter{
+		metrics:       NilMetrics,
+		checkpointWAL: noOpWalLogger{},
+	}
+	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
+	chunks := buildChunks(b, 10)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		require.NoError(b, writer.Write(&Series{
+			UserID:      "foo",
+			Fingerprint: lbs.Hash(),
+			Labels:      cortex_client.FromLabelsToLabelAdapters(lbs),
+			Chunks:      chunks,
+		}))
+	}
+}
+
+func buildChunks(t testing.TB, size int) []Chunk {
+	descs := make([]chunkDesc, 0, size)
+	chks := make([]Chunk, size)
+
+	for i := 0; i < size; i++ {
+		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
+		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 1500*1024)
+		fillChunk(t, c)
+		descs = append(descs, chunkDesc{
+			chunk: c,
+		})
+	}
+
+	there, err := toWireChunks(descs, nil)
+	require.NoError(t, err)
+	for i := range there {
+		chks[i] = there[i].Chunk
+	}
+	return chks
 }
