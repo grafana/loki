@@ -38,7 +38,7 @@ const (
 )
 
 func init() {
-	//util.Logger = log.NewLogfmtLogger(os.Stdout)
+	// util.Logger = log.NewLogfmtLogger(os.Stdout)
 }
 
 func TestChunkFlushingIdle(t *testing.T) {

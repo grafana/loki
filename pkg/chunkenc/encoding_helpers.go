@@ -15,8 +15,7 @@ type encbuf struct {
 func (e *encbuf) reset()      { e.b = e.b[:0] }
 func (e *encbuf) get() []byte { return e.b }
 
-func (e *encbuf) putBytes(b []byte) { e.b = append(e.b, b...) }
-func (e *encbuf) putByte(c byte)    { e.b = append(e.b, c) }
+func (e *encbuf) putByte(c byte) { e.b = append(e.b, c) }
 
 func (e *encbuf) putBE64int(x int) { e.putBE64(uint64(x)) }
 func (e *encbuf) putUvarint(x int) { e.putUvarint64(uint64(x)) }
