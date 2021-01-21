@@ -27,6 +27,8 @@ func NewMetadataFetcherMetrics() *MetadataFetcherMetrics {
 	return &MetadataFetcherMetrics{
 		regs: util.NewUserRegistries(),
 
+		// When mapping new metadata fetcher metrics from Thanos, please remember to add these metrics
+		// to our internal fetcherMetrics implementation too.
 		syncs: prometheus.NewDesc(
 			"cortex_blocks_meta_syncs_total",
 			"Total blocks metadata synchronization attempts",

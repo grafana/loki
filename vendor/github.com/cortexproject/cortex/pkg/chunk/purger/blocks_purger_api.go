@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -44,7 +45,7 @@ func (api *BlocksPurgerAPI) DeleteTenant(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	err = cortex_tsdb.WriteTenantDeletionMark(r.Context(), api.bucketClient, userID)
+	err = cortex_tsdb.WriteTenantDeletionMark(r.Context(), api.bucketClient, userID, cortex_tsdb.NewTenantDeletionMark(time.Now()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -58,8 +59,8 @@ func (api *BlocksPurgerAPI) DeleteTenant(w http.ResponseWriter, r *http.Request)
 type DeleteTenantStatusResponse struct {
 	TenantID                  string `json:"tenant_id"`
 	BlocksDeleted             bool   `json:"blocks_deleted"`
-	RuleGroupsDeleted         bool   `json:"rule_groups_deleted"`
-	AlertManagerConfigDeleted bool   `json:"alert_manager_config_deleted"`
+	RuleGroupsDeleted         bool   `json:"rule_groups_deleted,omitempty"`          // Not yet supported.
+	AlertManagerConfigDeleted bool   `json:"alert_manager_config_deleted,omitempty"` // Not yet supported.
 }
 
 func (api *BlocksPurgerAPI) DeleteTenantStatus(w http.ResponseWriter, r *http.Request) {

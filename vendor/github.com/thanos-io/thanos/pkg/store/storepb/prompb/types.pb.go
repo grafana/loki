@@ -138,6 +138,7 @@ func (m *Sample) GetTimestamp() int64 {
 
 // TimeSeries represents samples and labels for a single time series.
 type TimeSeries struct {
+	// Labels have to be sorted by label names and without duplicated label names.
 	// TODO(bwplotka): Don't use zero copy ZLabels, see https://github.com/thanos-io/thanos/pull/3279 for details.
 	Labels  []github_com_thanos_io_thanos_pkg_store_labelpb.ZLabel `protobuf:"bytes,1,rep,name=labels,proto3,customtype=github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel" json:"labels"`
 	Samples []Sample                                               `protobuf:"bytes,2,rep,name=samples,proto3" json:"samples"`

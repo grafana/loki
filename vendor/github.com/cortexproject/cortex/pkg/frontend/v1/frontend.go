@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -190,8 +191,9 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		errs := make(chan error, 1)
 		go func() {
 			err = server.Send(&frontendv1pb.FrontendToClient{
-				Type:        frontendv1pb.HTTP_REQUEST,
-				HttpRequest: req.request,
+				Type:         frontendv1pb.HTTP_REQUEST,
+				HttpRequest:  req.request,
+				StatsEnabled: stats.IsEnabled(req.originalCtx),
 			})
 			if err != nil {
 				errs <- err
@@ -256,7 +258,7 @@ func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 }
 
 func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return err
 	}
@@ -264,9 +266,10 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.enqueueTime = time.Now()
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
-	maxQueriers := f.limits.MaxQueriersPerUser(userID)
+	// aggregate the max queriers limit in the case of a multi tenant query
+	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
 
-	err = f.requestQueue.EnqueueRequest(userID, req, maxQueriers, nil)
+	err = f.requestQueue.EnqueueRequest(tenant.JoinTenantIDs(tenantIDs), req, maxQueriers, nil)
 	if err == queue.ErrTooManyRequests {
 		return errTooManyRequest
 	}

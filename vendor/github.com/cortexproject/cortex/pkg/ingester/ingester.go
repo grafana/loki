@@ -50,7 +50,7 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	WALConfig        WALConfig             `yaml:"walconfig"`
+	WALConfig        WALConfig             `yaml:"walconfig" doc:"description=Configures the Write-Ahead Log (WAL) for the Cortex chunks storage. This config is ignored when running the Cortex blocks storage."`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler"`
 
 	// Config for transferring chunks. Zero or negative = no retries.

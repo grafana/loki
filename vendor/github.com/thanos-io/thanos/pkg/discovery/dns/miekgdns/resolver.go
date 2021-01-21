@@ -72,3 +72,7 @@ func (r *Resolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr,
 	}
 	return resp, nil
 }
+
+func (r *Resolver) IsNotFound(err error) bool {
+	return errors.Is(errors.Cause(err), ErrNoSuchHost)
+}

@@ -10,3 +10,12 @@ func StringsContain(values []string, search string) bool {
 
 	return false
 }
+
+// StringsMap returns a map where keys are input values.
+func StringsMap(values []string) map[string]bool {
+	out := make(map[string]bool, len(values))
+	for _, v := range values {
+		out[v] = true
+	}
+	return out
+}

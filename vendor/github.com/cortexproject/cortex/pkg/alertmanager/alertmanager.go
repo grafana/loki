@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -180,6 +182,17 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
+
+	// Override some extra paths registered in the router (eg. /metrics which by default exposes prometheus.DefaultRegisterer).
+	// Entire router is registered in Mux to "/" path, so there is no conflict with overwriting specific paths.
+	for _, p := range []string{"/metrics", "/-/reload", "/debug/"} {
+		a := path.Join(am.cfg.ExternalURL.Path, p)
+		// Preserve end slash, as for Mux it means entire subtree.
+		if strings.HasSuffix(p, "/") {
+			a = a + "/"
+		}
+		am.mux.Handle(a, http.NotFoundHandler())
+	}
 
 	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
 	return am, nil

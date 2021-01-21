@@ -67,9 +67,6 @@ type Config struct {
 	ClientTLSConfig grpcclient.ConfigWithTLS `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
-	// Deprecated. Replaced with pkg/util/validation/Limits.RulerEvaluationDelay field.
-	// TODO: To be removed in Cortex 1.6.
-	EvaluationDelay time.Duration `yaml:"evaluation_delay_duration"`
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Rule Storage and Polling configuration.
@@ -142,7 +139,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
-	f.DurationVar(&cfg.EvaluationDelay, "ruler.evaluation-delay-duration-deprecated", 0, "Deprecated. Please use -ruler.evaluation-delay-duration instead.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
 
 	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of URL(s) of the Alertmanager(s) to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via -ruler.alertmanager-discovery.")
@@ -284,7 +280,7 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, rulerReplicationStrategy{})
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}
@@ -368,7 +364,7 @@ func tokenForGroup(g *store.RuleGroupDesc) uint32 {
 func instanceOwnsRuleGroup(r ring.ReadRing, g *rules.RuleGroupDesc, instanceAddr string) (bool, error) {
 	hash := tokenForGroup(g)
 
-	rlrs, err := r.Get(hash, ring.Ruler, []ring.IngesterDesc{})
+	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
 	if err != nil {
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
@@ -410,7 +406,7 @@ func (r *Ruler) run(ctx context.Context) error {
 	var ringLastState ring.ReplicationSet
 
 	if r.cfg.EnableSharding {
-		ringLastState, _ = r.ring.GetAllHealthy(ring.Ruler)
+		ringLastState, _ = r.ring.GetAllHealthy(RingOp)
 		ringTicker := time.NewTicker(util.DurationWithJitter(r.cfg.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -426,7 +422,7 @@ func (r *Ruler) run(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := r.ring.GetAllHealthy(ring.Ruler)
+			currRingState, _ := r.ring.GetAllHealthy(RingOp)
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
@@ -570,7 +566,7 @@ func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring rin
 		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
 			ringCheckErrors.Inc()
-			level.Error(log).Log("msg", "failed to create group for user", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
 			continue
 		}
 
@@ -688,7 +684,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 }
 
 func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	rulers, err := r.ring.GetReplicationSetForOperation(ring.Ruler)
+	rulers, err := r.ring.GetReplicationSetForOperation(RingOp)
 	if err != nil {
 		return nil, err
 	}

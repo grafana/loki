@@ -14,13 +14,13 @@ import (
 func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.TombstonesLoader) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, err := tenant.TenantID(r.Context())
+			tenantIDs, err := tenant.TenantIDs(r.Context())
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 
-			cacheGenNumber := cacheGenNumbersLoader.GetResultsCacheGenNumber(userID)
+			cacheGenNumber := cacheGenNumbersLoader.GetResultsCacheGenNumber(tenantIDs)
 
 			w.Header().Set(queryrange.ResultsCacheGenNumberHeaderName, cacheGenNumber)
 			next.ServeHTTP(w, r)

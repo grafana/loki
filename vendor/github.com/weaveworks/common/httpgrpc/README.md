@@ -1,4 +1,4 @@
-**What?** Embedding HTTP requests and responses into a gRPC service; a service and client to translate back and forth between the two, so you can use them with your faviourite mux.
+**What?** Embedding HTTP requests and responses into a gRPC service; a service and client to translate back and forth between the two, so you can use them with your preferred mux.
 
 **Why?** Get all the goodness of protobuf encoding, HTTP/2, snappy, load balancing, persistent connection and native Kubernetes load balancing with ~none of the effort.
 

@@ -218,12 +218,12 @@ func NewTripperware(
 					op = "query_range"
 				}
 
-				user, err := tenant.TenantID(r.Context())
+				tenantIDs, err := tenant.TenantIDs(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
 					return nil, err
 				}
-				queriesPerTenant.WithLabelValues(op, user).Inc()
+				queriesPerTenant.WithLabelValues(op, tenant.JoinTenantIDs(tenantIDs)).Inc()
 
 				if !isQueryRange {
 					return next.RoundTrip(r)

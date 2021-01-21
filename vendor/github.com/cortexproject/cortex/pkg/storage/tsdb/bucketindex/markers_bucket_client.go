@@ -110,6 +110,24 @@ func (b *globalMarkersBucket) Attributes(ctx context.Context, name string) (objs
 	return b.parent.Attributes(ctx, name)
 }
 
+// WithExpectedErrs implements objstore.InstrumentedBucket.
+func (b *globalMarkersBucket) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {
+	if ib, ok := b.parent.(objstore.InstrumentedBucket); ok {
+		return ib.WithExpectedErrs(fn)
+	}
+
+	return b
+}
+
+// ReaderWithExpectedErrs implements objstore.InstrumentedBucketReader.
+func (b *globalMarkersBucket) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	if ib, ok := b.parent.(objstore.InstrumentedBucketReader); ok {
+		return ib.ReaderWithExpectedErrs(fn)
+	}
+
+	return b
+}
+
 func (b *globalMarkersBucket) isBlockDeletionMark(name string) (ulid.ULID, bool) {
 	if path.Base(name) != metadata.DeletionMarkFilename {
 		return ulid.ULID{}, false

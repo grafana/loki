@@ -12,7 +12,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.6.0
+	github.com/cortexproject/cortex v1.6.1-0.20210121163251-a59b811d5952
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v17.12.0-ce-rc1.0.20201009160326-9c15e82f19b0+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
@@ -58,7 +58,7 @@ require (
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
-	github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec
+	github.com/weaveworks/common v0.0.0-20210112142934-23c8d7fa6120
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	go.uber.org/atomic v1.7.0
 	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0

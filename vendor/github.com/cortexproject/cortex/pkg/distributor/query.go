@@ -97,7 +97,7 @@ func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*lab
 		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
 
 		if ok && metricNameMatcher.Type == labels.MatchEqual {
-			return d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
+			return d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil, nil, nil)
 		}
 	}
 

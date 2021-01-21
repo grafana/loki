@@ -3,14 +3,17 @@ package tsdb
 import (
 	"flag"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/golang/snappy"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/cache"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
@@ -69,14 +72,17 @@ func (cfg *ChunksCacheConfig) Validate() error {
 type MetadataCacheConfig struct {
 	CacheBackend `yaml:",inline"`
 
-	TenantsListTTL         time.Duration `yaml:"tenants_list_ttl"`
-	TenantBlocksListTTL    time.Duration `yaml:"tenant_blocks_list_ttl"`
-	ChunksListTTL          time.Duration `yaml:"chunks_list_ttl"`
-	MetafileExistsTTL      time.Duration `yaml:"metafile_exists_ttl"`
-	MetafileDoesntExistTTL time.Duration `yaml:"metafile_doesnt_exist_ttl"`
-	MetafileContentTTL     time.Duration `yaml:"metafile_content_ttl"`
-	MetafileMaxSize        int           `yaml:"metafile_max_size_bytes"`
-	MetafileAttributesTTL  time.Duration `yaml:"metafile_attributes_ttl"`
+	TenantsListTTL          time.Duration `yaml:"tenants_list_ttl"`
+	TenantBlocksListTTL     time.Duration `yaml:"tenant_blocks_list_ttl"`
+	ChunksListTTL           time.Duration `yaml:"chunks_list_ttl"`
+	MetafileExistsTTL       time.Duration `yaml:"metafile_exists_ttl"`
+	MetafileDoesntExistTTL  time.Duration `yaml:"metafile_doesnt_exist_ttl"`
+	MetafileContentTTL      time.Duration `yaml:"metafile_content_ttl"`
+	MetafileMaxSize         int           `yaml:"metafile_max_size_bytes"`
+	MetafileAttributesTTL   time.Duration `yaml:"metafile_attributes_ttl"`
+	BlockIndexAttributesTTL time.Duration `yaml:"block_index_attributes_ttl"`
+	BucketIndexContentTTL   time.Duration `yaml:"bucket_index_content_ttl"`
+	BucketIndexMaxSize      int           `yaml:"bucket_index_max_size_bytes"`
 }
 
 func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
@@ -90,8 +96,11 @@ func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix 
 	f.DurationVar(&cfg.MetafileExistsTTL, prefix+"metafile-exists-ttl", 2*time.Hour, "How long to cache information that block metafile exists. Also used for user deletion mark file.")
 	f.DurationVar(&cfg.MetafileDoesntExistTTL, prefix+"metafile-doesnt-exist-ttl", 5*time.Minute, "How long to cache information that block metafile doesn't exist. Also used for user deletion mark file.")
 	f.DurationVar(&cfg.MetafileContentTTL, prefix+"metafile-content-ttl", 24*time.Hour, "How long to cache content of the metafile.")
-	f.IntVar(&cfg.MetafileMaxSize, prefix+"metafile-max-size-bytes", 1*1024*1024, "Maximum size of metafile content to cache in bytes.")
+	f.IntVar(&cfg.MetafileMaxSize, prefix+"metafile-max-size-bytes", 1*1024*1024, "Maximum size of metafile content to cache in bytes. Caching will be skipped if the content exceeds this size. This is useful to avoid network round trip for large content if the configured caching backend has an hard limit on cached items size (in this case, you should set this limit to the same limit in the caching backend).")
 	f.DurationVar(&cfg.MetafileAttributesTTL, prefix+"metafile-attributes-ttl", 168*time.Hour, "How long to cache attributes of the block metafile.")
+	f.DurationVar(&cfg.BlockIndexAttributesTTL, prefix+"block-index-attributes-ttl", 168*time.Hour, "How long to cache attributes of the block index.")
+	f.DurationVar(&cfg.BucketIndexContentTTL, prefix+"bucket-index-content-ttl", 5*time.Minute, "How long to cache content of the bucket index.")
+	f.IntVar(&cfg.BucketIndexMaxSize, prefix+"bucket-index-max-size-bytes", 1*1024*1024, "Maximum size of bucket index content to cache in bytes. Caching will be skipped if the content exceeds this size. This is useful to avoid network round trip for large content if the configured caching backend has an hard limit on cached items size (in this case, you should set this limit to the same limit in the caching backend).")
 }
 
 func (cfg *MetadataCacheConfig) Validate() error {
@@ -123,6 +132,8 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 		cfg.CacheExists("metafile", metadataCache, isMetaFile, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
 		cfg.CacheGet("metafile", metadataCache, isMetaFile, metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
 		cfg.CacheAttributes("metafile", metadataCache, isMetaFile, metadataConfig.MetafileAttributesTTL)
+		cfg.CacheAttributes("block-index", metadataCache, isBlockIndexFile, metadataConfig.BlockIndexAttributesTTL)
+		cfg.CacheGet("bucket-index", metadataCache, isBucketIndexFile, metadataConfig.BucketIndexMaxSize, metadataConfig.BucketIndexContentTTL /* do not cache exist / not exist: */, 0, 0)
 
 		codec := snappyIterCodec{storecache.JSONIterCodec{}}
 		cfg.CacheIter("tenants-iter", metadataCache, isTenantsDir, metadataConfig.TenantsListTTL, codec)
@@ -163,6 +174,21 @@ func isTSDBChunkFile(name string) bool { return chunksMatcher.MatchString(name) 
 
 func isMetaFile(name string) bool {
 	return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+metadata.DeletionMarkFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkPath)
+}
+
+func isBlockIndexFile(name string) bool {
+	// Ensure the path ends with "<block id>/<index filename>".
+	if !strings.HasSuffix(name, "/"+block.IndexFilename) {
+		return false
+	}
+
+	_, err := ulid.Parse(filepath.Base(filepath.Dir(name)))
+	return err == nil
+}
+
+func isBucketIndexFile(name string) bool {
+	// TODO can't reference bucketindex because of a circular dependency. To be fixed.
+	return strings.HasSuffix(name, "/bucket-index.json.gz")
 }
 
 func isTenantsDir(name string) bool {

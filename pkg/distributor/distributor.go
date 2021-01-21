@@ -239,7 +239,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	samplesByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.IngesterDesc{}
 	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0])
+		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
 		if err != nil {
 			return nil, err
 		}

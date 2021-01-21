@@ -145,7 +145,7 @@ func (s *ProxyStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.I
 	labelSets := make(map[uint64]labelpb.ZLabelSet, len(stores))
 	for _, st := range stores {
 		for _, lset := range st.LabelSets() {
-			mergedLabelSet := labelpb.ExtendLabels(lset, s.selectorLabels)
+			mergedLabelSet := labelpb.ExtendSortedLabels(lset, s.selectorLabels)
 			labelSets[mergedLabelSet.Hash()] = labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(mergedLabelSet)}
 		}
 	}
@@ -188,24 +188,27 @@ func (s cancelableRespSender) send(r *storepb.SeriesResponse) {
 // Series returns all series for a requested time range and label matcher. Requested series are taken from other
 // stores and proxied to RPC client. NOTE: Resulted data are not trimmed exactly to min and max time range.
 func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
-	match, newMatchers, err := matchesExternalLabels(r.Matchers, s.selectorLabels)
+	// TODO(bwplotka): This should be part of request logger, otherwise it does not make much sense. Also, could be
+	// tiggered by tracing span to reduce cognitive load.
+	reqLogger := log.With(s.logger, "component", "proxy", "request", r.String())
+
+	match, matchers, err := matchesExternalLabels(r.Matchers, s.selectorLabels)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	if !match {
 		return nil
 	}
-
-	if len(newMatchers) == 0 {
-		return status.Error(codes.InvalidArgument, errors.New("no matchers specified (excluding external labels)").Error())
+	if len(matchers) == 0 {
+		return status.Error(codes.InvalidArgument, errors.New("no matchers specified (excluding selector labels)").Error())
 	}
+	storeMatchers, _ := storepb.PromMatchersToMatchers(matchers...) // Error would be returned by matchesExternalLabels, so skip check.
 
 	g, gctx := errgroup.WithContext(srv.Context())
 
 	// Allow to buffer max 10 series response.
 	// Each might be quite large (multi chunk long series given by sidecar).
 	respSender, respCh := newCancelableRespChannel(gctx, 10)
-
 	g.Go(func() error {
 		// This go routine is responsible for calling store's Series concurrently. Merged results
 		// are passed to respCh and sent concurrently to client (if buffer of 10 have room).
@@ -217,7 +220,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 			r              = &storepb.SeriesRequest{
 				MinTime:                 r.MinTime,
 				MaxTime:                 r.MaxTime,
-				Matchers:                newMatchers,
+				Matchers:                storeMatchers,
 				Aggregates:              r.Aggregates,
 				MaxResolutionWindow:     r.MaxResolutionWindow,
 				SkipChunks:              r.SkipChunks,
@@ -232,24 +235,12 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 		}()
 
 		for _, st := range s.stores() {
-			// We might be able to skip the store if its meta information indicates
-			// it cannot have series matching our query.
-			// NOTE: all matchers are validated in matchesExternalLabels method so we explicitly ignore error.
-			var ok bool
-			tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
-				var storeDebugMatcher [][]*labels.Matcher
-				if ctxVal := srv.Context().Value(StoreMatcherKey); ctxVal != nil {
-					if value, ok := ctxVal.([][]*labels.Matcher); ok {
-						storeDebugMatcher = value
-					}
-				}
-				// We can skip error, we already translated matchers once.
-				ok, _ = storeMatches(st, r.MinTime, r.MaxTime, storeDebugMatcher, r.Matchers...)
-			})
-			if !ok {
-				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s filtered out", st))
+			// We might be able to skip the store if its meta information indicates it cannot have series matching our query.
+			if ok, reason := storeMatches(gctx, st, r.MinTime, r.MaxTime, matchers...); !ok {
+				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s filtered out: %v", st, reason))
 				continue
 			}
+
 			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
 
 			// This is used to cancel this stream when one operations takes too long.
@@ -267,7 +258,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 				}
 				err = errors.Wrapf(err, "fetch series for %s %s", storeID, st)
 				if r.PartialResponseDisabled {
-					level.Error(s.logger).Log("err", err, "msg", "partial response disabled; aborting request")
+					level.Error(reqLogger).Log("err", err, "msg", "partial response disabled; aborting request")
 					return err
 				}
 				respSender.send(storepb.NewWarnSeriesResponse(err))
@@ -276,15 +267,16 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 
 			// Schedule streamSeriesSet that translates gRPC streamed response
 			// into seriesSet (if series) or respCh if warnings.
-			seriesSet = append(seriesSet, startStreamSeriesSet(seriesCtx, s.logger, closeSeries,
+			seriesSet = append(seriesSet, startStreamSeriesSet(seriesCtx, reqLogger, closeSeries,
 				wg, sc, respSender, st.String(), !r.PartialResponseDisabled, s.responseTimeout, s.metrics.emptyStreamResponses))
 		}
 
-		level.Debug(s.logger).Log("msg", strings.Join(storeDebugMsgs, ";"))
+		level.Debug(reqLogger).Log("msg", "Series: started fanout streams", "status", strings.Join(storeDebugMsgs, ";"))
+
 		if len(seriesSet) == 0 {
 			// This is indicates that configured StoreAPIs are not the ones end user expects.
 			err := errors.New("No StoreAPIs matched for this query")
-			level.Warn(s.logger).Log("err", err, "stores", strings.Join(storeDebugMsgs, ";"))
+			level.Warn(reqLogger).Log("err", err, "stores", strings.Join(storeDebugMsgs, ";"))
 			respSender.send(storepb.NewWarnSeriesResponse(err))
 			return nil
 		}
@@ -312,7 +304,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 	})
 	if err := g.Wait(); err != nil {
 		// TODO(bwplotka): Replace with request logger.
-		level.Error(s.logger).Log("err", err)
+		level.Error(reqLogger).Log("err", err)
 		return err
 	}
 	return nil
@@ -483,44 +475,58 @@ func (s *streamSeriesSet) Err() error {
 	return errors.Wrap(s.err, s.name)
 }
 
-// matchStore returns true if the given store may hold data for the given label matchers.
-func storeMatches(s Client, mint, maxt int64, storeDebugMatchers [][]*labels.Matcher, matchers ...storepb.LabelMatcher) (bool, error) {
+// storeMatches returns boolean if the given store may hold data for the given label matchers, time ranges and debug store matches gathered from context.
+// It also produces tracing span.
+func storeMatches(ctx context.Context, s Client, mint, maxt int64, matchers ...*labels.Matcher) (ok bool, reason string) {
+	span, ctx := tracing.StartSpan(ctx, "store_matches")
+	defer span.Finish()
+
+	var storeDebugMatcher [][]*labels.Matcher
+	if ctxVal := ctx.Value(StoreMatcherKey); ctxVal != nil {
+		if value, ok := ctxVal.([][]*labels.Matcher); ok {
+			storeDebugMatcher = value
+		}
+	}
+
 	storeMinTime, storeMaxTime := s.TimeRange()
-	if mint > storeMaxTime || maxt <= storeMinTime {
-		return false, nil
+	if mint > storeMaxTime || maxt < storeMinTime {
+		return false, fmt.Sprintf("does not have data within this time period: [%v,%v]. Store time ranges: [%v,%v]", mint, maxt, storeMinTime, storeMaxTime)
 	}
 
-	if !storeMatchDebugMetadata(s, storeDebugMatchers) {
-		return false, nil
+	if ok, reason := storeMatchDebugMetadata(s, storeDebugMatcher); !ok {
+		return false, reason
 	}
 
-	promMatchers, err := storepb.TranslateFromPromMatchers(matchers...)
-	if err != nil {
-		return false, err
+	extLset := s.LabelSets()
+	if !labelSetsMatch(matchers, extLset...) {
+		return false, fmt.Sprintf("external labels %v does not match request label matchers: %v", extLset, matchers)
 	}
-	return labelSetsMatch(promMatchers, s.LabelSets()...), nil
+	return true, ""
 }
 
 // storeMatchDebugMetadata return true if the store's address match the storeDebugMatchers.
-func storeMatchDebugMetadata(s Client, storeDebugMatchers [][]*labels.Matcher) bool {
+func storeMatchDebugMetadata(s Client, storeDebugMatchers [][]*labels.Matcher) (ok bool, reason string) {
 	if len(storeDebugMatchers) == 0 {
-		return true
+		return true, ""
 	}
 
 	match := false
 	for _, sm := range storeDebugMatchers {
 		match = match || labelSetsMatch(sm, labels.FromStrings("__address__", s.Addr()))
 	}
-	return match
+	if !match {
+		return false, fmt.Sprintf("__address__ %v does not match debug store metadata matchers: %v", s.Addr(), storeDebugMatchers)
+	}
+	return true, ""
 }
 
 // labelSetsMatch returns false if all label-set do not match the matchers (aka: OR is between all label-sets).
-func labelSetsMatch(matchers []*labels.Matcher, lss ...labels.Labels) bool {
-	if len(lss) == 0 {
+func labelSetsMatch(matchers []*labels.Matcher, lset ...labels.Labels) bool {
+	if len(lset) == 0 {
 		return true
 	}
 
-	for _, ls := range lss {
+	for _, ls := range lset {
 		notMatched := false
 		for _, m := range matchers {
 			if lv := ls.Get(m.Name); lv != "" && !m.Matches(lv) {
@@ -549,19 +555,10 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 
 	for _, st := range s.stores() {
 		st := st
-		var ok bool
-		tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
-			var storeDebugMatcher [][]*labels.Matcher
-			if ctxVal := ctx.Value(StoreMatcherKey); ctxVal != nil {
-				if value, ok := ctxVal.([][]*labels.Matcher); ok {
-					storeDebugMatcher = value
-				}
-			}
-			// We can skip error, we already translated matchers once.
-			ok, _ = storeMatches(st, r.Start, r.End, storeDebugMatcher)
-		})
-		if !ok {
-			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out", st))
+
+		// We might be able to skip the store if its meta information indicates it cannot have series matching our query.
+		if ok, reason := storeMatches(gctx, st, r.Start, r.End); !ok {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out due to %v", st, reason))
 			continue
 		}
 		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
@@ -617,33 +614,24 @@ func (s *ProxyStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequ
 	)
 
 	for _, st := range s.stores() {
-		store := st
-		var ok bool
-		tracing.DoInSpan(gctx, "store_matches", func(ctx context.Context) {
-			var storeDebugMatcher [][]*labels.Matcher
-			if ctxVal := ctx.Value(StoreMatcherKey); ctxVal != nil {
-				if value, ok := ctxVal.([][]*labels.Matcher); ok {
-					storeDebugMatcher = value
-				}
-			}
-			// We can skip error, we already translated matchers once.
-			ok, _ = storeMatches(st, r.Start, r.End, storeDebugMatcher)
-		})
-		if !ok {
-			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out", st))
+		st := st
+
+		// We might be able to skip the store if its meta information indicates it cannot have series matching our query.
+		if ok, reason := storeMatches(gctx, st, r.Start, r.End); !ok {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out due to %v", st, reason))
 			continue
 		}
 		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
 
 		g.Go(func() error {
-			resp, err := store.LabelValues(gctx, &storepb.LabelValuesRequest{
+			resp, err := st.LabelValues(gctx, &storepb.LabelValuesRequest{
 				Label:                   r.Label,
 				PartialResponseDisabled: r.PartialResponseDisabled,
 				Start:                   r.Start,
 				End:                     r.End,
 			})
 			if err != nil {
-				err = errors.Wrapf(err, "fetch label values from store %s", store)
+				err = errors.Wrapf(err, "fetch label values from store %s", st)
 				if r.PartialResponseDisabled {
 					return err
 				}

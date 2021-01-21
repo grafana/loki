@@ -161,6 +161,7 @@ type Config struct {
 
 	ShardingStrategy string `yaml:"sharding_strategy"`
 	ShardByAllLabels bool   `yaml:"shard_by_all_labels"`
+	ExtendWrites     bool   `yaml:"extend_writes"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -187,6 +188,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
+	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 }
 
 // Validate config and returns error on failure
@@ -213,7 +215,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	replicas, err := newClusterTracker(cfg.HATrackerConfig, reg)
+	replicas, err := newClusterTracker(cfg.HATrackerConfig, limits, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -339,10 +341,15 @@ func removeLabel(labelName string, labels *[]client.LabelAdapter) {
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
-func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string) (bool, error) {
+func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string) (removeReplicaLabel bool, _ error) {
 	// If the sample doesn't have either HA label, accept it.
 	// At the moment we want to accept these samples by default.
 	if cluster == "" || replica == "" {
+		return false, nil
+	}
+
+	// If replica label is too long, don't use it. We accept the sample here, but it will fail validation later anyway.
+	if len(replica) > d.limits.MaxLabelValueLength(userID) {
 		return false, nil
 	}
 
@@ -416,13 +423,19 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {
-			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
-				// These samples have been deduped.
-				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
-			}
-
 			// Ensure the request slice is reused if the series get deduped.
 			client.ReuseSlice(req.Timeseries)
+
+			if errors.Is(err, replicasNotMatchError{}) {
+				// These samples have been deduped.
+				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
+				return nil, httpgrpc.Errorf(http.StatusAccepted, err.Error())
+			}
+
+			if errors.Is(err, tooManyClustersError{}) {
+				validation.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numSamples))
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
 
 			return nil, err
 		}
@@ -538,7 +551,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
 	}
 
-	subRing := d.ingestersRing.(ring.ReadRing)
+	subRing := d.ingestersRing
 
 	// Obtain a subring if required.
 	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -548,7 +561,12 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	keys := append(seriesKeys, metadataKeys...)
 	initialMetadataIndex := len(seriesKeys)
 
-	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+	op := ring.WriteNoExtend
+	if d.cfg.ExtendWrites {
+		op = ring.Write
+	}
+
+	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
 		var metadata []*client.MetricMetadata
 

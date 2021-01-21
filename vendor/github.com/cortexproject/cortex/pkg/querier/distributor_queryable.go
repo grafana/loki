@@ -116,7 +116,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	}
 
 	if q.streaming {
-		return q.streamingSelect(minT, maxT, matchers)
+		return q.streamingSelect(ctx, minT, maxT, matchers)
 	}
 
 	matrix, err := q.distributor.Query(ctx, model.Time(minT), model.Time(maxT), matchers...)
@@ -128,13 +128,13 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	return series.MatrixToSeriesSet(matrix)
 }
 
-func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	userID, err := tenant.TenantID(q.ctx)
+func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
 
-	results, err := q.distributor.QueryStream(q.ctx, model.Time(minT), model.Time(maxT), matchers...)
+	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
