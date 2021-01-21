@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	fmt "fmt"
 	"sync"
 
 	"go.uber.org/atomic"
@@ -9,6 +10,7 @@ import (
 type Flusher interface {
 	InitFlushQueues()
 	Flush()
+	RemoveFlushedChunks()
 }
 
 // replayController handles coordinating backpressure between WAL replays and chunk flushing.
@@ -37,6 +39,7 @@ func (c *replayController) Add(x int64) {
 
 func (c *replayController) Sub(x int64) {
 	c.metrics.setRecoveryBytesInUse(c.currentBytes.Sub(int64(x)))
+
 }
 
 func (c *replayController) Cur() int {
@@ -45,14 +48,23 @@ func (c *replayController) Cur() int {
 
 func (c *replayController) Flush() {
 	if c.isFlushing.CAS(false, true) {
+		fmt.Println("flushing, before ", c.Cur())
 		c.flusher.InitFlushQueues()
 		c.flusher.Flush()
+		c.flusher.RemoveFlushedChunks()
+		fmt.Println("flushing, after ", c.Cur())
 		c.isFlushing.Store(false)
 		c.cond.Broadcast()
 	}
 }
 
+// WithBackPressure is expected to call replayController.Add in the passed function to increase the managed byte count.
+// It will call the function as long as there is expected room before the memory cap and will then flush data intermittently
+// when needed.
 func (c *replayController) WithBackPressure(fn func() error) error {
+	defer func() {
+		fmt.Println("hit, cur", c.Cur())
+	}()
 	// Account for backpressure and wait until there's enough memory to continue replaying the WAL
 	c.cond.L.Lock()
 
