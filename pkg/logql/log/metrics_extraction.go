@@ -144,6 +144,7 @@ func LabelExtractorWithStages(
 		expectedLabels = append(expectedLabels, preStage.RequiredLabelNames()...)
 		expectedLabels = append(expectedLabels, groups...)
 		expectedLabels = append(expectedLabels, postFilter.RequiredLabelNames()...)
+		expectedLabels = append(expectedLabels, labelName)
 		expectedLabels = uniqueString(expectedLabels)
 	}
 	return &labelSampleExtractor{

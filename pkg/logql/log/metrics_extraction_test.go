@@ -3,6 +3,7 @@ package log
 import (
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -126,6 +127,15 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	}
 }
 
+func Test_Extract_ExpectedLabels(t *testing.T) {
+	ex := mustSampleExtractor(LabelExtractorWithStages("duration", ConvertDuration, []string{"foo"}, false, false, []Stage{NewJSONParser()}, NoopStage))
+
+	f, lbs, ok := ex.ForStream(labels.Labels{{Name: "bar", Value: "foo"}}).ProcessString(`{"duration":"20ms","foo":"json"}`)
+	require.True(t, ok)
+	require.Equal(t, (20 * time.Millisecond).Seconds(), f)
+	require.Equal(t, labels.Labels{{Name: "foo", Value: "json"}}, lbs.Labels())
+}
+
 func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
 	if err != nil {
 		panic(err)
@@ -134,7 +144,6 @@ func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
 }
 
 func TestNewLineSampleExtractor(t *testing.T) {
-
 	se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
 	require.NoError(t, err)
 	lbs := labels.Labels{

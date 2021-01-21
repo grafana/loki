@@ -3,6 +3,7 @@ module github.com/grafana/loki
 go 1.15
 
 require (
+	cloud.google.com/go/pubsub v1.3.1
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/aws/aws-lambda-go v1.17.0
 	github.com/blang/semver v3.5.1+incompatible // indirect
@@ -40,6 +41,7 @@ require (
 	github.com/klauspost/compress v1.11.3
 	github.com/mitchellh/mapstructure v1.3.3
 	github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2 // indirect
+	github.com/modern-go/reflect2 v1.0.1
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.2.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
@@ -61,6 +63,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+	google.golang.org/api v0.35.0
 	google.golang.org/grpc v1.33.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7

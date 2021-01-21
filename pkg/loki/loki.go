@@ -158,7 +158,7 @@ type Loki struct {
 	memberlistKV    *memberlist.KVInitService
 	compactor       *compactor.Compactor
 
-	httpAuthMiddleware middleware.Interface
+	HTTPAuthMiddleware middleware.Interface
 }
 
 // New makes a new Loki.
@@ -182,11 +182,11 @@ func (t *Loki) setupAuthMiddleware() {
 	if t.cfg.AuthEnabled {
 		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
-		t.httpAuthMiddleware = middleware.AuthenticateUser
+		t.HTTPAuthMiddleware = middleware.AuthenticateUser
 	} else {
 		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
-		t.httpAuthMiddleware = fakeHTTPAuthMiddleware
+		t.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
 	}
 }
 
