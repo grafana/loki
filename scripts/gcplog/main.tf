@@ -1,0 +1,40 @@
+terraform {
+  required_providers {
+    google = {
+      source = "hashicorp/google"
+      version = "3.5.0"
+    }
+  }
+}
+
+variable "credentials_file" {}
+variable "zone" {}
+variable "region" {}
+variable "project" {}
+variable "logname" {
+  default = "cloud-logs"
+}
+
+provider "google" {
+  credentials = file(var.credentials_file)
+  project = var.project
+  zone = var.zone
+  region= var.region
+
+}
+
+resource "google_pubsub_topic" "cloud-logs" {
+  name= var.logname
+}
+
+resource "google_logging_project_sink" "cloud-logs" {
+  name = var.logname
+  destination = "pubsub.googleapis.com/projects/personal-226821/topics/${var.logname}"
+  filter = "resource.type = gcs_bucket AND severity >= WARNING"
+  unique_writer_identity = true
+}
+
+resource "google_pubsub_subscription" "coud-logs" {
+  name = var.logname
+  topic = google_pubsub_topic.cloud-logs.name
+}
