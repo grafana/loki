@@ -97,6 +97,25 @@ func Benchmark_FlushLoop(b *testing.B) {
 	}
 }
 
+func Test_Flush(t *testing.T) {
+	var (
+		store, ing = newTestStore(t, defaultIngesterTestConfig(t), nil)
+		lbs        = makeRandomLabels()
+		ctx        = user.InjectOrgID(context.Background(), "foo")
+	)
+	store.onPut = func(ctx context.Context, chunks []chunk.Chunk) error {
+		for _, c := range chunks {
+			buf, err := c.Encoded()
+			require.Nil(t, err)
+			if err := c.Decode(chunk.NewDecodeContext(), buf); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	require.NoError(t, ing.flushChunks(ctx, 0, lbs, buildChunkDecs(t), &sync.RWMutex{}))
+}
+
 func buildChunkDecs(t testing.TB) []*chunkDesc {
 	res := make([]*chunkDesc, 10)
 	for i := range res {
@@ -227,6 +246,7 @@ type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
 	chunks map[string][]chunk.Chunk
+	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
 }
 
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.
@@ -275,7 +295,9 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-
+	if s.onPut != nil {
+		return s.onPut(ctx, chunks)
+	}
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err

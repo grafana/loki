@@ -44,13 +44,13 @@ func (p *BufferPool) Get(sz int) *bytes.Buffer {
 		}
 		b := p.buckets[i].Get()
 		if b == nil {
-			b = bytes.NewBuffer(make([]byte, bktSize))
+			b = bytes.NewBuffer(make([]byte, 0, bktSize))
 		}
 		buf := b.(*bytes.Buffer)
 		buf.Reset()
 		return b.(*bytes.Buffer)
 	}
-	return bytes.NewBuffer(make([]byte, sz))
+	return bytes.NewBuffer(make([]byte, 0, sz))
 }
 
 // Put adds a byte buffer to the right bucket in the pool.

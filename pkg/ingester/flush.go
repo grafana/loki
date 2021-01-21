@@ -323,12 +323,6 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	metric := labelsBuilder.Labels()
 
 	wireChunks := make([]chunk.Chunk, len(cs))
-	buffers := make([]*bytes.Buffer, len(cs))
-	defer func() {
-		for j := range buffers {
-			chunksBufferPool.Put(buffers[j])
-		}
-	}()
 
 	// use anonymous function to make lock releasing simpler.
 	err = func() error {
@@ -349,13 +343,11 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			)
 
 			chunkSize := c.chunk.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
-			buffer := chunksBufferPool.Get(chunkSize)
 			start := time.Now()
-			if err := ch.EncodeTo(buffer); err != nil {
+			if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkSize))); err != nil {
 				return err
 			}
 			chunkEncodeTime.Observe(time.Since(start).Seconds())
-			buffers[j] = buffer
 			wireChunks[j] = ch
 		}
 		return nil
