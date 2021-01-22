@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"time"
 
+	// Embed the time zone data
+	_ "time/tzdata"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	lru "github.com/hashicorp/golang-lru"
