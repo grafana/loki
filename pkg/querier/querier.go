@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -27,6 +29,8 @@ const (
 	// before checking if a new entry is available (to avoid spinning the CPU in a continuous
 	// check loop)
 	tailerWaitEntryThrottle = time.Second / 2
+
+	errAtleastOneEqualityMatcherRequired = "stream selector should have atleast one equality(=) matcher"
 )
 
 type interval struct {
@@ -479,6 +483,15 @@ func (q *Querier) validateQueryRequest(ctx context.Context, req logql.QueryParam
 			"max streams matchers per query exceeded, matchers-count > limit (%d > %d)", len(matchers), maxStreamMatchersPerQuery)
 	}
 
+	queryHasEqualityMatchers, err := q.queryHasEqualityMatchers(req)
+	if err != nil {
+		return err
+	}
+
+	if !queryHasEqualityMatchers {
+		return httpgrpc.Errorf(http.StatusBadRequest, errAtleastOneEqualityMatcherRequired)
+	}
+
 	return q.validateQueryTimeRange(userID, req.GetStart(), req.GetEnd())
 }
 
@@ -522,4 +535,30 @@ func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (q *Querier) queryHasEqualityMatchers(req logql.QueryParams) (bool, error) {
+	selector, err := req.LogSelector()
+	if err != nil {
+		return false, err
+	}
+
+	matchers := selector.Matchers()
+	regexMatchersValues := make([]string, 0, len(matchers))
+	for _, matcher := range matchers {
+		if matcher.Type == labels.MatchEqual {
+			return true, nil
+		} else if matcher.Type == labels.MatchRegexp {
+			regexMatchersValues = append(regexMatchersValues, matcher.Value)
+		}
+	}
+
+	// We want to consider regexes matchers with just | operators as equality matchers since they are internally converted to equality matchers.
+	for _, value := range regexMatchersValues {
+		if len(chunk.FindSetMatches(value)) != 0 {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
