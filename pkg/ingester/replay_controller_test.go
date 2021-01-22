@@ -9,7 +9,7 @@ import (
 )
 
 type dumbFlusher struct {
-	onInit, onFlush, postFlush func()
+	onFlush func()
 }
 
 func newDumbFlusher(onFlush func()) *dumbFlusher {
@@ -50,7 +50,7 @@ func TestReplayController(t *testing.T) {
 		// to the internal count, introduce a brief sleep.
 		time.Sleep(time.Millisecond)
 
-		// nolint:errcheck
+		// nolint:errcheck,unparam
 		go rc.WithBackPressure(func() error {
 			rc.Add(50)
 			opLock.Lock()
