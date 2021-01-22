@@ -12,27 +12,15 @@ type dumbFlusher struct {
 	onInit, onFlush, postFlush func()
 }
 
-func newDumbFlusher(onInit, onFlush, postFlush func()) *dumbFlusher {
+func newDumbFlusher(onFlush func()) *dumbFlusher {
 	return &dumbFlusher{
-		onInit:    onInit,
-		onFlush:   onFlush,
-		postFlush: postFlush,
+		onFlush: onFlush,
 	}
 }
 
-func (f *dumbFlusher) InitFlushQueues() {
-	if f.onInit != nil {
-		f.onInit()
-	}
-}
 func (f *dumbFlusher) Flush() {
 	if f.onFlush != nil {
 		f.onFlush()
-	}
-}
-func (f *dumbFlusher) RemoveFlushedChunks() {
-	if f.postFlush != nil {
-		f.postFlush()
 	}
 }
 
@@ -45,20 +33,10 @@ func TestReplayController(t *testing.T) {
 	var rc *replayController
 	flusher := newDumbFlusher(
 		func() {
-			opLock.Lock()
-			defer opLock.Unlock()
-			ops = append(ops, "InitFlushQueues")
-		},
-		func() {
 			rc.Sub(100) // simulate flushing 100 bytes
 			opLock.Lock()
 			defer opLock.Unlock()
 			ops = append(ops, "Flush")
-		},
-		func() {
-			opLock.Lock()
-			defer opLock.Unlock()
-			ops = append(ops, "PostFlush")
 		},
 	)
 	rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
@@ -88,14 +66,10 @@ func TestReplayController(t *testing.T) {
 	expected := []string{
 		"WithBackPressure", // add 50, total 50
 		"WithBackPressure", // add 50, total 100
-		"InitFlushQueues",
-		"Flush", // subtract 100, total 0
-		"PostFlush",
+		"Flush",            // subtract 100, total 0
 		"WithBackPressure", // add 50, total 50
 		"WithBackPressure", // add 50, total 100
-		"InitFlushQueues",
-		"Flush", // subtract 100, total 0
-		"PostFlush",
+		"Flush",            // subtract 100, total 0
 		"WithBackPressure", // add 50, total 50
 	}
 	require.Equal(t, expected, ops)

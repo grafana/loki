@@ -106,10 +106,24 @@ const (
 	flushReasonSynced = "synced"
 )
 
+// Note: this is called both during the WAL replay (zero or more times)
+// and then after replay as well.
+func (i *Ingester) InitFlushQueues() {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
+		go i.flushLoop(j)
+	}
+}
+
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
-	i.sweepUsers(true)
+	i.flush(true)
+}
+
+func (i *Ingester) flush(mayRemoveStreams bool) {
+	i.sweepUsers(true, mayRemoveStreams)
 
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
@@ -117,12 +131,13 @@ func (i *Ingester) Flush() {
 	}
 
 	i.flushQueuesDone.Wait()
+
 }
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
-	i.sweepUsers(true)
+	i.sweepUsers(true, true)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -142,21 +157,21 @@ func (o *flushOp) Priority() int64 {
 }
 
 // sweepUsers periodically schedules series for flushing and garbage collects users with no series
-func (i *Ingester) sweepUsers(immediate bool) {
+func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
-		i.sweepInstance(instance, immediate)
+		i.sweepInstance(instance, immediate, mayRemoveStreams)
 	}
 }
 
-func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
+func (i *Ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
 	instance.streamsMtx.Lock()
 	defer instance.streamsMtx.Unlock()
 
 	for _, stream := range instance.streams {
 		i.sweepStream(instance, stream, immediate)
-		i.removeFlushedChunks(instance, stream)
+		i.removeFlushedChunks(instance, stream, mayRemoveStreams)
 	}
 }
 
@@ -286,7 +301,7 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 }
 
 // must hold streamsMtx
-func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
+func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
 	now := time.Now()
 
 	stream.chunkMtx.Lock()
@@ -305,10 +320,9 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
 
 	// Signal how much data has been flushed to lessen any WAL replay pressure.
-	i.metrics.setRecoveryBytesInUse(i.currentReplayBytes.Sub(int64(subtracted)))
-	i.replayCond.Broadcast()
+	i.replayController.Sub(int64(subtracted))
 
-	if len(stream.chunks) == 0 {
+	if mayRemoveStream && len(stream.chunks) == 0 {
 		delete(instance.streamsByFP, stream.fp)
 		delete(instance.streams, stream.labelsString)
 		instance.index.Delete(stream.labels, stream.fp)

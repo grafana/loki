@@ -1,16 +1,37 @@
 package ingester
 
 import (
-	fmt "fmt"
 	"sync"
 
 	"go.uber.org/atomic"
 )
 
+type replayFlusher struct {
+	i *Ingester
+}
+
+func (f *replayFlusher) Flush() {
+	f.i.InitFlushQueues()
+	f.i.flush(false) // flush data but don't remove streams from the ingesters
+
+	// Similar to sweepUsers with the exception that it will not remove streams
+	// afterwards to prevent unlinking a stream which may receive later writes from the WAL.
+	// We have to do this here after the flushQueues have been drained.
+	instances := f.i.getInstances()
+
+	for _, instance := range instances {
+		instance.streamsMtx.Lock()
+
+		for _, stream := range instance.streams {
+			f.i.removeFlushedChunks(instance, stream, false)
+		}
+
+		instance.streamsMtx.Unlock()
+	}
+}
+
 type Flusher interface {
-	InitFlushQueues()
 	Flush()
-	RemoveFlushedChunks()
 }
 
 // replayController handles coordinating backpressure between WAL replays and chunk flushing.
@@ -48,11 +69,7 @@ func (c *replayController) Cur() int {
 
 func (c *replayController) Flush() {
 	if c.isFlushing.CAS(false, true) {
-		fmt.Println("flushing, before ", c.Cur())
-		c.flusher.InitFlushQueues()
 		c.flusher.Flush()
-		c.flusher.RemoveFlushedChunks()
-		fmt.Println("flushing, after ", c.Cur())
 		c.isFlushing.Store(false)
 		c.cond.Broadcast()
 	}
@@ -62,9 +79,6 @@ func (c *replayController) Flush() {
 // It will call the function as long as there is expected room before the memory cap and will then flush data intermittently
 // when needed.
 func (c *replayController) WithBackPressure(fn func() error) error {
-	defer func() {
-		fmt.Println("hit, cur", c.Cur())
-	}()
 	// Account for backpressure and wait until there's enough memory to continue replaying the WAL
 	c.cond.L.Lock()
 

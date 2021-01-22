@@ -108,24 +108,8 @@ func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
 // Use all available cores
 func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
-func (r *ingesterRecoverer) withBackPressure(fn func() error) error {
-	// Account for backpressure and wait until there's enough memory to continue replaying the WAL
-	r.ing.replayCond.L.Lock()
-
-	// use 90% as a threshold since we'll be adding to it.
-	for r.ing.currentReplayBytes.Load() > int64(r.ing.cfg.WAL.ReplayMemoryCeiling)*9/10 {
-		r.ing.replayCond.Wait()
-	}
-
-	// Don't hold the lock while executing the provided function.
-	// This ensures we can run functions concurrently.
-	r.ing.replayCond.L.Unlock()
-
-	return fn()
-}
-
 func (r *ingesterRecoverer) Series(series *Series) error {
-	return r.withBackPressure(func() error {
+	return r.ing.replayController.WithBackPressure(func() error {
 
 		inst := r.ing.getOrCreateInstance(series.UserID)
 
@@ -146,7 +130,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredBytesTotal.Add(float64(bytesAdded))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
-		r.ing.metrics.setRecoveryBytesInUse(r.ing.currentReplayBytes.Add(int64(bytesAdded)))
+		r.ing.replayController.Add(int64(bytesAdded))
 
 		// now store the stream in the recovery map under the fingerprint originally recorded
 		// as it's possible the newly mapped fingerprint is different. This is because the WAL records
@@ -193,7 +177,7 @@ func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) er
 }
 
 func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
-	return r.withBackPressure(func() error {
+	return r.ing.replayController.WithBackPressure(func() error {
 		out, ok := r.users.Load(userID)
 		if !ok {
 			return errors.Errorf("user (%s) not set during WAL replay", userID)
@@ -206,7 +190,7 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
 		bytesAdded, _ := s.(*stream).Push(context.Background(), entries.Entries, nil)
-		r.ing.metrics.setRecoveryBytesInUse(r.ing.currentReplayBytes.Add(int64(bytesAdded)))
+		r.ing.replayController.Add(int64(bytesAdded))
 		return nil
 	})
 }

@@ -225,6 +225,97 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 
 }
 
+func TestIngesterWALBackpressureSegments(t *testing.T) {
+
+	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
+	require.Nil(t, err)
+	defer os.RemoveAll(walDir)
+
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+	ingesterConfig.WAL.ReplayMemoryCeiling = 1000
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	newStore := func() *mockStore {
+		return &mockStore{
+			chunks: map[string][]chunk.Chunk{},
+		}
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	start := time.Now()
+	// Replay data 5x larger than the ceiling.
+	totalSize := int(5 * i.cfg.WAL.ReplayMemoryCeiling)
+	req, written := mkPush(start, totalSize)
+	require.Equal(t, totalSize, written)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, req)
+	require.NoError(t, err)
+
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// ensure we haven't checkpointed yet
+	expectCheckpoint(t, walDir, false)
+
+	// restart the ingester, ensuring we replayed from WAL.
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+}
+
+func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
+
+	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
+	require.Nil(t, err)
+	defer os.RemoveAll(walDir)
+
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+	ingesterConfig.WAL.ReplayMemoryCeiling = 1000
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	newStore := func() *mockStore {
+		return &mockStore{
+			chunks: map[string][]chunk.Chunk{},
+		}
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	start := time.Now()
+	// Replay data 5x larger than the ceiling.
+	totalSize := int(5 * i.cfg.WAL.ReplayMemoryCeiling)
+	req, written := mkPush(start, totalSize)
+	require.Equal(t, totalSize, written)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, req)
+	require.NoError(t, err)
+
+	time.Sleep(ingesterConfig.WAL.CheckpointDuration + time.Second) // give a bit of buffer
+	// ensure we have checkpointed now
+	expectCheckpoint(t, walDir, true)
+
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// restart the ingester, ensuring we can replay from the checkpoint as well.
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+}
+
 func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
 	fs, err := ioutil.ReadDir(walDir)
 	require.Nil(t, err)
@@ -236,4 +327,36 @@ func expectCheckpoint(t *testing.T, walDir string, shouldExist bool) {
 	}
 
 	require.True(t, found == shouldExist)
+}
+
+// mkPush makes approximately totalSize bytes of log lines across min(500, totalSize) streams
+func mkPush(start time.Time, totalSize int) (*logproto.PushRequest, int) {
+	var written int
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+		},
+	}
+	totalStreams := 500
+	if totalStreams > totalSize {
+		totalStreams = totalSize
+	}
+
+	for i := 0; i < totalStreams; i++ {
+		req.Streams = append(req.Streams, logproto.Stream{
+			Labels: fmt.Sprintf(`{foo="bar",i="%d"}`, i),
+		})
+
+		for j := 0; j < totalSize/totalStreams; j++ {
+			req.Streams[i].Entries = append(req.Streams[i].Entries, logproto.Entry{
+				Timestamp: start.Add(time.Duration(j) * time.Nanosecond),
+				Line:      string([]byte{1}),
+			})
+			written++
+		}
+
+	}
+	return req, written
 }
