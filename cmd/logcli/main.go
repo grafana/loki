@@ -58,8 +58,8 @@ Example:
 
 	logcli query
 	   --timezone=UTC
-	   --from="2021-01-19T10:00:00.000000000Z"
-	   --to="2021-01-19T20:00:00.000000000Z"
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
 	   --output=jsonl
 	   'my-query'
 
