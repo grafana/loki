@@ -132,8 +132,6 @@ github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
-# github.com/blang/semver v3.5.1+incompatible
-## explicit
 # github.com/bmatcuk/doublestar v1.2.2
 ## explicit
 github.com/bmatcuk/doublestar

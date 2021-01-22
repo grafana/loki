@@ -6,7 +6,6 @@ require (
 	cloud.google.com/go/pubsub v1.3.1
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/aws/aws-lambda-go v1.17.0
-	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/cespare/xxhash/v2 v2.1.1
