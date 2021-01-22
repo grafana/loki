@@ -27,11 +27,17 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 
+// RulesLimits is the one function we need from limits.Overrides, and
+// is here to limit coupling.
+type RulesLimits interface {
+	EvaluationDelay(usedID string) time.Duration
+}
+
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc {
+func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, userID string) rules.QueryFunc {
 	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		adjusted := t.Add(-delay)
+		adjusted := t.Add(-overrides.EvaluationDelay(userID))
 		params := logql.NewLiteralParams(
 			qs,
 			adjusted,
@@ -60,7 +66,6 @@ func engineQueryFunc(engine *logql.Engine, delay time.Duration) rules.QueryFunc 
 			return nil, errors.New("rule result is not a vector or scalar")
 		}
 	})
-
 }
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
@@ -81,6 +86,7 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 func MemstoreTenantManager(
 	cfg ruler.Config,
 	engine *logql.Engine,
+	overrides RulesLimits,
 ) ruler.ManagerFactory {
 	var metrics *Metrics
 
@@ -91,14 +97,13 @@ func MemstoreTenantManager(
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
-
 		// We'll ignore the passed registere and use the default registerer to avoid prefix issues and other weirdness.
 		// This closure prevents re-registering.
 		if metrics == nil {
 			metrics = NewMetrics(prometheus.DefaultRegisterer)
 		}
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(engine, cfg.EvaluationDelay)
+		queryFunc := engineQueryFunc(engine, overrides, userID)
 		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{

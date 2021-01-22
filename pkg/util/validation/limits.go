@@ -52,6 +52,11 @@ type Limits struct {
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration time.Duration `yaml:"split_queries_by_interval"`
 
+	// Ruler defaults and limits.
+	RulerEvaluationDelay        time.Duration `yaml:"ruler_evaluation_delay_duration"`
+	RulerMaxRulesPerRuleGroup   int           `yaml:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant int           `yaml:"ruler_max_rule_groups_per_tenant"`
+
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
 	PerTenantOverridePeriod time.Duration `yaml:"per_tenant_override_period"`
@@ -84,6 +89,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Limit the number of concurrent tail requests")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+
+	f.DurationVar(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
+	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
+	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with this to reload the overrides.")
@@ -261,6 +270,27 @@ func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 // MaxQueryLookback returns the max lookback period of queries.
 func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxQueryLookback
+}
+
+// EvaluationDelay returns the rules evaluation delay for a given user.
+func (o *Overrides) EvaluationDelay(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerEvaluationDelay
+}
+
+// RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
+// Not used in Loki.
+func (o *Overrides) RulerTenantShardSize(userID string) int {
+	return 0
+}
+
+// RulerMaxRulesPerRuleGroup returns the maximum number of rules per rule group for a given user.
+func (o *Overrides) RulerMaxRulesPerRuleGroup(userID string) int {
+	return o.getOverridesForUser(userID).RulerMaxRulesPerRuleGroup
+}
+
+// RulerMaxRuleGroupsPerTenant returns the maximum number of rule groups for a given user.
+func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
+	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
