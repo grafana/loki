@@ -55,6 +55,7 @@ func newReplayController(metrics *ingesterMetrics, cfg WALConfig, flusher Flushe
 }
 
 func (c *replayController) Add(x int64) {
+	c.metrics.recoveredBytesTotal.Add(float64(x))
 	c.metrics.setRecoveryBytesInUse(c.currentBytes.Add(int64(x)))
 }
 
