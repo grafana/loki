@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
@@ -20,6 +19,7 @@ type GcplogTargetManager struct {
 }
 
 func NewGcplogTargetManager(
+	metrics *Metrics,
 	logger log.Logger,
 	client api.EntryHandler,
 	scrape []scrapeconfig.Config,
@@ -33,13 +33,12 @@ func NewGcplogTargetManager(
 		if cf.GcplogConfig == nil {
 			continue
 		}
-		registerer := prometheus.DefaultRegisterer
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pubsub_pipeline"), cf.PipelineStages, &cf.JobName, registerer)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pubsub_pipeline"), cf.PipelineStages, &cf.JobName, metrics.reg)
 		if err != nil {
 			return nil, err
 		}
 
-		t, err := NewGcplogTarget(logger, pipeline.Wrap(client), cf.RelabelConfigs, cf.JobName, cf.GcplogConfig)
+		t, err := NewGcplogTarget(metrics, logger, pipeline.Wrap(client), cf.RelabelConfigs, cf.JobName, cf.GcplogConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create pubsub target: %w", err)
 		}

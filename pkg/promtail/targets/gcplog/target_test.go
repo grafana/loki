@@ -9,6 +9,7 @@ import (
 	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/pubsub/pstest"
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -122,6 +123,7 @@ func testGcplogTarget(t *testing.T) (*GcplogTarget, *fake.Client, *pubsub.Client
 	fakeClient := fake.New(func() {})
 
 	target := newGcplogTarget(
+		NewMetrics(prometheus.NewRegistry()),
 		log.NewNopLogger(),
 		fakeClient,
 		nil,

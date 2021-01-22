@@ -6,8 +6,6 @@ import (
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
@@ -16,24 +14,11 @@ import (
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 )
 
-var (
-	gcplogEntries = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "gcplog_target_entries_total",
-		Help:      "Help number of successful entries sent to the gcplog target",
-	}, []string{"project"})
-
-	gcplogErrors = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "gcplog_target_parsing_errors_total",
-		Help:      "Total number of parsing errors while receiving gcplog messages",
-	}, []string{"project"})
-)
-
 // GcplogTarget represents the target specific to GCP project.
 // It collects logs from GCP and push it to Loki.
 // nolint:golint
 type GcplogTarget struct {
+	metrics       *Metrics
 	logger        log.Logger
 	handler       api.EntryHandler
 	config        *scrapeconfig.GcplogTargetConfig
@@ -56,6 +41,7 @@ type GcplogTarget struct {
 // stopped via `target.Stop()`
 // nolint:golint,govet
 func NewGcplogTarget(
+	metrics *Metrics,
 	logger log.Logger,
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
@@ -70,7 +56,7 @@ func NewGcplogTarget(
 		return nil, err
 	}
 
-	target := newGcplogTarget(logger, handler, relabel, jobName, config, ps, ctx, cancel)
+	target := newGcplogTarget(metrics, logger, handler, relabel, jobName, config, ps, ctx, cancel)
 
 	go func() {
 		_ = target.run()
@@ -81,6 +67,7 @@ func NewGcplogTarget(
 
 // nolint: golint
 func newGcplogTarget(
+	metrics *Metrics,
 	logger log.Logger,
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
@@ -92,6 +79,7 @@ func newGcplogTarget(
 ) *GcplogTarget {
 
 	return &GcplogTarget{
+		metrics:       metrics,
 		logger:        logger,
 		handler:       handler,
 		relabelConfig: relabel,
@@ -119,7 +107,7 @@ func (t *GcplogTarget) run() error {
 		if err != nil {
 			// TODO(kavi): Add proper error propagation maybe?
 			level.Error(t.logger).Log("error", err)
-			gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
+			t.metrics.gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
 		}
 	}()
 
@@ -136,7 +124,7 @@ func (t *GcplogTarget) run() error {
 			}
 			send <- entry
 			m.Ack() // Ack only after log is sent.
-			gcplogEntries.WithLabelValues(t.config.ProjectID).Inc()
+			t.metrics.gcplogEntries.WithLabelValues(t.config.ProjectID).Inc()
 		}
 	}
 }
