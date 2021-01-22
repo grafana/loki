@@ -897,7 +897,7 @@ lifecycler:
 [query_store_max_look_back_period: <duration> | default = 0]
 
 
-# The ingester WAL records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
+# The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
 wal:
   # Enables writing to WAL.
   # CLI flag: -ingester.wal-enabled
@@ -911,13 +911,17 @@ wal:
   # CLI flag: -ingester.recover-from-wal
   [recover: <boolean> | default = false]
 
-# When WAL is enabled, should chunks be flushed to long-term storage on shutdown.
-# CLI flag: -ingester.flush-on-shutdown
-[flush_on_shutdown: <boolean> | default = false]
+  # When WAL is enabled, should chunks be flushed to long-term storage on shutdown.
+  # CLI flag: -ingester.flush-on-shutdown
+  [flush_on_shutdown: <boolean> | default = false]
 
-# Interval at which checkpoints should be created.
-# CLI flag: ingester.checkpoint-duration
-[checkpoint_duration: <duration> | default = 5m]
+  # Interval at which checkpoints should be created.
+  # CLI flag: ingester.checkpoint-duration
+  [checkpoint_duration: <duration> | default = 5m]
+
+  # Maximum memory size the WAL may use during replay. After hitting this it will flush data to storage before continuing.
+  # A unit suffix (KB, MB, GB) may be applied.
+  [replay_memory_ceiling: <string> | default = 4GB]
 ```
 
 ## consul_config

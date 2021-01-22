@@ -22,7 +22,7 @@ var (
 )
 
 const walSegmentSize = wal.DefaultSegmentSize * 4
-const defaultCeiling = 8 << 30 // 8GB
+const defaultCeiling = 4 << 30 // 4GB
 
 type WALConfig struct {
 	Enabled             bool             `yaml:"enabled"`
