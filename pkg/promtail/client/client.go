@@ -41,9 +41,7 @@ const (
 	HostLabel    = "host"
 )
 
-var (
-	UserAgent = fmt.Sprintf("promtail/%s", version.Version)
-)
+var UserAgent = fmt.Sprintf("promtail/%s", version.Version)
 
 type metrics struct {
 	encodedBytes     *prometheus.CounterVec
@@ -111,19 +109,27 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 
 	if reg != nil {
-		reg.MustRegister(
-			m.encodedBytes,
-			m.sentBytes,
-			m.droppedBytes,
-			m.sentEntries,
-			m.droppedEntries,
-			m.requestDuration,
-			m.batchRetries,
-			m.streamLag,
-		)
+		m.encodedBytes = mustRegisterOrGet(reg, m.encodedBytes).(*prometheus.CounterVec)
+		m.sentBytes = mustRegisterOrGet(reg, m.sentBytes).(*prometheus.CounterVec)
+		m.droppedBytes = mustRegisterOrGet(reg, m.droppedBytes).(*prometheus.CounterVec)
+		m.sentEntries = mustRegisterOrGet(reg, m.sentEntries).(*prometheus.CounterVec)
+		m.droppedEntries = mustRegisterOrGet(reg, m.droppedEntries).(*prometheus.CounterVec)
+		m.requestDuration = mustRegisterOrGet(reg, m.requestDuration).(*prometheus.HistogramVec)
+		m.batchRetries = mustRegisterOrGet(reg, m.batchRetries).(*prometheus.CounterVec)
+		m.streamLag = mustRegisterOrGet(reg, m.streamLag).(*metric.Gauges)
 	}
 
 	return &m
+}
+
+func mustRegisterOrGet(reg prometheus.Registerer, c prometheus.Collector) prometheus.Collector {
+	if err := reg.Register(c); err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			return are.ExistingCollector.(prometheus.Collector)
+		}
+		panic(err)
+	}
+	return c
 }
 
 // Client pushes entries to Loki and can be stopped

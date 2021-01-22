@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"sync"
@@ -341,32 +342,33 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	labelsBuilder.Set(nameLabel, logsValue)
 	metric := labelsBuilder.Labels()
 
-	wireChunks := make([]chunk.Chunk, 0, len(cs))
+	wireChunks := make([]chunk.Chunk, len(cs))
 
 	// use anonymous function to make lock releasing simpler.
 	err = func() error {
 		chunkMtx.Lock()
 		defer chunkMtx.Unlock()
 
-		for _, c := range cs {
+		for j, c := range cs {
 			// Ensure that new blocks are cut before flushing as data in the head block is not included otherwise.
 			if err := c.chunk.Close(); err != nil {
 				return err
 			}
 			firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
-			c := chunk.NewChunk(
+			ch := chunk.NewChunk(
 				userID, fp, metric,
 				chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
 				firstTime,
 				lastTime,
 			)
 
+			chunkSize := c.chunk.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
 			start := time.Now()
-			if err := c.Encode(); err != nil {
+			if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkSize))); err != nil {
 				return err
 			}
 			chunkEncodeTime.Observe(time.Since(start).Seconds())
-			wireChunks = append(wireChunks, c)
+			wireChunks[j] = ch
 		}
 		return nil
 	}()

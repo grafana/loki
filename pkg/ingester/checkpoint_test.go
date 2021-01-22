@@ -5,16 +5,22 @@ import (
 	fmt "fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -50,7 +56,6 @@ func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 }
 
 func TestIngesterWAL(t *testing.T) {
-
 	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
 	require.Nil(t, err)
 	defer os.RemoveAll(walDir)
@@ -131,7 +136,6 @@ func TestIngesterWAL(t *testing.T) {
 
 	// ensure we've recovered data from checkpoint+wal segments
 	ensureIngesterData(ctx, t, start, end, i)
-
 }
 
 func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
@@ -222,7 +226,20 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	_, err = i.Push(ctx, &req)
 	// Ensure regular pushes error due to stream limits.
 	require.Error(t, err)
+}
 
+func TestUnflushedChunks(t *testing.T) {
+	chks := []chunkDesc{
+		{
+			flushed: time.Now(),
+		},
+		{},
+		{
+			flushed: time.Now(),
+		},
+	}
+
+	require.Equal(t, 1, len(unflushedChunks(chks)))
 }
 
 func TestIngesterWALBackpressureSegments(t *testing.T) {
@@ -359,4 +376,195 @@ func mkPush(start time.Time, totalSize int) (*logproto.PushRequest, int) {
 
 	}
 	return req, written
+}
+
+type ingesterInstancesFunc func() []*instance
+
+func (i ingesterInstancesFunc) getInstances() []*instance {
+	return i()
+}
+
+var currentSeries *Series
+
+func buildStreams() []logproto.Stream {
+	streams := make([]logproto.Stream, 10)
+	for i := range streams {
+		labels := makeRandomLabels().String()
+		entries := make([]logproto.Entry, 15*1e3)
+		for j := range entries {
+			entries[j] = logproto.Entry{
+				Timestamp: time.Unix(0, int64(j)),
+				Line:      fmt.Sprintf("entry for line %d", j),
+			}
+		}
+		streams[i] = logproto.Stream{
+			Labels:  labels,
+			Entries: entries,
+		}
+	}
+	return streams
+}
+
+var (
+	stream1 = logproto.Stream{
+		Labels: labels.Labels{labels.Label{Name: "stream", Value: "1"}}.String(),
+		Entries: []logproto.Entry{
+			{
+				Timestamp: time.Unix(0, 1),
+				Line:      "1",
+			},
+			{
+				Timestamp: time.Unix(0, 2),
+				Line:      "2",
+			},
+		},
+	}
+	stream2 = logproto.Stream{
+		Labels: labels.Labels{labels.Label{Name: "stream", Value: "2"}}.String(),
+		Entries: []logproto.Entry{
+			{
+				Timestamp: time.Unix(0, 1),
+				Line:      "3",
+			},
+			{
+				Timestamp: time.Unix(0, 2),
+				Line:      "4",
+			},
+		},
+	}
+)
+
+func Test_SeriesIterator(t *testing.T) {
+	var instances []*instance
+
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxLocalStreamsPerUser: 1000,
+		IngestionRateMB:        1e4,
+		IngestionBurstSizeMB:   1e4,
+	}, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+
+	for i := 0; i < 3; i++ {
+		inst := newInstance(defaultConfig(), fmt.Sprintf("%d", i), limiter, noopWAL{}, NilMetrics, nil)
+		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream1}}))
+		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream2}}))
+		instances = append(instances, inst)
+	}
+
+	iter := newStreamsIterator(ingesterInstancesFunc(func() []*instance {
+		return instances
+	}))
+
+	for i := 0; i < 3; i++ {
+		var streams []logproto.Stream
+		for j := 0; j < 2; j++ {
+			iter.Next()
+			assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
+			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, 0, 0)
+			require.NoError(t, err)
+			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+			require.NoError(t, err)
+			stream := logproto.Stream{
+				Labels: cortex_client.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
+			}
+			for it.Next() {
+				stream.Entries = append(stream.Entries, it.Entry())
+			}
+			require.NoError(t, it.Close())
+			streams = append(streams, stream)
+		}
+		sort.Slice(streams, func(i, j int) bool { return streams[i].Labels < streams[j].Labels })
+		require.Equal(t, stream1, streams[0])
+		require.Equal(t, stream2, streams[1])
+	}
+
+	require.False(t, iter.Next())
+	require.Nil(t, iter.Error())
+}
+
+func Benchmark_SeriesIterator(b *testing.B) {
+	streams := buildStreams()
+	instances := make([]*instance, 10)
+
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxLocalStreamsPerUser: 1000,
+		IngestionRateMB:        1e4,
+		IngestionBurstSizeMB:   1e4,
+	}, nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+
+	for i := range instances {
+		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, noopWAL{}, NilMetrics, nil)
+
+		require.NoError(b,
+			inst.Push(context.Background(), &logproto.PushRequest{
+				Streams: streams,
+			}),
+		)
+		instances[i] = inst
+	}
+	it := newIngesterSeriesIter(ingesterInstancesFunc(func() []*instance {
+		return instances
+	}))
+	defer it.Stop()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		iter := it.Iter()
+		for iter.Next() {
+			currentSeries = iter.Stream()
+		}
+		require.NoError(b, iter.Error())
+	}
+}
+
+type noOpWalLogger struct{}
+
+func (noOpWalLogger) Log(recs ...[]byte) error { return nil }
+func (noOpWalLogger) Close() error             { return nil }
+func (noOpWalLogger) Dir() string              { return "" }
+
+func Benchmark_CheckpointWrite(b *testing.B) {
+	writer := WALCheckpointWriter{
+		metrics:       NilMetrics,
+		checkpointWAL: noOpWalLogger{},
+	}
+	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
+	chunks := buildChunks(b, 10)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		require.NoError(b, writer.Write(&Series{
+			UserID:      "foo",
+			Fingerprint: lbs.Hash(),
+			Labels:      cortex_client.FromLabelsToLabelAdapters(lbs),
+			Chunks:      chunks,
+		}))
+	}
+}
+
+func buildChunks(t testing.TB, size int) []Chunk {
+	descs := make([]chunkDesc, 0, size)
+	chks := make([]Chunk, size)
+
+	for i := 0; i < size; i++ {
+		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
+		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 1500*1024)
+		fillChunk(t, c)
+		descs = append(descs, chunkDesc{
+			chunk: c,
+		})
+	}
+
+	there, err := toWireChunks(descs, nil)
+	require.NoError(t, err)
+	for i := range there {
+		chks[i] = there[i].Chunk
+	}
+	return chks
 }

@@ -47,12 +47,30 @@ var (
 			New: func() interface{} { return bufio.NewReader(nil) },
 		},
 	}
+
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
 	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
-	BytesBufferPool          = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+
+	// Pool of crc32 hash
+	crc32HashPool = sync.Pool{
+		New: func() interface{} {
+			return newCRC32()
+		},
+	}
+
 	serializeBytesBufferPool = sync.Pool{
 		New: func() interface{} {
 			return &bytes.Buffer{}
+		},
+	}
+
+	// EncodeBufferPool is a pool used to binary encode.
+	EncodeBufferPool = sync.Pool{
+		New: func() interface{} {
+			return &encbuf{
+				b: make([]byte, 0, 256),
+			}
 		},
 	}
 )

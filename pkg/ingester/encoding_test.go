@@ -120,9 +120,9 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	}
 }
 
-func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
+func fillChunk(t testing.TB, c chunkenc.Chunk) {
 	t.Helper()
-	var i, inserted int64
+	var i int64
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      "entry for line 0",
@@ -131,11 +131,9 @@ func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
 	for c.SpaceFor(entry) {
 		require.NoError(t, c.Append(entry))
 		i++
-		inserted += int64(len(entry.Line))
 		entry.Timestamp = time.Unix(0, i)
 		entry.Line = fmt.Sprintf("entry for line %d", i)
 	}
-	return inserted
 }
 
 func dummyConf() *Config {
@@ -166,7 +164,11 @@ func Test_EncodingChunks(t *testing.T) {
 	}
 	there, err := toWireChunks(from, nil)
 	require.Nil(t, err)
-	backAgain, err := fromWireChunks(conf, there)
+	chunks := make([]Chunk, 0, len(there))
+	for _, c := range there {
+		chunks = append(chunks, c.Chunk)
+	}
+	backAgain, err := fromWireChunks(conf, chunks)
 	require.Nil(t, err)
 
 	for i, to := range backAgain {
@@ -216,7 +218,7 @@ func Test_EncodingCheckpoint(t *testing.T) {
 		},
 	}
 
-	b, err := encodeWithTypeHeader(s, CheckpointRecord)
+	b, err := encodeWithTypeHeader(s, CheckpointRecord, nil)
 	require.Nil(t, err)
 
 	out := &Series{}
