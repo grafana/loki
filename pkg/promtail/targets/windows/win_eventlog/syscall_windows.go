@@ -60,4 +60,5 @@ const (
 	// XML string, see the Event schema.
 	EvtRenderEventXml EvtRenderFlag = 1
 	//revive:enable:var-naming
+	EvtRenderBookmark EvtRenderFlag = 2
 )

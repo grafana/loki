@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/pkg/promtail/targets/syslog"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
+	"github.com/grafana/loki/pkg/promtail/targets/windows"
 )
 
 const (
@@ -21,6 +22,7 @@ const (
 	JournalScrapeConfigs = "journalScrapeConfigs"
 	SyslogScrapeConfigs  = "syslogScrapeConfigs"
 	PushScrapeConfigs    = "pushScrapeConfigs"
+	WindowsEventsConfigs = "windowsEventsConfigs"
 )
 
 type targetManager interface {
@@ -58,11 +60,6 @@ func NewTargetManagers(
 		return &TargetManagers{targetManagers: targetManagers}, nil
 	}
 
-	positions, err := positions.New(logger, positionsConfig)
-	if err != nil {
-		return nil, err
-	}
-
 	for _, cfg := range scrapeConfigs {
 		switch {
 		case cfg.HasServiceDiscoveryConfig():
@@ -73,17 +70,38 @@ func NewTargetManagers(
 			targetScrapeConfigs[SyslogScrapeConfigs] = append(targetScrapeConfigs[SyslogScrapeConfigs], cfg)
 		case cfg.PushConfig != nil:
 			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
+		case cfg.WindowsConfig != nil:
+			targetScrapeConfigs[WindowsEventsConfigs] = append(targetScrapeConfigs[WindowsEventsConfigs], cfg)
+
 		default:
 			return nil, errors.New("unknown scrape config")
 		}
 	}
 
+	var positionFile positions.Positions
+
+	// position file is a singleton, we use a function to keep it so.
+	getPositionFile := func() (positions.Positions, error) {
+		if positionFile == nil {
+			var err error
+			positionFile, err = positions.New(logger, positionsConfig)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return positionFile, nil
+	}
+
 	for target, scrapeConfigs := range targetScrapeConfigs {
 		switch target {
 		case FileScrapeConfigs:
+			pos, err := getPositionFile()
+			if err != nil {
+				return nil, err
+			}
 			fileTargetManager, err := file.NewFileTargetManager(
 				logger,
-				positions,
+				pos,
 				client,
 				scrapeConfigs,
 				targetConfig,
@@ -93,9 +111,13 @@ func NewTargetManagers(
 			}
 			targetManagers = append(targetManagers, fileTargetManager)
 		case JournalScrapeConfigs:
+			pos, err := getPositionFile()
+			if err != nil {
+				return nil, err
+			}
 			journalTargetManager, err := journal.NewJournalTargetManager(
 				logger,
-				positions,
+				pos,
 				client,
 				scrapeConfigs,
 			)
@@ -123,6 +145,12 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
 			}
 			targetManagers = append(targetManagers, pushTargetManager)
+		case WindowsEventsConfigs:
+			windowsTargetManager, err := windows.NewTargetManager(logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make windows target manager")
+			}
+			targetManagers = append(targetManagers, windowsTargetManager)
 		default:
 			return nil, errors.New("unknown scrape config")
 		}
@@ -130,7 +158,7 @@ func NewTargetManagers(
 
 	return &TargetManagers{
 		targetManagers: targetManagers,
-		positions:      positions,
+		positions:      positionFile,
 	}, nil
 
 }

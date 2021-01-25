@@ -3,8 +3,6 @@ package windows
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +16,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
 	"github.com/grafana/loki/pkg/promtail/targets/windows/win_eventlog"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -30,11 +29,12 @@ var (
 type Target struct {
 	subscription  win_eventlog.EvtHandle
 	handler       api.EntryHandler
-	cfg           Config
+	cfg           *scrapeconfig.WindowsEventsTargetConfig
 	relabelConfig []*relabel.Config
 	logger        log.Logger
 
-	bm *bookMark // bookmark to save positions.
+	bm      *bookMark // bookmark to save positions.
+	fetcher *win_eventlog.EventFetcher
 
 	ready bool
 	done  chan struct{}
@@ -42,19 +42,11 @@ type Target struct {
 	err   error
 }
 
-type Config struct {
-	win_eventlog.WinEventLog `yaml:",inline"`
-	BoorkmarkPath            string        `yaml:"bookmark_path"`
-	PollInterval             time.Duration `yaml:"poll_interval"`
-	// Labels optionally holds labels to associate with each record received on the push api.
-	Labels model.LabelSet `yaml:"labels"`
-}
-
 func New(
 	logger log.Logger,
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
-	cfg Config,
+	cfg *scrapeconfig.WindowsEventsTargetConfig,
 ) (*Target, error) {
 	sigEvent, err := windows.CreateEvent(nil, 0, 0, nil)
 	if err != nil {
@@ -64,7 +56,7 @@ func New(
 
 	bm, err := newBookMark(cfg.BoorkmarkPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create bookmark: %w", err)
 	}
 
 	t := &Target{
@@ -74,6 +66,7 @@ func New(
 		relabelConfig: relabel,
 		logger:        logger,
 		handler:       handler,
+		fetcher:       win_eventlog.NewEventFetcher(),
 	}
 
 	var subsHandle win_eventlog.EvtHandle
@@ -110,7 +103,7 @@ func (t *Target) loop() {
 	loop:
 		for {
 			// fetch events until there's no more.
-			events, err := t.cfg.FetchEvents(t.subscription)
+			events, handles, err := t.fetcher.FetchEvents(t.subscription, t.cfg.Locale)
 			if err != nil {
 				if err != win_eventlog.ERROR_NO_MORE_ITEMS {
 					t.err = err
@@ -120,9 +113,14 @@ func (t *Target) loop() {
 			}
 			t.err = nil
 			// we have received events to handle.
-			for _, entry := range t.renderEntries(events) {
+			for i, entry := range t.renderEntries(events) {
 				t.handler.Chan() <- entry
+				if err := t.bm.save(handles[i]); err != nil {
+					t.err = err
+					level.Error(util.Logger).Log("msg", "error saving bookmark", "err", err)
+				}
 			}
+			win_eventlog.Close(handles)
 
 		}
 		// no more messages we wait for next poll timer tick.
@@ -142,21 +140,26 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 			Labels: make(model.LabelSet),
 		}
 
-		if t.cfg.TimeStampFromEvent {
+		entry.Timestamp = time.Now()
+		if t.cfg.UseIncomingTimestamp {
 			timeStamp, err := time.Parse(time.RFC3339Nano, fmt.Sprintf("%v", event.TimeCreated.SystemTime))
 			if err != nil {
 				level.Warn(t.logger).Log("msg", "error parsing timestamp", "err", err)
-				continue
+			} else {
+				entry.Timestamp = timeStamp
 			}
-			entry.Timestamp = timeStamp
 		}
-		lbs.Reset(nil)
 		// Add constant labels
 		for k, v := range t.cfg.Labels {
 			lbs.Set(string(k), string(v))
 		}
 		// discover labels
-		// todo
+		if channel := model.LabelValue(event.Channel); channel != "" && channel.IsValid() {
+			lbs.Set("channel", event.Channel)
+		}
+		if computer := model.LabelValue(event.Computer); computer != "" && computer.IsValid() {
+			lbs.Set("computer", event.Computer)
+		}
 		// apply relabelings.
 		processed := relabel.Process(lbs.Labels(), t.relabelConfig...)
 
@@ -166,8 +169,13 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 			}
 			entry.Labels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 		}
-		// format line message.
-		// relabel
+
+		line, err := formatLine(t.cfg, event)
+		if err != nil {
+			level.Warn(t.logger).Log("msg", "error formatting event", "err", err)
+			continue
+		}
+		entry.Line = line
 		res = append(res, entry)
 	}
 	return res
@@ -187,13 +195,14 @@ func (t *Target) Ready() bool {
 }
 
 func (t *Target) DiscoveredLabels() model.LabelSet {
+	// todo(cyriltovena) we might want to sample discovered labels later and returns them here.
 	return nil
 }
 
 // Labels returns the set of labels that statically apply to all log entries
 // produced by the SyslogTarget.
 func (t *Target) Labels() model.LabelSet {
-	return nil
+	return t.cfg.Labels
 }
 
 // Details returns target-specific details.
@@ -208,43 +217,8 @@ func (t *Target) Stop() error {
 	close(t.done)
 	t.wg.Wait()
 	t.handler.Stop()
+	if err := t.bm.close(); err != nil {
+		return err
+	}
 	return t.err
-}
-
-type bookMark struct {
-	handle win_eventlog.EvtHandle
-	file   afero.File
-	isNew  bool
-}
-
-func newBookMark(path string) (*bookMark, error) {
-	_, err := fs.Stat(path)
-	if os.IsNotExist(err) {
-		file, err := fs.Create(path)
-		if err != nil {
-			return nil, err
-		}
-		bm, err := win_eventlog.CreateBookmark("")
-		if err != nil {
-			return nil, err
-		}
-		return &bookMark{handle: bm, file: file, isNew: true}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	file, err := fs.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	fileContent, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, err
-	}
-	fileString := string(fileContent)
-	bm, err := win_eventlog.CreateBookmark(fileString)
-	if err != nil {
-		return nil, err
-	}
-	return &bookMark{handle: bm, file: file, isNew: fileString == ""}, nil
 }

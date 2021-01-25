@@ -28,13 +28,14 @@ import (
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName                string                 `yaml:"job_name,omitempty"`
-	PipelineStages         stages.PipelineStages  `yaml:"pipeline_stages,omitempty"`
-	JournalConfig          *JournalTargetConfig   `yaml:"journal,omitempty"`
-	SyslogConfig           *SyslogTargetConfig    `yaml:"syslog,omitempty"`
-	PushConfig             *PushTargetConfig      `yaml:"loki_push_api,omitempty"`
-	RelabelConfigs         []*relabel.Config      `yaml:"relabel_configs,omitempty"`
-	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
+	JobName                string                     `yaml:"job_name,omitempty"`
+	PipelineStages         stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
+	JournalConfig          *JournalTargetConfig       `yaml:"journal,omitempty"`
+	SyslogConfig           *SyslogTargetConfig        `yaml:"syslog,omitempty"`
+	PushConfig             *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
+	WindowsConfig          *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
+	RelabelConfigs         []*relabel.Config          `yaml:"relabel_configs,omitempty"`
+	ServiceDiscoveryConfig ServiceDiscoveryConfig     `yaml:",inline"`
 }
 
 type ServiceDiscoveryConfig struct {
@@ -162,6 +163,32 @@ type SyslogTargetConfig struct {
 	// UseIncomingTimestamp sets the timestamp to the incoming syslog mesages
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+}
+
+type WindowsEventsTargetConfig struct {
+	// LCID (Locale ID) for event rendering
+	// - 1033 to force English language
+	// -  0 to use default Windows locale
+	Locale uint32 `yaml:"locale"`
+	// Name of eventlog, used only if xpath_query is empty
+	// Example: "Application"
+	EventlogName string `yaml:"eventlog_name"`
+	// xpath_query can be in defined short form like "Event/System[EventID=999]"
+	// or you can form a XML Query. Refer to the Consuming Events article:
+	// https://docs.microsoft.com/en-us/windows/win32/wes/consuming-events
+	// XML query is the recommended form, because it is most flexible
+	// You can create or debug XML Query by creating Custom View in Windows Event Viewer
+	// and then copying resulting XML here
+	Query string `yaml:"xpath_query"`
+	// UseIncomingTimestamp sets the timestamp to the incoming windows mesages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool          `yaml:"use_incoming_timestamp"`
+	BoorkmarkPath        string        `yaml:"bookmark_path"`
+	PollInterval         time.Duration `yaml:"poll_interval"`
+	IncludeEventData     bool          `yaml:"include_event_data"`
+	IncludeUserData      bool          `yaml:"include_user_data"`
+	// Labels optionally holds labels to associate with each log line.
+	Labels model.LabelSet `yaml:"labels"`
 }
 
 // PushTargetConfig describes a scrape config that listens for Loki push messages.

@@ -26,15 +26,11 @@
 package win_eventlog
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/xml"
-	"fmt"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -165,137 +161,137 @@ func (w *WinEventLog) Gather(acc telegraf.Accumulator) error {
 	// 	}
 	// }
 
-loop:
-	for {
-		events, err := w.FetchEvents(w.subscription)
-		if err != nil {
-			switch {
-			case err == ERROR_NO_MORE_ITEMS:
-				break loop
-			case err != nil:
-				// w.Log.Error("Error getting events:", err.Error())
-				return err
-			}
-		}
+	// loop:
+	// 	for {
+	// 		events, err := w.FetchEvents(w.subscription)
+	// 		if err != nil {
+	// 			switch {
+	// 			case err == ERROR_NO_MORE_ITEMS:
+	// 				break loop
+	// 			case err != nil:
+	// 				// w.Log.Error("Error getting events:", err.Error())
+	// 				return err
+	// 			}
+	// 		}
 
-		for _, event := range events {
-			// Prepare fields names usage counter
-			var fieldsUsage = map[string]int{}
+	// 		for _, event := range events {
+	// 			// Prepare fields names usage counter
+	// 			var fieldsUsage = map[string]int{}
 
-			tags := map[string]string{}
-			fields := map[string]interface{}{}
-			evt := reflect.ValueOf(&event).Elem()
-			timeStamp := time.Now()
-			// Walk through all fields of Event struct to process System tags or fields
-			for i := 0; i < evt.NumField(); i++ {
-				fieldName := evt.Type().Field(i).Name
-				fieldType := evt.Field(i).Type().String()
-				fieldValue := evt.Field(i).Interface()
-				computedValues := map[string]interface{}{}
-				switch fieldName {
-				case "Source":
-					fieldValue = event.Source.Name
-					fieldType = reflect.TypeOf(fieldValue).String()
-				case "Execution":
-					fieldValue := event.Execution.ProcessID
-					fieldType = reflect.TypeOf(fieldValue).String()
-					fieldName = "ProcessID"
-					// Look up Process Name from pid
-					if should, _ := w.shouldProcessField("ProcessName"); should {
-						_, _, processName, err := GetFromSnapProcess(fieldValue)
-						if err == nil {
-							computedValues["ProcessName"] = processName
-						}
-					}
-				case "TimeCreated":
-					fieldValue = event.TimeCreated.SystemTime
-					fieldType = reflect.TypeOf(fieldValue).String()
-					if w.TimeStampFromEvent {
-						timeStamp, err = time.Parse(time.RFC3339Nano, fmt.Sprintf("%v", fieldValue))
-						if err != nil {
-							// w.Log.Warnf("Error parsing timestamp %q: %v", fieldValue, err)
-						}
-					}
-				case "Correlation":
-					if should, _ := w.shouldProcessField("ActivityID"); should {
-						activityID := event.Correlation.ActivityID
-						if len(activityID) > 0 {
-							computedValues["ActivityID"] = activityID
-						}
-					}
-					if should, _ := w.shouldProcessField("RelatedActivityID"); should {
-						relatedActivityID := event.Correlation.RelatedActivityID
-						if len(relatedActivityID) > 0 {
-							computedValues["RelatedActivityID"] = relatedActivityID
-						}
-					}
-				case "Security":
-					computedValues["UserID"] = event.Security.UserID
-					// Look up UserName and Domain from SID
-					if should, _ := w.shouldProcessField("UserName"); should {
-						sid := event.Security.UserID
-						usid, err := syscall.StringToSid(sid)
-						if err == nil {
-							username, domain, _, err := usid.LookupAccount("")
-							if err == nil {
-								computedValues["UserName"] = fmt.Sprint(domain, "\\", username)
-							}
-						}
-					}
-				default:
-				}
-				if should, where := w.shouldProcessField(fieldName); should {
-					if where == "tags" {
-						strValue := fmt.Sprintf("%v", fieldValue)
-						if !w.shouldExcludeEmptyField(fieldName, "string", strValue) {
-							tags[fieldName] = strValue
-							fieldsUsage[fieldName]++
-						}
-					} else if where == "fields" {
-						if !w.shouldExcludeEmptyField(fieldName, fieldType, fieldValue) {
-							fields[fieldName] = fieldValue
-							fieldsUsage[fieldName]++
-						}
-					}
-				}
+	// 			tags := map[string]string{}
+	// 			fields := map[string]interface{}{}
+	// 			evt := reflect.ValueOf(&event).Elem()
+	// 			timeStamp := time.Now()
+	// 			// Walk through all fields of Event struct to process System tags or fields
+	// 			for i := 0; i < evt.NumField(); i++ {
+	// 				fieldName := evt.Type().Field(i).Name
+	// 				fieldType := evt.Field(i).Type().String()
+	// 				fieldValue := evt.Field(i).Interface()
+	// 				computedValues := map[string]interface{}{}
+	// 				switch fieldName {
+	// 				case "Source":
+	// 					fieldValue = event.Source.Name
+	// 					fieldType = reflect.TypeOf(fieldValue).String()
+	// 				case "Execution":
+	// 					fieldValue := event.Execution.ProcessID
+	// 					fieldType = reflect.TypeOf(fieldValue).String()
+	// 					fieldName = "ProcessID"
+	// 					// Look up Process Name from pid
+	// 					if should, _ := w.shouldProcessField("ProcessName"); should {
+	// 						_, _, processName, err := GetFromSnapProcess(fieldValue)
+	// 						if err == nil {
+	// 							computedValues["ProcessName"] = processName
+	// 						}
+	// 					}
+	// 				case "TimeCreated":
+	// 					fieldValue = event.TimeCreated.SystemTime
+	// 					fieldType = reflect.TypeOf(fieldValue).String()
+	// 					if w.TimeStampFromEvent {
+	// 						timeStamp, err = time.Parse(time.RFC3339Nano, fmt.Sprintf("%v", fieldValue))
+	// 						if err != nil {
+	// 							// w.Log.Warnf("Error parsing timestamp %q: %v", fieldValue, err)
+	// 						}
+	// 					}
+	// 				case "Correlation":
+	// 					if should, _ := w.shouldProcessField("ActivityID"); should {
+	// 						activityID := event.Correlation.ActivityID
+	// 						if len(activityID) > 0 {
+	// 							computedValues["ActivityID"] = activityID
+	// 						}
+	// 					}
+	// 					if should, _ := w.shouldProcessField("RelatedActivityID"); should {
+	// 						relatedActivityID := event.Correlation.RelatedActivityID
+	// 						if len(relatedActivityID) > 0 {
+	// 							computedValues["RelatedActivityID"] = relatedActivityID
+	// 						}
+	// 					}
+	// 				case "Security":
+	// 					computedValues["UserID"] = event.Security.UserID
+	// 					// Look up UserName and Domain from SID
+	// 					if should, _ := w.shouldProcessField("UserName"); should {
+	// 						sid := event.Security.UserID
+	// 						usid, err := syscall.StringToSid(sid)
+	// 						if err == nil {
+	// 							username, domain, _, err := usid.LookupAccount("")
+	// 							if err == nil {
+	// 								computedValues["UserName"] = fmt.Sprint(domain, "\\", username)
+	// 							}
+	// 						}
+	// 					}
+	// 				default:
+	// 				}
+	// 				if should, where := w.shouldProcessField(fieldName); should {
+	// 					if where == "tags" {
+	// 						strValue := fmt.Sprintf("%v", fieldValue)
+	// 						if !w.shouldExcludeEmptyField(fieldName, "string", strValue) {
+	// 							tags[fieldName] = strValue
+	// 							fieldsUsage[fieldName]++
+	// 						}
+	// 					} else if where == "fields" {
+	// 						if !w.shouldExcludeEmptyField(fieldName, fieldType, fieldValue) {
+	// 							fields[fieldName] = fieldValue
+	// 							fieldsUsage[fieldName]++
+	// 						}
+	// 					}
+	// 				}
 
-				// Insert computed fields
-				for computedKey, computedValue := range computedValues {
-					if should, where := w.shouldProcessField(computedKey); should {
-						if where == "tags" {
-							tags[computedKey] = fmt.Sprintf("%v", computedValue)
-							fieldsUsage[computedKey]++
-						} else if where == "fields" {
-							fields[computedKey] = computedValue
-							fieldsUsage[computedKey]++
-						}
-					}
-				}
-			}
+	// 				// Insert computed fields
+	// 				for computedKey, computedValue := range computedValues {
+	// 					if should, where := w.shouldProcessField(computedKey); should {
+	// 						if where == "tags" {
+	// 							tags[computedKey] = fmt.Sprintf("%v", computedValue)
+	// 							fieldsUsage[computedKey]++
+	// 						} else if where == "fields" {
+	// 							fields[computedKey] = computedValue
+	// 							fieldsUsage[computedKey]++
+	// 						}
+	// 					}
+	// 				}
+	// 			}
 
-			// Unroll additional XML
-			var xmlFields []EventField
-			if w.ProcessUserData {
-				fieldsUserData, xmlFieldsUsage := UnrollXMLFields(event.UserData.InnerXML, fieldsUsage, w.Separator)
-				xmlFields = append(xmlFields, fieldsUserData...)
-				fieldsUsage = xmlFieldsUsage
-			}
-			if w.ProcessEventData {
-				fieldsEventData, xmlFieldsUsage := UnrollXMLFields(event.EventData.InnerXML, fieldsUsage, w.Separator)
-				xmlFields = append(xmlFields, fieldsEventData...)
-				fieldsUsage = xmlFieldsUsage
-			}
-			uniqueXMLFields := UniqueFieldNames(xmlFields, fieldsUsage, w.Separator)
-			for _, xmlField := range uniqueXMLFields {
-				if !w.shouldExclude(xmlField.Name) {
-					fields[xmlField.Name] = xmlField.Value
-				}
-			}
+	// 			// Unroll additional XML
+	// 			var xmlFields []EventField
+	// 			if w.ProcessUserData {
+	// 				fieldsUserData, xmlFieldsUsage := UnrollXMLFields(event.UserData.InnerXML, fieldsUsage, w.Separator)
+	// 				xmlFields = append(xmlFields, fieldsUserData...)
+	// 				fieldsUsage = xmlFieldsUsage
+	// 			}
+	// 			if w.ProcessEventData {
+	// 				fieldsEventData, xmlFieldsUsage := UnrollXMLFields(event.EventData.InnerXML, fieldsUsage, w.Separator)
+	// 				xmlFields = append(xmlFields, fieldsEventData...)
+	// 				fieldsUsage = xmlFieldsUsage
+	// 			}
+	// 			uniqueXMLFields := UniqueFieldNames(xmlFields, fieldsUsage, w.Separator)
+	// 			for _, xmlField := range uniqueXMLFields {
+	// 				if !w.shouldExclude(xmlField.Name) {
+	// 					fields[xmlField.Name] = xmlField.Value
+	// 				}
+	// 			}
 
-			// Pass collected metrics
-			acc.AddFields("win_eventlog", fields, tags, timeStamp)
-		}
-	}
+	// 			// Pass collected metrics
+	// 			acc.AddFields("win_eventlog", fields, tags, timeStamp)
+	// 		}
+	// 	}
 
 	return nil
 }
@@ -422,7 +418,15 @@ func fetchEventHandles(subsHandle EvtHandle) ([]EvtHandle, error) {
 	return eventHandles[:evtReturned], nil
 }
 
-func (w *WinEventLog) FetchEvents(subsHandle EvtHandle) ([]Event, error) {
+type EventFetcher struct {
+	buf []byte
+}
+
+func NewEventFetcher() *EventFetcher {
+	return &EventFetcher{}
+}
+
+func (w *EventFetcher) FetchEvents(subsHandle EvtHandle, lang uint32) ([]Event, []EvtHandle, error) {
 	if w.buf == nil {
 		w.buf = make([]byte, bufferSize)
 	}
@@ -430,29 +434,32 @@ func (w *WinEventLog) FetchEvents(subsHandle EvtHandle) ([]Event, error) {
 
 	eventHandles, err := fetchEventHandles(subsHandle)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, eventHandle := range eventHandles {
 		if eventHandle != 0 {
-			event, err := w.renderEvent(eventHandle)
+			event, err := w.renderEvent(eventHandle, lang)
 			if err == nil {
-				// w.Log.Debugf("Got event: %v", event)
 				events = append(events, event)
 			}
 		}
 	}
 
-	for i := 0; i < len(eventHandles); i++ {
-		err := _EvtClose(eventHandles[i])
-		if err != nil {
-			return events, err
-		}
-	}
-	return events, nil
+	return events, eventHandles, nil
 }
 
-func (w *WinEventLog) renderEvent(eventHandle EvtHandle) (Event, error) {
+func Close(handles []EvtHandle) error {
+	for i := 0; i < len(handles); i++ {
+		err := _EvtClose(handles[i])
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *EventFetcher) renderEvent(eventHandle EvtHandle, lang uint32) (Event, error) {
 	var bufferUsed, propertyCount uint32
 
 	event := Event{}
@@ -473,7 +480,7 @@ func (w *WinEventLog) renderEvent(eventHandle EvtHandle) (Event, error) {
 		return event, nil
 	}
 
-	publisherHandle, err := openPublisherMetadata(0, event.Source.Name, w.Locale)
+	publisherHandle, err := openPublisherMetadata(0, event.Source.Name, lang)
 	if err != nil {
 		return event, nil
 	}
@@ -486,11 +493,6 @@ func (w *WinEventLog) renderEvent(eventHandle EvtHandle) (Event, error) {
 	}
 	message, err := formatEventString(EvtFormatMessageEvent, eventHandle, publisherHandle)
 	if err == nil {
-		if w.OnlyFirstLineOfMessage {
-			scanner := bufio.NewScanner(strings.NewReader(message))
-			scanner.Scan()
-			message = scanner.Text()
-		}
 		event.Message = message
 	}
 	level, err := formatEventString(EvtFormatMessageLevel, eventHandle, publisherHandle)

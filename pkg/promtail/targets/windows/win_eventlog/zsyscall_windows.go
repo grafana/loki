@@ -26,6 +26,8 @@
 package win_eventlog
 
 import (
+	"fmt"
+	"os"
 	"syscall"
 	"unsafe"
 
@@ -96,6 +98,7 @@ var (
 	procEvtFormatMessage         = modwevtapi.NewProc("EvtFormatMessage")
 	procEvtOpenPublisherMetadata = modwevtapi.NewProc("EvtOpenPublisherMetadata")
 	procEvtCreateBookmark        = modwevtapi.NewProc("EvtCreateBookmark")
+	procEvtUpdateBookmark        = modwevtapi.NewProc("EvtUpdateBookmark")
 )
 
 func _EvtSubscribe(session EvtHandle, signalEvent uintptr, channelPath *uint16, query *uint16, bookmark EvtHandle, context uintptr, callback syscall.Handle, flags EvtSubscribeFlag) (handle EvtHandle, err error) {
@@ -190,11 +193,35 @@ func CreateBookmark(bookmark string) (EvtHandle, error) {
 	return handle, nil
 }
 
+func UpdateBookmark(bookmark, event EvtHandle, buf []byte) (string, error) {
+	r1, _, e1 := syscall.Syscall(procEvtUpdateBookmark.Addr(), 2, uintptr(bookmark), uintptr(event), 0)
+	if r1 == 0 {
+		if e1 != 0 {
+			return "", errnoErr(e1)
+		} else {
+			return "", syscall.EINVAL
+		}
+	}
+	var bufferUsed, propertyCount uint32
+	err := _EvtRender(0, bookmark, EvtRenderBookmark, uint32(len(buf)), &buf[0], &bufferUsed, &propertyCount)
+	if err != nil {
+		return "", err
+	}
+
+	bookMarkData, err := DecodeUTF16(buf[:bufferUsed])
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprint(os.Stdout, string(bookMarkData))
+	return string(bookMarkData), nil
+}
+
 func stringPointer(s string) (uintptr, error) {
 	if s == "" {
 		return 0, nil
 	}
-	ptr, err := syscall.UTF16PtrFromString(s)
+	fmt.Fprint(os.Stdout, s)
+	ptr, err := syscall.UTF16PtrFromString(s[:len(s)-1])
 	if err != nil {
 		return 0, err
 	}

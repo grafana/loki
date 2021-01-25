@@ -5,12 +5,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/client/fake"
-	"github.com/grafana/loki/pkg/promtail/targets/windows/win_eventlog"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/afero"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
 	"golang.org/x/sys/windows/svc/eventlog"
@@ -45,25 +44,64 @@ func Test_GetCreateBookrmark(t *testing.T) {
 	}
 	client := fake.New(func() {})
 	defer client.Stop()
-	ta, err := New(util.Logger, client, nil, Config{
+	ta, err := New(util.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
 		BoorkmarkPath: "c:\\foo.xml",
 		PollInterval:  time.Microsecond,
-		WinEventLog: win_eventlog.WinEventLog{
-			EventlogName: "Application",
-			Query: `<QueryList>
+		Query: `<QueryList>
 			<Query Id="0" Path="Application">
 			  <Select Path="Application">*[System[Provider[@Name='mylog']]]</Select>
 			</Query>
 		  </QueryList>`,
-		},
-		Labels: model.LabelSet{"job": "windows"},
+		Labels: model.LabelSet{"job": "windows-events"},
 	})
 	require.NoError(t, err)
 
-	l.Error(1, "ERROR")
+	now := time.Now().String()
+	l.Error(1, now)
 
 	require.Eventually(t, func() bool {
-		return assert.ObjectsAreEqual(client.Received(), []api.Entry{{Labels: model.LabelSet{"job": "windows"}}})
+		if len(client.Received()) > 0 {
+			entry := client.Received()[0]
+			var e Event
+			if err := jsoniter.Unmarshal([]byte(entry.Line), &e); err != nil {
+				t.Log(err)
+				return false
+			}
+			t.Log(entry)
+			return entry.Labels["job"] == "windows-events" && e.Message == now
+		}
+		return false
+	}, 5*time.Second, 500*time.Millisecond)
+	require.NoError(t, ta.Stop())
+
+	now = time.Now().String()
+	l.Error(1, now)
+
+	client = fake.New(func() {})
+	defer client.Stop()
+	ta, err = New(util.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+		BoorkmarkPath: "c:\\foo.xml",
+		PollInterval:  time.Microsecond,
+		Query: `<QueryList>
+			<Query Id="0" Path="Application">
+			  <Select Path="Application">*[System[Provider[@Name='mylog']]]</Select>
+			</Query>
+		  </QueryList>`,
+		Labels: model.LabelSet{"job": "windows-events"},
+	})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		if len(client.Received()) > 0 {
+			entry := client.Received()[0]
+			var e Event
+			if err := jsoniter.Unmarshal([]byte(entry.Line), &e); err != nil {
+				t.Log(err)
+				return false
+			}
+			t.Log(entry)
+			return entry.Labels["job"] == "windows-events" && e.Message == now
+		}
+		return false
 	}, 5*time.Second, 500*time.Millisecond)
 	require.NoError(t, ta.Stop())
 
