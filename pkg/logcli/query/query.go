@@ -274,12 +274,20 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
 	}
 
+	if len(q.ShowLabelsKey) > 0 && !q.Quiet {
+		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
+	}
+
 	// Remove ignored and common labels from the cached labels and
 	// calculate the max labels length
 	maxLabelsLen := q.FixedLabelsLen
 	for i, s := range streams {
 		// Remove common labels
 		ls := subtract(s.Labels, common)
+
+		if len(q.ShowLabelsKey) > 0 {
+			ls = matchLabels(true, ls, q.ShowLabelsKey)
+		}
 
 		// Remove ignored labels
 		if len(q.IgnoreLabelsKey) > 0 {
