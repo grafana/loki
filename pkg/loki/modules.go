@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+	cortex_queryrange "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	cortex_querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -34,6 +35,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor"
@@ -195,6 +197,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
+		getHTTPCacheGenNumberHeaderSetterMiddleware(t.TombstonesLoader),
 	)
 	t.Server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.Server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
@@ -637,4 +640,22 @@ func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge,
 			"greater than the default or remove it from the configuration to use the default", maxLookBackConfig, defaultMaxLookBack)
 	}
 	return maxLookBackConfig, nil
+}
+
+// middleware for setting cache gen header to let consumer of response know all previous responses could be invalid due to delete operation
+func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.TombstonesLoader) middleware.Interface {
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, err := user.ExtractOrgID(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			cacheGenNumber := cacheGenNumbersLoader.GetResultsCacheGenNumber([]string{userID})
+
+			w.Header().Set(cortex_queryrange.ResultsCacheGenNumberHeaderName, cacheGenNumber)
+			next.ServeHTTP(w, r)
+		})
+	})
 }
