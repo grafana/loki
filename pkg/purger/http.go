@@ -3,6 +3,10 @@ package purger
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -10,14 +14,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
-	"net/http"
-	"strings"
-	"time"
 )
 
 type DeleteRequestHandler struct {
 	*purger.DeleteRequestHandler
-	deleteStore               *purger.DeleteStore
+	deleteStore *purger.DeleteStore
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
@@ -46,12 +47,10 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		}
 
 		lbls = append(lbls, &labels.Matcher{
-			Type: labels.MatchEqual,
+			Type:  labels.MatchEqual,
 			Name:  labels.MetricName,
 			Value: "logs",
 		})
-
-
 
 		params.Set("match[]", convertMatchersToString(lbls))
 	}
@@ -60,7 +59,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	dm.DeleteRequestHandler.AddDeleteRequestHandler(w, r)
 }
 
-func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request)  {
+func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -80,12 +79,13 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 
 			matchers, err := logql.ParseMatchers(selector)
 			if err != nil {
+				level.Error(util.Logger).Log("msg", "error parsing matchers", "err", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 
 			for i, matcher := range matchers {
-				if matcher.Name == labels.MetricName{
+				if matcher.Name == labels.MetricName {
 					matchers = append(matchers[:i], matchers[i+1:]...)
 					break
 				}
