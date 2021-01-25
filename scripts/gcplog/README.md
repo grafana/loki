@@ -2,6 +2,21 @@
 
 This document covers how to configure your GCP via Terraform to make cloud logs available for `promtail` to consume.
 
+To choose what logs need to exported from Google Cloud, we use log filters. Log filters are normal GCP logging queries except the goal is export logs from specific set Google cloud resources
+
+e.g: Export Google APP Engine logs
+```bash
+resource.type="gae_app" AND
+severity>=ERROR
+```
+
+e.g: Export Google HTTP Loadbalancer logs
+```bash
+resource.type="http_load_balancer" AND
+httpRequest.status>=500
+```
+You can read more about these log filters in [GCP logging](https://cloud.google.com/logging/docs/view/query-library)
+
 ## Prerequisite
 - Terraform >= 0.14.5
 - GCP Service account credentials with following roles/permissions
