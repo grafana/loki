@@ -25,7 +25,7 @@ Use this ConfigMap to get the benefits of query parallelisation and caching with
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: loki_frontend
+  name: loki-frontend
   namespace: <namespace>
 data:
   config.yaml: |
@@ -127,14 +127,14 @@ spec:
             memory: 600Mi
         volumeMounts:
         - mountPath: /etc/loki
-          name: loki_frontend
+          name: loki-frontend
       restartPolicy: Always
       terminationGracePeriodSeconds: 30
       volumes:
       - configMap:
           defaultMode: 420
-          name: loki_frontend
-        name: loki_frontend
+          name: loki-frontend
+        name: loki-frontend
 ```
 
 ### Grafana
