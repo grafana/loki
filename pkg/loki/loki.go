@@ -204,6 +204,13 @@ var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info
 	}
 }
 
+func newDefaultConfig() *Config {
+	defaultConfig := &Config{}
+	defaultFS := flag.NewFlagSet("", flag.PanicOnError)
+	defaultConfig.RegisterFlags(defaultFS)
+	return defaultConfig
+}
+
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run() error {
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.cfg.Target)
@@ -227,6 +234,9 @@ func (t *Loki) Run() error {
 
 	// before starting servers, register /ready handler. It should reflect entire Loki.
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
+
+	// This adds a way to see the config and the changes compared to the defaults
+	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.cfg, newDefaultConfig()))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util.Logger).Log("msg", "Loki started") }
