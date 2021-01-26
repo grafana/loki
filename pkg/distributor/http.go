@@ -102,7 +102,7 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 			"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
 			"entriesSize", humanize.Bytes(uint64(entriesSize)),
 			"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
-			"mostRecentLagMs", time.Now().Sub(mostRecentEntry).Milliseconds(),
+			"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
 		)
 	}()
 
