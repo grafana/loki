@@ -72,7 +72,13 @@ func (c *replayController) Flush() {
 	if c.isFlushing.CAS(false, true) {
 		c.flusher.Flush()
 		c.isFlushing.Store(false)
+
+		// Broadcast after lock is acquired to prevent race conditions with cpu scheduling
+		// where the flush code could finish before the goroutine which initiated it gets to call
+		// c.cond.Wait()
+		c.cond.L.Lock()
 		c.cond.Broadcast()
+		c.cond.L.Unlock()
 	}
 }
 
