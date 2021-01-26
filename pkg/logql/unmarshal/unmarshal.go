@@ -5,6 +5,7 @@ import (
 	"unsafe"
 
 	json "github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -41,4 +42,18 @@ func NewStream(s *loghttp.Stream) logproto.Stream {
 		Entries: *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries)),
 		Labels:  s.Labels.String(),
 	}
+}
+
+// WebsocketReader knows how to read message to a websocket connection.
+type WebsocketReader interface {
+	ReadMessage() (int, []byte, error)
+}
+
+// ReadTailResponseJSON unmarshals the loghttp.TailResponse from a websocket reader.
+func ReadTailResponseJSON(r *loghttp.TailResponse, reader WebsocketReader) error {
+	_, data, err := reader.ReadMessage()
+	if err != nil {
+		return err
+	}
+	return jsoniter.Unmarshal(data, r)
 }
