@@ -106,9 +106,9 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 		// todo once https://github.com/weaveworks/common/commit/73225442af7da93ec8f6a6e2f7c8aafaee3f8840 is in Loki.
 		// We can try to pass the body as bytes.buffer instead to avoid reading into another buffer.
 		if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-			err = unmarshal.DecodePushRequest(r.Body, &req)
+			err = unmarshal.DecodePushRequest(body, &req)
 		} else {
-			err = unmarshal_legacy.DecodePushRequest(r.Body, &req)
+			err = unmarshal_legacy.DecodePushRequest(body, &req)
 		}
 
 		if err != nil {
@@ -116,7 +116,7 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 		}
 
 	default:
-		if err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
+		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
 			return nil, err
 		}
 	}
