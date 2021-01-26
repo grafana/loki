@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"errors"
 	"io"
 
 	"gopkg.in/yaml.v2"
@@ -8,6 +9,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	errMultipleDocuments = errors.New("the provided runtime configuration contains multiple documents")
 )
 
 // runtimeConfigValues are values that can be reloaded from configuration file while Cortex is running.
@@ -24,8 +29,15 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 
 	decoder := yaml.NewDecoder(r)
 	decoder.SetStrict(true)
-	if err := decoder.Decode(&overrides); err != nil {
+
+	// Decode the first document. An empty document (EOF) is OK.
+	if err := decoder.Decode(&overrides); err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
+	}
+
+	// Ensure the provided YAML config is not composed of multiple documents,
+	if err := decoder.Decode(&runtimeConfigValues{}); !errors.Is(err, io.EOF) {
+		return nil, errMultipleDocuments
 	}
 
 	return overrides, nil

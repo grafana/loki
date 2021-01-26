@@ -39,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -47,6 +48,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -82,27 +84,28 @@ type Config struct {
 	PrintConfig bool                   `yaml:"-"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
-	API            api.Config                      `yaml:"api"`
-	Server         server.Config                   `yaml:"server"`
-	Distributor    distributor.Config              `yaml:"distributor"`
-	Querier        querier.Config                  `yaml:"querier"`
-	IngesterClient client.Config                   `yaml:"ingester_client"`
-	Ingester       ingester.Config                 `yaml:"ingester"`
-	Flusher        flusher.Config                  `yaml:"flusher"`
-	Storage        storage.Config                  `yaml:"storage"`
-	ChunkStore     chunk.StoreConfig               `yaml:"chunk_store"`
-	Schema         chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
-	LimitsConfig   validation.Limits               `yaml:"limits"`
-	Prealloc       client.PreallocConfig           `yaml:"prealloc" doc:"hidden"`
-	Worker         querier_worker.Config           `yaml:"frontend_worker"`
-	Frontend       frontend.CombinedFrontendConfig `yaml:"frontend"`
-	QueryRange     queryrange.Config               `yaml:"query_range"`
-	TableManager   chunk.TableManagerConfig        `yaml:"table_manager"`
-	Encoding       encoding.Config                 `yaml:"-"` // No yaml for this, it only works with flags.
-	BlocksStorage  tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
-	Compactor      compactor.Config                `yaml:"compactor"`
-	StoreGateway   storegateway.Config             `yaml:"store_gateway"`
-	PurgerConfig   purger.Config                   `yaml:"purger"`
+	API              api.Config                      `yaml:"api"`
+	Server           server.Config                   `yaml:"server"`
+	Distributor      distributor.Config              `yaml:"distributor"`
+	Querier          querier.Config                  `yaml:"querier"`
+	IngesterClient   client.Config                   `yaml:"ingester_client"`
+	Ingester         ingester.Config                 `yaml:"ingester"`
+	Flusher          flusher.Config                  `yaml:"flusher"`
+	Storage          storage.Config                  `yaml:"storage"`
+	ChunkStore       chunk.StoreConfig               `yaml:"chunk_store"`
+	Schema           chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
+	LimitsConfig     validation.Limits               `yaml:"limits"`
+	Prealloc         client.PreallocConfig           `yaml:"prealloc" doc:"hidden"`
+	Worker           querier_worker.Config           `yaml:"frontend_worker"`
+	Frontend         frontend.CombinedFrontendConfig `yaml:"frontend"`
+	QueryRange       queryrange.Config               `yaml:"query_range"`
+	TableManager     chunk.TableManagerConfig        `yaml:"table_manager"`
+	Encoding         encoding.Config                 `yaml:"-"` // No yaml for this, it only works with flags.
+	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
+	Compactor        compactor.Config                `yaml:"compactor"`
+	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
+	PurgerConfig     purger.Config                   `yaml:"purger"`
+	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
 	Ruler          ruler.Config                               `yaml:"ruler"`
 	Configs        configs.Config                             `yaml:"configs"`
@@ -149,6 +152,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
 	c.PurgerConfig.RegisterFlags(f)
+	c.TenantFederation.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
@@ -302,6 +306,12 @@ func New(cfg Config) (*Cortex, error) {
 			fmt.Println("Error encoding config:", err)
 		}
 		os.Exit(0)
+	}
+
+	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
+	if cfg.TenantFederation.Enabled {
+		util.WarnExperimentalUse("tenant-federation")
+		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
 	// Don't check auth header on TransferChunks, as we weren't originally
@@ -465,6 +475,6 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 			}
 		}
 
-		http.Error(w, "ready", http.StatusOK)
+		util.WriteTextResponse(w, "ready")
 	}
 }

@@ -38,7 +38,7 @@ type itemTracker struct {
 // to send to that ingester.
 //
 // Not implemented as a method on Ring so we can test separately.
-func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(IngesterDesc, []int) error, cleanup func()) error {
+func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(IngesterDesc, []int) error, cleanup func()) error {
 	if r.IngesterCount() <= 0 {
 		return fmt.Errorf("DoBatch: IngesterCount <= 0")
 	}
@@ -46,10 +46,13 @@ func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(Inges
 	itemTrackers := make([]itemTracker, len(keys))
 	ingesters := make(map[string]ingester, r.IngesterCount())
 
-	const maxExpectedReplicationSet = 5 // Typical replication factor 3, plus one for inactive plus one for luck.
-	var descs [maxExpectedReplicationSet]IngesterDesc
+	var (
+		bufDescs [GetBufferSize]IngesterDesc
+		bufHosts [GetBufferSize]string
+		bufZones [GetBufferSize]string
+	)
 	for i, key := range keys {
-		replicationSet, err := r.Get(key, Write, descs[:0])
+		replicationSet, err := r.Get(key, op, bufDescs[:0], bufHosts[:0], bufZones[:0])
 		if err != nil {
 			return err
 		}

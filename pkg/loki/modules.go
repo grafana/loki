@@ -504,6 +504,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		prometheus.DefaultRegisterer,
 		util.Logger,
 		t.RulerStorage,
+		t.overrides,
 	)
 
 	if err != nil {
@@ -577,7 +578,6 @@ func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge,
 		return 0, fmt.Errorf("the configured query_store_max_look_back_period of '%v' is less than the calculated default of '%v' "+
 			"which is calculated based on the max_chunk_age + 15 minute boltdb-shipper interval + 15 min additional buffer.  Increase this value"+
 			"greater than the default or remove it from the configuration to use the default", maxLookBackConfig, defaultMaxLookBack)
-
 	}
 	return maxLookBackConfig, nil
 }

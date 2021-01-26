@@ -7,6 +7,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // RequestResponse contains a request response and the respective request that was used.
@@ -17,7 +18,7 @@ type RequestResponse struct {
 
 // DoRequests executes a list of requests in parallel. The limits parameters is used to limit parallelism per single request.
 func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]RequestResponse, error) {
-	userid, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -36,7 +37,7 @@ func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits 
 	}()
 
 	respChan, errChan := make(chan RequestResponse), make(chan error)
-	parallelism := limits.MaxQueryParallelism(userid)
+	parallelism := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.MaxQueryParallelism)
 	if parallelism > len(reqs) {
 		parallelism = len(reqs)
 	}

@@ -52,13 +52,14 @@ func (l limitsMiddleware) Do(ctx context.Context, r Request) (Response, error) {
 	log, ctx := spanlogger.New(ctx, "limits")
 	defer log.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	// Clamp the time range based on the max query lookback.
-	if maxQueryLookback := l.MaxQueryLookback(userID); maxQueryLookback > 0 {
+
+	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLookback); maxQueryLookback > 0 {
 		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
 
 		if r.GetEnd() < minStartTime {
@@ -85,7 +86,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	// Enforce the max query length.
-	if maxQueryLength := l.MaxQueryLength(userID); maxQueryLength > 0 {
+	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLength); maxQueryLength > 0 {
 		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
 		if queryLen > maxQueryLength {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLength)

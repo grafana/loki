@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/push"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 )
 
 type Config struct {
@@ -143,8 +144,10 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 // serve endpoints using the legacy http-prefix if it is not run as a single binary.
 func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target, apiEnabled bool) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/status", "Alertmanager Status")
+	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/ring", "Alertmanager Ring Status")
 	// Ensure this route is registered before the prefixed AM route
 	a.RegisterRoute("/multitenant_alertmanager/status", am.GetStatusHandler(), false, "GET")
+	a.RegisterRoute("/multitenant_alertmanager/ring", http.HandlerFunc(am.RingHandler), false, "GET", "POST")
 
 	// UI components lead to a large number of routes to support, utilize a path prefix instead
 	a.RegisterRoutesWithPrefix(a.cfg.AlertmanagerHTTPPrefix, am, true)
@@ -166,12 +169,20 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 }
 
 // RegisterAPI registers the standard endpoints associated with a running Cortex.
-func (a *API) RegisterAPI(httpPathPrefix string, cfg interface{}) {
-	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config")
+func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultCfg interface{}) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config (including the default values)")
+	a.indexPage.AddLink(SectionAdminEndpoints, "/config?mode=diff", "Current Config (show only values that differ from the defaults)")
 
-	a.RegisterRoute("/config", configHandler(cfg), false, "GET")
+	a.RegisterRoute("/config", configHandler(actualCfg, defaultCfg), false, "GET")
 	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false, "GET")
 	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false, "GET")
+}
+
+// RegisterRuntimeConfig registers the endpoints associates with the runtime configuration
+func (a *API) RegisterRuntimeConfig(runtimeCfgManager *runtimeconfig.Manager) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/runtime_config", "Current Runtime Config (incl. Overrides)")
+
+	a.RegisterRoute("/runtime_config", runtimeConfigHandler(runtimeCfgManager), false, "GET")
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.
@@ -357,4 +368,9 @@ func (a *API) RegisterQueryScheduler(f *scheduler.Scheduler) {
 func (a *API) RegisterServiceMapHandler(handler http.Handler) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/services", "Service Status")
 	a.RegisterRoute("/services", handler, false, "GET")
+}
+
+func (a *API) RegisterMemberlistKV(handler http.Handler) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/memberlist", "Memberlist Status")
+	a.RegisterRoute("/memberlist", handler, false, "GET")
 }

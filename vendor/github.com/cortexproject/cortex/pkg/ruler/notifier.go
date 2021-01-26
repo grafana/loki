@@ -39,6 +39,7 @@ func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
 	}
 }
 
+// run starts the notifier. This function doesn't block and returns immediately.
 func (rn *rulerNotifier) run() {
 	rn.wg.Add(2)
 	go func() {

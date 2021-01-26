@@ -1,8 +1,6 @@
 package bucketindex
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io/ioutil"
@@ -29,56 +27,22 @@ var (
 	ErrBlockDeletionMarkCorrupted = errors.New("block deletion mark corrupted")
 )
 
-// Writer is responsible to generate and write a bucket index.
-type Writer struct {
+// Updater is responsible to generate an update in-memory bucket index.
+type Updater struct {
 	bkt    objstore.InstrumentedBucket
 	logger log.Logger
 }
 
-func NewWriter(bkt objstore.Bucket, userID string, logger log.Logger) *Writer {
-	return &Writer{
+func NewUpdater(bkt objstore.Bucket, userID string, logger log.Logger) *Updater {
+	return &Updater{
 		bkt:    bucket.NewUserBucketClient(userID, bkt),
 		logger: util.WithUserID(userID, logger),
 	}
 }
 
-// WriteIndex generates the bucket index and writes it to the storage. If the old index is not
-// passed in input, then the bucket index will be generated from scratch.
-func (w *Writer) WriteIndex(ctx context.Context, old *Index) (*Index, error) {
-	idx, err := w.GenerateIndex(ctx, old)
-	if err != nil {
-		return nil, errors.Wrap(err, "generate bucket index")
-	}
-
-	// Marshal the index.
-	content, err := json.Marshal(idx)
-	if err != nil {
-		return nil, errors.Wrap(err, "marshal bucket index")
-	}
-
-	// Compress it.
-	var gzipContent bytes.Buffer
-	gzip := gzip.NewWriter(&gzipContent)
-	gzip.Name = IndexFilename
-
-	if _, err := gzip.Write(content); err != nil {
-		return nil, errors.Wrap(err, "gzip bucket index")
-	}
-	if err := gzip.Close(); err != nil {
-		return nil, errors.Wrap(err, "close gzip bucket index")
-	}
-
-	// Upload the index to the storage.
-	if err := w.bkt.Upload(ctx, IndexCompressedFilename, &gzipContent); err != nil {
-		return nil, errors.Wrap(err, "upload bucket index")
-	}
-
-	return idx, nil
-}
-
-// GenerateIndex generates the bucket index and returns it, without storing it to the storage.
+// UpdateIndex generates the bucket index and returns it, without storing it to the storage.
 // If the old index is not passed in input, then the bucket index will be generated from scratch.
-func (w *Writer) GenerateIndex(ctx context.Context, old *Index) (*Index, error) {
+func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid.ULID]error, error) {
 	var oldBlocks []*Block
 	var oldBlockDeletionMarks []*BlockDeletionMark
 
@@ -88,14 +52,14 @@ func (w *Writer) GenerateIndex(ctx context.Context, old *Index) (*Index, error) 
 		oldBlockDeletionMarks = old.BlockDeletionMarks
 	}
 
-	blocks, err := w.generateBlocksIndex(ctx, oldBlocks)
+	blocks, partials, err := w.updateBlocks(ctx, oldBlocks)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	blockDeletionMarks, err := w.generateBlockDeletionMarksIndex(ctx, oldBlockDeletionMarks)
+	blockDeletionMarks, err := w.updateBlockDeletionMarks(ctx, oldBlockDeletionMarks)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &Index{
@@ -103,12 +67,12 @@ func (w *Writer) GenerateIndex(ctx context.Context, old *Index) (*Index, error) 
 		Blocks:             blocks,
 		BlockDeletionMarks: blockDeletionMarks,
 		UpdatedAt:          time.Now().Unix(),
-	}, nil
+	}, partials, nil
 }
 
-func (w *Writer) generateBlocksIndex(ctx context.Context, old []*Block) ([]*Block, error) {
-	out := make([]*Block, 0, len(old))
+func (w *Updater) updateBlocks(ctx context.Context, old []*Block) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
 	discovered := map[ulid.ULID]struct{}{}
+	partials = map[ulid.ULID]error{}
 
 	// Find all blocks in the storage.
 	err := w.bkt.Iter(ctx, "", func(name string) error {
@@ -118,13 +82,13 @@ func (w *Writer) generateBlocksIndex(ctx context.Context, old []*Block) ([]*Bloc
 		return nil
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "list blocks")
+		return nil, nil, errors.Wrap(err, "list blocks")
 	}
 
 	// Since blocks are immutable, all blocks already existing in the index can just be copied.
 	for _, b := range old {
 		if _, ok := discovered[b.ID]; ok {
-			out = append(out, b)
+			blocks = append(blocks, b)
 			delete(discovered, b.ID)
 		}
 	}
@@ -133,26 +97,29 @@ func (w *Writer) generateBlocksIndex(ctx context.Context, old []*Block) ([]*Bloc
 	// to find out if their upload has been completed (meta.json is uploaded last) and get the block
 	// information to store in the bucket index.
 	for id := range discovered {
-		b, err := w.generateBlockIndexEntry(ctx, id)
+		b, err := w.updateBlockIndexEntry(ctx, id)
+		if err == nil {
+			blocks = append(blocks, b)
+			continue
+		}
+
 		if errors.Is(err, ErrBlockMetaNotFound) {
-			level.Warn(w.logger).Log("msg", "skipped partial block when generating bucket index", "block", id.String())
+			partials[id] = err
+			level.Warn(w.logger).Log("msg", "skipped partial block when updating bucket index", "block", id.String())
 			continue
 		}
 		if errors.Is(err, ErrBlockMetaCorrupted) {
-			level.Error(w.logger).Log("msg", "skipped block with corrupted meta.json when generating bucket index", "block", id.String(), "err", err)
+			partials[id] = err
+			level.Error(w.logger).Log("msg", "skipped block with corrupted meta.json when updating bucket index", "block", id.String(), "err", err)
 			continue
 		}
-		if err != nil {
-			return nil, err
-		}
-
-		out = append(out, b)
+		return nil, nil, err
 	}
 
-	return out, nil
+	return blocks, partials, nil
 }
 
-func (w *Writer) generateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Block, error) {
+func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Block, error) {
 	metaFile := path.Join(id.String(), block.MetaFilename)
 
 	// Get the block's meta.json file.
@@ -196,7 +163,7 @@ func (w *Writer) generateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Bl
 	return block, nil
 }
 
-func (w *Writer) generateBlockDeletionMarksIndex(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, error) {
+func (w *Updater) updateBlockDeletionMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, error) {
 	out := make([]*BlockDeletionMark, 0, len(old))
 	discovered := map[ulid.ULID]struct{}{}
 
@@ -221,14 +188,14 @@ func (w *Writer) generateBlockDeletionMarksIndex(ctx context.Context, old []*Blo
 
 	// Remaining markers are new ones and we have to fetch them.
 	for id := range discovered {
-		m, err := w.generateBlockDeletionMarkIndexEntry(ctx, id)
+		m, err := w.updateBlockDeletionMarkIndexEntry(ctx, id)
 		if errors.Is(err, ErrBlockDeletionMarkNotFound) {
 			// This could happen if the block is permanently deleted between the "list objects" and now.
-			level.Warn(w.logger).Log("msg", "skipped missing block deletion mark when generating bucket index", "block", id.String())
+			level.Warn(w.logger).Log("msg", "skipped missing block deletion mark when updating bucket index", "block", id.String())
 			continue
 		}
 		if errors.Is(err, ErrBlockDeletionMarkCorrupted) {
-			level.Error(w.logger).Log("msg", "skipped corrupted block deletion mark when generating bucket index", "block", id.String(), "err", err)
+			level.Error(w.logger).Log("msg", "skipped corrupted block deletion mark when updating bucket index", "block", id.String(), "err", err)
 			continue
 		}
 		if err != nil {
@@ -241,10 +208,13 @@ func (w *Writer) generateBlockDeletionMarksIndex(ctx context.Context, old []*Blo
 	return out, nil
 }
 
-func (w *Writer) generateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid.ULID) (*BlockDeletionMark, error) {
+func (w *Updater) updateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid.ULID) (*BlockDeletionMark, error) {
 	m := metadata.DeletionMark{}
 
 	if err := metadata.ReadMarker(ctx, w.logger, w.bkt, id.String(), &m); err != nil {
+		if errors.Is(err, metadata.ErrorMarkerNotFound) {
+			return nil, errors.Wrap(ErrBlockDeletionMarkNotFound, err.Error())
+		}
 		if errors.Is(err, metadata.ErrorUnmarshalMarker) {
 			return nil, errors.Wrap(ErrBlockDeletionMarkCorrupted, err.Error())
 		}

@@ -11,16 +11,17 @@ import (
 type ManagerMetrics struct {
 	regs *util.UserRegistries
 
-	EvalDuration        *prometheus.Desc
-	IterationDuration   *prometheus.Desc
-	IterationsMissed    *prometheus.Desc
-	IterationsScheduled *prometheus.Desc
-	EvalTotal           *prometheus.Desc
-	EvalFailures        *prometheus.Desc
-	GroupInterval       *prometheus.Desc
-	GroupLastEvalTime   *prometheus.Desc
-	GroupLastDuration   *prometheus.Desc
-	GroupRules          *prometheus.Desc
+	EvalDuration         *prometheus.Desc
+	IterationDuration    *prometheus.Desc
+	IterationsMissed     *prometheus.Desc
+	IterationsScheduled  *prometheus.Desc
+	EvalTotal            *prometheus.Desc
+	EvalFailures         *prometheus.Desc
+	GroupInterval        *prometheus.Desc
+	GroupLastEvalTime    *prometheus.Desc
+	GroupLastDuration    *prometheus.Desc
+	GroupRules           *prometheus.Desc
+	GroupLastEvalSamples *prometheus.Desc
 }
 
 // NewManagerMetrics returns a ManagerMetrics struct
@@ -88,6 +89,12 @@ func NewManagerMetrics() *ManagerMetrics {
 			[]string{"user", "rule_group"},
 			nil,
 		),
+		GroupLastEvalSamples: prometheus.NewDesc(
+			"cortex_prometheus_last_evaluation_samples",
+			"The number of samples returned during the last rule group evaluation.",
+			[]string{"user", "rule_group"},
+			nil,
+		),
 	}
 }
 
@@ -113,6 +120,7 @@ func (m *ManagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.GroupLastEvalTime
 	out <- m.GroupLastDuration
 	out <- m.GroupRules
+	out <- m.GroupLastEvalSamples
 }
 
 // Collect implements the Collector interface
@@ -135,4 +143,5 @@ func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupLastEvalTime, "prometheus_rule_group_last_evaluation_timestamp_seconds", "rule_group")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupLastDuration, "prometheus_rule_group_last_duration_seconds", "rule_group")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupRules, "prometheus_rule_group_rules", "rule_group")
+	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupLastEvalSamples, "prometheus_rule_group_last_evaluation_samples", "rule_group")
 }

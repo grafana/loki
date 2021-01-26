@@ -32,12 +32,11 @@ import (
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
-		log:               log,
-		handler:           handler,
-		maxMessageSize:    cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
-		querierID:         cfg.QuerierID,
-		grpcConfig:        cfg.GRPCClientConfig,
-		queryStatsEnabled: cfg.QueryStatsEnabled,
+		log:            log,
+		handler:        handler,
+		maxMessageSize: cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
+		querierID:      cfg.QuerierID,
+		grpcConfig:     cfg.GRPCClientConfig,
 
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "cortex_querier_query_frontend_request_duration_seconds",
@@ -63,12 +62,11 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 
 // Handles incoming queries from query-scheduler.
 type schedulerProcessor struct {
-	log               log.Logger
-	handler           RequestHandler
-	grpcConfig        grpcclient.ConfigWithTLS
-	maxMessageSize    int
-	querierID         string
-	queryStatsEnabled bool
+	log            log.Logger
+	handler        RequestHandler
+	grpcConfig     grpcclient.ConfigWithTLS
+	maxMessageSize int
+	querierID      string
 
 	frontendPool                  *client.Pool
 	frontendClientRequestDuration *prometheus.HistogramVec
@@ -132,7 +130,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			}
 			logger := util.WithContext(ctx, sp.log)
 
-			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.HttpRequest)
+			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
@@ -142,9 +140,9 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, request *httpgrpc.HTTPRequest) {
+func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
 	var stats *querier_stats.Stats
-	if sp.queryStatsEnabled {
+	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 

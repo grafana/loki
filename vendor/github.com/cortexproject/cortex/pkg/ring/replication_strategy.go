@@ -3,6 +3,8 @@ package ring
 import (
 	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type ReplicationStrategy interface {
@@ -10,21 +12,12 @@ type ReplicationStrategy interface {
 	// for an operation to succeed. Returns an error if there are not enough
 	// instances.
 	Filter(instances []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) (healthy []IngesterDesc, maxFailures int, err error)
-
-	// ShouldExtendReplicaSet returns true if given an instance that's going to be
-	// added to the replica set, the replica set size should be extended by 1
-	// more instance for the given operation.
-	ShouldExtendReplicaSet(instance IngesterDesc, op Operation) bool
 }
 
-type defaultReplicationStrategy struct {
-	ExtendWrites bool
-}
+type defaultReplicationStrategy struct{}
 
-func NewDefaultReplicationStrategy(extendWrites bool) ReplicationStrategy {
-	return &defaultReplicationStrategy{
-		ExtendWrites: extendWrites,
-	}
+func NewDefaultReplicationStrategy() ReplicationStrategy {
+	return &defaultReplicationStrategy{}
 }
 
 // Filter decides, given the set of ingesters eligible for a key,
@@ -42,12 +35,13 @@ func (s *defaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operati
 	}
 
 	minSuccess := (replicationFactor / 2) + 1
+	now := time.Now()
 
 	// Skip those that have not heartbeated in a while. NB these are still
 	// included in the calculation of minSuccess, so if too many failed ingesters
 	// will cause the whole write to fail.
 	for i := 0; i < len(ingesters); {
-		if ingesters[i].IsHealthy(op, heartbeatTimeout) {
+		if ingesters[i].IsHealthy(op, heartbeatTimeout, now) {
 			i++
 		} else {
 			ingesters = append(ingesters[:i], ingesters[i+1:]...)
@@ -71,28 +65,33 @@ func (s *defaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operati
 	return ingesters, len(ingesters) - minSuccess, nil
 }
 
-func (s *defaultReplicationStrategy) ShouldExtendReplicaSet(ingester IngesterDesc, op Operation) bool {
-	// We do not want to Write to Ingesters that are not ACTIVE, but we do want
-	// to write the extra replica somewhere.  So we increase the size of the set
-	// of replicas for the key. This means we have to also increase the
-	// size of the replica set for read, but we can read from Leaving ingesters,
-	// so don't skip it in this case.
-	// NB dead ingester will be filtered later by defaultReplicationStrategy.Filter().
-	if op == Write {
-		if s.ExtendWrites {
-			return ingester.State != ACTIVE
-		}
-		return false
-	} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
-		return true
-	}
+type ignoreUnhealthyInstancesReplicationStrategy struct{}
 
-	return false
+func NewIgnoreUnhealthyInstancesReplicationStrategy() ReplicationStrategy {
+	return &ignoreUnhealthyInstancesReplicationStrategy{}
 }
 
-// IsHealthy checks whether an ingester appears to be alive and heartbeating
-func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation) bool {
-	return ingester.IsHealthy(op, r.cfg.HeartbeatTimeout)
+func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []IngesterDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ bool) (healthy []IngesterDesc, maxFailures int, err error) {
+	now := time.Now()
+	// Filter out unhealthy instances.
+	for i := 0; i < len(instances); {
+		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
+			i++
+		} else {
+			instances = append(instances[:i], instances[i+1:]...)
+		}
+	}
+
+	// We need at least 1 healthy instance no matter what is the replication factor set to.
+	if len(instances) == 0 {
+		return nil, 0, errors.New("at least 1 healthy replica required, could only find 0")
+	}
+
+	return instances, len(instances) - 1, nil
+}
+
+func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation, now time.Time) bool {
+	return ingester.IsHealthy(op, r.cfg.HeartbeatTimeout, now)
 }
 
 // ReplicationFactor of the ring.

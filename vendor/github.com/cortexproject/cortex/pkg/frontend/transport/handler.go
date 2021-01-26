@@ -45,7 +45,7 @@ type HandlerConfig struct {
 func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", 10*1024*1024, "Max body size for downstream prometheus.")
-	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query. This configuration option must be set both on query-frontend and querier.")
+	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
 }
 
 // Handler accepts queries and forwards them to RoundTripper. It can log slow queries,
@@ -146,10 +146,11 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 }
 
 func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats) {
-	userID, err := tenant.TenantID(r.Context())
+	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(stats.LoadWallTime().Seconds())
@@ -160,7 +161,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"method", r.Method,
 		"path", r.URL.Path,
 		"response_time", queryResponseTime,
-		"query_wall_time", stats.LoadWallTime(),
+		"query_wall_time_seconds", stats.LoadWallTime().Seconds(),
 	}, formatQueryString(queryString)...)
 
 	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)

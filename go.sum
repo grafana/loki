@@ -214,8 +214,6 @@ github.com/bgentry/speakeasy v0.1.0/go.mod h1:+zsyZBPWlz7T6j88CTgSN5bM796AkVf0kB
 github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932 h1:mXoPYz/Ul5HYEDvkta6I8/rnYM5gSdSV2tJ6XbZuEtY=
 github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932/go.mod h1:NOuUCSz6Q9T7+igc/hlvDOUdtWKryOrtFyIVABv/p7k=
 github.com/blang/semver v3.5.0+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
-github.com/blang/semver v3.5.1+incompatible h1:cQNTCjp13qL8KC3Nbxr/y2Bqb63oX6wdnnjpJbkM4JQ=
-github.com/blang/semver v3.5.1+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
 github.com/bmatcuk/doublestar v1.2.2 h1:oC24CykoSAB8zd7XgruHo33E0cHJf/WhQA/7BeXj+x0=
 github.com/bmatcuk/doublestar v1.2.2/go.mod h1:wiQtGV+rzVYxB7WIlirSN++5HPtPlXEo9MEoZQC/PmE=
 github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 h1:DDGfHa7BWjL4YnC6+E63dPcxHo2sUxDIu8g3QgEJdRY=
@@ -278,8 +276,8 @@ github.com/cortexproject/cortex v1.2.1-0.20200805064754-d8edc95e2c91/go.mod h1:P
 github.com/cortexproject/cortex v1.3.1-0.20200923145333-8587ea61fe17/go.mod h1:dJ9gpW7dzQ7z09cKtNN9PfebumgyO4dtNdFQ6eQEed0=
 github.com/cortexproject/cortex v1.4.1-0.20201030080541-83ad6df2abea/go.mod h1:kXo5F3jlF7Ky3+I31jt/bXTzOlQjl2X/vGDpy0RY1gU=
 github.com/cortexproject/cortex v1.5.1-0.20201111110551-ba512881b076/go.mod h1:zFBGVsvRBfVp6ARXZ7pmiLaGlbjda5ZnA4Y6qSJyrQg=
-github.com/cortexproject/cortex v1.6.0 h1:/NOdjt80poIPchA9rItwYGeNt2ddxPqMNrCpnRP2iUg=
-github.com/cortexproject/cortex v1.6.0/go.mod h1:QSi2ZZeKG3OoZ1+mJSthJK5fnMYAxPUnBEzt0c8Mk1Q=
+github.com/cortexproject/cortex v1.6.1-0.20210121163251-a59b811d5952 h1:6fjboCnRBAp5QevLOeAyDXf1MW4EzzaCTmwZlrOYV0k=
+github.com/cortexproject/cortex v1.6.1-0.20210121163251-a59b811d5952/go.mod h1:t7gTMLe7db0dcrKsjoQ5o13Ep16dzqkSepYAkiQLwyU=
 github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d/go.mod h1:maD7wRr/U5Z6m/iR4s+kqSMx2CaBsrgA7czyZG/E6dU=
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=
 github.com/creack/pty v1.1.9 h1:uDmaGzcdjhF4i/plgjmEsriH11Y0o7RKapEf/LDaM3w=
@@ -998,6 +996,8 @@ github.com/nats-io/nkeys v0.1.3/go.mod h1:xpnFELMwJABBLVhffcfd1MZx6VsNRFpEugbxzi
 github.com/nats-io/nuid v1.0.1/go.mod h1:19wcPz3Ph3q0Jbyiqsd0kePYG7A95tJPxeL+1OSON2c=
 github.com/ncw/swift v1.0.50 h1:E01b5bVIssNhx2KnzAjMWEXkKrb8ytTqCDWY7lqmWjA=
 github.com/ncw/swift v1.0.50/go.mod h1:23YIA4yWVnGwv2dQlN4bB7egfYX6YLn0Yo/S6zZO/ZM=
+github.com/ncw/swift v1.0.52 h1:ACF3JufDGgeKp/9mrDgQlEgS8kRYC4XKcuzj/8EJjQU=
+github.com/ncw/swift v1.0.52/go.mod h1:23YIA4yWVnGwv2dQlN4bB7egfYX6YLn0Yo/S6zZO/ZM=
 github.com/nxadm/tail v1.4.4 h1:DQuhQpB1tVlglWS2hLQ5OV6B5r8aGxSrPc5Qo6uTN78=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/oklog/oklog v0.3.2/go.mod h1:FCV+B7mhrz4o+ueLpx+KqkyXRGMWOYEvfiXtdGtbWGs=
@@ -1273,8 +1273,8 @@ github.com/thanos-io/thanos v0.13.1-0.20201019130456-f41940581d9a h1:4rNkFHeY+EI
 github.com/thanos-io/thanos v0.13.1-0.20201019130456-f41940581d9a/go.mod h1:A3qUEEbsVkplJnxyDLwuIuvTDaJPByTH+hMdTl9ujAA=
 github.com/thanos-io/thanos v0.13.1-0.20201030101306-47f9a225cc52 h1:z3hglXVwJ4HgU0OoDS+8+MvEipv/U83IQ+fMsDr00YQ=
 github.com/thanos-io/thanos v0.13.1-0.20201030101306-47f9a225cc52/go.mod h1:OqqX4x21cg5N5MMHd/yGQAc/V3wg8a7Do4Jk8HfaFZQ=
-github.com/thanos-io/thanos v0.13.1-0.20201130180807-84afc97e7d58 h1:Q5t3TKhiFQ2J3XQv1psoMBSBk/Dx6p4JqoETXiWQaYg=
-github.com/thanos-io/thanos v0.13.1-0.20201130180807-84afc97e7d58/go.mod h1:ffr9z+gefM664JBH/CEMHyHvShq2BQTejT/Ws+V+80Q=
+github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51 h1:cinCqkVci8c5Dg6uB3m3351EjLAXDbwJVFT+bgwu/Ew=
+github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51/go.mod h1:kPvI4H0AynFiHDN95ZB28/k70ZPGCx+pBrRh6RZPimw=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab h1:7ZR3hmisBWw77ZpO1/o86g+JV3VKlk3d48jopJxzTjU=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab/go.mod h1:eheTFp954zcWZXCU8d0AT76ftsQOTo4DTqkN/h3k1MY=
 github.com/tidwall/pretty v0.0.0-20180105212114-65a9db5fad51/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
@@ -1314,8 +1314,8 @@ github.com/weaveworks/common v0.0.0-20200625145055-4b1847531bc9 h1:dNVIG9aKQHR9T
 github.com/weaveworks/common v0.0.0-20200625145055-4b1847531bc9/go.mod h1:c98fKi5B9u8OsKGiWHLRKus6ToQ1Tubeow44ECO1uxY=
 github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099 h1:MS5M2antM8wzMUqVxIfAi+yb6yjXvDINRFvLnmNXeIw=
 github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099/go.mod h1:hz10LOsAdzC3K/iXaKoFxOKTDRgxJl+BTGX1GY+TzO4=
-github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec h1:5JmevdpzK10Z2ua0VDToj7Kg2+/t0FzdYBjsurYRE8k=
-github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec/go.mod h1:ykzWac1LtVfOxdCK+jD754at1Ws9dKCwFeUzkFBffPs=
+github.com/weaveworks/common v0.0.0-20210112142934-23c8d7fa6120 h1:zQtcwREXYNvW116ipgc0bRDg1avD2b6QP0RGPLlPWkc=
+github.com/weaveworks/common v0.0.0-20210112142934-23c8d7fa6120/go.mod h1:ykzWac1LtVfOxdCK+jD754at1Ws9dKCwFeUzkFBffPs=
 github.com/weaveworks/promrus v1.2.0 h1:jOLf6pe6/vss4qGHjXmGz4oDJQA+AOCqEL3FvvZGz7M=
 github.com/weaveworks/promrus v1.2.0/go.mod h1:SaE82+OJ91yqjrE1rsvBWVzNZKcHYFtMUyS1+Ogs/KA=
 github.com/willf/bitset v1.1.3/go.mod h1:RjeCKbqT1RxIR/KWY6phxZiaY1IyutSBfGjNPySAYV4=

@@ -159,20 +159,35 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		return nil, errors.Wrap(err, "failed to create bucket client")
 	}
 
-	// Blocks scanner doesn't use chunks, but we pass config for consistency.
+	// Blocks finder doesn't use chunks, but we pass config for consistency.
 	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create caching bucket")
 	}
 	bucketClient = cachingBucket
 
-	scanner := NewBlocksScanner(BlocksScannerConfig{
-		ScanInterval:             storageCfg.BucketStore.SyncInterval,
-		TenantsConcurrency:       storageCfg.BucketStore.TenantSyncConcurrency,
-		MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
-		CacheDir:                 storageCfg.BucketStore.SyncDir,
-		IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
-	}, bucketClient, logger, reg)
+	// Create the blocks finder.
+	var finder BlocksFinder
+	if storageCfg.BucketStore.BucketIndex.Enabled {
+		finder = NewBucketIndexBlocksFinder(BucketIndexBlocksFinderConfig{
+			IndexLoader: bucketindex.LoaderConfig{
+				CheckInterval:         time.Minute,
+				UpdateOnStaleInterval: storageCfg.BucketStore.SyncInterval,
+				UpdateOnErrorInterval: storageCfg.BucketStore.BucketIndex.UpdateOnErrorInterval,
+				IdleTimeout:           storageCfg.BucketStore.BucketIndex.IdleTimeout,
+			},
+			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
+			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
+		}, bucketClient, logger, reg)
+	} else {
+		finder = NewBucketScanBlocksFinder(BucketScanBlocksFinderConfig{
+			ScanInterval:             storageCfg.BucketStore.SyncInterval,
+			TenantsConcurrency:       storageCfg.BucketStore.TenantSyncConcurrency,
+			MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
+			CacheDir:                 storageCfg.BucketStore.SyncDir,
+			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
+		}, bucketClient, logger, reg)
+	}
 
 	if gatewayCfg.ShardingEnabled {
 		storesRingCfg := gatewayCfg.ShardingRing.ToRingConfig()
@@ -185,7 +200,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			return nil, errors.Wrap(err, "failed to create store-gateway ring backend")
 		}
 
-		storesRing, err := ring.NewWithStoreClientAndStrategy(storesRingCfg, storegateway.RingNameForClient, storegateway.RingKey, storesRingBackend, &storegateway.BlocksReplicationStrategy{})
+		storesRing, err := ring.NewWithStoreClientAndStrategy(storesRingCfg, storegateway.RingNameForClient, storegateway.RingKey, storesRingBackend, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create store-gateway ring client")
 		}
@@ -218,7 +233,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		reg,
 	)
 
-	return NewBlocksStoreQueryable(stores, scanner, consistency, limits, querierCfg.QueryStoreAfter, logger, reg)
+	return NewBlocksStoreQueryable(stores, finder, consistency, limits, querierCfg.QueryStoreAfter, logger, reg)
 }
 
 func (q *BlocksStoreQueryable) starting(ctx context.Context) error {

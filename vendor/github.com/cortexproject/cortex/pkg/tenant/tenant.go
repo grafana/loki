@@ -1,9 +1,13 @@
 package tenant
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
+
+	"github.com/weaveworks/common/user"
 )
 
 var (
@@ -64,6 +68,10 @@ func ValidTenantID(s string) error {
 	return nil
 }
 
+func JoinTenantIDs(tenantIDs []string) string {
+	return strings.Join(tenantIDs, tenantIDsLabelSeparator)
+}
+
 // this checks if a rune is supported in tenant IDs (according to
 // https://cortexmetrics.io/docs/guides/limitations/#tenant-id-naming)
 func isSupported(c rune) bool {
@@ -86,4 +94,12 @@ func isSupported(c rune) bool {
 		c == '\'' ||
 		c == '(' ||
 		c == ')'
+}
+
+// TenantIDsFromOrgID extracts different tenants from an orgID string value
+//
+// ignore stutter warning
+//nolint:golint
+func TenantIDsFromOrgID(orgID string) ([]string, error) {
+	return TenantIDs(user.InjectOrgID(context.TODO(), orgID))
 }

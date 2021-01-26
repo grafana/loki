@@ -71,7 +71,7 @@ func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, tlsCfg tls
 	clientCfg := grpcclient.Config{
 		MaxRecvMsgSize:      100 << 20,
 		MaxSendMsgSize:      16 << 20,
-		UseGzipCompression:  false,
+		GRPCCompression:     "",
 		RateLimit:           0,
 		RateLimitBurst:      0,
 		BackoffOnRatelimits: false,

@@ -903,10 +903,10 @@ wal:
   # CLI flag: -ingester.wal-enabled
   [enabled: <boolean> | default = false]
 
-  # Directory where the WAL data should be stored and/or recovered from. 
+  # Directory where the WAL data should be stored and/or recovered from.
   # CLI flag: -ingester.wal-dir
   [dir: <filename> | default = "wal"]
-  
+
   # Recover data from existing WAL dir irrespective of WAL enabled/disabled.
   # CLI flag: -ingester.recover-from-wal
   [recover: <boolean> | default = false]
@@ -1687,6 +1687,18 @@ logs in Loki.
 # Maximum number of stream matchers per query.
 # CLI flag: -querier.max-streams-matcher-per-query
 [max_streams_matchers_per_query: <int> | default = 1000]
+
+# Duration to delay the evaluation of rules to ensure.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
+
+# Maximum number of rules per rule group per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rules-per-rule-group
+[ruler_max_rules_per_rule_group: <int> | default = 0]
+
+# Maximum number of rule groups per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rule-groups-per-tenant
+[ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config

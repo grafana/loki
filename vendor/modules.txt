@@ -132,9 +132,6 @@ github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
-# github.com/blang/semver v3.5.1+incompatible
-## explicit
-github.com/blang/semver
 # github.com/bmatcuk/doublestar v1.2.2
 ## explicit
 github.com/bmatcuk/doublestar
@@ -167,7 +164,7 @@ github.com/coreos/go-systemd/journal
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.6.0
+# github.com/cortexproject/cortex v1.6.1-0.20210121163251-a59b811d5952
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alerts
@@ -221,6 +218,7 @@ github.com/cortexproject/cortex/pkg/querier/lazyquery
 github.com/cortexproject/cortex/pkg/querier/queryrange
 github.com/cortexproject/cortex/pkg/querier/series
 github.com/cortexproject/cortex/pkg/querier/stats
+github.com/cortexproject/cortex/pkg/querier/tenantfederation
 github.com/cortexproject/cortex/pkg/querier/worker
 github.com/cortexproject/cortex/pkg/ring
 github.com/cortexproject/cortex/pkg/ring/client
@@ -491,9 +489,6 @@ github.com/gophercloud/gophercloud/openstack/identity/v2/tokens
 github.com/gophercloud/gophercloud/openstack/identity/v3/extensions/ec2tokens
 github.com/gophercloud/gophercloud/openstack/identity/v3/extensions/oauth1
 github.com/gophercloud/gophercloud/openstack/identity/v3/tokens
-github.com/gophercloud/gophercloud/openstack/objectstorage/v1/accounts
-github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers
-github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects
 github.com/gophercloud/gophercloud/openstack/utils
 github.com/gophercloud/gophercloud/pagination
 # github.com/gorilla/mux v1.7.3
@@ -659,7 +654,7 @@ github.com/morikuni/aec
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 ## explicit
 github.com/mwitkow/go-conntrack
-# github.com/ncw/swift v1.0.50
+# github.com/ncw/swift v1.0.52
 github.com/ncw/swift
 # github.com/oklog/run v1.1.0
 github.com/oklog/run
@@ -855,7 +850,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.13.1-0.20201130180807-84afc97e7d58
+# github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
@@ -866,6 +861,7 @@ github.com/thanos-io/thanos/pkg/compact/downsample
 github.com/thanos-io/thanos/pkg/component
 github.com/thanos-io/thanos/pkg/discovery/cache
 github.com/thanos-io/thanos/pkg/discovery/dns
+github.com/thanos-io/thanos/pkg/discovery/dns/godns
 github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns
 github.com/thanos-io/thanos/pkg/errutil
 github.com/thanos-io/thanos/pkg/extprom
@@ -924,7 +920,7 @@ github.com/uber/jaeger-lib/metrics/prometheus
 ## explicit
 # github.com/ugorji/go/codec v1.1.7
 github.com/ugorji/go/codec
-# github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec
+# github.com/weaveworks/common v0.0.0-20210112142934-23c8d7fa6120
 ## explicit
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors

@@ -34,6 +34,10 @@ const (
 
 	// CompactorRingKey is the key under which we store the compactors ring in the KVStore.
 	CompactorRingKey = "compactor"
+
+	// GetBufferSize is the suggested size of buffers passed to Ring.Get(). It's based on
+	// a typical replication factor 3, plus extra room for a JOINING + LEAVING instance.
+	GetBufferSize = 5
 )
 
 // ReadRing represents the read interface to the ring.
@@ -41,9 +45,9 @@ type ReadRing interface {
 	prometheus.Collector
 
 	// Get returns n (or more) ingesters which form the replicas for the given key.
-	// buf is a slice to be overwritten for the return value
-	// to avoid memory allocation; can be nil.
-	Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error)
+	// bufDescs, bufHosts and bufZones are slices to be overwritten for the return value
+	// to avoid memory allocation; can be nil, or created with ring.MakeBuffersForGet().
+	Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, bufZones []string) (ReplicationSet, error)
 
 	// GetAllHealthy returns all healthy instances in the ring, for the given operation.
 	// This function doesn't check if the quorum is honored, so doesn't fail if the number
@@ -71,26 +75,27 @@ type ReadRing interface {
 	HasInstance(instanceID string) bool
 }
 
-// Operation can be Read or Write
-type Operation int
+var (
+	// Write operation that also extends replica set, if ingester state is not ACTIVE.
+	Write = NewOp([]IngesterState{ACTIVE}, func(s IngesterState) bool {
+		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
+		// to write the extra replica somewhere.  So we increase the size of the set
+		// of replicas for the key.
+		// NB dead ingester will be filtered later by defaultReplicationStrategy.Filter().
+		return s != ACTIVE
+	})
 
-// Values for Operation
-const (
-	Read Operation = iota
-	Write
-	Reporting // Special value for inquiring about health
+	// WriteNoExtend is like Write, but with no replicaset extension.
+	WriteNoExtend = NewOp([]IngesterState{ACTIVE}, nil)
 
-	// BlocksSync is the operation run by the store-gateway to sync blocks.
-	BlocksSync
+	Read = NewOp([]IngesterState{ACTIVE, PENDING, LEAVING}, func(s IngesterState) bool {
+		// To match Write with extended replica set we have to also increase the
+		// size of the replica set for Read, but we can read from LEAVING ingesters.
+		return s != ACTIVE && s != LEAVING
+	})
 
-	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
-	BlocksRead
-
-	// Ruler is the operation used for distributing rule groups between rulers.
-	Ruler
-
-	// Compactor is the operation used for distributing tenants/blocks across compactors.
-	Compactor
+	// Reporting is a special value for inquiring about health.
+	Reporting = allStatesRingOperation
 )
 
 var (
@@ -104,6 +109,10 @@ var (
 	// ErrTooManyFailedIngesters is the error returned when there are too many failed ingesters for a
 	// specific operation.
 	ErrTooManyFailedIngesters = errors.New("too many failed ingesters")
+
+	// ErrInconsistentTokensInfo is the error returned if, due to an internal bug, the mapping between
+	// a token and its own instance is missing or unknown.
+	ErrInconsistentTokensInfo = errors.New("inconsistent ring tokens information")
 )
 
 // Config for a Ring
@@ -112,7 +121,10 @@ type Config struct {
 	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
 	ReplicationFactor    int           `yaml:"replication_factor"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
-	ExtendWrites         bool          `yaml:"extend_writes"`
+
+	// Whether the shuffle-sharding subring cache is disabled. This option is set
+	// internally and never exposed to the user.
+	SubringCacheDisabled bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -127,7 +139,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, prefix+"distributor.zone-awareness-enabled", false, "True to enable the zone-awareness and replicate ingested samples across different availability zones.")
-	f.BoolVar(&cfg.ExtendWrites, prefix+"distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
+}
+
+type instanceInfo struct {
+	InstanceID string
+	Zone       string
 }
 
 // Ring holds the information about the members of the consistent hash ring.
@@ -141,8 +157,13 @@ type Ring struct {
 
 	mtx              sync.RWMutex
 	ringDesc         *Desc
-	ringTokens       []TokenDesc
-	ringTokensByZone map[string][]TokenDesc
+	ringTokens       []uint32
+	ringTokensByZone map[string][]uint32
+
+	// Maps a token with the information of the instance holding it. This map is immutable and
+	// cannot be chanced in place because it's shared "as is" between subrings (the only way to
+	// change it is to create a new one and replace it).
+	ringInstanceByToken map[uint32]instanceInfo
 
 	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
@@ -180,7 +201,7 @@ func New(cfg Config, name, key string, reg prometheus.Registerer) (*Ring, error)
 		return nil, err
 	}
 
-	return NewWithStoreClientAndStrategy(cfg, name, key, store, NewDefaultReplicationStrategy(cfg.ExtendWrites))
+	return NewWithStoreClientAndStrategy(cfg, name, key, store, NewDefaultReplicationStrategy())
 }
 
 func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client, strategy ReplicationStrategy) (*Ring, error) {
@@ -256,8 +277,9 @@ func (r *Ring) loop(ctx context.Context) error {
 		}
 
 		now := time.Now()
-		ringTokens := ringDesc.getTokens()
+		ringTokens := ringDesc.GetTokens()
 		ringTokensByZone := ringDesc.getTokensByZone()
+		ringInstanceByToken := ringDesc.getTokensInfo()
 		ringZones := getZones(ringTokensByZone)
 
 		r.mtx.Lock()
@@ -265,6 +287,7 @@ func (r *Ring) loop(ctx context.Context) error {
 		r.ringDesc = ringDesc
 		r.ringTokens = ringTokens
 		r.ringTokensByZone = ringTokensByZone
+		r.ringInstanceByToken = ringInstanceByToken
 		r.ringZones = ringZones
 		r.lastTopologyChange = now
 		if r.shuffledSubringCache != nil {
@@ -277,7 +300,7 @@ func (r *Ring) loop(ctx context.Context) error {
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.
-func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error) {
+func (r *Ring) Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if r.ringDesc == nil || len(r.ringTokens) == 0 {
@@ -285,38 +308,47 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 	}
 
 	var (
-		n             = r.cfg.ReplicationFactor
-		ingesters     = buf[:0]
-		distinctHosts = map[string]struct{}{}
-		distinctZones = map[string]struct{}{}
-		start         = searchToken(r.ringTokens, key)
-		iterations    = 0
+		n          = r.cfg.ReplicationFactor
+		ingesters  = bufDescs[:0]
+		start      = searchToken(r.ringTokens, key)
+		iterations = 0
+
+		// We use a slice instead of a map because it's faster to search within a
+		// slice than lookup a map for a very low number of items.
+		distinctHosts = bufHosts[:0]
+		distinctZones = bufZones[:0]
 	)
 	for i := start; len(distinctHosts) < n && iterations < len(r.ringTokens); i++ {
 		iterations++
 		// Wrap i around in the ring.
 		i %= len(r.ringTokens)
+		token := r.ringTokens[i]
+
+		info, ok := r.ringInstanceByToken[token]
+		if !ok {
+			// This should never happen unless a bug in the ring code.
+			return ReplicationSet{}, ErrInconsistentTokensInfo
+		}
 
 		// We want n *distinct* ingesters && distinct zones.
-		token := r.ringTokens[i]
-		if _, ok := distinctHosts[token.Ingester]; ok {
+		if util.StringsContain(distinctHosts, info.InstanceID) {
 			continue
 		}
 
 		// Ignore if the ingesters don't have a zone set.
-		if r.cfg.ZoneAwarenessEnabled && token.Zone != "" {
-			if _, ok := distinctZones[token.Zone]; ok {
+		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
+			if util.StringsContain(distinctZones, info.Zone) {
 				continue
 			}
-			distinctZones[token.Zone] = struct{}{}
+			distinctZones = append(distinctZones, info.Zone)
 		}
 
-		distinctHosts[token.Ingester] = struct{}{}
-		ingester := r.ringDesc.Ingesters[token.Ingester]
+		distinctHosts = append(distinctHosts, info.InstanceID)
+		ingester := r.ringDesc.Ingesters[info.InstanceID]
 
 		// Check whether the replica set should be extended given we're including
 		// this instance.
-		if r.strategy.ShouldExtendReplicaSet(ingester, op) {
+		if op.ShouldExtendReplicaSetOnState(ingester.State) {
 			n++
 		}
 
@@ -343,9 +375,10 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
+	now := time.Now()
 	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if r.IsHealthy(&ingester, op) {
+		if r.IsHealthy(&ingester, op, now) {
 			ingesters = append(ingesters, ingester)
 		}
 	}
@@ -368,8 +401,10 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	// Build the initial replication set, excluding unhealthy instances.
 	healthyInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]struct{})
+	now := time.Now()
+
 	for _, ingester := range r.ringDesc.Ingesters {
-		if r.IsHealthy(&ingester, op) {
+		if r.IsHealthy(&ingester, op, now) {
 			healthyInstances = append(healthyInstances, ingester)
 		} else {
 			zoneFailures[ingester.Zone] = struct{}{}
@@ -445,21 +480,28 @@ func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.numTokensDesc
 }
 
-func countTokens(ringDesc *Desc, tokens []TokenDesc) (map[string]uint32, map[string]uint32) {
+// countTokens returns the number of tokens and tokens within the range for each instance.
+// The ring read lock must be already taken when calling this function.
+func (r *Ring) countTokens() (map[string]uint32, map[string]uint32) {
 	owned := map[string]uint32{}
 	numTokens := map[string]uint32{}
-	for i, token := range tokens {
+	for i, token := range r.ringTokens {
 		var diff uint32
-		if i+1 == len(tokens) {
-			diff = (math.MaxUint32 - token.Token) + tokens[0].Token
+
+		// Compute how many tokens are within the range.
+		if i+1 == len(r.ringTokens) {
+			diff = (math.MaxUint32 - token) + r.ringTokens[0]
 		} else {
-			diff = tokens[i+1].Token - token.Token
+			diff = r.ringTokens[i+1] - token
 		}
-		numTokens[token.Ingester] = numTokens[token.Ingester] + 1
-		owned[token.Ingester] = owned[token.Ingester] + diff
+
+		info := r.ringInstanceByToken[token]
+		numTokens[info.InstanceID] = numTokens[info.InstanceID] + 1
+		owned[info.InstanceID] = owned[info.InstanceID] + diff
 	}
 
-	for id := range ringDesc.Ingesters {
+	// Set to 0 the number of owned tokens by instances which don't have tokens yet.
+	for id := range r.ringDesc.Ingesters {
 		if _, ok := owned[id]; !ok {
 			owned[id] = 0
 			numTokens[id] = 0
@@ -474,7 +516,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	numTokens, ownedRange := countTokens(r.ringDesc, r.ringTokens)
+	numTokens, ownedRange := r.countTokens()
 	for id, totalOwned := range ownedRange {
 		ch <- prometheus.MustNewConstMetric(
 			r.memberOwnershipDesc,
@@ -501,7 +543,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 
 	for _, ingester := range r.ringDesc.Ingesters {
 		s := ingester.State.String()
-		if !r.IsHealthy(&ingester, Reporting) {
+		if !r.IsHealthy(&ingester, Reporting, time.Now()) {
 			s = unhealthy
 		}
 		numByState[s]++
@@ -606,7 +648,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 	// We need to iterate zones always in the same order to guarantee stability.
 	for _, zone := range actualZones {
-		var tokens []TokenDesc
+		var tokens []uint32
 
 		if r.cfg.ZoneAwarenessEnabled {
 			tokens = r.ringTokensByZone[zone]
@@ -636,21 +678,27 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 				// Wrap p around in the ring.
 				p %= len(tokens)
 
+				info, ok := r.ringInstanceByToken[tokens[p]]
+				if !ok {
+					// This should never happen unless a bug in the ring code.
+					panic(ErrInconsistentTokensInfo)
+				}
+
 				// Ensure we select an unique instance.
-				if _, ok := shard[tokens[p].Ingester]; ok {
+				if _, ok := shard[info.InstanceID]; ok {
 					continue
 				}
 
-				instance := r.ringDesc.Ingesters[tokens[p].Ingester]
+				instanceID := info.InstanceID
+				instance := r.ringDesc.Ingesters[instanceID]
+				shard[instanceID] = instance
 
 				// If the lookback is enabled and this instance has been registered within the lookback period
 				// then we should include it in the subring but continuing selecting instances.
 				if lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil {
-					shard[tokens[p].Ingester] = instance
 					continue
 				}
 
-				shard[tokens[p].Ingester] = instance
 				found = true
 				break
 			}
@@ -672,9 +720,14 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		cfg:              r.cfg,
 		strategy:         r.strategy,
 		ringDesc:         shardDesc,
-		ringTokens:       shardDesc.getTokens(),
+		ringTokens:       shardDesc.GetTokens(),
 		ringTokensByZone: shardTokensByZone,
 		ringZones:        getZones(shardTokensByZone),
+
+		// We reference the original map as is in order to avoid copying. It's safe to do
+		// because this map is immutable by design and it's a superset of the actual instances
+		// with the subring.
+		ringInstanceByToken: r.ringInstanceByToken,
 
 		// For caching to work, remember these values.
 		lastTopologyChange: r.lastTopologyChange,
@@ -707,6 +760,10 @@ func (r *Ring) HasInstance(instanceID string) bool {
 }
 
 func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
+	if r.cfg.SubringCacheDisabled {
+		return nil
+	}
+
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -731,7 +788,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 }
 
 func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ring) {
-	if subring == nil {
+	if subring == nil || r.cfg.SubringCacheDisabled {
 		return
 	}
 
@@ -745,3 +802,42 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ri
 		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
 	}
 }
+
+// Operation describes which instances can be included in the replica set, based on their state.
+//
+// Implemented as bitmap, with upper 16-bits used for encoding extendReplicaSet, and lower 16-bits used for encoding healthy states.
+type Operation uint32
+
+// NewOp constructs new Operation with given "healthy" states for operation, and optional function to extend replica set.
+// Result of calling shouldExtendReplicaSet is cached.
+func NewOp(healthyStates []IngesterState, shouldExtendReplicaSet func(s IngesterState) bool) Operation {
+	op := Operation(0)
+	for _, s := range healthyStates {
+		op |= (1 << s)
+	}
+
+	if shouldExtendReplicaSet != nil {
+		for _, s := range []IngesterState{ACTIVE, LEAVING, PENDING, JOINING, LEAVING, LEFT} {
+			if shouldExtendReplicaSet(s) {
+				op |= (0x10000 << s)
+			}
+		}
+	}
+
+	return op
+}
+
+// IsInstanceInStateHealthy is used during "filtering" phase to remove undesired instances based on their state.
+func (op Operation) IsInstanceInStateHealthy(s IngesterState) bool {
+	return op&(1<<s) > 0
+}
+
+// ShouldExtendReplicaSetOnState returns true if given a state of instance that's going to be
+// added to the replica set, the replica set size should be extended by 1
+// more instance for the given operation.
+func (op Operation) ShouldExtendReplicaSetOnState(s IngesterState) bool {
+	return op&(0x10000<<s) > 0
+}
+
+// All states are healthy, no states extend replica set.
+var allStatesRingOperation = Operation(0x0000ffff)
