@@ -39,6 +39,7 @@ The HTTP API includes the following endpoints:
   - [`POST /flush`](#post-flush)
   - [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
   - [`GET /metrics`](#get-metrics)
+  - [`GET /config`](#get-config)
   - [Series](#series)
     - [Examples](#examples-9)
   - [Statistics](#statistics)
@@ -67,6 +68,7 @@ These endpoints are exposed by all components:
 
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
+- [`GET /config`](#get-config)
 
 These endpoints are exposed by the querier and the frontend:
 
@@ -860,6 +862,14 @@ In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
+
+## `GET /config`
+
+`/config` exposes the current configuration. The optional `mode` query parameter can be used to
+modify the output. If it has the value `diff` only the differences between the default configuration
+and the current are returned. A value of `defaults` returns the default configuration.
+
+In microservices mode, the `/config` endpoint is exposed by all components.
 
 ## Series
 
