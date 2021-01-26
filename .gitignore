@@ -31,3 +31,8 @@ coverage.txt
 
 # emacs
 .#*
+
+# terraform
+.terraform*
+*.tfstate*
+*.tfvars
