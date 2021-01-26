@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/unmarshal"
 )
 
 var (
@@ -303,7 +304,6 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 				}
 				tss = append(tss, *ts)
 			}
-
 		}
 	default:
 		return nil, fmt.Errorf("unexpected result type, expected a log stream result instead received %v", value.Type())
@@ -313,7 +313,6 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 }
 
 func (r *Reader) run() {
-
 	r.closeAndReconnect()
 
 	tailResponse := &loghttp.TailResponse{}
@@ -332,7 +331,7 @@ func (r *Reader) run() {
 		// Set a read timeout of 10x the interval we expect to see messages
 		// Ignore the error as it will get caught when we call ReadJSON
 		_ = r.conn.SetReadDeadline(time.Now().Add(10 * r.interval))
-		err := r.conn.ReadJSON(tailResponse)
+		err := unmarshal.ReadTailResponseJSON(tailResponse, r.conn)
 		if err != nil {
 			fmt.Fprintf(r.w, "error reading websocket, will retry in 10 seconds: %s\n", err)
 			// Even though we sleep between connection retries, we found it's possible to DOS Loki if the connection
