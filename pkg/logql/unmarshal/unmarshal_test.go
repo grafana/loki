@@ -9,7 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/loghttp"
+	legacy_loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/marshal"
 )
 
 // covers requests to /loki/api/v1/push
@@ -87,4 +90,43 @@ func Benchmark_DecodePushRequest(b *testing.B) {
 		require.NoError(b, err)
 		require.Equal(b, 10000, len(actual.Streams[0].Entries))
 	}
+}
+
+type websocket struct {
+	buf []byte
+}
+
+func (ws *websocket) WriteMessage(t int, data []byte) error {
+	ws.buf = append(ws.buf, data...)
+	return nil
+}
+
+func (ws *websocket) ReadMessage() (int, []byte, error) {
+	return 0, ws.buf, nil
+}
+
+func Test_ReadTailResponse(t *testing.T) {
+	ws := &websocket{}
+	require.NoError(t, marshal.WriteTailResponseJSON(legacy_loghttp.TailResponse{
+		Streams: []logproto.Stream{
+			{Labels: `{app="bar"}`, Entries: []logproto.Entry{{Timestamp: time.Unix(0, 2), Line: "2"}}},
+		},
+		DroppedEntries: []legacy_loghttp.DroppedEntry{
+			{Timestamp: time.Unix(0, 1), Labels: `{app="foo"}`},
+		},
+	}, ws))
+	res := &loghttp.TailResponse{}
+	require.NoError(t, ReadTailResponseJSON(res, ws))
+
+	require.Equal(t, &loghttp.TailResponse{
+		Streams: []loghttp.Stream{
+			{
+				Labels:  loghttp.LabelSet{"app": "bar"},
+				Entries: []loghttp.Entry{{Timestamp: time.Unix(0, 2), Line: "2"}},
+			},
+		},
+		DroppedStreams: []loghttp.DroppedStream{
+			{Timestamp: time.Unix(0, 1), Labels: loghttp.LabelSet{"app": "foo"}},
+		},
+	}, res)
 }
