@@ -224,7 +224,7 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return lineReplacer.Replace(string(js)), nil
+		return string(js), nil
 	case kvPairFormat:
 		buf := &bytes.Buffer{}
 		enc := logfmt.NewEncoder(buf)
