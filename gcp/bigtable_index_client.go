@@ -17,8 +17,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -244,7 +244,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 		table := s.client.Open(tq.name)
 
 		for i := 0; i < len(tq.rows); i += maxRowReads {
-			page := tq.rows[i:util.Min(i+maxRowReads, len(tq.rows))]
+			page := tq.rows[i:math.Min(i+maxRowReads, len(tq.rows))]
 			go func(page bigtable.RowList, tq tableQuery) {
 				var processingErr error
 				// rows are returned in key order, not order in row list

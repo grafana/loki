@@ -15,8 +15,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -93,7 +93,7 @@ type cacheEntry struct {
 
 // NewFifoCache returns a new initialised FifoCache of size.
 func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger) *FifoCache {
-	util.WarnExperimentalUse("In-memory (FIFO) cache")
+	util_log.WarnExperimentalUse("In-memory (FIFO) cache")
 
 	if cfg.DeprecatedSize > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
