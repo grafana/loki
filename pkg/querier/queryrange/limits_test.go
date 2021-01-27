@@ -62,7 +62,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.SplitQueriesByInterval = time.Hour
 	cfg.CacheResults = false
 	// split in 6 with 4 in // max.
-	tpw, stopper, err := NewTripperware(cfg, util.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(cfg, util.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, 0, nil, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
