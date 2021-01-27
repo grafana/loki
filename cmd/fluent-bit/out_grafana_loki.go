@@ -77,10 +77,10 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	level.Info(paramLogger).Log("DqueDir", conf.bufferConfig.dqueConfig.queueDir)
 	level.Info(paramLogger).Log("DqueSegmentSize", conf.bufferConfig.dqueConfig.queueSegmentSize)
 	level.Info(paramLogger).Log("DqueSync", conf.bufferConfig.dqueConfig.queueSync)
-	level.Info(paramLogger).Log("ca_file", conf.clientConfig.Client.TLSConfig.CAFile)
-	level.Info(paramLogger).Log("cert_file", conf.clientConfig.Client.TLSConfig.CertFile)
-	level.Info(paramLogger).Log("key_file", conf.clientConfig.Client.TLSConfig.KeyFile)
-	level.Info(paramLogger).Log("insecure_skip_verify", conf.clientConfig.Client.TLSConfig.InsecureSkipVerify)
+	level.Info(paramLogger).Log("CAFile", conf.clientConfig.Client.TLSConfig.CAFile)
+	level.Info(paramLogger).Log("CertFile", conf.clientConfig.Client.TLSConfig.CertFile)
+	level.Info(paramLogger).Log("KeyFile", conf.clientConfig.Client.TLSConfig.KeyFile)
+	level.Info(paramLogger).Log("InsecureSkipVerify", conf.clientConfig.Client.TLSConfig.InsecureSkipVerify)
 
 	plugin, err := newPlugin(conf, logger)
 	if err != nil {

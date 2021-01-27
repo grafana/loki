@@ -258,9 +258,9 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		res.bufferConfig.dqueConfig.queueName = queueName
 	}
 
-	res.clientConfig.Client.TLSConfig.CAFile = cfg.Get("ca_file")
-	res.clientConfig.Client.TLSConfig.CertFile = cfg.Get("cert_file")
-	res.clientConfig.Client.TLSConfig.KeyFile = cfg.Get("key_file")
+	res.clientConfig.Client.TLSConfig.CAFile = cfg.Get("CAFile")
+	res.clientConfig.Client.TLSConfig.CertFile = cfg.Get("CertFile")
+	res.clientConfig.Client.TLSConfig.KeyFile = cfg.Get("KeyFile")
 
 	insecureSkipVerify := cfg.Get("insecure_skip_verify")
 	switch insecureSkipVerify {
