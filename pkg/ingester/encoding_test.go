@@ -42,6 +42,11 @@ func Test_Encoding_Series(t *testing.T) {
 
 	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
+
+	// Since we use a pool, there can be subtle differentiations between nil slices and len(0) slices.
+	// Both are valid, so check length.
+	require.Equal(t, 0, len(decoded.RefEntries))
+	decoded.RefEntries = nil
 	require.Equal(t, record, decoded)
 }
 
