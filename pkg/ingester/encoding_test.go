@@ -120,6 +120,39 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	}
 }
 
+func Benchmark_DecodeWAL(b *testing.B) {
+	var entries []logproto.Entry
+	for i := int64(0); i < 10000; i++ {
+		entries = append(entries, logproto.Entry{
+			Timestamp: time.Unix(0, i),
+			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
+		})
+	}
+	record := &WALRecord{
+		entryIndexMap: make(map[uint64]int),
+		UserID:        "123",
+		RefEntries: []RefEntries{
+			{
+				Ref:     456,
+				Entries: entries,
+			},
+			{
+				Ref:     789,
+				Entries: entries,
+			},
+		},
+	}
+
+	buf := record.encodeEntries(nil)
+	rec := recordPool.GetRecord()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		require.NoError(b, decodeWALRecord(buf, rec))
+	}
+}
+
 func fillChunk(t testing.TB, c chunkenc.Chunk) {
 	t.Helper()
 	var i int64
