@@ -26,8 +26,6 @@
 package win_eventlog
 
 import (
-	"fmt"
-	"os"
 	"syscall"
 	"unsafe"
 
@@ -212,7 +210,6 @@ func UpdateBookmark(bookmark, event EvtHandle, buf []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fmt.Fprint(os.Stdout, string(bookMarkData))
 	return string(bookMarkData), nil
 }
 
@@ -220,7 +217,6 @@ func stringPointer(s string) (uintptr, error) {
 	if s == "" {
 		return 0, nil
 	}
-	fmt.Fprint(os.Stdout, s)
 	ptr, err := syscall.UTF16PtrFromString(s[:len(s)-1])
 	if err != nil {
 		return 0, err

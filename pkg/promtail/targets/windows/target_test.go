@@ -1,12 +1,12 @@
 //+build windows
+
 package windows
 
 import (
+	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/promtail/client/fake"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/afero"
@@ -14,7 +14,11 @@ import (
 	"github.com/weaveworks/common/server"
 	"golang.org/x/sys/windows/svc/eventlog"
 
-	"testing"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/client/fake"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/pkg/promtail/targets/windows/win_eventlog"
 )
 
 func init() {
@@ -45,7 +49,7 @@ func Test_GetCreateBookrmark(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 	ta, err := New(util.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
-		BoorkmarkPath: "c:\\foo.xml",
+		BoorkmarkPath: "c:foo.xml",
 		PollInterval:  time.Microsecond,
 		Query: `<QueryList>
 			<Query Id="0" Path="Application">
@@ -67,7 +71,6 @@ func Test_GetCreateBookrmark(t *testing.T) {
 				t.Log(err)
 				return false
 			}
-			t.Log(entry)
 			return entry.Labels["job"] == "windows-events" && e.Message == now
 		}
 		return false
@@ -80,7 +83,7 @@ func Test_GetCreateBookrmark(t *testing.T) {
 	client = fake.New(func() {})
 	defer client.Stop()
 	ta, err = New(util.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
-		BoorkmarkPath: "c:\\foo.xml",
+		BoorkmarkPath: "c:foo.xml",
 		PollInterval:  time.Microsecond,
 		Query: `<QueryList>
 			<Query Id="0" Path="Application">
@@ -98,11 +101,54 @@ func Test_GetCreateBookrmark(t *testing.T) {
 				t.Log(err)
 				return false
 			}
-			t.Log(entry)
 			return entry.Labels["job"] == "windows-events" && e.Message == now
 		}
 		return false
 	}, 5*time.Second, 500*time.Millisecond)
 	require.NoError(t, ta.Stop())
+
+}
+
+func Test_renderEntries(t *testing.T) {
+	client := fake.New(func() {})
+	defer client.Stop()
+	ta, err := New(util.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+		Labels:               model.LabelSet{"job": "windows-events"},
+		EventlogName:         "Application",
+		Query:                "*",
+		UseIncomingTimestamp: true,
+	})
+	require.NoError(t, err)
+	defer ta.Stop()
+	entries := ta.renderEntries([]win_eventlog.Event{
+		{
+			Source:        win_eventlog.Provider{Name: "Application"},
+			EventID:       10,
+			Version:       10,
+			Level:         10,
+			Task:          10,
+			Opcode:        10,
+			Keywords:      "keywords",
+			TimeCreated:   win_eventlog.TimeCreated{SystemTime: time.Unix(0, 1).Format(time.RFC3339Nano)},
+			EventRecordID: 11,
+			Correlation:   win_eventlog.Correlation{ActivityID: "some activity", RelatedActivityID: "some related activity"},
+			Execution:     win_eventlog.Execution{ThreadID: 5, ProcessID: 1},
+			Channel:       "channel",
+			Computer:      "local",
+			Security:      win_eventlog.Security{UserID: "1"},
+			UserData:      win_eventlog.UserData{InnerXML: []byte(`userdata`)},
+			EventData:     win_eventlog.EventData{InnerXML: []byte(`eventdata`)},
+			Message:       "message",
+		},
+	})
+	require.Equal(t, []api.Entry{
+		{
+			Labels: model.LabelSet{"channel": "channel", "computer": "local", "job": "windows-events"},
+			Entry: logproto.Entry{
+				Timestamp: time.Unix(0, 1),
+				Line:      `{"source":"Application","channel":"channel","computer":"local","event_id":10,"version":10,"level":10,"task":10,"opCode":10,"keywords":"keywords","timeCreated":"1970-01-01T01:00:00.000000001+01:00","eventRecordID":11,"correlation":{"activityID":"some activity","relatedActivityID":"some related activity"},"execution":{"processId":1,"threadId":5},"security":{"userId":"1"},"user_data":"eventdata","event_data":"eventdata","message":"message"}`,
+			},
+		},
+	}, entries)
 
 }

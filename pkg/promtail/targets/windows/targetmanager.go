@@ -1,3 +1,5 @@
+//+build windows
+
 package windows
 
 import (
@@ -47,7 +49,7 @@ func NewTargetManager(
 	return tm, nil
 }
 
-// Ready returns true if at least one SyslogTarget is also ready.
+// Ready returns true if at least one Windows target is also ready.
 func (tm *TargetManager) Ready() bool {
 	for _, t := range tm.targets {
 		if t.Ready() {
@@ -57,24 +59,27 @@ func (tm *TargetManager) Ready() bool {
 	return false
 }
 
-// Stop stops the SyslogTargetManager and all of its SyslogTargets.
+// Stop stops the Windows target manager and all of its targets.
 func (tm *TargetManager) Stop() {
 	for _, t := range tm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("msg", "error stopping SyslogTarget", "err", err.Error())
+			level.Error(t.logger).Log("msg", "error stopping windows target", "err", err.Error())
 		}
 	}
 }
 
-// ActiveTargets returns the list of SyslogTargets where syslog data
-// is being read. ActiveTargets is an alias to AllTargets as
-// SyslogTargets cannot be deactivated, only stopped.
+// ActiveTargets returns the list of actuve Windows targets.
 func (tm *TargetManager) ActiveTargets() map[string][]target.Target {
-	return tm.AllTargets()
+	result := make(map[string][]target.Target, len(tm.targets))
+	for k, v := range tm.targets {
+		if v.Ready() {
+			result[k] = []target.Target{v}
+		}
+	}
+	return result
 }
 
-// AllTargets returns the list of all targets where syslog data
-// is currently being read.
+// AllTargets returns the list of all targets.
 func (tm *TargetManager) AllTargets() map[string][]target.Target {
 	result := make(map[string][]target.Target, len(tm.targets))
 	for k, v := range tm.targets {

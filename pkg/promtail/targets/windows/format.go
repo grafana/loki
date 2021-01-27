@@ -1,3 +1,5 @@
+//+build windows
+
 package windows
 
 import (
@@ -52,6 +54,7 @@ type Correlation struct {
 	RelatedActivityID string `json:"relatedActivityID,omitempty"`
 }
 
+// formatLine format a Loki log line from a windows event.
 func formatLine(cfg *scrapeconfig.WindowsEventsTargetConfig, event win_eventlog.Event) (string, error) {
 	structuredEvent := Event{
 		Source:        event.Source.Name,
@@ -71,10 +74,10 @@ func formatLine(cfg *scrapeconfig.WindowsEventsTargetConfig, event win_eventlog.
 		Message:       event.Message,
 	}
 
-	if cfg.IncludeEventData {
+	if !cfg.ExcludeEventData {
 		structuredEvent.EventData = string(event.EventData.InnerXML)
 	}
-	if cfg.IncludeUserData {
+	if !cfg.ExcludeUserData {
 		structuredEvent.UserData = string(event.EventData.InnerXML)
 	}
 	if event.Correlation.ActivityID != "" || event.Correlation.RelatedActivityID != "" {

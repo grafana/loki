@@ -1,3 +1,5 @@
+//+build windows
+
 package windows
 
 import (
@@ -16,9 +18,13 @@ type bookMark struct {
 	buf []byte
 }
 
+// newBookMark creates a new windows event bookmark.
+// The bookmark will be saved at the given path. Use save to save the current position for a given event.
 func newBookMark(path string) (*bookMark, error) {
+	// 4kb buffer for rendering bookmark
 	buf := make([]byte, 1<<14)
 	_, err := fs.Stat(path)
+	// creates a new bookmark file if none exists.
 	if os.IsNotExist(err) {
 		file, err := fs.Create(path)
 		if err != nil {
@@ -38,6 +44,7 @@ func newBookMark(path string) (*bookMark, error) {
 	if err != nil {
 		return nil, err
 	}
+	// otherwise open the current one.
 	file, err := fs.OpenFile(path, os.O_RDWR, 0666)
 	if err != nil {
 		return nil, err
@@ -47,6 +54,7 @@ func newBookMark(path string) (*bookMark, error) {
 		return nil, err
 	}
 	fileString := string(fileContent)
+	// load the current bookmark.
 	bm, err := win_eventlog.CreateBookmark(fileString)
 	if err != nil {
 		return nil, err
@@ -55,11 +63,11 @@ func newBookMark(path string) (*bookMark, error) {
 		handle: bm,
 		file:   file,
 		isNew:  fileString == "",
-		// 4kb buffer for rendering bookmark
-		buf: buf,
+		buf:    buf,
 	}, nil
 }
 
+// save Saves the bookmark at the current event position.
 func (b *bookMark) save(event win_eventlog.EvtHandle) error {
 	newBookmark, err := win_eventlog.UpdateBookmark(b.handle, event, b.buf)
 	if err != nil {
@@ -75,6 +83,7 @@ func (b *bookMark) save(event win_eventlog.EvtHandle) error {
 	return err
 }
 
+// close closes the current bookmark file.
 func (b *bookMark) close() error {
 	return b.file.Close()
 }

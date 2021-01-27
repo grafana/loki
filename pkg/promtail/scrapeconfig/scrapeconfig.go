@@ -166,13 +166,16 @@ type SyslogTargetConfig struct {
 }
 
 type WindowsEventsTargetConfig struct {
+
 	// LCID (Locale ID) for event rendering
 	// - 1033 to force English language
 	// -  0 to use default Windows locale
 	Locale uint32 `yaml:"locale"`
+
 	// Name of eventlog, used only if xpath_query is empty
 	// Example: "Application"
 	EventlogName string `yaml:"eventlog_name"`
+
 	// xpath_query can be in defined short form like "Event/System[EventID=999]"
 	// or you can form a XML Query. Refer to the Consuming Events article:
 	// https://docs.microsoft.com/en-us/windows/win32/wes/consuming-events
@@ -180,13 +183,27 @@ type WindowsEventsTargetConfig struct {
 	// You can create or debug XML Query by creating Custom View in Windows Event Viewer
 	// and then copying resulting XML here
 	Query string `yaml:"xpath_query"`
-	// UseIncomingTimestamp sets the timestamp to the incoming windows mesages
+
+	// UseIncomingTimestamp sets the timestamp to the incoming windows messages
 	// timestamp if it's set.
-	UseIncomingTimestamp bool          `yaml:"use_incoming_timestamp"`
-	BoorkmarkPath        string        `yaml:"bookmark_path"`
-	PollInterval         time.Duration `yaml:"poll_interval"`
-	IncludeEventData     bool          `yaml:"include_event_data"`
-	IncludeUserData      bool          `yaml:"include_user_data"`
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// BoorkmarkPath sets the bookmark location on the filesystem.
+	// The bookmark contains the current position of the target in XML.
+	// When restarting or rollingout promtail, the target will continue to scrape events where it left off based on the bookmark position.
+	// The position is updated after each entry processed.
+	// Empty value will start the target to read only future events.
+	BoorkmarkPath string `yaml:"bookmark_path"`
+
+	// PollInterval is the interval at which we're looking if new events are available. By default the target will check every 3seconds.
+	PollInterval time.Duration `yaml:"poll_interval"`
+
+	// ExcludeEventData allows to exclude the xml event data.
+	ExcludeEventData bool `yaml:"exclude_event_data"`
+
+	// ExcludeUserData allows to exclude the user data of each windows event.
+	ExcludeUserData bool `yaml:"exclude_user_data"`
+
 	// Labels optionally holds labels to associate with each log line.
 	Labels model.LabelSet `yaml:"labels"`
 }

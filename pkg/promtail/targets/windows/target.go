@@ -1,4 +1,5 @@
 //+build windows
+
 package windows
 
 import (
@@ -42,6 +43,7 @@ type Target struct {
 	err   error
 }
 
+// New create a new windows targets, that will fetch windows event logs and send them to Loki.
 func New(
 	logger log.Logger,
 	handler api.EntryHandler,
@@ -56,7 +58,7 @@ func New(
 
 	bm, err := newBookMark(cfg.BoorkmarkPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create bookmark: %w", err)
+		return nil, fmt.Errorf("failed to create bookmark using path=%s: %w", cfg.BoorkmarkPath, err)
 	}
 
 	t := &Target{
@@ -77,10 +79,10 @@ func New(
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("evtSubscribe: %w", err)
+		return nil, fmt.Errorf("error subscribing to windows events: %w", err)
 	}
 	t.subscription = subsHandle
-	// todo move to default conf
+
 	if t.cfg.PollInterval == 0 {
 		t.cfg.PollInterval = 3 * time.Second
 	}
@@ -88,6 +90,7 @@ func New(
 	return t, nil
 }
 
+// loop fetches new events and send them to via the Loki client.
 func (t *Target) loop() {
 	t.ready = true
 	t.wg.Add(1)
@@ -132,6 +135,7 @@ func (t *Target) loop() {
 	}
 }
 
+// renderEntries renders Loki entries from windows event logs
 func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 	res := make([]api.Entry, 0, len(events))
 	lbs := labels.NewBuilder(nil)
@@ -181,26 +185,27 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 	return res
 }
 
-// Type returns SyslogTargetType.
+// Type returns WindowsTargetType.
 func (t *Target) Type() target.TargetType {
 	return target.WindowsTargetType
 }
 
-// Ready indicates whether or not the syslog target is ready to be read from.
+// Ready indicates whether or not the windows target is ready.
 func (t *Target) Ready() bool {
 	if t.err != nil {
 		return false
 	}
-	return true
+	return t.ready
 }
 
+// DiscoveredLabels returns discovered labels from the target.
 func (t *Target) DiscoveredLabels() model.LabelSet {
 	// todo(cyriltovena) we might want to sample discovered labels later and returns them here.
 	return nil
 }
 
 // Labels returns the set of labels that statically apply to all log entries
-// produced by the SyslogTarget.
+// produced by the windows target.
 func (t *Target) Labels() model.LabelSet {
 	return t.cfg.Labels
 }
