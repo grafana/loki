@@ -71,6 +71,10 @@ func New(
 		fetcher:       win_eventlog.NewEventFetcher(),
 	}
 
+	if cfg.Query == "" {
+		cfg.Query = "*"
+	}
+
 	var subsHandle win_eventlog.EvtHandle
 	if bm.isNew {
 		subsHandle, err = win_eventlog.EvtSubscribe(cfg.EventlogName, cfg.Query)

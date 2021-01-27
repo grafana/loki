@@ -165,6 +165,7 @@ type SyslogTargetConfig struct {
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
+// WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.
 type WindowsEventsTargetConfig struct {
 
 	// LCID (Locale ID) for event rendering
@@ -192,7 +193,6 @@ type WindowsEventsTargetConfig struct {
 	// The bookmark contains the current position of the target in XML.
 	// When restarting or rollingout promtail, the target will continue to scrape events where it left off based on the bookmark position.
 	// The position is updated after each entry processed.
-	// Empty value will start the target to read only future events.
 	BoorkmarkPath string `yaml:"bookmark_path"`
 
 	// PollInterval is the interval at which we're looking if new events are available. By default the target will check every 3seconds.
