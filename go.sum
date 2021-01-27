@@ -769,8 +769,6 @@ github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645/go
 github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed h1:5upAirOpQc1Q53c0bnx2ufif5kANL7bfZWcc6VJWJd8=
 github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed/go.mod h1:tMWxXQ9wFIaZeTI9F+hmhFiGpFmhOHzyShyFUhRm0H4=
 github.com/harlow/kinesis-consumer v0.3.1-0.20181230152818-2f58b136fee0/go.mod h1:dk23l2BruuUzRP8wbybQbPn3J7sZga2QHICCeaEy5rQ=
-github.com/hashicorp/consul v1.2.1 h1:66MuuTfV4aOXTQM7cjAIKUWFOITSk4XZlMhE09ymVbg=
-github.com/hashicorp/consul v1.2.1/go.mod h1:mFrjN1mfidgJfYP1xrJCF+AfRhr6Eaqhb2+sfyn/OOI=
 github.com/hashicorp/consul v1.5.1 h1:p7tRmQ4m3ZMYkGQkuyjLXKbdU1weeumgZFqZOvw7o4c=
 github.com/hashicorp/consul v1.5.1/go.mod h1:QsmgXh2YA9Njv6y3/FHXqHYhsMye++3oBoAZ6SR8R8I=
 github.com/hashicorp/consul/api v1.1.0/go.mod h1:VmuI/Lkw1nC05EYQWNKwWGbkg+FbDBtguAZLlVdkD9Q=
