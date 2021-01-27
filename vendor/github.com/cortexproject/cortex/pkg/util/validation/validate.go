@@ -33,7 +33,7 @@ const (
 	errInvalidLabel       = "sample invalid label: %.200q metric %.200q"
 	errLabelNameTooLong   = "label name too long: %.200q metric %.200q"
 	errLabelValueTooLong  = "label value too long: %.200q metric %.200q"
-	errTooManyLabels      = "sample for '%s' has %d label names; limit %d"
+	errTooManyLabels      = "series has too many labels (actual: %d, limit: %d) series: '%s'"
 	errTooOld             = "sample for '%s' has timestamp too old: %d"
 	errTooNew             = "sample for '%s' has timestamp too new: %d"
 	errDuplicateLabelName = "duplicate label name: %.200q metric %.200q"
@@ -56,6 +56,9 @@ const (
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited = "rate_limited"
+
+	// Too many HA clusters is one of the reasons for discarding samples.
+	TooManyHAClusters = "too_many_ha_clusters"
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -129,7 +132,7 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelA
 	numLabelNames := len(ls)
 	if numLabelNames > cfg.MaxLabelNamesPerSeries(userID) {
 		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, client.FromLabelAdaptersToMetric(ls).String(), numLabelNames, cfg.MaxLabelNamesPerSeries(userID))
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, numLabelNames, cfg.MaxLabelNamesPerSeries(userID), client.FromLabelAdaptersToMetric(ls).String())
 	}
 
 	maxLabelNameLength := cfg.MaxLabelNameLength(userID)
@@ -179,7 +182,7 @@ type MetadataValidationConfig interface {
 
 // ValidateMetadata returns an err if a metric metadata is invalid.
 func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *client.MetricMetadata) error {
-	if cfg.EnforceMetadataMetricName(userID) && metadata.MetricName == "" {
+	if cfg.EnforceMetadataMetricName(userID) && metadata.GetMetricFamilyName() == "" {
 		DiscardedMetadata.WithLabelValues(missingMetricName, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataMissingMetricName)
 	}
@@ -188,10 +191,10 @@ func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *cli
 	var reason string
 	var cause string
 	var metadataType string
-	if len(metadata.MetricName) > maxMetadataValueLength {
+	if len(metadata.GetMetricFamilyName()) > maxMetadataValueLength {
 		metadataType = typeMetricName
 		reason = metricNameTooLong
-		cause = metadata.MetricName
+		cause = metadata.GetMetricFamilyName()
 	} else if len(metadata.Help) > maxMetadataValueLength {
 		metadataType = typeHelp
 		reason = helpTooLong
@@ -204,7 +207,7 @@ func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *cli
 
 	if reason != "" {
 		DiscardedMetadata.WithLabelValues(reason, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataTooLong, metadataType, cause, metadata.MetricName)
+		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataTooLong, metadataType, cause, metadata.GetMetricFamilyName())
 	}
 
 	return nil

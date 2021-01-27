@@ -73,7 +73,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateEntry(tt.userID, testStreamLabels, tt.entry)
+			err = v.ValidateEntry(v.getValidationContextFor(tt.userID), testStreamLabels, tt.entry)
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -151,7 +151,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(tt.userID, mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})
+			err = v.ValidateLabels(v.getValidationContextFor(tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})
 			assert.Equal(t, tt.expected, err)
 		})
 	}

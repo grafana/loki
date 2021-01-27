@@ -137,8 +137,6 @@ Many nascent projects, apps, or even companies may not have a metrics backend ye
 
 We don't always control the source code of applications we run. Think load balancers and the myriad components (both open source and closed third-party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively? Alerting based on logs is a great answer for these problems.
 
-For a sneak peek of how to combine this with the upcoming LogQL v2 functionality, take a look at Ward Bekker's video [Grafana Loki sneak peek: Generate Ad-hoc metrics from your NGINX Logs](https://www.youtube.com/watch?v=RwQlR3D4Km4) which builds a robust nginx monitoring dashboard entirely from nginx logs.
-
 ### Event alerting
 
 Sometimes you want to know whether _any_ instance of something has occurred. Alerting based on logs can be a great way to handle this, such as finding examples of leaked authentication credentials:
@@ -160,7 +158,7 @@ Another great use case is alerting on high cardinality sources. These are things
 
 Creating these alerts in LogQL is attractive because these metrics can be extracted at _query time_, meaning we don't suffer the cardinality explosion in our metrics store.
 
-> **Note:** To really take advantage of this, we'll need some features from the upcoming LogQL v2 language. Stay tuned.
+> **Note** As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m]))`
 
 ## Interacting with the Ruler
 
@@ -279,7 +277,6 @@ There are a few things coming to increase the robustness of this service. In no 
 
 - Recording rules.
 - Backend metric stores adapters for generated alert and recording rule data. The first will likely be Cortex, as Loki is built atop it.
-- Introduce LogQL v2.
 
 ## Misc Details: Metrics backends vs in-memory
 

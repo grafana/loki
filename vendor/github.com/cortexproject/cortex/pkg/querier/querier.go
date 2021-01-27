@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -14,7 +15,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/user"
+	"github.com/thanos-io/thanos/pkg/strutil"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -23,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -39,6 +42,7 @@ type Config struct {
 	IngesterStreaming    bool          `yaml:"ingester_streaming"`
 	MaxSamples           int           `yaml:"max_samples"`
 	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+	QueryStoreForLabels  bool          `yaml:"query_store_for_labels_enabled"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
 	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
@@ -71,6 +75,7 @@ type Config struct {
 var (
 	errBadLookbackConfigs                             = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
 	errShuffleShardingLookbackLessThanQueryStoreAfter = errors.New("the shuffle-sharding lookback period should be greater or equal than the configured 'query store after'")
+	errEmptyTimeRange                                 = errors.New("empty time range")
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -83,9 +88,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", true, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Query long-term store for series, label values and label names APIs. Works only with blocks engine.")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
-	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
+	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
 	f.StringVar(&cfg.StoreGatewayAddresses, "querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
@@ -169,7 +175,13 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
 	})
-	return &sampleAndChunkQueryable{lazyQueryable}, engine
+	return NewSampleAndChunkQueryable(lazyQueryable), engine
+}
+
+// NewSampleAndChunkQueryable creates a SampleAndChunkQueryable from a
+// Queryable with a ChunkQueryable stub, that errors once it get's called.
+func NewSampleAndChunkQueryable(q storage.Queryable) storage.SampleAndChunkQueryable {
+	return &sampleAndChunkQueryable{q}
 }
 
 type sampleAndChunkQueryable struct {
@@ -204,24 +216,27 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		now := time.Now()
 
-		if cfg.MaxQueryIntoFuture > 0 {
-			maxQueryTime := util.TimeToMillis(now.Add(cfg.MaxQueryIntoFuture))
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
 
-			if mint > maxQueryTime {
-				return storage.NoopQuerier(), nil
-			}
-			if maxt > maxQueryTime {
-				maxt = maxQueryTime
-			}
+		mint, maxt, err = validateQueryTimeRange(ctx, userID, mint, maxt, limits, cfg.MaxQueryIntoFuture)
+		if err == errEmptyTimeRange {
+			return storage.NoopQuerier(), nil
+		} else if err != nil {
+			return nil, err
 		}
 
 		q := querier{
-			ctx:              ctx,
-			mint:             mint,
-			maxt:             maxt,
-			chunkIterFn:      chunkIterFn,
-			tombstonesLoader: tombstonesLoader,
-			limits:           limits,
+			ctx:                 ctx,
+			mint:                mint,
+			maxt:                maxt,
+			chunkIterFn:         chunkIterFn,
+			tombstonesLoader:    tombstonesLoader,
+			limits:              limits,
+			maxQueryIntoFuture:  cfg.MaxQueryIntoFuture,
+			queryStoreForLabels: cfg.QueryStoreForLabels,
 		}
 
 		dqr, err := distributor.Querier(ctx, mint, maxt)
@@ -263,8 +278,10 @@ type querier struct {
 	ctx         context.Context
 	mint, maxt  int64
 
-	tombstonesLoader *purger.TombstonesLoader
-	limits           *validation.Overrides
+	tombstonesLoader    *purger.TombstonesLoader
+	limits              *validation.Overrides
+	maxQueryIntoFuture  time.Duration
+	queryStoreForLabels bool
 }
 
 // Select implements storage.Querier interface.
@@ -283,22 +300,41 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	// querying the long-term storage.
 	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
-	if sp == nil || sp.Func == "series" {
+	if (sp == nil || sp.Func == "series") && !q.queryStoreForLabels {
+		// In this case, the query time range has already been validated when the querier has been
+		// created.
 		return q.metadataQuerier.Select(true, sp, matchers...)
 	}
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
 
-	// Validate query time range.
-	startTime := model.Time(sp.Start)
-	endTime := model.Time(sp.End)
+	// Validate query time range. Even if the time range has already been validated when we created
+	// the querier, we need to check it again here because the time range specified in hints may be
+	// different.
+	startMs, endMs, err := validateQueryTimeRange(ctx, userID, sp.Start, sp.End, q.limits, q.maxQueryIntoFuture)
+	if err == errEmptyTimeRange {
+		return storage.NoopSeriesSet()
+	} else if err != nil {
+		return storage.ErrSeriesSet(err)
+	}
+
+	// The time range may have been manipulated during the validation,
+	// so we make sure changes are reflected back to hints.
+	sp.Start = startMs
+	sp.End = endMs
+
+	startTime := model.Time(startMs)
+	endTime := model.Time(endMs)
+
+	// Validate query time range. This validation should be done only for instant / range queries and
+	// NOT for metadata queries (series, labels) because the query-frontend doesn't support splitting
+	// of such queries.
 	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
 		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
 		return storage.ErrSeriesSet(limitErr)
-
 	}
 
 	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, startTime, endTime)
@@ -346,11 +382,91 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 // LabelsValue implements storage.Querier.
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	return q.metadataQuerier.LabelValues(name)
+	if !q.queryStoreForLabels {
+		return q.metadataQuerier.LabelValues(name)
+	}
+
+	if len(q.queriers) == 1 {
+		return q.queriers[0].LabelValues(name)
+	}
+
+	var (
+		g, _     = errgroup.WithContext(q.ctx)
+		sets     = [][]string{}
+		warnings = storage.Warnings(nil)
+
+		resMtx sync.Mutex
+	)
+
+	for _, querier := range q.queriers {
+		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
+		querier := querier
+		g.Go(func() error {
+			// NB: Values are sorted in Cortex already.
+			myValues, myWarnings, err := querier.LabelValues(name)
+			if err != nil {
+				return err
+			}
+
+			resMtx.Lock()
+			sets = append(sets, myValues)
+			warnings = append(warnings, myWarnings...)
+			resMtx.Unlock()
+
+			return nil
+		})
+	}
+
+	err := g.Wait()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return strutil.MergeSlices(sets...), warnings, nil
 }
 
 func (q querier) LabelNames() ([]string, storage.Warnings, error) {
-	return q.metadataQuerier.LabelNames()
+	if !q.queryStoreForLabels {
+		return q.metadataQuerier.LabelNames()
+	}
+
+	if len(q.queriers) == 1 {
+		return q.queriers[0].LabelNames()
+	}
+
+	var (
+		g, _     = errgroup.WithContext(q.ctx)
+		sets     = [][]string{}
+		warnings = storage.Warnings(nil)
+
+		resMtx sync.Mutex
+	)
+
+	for _, querier := range q.queriers {
+		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
+		querier := querier
+		g.Go(func() error {
+			// NB: Names are sorted in Cortex already.
+			myNames, myWarnings, err := querier.LabelNames()
+			if err != nil {
+				return err
+			}
+
+			resMtx.Lock()
+			sets = append(sets, myNames)
+			warnings = append(warnings, myWarnings...)
+			resMtx.Unlock()
+
+			return nil
+		})
+	}
+
+	err := g.Wait()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return strutil.MergeSlices(sets...), warnings, nil
 }
 
 func (querier) Close() error {
@@ -474,4 +590,44 @@ func UseBeforeTimestampQueryable(queryable storage.Queryable, ts time.Time) Quer
 		Queryable: queryable,
 		ts:        t,
 	}
+}
+
+func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs int64, limits *validation.Overrides, maxQueryIntoFuture time.Duration) (int64, int64, error) {
+	now := model.Now()
+	startTime := model.Time(startMs)
+	endTime := model.Time(endMs)
+
+	// Clamp time range based on max query into future.
+	if maxQueryIntoFuture > 0 && endTime.After(now.Add(maxQueryIntoFuture)) {
+		origEndTime := endTime
+		endTime = now.Add(maxQueryIntoFuture)
+
+		// Make sure to log it in traces to ease debugging.
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "the end time of the query has been manipulated because of the 'max query into future' setting",
+			"original", util.FormatTimeModel(origEndTime),
+			"updated", util.FormatTimeModel(endTime))
+
+		if endTime.Before(startTime) {
+			return 0, 0, errEmptyTimeRange
+		}
+	}
+
+	// Clamp the time range based on the max query lookback.
+	if maxQueryLookback := limits.MaxQueryLookback(userID); maxQueryLookback > 0 && startTime.Before(now.Add(-maxQueryLookback)) {
+		origStartTime := startTime
+		startTime = now.Add(-maxQueryLookback)
+
+		// Make sure to log it in traces to ease debugging.
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
+			"original", util.FormatTimeModel(origStartTime),
+			"updated", util.FormatTimeModel(startTime))
+
+		if endTime.Before(startTime) {
+			return 0, 0, errEmptyTimeRange
+		}
+	}
+
+	return int64(startTime), int64(endTime), nil
 }

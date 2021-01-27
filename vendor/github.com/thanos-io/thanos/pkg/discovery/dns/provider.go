@@ -13,9 +13,10 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
 
+	"github.com/thanos-io/thanos/pkg/discovery/dns/godns"
 	"github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns"
+	"github.com/thanos-io/thanos/pkg/errutil"
 	"github.com/thanos-io/thanos/pkg/extprom"
 )
 
@@ -43,12 +44,12 @@ func (t ResolverType) ToResolver(logger log.Logger) ipLookupResolver {
 	var r ipLookupResolver
 	switch t {
 	case GolangResolverType:
-		r = net.DefaultResolver
+		r = &godns.Resolver{Resolver: net.DefaultResolver}
 	case MiekgdnsResolverType:
 		r = &miekgdns.Resolver{ResolvConf: miekgdns.DefaultResolvConfPath}
 	default:
 		level.Warn(logger).Log("msg", "no such resolver type, defaulting to golang", "type", t)
-		r = net.DefaultResolver
+		r = &godns.Resolver{Resolver: net.DefaultResolver}
 	}
 	return r
 }
@@ -108,10 +109,10 @@ func GetQTypeName(addr string) (qtype string, name string) {
 
 // Resolve stores a list of provided addresses or their DNS records if requested.
 // Addresses prefixed with `dns+` or `dnssrv+` will be resolved through respective DNS lookup (A/AAAA or SRV).
-// defaultPort is used for non-SRV records when a port is not supplied.
+// For non-SRV records, it will return an error if a port is not supplied.
 func (p *Provider) Resolve(ctx context.Context, addrs []string) error {
 	resolvedAddrs := map[string][]string{}
-	errs := tsdberrors.MultiError{}
+	errs := errutil.MultiError{}
 
 	for _, addr := range addrs {
 		var resolved []string

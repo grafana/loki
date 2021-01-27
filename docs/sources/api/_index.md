@@ -37,8 +37,9 @@ The HTTP API includes the following endpoints:
     - [Examples](#examples-8)
   - [`GET /ready`](#get-ready)
   - [`POST /flush`](#post-flush)
-  - [`POST /ingester/shutdown`](#post-shutdown)
+  - [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
   - [`GET /metrics`](#get-metrics)
+  - [`GET /config`](#get-config)
   - [Series](#series)
     - [Examples](#examples-9)
   - [Statistics](#statistics)
@@ -67,6 +68,7 @@ These endpoints are exposed by all components:
 
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
+- [`GET /config`](#get-config)
 
 These endpoints are exposed by the querier and the frontend:
 
@@ -95,7 +97,6 @@ These endpoints are exposed by the querier and the frontend:
   - [`POST /api/prom/push`](#post-apiprompush)
     - [Examples](#examples-8)
   - [`GET /ready`](#get-ready)
-  - [`POST /flush`](#post-flush)
   - [`GET /metrics`](#get-metrics)
   - [Series](#series)
     - [Examples](#examples-9)
@@ -108,7 +109,7 @@ While these endpoints are exposed by just the distributor:
 And these endpoints are exposed by just the ingester:
 
 - [`POST /flush`](#post-flush)
-- [`POST /ingester/shutdown`](#post-shutdown)
+- [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
@@ -846,13 +847,13 @@ backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
-## `POST /ingester/shutdown`
+## `POST /ingester/flush_shutdown`
 
-`/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
+`/ingester/flush_shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
 This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,
 but instead flushed to our chunk backend.
 
-In microservices mode, the `/ingester/shutdown` endpoint is exposed by the ingester.
+In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
 
 ## `GET /metrics`
 
@@ -861,6 +862,14 @@ In microservices mode, the `/ingester/shutdown` endpoint is exposed by the inges
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
+
+## `GET /config`
+
+`/config` exposes the current configuration. The optional `mode` query parameter can be used to
+modify the output. If it has the value `diff` only the differences between the default configuration
+and the current are returned. A value of `defaults` returns the default configuration.
+
+In microservices mode, the `/config` endpoint is exposed by all components.
 
 ## Series
 

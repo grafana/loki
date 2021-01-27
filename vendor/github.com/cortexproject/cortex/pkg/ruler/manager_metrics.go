@@ -1,8 +1,6 @@
 package ruler
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -11,27 +9,25 @@ import (
 // ManagerMetrics aggregates metrics exported by the Prometheus
 // rules package and returns them as Cortex metrics
 type ManagerMetrics struct {
-	// Maps userID -> registry
-	regsMu sync.Mutex
-	regs   map[string]*prometheus.Registry
+	regs *util.UserRegistries
 
-	EvalDuration        *prometheus.Desc
-	IterationDuration   *prometheus.Desc
-	IterationsMissed    *prometheus.Desc
-	IterationsScheduled *prometheus.Desc
-	EvalTotal           *prometheus.Desc
-	EvalFailures        *prometheus.Desc
-	GroupInterval       *prometheus.Desc
-	GroupLastEvalTime   *prometheus.Desc
-	GroupLastDuration   *prometheus.Desc
-	GroupRules          *prometheus.Desc
+	EvalDuration         *prometheus.Desc
+	IterationDuration    *prometheus.Desc
+	IterationsMissed     *prometheus.Desc
+	IterationsScheduled  *prometheus.Desc
+	EvalTotal            *prometheus.Desc
+	EvalFailures         *prometheus.Desc
+	GroupInterval        *prometheus.Desc
+	GroupLastEvalTime    *prometheus.Desc
+	GroupLastDuration    *prometheus.Desc
+	GroupRules           *prometheus.Desc
+	GroupLastEvalSamples *prometheus.Desc
 }
 
 // NewManagerMetrics returns a ManagerMetrics struct
 func NewManagerMetrics() *ManagerMetrics {
 	return &ManagerMetrics{
-		regs:   map[string]*prometheus.Registry{},
-		regsMu: sync.Mutex{},
+		regs: util.NewUserRegistries(),
 
 		EvalDuration: prometheus.NewDesc(
 			"cortex_prometheus_rule_evaluation_duration_seconds",
@@ -93,36 +89,23 @@ func NewManagerMetrics() *ManagerMetrics {
 			[]string{"user", "rule_group"},
 			nil,
 		),
+		GroupLastEvalSamples: prometheus.NewDesc(
+			"cortex_prometheus_last_evaluation_samples",
+			"The number of samples returned during the last rule group evaluation.",
+			[]string{"user", "rule_group"},
+			nil,
+		),
 	}
 }
 
-// AddUserRegistry adds a Prometheus registry to the struct
+// AddUserRegistry adds a user-specific Prometheus registry.
 func (m *ManagerMetrics) AddUserRegistry(user string, reg *prometheus.Registry) {
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-
-	m.regs[user] = reg
+	m.regs.AddUserRegistry(user, reg)
 }
 
-// DeleteUserRegistry removes user-specific Prometheus registry.
-func (m *ManagerMetrics) DeleteUserRegistry(user string) {
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-
-	delete(m.regs, user)
-}
-
-// Registries returns a map of prometheus registries managed by the struct
-func (m *ManagerMetrics) Registries() map[string]*prometheus.Registry {
-	regs := map[string]*prometheus.Registry{}
-
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-	for uid, r := range m.regs {
-		regs[uid] = r
-	}
-
-	return regs
+// RemoveUserRegistry removes user-specific Prometheus registry.
+func (m *ManagerMetrics) RemoveUserRegistry(user string) {
+	m.regs.RemoveUserRegistry(user, true)
 }
 
 // Describe implements the Collector interface
@@ -137,14 +120,15 @@ func (m *ManagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.GroupLastEvalTime
 	out <- m.GroupLastDuration
 	out <- m.GroupRules
+	out <- m.GroupLastEvalSamples
 }
 
 // Collect implements the Collector interface
 func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
-	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.Registries())
+	data := m.regs.BuildMetricFamiliesPerUser()
 
 	// WARNING: It is important that all metrics generated in this method are "Per User".
-	// Thanks to that we can actually *remove* metrics for given user (see DeleteUserRegistry).
+	// Thanks to that we can actually *remove* metrics for given user (see RemoveUserRegistry).
 	// If same user is later re-added, all metrics will start from 0, which is fine.
 
 	data.SendSumOfSummariesPerUser(out, m.EvalDuration, "prometheus_rule_evaluation_duration_seconds")
@@ -159,4 +143,5 @@ func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupLastEvalTime, "prometheus_rule_group_last_evaluation_timestamp_seconds", "rule_group")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupLastDuration, "prometheus_rule_group_last_duration_seconds", "rule_group")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupRules, "prometheus_rule_group_rules", "rule_group")
+	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupLastEvalSamples, "prometheus_rule_group_last_evaluation_samples", "rule_group")
 }

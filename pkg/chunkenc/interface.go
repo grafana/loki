@@ -36,6 +36,8 @@ const (
 	EncLZ4_256k
 	EncLZ4_1M
 	EncLZ4_4M
+	EncFlate
+	EncZstd
 )
 
 var supportedEncoding = []Encoding{
@@ -46,6 +48,8 @@ var supportedEncoding = []Encoding{
 	EncLZ4_256k,
 	EncLZ4_1M,
 	EncLZ4_4M,
+	EncFlate,
+	EncZstd,
 }
 
 func (e Encoding) String() string {
@@ -66,6 +70,10 @@ func (e Encoding) String() string {
 		return "lz4"
 	case EncSnappy:
 		return "snappy"
+	case EncFlate:
+		return "flate"
+	case EncZstd:
+		return "zstd"
 	default:
 		return "unknown"
 	}

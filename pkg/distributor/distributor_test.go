@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -110,6 +111,53 @@ func Test_SortLabelsOnPush(t *testing.T) {
 	_, err := d.Push(ctx, request)
 	require.NoError(t, err)
 	require.Equal(t, `{a="b", buzz="f"}`, ingester.pushed[0].Streams[0].Labels)
+}
+
+func Benchmark_SortLabelsOnPush(b *testing.B) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.EnforceMetricName = false
+	ingester := &mockIngester{}
+	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	request := makeWriteRequest(10, 10)
+	vCtx := d.validator.getValidationContextFor("123")
+	for n := 0; n < b.N; n++ {
+		stream := request.Streams[0]
+		stream.Labels = `{buzz="f", a="b"}`
+		_, err := d.parseStreamLabels(vCtx, stream.Labels, &stream)
+		if err != nil {
+			panic("parseStreamLabels fail,err:" + err.Error())
+		}
+	}
+}
+
+func Benchmark_Push(b *testing.B) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionBurstSizeMB = math.MaxInt32
+	limits.CardinalityLimit = math.MaxInt32
+	limits.IngestionRateMB = math.MaxInt32
+	limits.EnforceMetricName = false
+	limits.MaxLineSize = math.MaxInt32
+	limits.RejectOldSamples = true
+	limits.RejectOldSamplesMaxAge = 24 * time.Hour
+	limits.CreationGracePeriod = 24 * time.Hour
+	ingester := &mockIngester{}
+	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	request := makeWriteRequest(100000, 100)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+
+		_, err := d.Push(ctx, request)
+		if err != nil {
+			require.NoError(b, err)
+		}
+	}
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
@@ -287,7 +335,7 @@ func makeWriteRequest(lines int, size int) *logproto.PushRequest {
 		line = line[:size]
 
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
-			Timestamp: time.Unix(0, 0),
+			Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond),
 			Line:      line,
 		})
 	}
@@ -319,7 +367,7 @@ type mockRing struct {
 	replicationFactor uint32
 }
 
-func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (ring.ReplicationSet, error) {
+func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	result := ring.ReplicationSet{
 		MaxErrors: 1,
 		Ingesters: buf[:0],
@@ -331,7 +379,11 @@ func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (r
 	return result, nil
 }
 
-func (r mockRing) GetAll(op ring.Operation) (ring.ReplicationSet, error) {
+func (r mockRing) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+	return r.GetReplicationSetForOperation(op)
+}
+
+func (r mockRing) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
 	return ring.ReplicationSet{
 		Ingesters: r.ingesters,
 		MaxErrors: 1,

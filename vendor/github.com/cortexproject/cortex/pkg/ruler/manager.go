@@ -109,7 +109,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
-			r.userManagerMetrics.DeleteUserRegistry(userID)
+			r.userManagerMetrics.RemoveUserRegistry(userID)
 			level.Info(r.logger).Log("msg", "deleting rule manager", "user", userID)
 		}
 	}
@@ -206,7 +206,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 		},
 	}, log.With(r.logger, "user", userID))
 
-	go n.run()
+	n.run()
 
 	// This should never fail, unless there's a programming mistake.
 	if err := n.applyConfig(r.notifierCfg); err != nil {

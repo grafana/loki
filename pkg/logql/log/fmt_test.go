@@ -290,3 +290,22 @@ func Test_substring(t *testing.T) {
 		})
 	}
 }
+
+func TestLineFormatter_RequiredLabelNames(t *testing.T) {
+	tests := []struct {
+		fmt  string
+		want []string
+	}{
+		{`{{.foo}} and {{.bar}}`, []string{"foo", "bar"}},
+		{`{{ .foo | ToUpper | .buzz }} and {{.bar}}`, []string{"foo", "buzz", "bar"}},
+		{`{{ regexReplaceAllLiteral "(p)" .foo "${1}" }}`, []string{"foo"}},
+		{`{{ if  .foo | hasSuffix "Ip" }} {{.bar}} {{end}}-{{ if  .foo | hasSuffix "pw"}}no{{end}}`, []string{"foo", "bar"}},
+		{`{{with .foo}}{{printf "%q" .}} {{end}}`, []string{"foo"}},
+		{`{{with .foo}}{{printf "%q" .}} {{else}} {{ .buzz | lower }} {{end}}`, []string{"foo", "buzz"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.fmt, func(t *testing.T) {
+			require.Equal(t, tt.want, newMustLineFormatter(tt.fmt).RequiredLabelNames())
+		})
+	}
+}

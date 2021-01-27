@@ -13,7 +13,7 @@ func (r *Ruler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.De
 		tokens = instanceDesc.GetTokens()
 	}
 
-	_, takenTokens := ringDesc.TokensFor(instanceID)
+	takenTokens := ringDesc.GetTokens()
 	newTokens := ring.GenerateTokens(r.cfg.Ring.NumTokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.

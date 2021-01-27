@@ -22,6 +22,10 @@ type RingConfig struct {
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
 	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
 
+	// Wait ring stability.
+	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
+	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration"`
+
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
 	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
@@ -44,6 +48,10 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix("compactor.ring.", "collectors/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, "compactor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "compactor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which compactors are considered unhealthy within the ring.")
+
+	// Wait stability flags.
+	f.DurationVar(&cfg.WaitStabilityMinDuration, "compactor.ring.wait-stability-min-duration", time.Minute, "Minimum time to wait for ring stability at startup. 0 to disable.")
+	f.DurationVar(&cfg.WaitStabilityMaxDuration, "compactor.ring.wait-stability-max-duration", 5*time.Minute, "Maximum time to wait for ring stability at startup. If the compactor ring keep changing after this period of time, the compactor will start anyway.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -71,12 +79,13 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 
 	// Configure lifecycler
 	lc.RingConfig = rc
+	lc.RingConfig.SubringCacheDisabled = true
 	lc.ListenPort = cfg.ListenPort
 	lc.Addr = cfg.InstanceAddr
 	lc.Port = cfg.InstancePort
 	lc.ID = cfg.InstanceID
 	lc.InfNames = cfg.InstanceInterfaceNames
-	lc.SkipUnregister = false
+	lc.UnregisterOnShutdown = true
 	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
 	lc.ObservePeriod = 0
 	lc.JoinAfter = 0

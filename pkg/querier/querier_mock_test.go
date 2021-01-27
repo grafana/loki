@@ -279,7 +279,6 @@ func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectLogParams) ([
 }
 
 func (s *storeMock) Stop() {
-
 }
 
 // readRingMock is a mocked version of a ReadRing, used in querier unit tests
@@ -303,7 +302,7 @@ func (r *readRingMock) Describe(ch chan<- *prometheus.Desc) {
 func (r *readRingMock) Collect(ch chan<- prometheus.Metric) {
 }
 
-func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (ring.ReplicationSet, error) {
+func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
@@ -319,7 +318,11 @@ func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.Replic
 	return []ring.ReplicationSet{r.replicationSet}, nil
 }
 
-func (r *readRingMock) GetAll(op ring.Operation) (ring.ReplicationSet, error) {
+func (r *readRingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 

@@ -778,7 +778,7 @@
           ]
         },
         "delete": {
-          "description": "Marks the Project identified by the specified `project_id` (for example, `my-project-123`) for deletion. This method will only affect the Project if it has a lifecycle state of ACTIVE. This method changes the Project's lifecycle state from ACTIVE to DELETE_REQUESTED. The deletion starts at an unspecified time, at which point the Project is no longer accessible. Until the deletion completes, you can check the lifecycle state checked by retrieving the Project with GetProject, and the Project remains visible to ListProjects. However, you cannot update the project. After the deletion completes, the Project is not retrievable by the GetProject and ListProjects methods. The caller must have modify permissions for this Project.",
+          "description": "Marks the Project identified by the specified `project_id` (for example, `my-project-123`) for deletion. This method will only affect the Project if it has a lifecycle state of ACTIVE. This method changes the Project's lifecycle state from ACTIVE to DELETE_REQUESTED. The deletion starts at an unspecified time, at which point the Project is no longer accessible. Until the deletion completes, you can check the lifecycle state checked by retrieving the Project with GetProject, and the Project remains visible to ListProjects. However, you cannot update the project. After the deletion completes, the Project is not retrievable by the GetProject and ListProjects methods. The caller must have delete permissions for this Project.",
           "flatPath": "v1/projects/{projectId}",
           "httpMethod": "DELETE",
           "id": "cloudresourcemanager.projects.delete",
@@ -1115,7 +1115,7 @@
           ]
         },
         "undelete": {
-          "description": "Restores the Project identified by the specified `project_id` (for example, `my-project-123`). You can only use this method for a Project that has a lifecycle state of DELETE_REQUESTED. After deletion starts, the Project cannot be restored. The caller must have modify permissions for this Project.",
+          "description": "Restores the Project identified by the specified `project_id` (for example, `my-project-123`). You can only use this method for a Project that has a lifecycle state of DELETE_REQUESTED. After deletion starts, the Project cannot be restored. The caller must have undelete permissions for this Project.",
           "flatPath": "v1/projects/{projectId}:undelete",
           "httpMethod": "POST",
           "id": "cloudresourcemanager.projects.undelete",
@@ -1171,7 +1171,7 @@
       }
     }
   },
-  "revision": "20200907",
+  "revision": "20201027",
   "rootUrl": "https://cloudresourcemanager.googleapis.com/",
   "schemas": {
     "Ancestor": {
@@ -1238,7 +1238,6 @@
       "id": "Binding",
       "properties": {
         "bindingId": {
-          "description": "A client-specified ID for this binding. Expected to be globally unique to support the internal bindings-by-ID API.",
           "type": "string"
         },
         "condition": {
@@ -1287,6 +1286,72 @@
         "etag": {
           "description": "The current version, for concurrency control. Not sending an `etag` will cause the `Policy` to be cleared blindly.",
           "format": "byte",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CloudresourcemanagerGoogleCloudResourcemanagerV2alpha1FolderOperation": {
+      "description": "Metadata describing a long running folder operation",
+      "id": "CloudresourcemanagerGoogleCloudResourcemanagerV2alpha1FolderOperation",
+      "properties": {
+        "destinationParent": {
+          "description": "The resource name of the folder or organization we are either creating the folder under or moving the folder to.",
+          "type": "string"
+        },
+        "displayName": {
+          "description": "The display name of the folder.",
+          "type": "string"
+        },
+        "operationType": {
+          "description": "The type of this operation.",
+          "enum": [
+            "OPERATION_TYPE_UNSPECIFIED",
+            "CREATE",
+            "MOVE"
+          ],
+          "enumDescriptions": [
+            "Operation type not specified.",
+            "A create folder operation.",
+            "A move folder operation."
+          ],
+          "type": "string"
+        },
+        "sourceParent": {
+          "description": "The resource name of the folder's parent. Only applicable when the operation_type is MOVE.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CloudresourcemanagerGoogleCloudResourcemanagerV2beta1FolderOperation": {
+      "description": "Metadata describing a long running folder operation",
+      "id": "CloudresourcemanagerGoogleCloudResourcemanagerV2beta1FolderOperation",
+      "properties": {
+        "destinationParent": {
+          "description": "The resource name of the folder or organization we are either creating the folder under or moving the folder to.",
+          "type": "string"
+        },
+        "displayName": {
+          "description": "The display name of the folder.",
+          "type": "string"
+        },
+        "operationType": {
+          "description": "The type of this operation.",
+          "enum": [
+            "OPERATION_TYPE_UNSPECIFIED",
+            "CREATE",
+            "MOVE"
+          ],
+          "enumDescriptions": [
+            "Operation type not specified.",
+            "A create folder operation.",
+            "A move folder operation."
+          ],
+          "type": "string"
+        },
+        "sourceParent": {
+          "description": "The resource name of the folder's parent. Only applicable when the operation_type is MOVE.",
           "type": "string"
         }
       },

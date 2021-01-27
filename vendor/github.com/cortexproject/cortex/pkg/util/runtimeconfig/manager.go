@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -74,18 +74,16 @@ func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer
 		}, []string{"sha256"}),
 	}
 
-	mgr.Service = services.NewBasicService(mgr.start, mgr.loop, mgr.stop)
+	mgr.Service = services.NewBasicService(mgr.starting, mgr.loop, mgr.stopping)
 	return &mgr, nil
 }
 
-func (om *Manager) start(_ context.Context) error {
-	if om.cfg.LoadPath != "" {
-		if err := om.loadConfig(); err != nil {
-			// Log but don't stop on error - we don't want to halt all ingesters because of a typo
-			level.Error(util.Logger).Log("msg", "failed to load config", "err", err)
-		}
+func (om *Manager) starting(_ context.Context) error {
+	if om.cfg.LoadPath == "" {
+		return nil
 	}
-	return nil
+
+	return errors.Wrap(om.loadConfig(), "failed to load runtime config")
 }
 
 // CreateListenerChannel creates new channel that can be used to receive new config values.
@@ -148,14 +146,14 @@ func (om *Manager) loadConfig() error {
 	buf, err := ioutil.ReadFile(om.cfg.LoadPath)
 	if err != nil {
 		om.configLoadSuccess.Set(0)
-		return err
+		return errors.Wrap(err, "read file")
 	}
 	hash := sha256.Sum256(buf)
 
 	cfg, err := om.cfg.Loader(bytes.NewReader(buf))
 	if err != nil {
 		om.configLoadSuccess.Set(0)
-		return err
+		return errors.Wrap(err, "load file")
 	}
 	om.configLoadSuccess.Set(1)
 
@@ -190,7 +188,7 @@ func (om *Manager) callListeners(newValue interface{}) {
 }
 
 // Stop stops the Manager
-func (om *Manager) stop(_ error) error {
+func (om *Manager) stopping(_ error) error {
 	om.listenersMtx.Lock()
 	defer om.listenersMtx.Unlock()
 

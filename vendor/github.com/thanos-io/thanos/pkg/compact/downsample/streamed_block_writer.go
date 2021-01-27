@@ -15,11 +15,11 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/errutil"
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
 
@@ -61,7 +61,7 @@ func NewStreamedBlockWriter(
 	// We should close any opened Closer up to an error.
 	defer func() {
 		if err != nil {
-			var merr tsdberrors.MultiError
+			var merr errutil.MultiError
 			merr.Add(err)
 			for _, cl := range closers {
 				merr.Add(cl.Close())
@@ -143,7 +143,7 @@ func (w *streamedBlockWriter) Close() error {
 	}
 	w.finalized = true
 
-	merr := tsdberrors.MultiError{}
+	merr := errutil.MultiError{}
 
 	if w.ignoreFinalize {
 		// Close open file descriptors anyway.
@@ -201,12 +201,12 @@ func (w *streamedBlockWriter) syncDir() (err error) {
 
 // writeMetaFile writes meta file.
 func (w *streamedBlockWriter) writeMetaFile() error {
-	w.meta.Version = metadata.MetaVersion1
+	w.meta.Version = metadata.TSDBVersion1
 	w.meta.Thanos.Source = metadata.CompactorSource
 	w.meta.Thanos.SegmentFiles = block.GetSegmentFiles(w.blockDir)
 	w.meta.Stats.NumChunks = w.totalChunks
 	w.meta.Stats.NumSamples = w.totalSamples
 	w.meta.Stats.NumSeries = w.seriesRefs
 
-	return metadata.Write(w.logger, w.blockDir, &w.meta)
+	return w.meta.WriteToDir(w.logger, w.blockDir)
 }

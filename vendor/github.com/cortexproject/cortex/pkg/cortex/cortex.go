@@ -12,6 +12,9 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/promql"
+	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -20,7 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
@@ -31,22 +33,28 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
+	"github.com/cortexproject/cortex/pkg/frontend"
+	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
+	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	"github.com/cortexproject/cortex/pkg/util/modules"
+	"github.com/cortexproject/cortex/pkg/util/process"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -76,33 +84,35 @@ type Config struct {
 	PrintConfig bool                   `yaml:"-"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
-	API            api.Config               `yaml:"api"`
-	Server         server.Config            `yaml:"server"`
-	Distributor    distributor.Config       `yaml:"distributor"`
-	Querier        querier.Config           `yaml:"querier"`
-	IngesterClient client.Config            `yaml:"ingester_client"`
-	Ingester       ingester.Config          `yaml:"ingester"`
-	Flusher        flusher.Config           `yaml:"flusher"`
-	Storage        storage.Config           `yaml:"storage"`
-	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store"`
-	Schema         chunk.SchemaConfig       `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
-	LimitsConfig   validation.Limits        `yaml:"limits"`
-	Prealloc       client.PreallocConfig    `yaml:"prealloc" doc:"hidden"`
-	Worker         frontend.WorkerConfig    `yaml:"frontend_worker"`
-	Frontend       frontend.Config          `yaml:"frontend"`
-	QueryRange     queryrange.Config        `yaml:"query_range"`
-	TableManager   chunk.TableManagerConfig `yaml:"table_manager"`
-	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	BlocksStorage  tsdb.BlocksStorageConfig `yaml:"blocks_storage"`
-	Compactor      compactor.Config         `yaml:"compactor"`
-	StoreGateway   storegateway.Config      `yaml:"store_gateway"`
-	PurgerConfig   purger.Config            `yaml:"purger"`
+	API              api.Config                      `yaml:"api"`
+	Server           server.Config                   `yaml:"server"`
+	Distributor      distributor.Config              `yaml:"distributor"`
+	Querier          querier.Config                  `yaml:"querier"`
+	IngesterClient   client.Config                   `yaml:"ingester_client"`
+	Ingester         ingester.Config                 `yaml:"ingester"`
+	Flusher          flusher.Config                  `yaml:"flusher"`
+	Storage          storage.Config                  `yaml:"storage"`
+	ChunkStore       chunk.StoreConfig               `yaml:"chunk_store"`
+	Schema           chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
+	LimitsConfig     validation.Limits               `yaml:"limits"`
+	Prealloc         client.PreallocConfig           `yaml:"prealloc" doc:"hidden"`
+	Worker           querier_worker.Config           `yaml:"frontend_worker"`
+	Frontend         frontend.CombinedFrontendConfig `yaml:"frontend"`
+	QueryRange       queryrange.Config               `yaml:"query_range"`
+	TableManager     chunk.TableManagerConfig        `yaml:"table_manager"`
+	Encoding         encoding.Config                 `yaml:"-"` // No yaml for this, it only works with flags.
+	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
+	Compactor        compactor.Config                `yaml:"compactor"`
+	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
+	PurgerConfig     purger.Config                   `yaml:"purger"`
+	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
-	Ruler         ruler.Config                               `yaml:"ruler"`
-	Configs       configs.Config                             `yaml:"configs"`
-	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
-	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
-	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`
+	Ruler          ruler.Config                               `yaml:"ruler"`
+	Configs        configs.Config                             `yaml:"configs"`
+	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
+	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	MemberlistKV   memberlist.KVConfig                        `yaml:"memberlist"`
+	QueryScheduler scheduler.Config                           `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -142,12 +152,14 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
 	c.PurgerConfig.RegisterFlags(f)
+	c.TenantFederation.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
+	c.QueryScheduler.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	f.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
@@ -169,10 +181,10 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Storage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}
-	if err := c.ChunkStore.Validate(); err != nil {
+	if err := c.ChunkStore.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
-	if err := c.Ruler.Validate(c.LimitsConfig); err != nil {
+	if err := c.Ruler.Validate(c.LimitsConfig, log); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
 	if err := c.BlocksStorage.Validate(); err != nil {
@@ -201,6 +213,12 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
+	}
+	if err := c.Compactor.Validate(); err != nil {
+		return errors.Wrap(err, "invalid compactor config")
+	}
+	if err := c.Alertmanager.Validate(); err != nil {
+		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
 	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
@@ -249,21 +267,23 @@ type Cortex struct {
 	ServiceMap    map[string]services.Service
 	ModuleManager *modules.Manager
 
-	API              *api.API
-	Server           *server.Server
-	Ring             *ring.Ring
-	Overrides        *validation.Overrides
-	Distributor      *distributor.Distributor
-	Ingester         *ingester.Ingester
-	Flusher          *flusher.Flusher
-	Store            chunk.Store
-	DeletesStore     *purger.DeleteStore
-	Frontend         *frontend.Frontend
-	TableManager     *chunk.TableManager
-	Cache            cache.Cache
-	RuntimeConfig    *runtimeconfig.Manager
-	Purger           *purger.Purger
-	TombstonesLoader *purger.TombstonesLoader
+	API                      *api.API
+	Server                   *server.Server
+	Ring                     *ring.Ring
+	Overrides                *validation.Overrides
+	Distributor              *distributor.Distributor
+	Ingester                 *ingester.Ingester
+	Flusher                  *flusher.Flusher
+	Store                    chunk.Store
+	DeletesStore             *purger.DeleteStore
+	Frontend                 *frontendv1.Frontend
+	TableManager             *chunk.TableManager
+	RuntimeConfig            *runtimeconfig.Manager
+	Purger                   *purger.Purger
+	TombstonesLoader         *purger.TombstonesLoader
+	QuerierQueryable         prom_storage.SampleAndChunkQueryable
+	QuerierEngine            *promql.Engine
+	QueryFrontendTripperware queryrange.Tripperware
 
 	Ruler        *ruler.Ruler
 	RulerStorage rules.RuleStore
@@ -288,13 +308,23 @@ func New(cfg Config) (*Cortex, error) {
 		os.Exit(0)
 	}
 
+	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
+	if cfg.TenantFederation.Enabled {
+		util.WarnExperimentalUse("tenant-federation")
+		tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	}
+
 	// Don't check auth header on TransferChunks, as we weren't originally
 	// sending it and this could cause transfers to fail on update.
-	//
-	// Also don't check auth /frontend.Frontend/Process, as this handles
-	// queries for multiple users.
 	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
-		[]string{"/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process"})
+		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
+		[]string{
+			"/grpc.health.v1.Health/Check",
+			"/cortex.Ingester/TransferChunks",
+			"/frontend.Frontend/Process",
+			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
+			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
+		})
 
 	cortex := &Cortex{
 		Cfg: cfg,
@@ -318,6 +348,13 @@ func (t *Cortex) setupThanosTracing() {
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
+	// Register custom process metrics.
+	if c, err := process.NewProcessCollector(); err == nil {
+		prometheus.MustRegister(c)
+	} else {
+		level.Warn(util.Logger).Log("msg", "skipped registration of custom process metrics collector", "err", err)
+	}
+
 	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {
 			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
@@ -438,6 +475,6 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 			}
 		}
 
-		http.Error(w, "ready", http.StatusOK)
+		util.WriteTextResponse(w, "ready")
 	}
 }

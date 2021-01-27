@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/require"
@@ -77,7 +78,7 @@ func TestPushTarget(t *testing.T) {
 		BatchWait: 1 * time.Second,
 		BatchSize: 100 * 1024,
 	}
-	pc, err := client.New(ccfg, logger)
+	pc, err := client.New(prometheus.DefaultRegisterer, ccfg, logger)
 	require.NoError(t, err)
 	defer pc.Stop()
 

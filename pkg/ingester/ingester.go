@@ -146,6 +146,10 @@ type Ingester struct {
 
 	limiter *Limiter
 
+	// Denotes whether the ingester should flush on shutdown.
+	// Currently only used by the WAL to signal when the disk is full.
+	flushOnShutdownSwitch *OnceSwitch
+
 	metrics *ingesterMetrics
 
 	wal WAL
@@ -169,15 +173,16 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	metrics := newIngesterMetrics(registerer)
 
 	i := &Ingester{
-		cfg:             cfg,
-		clientConfig:    clientConfig,
-		instances:       map[string]*instance{},
-		store:           store,
-		periodicConfigs: store.GetSchemaConfigs(),
-		loopQuit:        make(chan struct{}),
-		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		tailersQuit:     make(chan struct{}),
-		metrics:         metrics,
+		cfg:                   cfg,
+		clientConfig:          clientConfig,
+		instances:             map[string]*instance{},
+		store:                 store,
+		periodicConfigs:       store.GetSchemaConfigs(),
+		loopQuit:              make(chan struct{}),
+		flushQueues:           make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		tailersQuit:           make(chan struct{}),
+		metrics:               metrics,
+		flushOnShutdownSwitch: &OnceSwitch{},
 	}
 
 	if cfg.WAL.Enabled {
@@ -210,6 +215,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 func (i *Ingester) starting(ctx context.Context) error {
 	if i.cfg.WAL.Recover {
+		// Disable the in process stream limit checks while replaying the WAL
+		i.limiter.Disable()
+		defer i.limiter.Enable()
+
 		recoverer := newIngesterRecoverer(i)
 		defer recoverer.Close()
 
@@ -222,12 +231,20 @@ func (i *Ingester) starting(ctx context.Context) error {
 		}
 		defer checkpointCloser.Close()
 
-		if err = RecoverCheckpoint(checkpointReader, recoverer); err != nil {
+		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
+		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util.Logger).Log("msg", "failed to recover from checkpoint", "elapsed", time.Since(start).String())
-			return err
+			level.Error(util.Logger).Log(
+				"msg",
+				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
+				"elapsed", time.Since(start).String(),
+			)
 		}
-		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "elapsed", time.Since(start).String())
+		level.Info(util.Logger).Log(
+			"msg", "recovered WAL checkpoint recovery finished",
+			"elapsed", time.Since(start).String(),
+			"errors", checkpointRecoveryErr != nil,
+		)
 
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
@@ -236,16 +253,24 @@ func (i *Ingester) starting(ctx context.Context) error {
 		}
 		defer segmentCloser.Close()
 
-		if err = RecoverWAL(segmentReader, recoverer); err != nil {
+		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
+		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
-			level.Error(util.Logger).Log("msg", "failed to recover from WAL segments", "elapsed", time.Since(start).String())
-			return err
+			level.Error(util.Logger).Log(
+				"msg",
+				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
+				"elapsed", time.Since(start).String(),
+			)
 		}
-		level.Info(util.Logger).Log("msg", "recovered from WAL segments", "elapsed", time.Since(start).String())
+		level.Info(util.Logger).Log(
+			"msg", "WAL segment recovery finished",
+			"elapsed", time.Since(start).String(),
+			"errors", segmentRecoveryErr != nil,
+		)
 
 		elapsed := time.Since(start)
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
-		level.Info(util.Logger).Log("msg", "recovery completed", "time", elapsed.String())
+		level.Info(util.Logger).Log("msg", "recovery finished", "time", elapsed.String())
 
 	}
 
@@ -299,6 +324,10 @@ func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
 	var errs errUtil.MultiError
 	errs.Add(i.wal.Stop())
+
+	if i.flushOnShutdownSwitch.Get() {
+		i.lifecycler.SetFlushOnShutdown(true)
+	}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
 	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
@@ -364,7 +393,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.limiter, i.wal, i.metrics)
+		inst = newInstance(&i.cfg, instanceID, i.limiter, i.wal, i.metrics, i.flushOnShutdownSwitch)
 		i.instances[instanceID] = inst
 	}
 	return inst
@@ -637,7 +666,9 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance.addNewTailer(tailer)
+	if err := instance.addNewTailer(tailer); err != nil {
+		return err
+	}
 	tailer.loop()
 	return nil
 }

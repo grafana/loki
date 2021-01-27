@@ -113,14 +113,11 @@ outer:
 
 		for _, s := range ref.Entries {
 			buf.PutVarint64(s.Timestamp.UnixNano() - first)
-			// denote line length
-			byteLine := []byte(s.Line)
-			buf.PutUvarint(len(byteLine))
-			buf.PutBytes(byteLine)
+			buf.PutUvarint(len(s.Line))
+			buf.PutString(s.Line)
 		}
 	}
 	return buf.Get()
-
 }
 
 func decodeEntries(b []byte, rec *WALRecord) error {
@@ -137,6 +134,7 @@ func decodeEntries(b []byte, rec *WALRecord) error {
 		}
 
 		nEntries := dec.Uvarint()
+		refEntries.Entries = make([]logproto.Entry, 0, nEntries)
 		rem := nEntries
 		for ; dec.Err() == nil && rem > 0; rem-- {
 			timeOffset := dec.Varint64()
@@ -164,7 +162,6 @@ func decodeEntries(b []byte, rec *WALRecord) error {
 		return errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return nil
-
 }
 
 func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
@@ -205,7 +202,6 @@ func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 func EncWith(b []byte) (res Encbuf) {
 	res.B = b
 	return res
-
 }
 
 // Encbuf extends encoding.Encbuf with support for multi byte encoding
@@ -213,7 +209,7 @@ type Encbuf struct {
 	encoding.Encbuf
 }
 
-func (e *Encbuf) PutBytes(c []byte) { e.B = append(e.B, c...) }
+func (e *Encbuf) PutString(s string) { e.B = append(e.B, s...) }
 
 func DecWith(b []byte) (res Decbuf) {
 	res.B = b

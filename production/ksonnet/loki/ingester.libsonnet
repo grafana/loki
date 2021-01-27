@@ -47,7 +47,7 @@
 
   ingester_data_pvc:: if $._config.stateful_ingesters then
     pvc.new('ingester-data') +
-    pvc.mixin.spec.resources.withRequests({ storage: '10Gi' }) +
+    pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName($._config.ingester_pvc_class)
   else {},
@@ -55,6 +55,7 @@
   ingester_statefulset: if $._config.stateful_ingesters then
     statefulSet.new('ingester', 3, [$.ingester_container], $.ingester_data_pvc) +
     statefulSet.mixin.spec.withServiceName('ingester') +
+    statefulSet.mixin.spec.withPodManagementPolicy('Parallel') +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +

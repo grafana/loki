@@ -5,6 +5,9 @@ import (
 	"flag"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/relabel"
+
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -35,6 +38,7 @@ type Limits struct {
 	AcceptHASamples           bool                `yaml:"accept_ha_samples"`
 	HAClusterLabel            string              `yaml:"ha_cluster_label"`
 	HAReplicaLabel            string              `yaml:"ha_replica_label"`
+	HAMaxClusters             int                 `yaml:"ha_max_clusters"`
 	DropLabels                flagext.StringSlice `yaml:"drop_labels"`
 	MaxLabelNameLength        int                 `yaml:"max_label_name_length"`
 	MaxLabelValueLength       int                 `yaml:"max_label_value_length"`
@@ -46,6 +50,7 @@ type Limits struct {
 	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name"`
 	EnforceMetricName         bool                `yaml:"enforce_metric_name"`
 	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size"`
+	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 
 	// Ingester enforced limits.
 	// Series
@@ -63,12 +68,13 @@ type Limits struct {
 	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery    int           `yaml:"max_chunks_per_query"`
-	MaxQueryLength       time.Duration `yaml:"max_query_length"`
-	MaxQueryParallelism  int           `yaml:"max_query_parallelism"`
-	CardinalityLimit     int           `yaml:"cardinality_limit"`
-	MaxCacheFreshness    time.Duration `yaml:"max_cache_freshness"`
-	MaxQueriersPerTenant int           `yaml:"max_queriers_per_tenant"`
+	MaxChunksPerQuery    int            `yaml:"max_chunks_per_query"`
+	MaxQueryLookback     model.Duration `yaml:"max_query_lookback"`
+	MaxQueryLength       time.Duration  `yaml:"max_query_length"`
+	MaxQueryParallelism  int            `yaml:"max_query_parallelism"`
+	CardinalityLimit     int            `yaml:"cardinality_limit"`
+	MaxCacheFreshness    time.Duration  `yaml:"max_cache_freshness"`
+	MaxQueriersPerTenant int            `yaml:"max_queriers_per_tenant"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        time.Duration `yaml:"ruler_evaluation_delay_duration"`
@@ -93,6 +99,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
 	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
+	f.IntVar(&l.HAMaxClusters, "distributor.ha-tracker.max-clusters", 0, "Maximum number of clusters that HA tracker will keep track of for single user. 0 to disable the limit.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
@@ -119,10 +126,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage. When running the Cortex chunks storage, this limit is enforced in the querier, while when running the Cortex blocks storage this limit is both enforced in the querier and store-gateway. 0 to disable.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query), in the querier (on the query possibly split by the query-frontend) and in the chunks storage. 0 to disable.")
-	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
+	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
+	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
-	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends). This option only works with queriers connecting to the query-frontend, not when using downstream URL.")
+	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 
 	f.DurationVar(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -305,12 +313,18 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxChunksPerQuery
 }
 
+// MaxQueryLookback returns the max lookback period of queries.
+func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
+}
+
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxQueryLength
 }
 
-// MaxCacheFreshness returns the limit of the length (in time) of a query.
+// MaxCacheFreshness returns the period after which results are cacheable,
+// to prevent caching of very recent results.
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxCacheFreshness
 }
@@ -320,7 +334,7 @@ func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
 }
 
-// MaxQueryParallelism returns the limit to the number of sub-queries the
+// MaxQueryParallelism returns the limit to the number of split queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryParallelism
@@ -376,6 +390,11 @@ func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerEvaluationDelay
 }
 
+// MetricRelabelConfigs returns the metric relabel configs for a given user.
+func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
+	return o.getOverridesForUser(userID).MetricRelabelConfigs
+}
+
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) RulerTenantShardSize(userID string) int {
 	return o.getOverridesForUser(userID).RulerTenantShardSize
@@ -396,6 +415,11 @@ func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
 	return o.getOverridesForUser(userID).StoreGatewayTenantShardSize
 }
 
+// MaxHAClusters returns maximum number of clusters that HA tracker will track for a user.
+func (o *Overrides) MaxHAClusters(user string) int {
+	return o.getOverridesForUser(user).HAMaxClusters
+}
+
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits(userID)
@@ -404,4 +428,69 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 		}
 	}
 	return o.defaultLimits
+}
+
+// SmallestPositiveIntPerTenant is returning the minimal positive value of the
+// supplied limit function for all given tenants.
+func SmallestPositiveIntPerTenant(tenantIDs []string, f func(string) int) int {
+	var result *int
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		if result == nil || v < *result {
+			result = &v
+		}
+	}
+	if result == nil {
+		return 0
+	}
+	return *result
+}
+
+// SmallestPositiveNonZeroIntPerTenant is returning the minimal positive and
+// non-zero value of the supplied limit function for all given tenants. In many
+// limits a value of 0 means unlimted so the method will return 0 only if all
+// inputs have a limit of 0 or an empty tenant list is given.
+func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int) int {
+	var result *int
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		if v > 0 && (result == nil || v < *result) {
+			result = &v
+		}
+	}
+	if result == nil {
+		return 0
+	}
+	return *result
+}
+
+// SmallestPositiveNonZeroDurationPerTenant is returning the minimal positive
+// and non-zero value of the supplied limit function for all given tenants. In
+// many limits a value of 0 means unlimted so the method will return 0 only if
+// all inputs have a limit of 0 or an empty tenant list is given.
+func SmallestPositiveNonZeroDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time.Duration {
+	var result *time.Duration
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		if v > 0 && (result == nil || v < *result) {
+			result = &v
+		}
+	}
+	if result == nil {
+		return 0
+	}
+	return *result
+}
+
+// MaxDurationPerTenant is returning the maximum duration per tenant. Without
+// tenants given it will return a time.Duration(0).
+func MaxDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time.Duration {
+	result := time.Duration(0)
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		if v > result {
+			result = v
+		}
+	}
+	return result
 }

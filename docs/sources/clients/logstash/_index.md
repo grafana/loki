@@ -42,7 +42,7 @@ helm upgrade --install loki loki/loki-stack \
 ```
 
 This will automatically scrape all pods logs in the cluster and send them to Loki with Kubernetes metadata attached as labels.
-You can use the [`values.yaml`](https://github.com/grafana/loki/blob/master/production/helm/loki-stack/values.yaml) file as a starting point for your own configuration.
+You can use the [`values.yaml`](https://github.com/grafana/helm-charts/blob/main/charts/loki-stack/values.yaml) file as a starting point for your own configuration.
 
 ## Usage and Configuration
 

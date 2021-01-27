@@ -3,6 +3,7 @@ package queryrange
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -76,7 +78,7 @@ type Request interface {
 	// GetCachingOptions returns the caching options.
 	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
-	WithStartEnd(int64, int64) Request
+	WithStartEnd(startTime int64, endTime int64) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
 	proto.Message
@@ -135,15 +137,20 @@ func (resp *PrometheusResponse) minTime() int64 {
 	return result[0].Samples[0].TimestampMs
 }
 
+// NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
+func NewEmptyPrometheusResponse() *PrometheusResponse {
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: model.ValMatrix.String(),
+			Result:     []SampleStream{},
+		},
+	}
+}
+
 func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	if len(responses) == 0 {
-		return &PrometheusResponse{
-			Status: StatusSuccess,
-			Data: PrometheusData{
-				ResultType: model.ValMatrix.String(),
-				Result:     []SampleStream{},
-			},
-		}, nil
+		return NewEmptyPrometheusResponse(), nil
 	}
 
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
@@ -181,12 +188,12 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
 	if err != nil {
-		return nil, err
+		return nil, decorateWithParamName(err, "start")
 	}
 
 	result.End, err = util.ParseTime(r.FormValue("end"))
 	if err != nil {
-		return nil, err
+		return nil, decorateWithParamName(err, "end")
 	}
 
 	if result.End < result.Start {
@@ -195,7 +202,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 
 	result.Step, err = parseDurationMs(r.FormValue("step"))
 	if err != nil {
-		return nil, err
+		return nil, decorateWithParamName(err, "step")
 	}
 
 	if result.Step <= 0 {
@@ -386,4 +393,12 @@ func encodeTime(t int64) string {
 
 func encodeDurationMs(d int64) string {
 	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
+}
+
+func decorateWithParamName(err error, field string) error {
+	errTmpl := "invalid parameter %q; %v"
+	if status, ok := status.FromError(err); ok {
+		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
+	}
+	return fmt.Errorf(errTmpl, field, err)
 }

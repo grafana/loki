@@ -11,7 +11,7 @@
     stateful_ingesters: if self.using_boltdb_shipper then true else super.stateful_ingesters,
     stateful_queriers: if self.using_boltdb_shipper then true else super.stateful_queriers,
 
-    boltdb_shipper_shared_store: error 'must define boltdb_shipper_shared_store',
+    boltdb_shipper_shared_store: error 'must define boltdb_shipper_shared_store when using_boltdb_shipper=true. If this is not intentional, consider disabling it. boltdb_shipper_shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
     compactor_pvc_size: '10Gi',
     compactor_pvc_class: 'fast',
     index_period_hours: if self.using_boltdb_shipper then 24 else super.index_period_hours,
@@ -22,23 +22,12 @@
       storage_config+: {
         boltdb_shipper: {
           shared_store: $._config.boltdb_shipper_shared_store,
+          active_index_directory: '/data/index',
+          cache_location: '/data/boltdb-cache',
         },
       },
     } else {},
   },
-
-  ingester_args+:: if $._config.using_boltdb_shipper then {
-    // Persist index in pvc
-    'boltdb.shipper.active-index-directory': '/data/index',
-
-    // Use PVC for caching
-    'boltdb.shipper.cache-location': '/data/boltdb-cache',
-  } else {},
-
-  querier_args+:: if $._config.using_boltdb_shipper then {
-    // Use PVC for caching
-    'boltdb.shipper.cache-location': '/data/boltdb-cache',
-  } else {},
 
   // we don't dedupe index writes when using boltdb-shipper so don't deploy a cache for it.
   memcached_index_writes: if $._config.using_boltdb_shipper then {} else super.memcached_index_writes,
@@ -48,7 +37,7 @@
     pvc.new('compactor-data') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.compactor_pvc_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
-    pvc.mixin.spec.withStorageClassName($._config.ingester_pvc_class)
+    pvc.mixin.spec.withStorageClassName($._config.compactor_pvc_class)
   else {},
 
   compactor_args:: if $._config.using_boltdb_shipper then {

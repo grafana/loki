@@ -48,7 +48,21 @@ of excluded labels. This extra information can be suppressed with the
 --quiet flag.
 
 By default we look over the last hour of data; use --since to modify
-or provide specific start and end times with --start and --end.
+or provide specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano
+time format, but without timezone at the end. The local timezone will be added
+automatically or if using  --timezone flag.
+
+Example:
+
+	logcli query
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   --output=jsonl
+	   'my-query'
+
 The output is limited to 30 entries by default; use --limit to increase.
 
 While "query" does support metrics queries, its output contains multiple

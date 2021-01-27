@@ -184,6 +184,28 @@ resuming the target without skipping logs.
 
 see the [configuration](./configuration#windows_event) section for more information.
 
+## Gcplog scraping
+Promtail supports scraping cloud resource logs(say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
+Configs are set in `gcplog` section in `scrape_config`
+
+```yaml
+  - job_name: gcplog
+    gcplog:
+      project_id: "my-gcp-project"
+      subscription: "my-pubsub-subscription"
+      use_incoming_timestamp: false # default rewrite timestamps.
+      labels:
+        job: "gcplog"
+```
+Here `project_id` and `subscription` are the only required fields.
+
+- `project_id` is the GCP project id.
+- `subscription` is the GCP pubsub subscription where promtail can consume log entries from.
+
+Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with pubsub subscription to receive logs from.
+
+It also support `relabeling` and `pipeline` stages just like other targets.
+
 ## Syslog Receiver
 
 Promtail supports receiving [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -418,6 +419,8 @@ type postingOffset struct {
 	tableOff int
 }
 
+const valueSymbolsCacheSize = 1024
+
 type BinaryReader struct {
 	b   index.ByteSlice
 	toc *BinaryTOC
@@ -432,9 +435,17 @@ type BinaryReader struct {
 	postingsV1 map[string]map[string]index.Range
 
 	// Symbols struct that keeps only 1/postingOffsetsInMemSampling in the memory, then looks up the rest via mmap.
-	symbols     *index.Symbols
-	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
+	symbols *index.Symbols
+	// Cache of the label name symbol lookups,
 	// as there are not many and they are half of all lookups.
+	nameSymbols map[uint32]string
+	// Direct cache of values. This is much faster than an LRU cache and still provides
+	// a reasonable cache hit ratio.
+	valueSymbolsMx sync.Mutex
+	valueSymbols   [valueSymbolsCacheSize]struct {
+		index  uint32
+		symbol string
+	}
 
 	dec *index.Decoder
 
@@ -637,12 +648,12 @@ func newBinaryTOCFromByteSlice(bs index.ByteSlice) (*BinaryTOC, error) {
 	}, nil
 }
 
-func (r BinaryReader) IndexVersion() int {
-	return r.indexVersion
+func (r *BinaryReader) IndexVersion() (int, error) {
+	return r.indexVersion, nil
 }
 
 // TODO(bwplotka): Get advantage of multi value offset fetch.
-func (r BinaryReader) PostingsOffset(name string, value string) (index.Range, error) {
+func (r *BinaryReader) PostingsOffset(name string, value string) (index.Range, error) {
 	rngs, err := r.postingsOffset(name, value)
 	if err != nil {
 		return index.Range{}, err
@@ -665,7 +676,7 @@ func skipNAndName(d *encoding.Decbuf, buf *int) {
 	}
 	d.Skip(*buf)
 }
-func (r BinaryReader) postingsOffset(name string, values ...string) ([]index.Range, error) {
+func (r *BinaryReader) postingsOffset(name string, values ...string) ([]index.Range, error) {
 	rngs := make([]index.Range, 0, len(values))
 	if r.indexVersion == index.FormatV1 {
 		e, ok := r.postingsV1[name]
@@ -801,7 +812,16 @@ func (r BinaryReader) postingsOffset(name string, values ...string) ([]index.Ran
 	return rngs, nil
 }
 
-func (r BinaryReader) LookupSymbol(o uint32) (string, error) {
+func (r *BinaryReader) LookupSymbol(o uint32) (string, error) {
+	cacheIndex := o % valueSymbolsCacheSize
+	r.valueSymbolsMx.Lock()
+	if cached := r.valueSymbols[cacheIndex]; cached.index == o && cached.symbol != "" {
+		v := cached.symbol
+		r.valueSymbolsMx.Unlock()
+		return v, nil
+	}
+	r.valueSymbolsMx.Unlock()
+
 	if s, ok := r.nameSymbols[o]; ok {
 		return s, nil
 	}
@@ -812,10 +832,20 @@ func (r BinaryReader) LookupSymbol(o uint32) (string, error) {
 		o += headerLen - index.HeaderLen
 	}
 
-	return r.symbols.Lookup(o)
+	s, err := r.symbols.Lookup(o)
+	if err != nil {
+		return s, err
+	}
+
+	r.valueSymbolsMx.Lock()
+	r.valueSymbols[cacheIndex].index = o
+	r.valueSymbols[cacheIndex].symbol = s
+	r.valueSymbolsMx.Unlock()
+
+	return s, nil
 }
 
-func (r BinaryReader) LabelValues(name string) ([]string, error) {
+func (r *BinaryReader) LabelValues(name string) ([]string, error) {
 	if r.indexVersion == index.FormatV1 {
 		e, ok := r.postingsV1[name]
 		if !ok {
@@ -871,7 +901,7 @@ func yoloString(b []byte) string {
 	return *((*string)(unsafe.Pointer(&b)))
 }
 
-func (r BinaryReader) LabelNames() []string {
+func (r *BinaryReader) LabelNames() ([]string, error) {
 	allPostingsKeyName, _ := index.AllPostingsKey()
 	labelNames := make([]string, 0, len(r.postings))
 	for name := range r.postings {
@@ -882,7 +912,7 @@ func (r BinaryReader) LabelNames() []string {
 		labelNames = append(labelNames, name)
 	}
 	sort.Strings(labelNames)
-	return labelNames
+	return labelNames, nil
 }
 
 func (r *BinaryReader) Close() error { return r.c.Close() }

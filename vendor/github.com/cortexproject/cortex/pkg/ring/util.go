@@ -10,7 +10,7 @@ import (
 )
 
 // GenerateTokens make numTokens unique random tokens, none of which clash
-// with takenTokens.
+// with takenTokens. Generated tokens are sorted.
 func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 	if numTokens <= 0 {
 		return []uint32{}
@@ -23,7 +23,7 @@ func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 		used[v] = true
 	}
 
-	tokens := []uint32{}
+	tokens := make([]uint32, 0, numTokens)
 	for i := 0; i < numTokens; {
 		candidate := r.Uint32()
 		if used[candidate] {
@@ -33,6 +33,11 @@ func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 		tokens = append(tokens, candidate)
 		i++
 	}
+
+	// Ensure returned tokens are sorted.
+	sort.Slice(tokens, func(i, j int) bool {
+		return tokens[i] < tokens[j]
+	})
 
 	return tokens
 }
@@ -82,9 +87,51 @@ func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state In
 	return backoff.Err()
 }
 
+// WaitRingStability monitors the ring topology for the provided operation and waits until it
+// keeps stable for at least minStability.
+func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration) error {
+	// Configure the max waiting time as a context deadline.
+	ctx, cancel := context.WithTimeout(ctx, maxWaiting)
+	defer cancel()
+
+	// Get the initial ring state.
+	ringLastState, _ := r.GetAllHealthy(op) // nolint:errcheck
+	ringLastStateTs := time.Now()
+
+	const pollingFrequency = time.Second
+	pollingTicker := time.NewTicker(pollingFrequency)
+	defer pollingTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-pollingTicker.C:
+			// We ignore the error because in case of error it will return an empty
+			// replication set which we use to compare with the previous state.
+			currRingState, _ := r.GetAllHealthy(op) // nolint:errcheck
+
+			if HasReplicationSetChanged(ringLastState, currRingState) {
+				ringLastState = currRingState
+				ringLastStateTs = time.Now()
+			} else if time.Since(ringLastStateTs) >= minStability {
+				return nil
+			}
+		}
+	}
+}
+
+// MakeBuffersForGet returns buffers to use with Ring.Get().
+func MakeBuffersForGet() (bufDescs []IngesterDesc, bufHosts, bufZones []string) {
+	bufDescs = make([]IngesterDesc, 0, GetBufferSize)
+	bufHosts = make([]string, 0, GetBufferSize)
+	bufZones = make([]string, 0, GetBufferSize)
+	return
+}
+
 // getZones return the list zones from the provided tokens. The returned list
 // is guaranteed to be sorted.
-func getZones(tokens map[string][]TokenDesc) []string {
+func getZones(tokens map[string][]uint32) []string {
 	var zones []string
 
 	for zone := range tokens {
@@ -96,9 +143,9 @@ func getZones(tokens map[string][]TokenDesc) []string {
 }
 
 // searchToken returns the offset of the tokens entry holding the range for the provided key.
-func searchToken(tokens []TokenDesc, key uint32) int {
+func searchToken(tokens []uint32, key uint32) int {
 	i := sort.Search(len(tokens), func(x int) bool {
-		return tokens[x].Token > key
+		return tokens[x] > key
 	})
 	if i >= len(tokens) {
 		i = 0

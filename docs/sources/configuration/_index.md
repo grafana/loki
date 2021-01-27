@@ -69,7 +69,7 @@ non-list parameters the value is set to the specified default.
 > **Note:** This feature is only available in Loki 2.1+.
 
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
-To do this, use:
+To do this, pass `-config.expand-env=true` and use:
 
 ```
 ${VAR}
@@ -88,6 +88,8 @@ ${VAR:default_value}
 ```
 
 Where default_value is the value to use if the environment variable is undefined.
+
+Pass the `-config.expand-env` flag at the command line to enable this way of setting configs.
 
 ### Generic placeholders:
 
@@ -313,7 +315,7 @@ The query_frontend_config configures the Loki query-frontend.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = false]
 
-# URL of downstream Prometheus.
+# URL of downstream Loki.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
 
@@ -586,11 +588,11 @@ storage:
   local:
     # Directory to scan for rules
     # CLI flag: -ruler.storage.local.directory
-    [directory: <string> | default = ""]
+    [directory: <filename> | default = ""]
 
 # File path to store temporary rule files
 # CLI flag: -ruler.rule-path
-[rule_path: <string> | default = "/rules"]
+[rule_path: <filename> | default = "/rules"]
 
 # Comma-separated list of Alertmanager URLs to send notifications to.
 # Each Alertmanager URL is treated as a separate group in the configuration.
@@ -893,6 +895,29 @@ lifecycler:
 # Use a value of -1 to allow the ingester to query the store infinitely far back in time.
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0]
+
+
+# The ingester WAL records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
+wal:
+  # Enables writing to WAL.
+  # CLI flag: -ingester.wal-enabled
+  [enabled: <boolean> | default = false]
+
+  # Directory where the WAL data should be stored and/or recovered from.
+  # CLI flag: -ingester.wal-dir
+  [dir: <filename> | default = "wal"]
+
+  # Recover data from existing WAL dir irrespective of WAL enabled/disabled.
+  # CLI flag: -ingester.recover-from-wal
+  [recover: <boolean> | default = false]
+
+# When WAL is enabled, should chunks be flushed to long-term storage on shutdown.
+# CLI flag: -ingester.flush-on-shutdown
+[flush_on_shutdown: <boolean> | default = false]
+
+# Interval at which checkpoints should be created.
+# CLI flag: ingester.checkpoint-duration
+[checkpoint_duration: <duration> | default = 5m]
 ```
 
 ## consul_config
@@ -1427,7 +1452,7 @@ memcached_client:
 
   # The maximum number of idle connections in the memcached client pool.
   # CLI flag: -<prefix>.memcached.max-idle-conns
-  [max_idle_conns: <int> | default = 100]
+  [max_idle_conns: <int> | default = 16]
 
   # The period with which to poll the DNS for memcached servers.
   # CLI flag: -<prefix>.memcached.update-interval
@@ -1662,6 +1687,18 @@ logs in Loki.
 # Maximum number of stream matchers per query.
 # CLI flag: -querier.max-streams-matcher-per-query
 [max_streams_matchers_per_query: <int> | default = 1000]
+
+# Duration to delay the evaluation of rules to ensure.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
+
+# Maximum number of rules per rule group per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rules-per-rule-group
+[ruler_max_rules_per_rule_group: <int> | default = 0]
+
+# Maximum number of rule groups per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rule-groups-per-tenant
+[ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config

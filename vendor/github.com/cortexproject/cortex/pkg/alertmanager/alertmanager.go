@@ -2,10 +2,14 @@ package alertmanager
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/binary"
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +36,7 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 )
@@ -70,6 +75,11 @@ type Alertmanager struct {
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
 	dispatcherMetrics *dispatch.DispatcherMetrics
+	// This needs to be set to the hash of the config. All the hashes need to be same
+	// for deduping of alerts to work, hence we need this metric. See https://github.com/prometheus/alertmanager/issues/596
+	// Further, in upstream AM, this metric is handled using the config coordinator which we don't use
+	// hence we need to generate the metric ourselves.
+	configHashMetric prometheus.Gauge
 
 	activeMtx sync.Mutex
 	active    bool
@@ -97,6 +107,10 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		stop:      make(chan struct{}),
 		active:    false,
 		activeMtx: sync.Mutex{},
+		configHashMetric: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "alertmanager_config_hash",
+			Help: "Hash of the currently loaded alertmanager configuration.",
+		}),
 	}
 
 	am.registry = reg
@@ -169,6 +183,17 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
 
+	// Override some extra paths registered in the router (eg. /metrics which by default exposes prometheus.DefaultRegisterer).
+	// Entire router is registered in Mux to "/" path, so there is no conflict with overwriting specific paths.
+	for _, p := range []string{"/metrics", "/-/reload", "/debug/"} {
+		a := path.Join(am.cfg.ExternalURL.Path, p)
+		// Preserve end slash, as for Mux it means entire subtree.
+		if strings.HasSuffix(p, "/") {
+			a = a + "/"
+		}
+		am.mux.Handle(a, http.NotFoundHandler())
+	}
+
 	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
 	return am, nil
 }
@@ -182,7 +207,7 @@ func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 }
 
 // ApplyConfig applies a new configuration to an Alertmanager.
-func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
+func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg string) error {
 	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
@@ -249,6 +274,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	am.active = true
 	am.activeMtx.Unlock()
 
+	am.configHashMetric.Set(md5HashAsMetricValue([]byte(rawCfg)))
 	return nil
 }
 
@@ -366,4 +392,13 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, log
 		return nil, &errs
 	}
 	return integrations, nil
+}
+
+func md5HashAsMetricValue(data []byte) float64 {
+	sum := md5.Sum(data)
+	// We only want 48 bits as a float64 only has a 53 bit mantissa.
+	smallSum := sum[0:6]
+	var bytes = make([]byte, 8)
+	copy(bytes, smallSum)
+	return float64(binary.LittleEndian.Uint64(bytes))
 }

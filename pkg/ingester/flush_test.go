@@ -2,8 +2,11 @@ package ingester
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
 	"sort"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -35,7 +38,7 @@ const (
 )
 
 func init() {
-	//util.Logger = log.NewLogfmtLogger(os.Stdout)
+	// util.Logger = log.NewLogfmtLogger(os.Stdout)
 }
 
 func TestChunkFlushingIdle(t *testing.T) {
@@ -44,7 +47,7 @@ func TestChunkFlushingIdle(t *testing.T) {
 	cfg.MaxChunkIdle = 100 * time.Millisecond
 	cfg.RetainPeriod = 500 * time.Millisecond
 
-	store, ing := newTestStore(t, cfg)
+	store, ing := newTestStore(t, cfg, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	testData := pushTestSamples(t, ing)
 
@@ -54,7 +57,86 @@ func TestChunkFlushingIdle(t *testing.T) {
 }
 
 func TestChunkFlushingShutdown(t *testing.T) {
-	store, ing := newTestStore(t, defaultIngesterTestConfig(t))
+	store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+	testData := pushTestSamples(t, ing)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+	store.checkData(t, testData)
+}
+
+type fullWAL struct{}
+
+func (fullWAL) Log(_ *WALRecord) error { return &os.PathError{Err: syscall.ENOSPC} }
+func (fullWAL) Stop() error            { return nil }
+
+func Benchmark_FlushLoop(b *testing.B) {
+	var (
+		size   = 5
+		descs  [][]*chunkDesc
+		lbs    = makeRandomLabels()
+		ctx    = user.InjectOrgID(context.Background(), "foo")
+		_, ing = newTestStore(b, defaultIngesterTestConfig(b), nil)
+	)
+
+	for i := 0; i < size; i++ {
+		descs = append(descs, buildChunkDecs(b))
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		var wg sync.WaitGroup
+		for i := 0; i < size; i++ {
+			wg.Add(1)
+			go func(loop int) {
+				defer wg.Done()
+				require.NoError(b, ing.flushChunks(ctx, 0, lbs, descs[loop], &sync.RWMutex{}))
+			}(i)
+		}
+		wg.Wait()
+	}
+}
+
+func Test_Flush(t *testing.T) {
+	var (
+		store, ing = newTestStore(t, defaultIngesterTestConfig(t), nil)
+		lbs        = makeRandomLabels()
+		ctx        = user.InjectOrgID(context.Background(), "foo")
+	)
+	store.onPut = func(ctx context.Context, chunks []chunk.Chunk) error {
+		for _, c := range chunks {
+			buf, err := c.Encoded()
+			require.Nil(t, err)
+			if err := c.Decode(chunk.NewDecodeContext(), buf); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	require.NoError(t, ing.flushChunks(ctx, 0, lbs, buildChunkDecs(t), &sync.RWMutex{}))
+}
+
+func buildChunkDecs(t testing.TB) []*chunkDesc {
+	res := make([]*chunkDesc, 10)
+	for i := range res {
+		res[i] = &chunkDesc{
+			closed: true,
+			chunk:  chunkenc.NewMemChunk(chunkenc.EncSnappy, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+		}
+		fillChunk(t, res[i].chunk)
+		require.NoError(t, res[i].chunk.Close())
+	}
+	return res
+}
+
+func TestWALFullFlush(t *testing.T) {
+	// technically replaced with a fake wal, but the ingester New() function creates a regular wal first,
+	// so we enable creation/cleanup even though it remains unused.
+	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
+	require.Nil(t, err)
+	defer os.RemoveAll(walDir)
+
+	store, ing := newTestStore(t, defaultIngesterTestConfigWithWAL(t, walDir), fullWAL{})
 	testData := pushTestSamples(t, ing)
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	store.checkData(t, testData)
@@ -66,7 +148,7 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	cfg.MaxChunkIdle = 100 * time.Millisecond
 	cfg.RetainPeriod = 500 * time.Millisecond
 
-	store, ing := newTestStore(t, cfg)
+	store, ing := newTestStore(t, cfg, nil)
 	defer store.Stop()
 
 	const userID = "testUser"
@@ -112,7 +194,7 @@ func TestFlushMaxAge(t *testing.T) {
 	cfg.MaxChunkAge = time.Minute
 	cfg.MaxChunkIdle = time.Hour
 
-	store, ing := newTestStore(t, cfg)
+	store, ing := newTestStore(t, cfg, nil)
 	defer store.Stop()
 
 	now := time.Unix(0, 0)
@@ -164,9 +246,13 @@ type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
 	chunks map[string][]chunk.Chunk
+	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
 }
 
-func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
+// Note: the ingester New() function creates it's own WAL first which we then override if specified.
+// Because of this, ensure any WAL directories exist/are cleaned up even when overriding the wal.
+// This is an ugly hook for testing :(
+func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
@@ -178,11 +264,16 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
+	if walOverride != nil {
+		_ = ing.wal.Stop()
+		ing.wal = walOverride
+	}
+
 	return store, ing
 }
 
 // nolint
-func defaultIngesterTestConfig(t *testing.T) Config {
+func defaultIngesterTestConfig(t testing.TB) Config {
 	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil)
 	require.NoError(t, err)
 
@@ -204,7 +295,9 @@ func defaultIngesterTestConfig(t *testing.T) Config {
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-
+	if s.onPut != nil {
+		return s.onPut(ctx, chunks)
+	}
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err

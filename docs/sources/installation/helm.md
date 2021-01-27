@@ -5,13 +5,15 @@ title: Helm
 
 ## Prerequisites
 
-Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-helm) and
-[deployed](https://helm.sh/docs/using_helm/#installing-tiller) to your cluster.
+Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-helm).
 
-Add [Loki's chart repository](https://github.com/grafana/loki/tree/master/production/helm/loki) to Helm:
+Add [Loki's chart repository](https://github.com/grafana/helm-charts) to Helm:
+
+> **PLEASE NOTE** On 2020/12/11 Loki's Helm charts were moved from their initial location within the
+Loki repo and hosted at https://grafana.github.io/loki/charts to their new location at https://github.com/grafana/helm-charts which are hosted at https://grafana.github.io/helm-charts
 
 ```bash
-helm repo add loki https://grafana.github.io/loki/charts
+helm repo add grafana https://grafana.github.io/helm-charts
 ```
 
 To update the chart repository, run:
@@ -25,37 +27,37 @@ helm repo update
 ### Deploy with default config
 
 ```bash
-helm upgrade --install loki loki/loki-stack
+helm upgrade --install loki grafana/loki-stack
 ```
 
 ### Deploy in a custom namespace
 
 ```bash
-helm upgrade --install loki --namespace=loki loki/loki
+helm upgrade --install loki --namespace=loki grafana/loki
 ```
 
 ### Deploy with custom config
 
 ```bash
-helm upgrade --install loki loki/loki --set "key1=val1,key2=val2,..."
+helm upgrade --install loki grafana/loki --set "key1=val1,key2=val2,..."
 ```
 
 ### Deploy Loki Stack (Loki, Promtail, Grafana, Prometheus)
 
 ```bash
-helm upgrade --install loki loki/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false
+helm upgrade --install loki grafana/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false
 ```
 
 ### Deploy Loki Stack (Loki, Promtail, Grafana, Prometheus) with persistent volume claim
 
 ```bash
-helm upgrade --install loki loki/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false,loki.persistence.enabled=true,loki.persistence.storageClassName=standard,loki.persistence.size=5Gi
+helm upgrade --install loki grafana/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false,loki.persistence.enabled=true,loki.persistence.storageClassName=standard,loki.persistence.size=5Gi
 ```
 
 ### Deploy Loki Stack (Loki, Fluent Bit, Grafana, Prometheus)
 
 ```bash
-helm upgrade --install loki loki/loki-stack \
+helm upgrade --install loki grafana/loki-stack \
   --set fluent-bit.enabled=true,promtail.enabled=false,grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false
 ```
 
@@ -64,7 +66,7 @@ helm upgrade --install loki loki/loki-stack \
 To install Grafana on your cluster with Helm, use the following command:
 
 ```bash
-helm install stable/grafana -n loki-grafana
+helm install loki-grafana grafana/grafana
 ```
 
 To get the admin password for the Grafana pod, run the following command:
@@ -122,3 +124,61 @@ spec:
     hosts:
     - {{ .Values.ingress.host }}
 ```
+
+## Run promtail with syslog support
+
+In order to receive and process syslog message into promtail, the following changes will be necessary:
+
+* Review the [promtail syslog-receiver configuration documentation](/docs/clients/promtail/scraping.md#syslog-receiver)
+
+* Configure the promtail helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
+
+```yaml
+extraScrapeConfigs:
+  - job_name: syslog
+    syslog:
+      listen_address: 0.0.0.0:1514
+      labels:
+        job: "syslog"
+  relabel_configs:
+    - source_labels: ['__syslog_message_hostname']
+      target_label: 'host'
+syslogService:
+  enabled: true
+  type: LoadBalancer
+  port: 1514
+```
+
+## Run promtail with systemd-journal support
+
+In order to receive and process syslog message into promtail, the following changes will be necessary:
+
+* Review the [promtail systemd-journal configuration documentation](/docs/clients/promtail/scraping.md#journal-scraping-linux-only)
+
+* Configure the promtail helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the promtail pods to access the log files. For example:
+
+```yaml
+# Add additional scrape config
+extraScrapeConfigs:
+  - job_name: journal
+    journal:
+      path: /var/log/journal
+      max_age: 12h
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: 'unit'
+      - source_labels: ['__journal__hostname']
+        target_label: 'hostname'
+
+# Mount journal directory into promtail pods
+extraVolumes:
+  - name: journal
+    hostPath:
+      path: /var/log/journal
+
+extraVolumeMounts:
+  - name: journal
+    mountPath: /var/log/journal
+    readOnly: true

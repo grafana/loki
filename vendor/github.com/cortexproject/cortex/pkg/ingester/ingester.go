@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -50,7 +50,7 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	WALConfig        WALConfig             `yaml:"walconfig"`
+	WALConfig        WALConfig             `yaml:"walconfig" doc:"description=Configures the Write-Ahead Log (WAL) for the Cortex chunks storage. This config is ignored when running the Cortex blocks storage."`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler"`
 
 	// Config for transferring chunks. Zero or negative = no retries.
@@ -392,11 +392,19 @@ func (i *Ingester) stopping(_ error) error {
 //     * Change the state of ring to stop accepting writes.
 //     * Flush all the chunks.
 func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
-	originalState := i.lifecycler.FlushOnShutdown()
+	originalFlush := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
 	i.lifecycler.SetFlushOnShutdown(true)
+
+	// In the case of an HTTP shutdown, we want to unregister no matter what.
+	originalUnregister := i.lifecycler.ShouldUnregisterOnShutdown()
+	i.lifecycler.SetUnregisterOnShutdown(true)
+
 	_ = services.StopAndAwaitTerminated(context.Background(), i)
-	i.lifecycler.SetFlushOnShutdown(originalState)
+	// Set state back to original.
+	i.lifecycler.SetFlushOnShutdown(originalFlush)
+	i.lifecycler.SetUnregisterOnShutdown(originalUnregister)
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -432,7 +440,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 	// retain anything from `req` past the call to ReuseSlice
 	defer client.ReuseSlice(req.Timeseries)
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}
@@ -612,7 +620,7 @@ func (i *Ingester) appendMetadata(userID string, m *client.MetricMetadata) error
 
 	userMetadata := i.getOrCreateUserMetadata(userID)
 
-	return userMetadata.add(m.GetMetricName(), m)
+	return userMetadata.add(m.GetMetricFamilyName(), m)
 }
 
 func (i *Ingester) getOrCreateUserMetadata(userID string) *userMetricsMetadata {
@@ -675,7 +683,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return i.v2Query(ctx, req)
 	}
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -922,7 +930,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 	i.userStatesMtx.RUnlock()
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}

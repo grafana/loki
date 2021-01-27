@@ -21,14 +21,12 @@ docker run -v /var/log:/var/log \
 
 You can run Fluent Bit as a [Daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
 
-To do so you can use our [Fluent Bit helm chart](https://github.com/grafana/loki/tree/master/production/helm/fluent-bit):
-
-> Make sure [tiller](https://helm.sh/docs/install/) is installed correctly in your cluster
+To do so you can use our [Fluent Bit helm chart](https://github.com/grafana/helm-charts/tree/main/charts/fluent-bit):
 
 ```bash
-helm repo add loki https://grafana.github.io/loki/charts
+helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
-helm upgrade --install fluent-bit loki/fluent-bit \
+helm upgrade --install fluent-bit grafana/fluent-bit \
     --set loki.serviceName=loki.svc.cluster.local
 ```
 
@@ -37,7 +35,7 @@ By default it will collect all containers logs and extract labels from Kubernete
 Alternatively you can install the Loki and Fluent Bit all together using:
 
 ```bash
-helm upgrade --install loki-stack loki/loki-stack \
+helm upgrade --install loki-stack grafana/loki-stack \
     --set fluent-bit.enabled=true,promtail.enabled=false
 ```
 

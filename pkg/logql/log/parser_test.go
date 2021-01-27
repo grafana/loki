@@ -61,7 +61,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 		},
 		{
 			"duplicate extraction",
-			[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
+			[]byte(`{"app":"foo","namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar"}},"next":{"err":false}}`),
 			labels.Labels{
 				{Name: "app", Value: "bar"},
 			},
@@ -70,6 +70,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				{Name: "app_extracted", Value: "foo"},
 				{Name: "namespace", Value: "prod"},
 				{Name: "pod_uuid", Value: "foo"},
+				{Name: "next_err", Value: "false"},
 				{Name: "pod_deployment_ref", Value: "foobar"},
 			},
 		},
@@ -84,6 +85,57 @@ func Test_jsonParser_Parse(t *testing.T) {
 			require.Equal(t, tt.want, b.Labels())
 		})
 	}
+}
+
+func Benchmark_Parser(b *testing.B) {
+
+	lbs := labels.Labels{
+		{Name: "cluster", Value: "qa-us-central1"},
+		{Name: "namespace", Value: "qa"},
+		{Name: "filename", Value: "/var/log/pods/ingress-nginx_nginx-ingress-controller-7745855568-blq6t_1f8962ef-f858-4188-a573-ba276a3cacc3/ingress-nginx/0.log"},
+		{Name: "job", Value: "ingress-nginx/nginx-ingress-controller"},
+		{Name: "name", Value: "nginx-ingress-controller"},
+		{Name: "pod", Value: "nginx-ingress-controller-7745855568-blq6t"},
+		{Name: "pod_template_hash", Value: "7745855568"},
+		{Name: "stream", Value: "stdout"},
+	}
+
+	jsonLine := `{"proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
+	logfmtLine := `level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`
+	nginxline := `10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1" 200 60755 "https://grafana.com/go/observabilitycon/grafana-the-open-and-composable-observability-platform/?tech=ggl-o&pg=oss-graf&plcmt=hero-txt" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Safari/605.1.15" "123.123.123.123, 35.35.122.223" "TLSv1.3"`
+
+	for _, tt := range []struct {
+		name            string
+		line            string
+		s               Stage
+		LabelParseHints []string //  hints to reduce label extractions.
+	}{
+		{"json", jsonLine, NewJSONParser(), []string{"response_latency_seconds"}},
+		{"logfmt", logfmtLine, NewLogfmtParser(), []string{"info", "throughput", "org_id"}},
+		{"regex greedy", nginxline, mustNewRegexParser(`GET (?P<path>.*?)/\?`), []string{"path"}},
+		{"regex status digits", nginxline, mustNewRegexParser(`HTTP/1.1" (?P<statuscode>\d{3}) `), []string{"statuscode"}},
+	} {
+		b.Run(tt.name, func(b *testing.B) {
+			line := []byte(tt.line)
+			b.Run("no labels hints", func(b *testing.B) {
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				for n := 0; n < b.N; n++ {
+					builder.Reset()
+					_, _ = tt.s.Process(line, builder)
+				}
+			})
+
+			b.Run("labels hints", func(b *testing.B) {
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder.parserKeyHints = tt.LabelParseHints
+				for n := 0; n < b.N; n++ {
+					builder.Reset()
+					_, _ = tt.s.Process(line, builder)
+				}
+			})
+		})
+	}
+
 }
 
 func TestNewRegexpParser(t *testing.T) {
@@ -286,27 +338,6 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			_, _ = p.Process(tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.Labels())
-		})
-	}
-}
-
-func Test_sanitizeKey(t *testing.T) {
-	tests := []struct {
-		key  string
-		want string
-	}{
-		{"1", "_1"},
-		{"1 1 1", "_1_1_1"},
-		{"abc", "abc"},
-		{"$a$bc", "_a_bc"},
-		{"$a$bc", "_a_bc"},
-		{"   1 1 1  \t", "_1_1_1"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.key, func(t *testing.T) {
-			if got := sanitizeKey(tt.key); got != tt.want {
-				t.Errorf("sanitizeKey() = %v, want %v", got, tt.want)
-			}
 		})
 	}
 }

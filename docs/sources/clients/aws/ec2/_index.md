@@ -289,7 +289,7 @@ Let's head back to Grafana and verify that your Promtail logs are available in G
 [labels]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
 [troubleshooting loki]: ../../../getting-started/troubleshooting#troubleshooting-targets
 [live tailing]: https://grafana.com/docs/grafana/latest/features/datasources/loki/#live-tailing
-[systemd]: https://github.com/grafana/loki/tree/master/production/helm/promtail#run-promtail-with-systemd-journal-support
+[systemd]: ../../../installation/helm#run-promtail-with-systemd-journal-support
 [journald]: https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html
 [final config]: https://github.com/grafana/loki/blob/master/docs/sources/clients/aws/ec2/promtail-ec2-final.yaml
 [relabeling]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config

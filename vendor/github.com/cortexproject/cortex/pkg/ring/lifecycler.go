@@ -47,21 +47,21 @@ type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring"`
 
 	// Config for the ingester lifecycle control
-	NumTokens        int           `yaml:"num_tokens"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
-	ObservePeriod    time.Duration `yaml:"observe_period"`
-	JoinAfter        time.Duration `yaml:"join_after"`
-	MinReadyDuration time.Duration `yaml:"min_ready_duration"`
-	InfNames         []string      `yaml:"interface_names"`
-	FinalSleep       time.Duration `yaml:"final_sleep"`
-	TokensFilePath   string        `yaml:"tokens_file_path"`
-	Zone             string        `yaml:"availability_zone"`
+	NumTokens            int           `yaml:"num_tokens"`
+	HeartbeatPeriod      time.Duration `yaml:"heartbeat_period"`
+	ObservePeriod        time.Duration `yaml:"observe_period"`
+	JoinAfter            time.Duration `yaml:"join_after"`
+	MinReadyDuration     time.Duration `yaml:"min_ready_duration"`
+	InfNames             []string      `yaml:"interface_names"`
+	FinalSleep           time.Duration `yaml:"final_sleep"`
+	TokensFilePath       string        `yaml:"tokens_file_path"`
+	Zone                 string        `yaml:"availability_zone"`
+	UnregisterOnShutdown bool          `yaml:"unregister_on_shutdown"`
 
 	// For testing, you can override the address and ID of this ingester
-	Addr           string `yaml:"address" doc:"hidden"`
-	Port           int    `doc:"hidden"`
-	ID             string `doc:"hidden"`
-	SkipUnregister bool   `yaml:"-"`
+	Addr string `yaml:"address" doc:"hidden"`
+	Port int    `doc:"hidden"`
+	ID   string `doc:"hidden"`
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
@@ -102,6 +102,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register in the ring.")
 	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone where this instance is running.")
+	f.BoolVar(&cfg.UnregisterOnShutdown, prefix+"unregister-on-shutdown", true, "Unregister from the ring upon clean shutdown. It can be useful to disable for rolling restarts with consistent naming in conjunction with -distributor.extend-writes=false.")
 }
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
@@ -122,7 +123,8 @@ type Lifecycler struct {
 	Zone     string
 
 	// Whether to flush if transfer fails on shutdown.
-	flushOnShutdown *atomic.Bool
+	flushOnShutdown      *atomic.Bool
+	unregisterOnShutdown *atomic.Bool
 
 	// We need to remember the ingester state, tokens and registered timestamp just in case the KV store
 	// goes away and comes back empty. The state changes during lifecycle of instance.
@@ -176,12 +178,13 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		flushTransferer: flushTransferer,
 		KVStore:         store,
 
-		Addr:            fmt.Sprintf("%s:%d", addr, port),
-		ID:              cfg.ID,
-		RingName:        ringName,
-		RingKey:         ringKey,
-		flushOnShutdown: atomic.NewBool(flushOnShutdown),
-		Zone:            zone,
+		Addr:                 fmt.Sprintf("%s:%d", addr, port),
+		ID:                   cfg.ID,
+		RingName:             ringName,
+		RingKey:              ringKey,
+		flushOnShutdown:      atomic.NewBool(flushOnShutdown),
+		unregisterOnShutdown: atomic.NewBool(cfg.UnregisterOnShutdown),
+		Zone:                 zone,
 
 		actorChan: make(chan func()),
 
@@ -489,7 +492,7 @@ heartbeatLoop:
 		}
 	}
 
-	if !i.cfg.SkipUnregister {
+	if i.ShouldUnregisterOnShutdown() {
 		if err := i.unregister(context.Background()); err != nil {
 			return perrors.Wrapf(err, "failed to unregister from the KV store, ring: %s", i.RingName)
 		}
@@ -511,8 +514,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 	if i.cfg.TokensFilePath != "" {
 		tokensFromFile, err = LoadTokensFromFile(i.cfg.TokensFilePath)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
+		if err != nil && !os.IsNotExist(err) {
+			level.Error(util.Logger).Log("msg", "error loading tokens from file", "err", err)
 		}
 	} else {
 		level.Info(util.Logger).Log("msg", "not loading tokens from file, tokens file path is empty")
@@ -750,11 +753,13 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	zones := map[string]struct{}{}
 
 	if ringDesc != nil {
+		now := time.Now()
+
 		for _, ingester := range ringDesc.Ingesters {
 			zones[ingester.Zone] = struct{}{}
 
 			// Count the number of healthy instances for Write operation.
-			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
+			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout, now) {
 				healthyInstancesCount++
 			}
 		}
@@ -776,6 +781,16 @@ func (i *Lifecycler) FlushOnShutdown() bool {
 // Passing 'true' enables it, and 'false' disabled it.
 func (i *Lifecycler) SetFlushOnShutdown(flushOnShutdown bool) {
 	i.flushOnShutdown.Store(flushOnShutdown)
+}
+
+// ShouldUnregisterOnShutdown returns if unregistering should be skipped on shutdown.
+func (i *Lifecycler) ShouldUnregisterOnShutdown() bool {
+	return i.unregisterOnShutdown.Load()
+}
+
+// SetUnregisterOnShutdown enables/disables unregistering on shutdown.
+func (i *Lifecycler) SetUnregisterOnShutdown(enabled bool) {
+	i.unregisterOnShutdown.Store(enabled)
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {

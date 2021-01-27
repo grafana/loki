@@ -7,7 +7,9 @@ import (
 	"sync"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/flate"
 	"github.com/klauspost/compress/gzip"
+	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
 	"github.com/prometheus/prometheus/pkg/pool"
 )
@@ -32,7 +34,8 @@ var (
 	Lz4_256k = LZ4Pool{bufferSize: 1 << 18} // Lz4_256k uses 256k buffer
 	Lz4_1M   = LZ4Pool{bufferSize: 1 << 20} // Lz4_1M uses 1M buffer
 	Lz4_4M   = LZ4Pool{bufferSize: 1 << 22} // Lz4_4M uses 4M buffer
-
+	Flate    = FlatePool{}
+	Zstd     = ZstdPool{}
 	// Snappy is the snappy compression pool
 	Snappy SnappyPool
 	// Noop is the no compression pool
@@ -44,12 +47,30 @@ var (
 			New: func() interface{} { return bufio.NewReader(nil) },
 		},
 	}
+
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
 	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
-	BytesBufferPool          = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+
+	// Pool of crc32 hash
+	crc32HashPool = sync.Pool{
+		New: func() interface{} {
+			return newCRC32()
+		},
+	}
+
 	serializeBytesBufferPool = sync.Pool{
 		New: func() interface{} {
 			return &bytes.Buffer{}
+		},
+	}
+
+	// EncodeBufferPool is a pool used to binary encode.
+	EncodeBufferPool = sync.Pool{
+		New: func() interface{} {
+			return &encbuf{
+				b: make([]byte, 0, 256),
+			}
 		},
 	}
 )
@@ -74,6 +95,10 @@ func getReaderPool(enc Encoding) ReaderPool {
 		return &Snappy
 	case EncNone:
 		return &Noop
+	case EncFlate:
+		return &Flate
+	case EncZstd:
+		return &Zstd
 	default:
 		panic("unknown encoding")
 	}
@@ -129,6 +154,103 @@ func (pool *GzipPool) GetWriter(dst io.Writer) io.WriteCloser {
 
 // PutWriter places back in the pool a CompressionWriter
 func (pool *GzipPool) PutWriter(writer io.WriteCloser) {
+	pool.writers.Put(writer)
+}
+
+// FlatePool is a flate compression pool
+type FlatePool struct {
+	readers sync.Pool
+	writers sync.Pool
+	level   int
+}
+
+// GetReader gets or creates a new CompressionReader and reset it to read from src
+func (pool *FlatePool) GetReader(src io.Reader) io.Reader {
+	if r := pool.readers.Get(); r != nil {
+		reader := r.(flate.Resetter)
+		err := reader.Reset(src, nil)
+		if err != nil {
+			panic(err)
+		}
+		return reader.(io.Reader)
+	}
+	return flate.NewReader(src)
+}
+
+// PutReader places back in the pool a CompressionReader
+func (pool *FlatePool) PutReader(reader io.Reader) {
+	pool.readers.Put(reader)
+}
+
+// GetWriter gets or creates a new CompressionWriter and reset it to write to dst
+func (pool *FlatePool) GetWriter(dst io.Writer) io.WriteCloser {
+	if w := pool.writers.Get(); w != nil {
+		writer := w.(*flate.Writer)
+		writer.Reset(dst)
+		return writer
+	}
+
+	level := pool.level
+	if level == 0 {
+		level = flate.DefaultCompression
+	}
+	w, err := flate.NewWriter(dst, level)
+	if err != nil {
+		panic(err) // never happens, error is only returned on wrong compression level.
+	}
+	return w
+}
+
+// PutWriter places back in the pool a CompressionWriter
+func (pool *FlatePool) PutWriter(writer io.WriteCloser) {
+	pool.writers.Put(writer)
+}
+
+// GzipPool is a gun zip compression pool
+type ZstdPool struct {
+	readers sync.Pool
+	writers sync.Pool
+}
+
+// GetReader gets or creates a new CompressionReader and reset it to read from src
+func (pool *ZstdPool) GetReader(src io.Reader) io.Reader {
+	if r := pool.readers.Get(); r != nil {
+		reader := r.(*zstd.Decoder)
+		err := reader.Reset(src)
+		if err != nil {
+			panic(err)
+		}
+		return reader
+	}
+	reader, err := zstd.NewReader(src)
+	if err != nil {
+		panic(err)
+	}
+	return reader
+}
+
+// PutReader places back in the pool a CompressionReader
+func (pool *ZstdPool) PutReader(reader io.Reader) {
+	pool.readers.Put(reader)
+}
+
+// GetWriter gets or creates a new CompressionWriter and reset it to write to dst
+func (pool *ZstdPool) GetWriter(dst io.Writer) io.WriteCloser {
+	if w := pool.writers.Get(); w != nil {
+		writer := w.(*zstd.Encoder)
+		writer.Reset(dst)
+		return writer
+	}
+
+	w, err := zstd.NewWriter(dst)
+	if err != nil {
+		panic(err) // never happens, error is only returned on wrong compression level.
+	}
+	return w
+}
+
+// PutWriter places back in the pool a CompressionWriter
+func (pool *ZstdPool) PutWriter(writer io.WriteCloser) {
 	pool.writers.Put(writer)
 }
 
