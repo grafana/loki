@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"flag"
-	fmt "fmt"
 	"sync"
 	"time"
 
@@ -50,7 +49,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Need to set default here
 	cfg.ReplayMemoryCeiling = flagext.ByteSize(defaultCeiling)
-	f.Var(&cfg.ReplayMemoryCeiling, "ingester.wal-replay-memory-ceiling", fmt.Sprintf("How much memory the WAL may use during replay before it needs to flush chunks to storage, i.e. 10GB. Defaults to %s.", flagext.ByteSize(defaultCeiling).String()))
+	f.Var(&cfg.ReplayMemoryCeiling, "ingester.wal-replay-memory-ceiling", "How much memory the WAL may use during replay before it needs to flush chunks to storage, i.e. 10GB. We suggest setting this to a high percentage (~75%) of available memory.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
