@@ -217,6 +217,7 @@ func stringPointer(s string) (uintptr, error) {
 	if s == "" {
 		return 0, nil
 	}
+	// last character is always nil and causes issue for decoding.
 	ptr, err := syscall.UTF16PtrFromString(s[:len(s)-1])
 	if err != nil {
 		return 0, err

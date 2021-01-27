@@ -29,6 +29,15 @@ func init() {
 	util.InitLogger(cfg)
 }
 
+// Test that you can use to generate event logs locally.
+func Test_WriteLog(t *testing.T) {
+	l, err := eventlog.Open("myapp")
+	if err != nil {
+		t.Fatalf("Open failed: %s", err)
+	}
+	l.Error(500, "hello 5 world")
+}
+
 func Test_GetCreateBookrmark(t *testing.T) {
 	const name = "mylog"
 	const supports = eventlog.Error | eventlog.Warning | eventlog.Info
