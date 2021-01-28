@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
@@ -90,7 +91,7 @@ func (t *table) compact() error {
 
 	errChan := make(chan error)
 	readObjectChan := make(chan string)
-	n := util.Min(len(objects), readDBsParallelism)
+	n := math.Min(len(objects), readDBsParallelism)
 
 	// read files parallelly
 	for i := 0; i < n; i++ {

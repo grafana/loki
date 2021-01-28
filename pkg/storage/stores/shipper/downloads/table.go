@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -492,7 +493,7 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 	defer cancel()
 
 	queue := make(chan chunk.StorageObject)
-	n := util.Min(len(objects), downloadParallelism)
+	n := util_math.Min(len(objects), downloadParallelism)
 	incomingErrors := make(chan error)
 
 	// Run n parallel goroutines fetching objects to download from the queue
