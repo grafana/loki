@@ -643,7 +643,7 @@ func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge,
 }
 
 // middleware for setting cache gen header to let consumer of response know all previous responses could be invalid due to delete operation
-func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.TombstonesLoader) middleware.Interface {
+func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader cortex_queryrange.CacheGenNumberLoader) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID, err := user.ExtractOrgID(r.Context())

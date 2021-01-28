@@ -9,11 +9,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logql"
 )
 
 type DeleteRequestHandler struct {
