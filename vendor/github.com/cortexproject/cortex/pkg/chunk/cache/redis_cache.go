@@ -6,7 +6,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // RedisCache type caches chunks in redis
@@ -18,7 +18,7 @@ type RedisCache struct {
 
 // NewRedisCache creates a new RedisCache
 func NewRedisCache(name string, redisClient *RedisClient, logger log.Logger) *RedisCache {
-	util.WarnExperimentalUse("Redis cache")
+	util_log.WarnExperimentalUse("Redis cache")
 	cache := &RedisCache{
 		name:   name,
 		redis:  redisClient,

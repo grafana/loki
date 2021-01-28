@@ -276,7 +276,7 @@ func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now t
 			}
 
 			// We shouldn't failover to accepting a new replica if the timestamp we've received this sample at
-			// is less than failOver timeout amount of time since the timestamp in the KV store.
+			// is less than failover timeout amount of time since the timestamp in the KV store.
 			if desc.Replica != replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.cfg.FailoverTimeout {
 				return nil, false, replicasNotMatchError{replica: replica, elected: desc.Replica}
 			}
@@ -304,6 +304,11 @@ func (e replicasNotMatchError) Is(err error) bool {
 	_, ok1 := err.(replicasNotMatchError)
 	_, ok2 := err.(*replicasNotMatchError)
 	return ok1 || ok2
+}
+
+// IsOperationAborted returns whether the error has been caused by an operation intentionally aborted.
+func (e replicasNotMatchError) IsOperationAborted() bool {
+	return true
 }
 
 type tooManyClustersError struct {

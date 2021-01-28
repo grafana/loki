@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // +build amd64 386 ppc64le
-// +build !appengine
+// +build !purego
 
 package sha3
 

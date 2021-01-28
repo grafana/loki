@@ -1,4 +1,4 @@
-package util
+package math
 
 // Max returns the maximum of two ints
 func Max(a, b int) int {

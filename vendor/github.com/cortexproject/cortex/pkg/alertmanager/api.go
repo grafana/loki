@@ -9,7 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -34,7 +34,7 @@ type UserConfig struct {
 }
 
 func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.Request) {
-	logger := util.WithContext(r.Context(), am.logger)
+	logger := util_log.WithContext(r.Context(), am.logger)
 
 	userID, err := tenant.TenantID(r.Context())
 	if err != nil {
@@ -72,7 +72,7 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 }
 
 func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.Request) {
-	logger := util.WithContext(r.Context(), am.logger)
+	logger := util_log.WithContext(r.Context(), am.logger)
 	userID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
@@ -113,7 +113,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 }
 
 func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *http.Request) {
-	logger := util.WithContext(r.Context(), am.logger)
+	logger := util_log.WithContext(r.Context(), am.logger)
 	userID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())

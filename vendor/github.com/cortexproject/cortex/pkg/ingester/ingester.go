@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -235,14 +236,14 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 func (i *Ingester) starting(ctx context.Context) error {
 	if i.cfg.WALConfig.Recover {
-		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		level.Info(log.Logger).Log("msg", "recovering from WAL")
 		start := time.Now()
 		if err := recoverFromWAL(i); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+			level.Error(log.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 			return errors.Wrap(err, "failed to recover from WAL")
 		}
 		elapsed := time.Since(start)
-		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+		level.Info(log.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 	}
 
@@ -303,17 +304,17 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 }
 
 func (i *Ingester) startingForFlusher(ctx context.Context) error {
-	level.Info(util.Logger).Log("msg", "recovering from WAL")
+	level.Info(log.Logger).Log("msg", "recovering from WAL")
 
 	// We recover from WAL always.
 	start := time.Now()
 	if err := recoverFromWAL(i); err != nil {
-		level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+		level.Error(log.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 		return err
 	}
 	elapsed := time.Since(start)
 
-	level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+	level.Info(log.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 	i.metrics.walReplayDuration.Set(elapsed.Seconds())
 
 	i.startFlushLoops()
@@ -605,7 +606,7 @@ func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*
 	// If we have any error with regard to metadata we just log and no-op.
 	// We consider metadata a best effort approach, errors here should not stop processing.
 	if firstMetadataErr != nil {
-		logger := util.WithContext(ctx, util.Logger)
+		logger := log.WithContext(ctx, log.Logger)
 		level.Warn(logger).Log("msg", "failed to ingest some metadata", "err", firstMetadataErr)
 	}
 }

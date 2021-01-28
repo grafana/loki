@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Queries are a set of matchers with time ranges - should not get into megabytes
@@ -18,7 +19,7 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		var req client.ReadRequest
-		logger := util.WithContext(r.Context(), util.Logger)
+		logger := log.WithContext(r.Context(), log.Logger)
 		if err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRemoteReadQuerySize, &req, util.RawSnappy); err != nil {
 			level.Error(logger).Log("msg", "failed to parse proto", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
