@@ -284,7 +284,7 @@ clean:
 	rm -rf dist/
 	rm -rf cmd/fluent-bit/out_grafana_loki.h
 	rm -rf cmd/fluent-bit/out_grafana_loki.so
-    rm -rf cmd/migrate/migrate
+	rm -rf cmd/migrate/migrate
 	go clean $(MOD_FLAG) ./...
 
 #########
