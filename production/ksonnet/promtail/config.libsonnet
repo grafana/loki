@@ -10,7 +10,7 @@
         username:: '',
         password:: '',
         scheme:: 'https',
-        hostname:: 'logs-us-west1.grafana.net',
+        hostname:: error 'must define a valid hostname',
         external_labels: {},
       }],
       container_root_path: '/var/lib/docker',
