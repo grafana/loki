@@ -140,7 +140,6 @@ func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *Defa
 		querier:           querier,
 		maxLookBackPeriod: maxLookBackPeriod,
 	}
-
 }
 
 func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
@@ -160,7 +159,6 @@ func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 	}
 
 	return ev.querier.SelectLogs(ctx, params)
-
 }
 
 func (ev *DefaultEvaluator) StepEvaluator(
@@ -188,7 +186,6 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				}
 				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q)
 			})
-
 		}
 		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *rangeAggregationExpr:
@@ -237,14 +234,11 @@ func vectorAggEvaluator(
 			if expr.params < 1 {
 				return next, ts, promql.Vector{}
 			}
-
 		}
 		for _, s := range vec {
 			metric := s.Metric
 
-			var (
-				groupingKey uint64
-			)
+			var groupingKey uint64
 			if expr.grouping.without {
 				groupingKey, buf = metric.HashWithoutLabels(buf, expr.grouping.groups...)
 			} else {
@@ -406,7 +400,6 @@ func vectorAggEvaluator(
 			})
 		}
 		return next, ts, vec
-
 	}, nextEvaluator.Close, nextEvaluator.Error)
 }
 
@@ -594,7 +587,6 @@ func binOpStepEvaluator(
 
 		results := make(promql.Vector, 0, len(pairs))
 		for _, pair := range pairs {
-
 			// merge
 			if merged := mergeBinOp(expr.op, pair[0], pair[1], !expr.opts.ReturnBool, IsComparisonOperator(expr.op)); merged != nil {
 				results = append(results, *merged)
@@ -703,7 +695,7 @@ func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 			res := promql.Sample{
-				Metric: left.Metric.Copy(),
+				Metric: left.Metric,
 				Point:  left.Point,
 			}
 
@@ -906,7 +898,6 @@ func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 		res.Point.V = 0
 	}
 	return res
-
 }
 
 // literalStepEvaluator merges a literal with a StepEvaluator. Since order matters in
