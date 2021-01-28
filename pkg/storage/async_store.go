@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -23,13 +24,15 @@ type IngesterQuerier interface {
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
 	chunk.Store
-	ingesterQuerier IngesterQuerier
+	ingesterQuerier      IngesterQuerier
+	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(store chunk.Store, querier IngesterQuerier) *AsyncStore {
+func NewAsyncStore(store chunk.Store, querier IngesterQuerier, queryIngestersWithin time.Duration) *AsyncStore {
 	return &AsyncStore{
-		Store:           store,
-		ingesterQuerier: querier,
+		Store:                store,
+		ingesterQuerier:      querier,
+		queryIngestersWithin: queryIngestersWithin,
 	}
 }
 
@@ -49,6 +52,15 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var ingesterChunks []string
 
 	go func() {
+		if a.queryIngestersWithin != 0 {
+			// don't query ingesters if the query does not overlap with queryIngestersWithin.
+			if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
+				level.Debug(pkg_util.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
+				errs <- nil
+				return
+			}
+		}
+
 		var err error
 		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
 
