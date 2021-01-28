@@ -125,6 +125,8 @@ func Test_SampleExpr_String(t *testing.T) {
 			"(.*):.*"
 		)
 		`,
+		`10 / (5/2)`,
+		`10 / (count_over_time({job="postgres"}[5m])/2)`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
@@ -157,7 +159,6 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 			require.True(t, ok)
 		})
 	}
-
 }
 
 type linecheck struct {
@@ -274,16 +275,16 @@ func TestStringer(t *testing.T) {
 		},
 		{
 			in:  `1 > bool 1 > count_over_time({foo="bar"}[1m])`,
-			out: `0 > count_over_time({foo="bar"}[1m])`,
+			out: `(0 > count_over_time({foo="bar"}[1m]))`,
 		},
 		{
 			in:  `1 > bool 1 > bool count_over_time({foo="bar"}[1m])`,
-			out: `0 > bool count_over_time({foo="bar"}[1m])`,
+			out: `(0 > bool count_over_time({foo="bar"}[1m]))`,
 		},
 		{
 
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
-			out: `0 > count_over_time({foo="bar"}[1m])`,
+			out: `(0 > count_over_time({foo="bar"}[1m]))`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -359,7 +360,6 @@ func mustNewRegexParser(re string) log.Stage {
 }
 
 func Test_canInjectVectorGrouping(t *testing.T) {
-
 	tests := []struct {
 		vecOp   string
 		rangeOp string
