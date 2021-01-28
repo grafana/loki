@@ -52,25 +52,17 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var ingesterChunks []string
 
 	go func() {
-		ingesterQueryFrom := from
 		if a.queryIngestersWithin != 0 {
-			oldestIngesterQueryFrom := model.Now().Add(-a.queryIngestersWithin)
-			// don't query ingesters if the query end is not after oldest allowed start time.
-			if !through.After(oldestIngesterQueryFrom) {
+			// don't query ingesters if the query does not overlap with queryIngestersWithin.
+			if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
 				level.Debug(pkg_util.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
 				errs <- nil
 				return
 			}
-
-			// if ingesterQueryFrom is older than oldest allowed ingester query start then reduce it to oldest allowed start time.
-			if ingesterQueryFrom.Before(oldestIngesterQueryFrom) {
-				ingesterQueryFrom = oldestIngesterQueryFrom
-				level.Debug(pkg_util.Logger).Log("msg", "reducing query from time for ingesters to get chunk ids", "original-from", from, "modified-from", ingesterQueryFrom)
-			}
 		}
 
 		var err error
-		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, ingesterQueryFrom, through, matchers...)
+		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
 
 		if err == nil {
 			level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
