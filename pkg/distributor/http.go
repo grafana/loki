@@ -3,6 +3,7 @@ package distributor
 import (
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/dustin/go-humanize"
@@ -72,11 +73,16 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 			totalEntries     int64
 		)
 
+		mostRecentEntry := time.Unix(0, 0)
+
 		for _, s := range req.Streams {
 			streamLabelsSize += int64(len(s.Labels))
 			for _, e := range s.Entries {
 				totalEntries++
 				entriesSize += int64(len(e.Line))
+				if e.Timestamp.After(mostRecentEntry) {
+					mostRecentEntry = e.Timestamp
+				}
 			}
 		}
 
@@ -96,6 +102,7 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 			"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
 			"entriesSize", humanize.Bytes(uint64(entriesSize)),
 			"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
+			"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
 		)
 	}()
 
