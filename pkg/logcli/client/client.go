@@ -37,11 +37,11 @@ var (
 // Client contains all the methods to query a Loki instance, it's an interface to allow multiple implementations.
 type Client interface {
 	Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error)
-	QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error)
-	ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error)
-	ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error)
-	Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error)
-	LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error)
+	QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error)
+	ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
+	ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
+	Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
+	LiveTailQueryConn(queryStr string, delayFor int, limit int, start int64, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
 }
 
@@ -70,12 +70,12 @@ func (c *DefaultClient) Query(queryStr string, limit int, time time.Time, direct
 // QueryRange uses the /api/v1/query_range endpoint to execute a range query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *DefaultClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetString("query", queryStr)
 	params.SetInt32("limit", limit)
-	params.SetInt("start", from.UnixNano())
-	params.SetInt("end", through.UnixNano())
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
 	params.SetString("direction", direction.String())
 
 	// The step is optional, so we do set it only if provided,
@@ -92,11 +92,11 @@ func (c *DefaultClient) QueryRange(queryStr string, limit int, from, through tim
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
-func (c *DefaultClient) ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (c *DefaultClient) ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
 	var labelResponse loghttp.LabelResponse
 	params := util.NewQueryStringBuilder()
-	params.SetInt("start", from.UnixNano())
-	params.SetInt("end", through.UnixNano())
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
 
 	if err := c.doRequest(labelsPath, params.Encode(), quiet, &labelResponse); err != nil {
 		return nil, err
@@ -105,22 +105,22 @@ func (c *DefaultClient) ListLabelNames(quiet bool, from, through time.Time) (*lo
 }
 
 // ListLabelValues uses the /api/v1/label endpoint to list label values
-func (c *DefaultClient) ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (c *DefaultClient) ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
 	var labelResponse loghttp.LabelResponse
 	params := util.NewQueryStringBuilder()
-	params.SetInt("start", from.UnixNano())
-	params.SetInt("end", through.UnixNano())
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
 	if err := c.doRequest(path, params.Encode(), quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
 }
 
-func (c *DefaultClient) Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (c *DefaultClient) Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
 	params := util.NewQueryStringBuilder()
-	params.SetInt("start", from.UnixNano())
-	params.SetInt("end", through.UnixNano())
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
 	params.SetStringArray("match", matchers)
 
 	var seriesResponse loghttp.SeriesResponse
@@ -131,12 +131,12 @@ func (c *DefaultClient) Series(matchers []string, from, through time.Time, quiet
 }
 
 // LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
-func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error) {
+func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor int, limit int, start int64, quiet bool) (*websocket.Conn, error) {
 	qsb := util.NewQueryStringBuilder()
 	qsb.SetString("query", queryStr)
 	qsb.SetInt("delay_for", int64(delayFor))
 	qsb.SetInt("limit", int64(limit))
-	qsb.SetInt("start", from)
+	qsb.SetInt("start", start)
 
 	return c.wsConnect(tailPath, qsb.Encode(), quiet)
 }
