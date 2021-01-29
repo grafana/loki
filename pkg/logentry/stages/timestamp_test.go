@@ -466,9 +466,9 @@ func TestTimestampStage_ProcessActionOnDuplicate(t *testing.T) {
 	}{
 		"should keep the parsed timestamp on success": {
 			config: TimestampConfig{
-				Source:          "time",
-				Format:          time.RFC3339Nano,
-				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+				Source:            "time",
+				Format:            time.RFC3339Nano,
+				ActionOnDuplicate: lokiutil.StringRef(TimestampActionOnDuplicateFudge),
 			},
 			inputEntries: []inputEntry{
 				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
@@ -481,9 +481,9 @@ func TestTimestampStage_ProcessActionOnDuplicate(t *testing.T) {
 		},
 		"should fudge the timestamp based on the last known value on timestamp duplicate": {
 			config: TimestampConfig{
-				Source:          "time",
-				Format:          time.RFC3339Nano,
-				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+				Source:            "time",
+				Format:            time.RFC3339Nano,
+				ActionOnDuplicate: lokiutil.StringRef(TimestampActionOnDuplicateFudge),
 			},
 			inputEntries: []inputEntry{
 				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
@@ -498,9 +498,9 @@ func TestTimestampStage_ProcessActionOnDuplicate(t *testing.T) {
 		},
 		"should fudge the timestamp based on the last known value for the right file target": {
 			config: TimestampConfig{
-				Source:          "time",
-				Format:          time.RFC3339Nano,
-				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+				Source:            "time",
+				Format:            time.RFC3339Nano,
+				ActionOnDuplicate: lokiutil.StringRef(TimestampActionOnDuplicateFudge),
 			},
 			inputEntries: []inputEntry{
 				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
@@ -519,9 +519,9 @@ func TestTimestampStage_ProcessActionOnDuplicate(t *testing.T) {
 		},
 		"should reset offset after finding a new unique timestamp": {
 			config: TimestampConfig{
-				Source:          "time",
-				Format:          time.RFC3339Nano,
-				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+				Source:            "time",
+				Format:            time.RFC3339Nano,
+				ActionOnDuplicate: lokiutil.StringRef(TimestampActionOnDuplicateFudge),
 			},
 			inputEntries: []inputEntry{
 				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
@@ -538,9 +538,9 @@ func TestTimestampStage_ProcessActionOnDuplicate(t *testing.T) {
 		},
 		"should keep the input timestamp on action_on_duplicate=skip": {
 			config: TimestampConfig{
-				Source:          "time",
-				Format:          time.RFC3339Nano,
-				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureSkip),
+				Source:            "time",
+				Format:            time.RFC3339Nano,
+				ActionOnDuplicate: lokiutil.StringRef(TimestampActionOnDuplicateSkip),
 			},
 			inputEntries: []inputEntry{
 				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
@@ -548,14 +548,14 @@ func TestTimestampStage_ProcessActionOnDuplicate(t *testing.T) {
 			},
 			expectedTimestamps: []time.Time{
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
-				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				time.Unix(1, 0),
 			},
 		},
 		"labels with colliding fingerprints should have independent timestamps when fudging": {
 			config: TimestampConfig{
-				Source:          "time",
-				Format:          time.RFC3339Nano,
-				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+				Source:            "time",
+				Format:            time.RFC3339Nano,
+				ActionOnDuplicate: lokiutil.StringRef(TimestampActionOnDuplicateFudge),
 			},
 			inputEntries: []inputEntry{
 				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
@@ -572,6 +572,24 @@ func TestTimestampStage_ProcessActionOnDuplicate(t *testing.T) {
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000001Z"),
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000002Z"),
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000002Z"),
+			},
+		},
+		"Should fudge duplicate line with a failing line in between": {
+			config: TimestampConfig{
+				Source:            "time",
+				Format:            time.RFC3339Nano,
+				ActionOnDuplicate: lokiutil.StringRef(TimestampActionOnDuplicateFudge),
+				ActionOnFailure:   lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000002Z"),
 			},
 		},
 	}

@@ -139,20 +139,11 @@ func newTimestampStage(logger log.Logger, config interface{}) (Stage, error) {
 		}
 	}
 
-	var lastKnownTimestampOffsets *lru.Cache
-	if *cfg.ActionOnFailure == TimestampActionOnDuplicateFudge {
-		lastKnownTimestampOffsets, err = lru.New(maxLastKnownTimestampsCacheSize)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return toStage(&timestampStage{
-		cfg:                       cfg,
-		logger:                    logger,
-		parser:                    parser,
-		lastKnownTimestamps:       lastKnownTimestamps,
-		lastKnownTimestampOffsets: lastKnownTimestampOffsets,
+		cfg:                 cfg,
+		logger:              logger,
+		parser:              parser,
+		lastKnownTimestamps: lastKnownTimestamps,
 	}), nil
 }
 
@@ -165,8 +156,6 @@ type timestampStage struct {
 	// Stores the last known timestamp for a given "stream id" (guessed, since at this stage
 	// there's no reliable way to know it).
 	lastKnownTimestamps *lru.Cache
-	// Stores the last known offset for a given "stream id" which is
-	lastKnownTimestampOffsets *lru.Cache
 }
 
 // Name implements Stage
@@ -188,12 +177,11 @@ func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]in
 
 	labelsStr := labels.String()
 	lastTimestamp, ok := ts.lastKnownTimestamps.Get(labelsStr)
-	if ok && lastTimestamp.(time.Time).Equal(time.Time(*parsedTs)) {
+	if ok && (lastTimestamp.(time.Time).Equal(*parsedTs) ||
+		lastTimestamp.(time.Time).After(*parsedTs)) {
 		ts.processActionOnDuplicate(labels, t)
 		return
 	}
-	// reset the offset counter as the timestamp has changed
-	ts.lastKnownTimestampOffsets.Add(labelsStr, time.Duration(1))
 
 	// Update the log entry timestamp with the parsed one
 	*t = *parsedTs
@@ -276,17 +264,18 @@ func (ts *timestampStage) processActionOnDuplicate(labels model.LabelSet, t *tim
 
 func (ts *timestampStage) processActionOnDuplicateFudge(labels model.LabelSet, t *time.Time) {
 	labelsStr := labels.String()
-	offset, ok := ts.lastKnownTimestampOffsets.Get(labelsStr)
+	lastTimestamp, ok := ts.lastKnownTimestamps.Get(labelsStr)
 
-	// If we don't have an offset stored we assume this is the first time we've seen this
-	// timestamp and must therefore add 1 nanosecond
+	// If the last known timestamp is unknown the timestamp is actually unique
+	// seeing that we check for this before even entering this function there
+	// is no codepath that should be here. but for safety we check and escape
 	if !ok {
-		offset = time.Duration(1)
+		return
 	}
 
 	// Fudge the timestamp
-	*t = t.Add(offset.(time.Duration) * time.Nanosecond)
+	*t = lastTimestamp.(time.Time).Add(1 * time.Nanosecond)
 
-	// Store the fudged offset + 1 so the offset on the next line will be 2
-	ts.lastKnownTimestampOffsets.Add(labelsStr, offset.(time.Duration)+1)
+	// Store the fudged timestamp, so that a subsequent fudged timestamp will be 1ns after it
+	ts.lastKnownTimestamps.Add(labelsStr, *t)
 }
