@@ -106,7 +106,7 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 		)
 	}()
 
-	switch r.Header.Get(contentType) {
+	switch contentType {
 	case applicationJSON:
 		var err error
 
