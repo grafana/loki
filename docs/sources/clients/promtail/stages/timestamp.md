@@ -33,6 +33,11 @@ timestamp:
   # be extracted or parsed. Valid values are: [skip, fudge].
   # Defaults to "fudge".
   [action_on_failure: <string>]
+
+  # Which action should be taken in case the timestamp is identical
+  # to or before the timestamp of a log line with the same labels.
+  # Valid values are: [skip, fudge]. Defaults to "fudge".
+  [action_on_duplicate: <string>]
 ```
 
 ### Reference Time
