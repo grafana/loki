@@ -1357,6 +1357,36 @@ filesystem:
   # CLI flag: -local.chunk-directory
   directory: <string>
 
+# Configures storing index in an Object Store(GCS/S3/Azure/Swift/Filesystem) in the form of boltdb files.
+# Required fields only required when boltdb-shipper is defined in config.  
+boltdb_shipper:
+  # Directory where ingesters would write boltdb files which would then be
+  # uploaded by shipper to configured storage
+  # CLI flag: -boltdb.shipper.active-index-directory
+  [active_index_directory: <string> | default = ""]
+
+  # Shared store for keeping boltdb files. Supported types: gcs, s3, azure,
+  # filesystem
+  # CLI flag: -boltdb.shipper.shared-store
+  [shared_store: <string> | default = ""]
+
+  # Cache location for restoring boltDB files for queries
+  # CLI flag: -boltdb.shipper.cache-location
+  [cache_location: <string> | default = ""]
+
+  # TTL for boltDB files restored in cache for queries
+  # CLI flag: -boltdb.shipper.cache-ttl
+  [cache_ttl: <duration> | default = 24h]
+
+  # Resync downloaded files with the storage
+  # CLI flag: -boltdb.shipper.resync-interval
+  [resync_interval: <duration> | default = 5m]
+
+  # Number of days of index to be kept downloaded for queries. Works only with
+  # tables created with 24h period.
+  # CLI flag: -boltdb.shipper.query-ready-num-days
+  [query_ready_num_days: <int> | default = 0]
+
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.
 # CLI flag: -store.index-cache-validity
