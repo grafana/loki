@@ -21,6 +21,7 @@ const (
 	ErrTimestampFormatRequired   = "timestamp format is required"
 	ErrInvalidLocation           = "invalid location specified: %v"
 	ErrInvalidActionOnFailure    = "invalid action on failure (supported values are %v)"
+	ErrInvalidActionOnDuplicate  = "invalid action on duplicate (supported values are %v)"
 	ErrTimestampSourceMissing    = "extracted data did not contain a timestamp"
 	ErrTimestampConversionFailed = "failed to convert extracted time to string"
 	ErrTimestampParsingFailed    = "failed to parse time"
@@ -34,21 +35,27 @@ const (
 	TimestampActionOnFailureFudge   = "fudge"
 	TimestampActionOnFailureDefault = TimestampActionOnFailureFudge
 
+	TimestampActionOnDuplicateSkip    = "skip"
+	TimestampActionOnDuplicateFudge   = "fudge"
+	TimestampActionOnDuplicateDefault = TimestampActionOnDuplicateFudge
+
 	// Maximum number of "streams" for which we keep the last known timestamp
 	maxLastKnownTimestampsCacheSize = 10000
 )
 
 var (
-	TimestampActionOnFailureOptions = []string{TimestampActionOnFailureSkip, TimestampActionOnFailureFudge}
+	TimestampActionOnFailureOptions   = []string{TimestampActionOnFailureSkip, TimestampActionOnFailureFudge}
+	TimestampActionOnDuplicateOptions = []string{TimestampActionOnDuplicateSkip, TimestampActionOnDuplicateFudge}
 )
 
 // TimestampConfig configures timestamp extraction
 type TimestampConfig struct {
-	Source          string   `mapstructure:"source"`
-	Format          string   `mapstructure:"format"`
-	FallbackFormats []string `mapstructure:"fallback_formats"`
-	Location        *string  `mapstructure:"location"`
-	ActionOnFailure *string  `mapstructure:"action_on_failure"`
+	Source            string   `mapstructure:"source"`
+	Format            string   `mapstructure:"format"`
+	FallbackFormats   []string `mapstructure:"fallback_formats"`
+	Location          *string  `mapstructure:"location"`
+	ActionOnFailure   *string  `mapstructure:"action_on_failure"`
+	ActionOnDuplicate *string  `mapstructure:"action_on_duplicate"`
 }
 
 // parser can convert the time string into a time.Time value
@@ -80,6 +87,15 @@ func validateTimestampConfig(cfg *TimestampConfig) (parser, error) {
 	} else {
 		if !util.StringSliceContains(TimestampActionOnFailureOptions, *cfg.ActionOnFailure) {
 			return nil, fmt.Errorf(ErrInvalidActionOnFailure, TimestampActionOnFailureOptions)
+		}
+	}
+
+	// Validate the action on duplicate and enforce the default
+	if cfg.ActionOnDuplicate == nil {
+		cfg.ActionOnDuplicate = util.StringRef(TimestampActionOnDuplicateDefault)
+	} else {
+		if !util.StringSliceContains(TimestampActionOnDuplicateOptions, *cfg.ActionOnDuplicate) {
+			return nil, fmt.Errorf(ErrInvalidActionOnDuplicate, TimestampActionOnDuplicateOptions)
 		}
 	}
 
@@ -115,18 +131,28 @@ func newTimestampStage(logger log.Logger, config interface{}) (Stage, error) {
 	}
 
 	var lastKnownTimestamps *lru.Cache
-	if *cfg.ActionOnFailure == TimestampActionOnFailureFudge {
+	if *cfg.ActionOnFailure == TimestampActionOnFailureFudge ||
+		*cfg.ActionOnDuplicate == TimestampActionOnDuplicateFudge {
 		lastKnownTimestamps, err = lru.New(maxLastKnownTimestampsCacheSize)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	var lastKnownTimestampOffsets *lru.Cache
+	if *cfg.ActionOnFailure == TimestampActionOnDuplicateFudge {
+		lastKnownTimestampOffsets, err = lru.New(maxLastKnownTimestampsCacheSize)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return toStage(&timestampStage{
-		cfg:                 cfg,
-		logger:              logger,
-		parser:              parser,
-		lastKnownTimestamps: lastKnownTimestamps,
+		cfg:                       cfg,
+		logger:                    logger,
+		parser:                    parser,
+		lastKnownTimestamps:       lastKnownTimestamps,
+		lastKnownTimestampOffsets: lastKnownTimestampOffsets,
 	}), nil
 }
 
@@ -139,6 +165,8 @@ type timestampStage struct {
 	// Stores the last known timestamp for a given "stream id" (guessed, since at this stage
 	// there's no reliable way to know it).
 	lastKnownTimestamps *lru.Cache
+	// Stores the last known offset for a given "stream id" which is
+	lastKnownTimestampOffsets *lru.Cache
 }
 
 // Name implements Stage
@@ -157,6 +185,15 @@ func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]in
 		ts.processActionOnFailure(labels, t)
 		return
 	}
+
+	labelsStr := labels.String()
+	lastTimestamp, ok := ts.lastKnownTimestamps.Get(labelsStr)
+	if ok && lastTimestamp.(time.Time).Equal(time.Time(*parsedTs)) {
+		ts.processActionOnDuplicate(labels, t)
+		return
+	}
+	// reset the offset counter as the timestamp has changed
+	ts.lastKnownTimestampOffsets.Add(labelsStr, time.Duration(1))
 
 	// Update the log entry timestamp with the parsed one
 	*t = *parsedTs
@@ -226,4 +263,30 @@ func (ts *timestampStage) processActionOnFailureFudge(labels model.LabelSet, t *
 
 	// Store the fudged timestamp, so that a subsequent fudged timestamp will be 1ns after it
 	ts.lastKnownTimestamps.Add(labelsStr, *t)
+}
+
+func (ts *timestampStage) processActionOnDuplicate(labels model.LabelSet, t *time.Time) {
+	switch *ts.cfg.ActionOnDuplicate {
+	case TimestampActionOnDuplicateFudge:
+		ts.processActionOnDuplicateFudge(labels, t)
+	case TimestampActionOnDuplicateSkip:
+		// Nothing to do
+	}
+}
+
+func (ts *timestampStage) processActionOnDuplicateFudge(labels model.LabelSet, t *time.Time) {
+	labelsStr := labels.String()
+	offset, ok := ts.lastKnownTimestampOffsets.Get(labelsStr)
+
+	// If we don't have an offset stored we assume this is the first time we've seen this
+	// timestamp and must therefore add 1 nanosecond
+	if !ok {
+		offset = time.Duration(1)
+	}
+
+	// Fudge the timestamp
+	*t = t.Add(offset.(time.Duration) * time.Nanosecond)
+
+	// Store the fudged offset + 1 so the offset on the next line will be 2
+	ts.lastKnownTimestampOffsets.Add(labelsStr, offset.(time.Duration)+1)
 }

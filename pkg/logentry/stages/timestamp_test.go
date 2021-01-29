@@ -449,3 +449,149 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestTimestampStage_ProcessActionOnDuplicate(t *testing.T) {
+	t.Parallel()
+
+	type inputEntry struct {
+		timestamp time.Time
+		labels    model.LabelSet
+		extracted map[string]interface{}
+	}
+
+	tests := map[string]struct {
+		config             TimestampConfig
+		inputEntries       []inputEntry
+		expectedTimestamps []time.Time
+	}{
+		"should keep the parsed timestamp on success": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.500000000Z"}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.500000000Z"),
+			},
+		},
+		"should fudge the timestamp based on the last known value on timestamp duplicate": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000002Z"),
+			},
+		},
+		"should fudge the timestamp based on the last known value for the right file target": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000002Z"),
+			},
+		},
+		"should reset offset after finding a new unique timestamp": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.500000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.500000000Z"}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.500000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.500000001Z"),
+			},
+		},
+		"should keep the input timestamp on action_on_duplicate=skip": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureSkip),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+			},
+		},
+		"labels with colliding fingerprints should have independent timestamps when fudging": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000002Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000002Z"),
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Ensure the test has been correctly set
+			require.Equal(t, len(testData.inputEntries), len(testData.expectedTimestamps))
+
+			s, err := newTimestampStage(util.Logger, testData.config)
+			require.NoError(t, err)
+
+			for i, inputEntry := range testData.inputEntries {
+				out := processEntries(s, newEntry(inputEntry.extracted, inputEntry.labels, "", inputEntry.timestamp))[0]
+				assert.Equal(t, testData.expectedTimestamps[i], out.Timestamp, "entry: %d", i)
+			}
+		})
+	}
+}
