@@ -233,7 +233,6 @@ storage_config:
  boltdb_shipper:
    active_index_directory: /loki/index
    cache_location: /loki/index_cache
-   resync_interval: 5s
    shared_store: s3
 
  aws:
