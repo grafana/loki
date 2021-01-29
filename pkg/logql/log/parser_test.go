@@ -88,7 +88,6 @@ func Test_jsonParser_Parse(t *testing.T) {
 }
 
 func Benchmark_Parser(b *testing.B) {
-
 	lbs := labels.Labels{
 		{Name: "cluster", Value: "qa-us-central1"},
 		{Name: "namespace", Value: "qa"},
@@ -127,7 +126,7 @@ func Benchmark_Parser(b *testing.B) {
 
 			b.Run("labels hints", func(b *testing.B) {
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
-				builder.parserKeyHints = tt.LabelParseHints
+				builder.parserKeyHints = newParserHint(tt.LabelParseHints, false, false, "")
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(line, builder)
@@ -135,7 +134,6 @@ func Benchmark_Parser(b *testing.B) {
 			})
 		})
 	}
-
 }
 
 func TestNewRegexpParser(t *testing.T) {
