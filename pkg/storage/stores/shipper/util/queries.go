@@ -7,7 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util/math"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
 
 const maxQueriesPerGoroutine = 100
@@ -34,7 +34,7 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 	errs := make(chan error)
 
 	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
-		q := queries[i:math.Min(i+maxQueriesPerGoroutine, len(queries))]
+		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]
 		go func(queries []chunk.IndexQuery) {
 			errs <- tableQuerier.MultiQueries(ctx, queries, callback)
 		}(q)
