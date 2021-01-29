@@ -86,7 +86,7 @@ For all the queries which require chunks to be read from the store, Queriers als
 
 Queriers lazily loads BoltDB files from shared object store to configured `cache_location`.
 When a querier receives a read request, the query range from the request is resolved to period numbers and all the files for those period numbers are downloaded to `cache_location`, if not already.
-Once we have downloaded files for a period we keep looking for updates in shared object store and download them every 15 Minutes by default.
+Once we have downloaded files for a period we keep looking for updates in shared object store and download them every 5 Minutes by default.
 Frequency for checking updates can be configured with `resync_interval` config.
 
 To avoid keeping downloaded index files forever there is a ttl for them which defaults to 24 hours, which means if index files for a period are not used for 24 hours they would be removed from cache location.
