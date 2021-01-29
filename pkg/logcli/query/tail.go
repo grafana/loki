@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
@@ -17,8 +18,8 @@ import (
 )
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
-func (q *Query) TailQuery(delayFor int, c client.Client, out output.LogOutput) {
-	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start.UnixNano(), q.Quiet)
+func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.LogOutput) {
+	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start, q.Quiet)
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
