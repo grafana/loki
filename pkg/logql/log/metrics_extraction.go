@@ -3,6 +3,7 @@ package log
 import (
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -23,6 +24,7 @@ type LineExtractor func([]byte) float64
 var (
 	CountExtractor LineExtractor = func(line []byte) float64 { return 1. }
 	BytesExtractor LineExtractor = func(line []byte) float64 { return float64(len(line)) }
+	noParserHints                = &parserHint{}
 )
 
 // SampleExtractor creates StreamSampleExtractor that can extract samples for a given log stream.
@@ -47,17 +49,18 @@ type lineSampleExtractor struct {
 
 // NewLineSampleExtractor creates a SampleExtractor from a LineExtractor.
 // Multiple log stages are run before converting the log line.
-func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without bool, noLabels bool) (SampleExtractor, error) {
+func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	s := ReduceStages(stages)
 	var expectedLabels []string
 	if !without {
 		expectedLabels = append(expectedLabels, s.RequiredLabelNames()...)
 		expectedLabels = uniqueString(append(expectedLabels, groups...))
 	}
+	hints := newParserHint(expectedLabels, without, noLabels, "")
 	return &lineSampleExtractor{
 		Stage:            s,
 		LineExtractor:    ex,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, expectedLabels, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }
@@ -118,7 +121,7 @@ type labelSampleExtractor struct {
 // to remove sample containing the __error__ label.
 func LabelExtractorWithStages(
 	labelName, conversion string,
-	groups []string, without bool, noLabels bool,
+	groups []string, without, noLabels bool,
 	preStages []Stage,
 	postFilter Stage,
 ) (SampleExtractor, error) {
@@ -147,12 +150,13 @@ func LabelExtractorWithStages(
 		expectedLabels = append(expectedLabels, labelName)
 		expectedLabels = uniqueString(expectedLabels)
 	}
+	hints := newParserHint(expectedLabels, without, noLabels, labelName)
 	return &labelSampleExtractor{
 		preStage:         preStage,
 		conversionFn:     convFn,
 		labelName:        labelName,
 		postFilter:       postFilter,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, expectedLabels, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }
@@ -225,4 +229,76 @@ func convertBytes(v string) (float64, error) {
 		return 0, err
 	}
 	return float64(b), nil
+}
+
+// ParserHint are hints given to LogQL parsers.
+// This is specially useful for parser that extract implicitly all possible label keys.
+// This is used only within metric queries since it's rare that you need all label keys.
+// For example in the following expression:
+//
+//		sum by (status_code) (rate({app="foo"} | json [5m]))
+//
+// All we need to extract is the status_code in the json parser.
+type ParserHint interface {
+	// Tells is a label with the given key should be extracted.
+	ShouldExtract(key string) bool
+	// Tells if there's any hint that start with the given prefix.
+	// This allows to speed up key searching in nested structured like json.
+	ShouldExtractPrefix(prefix string) bool
+	// Tells if we should not extract any labels.
+	// For example in :
+	//		 sum(rate({app="foo"} | json [5m]))
+	// We don't need to extract any labels from the log line.
+	NoLabels() bool
+}
+
+type parserHint struct {
+	noLabels       bool
+	requiredLabels []string
+}
+
+func (p *parserHint) ShouldExtract(key string) bool {
+	if len(p.requiredLabels) == 0 {
+		return true
+	}
+	for _, l := range p.requiredLabels {
+		if l == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *parserHint) ShouldExtractPrefix(prefix string) bool {
+	if len(p.requiredLabels) == 0 {
+		return true
+	}
+	for _, l := range p.requiredLabels {
+		if strings.HasPrefix(l, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (p *parserHint) NoLabels() bool {
+	return p.noLabels
+}
+
+// newParserHint creates a new parser hint using the list of labels that are seen and required in a query.
+func newParserHint(requiredLabelNames []string, without, noLabels bool, metricLabelName string) *parserHint {
+	if noLabels {
+		// if we need to extract metric from a label, then use that as required labels list.
+		if metricLabelName != "" {
+			return &parserHint{requiredLabels: []string{metricLabelName}}
+		}
+		return &parserHint{noLabels: true}
+	}
+	// we don't know what is required when a without clause is used.
+	// no hint available
+	if without {
+		return noParserHints
+	}
+	return &parserHint{requiredLabels: requiredLabelNames}
 }

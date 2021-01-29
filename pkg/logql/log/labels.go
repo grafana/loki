@@ -6,9 +6,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-var (
-	emptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
-)
+var emptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
 // The is mainly used for caching and returning labels computations out of pipelines and stages.
@@ -68,7 +66,7 @@ type BaseLabelsBuilder struct {
 	err string
 
 	groups            []string
-	parserKeyHints    []string // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	parserKeyHints    ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
 	without, noLabels bool
 
 	resultCache map[uint64]LabelsResult
@@ -85,7 +83,7 @@ type LabelsBuilder struct {
 }
 
 // NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
-func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints []string, without, noLabels bool) *BaseLabelsBuilder {
+func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint, without, noLabels bool) *BaseLabelsBuilder {
 	return &BaseLabelsBuilder{
 		del:            make([]string, 0, 5),
 		add:            make([]labels.Label, 0, 16),
@@ -100,7 +98,7 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints []string, 
 
 // NewLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
-	return NewBaseLabelsBuilderWithGrouping(nil, nil, false, false)
+	return NewBaseLabelsBuilderWithGrouping(nil, noParserHints, false, false)
 }
 
 // ForLabels creates a labels builder for a given labels set as base.
@@ -133,7 +131,7 @@ func (b *LabelsBuilder) Reset() {
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
 // Returns nil when it's impossible to hint labels extractions.
-func (b *BaseLabelsBuilder) ParserLabelHints() []string {
+func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {
 	return b.parserKeyHints
 }
 
