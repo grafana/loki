@@ -10,7 +10,6 @@ Loki imposes an ordering constraint on ingested data; that is to say incoming da
 
 - Ingesting logs from a cloud function without feeling pressured to add high cardinality labels like invocation_id to avoid out of order errors.
 - Ingesting logs from other agents/mechanisms that don’t take into account Loki’s ordering constraint. For instance, fluent{d,bit} variants may batch and retry writes independently of other batches, causing unpredictable log loss via out of order errors.
-- Importing old data and new data concurrently.
 
 Many of these illustrate the adversity between _ordering_ and _cardinality_. In addition to enabling some previously difficult/impossible use cases, removing the ordering constraint lets us avoid potential conflict between these two concepts and helps incentivize good practice in the form of fewer useful labels.
 
@@ -34,21 +33,23 @@ Many of these illustrate the adversity between _ordering_ and _cardinality_. In 
 
 ### Background
 
-I suggest allowing a stream's head block to accept unordered writes and re-ordering cut blocks similar to merge-sort before flushing to storage. Currently, writes are accepted in monotonically increasing timestamp order to a _headBlock_, which is occasionally "cut" into a compressed, immutable _block_. In turn, these _blocks_ are combined into a _chunk_ and persisted to storage.
+I suggest allowing a stream's head block to accept unordered writes and later re-ordering cut blocks similar to merge-sort before flushing them to storage. Currently, writes are accepted in monotonically increasing timestamp order to a _headBlock_, which is occasionally "cut" into a compressed, immutable _block_. In turn, these _blocks_ are combined into a _chunk_ and persisted to storage.
 
 ```
 Figure 1
 
-    Blocks                    Head
-
---------------           ----------------
-|    blocks  |--         |  head block  |
-|(compressed)| |         |(uncompressed)|
-|            | | ------> |              |
-|            | |         |              |
--------------- |         ----------------
-  |            |
-  --------------
+    Data while being buffered in Ingester          |                                Chunk in storage
+                                                   |
+    Blocks                    Head                 |       ---------------------------------------------------------------------
+                                                   |       |   ts0   ts1    ts2   ts3    ts4   ts5    ts6   ts7    ts8    ts9  |
+--------------           ----------------          |       |   ---------    ---------    ---------    ---------    ---------   |
+|    blocks  |--         |  head block  |          |       |   |block 0|    |block 1|    |block 2|    |block 4|    |block 5|   |
+|(compressed)| |         |(uncompressed)|          |       |   |       |    |       |    |       |    |       |    |       |   |
+|            | | ------> |              |          |       |   ---------    ---------    ---------    ---------    ---------   |
+|            | |         |              |          |       |                                                                   |
+-------------- |         ----------------          |       ---------------------------------------------------------------------
+  |            |                                   |
+  --------------                                   |
 ```
 
 Historically because of Loki's ordering constraint, these blocks maintain a monotonically increasing timestamp (abbreviated `ts`) order where
