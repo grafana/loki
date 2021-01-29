@@ -35,7 +35,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
-		maxMessageSize: cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
+		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
 
@@ -65,7 +65,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 type schedulerProcessor struct {
 	log            log.Logger
 	handler        RequestHandler
-	grpcConfig     grpcclient.ConfigWithTLS
+	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
 

@@ -330,7 +330,7 @@ func (r *readRingMock) ReplicationFactor() int {
 	return 1
 }
 
-func (r *readRingMock) IngesterCount() int {
+func (r *readRingMock) InstancesCount() int {
 	return len(r.replicationSet.Ingesters)
 }
 

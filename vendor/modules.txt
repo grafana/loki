@@ -164,7 +164,7 @@ github.com/coreos/go-systemd/journal
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.6.1-0.20210128165026-dc1e6a800b51
+# github.com/cortexproject/cortex v1.6.1-0.20210129172402-0976147451ee
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alerts
