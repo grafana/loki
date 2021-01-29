@@ -33,7 +33,7 @@ Many of these illustrate the adversity between _ordering_ and _cardinality_. In 
 
 ### Background
 
-I suggest allowing a stream's head block to accept unordered writes and later re-ordering cut blocks similar to merge-sort before flushing them to storage. Currently, writes are accepted in monotonically increasing timestamp order to a _headBlock_, which is occasionally "cut" into a compressed, immutable _block_. In turn, these _blocks_ are combined into a _chunk_ and persisted to storage.
+I suggest allowing a stream's head block to accept unordered writes and later re-order cut blocks similar to merge-sort before flushing them to storage. Currently, writes are accepted in monotonically increasing timestamp order to a _headBlock_, which is occasionally "cut" into a compressed, immutable _block_. In turn, these _blocks_ are combined into a _chunk_ and persisted to storage.
 
 ```
 Figure 1
@@ -69,12 +69,12 @@ ts0         ts1          ts2        ts3
 
 This allows us two optimzations:
 
-1) We can store much more data in memory because each block is compressed after being cut from a head chunk.
+1) We can store much more data in memory because each block is compressed after being cut from a head block.
 2) We can query the block's metadata, such as `ts0` and `ts1` and skip querying it in the case of i.e. the timestamps are outside a request's bounds.
 
 ### Unordered Head Blocks
 
-The head block's internal structure will be replaced with a tree structure, enabling logarithmic inserts/lookups and `n log(n)` scans. _Cutting_ a block from the headchunk will iterate through this tree, creating a sorted block identical to the ones currently in use. However, because we'll be accepting arbitrarily-ordered writes, there will no longer be any guaranteed inter-block order. In contrast to figure 2, blocks may have overlapping data:
+The head block's internal structure will be replaced with a tree structure, enabling logarithmic inserts/lookups and `n log(n)` scans. _Cutting_ a block from the head block will iterate through this tree, creating a sorted block identical to the ones currently in use. However, because we'll be accepting arbitrarily-ordered writes, there will no longer be any guaranteed inter-block order. In contrast to figure 2, blocks may have overlapping data:
 
 ```
 Figure 3
@@ -89,7 +89,7 @@ ts1         ts3          ts0        ts2
 --------------           --------------
 ```
 
-Thus _all_ blocks must have their metadata checked against a query. In this example, a query for the bounds `[ts1,ts2]`  would need to decompress and scan the `[ts1, ts2]` range across them, but a query against `[ts3, ts4]` would only decompress & scan _one_ block.
+Thus _all_ blocks must have their metadata checked against a query. In this example, a query for the bounds `[ts1,ts2]`  would need to decompress and scan the `[ts1, ts2]` range across both of them, but a query against `[ts3, ts4]` would only decompress & scan _one_ block.
 
 ```
 Figure 4
@@ -98,6 +98,10 @@ Figure 4
 -------------------
                 chunk2
          ---------------------
+         query range requiring both
+         ----------
+                             query range requiring chunk2 only
+                             -----------
 ts0     ts1      ts2       ts3        ts4 (not in any block)
 ------------------------------
 |        |        |          |
@@ -111,18 +115,22 @@ ts0     ts1      ts2       ts3        ts4 (not in any block)
 The performance losses against the current approach includes:
 
 1) Appending a log line is now performed in logarithmic time instead of amortized (due to array resizing) constant time.
-2) Blocks may contain overlapping data (although intra-block ordering is still guaranteed).
+2) Blocks may contain overlapping data (although ordering is still guaranteed within each block).
 3) Head block scans are now `O(n log(n))` instead of `O(n)`
 
 ### Flushing & Chunk Creation
 
-Loki regularly combines multiple blocks into a chunk and "flushes** it to storage. In order to ensure that reads over flushed chunks remain as performant as possible, we will re-order a possibly-overlapping set of blocks into a set of blocks that maintain monotonically increasing order between them. From the perspective of the rest of Loki’s components (queriers/rulers fetching chunks from storage), nothing has changed.
+Loki regularly combines multiple blocks into a chunk and "flushes" it to storage. In order to ensure that reads over flushed chunks remain as performant as possible, we will re-order a possibly-overlapping set of blocks into a set of blocks that maintain monotonically increasing order between them. From the perspective of the rest of Loki’s components (queriers/rulers fetching chunks from storage), nothing has changed.
 
-**Note: In the case that data for a stream is ingested in order, this is effectively a no-op, making it well optimized for in-order writes (which is both the requirement and default in Loki currently). Thus, this should have little to no performance impact on ordered data while enabling Loki to ingest unordered data.**
+**Note: In the case that data for a stream is ingested in order, this is effectively a no-op, making it well optimized for in-order writes (which is both the requirement and default in Loki currently). Thus, this should have little performance impact on ordered data while enabling Loki to ingest unordered data.**
 
 #### Chunk Durations
 
-When `--validation.reject-old-samples` is enabled, Loki accepts incoming timestamps within the range [now() - `--validation.reject-old-samples.max-age`, now() + `--validation.create-grace-period`]. For most of our clusters, this would mean the range of acceptable data is one week long. In contrast, our max chunk age is `2h`. Allowing unordered writes would mean that ingesters would willingly receive data for 168h, or up to 84 distinct chunk lengths. This presents a problem: a malicious user could be writing to many (84 in this case) distinct chunks simultaneously, flooding Loki with underutilized chunks which bloat the index.
+When `--validation.reject-old-samples` is enabled, Loki accepts incoming timestamps within the range
+```
+[now() - `--validation.reject-old-samples.max-age`, now() + `--validation.create-grace-period`]
+```
+For most of our clusters, this would mean the range of acceptable data is one week long. In contrast, our max chunk age is `2h`. Allowing unordered writes would mean that ingesters would willingly receive data for 168h, or up to 84 distinct chunk lengths. This presents a problem: a malicious user could be writing to many (84 in this case) distinct chunks simultaneously, flooding Loki with underutilized chunks which bloat the index.
 
 In order to mitigate this, there are a few options (not mutually exclusive):
 1) Lower the valid acceptance range
@@ -172,17 +180,17 @@ Much of the proposed approach mirrors an [LSM-Tree](http://www.benstopford.com/2
 **At the cost of**
 - being susceptible to disk-related complexity & problems
 
-##### MemTable (head chunk)
+##### MemTable (head block)
 
-Writes in an LSM-Tree are first accepted to an in-memory structure called a _memtable_ (generally a balancing tree such as red-black) until the memtable hits a preconfigured size. In Loki, this corresponds to the stream’s head chunk, which is uncompressed. In order to allow randomly ordered writes, we’d likely need to use some tree structure as well (discussed in the in-memory approach).
+Writes in an LSM-Tree are first accepted to an in-memory structure called a _memtable_ (generally a balancing tree such as red-black) until the memtable hits a preconfigured size. In Loki, this corresponds to the stream’s head block, which is uncompressed. In order to allow randomly ordered writes, we’d likely need to use some tree structure as well (discussed in the in-memory approach).
 
 ##### SSTables (blocks)
 
-Once a Memtable (headchunk) in an LSM-Tree hits a predefined size, it is flushed to disk as an immutable sorted structure called an SSTable (sorted strings table). In Loki, we can use either the pre-existing MemChunk format, which is ordered, compact, and contains a block index within it, or the pre-existing block format directly. These are stored on disk to lessen memory pressure and loaded at request for queries.
+Once a Memtable (head block) in an LSM-Tree hits a predefined size, it is flushed to disk as an immutable sorted structure called an SSTable (sorted strings table). In Loki, we can use either the pre-existing MemChunk format, which is ordered, compact, and contains a block index within it, or the pre-existing block format directly. These are stored on disk to lessen memory pressure and loaded at request for queries.
 
 ##### Block Index
 
-Incoming reads in an LSM-Tree may need access to the SSTable entries in addition to the currently active memtable (head chunk). In order to improve this, we may cache the metadata including block offsets, start & end timestamps within an SSTable (block || MemChunk) in memory to mitigate lookups, seeking, and loading unnecessary data from disk.
+Incoming reads in an LSM-Tree may need access to the SSTable entries in addition to the currently active memtable (head block). In order to improve this, we may cache the metadata including block offsets, start & end timestamps within an SSTable (block || MemChunk) in memory to mitigate lookups, seeking, and loading unnecessary data from disk.
 
 ##### Compaction (flushing)
 
