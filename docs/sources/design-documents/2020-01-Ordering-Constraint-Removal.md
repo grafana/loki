@@ -123,24 +123,42 @@ Loki regularly combines multiple blocks into a chunk and "flushes** it to storag
 
 When `--validation.reject-old-samples` is enabled, Loki accepts incoming timestamps within the range [now() - `--validation.reject-old-samples.max-age`, now() + `--validation.create-grace-period`]. For most of our clusters, this would mean the range of acceptable data is one week long. In contrast, our max chunk age is `2h`. Allowing unordered writes would mean that ingesters would willingly receive data for 168h, or up to 84 distinct chunk lengths. This presents a problem: a malicious user could be writing to many (84 in this case) distinct chunks simultaneously, flooding Loki with underutilized chunks which bloat the index.
 
-In order to mitigate this, there are a few options:
+In order to mitigate this, there are a few options (not mutually exclusive):
 1) Lower the valid acceptance range
 2) Create an _active_ validity window, such as `[most_recent_sample-max_chunk_age, now() + creation_grace_period]`.
 
 The first option is simple, already available, and likely somewhat reasonable.
 The second is simple to implement and an effective way to ensure Loki can ingest unordered logs but maintain a sliding validity window. I expect this to cover nearly all reasonable use cases and effectively mitigate bad actors.
 
-### Caveats
+#### Chunk Synchronization
 
-query ingesters within read lag
+Currently (with the ordering constraint), we cut chunks according to `sync_period` as well. The first timestamp past this bound will trigger a cut. This process aids in increasing chunk determinism and therefore our deduplication ratio in object storage because chunks are [content addressed](https://en.wikipedia.org/wiki/Content-addressable_storage). With the removal of our ordering constraint, it's possible that in some cases the synchronization method will not be as effective, such as during concurrent writes to the same stream across this bound.
 
-### Concerns
+**Note: It's important to mention that this is possible today with the current ordering constraint as well, but we'll be incentivizing it more by removing the odering constraint**
+
+```
+Figure 5
+
+       Concurrent Writes over threshold
+                   ^ ^
+                   | |
+                   | |
+-----------------|-----------------
+                 |
+                 v
+             Sync Marker
+```
+
+
+To mitigate this problem and preserve the benefits of chunk deduplication, we'll need to make chunk synchronization cutting less susceptible to non-determinism during concurrent writes. To do this, we can move the synchronization trigger from the `Append` code path to the asynchronous `FlushLoop`. Note, the semantics for _when_ a chunk is cut will not change: that is, on the first timestamp crossing the synchronization bound.
+
+
 
 ### Future Opportunities
 
 #### Variance Budget
 
-Introduce a "variance budget" ingester limit, for example using an incremental (online) standard deviation/variance algorithm such as [Welford's](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance). This would allow writing to larger ranges than option (2) in the _Chunk Durations_ section.
+The intended approach of validating a "sliding validity" window for each stream is simple and effective at preventing misuse & bad actors from writing across the entire acceptable range for incoming timestamps. However, we may in the future wish to take a more sophisticated approach, introducing per tenant "variance" budgets, likely derived from the stream limit. This ingester limit could, for example use an incremental (online) standard deviation/variance algorithm such as [Welford's](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance), which would allow writing to larger ranges than option (2) in the _Chunk Durations_ section.
 
 #### LSM Tree
 
