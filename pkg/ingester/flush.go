@@ -18,6 +18,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	loki_util "github.com/grafana/loki/pkg/util"
@@ -215,7 +216,7 @@ func (i *Ingester) flushLoop(j int) {
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			level.Error(util.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
+			level.Error(util_log.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation

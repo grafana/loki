@@ -17,6 +17,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -255,7 +257,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 func (r *Ring) loop(ctx context.Context) error {
 	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
 		if value == nil {
-			level.Info(util.Logger).Log("msg", "ring doesn't exist in KV store yet")
+			level.Info(log.Logger).Log("msg", "ring doesn't exist in KV store yet")
 			return true
 		}
 
@@ -420,7 +422,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		// Given data is replicated to RF different zones, we can tolerate a number of
 		// RF/2 failing zones. However, we need to protect from the case the ring currently
 		// contains instances in a number of zones < RF.
-		numReplicatedZones := util.Min(len(r.ringZones), r.cfg.ReplicationFactor)
+		numReplicatedZones := util_math.Min(len(r.ringZones), r.cfg.ReplicationFactor)
 		minSuccessZones := (numReplicatedZones / 2) + 1
 		maxUnavailableZones = minSuccessZones - 1
 

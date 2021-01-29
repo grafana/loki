@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -128,7 +129,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 
 				ctx = spanCtx
 			}
-			logger := util.WithContext(ctx, sp.log)
+			logger := util_log.WithContext(ctx, sp.log)
 
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 

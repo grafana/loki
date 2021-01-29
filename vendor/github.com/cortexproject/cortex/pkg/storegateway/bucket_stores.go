@@ -28,7 +28,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -324,7 +324,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		return bs, nil
 	}
 
-	userLogger := util.WithUserID(userID, u.logger)
+	userLogger := util_log.WithUserID(userID, u.logger)
 
 	level.Info(userLogger).Log("msg", "creating user bucket store")
 

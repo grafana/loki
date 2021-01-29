@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // DeprecatedFlagsUsed is the metric that counts deprecated flags set.
@@ -27,7 +27,7 @@ func (deprecatedFlag) String() string {
 }
 
 func (d deprecatedFlag) Set(string) error {
-	level.Warn(util.Logger).Log("msg", "flag disabled", "flag", d.name)
+	level.Warn(util_log.Logger).Log("msg", "flag disabled", "flag", d.name)
 	DeprecatedFlagsUsed.Inc()
 	return nil
 }

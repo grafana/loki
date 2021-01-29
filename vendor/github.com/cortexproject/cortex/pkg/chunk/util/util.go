@@ -11,7 +11,7 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/math"
 )
 
 // Callback from an IndexQuery.
@@ -36,7 +36,7 @@ func DoParallelQueries(
 
 	queue := make(chan chunk.IndexQuery)
 	incomingErrors := make(chan error)
-	n := util.Min(len(queries), QueryParallelism)
+	n := math.Min(len(queries), QueryParallelism)
 	// Run n parallel goroutines fetching queries from the queue
 	for i := 0; i < n; i++ {
 		go func() {

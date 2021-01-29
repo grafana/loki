@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
@@ -261,7 +262,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	}
 
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
-	util.CheckFatal("initializing bucket client", err)
+	util_log.CheckFatal("initializing bucket client", err)
 
 	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {

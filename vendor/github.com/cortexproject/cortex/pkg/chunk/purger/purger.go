@@ -22,7 +22,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -140,7 +140,7 @@ type Purger struct {
 
 // NewPurger creates a new Purger
 func NewPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (*Purger, error) {
-	util.WarnExperimentalUse("Delete series API")
+	util_log.WarnExperimentalUse("Delete series API")
 
 	purger := Purger{
 		cfg:                      cfg,
@@ -180,7 +180,7 @@ func (p *Purger) loop(ctx context.Context) error {
 		err := p.pullDeleteRequestsToPlanDeletes()
 		if err != nil {
 			status = statusFail
-			level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
+			level.Error(util_log.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
 		}
 
 		p.metrics.loadPendingRequestsAttempsTotal.WithLabelValues(status).Inc()
@@ -221,14 +221,14 @@ func (p *Purger) retryFailedRequests() {
 	for _, userID := range userIDsWithFailedRequest {
 		deleteRequest := p.inProcessRequests.get(userID)
 		if deleteRequest == nil {
-			level.Error(util.Logger).Log("msg", "expected an in-process delete request", "user", userID)
+			level.Error(util_log.Logger).Log("msg", "expected an in-process delete request", "user", userID)
 			continue
 		}
 
 		p.inProcessRequests.unsetFailedRequestForUser(userID)
 		err := p.resumeStalledRequest(*deleteRequest)
 		if err != nil {
-			reqWithLogger := makeDeleteRequestWithLogger(*deleteRequest, util.Logger)
+			reqWithLogger := makeDeleteRequestWithLogger(*deleteRequest, util_log.Logger)
 			level.Error(reqWithLogger.logger).Log("msg", "failed to resume failed request", "err", err)
 		}
 	}
@@ -407,7 +407,7 @@ func (p *Purger) loadInprocessDeleteRequests() error {
 	for i := range inprocessRequests {
 		deleteRequest := inprocessRequests[i]
 		p.inProcessRequests.set(deleteRequest.UserID, &deleteRequest)
-		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+		req := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
 
 		level.Info(req.logger).Log("msg", "resuming in process delete requests", "status", deleteRequest.Status)
 		err = p.resumeStalledRequest(deleteRequest)
@@ -421,7 +421,7 @@ func (p *Purger) loadInprocessDeleteRequests() error {
 }
 
 func (p *Purger) resumeStalledRequest(deleteRequest DeleteRequest) error {
-	req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+	req := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
 
 	if deleteRequest.Status == StatusBuildingPlan {
 		err := p.buildDeletePlan(req)
@@ -479,7 +479,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 			p.usersWithPendingRequests[deleteRequest.UserID] = struct{}{}
 			p.usersWithPendingRequestsMtx.Unlock()
 
-			level.Debug(util.Logger).Log("msg", "skipping delete request processing for now since another request from same user is already in process",
+			level.Debug(util_log.Logger).Log("msg", "skipping delete request processing for now since another request from same user is already in process",
 				"inprocess_request_id", inprocessDeleteRequest.RequestID,
 				"skipped_request_id", deleteRequest.RequestID, "user_id", deleteRequest.UserID)
 			continue
@@ -492,7 +492,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 
 		deleteRequest.Status = StatusBuildingPlan
 		p.inProcessRequests.set(deleteRequest.UserID, &deleteRequest)
-		req := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+		req := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
 
 		level.Info(req.logger).Log("msg", "building plan for a new delete request")
 

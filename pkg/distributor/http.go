@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,7 +62,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 	userID, _ := user.ExtractOrgID(r.Context())
-	logger := util.WithContext(r.Context(), util.Logger)
+	logger := util_log.WithContext(r.Context(), util.Logger)
 	body := lokiutil.NewSizeReader(r.Body)
 	contentType := r.Header.Get(contentType)
 	var req logproto.PushRequest

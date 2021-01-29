@@ -13,7 +13,8 @@ import (
 	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/math"
 )
 
 const (
@@ -260,8 +261,8 @@ func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) 
 	)
 
 	for i := fromHour; i <= throughHour; i++ {
-		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInHour))
-		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
+		relativeFrom := math.Max64(0, int64(from)-(i*millisecondsInHour))
+		relativeThrough := math.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
 		result = append(result, Bucket{
 			from:       uint32(relativeFrom),
 			through:    uint32(relativeThrough),
@@ -291,8 +292,8 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 		// include in the range keys - we use a uint32 - as we then have to base 32
 		// encode it.
 
-		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInDay))
-		relativeThrough := util.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
+		relativeFrom := math.Max64(0, int64(from)-(i*millisecondsInDay))
+		relativeThrough := math.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
 		result = append(result, Bucket{
 			from:       uint32(relativeFrom),
 			through:    uint32(relativeThrough),
@@ -394,7 +395,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
 			table = pCfg.ActiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags)
 
-			level.Debug(util.Logger).Log("msg", "Table is Active",
+			level.Debug(log.Logger).Log("msg", "Table is Active",
 				"tableName", table.Name,
 				"provisionedRead", table.ProvisionedRead,
 				"provisionedWrite", table.ProvisionedWrite,
@@ -409,7 +410,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 			disableAutoscale := i < (nowWeek - pCfg.InactiveWriteScaleLastN)
 			table = pCfg.InactiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags, disableAutoscale)
 
-			level.Debug(util.Logger).Log("msg", "Table is Inactive",
+			level.Debug(log.Logger).Log("msg", "Table is Inactive",
 				"tableName", table.Name,
 				"provisionedRead", table.ProvisionedRead,
 				"provisionedWrite", table.ProvisionedWrite,

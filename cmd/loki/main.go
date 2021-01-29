@@ -19,6 +19,7 @@ import (
 	logutil "github.com/grafana/loki/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -125,10 +126,10 @@ func main() {
 
 	// Start Loki
 	t, err := loki.New(config.Config)
-	util.CheckFatal("initialising loki", err)
+	util_log.CheckFatal("initialising loki", err)
 
 	level.Info(util.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
 	err = t.Run()
-	util.CheckFatal("running loki", err)
+	util_log.CheckFatal("running loki", err)
 }

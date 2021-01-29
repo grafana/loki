@@ -16,6 +16,91 @@ import (
 	"github.com/aws/aws-sdk-go/private/protocol/jsonrpc"
 )
 
+const opBatchExecuteStatement = "BatchExecuteStatement"
+
+// BatchExecuteStatementRequest generates a "aws/request.Request" representing the
+// client's request for the BatchExecuteStatement operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See BatchExecuteStatement for more information on using the BatchExecuteStatement
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the BatchExecuteStatementRequest method.
+//    req, resp := client.BatchExecuteStatementRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/BatchExecuteStatement
+func (c *DynamoDB) BatchExecuteStatementRequest(input *BatchExecuteStatementInput) (req *request.Request, output *BatchExecuteStatementOutput) {
+	op := &request.Operation{
+		Name:       opBatchExecuteStatement,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &BatchExecuteStatementInput{}
+	}
+
+	output = &BatchExecuteStatementOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// BatchExecuteStatement API operation for Amazon DynamoDB.
+//
+// This operation allows you to perform batch reads and writes on data stored
+// in DynamoDB, using PartiQL.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation BatchExecuteStatement for usage and error information.
+//
+// Returned Error Types:
+//   * RequestLimitExceeded
+//   Throughput exceeds the current throughput quota for your account. Please
+//   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
+//   a quota increase.
+//
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/BatchExecuteStatement
+func (c *DynamoDB) BatchExecuteStatement(input *BatchExecuteStatementInput) (*BatchExecuteStatementOutput, error) {
+	req, out := c.BatchExecuteStatementRequest(input)
+	return out, req.Send()
+}
+
+// BatchExecuteStatementWithContext is the same as BatchExecuteStatement with the addition of
+// the ability to pass a context and additional request options.
+//
+// See BatchExecuteStatement for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) BatchExecuteStatementWithContext(ctx aws.Context, input *BatchExecuteStatementInput, opts ...request.Option) (*BatchExecuteStatementOutput, error) {
+	req, out := c.BatchExecuteStatementRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opBatchGetItem = "BatchGetItem"
 
 // BatchGetItemRequest generates a "aws/request.Request" representing the
@@ -2094,6 +2179,114 @@ func (c *DynamoDB) DescribeGlobalTableSettingsWithContext(ctx aws.Context, input
 	return out, req.Send()
 }
 
+const opDescribeKinesisStreamingDestination = "DescribeKinesisStreamingDestination"
+
+// DescribeKinesisStreamingDestinationRequest generates a "aws/request.Request" representing the
+// client's request for the DescribeKinesisStreamingDestination operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See DescribeKinesisStreamingDestination for more information on using the DescribeKinesisStreamingDestination
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the DescribeKinesisStreamingDestinationRequest method.
+//    req, resp := client.DescribeKinesisStreamingDestinationRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/DescribeKinesisStreamingDestination
+func (c *DynamoDB) DescribeKinesisStreamingDestinationRequest(input *DescribeKinesisStreamingDestinationInput) (req *request.Request, output *DescribeKinesisStreamingDestinationOutput) {
+	op := &request.Operation{
+		Name:       opDescribeKinesisStreamingDestination,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &DescribeKinesisStreamingDestinationInput{}
+	}
+
+	output = &DescribeKinesisStreamingDestinationOutput{}
+	req = c.newRequest(op, input, output)
+	// if custom endpoint for the request is set to a non empty string,
+	// we skip the endpoint discovery workflow.
+	if req.Config.Endpoint == nil || *req.Config.Endpoint == "" {
+		if aws.BoolValue(req.Config.EnableEndpointDiscovery) {
+			de := discovererDescribeEndpoints{
+				Required:      false,
+				EndpointCache: c.endpointCache,
+				Params: map[string]*string{
+					"op": aws.String(req.Operation.Name),
+				},
+				Client: c,
+			}
+
+			for k, v := range de.Params {
+				if v == nil {
+					delete(de.Params, k)
+				}
+			}
+
+			req.Handlers.Build.PushFrontNamed(request.NamedHandler{
+				Name: "crr.endpointdiscovery",
+				Fn:   de.Handler,
+			})
+		}
+	}
+	return
+}
+
+// DescribeKinesisStreamingDestination API operation for Amazon DynamoDB.
+//
+// Returns information about the status of Kinesis streaming.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation DescribeKinesisStreamingDestination for usage and error information.
+//
+// Returned Error Types:
+//   * ResourceNotFoundException
+//   The operation tried to access a nonexistent table or index. The resource
+//   might not be specified correctly, or its status might not be ACTIVE.
+//
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/DescribeKinesisStreamingDestination
+func (c *DynamoDB) DescribeKinesisStreamingDestination(input *DescribeKinesisStreamingDestinationInput) (*DescribeKinesisStreamingDestinationOutput, error) {
+	req, out := c.DescribeKinesisStreamingDestinationRequest(input)
+	return out, req.Send()
+}
+
+// DescribeKinesisStreamingDestinationWithContext is the same as DescribeKinesisStreamingDestination with the addition of
+// the ability to pass a context and additional request options.
+//
+// See DescribeKinesisStreamingDestination for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) DescribeKinesisStreamingDestinationWithContext(ctx aws.Context, input *DescribeKinesisStreamingDestinationInput, opts ...request.Option) (*DescribeKinesisStreamingDestinationOutput, error) {
+	req, out := c.DescribeKinesisStreamingDestinationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opDescribeLimits = "DescribeLimits"
 
 // DescribeLimitsRequest generates a "aws/request.Request" representing the
@@ -2560,6 +2753,566 @@ func (c *DynamoDB) DescribeTimeToLive(input *DescribeTimeToLiveInput) (*Describe
 // for more information on using Contexts.
 func (c *DynamoDB) DescribeTimeToLiveWithContext(ctx aws.Context, input *DescribeTimeToLiveInput, opts ...request.Option) (*DescribeTimeToLiveOutput, error) {
 	req, out := c.DescribeTimeToLiveRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opDisableKinesisStreamingDestination = "DisableKinesisStreamingDestination"
+
+// DisableKinesisStreamingDestinationRequest generates a "aws/request.Request" representing the
+// client's request for the DisableKinesisStreamingDestination operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See DisableKinesisStreamingDestination for more information on using the DisableKinesisStreamingDestination
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the DisableKinesisStreamingDestinationRequest method.
+//    req, resp := client.DisableKinesisStreamingDestinationRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/DisableKinesisStreamingDestination
+func (c *DynamoDB) DisableKinesisStreamingDestinationRequest(input *DisableKinesisStreamingDestinationInput) (req *request.Request, output *DisableKinesisStreamingDestinationOutput) {
+	op := &request.Operation{
+		Name:       opDisableKinesisStreamingDestination,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &DisableKinesisStreamingDestinationInput{}
+	}
+
+	output = &DisableKinesisStreamingDestinationOutput{}
+	req = c.newRequest(op, input, output)
+	// if custom endpoint for the request is set to a non empty string,
+	// we skip the endpoint discovery workflow.
+	if req.Config.Endpoint == nil || *req.Config.Endpoint == "" {
+		if aws.BoolValue(req.Config.EnableEndpointDiscovery) {
+			de := discovererDescribeEndpoints{
+				Required:      false,
+				EndpointCache: c.endpointCache,
+				Params: map[string]*string{
+					"op": aws.String(req.Operation.Name),
+				},
+				Client: c,
+			}
+
+			for k, v := range de.Params {
+				if v == nil {
+					delete(de.Params, k)
+				}
+			}
+
+			req.Handlers.Build.PushFrontNamed(request.NamedHandler{
+				Name: "crr.endpointdiscovery",
+				Fn:   de.Handler,
+			})
+		}
+	}
+	return
+}
+
+// DisableKinesisStreamingDestination API operation for Amazon DynamoDB.
+//
+// Stops replication from the DynamoDB table to the Kinesis data stream. This
+// is done without deleting either of the resources.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation DisableKinesisStreamingDestination for usage and error information.
+//
+// Returned Error Types:
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+//   * LimitExceededException
+//   There is no limit to the number of daily on-demand backups that can be taken.
+//
+//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
+//   and RestoreTableToPointInTime.
+//
+//   The only exception is when you are creating a table with one or more secondary
+//   indexes. You can have up to 25 such requests running at a time; however,
+//   if the table or index specifications are complex, DynamoDB might temporarily
+//   reduce the number of concurrent operations.
+//
+//   There is a soft account quota of 256 tables.
+//
+//   * ResourceInUseException
+//   The operation conflicts with the resource's availability. For example, you
+//   attempted to recreate an existing table, or tried to delete a table currently
+//   in the CREATING state.
+//
+//   * ResourceNotFoundException
+//   The operation tried to access a nonexistent table or index. The resource
+//   might not be specified correctly, or its status might not be ACTIVE.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/DisableKinesisStreamingDestination
+func (c *DynamoDB) DisableKinesisStreamingDestination(input *DisableKinesisStreamingDestinationInput) (*DisableKinesisStreamingDestinationOutput, error) {
+	req, out := c.DisableKinesisStreamingDestinationRequest(input)
+	return out, req.Send()
+}
+
+// DisableKinesisStreamingDestinationWithContext is the same as DisableKinesisStreamingDestination with the addition of
+// the ability to pass a context and additional request options.
+//
+// See DisableKinesisStreamingDestination for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) DisableKinesisStreamingDestinationWithContext(ctx aws.Context, input *DisableKinesisStreamingDestinationInput, opts ...request.Option) (*DisableKinesisStreamingDestinationOutput, error) {
+	req, out := c.DisableKinesisStreamingDestinationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opEnableKinesisStreamingDestination = "EnableKinesisStreamingDestination"
+
+// EnableKinesisStreamingDestinationRequest generates a "aws/request.Request" representing the
+// client's request for the EnableKinesisStreamingDestination operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See EnableKinesisStreamingDestination for more information on using the EnableKinesisStreamingDestination
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the EnableKinesisStreamingDestinationRequest method.
+//    req, resp := client.EnableKinesisStreamingDestinationRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/EnableKinesisStreamingDestination
+func (c *DynamoDB) EnableKinesisStreamingDestinationRequest(input *EnableKinesisStreamingDestinationInput) (req *request.Request, output *EnableKinesisStreamingDestinationOutput) {
+	op := &request.Operation{
+		Name:       opEnableKinesisStreamingDestination,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &EnableKinesisStreamingDestinationInput{}
+	}
+
+	output = &EnableKinesisStreamingDestinationOutput{}
+	req = c.newRequest(op, input, output)
+	// if custom endpoint for the request is set to a non empty string,
+	// we skip the endpoint discovery workflow.
+	if req.Config.Endpoint == nil || *req.Config.Endpoint == "" {
+		if aws.BoolValue(req.Config.EnableEndpointDiscovery) {
+			de := discovererDescribeEndpoints{
+				Required:      false,
+				EndpointCache: c.endpointCache,
+				Params: map[string]*string{
+					"op": aws.String(req.Operation.Name),
+				},
+				Client: c,
+			}
+
+			for k, v := range de.Params {
+				if v == nil {
+					delete(de.Params, k)
+				}
+			}
+
+			req.Handlers.Build.PushFrontNamed(request.NamedHandler{
+				Name: "crr.endpointdiscovery",
+				Fn:   de.Handler,
+			})
+		}
+	}
+	return
+}
+
+// EnableKinesisStreamingDestination API operation for Amazon DynamoDB.
+//
+// Starts table data replication to the specified Kinesis data stream at a timestamp
+// chosen during the enable workflow. If this operation doesn't return results
+// immediately, use DescribeKinesisStreamingDestination to check if streaming
+// to the Kinesis data stream is ACTIVE.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation EnableKinesisStreamingDestination for usage and error information.
+//
+// Returned Error Types:
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+//   * LimitExceededException
+//   There is no limit to the number of daily on-demand backups that can be taken.
+//
+//   Up to 50 simultaneous table operations are allowed per account. These operations
+//   include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive, RestoreTableFromBackup,
+//   and RestoreTableToPointInTime.
+//
+//   The only exception is when you are creating a table with one or more secondary
+//   indexes. You can have up to 25 such requests running at a time; however,
+//   if the table or index specifications are complex, DynamoDB might temporarily
+//   reduce the number of concurrent operations.
+//
+//   There is a soft account quota of 256 tables.
+//
+//   * ResourceInUseException
+//   The operation conflicts with the resource's availability. For example, you
+//   attempted to recreate an existing table, or tried to delete a table currently
+//   in the CREATING state.
+//
+//   * ResourceNotFoundException
+//   The operation tried to access a nonexistent table or index. The resource
+//   might not be specified correctly, or its status might not be ACTIVE.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/EnableKinesisStreamingDestination
+func (c *DynamoDB) EnableKinesisStreamingDestination(input *EnableKinesisStreamingDestinationInput) (*EnableKinesisStreamingDestinationOutput, error) {
+	req, out := c.EnableKinesisStreamingDestinationRequest(input)
+	return out, req.Send()
+}
+
+// EnableKinesisStreamingDestinationWithContext is the same as EnableKinesisStreamingDestination with the addition of
+// the ability to pass a context and additional request options.
+//
+// See EnableKinesisStreamingDestination for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) EnableKinesisStreamingDestinationWithContext(ctx aws.Context, input *EnableKinesisStreamingDestinationInput, opts ...request.Option) (*EnableKinesisStreamingDestinationOutput, error) {
+	req, out := c.EnableKinesisStreamingDestinationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opExecuteStatement = "ExecuteStatement"
+
+// ExecuteStatementRequest generates a "aws/request.Request" representing the
+// client's request for the ExecuteStatement operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See ExecuteStatement for more information on using the ExecuteStatement
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the ExecuteStatementRequest method.
+//    req, resp := client.ExecuteStatementRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/ExecuteStatement
+func (c *DynamoDB) ExecuteStatementRequest(input *ExecuteStatementInput) (req *request.Request, output *ExecuteStatementOutput) {
+	op := &request.Operation{
+		Name:       opExecuteStatement,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &ExecuteStatementInput{}
+	}
+
+	output = &ExecuteStatementOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// ExecuteStatement API operation for Amazon DynamoDB.
+//
+// This operation allows you to perform reads and singleton writes on data stored
+// in DynamoDB, using PartiQL.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation ExecuteStatement for usage and error information.
+//
+// Returned Error Types:
+//   * ConditionalCheckFailedException
+//   A condition specified in the operation could not be evaluated.
+//
+//   * ProvisionedThroughputExceededException
+//   Your request rate is too high. The AWS SDKs for DynamoDB automatically retry
+//   requests that receive this exception. Your request is eventually successful,
+//   unless your retry queue is too large to finish. Reduce the frequency of requests
+//   and use exponential backoff. For more information, go to Error Retries and
+//   Exponential Backoff (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html#Programming.Errors.RetryAndBackoff)
+//   in the Amazon DynamoDB Developer Guide.
+//
+//   * ResourceNotFoundException
+//   The operation tried to access a nonexistent table or index. The resource
+//   might not be specified correctly, or its status might not be ACTIVE.
+//
+//   * ItemCollectionSizeLimitExceededException
+//   An item collection is too large. This exception is only returned for tables
+//   that have one or more local secondary indexes.
+//
+//   * TransactionConflictException
+//   Operation was rejected because there is an ongoing transaction for the item.
+//
+//   * RequestLimitExceeded
+//   Throughput exceeds the current throughput quota for your account. Please
+//   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
+//   a quota increase.
+//
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+//   * DuplicateItemException
+//   There was an attempt to insert an item with the same primary key as an item
+//   that already exists in the DynamoDB table.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/ExecuteStatement
+func (c *DynamoDB) ExecuteStatement(input *ExecuteStatementInput) (*ExecuteStatementOutput, error) {
+	req, out := c.ExecuteStatementRequest(input)
+	return out, req.Send()
+}
+
+// ExecuteStatementWithContext is the same as ExecuteStatement with the addition of
+// the ability to pass a context and additional request options.
+//
+// See ExecuteStatement for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) ExecuteStatementWithContext(ctx aws.Context, input *ExecuteStatementInput, opts ...request.Option) (*ExecuteStatementOutput, error) {
+	req, out := c.ExecuteStatementRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opExecuteTransaction = "ExecuteTransaction"
+
+// ExecuteTransactionRequest generates a "aws/request.Request" representing the
+// client's request for the ExecuteTransaction operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See ExecuteTransaction for more information on using the ExecuteTransaction
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the ExecuteTransactionRequest method.
+//    req, resp := client.ExecuteTransactionRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/ExecuteTransaction
+func (c *DynamoDB) ExecuteTransactionRequest(input *ExecuteTransactionInput) (req *request.Request, output *ExecuteTransactionOutput) {
+	op := &request.Operation{
+		Name:       opExecuteTransaction,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &ExecuteTransactionInput{}
+	}
+
+	output = &ExecuteTransactionOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// ExecuteTransaction API operation for Amazon DynamoDB.
+//
+// This operation allows you to perform transactional reads or writes on data
+// stored in DynamoDB, using PartiQL.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation ExecuteTransaction for usage and error information.
+//
+// Returned Error Types:
+//   * ResourceNotFoundException
+//   The operation tried to access a nonexistent table or index. The resource
+//   might not be specified correctly, or its status might not be ACTIVE.
+//
+//   * TransactionCanceledException
+//   The entire transaction request was canceled.
+//
+//   DynamoDB cancels a TransactWriteItems request under the following circumstances:
+//
+//      * A condition in one of the condition expressions is not met.
+//
+//      * A table in the TransactWriteItems request is in a different account
+//      or region.
+//
+//      * More than one action in the TransactWriteItems operation targets the
+//      same item.
+//
+//      * There is insufficient provisioned capacity for the transaction to be
+//      completed.
+//
+//      * An item size becomes too large (larger than 400 KB), or a local secondary
+//      index (LSI) becomes too large, or a similar validation error occurs because
+//      of changes made by the transaction.
+//
+//      * There is a user error, such as an invalid data format.
+//
+//   DynamoDB cancels a TransactGetItems request under the following circumstances:
+//
+//      * There is an ongoing TransactGetItems operation that conflicts with a
+//      concurrent PutItem, UpdateItem, DeleteItem or TransactWriteItems request.
+//      In this case the TransactGetItems operation fails with a TransactionCanceledException.
+//
+//      * A table in the TransactGetItems request is in a different account or
+//      region.
+//
+//      * There is insufficient provisioned capacity for the transaction to be
+//      completed.
+//
+//      * There is a user error, such as an invalid data format.
+//
+//   If using Java, DynamoDB lists the cancellation reasons on the CancellationReasons
+//   property. This property is not set for other languages. Transaction cancellation
+//   reasons are ordered in the order of requested items, if an item has no error
+//   it will have NONE code and Null message.
+//
+//   Cancellation reason codes and possible error messages:
+//
+//      * No Errors: Code: NONE Message: null
+//
+//      * Conditional Check Failed: Code: ConditionalCheckFailed Message: The
+//      conditional request failed.
+//
+//      * Item Collection Size Limit Exceeded: Code: ItemCollectionSizeLimitExceeded
+//      Message: Collection size exceeded.
+//
+//      * Transaction Conflict: Code: TransactionConflict Message: Transaction
+//      is ongoing for the item.
+//
+//      * Provisioned Throughput Exceeded: Code: ProvisionedThroughputExceeded
+//      Messages: The level of configured provisioned throughput for the table
+//      was exceeded. Consider increasing your provisioning level with the UpdateTable
+//      API. This Message is received when provisioned throughput is exceeded
+//      is on a provisioned DynamoDB table. The level of configured provisioned
+//      throughput for one or more global secondary indexes of the table was exceeded.
+//      Consider increasing your provisioning level for the under-provisioned
+//      global secondary indexes with the UpdateTable API. This message is returned
+//      when provisioned throughput is exceeded is on a provisioned GSI.
+//
+//      * Throttling Error: Code: ThrottlingError Messages: Throughput exceeds
+//      the current capacity of your table or index. DynamoDB is automatically
+//      scaling your table or index so please try again shortly. If exceptions
+//      persist, check if you have a hot key: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-partition-key-design.html.
+//      This message is returned when writes get throttled on an On-Demand table
+//      as DynamoDB is automatically scaling the table. Throughput exceeds the
+//      current capacity for one or more global secondary indexes. DynamoDB is
+//      automatically scaling your index so please try again shortly. This message
+//      is returned when when writes get throttled on an On-Demand GSI as DynamoDB
+//      is automatically scaling the GSI.
+//
+//      * Validation Error: Code: ValidationError Messages: One or more parameter
+//      values were invalid. The update expression attempted to update the secondary
+//      index key beyond allowed size limits. The update expression attempted
+//      to update the secondary index key to unsupported type. An operand in the
+//      update expression has an incorrect data type. Item size to update has
+//      exceeded the maximum allowed size. Number overflow. Attempting to store
+//      a number with magnitude larger than supported range. Type mismatch for
+//      attribute to update. Nesting Levels have exceeded supported limits. The
+//      document path provided in the update expression is invalid for update.
+//      The provided expression refers to an attribute that does not exist in
+//      the item.
+//
+//   * TransactionInProgressException
+//   The transaction with the given request token is already in progress.
+//
+//   * IdempotentParameterMismatchException
+//   DynamoDB rejected the request because you retried a request with a different
+//   payload but with an idempotent token that was already used.
+//
+//   * ProvisionedThroughputExceededException
+//   Your request rate is too high. The AWS SDKs for DynamoDB automatically retry
+//   requests that receive this exception. Your request is eventually successful,
+//   unless your retry queue is too large to finish. Reduce the frequency of requests
+//   and use exponential backoff. For more information, go to Error Retries and
+//   Exponential Backoff (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html#Programming.Errors.RetryAndBackoff)
+//   in the Amazon DynamoDB Developer Guide.
+//
+//   * RequestLimitExceeded
+//   Throughput exceeds the current throughput quota for your account. Please
+//   contact AWS Support at AWS Support (https://aws.amazon.com/support) to request
+//   a quota increase.
+//
+//   * InternalServerError
+//   An error occurred on the server side.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/ExecuteTransaction
+func (c *DynamoDB) ExecuteTransaction(input *ExecuteTransactionInput) (*ExecuteTransactionOutput, error) {
+	req, out := c.ExecuteTransactionRequest(input)
+	return out, req.Send()
+}
+
+// ExecuteTransactionWithContext is the same as ExecuteTransaction with the addition of
+// the ability to pass a context and additional request options.
+//
+// See ExecuteTransaction for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) ExecuteTransactionWithContext(ctx aws.Context, input *ExecuteTransactionInput, opts ...request.Option) (*ExecuteTransactionOutput, error) {
+	req, out := c.ExecuteTransactionRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -7404,6 +8157,80 @@ func (s *BackupSummary) SetTableName(v string) *BackupSummary {
 	return s
 }
 
+type BatchExecuteStatementInput struct {
+	_ struct{} `type:"structure"`
+
+	// The list of PartiQL statements representing the batch to run.
+	//
+	// Statements is a required field
+	Statements []*BatchStatementRequest `min:"1" type:"list" required:"true"`
+}
+
+// String returns the string representation
+func (s BatchExecuteStatementInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s BatchExecuteStatementInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *BatchExecuteStatementInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "BatchExecuteStatementInput"}
+	if s.Statements == nil {
+		invalidParams.Add(request.NewErrParamRequired("Statements"))
+	}
+	if s.Statements != nil && len(s.Statements) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Statements", 1))
+	}
+	if s.Statements != nil {
+		for i, v := range s.Statements {
+			if v == nil {
+				continue
+			}
+			if err := v.Validate(); err != nil {
+				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "Statements", i), err.(request.ErrInvalidParams))
+			}
+		}
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetStatements sets the Statements field's value.
+func (s *BatchExecuteStatementInput) SetStatements(v []*BatchStatementRequest) *BatchExecuteStatementInput {
+	s.Statements = v
+	return s
+}
+
+type BatchExecuteStatementOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The response to each PartiQL statement in the batch.
+	Responses []*BatchStatementResponse `type:"list"`
+}
+
+// String returns the string representation
+func (s BatchExecuteStatementOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s BatchExecuteStatementOutput) GoString() string {
+	return s.String()
+}
+
+// SetResponses sets the Responses field's value.
+func (s *BatchExecuteStatementOutput) SetResponses(v []*BatchStatementResponse) *BatchExecuteStatementOutput {
+	s.Responses = v
+	return s
+}
+
 // Represents the input of a BatchGetItem operation.
 type BatchGetItemInput struct {
 	_ struct{} `type:"structure"`
@@ -7589,6 +8416,144 @@ func (s *BatchGetItemOutput) SetResponses(v map[string][]map[string]*AttributeVa
 // SetUnprocessedKeys sets the UnprocessedKeys field's value.
 func (s *BatchGetItemOutput) SetUnprocessedKeys(v map[string]*KeysAndAttributes) *BatchGetItemOutput {
 	s.UnprocessedKeys = v
+	return s
+}
+
+// An error associated with a statement in a PartiQL batch that was run.
+type BatchStatementError struct {
+	_ struct{} `type:"structure"`
+
+	// The error code associated with the failed PartiQL batch statement.
+	Code *string `type:"string" enum:"BatchStatementErrorCodeEnum"`
+
+	// The error message associated with the PartiQL batch resposne.
+	Message *string `type:"string"`
+}
+
+// String returns the string representation
+func (s BatchStatementError) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s BatchStatementError) GoString() string {
+	return s.String()
+}
+
+// SetCode sets the Code field's value.
+func (s *BatchStatementError) SetCode(v string) *BatchStatementError {
+	s.Code = &v
+	return s
+}
+
+// SetMessage sets the Message field's value.
+func (s *BatchStatementError) SetMessage(v string) *BatchStatementError {
+	s.Message = &v
+	return s
+}
+
+// A PartiQL batch statement request.
+type BatchStatementRequest struct {
+	_ struct{} `type:"structure"`
+
+	// The read consistency of the PartiQL batch request.
+	ConsistentRead *bool `type:"boolean"`
+
+	// The parameters associated with a PartiQL statement in the batch request.
+	Parameters []*AttributeValue `min:"1" type:"list"`
+
+	// A valid PartiQL statement.
+	//
+	// Statement is a required field
+	Statement *string `min:"1" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s BatchStatementRequest) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s BatchStatementRequest) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *BatchStatementRequest) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "BatchStatementRequest"}
+	if s.Parameters != nil && len(s.Parameters) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Parameters", 1))
+	}
+	if s.Statement == nil {
+		invalidParams.Add(request.NewErrParamRequired("Statement"))
+	}
+	if s.Statement != nil && len(*s.Statement) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Statement", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetConsistentRead sets the ConsistentRead field's value.
+func (s *BatchStatementRequest) SetConsistentRead(v bool) *BatchStatementRequest {
+	s.ConsistentRead = &v
+	return s
+}
+
+// SetParameters sets the Parameters field's value.
+func (s *BatchStatementRequest) SetParameters(v []*AttributeValue) *BatchStatementRequest {
+	s.Parameters = v
+	return s
+}
+
+// SetStatement sets the Statement field's value.
+func (s *BatchStatementRequest) SetStatement(v string) *BatchStatementRequest {
+	s.Statement = &v
+	return s
+}
+
+// A PartiQL batch statement response..
+type BatchStatementResponse struct {
+	_ struct{} `type:"structure"`
+
+	// The error associated with a failed PartiQL batch statement.
+	Error *BatchStatementError `type:"structure"`
+
+	// A DynamoDB item associated with a BatchStatementResponse
+	Item map[string]*AttributeValue `type:"map"`
+
+	// The table name associated with a failed PartiQL batch statement.
+	TableName *string `min:"3" type:"string"`
+}
+
+// String returns the string representation
+func (s BatchStatementResponse) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s BatchStatementResponse) GoString() string {
+	return s.String()
+}
+
+// SetError sets the Error field's value.
+func (s *BatchStatementResponse) SetError(v *BatchStatementError) *BatchStatementResponse {
+	s.Error = v
+	return s
+}
+
+// SetItem sets the Item field's value.
+func (s *BatchStatementResponse) SetItem(v map[string]*AttributeValue) *BatchStatementResponse {
+	s.Item = v
+	return s
+}
+
+// SetTableName sets the TableName field's value.
+func (s *BatchStatementResponse) SetTableName(v string) *BatchStatementResponse {
+	s.TableName = &v
 	return s
 }
 
@@ -10356,6 +11321,79 @@ func (s *DescribeGlobalTableSettingsOutput) SetReplicaSettings(v []*ReplicaSetti
 	return s
 }
 
+type DescribeKinesisStreamingDestinationInput struct {
+	_ struct{} `type:"structure"`
+
+	// The name of the table being described.
+	//
+	// TableName is a required field
+	TableName *string `min:"3" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s DescribeKinesisStreamingDestinationInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DescribeKinesisStreamingDestinationInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *DescribeKinesisStreamingDestinationInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "DescribeKinesisStreamingDestinationInput"}
+	if s.TableName == nil {
+		invalidParams.Add(request.NewErrParamRequired("TableName"))
+	}
+	if s.TableName != nil && len(*s.TableName) < 3 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetTableName sets the TableName field's value.
+func (s *DescribeKinesisStreamingDestinationInput) SetTableName(v string) *DescribeKinesisStreamingDestinationInput {
+	s.TableName = &v
+	return s
+}
+
+type DescribeKinesisStreamingDestinationOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The list of replica structures for the table being described.
+	KinesisDataStreamDestinations []*KinesisDataStreamDestination `type:"list"`
+
+	// The name of the table being described.
+	TableName *string `min:"3" type:"string"`
+}
+
+// String returns the string representation
+func (s DescribeKinesisStreamingDestinationOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DescribeKinesisStreamingDestinationOutput) GoString() string {
+	return s.String()
+}
+
+// SetKinesisDataStreamDestinations sets the KinesisDataStreamDestinations field's value.
+func (s *DescribeKinesisStreamingDestinationOutput) SetKinesisDataStreamDestinations(v []*KinesisDataStreamDestination) *DescribeKinesisStreamingDestinationOutput {
+	s.KinesisDataStreamDestinations = v
+	return s
+}
+
+// SetTableName sets the TableName field's value.
+func (s *DescribeKinesisStreamingDestinationOutput) SetTableName(v string) *DescribeKinesisStreamingDestinationOutput {
+	s.TableName = &v
+	return s
+}
+
 // Represents the input of a DescribeLimits operation. Has no content.
 type DescribeLimitsInput struct {
 	_ struct{} `type:"structure"`
@@ -10622,6 +11660,261 @@ func (s *DescribeTimeToLiveOutput) SetTimeToLiveDescription(v *TimeToLiveDescrip
 	return s
 }
 
+type DisableKinesisStreamingDestinationInput struct {
+	_ struct{} `type:"structure"`
+
+	// The ARN for a Kinesis data stream.
+	//
+	// StreamArn is a required field
+	StreamArn *string `min:"37" type:"string" required:"true"`
+
+	// The name of the DynamoDB table.
+	//
+	// TableName is a required field
+	TableName *string `min:"3" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s DisableKinesisStreamingDestinationInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DisableKinesisStreamingDestinationInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *DisableKinesisStreamingDestinationInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "DisableKinesisStreamingDestinationInput"}
+	if s.StreamArn == nil {
+		invalidParams.Add(request.NewErrParamRequired("StreamArn"))
+	}
+	if s.StreamArn != nil && len(*s.StreamArn) < 37 {
+		invalidParams.Add(request.NewErrParamMinLen("StreamArn", 37))
+	}
+	if s.TableName == nil {
+		invalidParams.Add(request.NewErrParamRequired("TableName"))
+	}
+	if s.TableName != nil && len(*s.TableName) < 3 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetStreamArn sets the StreamArn field's value.
+func (s *DisableKinesisStreamingDestinationInput) SetStreamArn(v string) *DisableKinesisStreamingDestinationInput {
+	s.StreamArn = &v
+	return s
+}
+
+// SetTableName sets the TableName field's value.
+func (s *DisableKinesisStreamingDestinationInput) SetTableName(v string) *DisableKinesisStreamingDestinationInput {
+	s.TableName = &v
+	return s
+}
+
+type DisableKinesisStreamingDestinationOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The current status of the replication.
+	DestinationStatus *string `type:"string" enum:"DestinationStatus"`
+
+	// The ARN for the specific Kinesis data stream.
+	StreamArn *string `min:"37" type:"string"`
+
+	// The name of the table being modified.
+	TableName *string `min:"3" type:"string"`
+}
+
+// String returns the string representation
+func (s DisableKinesisStreamingDestinationOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DisableKinesisStreamingDestinationOutput) GoString() string {
+	return s.String()
+}
+
+// SetDestinationStatus sets the DestinationStatus field's value.
+func (s *DisableKinesisStreamingDestinationOutput) SetDestinationStatus(v string) *DisableKinesisStreamingDestinationOutput {
+	s.DestinationStatus = &v
+	return s
+}
+
+// SetStreamArn sets the StreamArn field's value.
+func (s *DisableKinesisStreamingDestinationOutput) SetStreamArn(v string) *DisableKinesisStreamingDestinationOutput {
+	s.StreamArn = &v
+	return s
+}
+
+// SetTableName sets the TableName field's value.
+func (s *DisableKinesisStreamingDestinationOutput) SetTableName(v string) *DisableKinesisStreamingDestinationOutput {
+	s.TableName = &v
+	return s
+}
+
+// There was an attempt to insert an item with the same primary key as an item
+// that already exists in the DynamoDB table.
+type DuplicateItemException struct {
+	_            struct{}                  `type:"structure"`
+	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
+
+	Message_ *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation
+func (s DuplicateItemException) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s DuplicateItemException) GoString() string {
+	return s.String()
+}
+
+func newErrorDuplicateItemException(v protocol.ResponseMetadata) error {
+	return &DuplicateItemException{
+		RespMetadata: v,
+	}
+}
+
+// Code returns the exception type name.
+func (s *DuplicateItemException) Code() string {
+	return "DuplicateItemException"
+}
+
+// Message returns the exception's message.
+func (s *DuplicateItemException) Message() string {
+	if s.Message_ != nil {
+		return *s.Message_
+	}
+	return ""
+}
+
+// OrigErr always returns nil, satisfies awserr.Error interface.
+func (s *DuplicateItemException) OrigErr() error {
+	return nil
+}
+
+func (s *DuplicateItemException) Error() string {
+	return fmt.Sprintf("%s: %s", s.Code(), s.Message())
+}
+
+// Status code returns the HTTP status code for the request's response error.
+func (s *DuplicateItemException) StatusCode() int {
+	return s.RespMetadata.StatusCode
+}
+
+// RequestID returns the service's response RequestID for request.
+func (s *DuplicateItemException) RequestID() string {
+	return s.RespMetadata.RequestID
+}
+
+type EnableKinesisStreamingDestinationInput struct {
+	_ struct{} `type:"structure"`
+
+	// The ARN for a Kinesis data stream.
+	//
+	// StreamArn is a required field
+	StreamArn *string `min:"37" type:"string" required:"true"`
+
+	// The name of the DynamoDB table.
+	//
+	// TableName is a required field
+	TableName *string `min:"3" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s EnableKinesisStreamingDestinationInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s EnableKinesisStreamingDestinationInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *EnableKinesisStreamingDestinationInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "EnableKinesisStreamingDestinationInput"}
+	if s.StreamArn == nil {
+		invalidParams.Add(request.NewErrParamRequired("StreamArn"))
+	}
+	if s.StreamArn != nil && len(*s.StreamArn) < 37 {
+		invalidParams.Add(request.NewErrParamMinLen("StreamArn", 37))
+	}
+	if s.TableName == nil {
+		invalidParams.Add(request.NewErrParamRequired("TableName"))
+	}
+	if s.TableName != nil && len(*s.TableName) < 3 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetStreamArn sets the StreamArn field's value.
+func (s *EnableKinesisStreamingDestinationInput) SetStreamArn(v string) *EnableKinesisStreamingDestinationInput {
+	s.StreamArn = &v
+	return s
+}
+
+// SetTableName sets the TableName field's value.
+func (s *EnableKinesisStreamingDestinationInput) SetTableName(v string) *EnableKinesisStreamingDestinationInput {
+	s.TableName = &v
+	return s
+}
+
+type EnableKinesisStreamingDestinationOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The current status of the replication.
+	DestinationStatus *string `type:"string" enum:"DestinationStatus"`
+
+	// The ARN for the specific Kinesis data stream.
+	StreamArn *string `min:"37" type:"string"`
+
+	// The name of the table being modified.
+	TableName *string `min:"3" type:"string"`
+}
+
+// String returns the string representation
+func (s EnableKinesisStreamingDestinationOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s EnableKinesisStreamingDestinationOutput) GoString() string {
+	return s.String()
+}
+
+// SetDestinationStatus sets the DestinationStatus field's value.
+func (s *EnableKinesisStreamingDestinationOutput) SetDestinationStatus(v string) *EnableKinesisStreamingDestinationOutput {
+	s.DestinationStatus = &v
+	return s
+}
+
+// SetStreamArn sets the StreamArn field's value.
+func (s *EnableKinesisStreamingDestinationOutput) SetStreamArn(v string) *EnableKinesisStreamingDestinationOutput {
+	s.StreamArn = &v
+	return s
+}
+
+// SetTableName sets the TableName field's value.
+func (s *EnableKinesisStreamingDestinationOutput) SetTableName(v string) *EnableKinesisStreamingDestinationOutput {
+	s.TableName = &v
+	return s
+}
+
 // An endpoint information details.
 type Endpoint struct {
 	_ struct{} `type:"structure"`
@@ -10656,6 +11949,205 @@ func (s *Endpoint) SetAddress(v string) *Endpoint {
 // SetCachePeriodInMinutes sets the CachePeriodInMinutes field's value.
 func (s *Endpoint) SetCachePeriodInMinutes(v int64) *Endpoint {
 	s.CachePeriodInMinutes = &v
+	return s
+}
+
+type ExecuteStatementInput struct {
+	_ struct{} `type:"structure"`
+
+	// The consistency of a read operation. If set to true, then a strongly consistent
+	// read is used; otherwise, an eventually consistent read is used.
+	ConsistentRead *bool `type:"boolean"`
+
+	// Set this value to get remaining results, if NextToken was returned in the
+	// statement response.
+	NextToken *string `min:"1" type:"string"`
+
+	// The parameters for the PartiQL statement, if any.
+	Parameters []*AttributeValue `min:"1" type:"list"`
+
+	// The PartiQL statement representing the operation to run.
+	//
+	// Statement is a required field
+	Statement *string `min:"1" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s ExecuteStatementInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExecuteStatementInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ExecuteStatementInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "ExecuteStatementInput"}
+	if s.NextToken != nil && len(*s.NextToken) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("NextToken", 1))
+	}
+	if s.Parameters != nil && len(s.Parameters) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Parameters", 1))
+	}
+	if s.Statement == nil {
+		invalidParams.Add(request.NewErrParamRequired("Statement"))
+	}
+	if s.Statement != nil && len(*s.Statement) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Statement", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetConsistentRead sets the ConsistentRead field's value.
+func (s *ExecuteStatementInput) SetConsistentRead(v bool) *ExecuteStatementInput {
+	s.ConsistentRead = &v
+	return s
+}
+
+// SetNextToken sets the NextToken field's value.
+func (s *ExecuteStatementInput) SetNextToken(v string) *ExecuteStatementInput {
+	s.NextToken = &v
+	return s
+}
+
+// SetParameters sets the Parameters field's value.
+func (s *ExecuteStatementInput) SetParameters(v []*AttributeValue) *ExecuteStatementInput {
+	s.Parameters = v
+	return s
+}
+
+// SetStatement sets the Statement field's value.
+func (s *ExecuteStatementInput) SetStatement(v string) *ExecuteStatementInput {
+	s.Statement = &v
+	return s
+}
+
+type ExecuteStatementOutput struct {
+	_ struct{} `type:"structure"`
+
+	// If a read operation was used, this property will contain the result of the
+	// reade operation; a map of attribute names and their values. For the write
+	// operations this value will be empty.
+	Items []map[string]*AttributeValue `type:"list"`
+
+	// If the response of a read request exceeds the response payload limit DynamoDB
+	// will set this value in the response. If set, you can use that this value
+	// in the subsequent request to get the remaining results.
+	NextToken *string `min:"1" type:"string"`
+}
+
+// String returns the string representation
+func (s ExecuteStatementOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExecuteStatementOutput) GoString() string {
+	return s.String()
+}
+
+// SetItems sets the Items field's value.
+func (s *ExecuteStatementOutput) SetItems(v []map[string]*AttributeValue) *ExecuteStatementOutput {
+	s.Items = v
+	return s
+}
+
+// SetNextToken sets the NextToken field's value.
+func (s *ExecuteStatementOutput) SetNextToken(v string) *ExecuteStatementOutput {
+	s.NextToken = &v
+	return s
+}
+
+type ExecuteTransactionInput struct {
+	_ struct{} `type:"structure"`
+
+	// Set this value to get remaining results, if NextToken was returned in the
+	// statement response.
+	ClientRequestToken *string `min:"1" type:"string" idempotencyToken:"true"`
+
+	// The list of PartiQL statements representing the transaction to run.
+	//
+	// TransactStatements is a required field
+	TransactStatements []*ParameterizedStatement `min:"1" type:"list" required:"true"`
+}
+
+// String returns the string representation
+func (s ExecuteTransactionInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExecuteTransactionInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ExecuteTransactionInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "ExecuteTransactionInput"}
+	if s.ClientRequestToken != nil && len(*s.ClientRequestToken) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("ClientRequestToken", 1))
+	}
+	if s.TransactStatements == nil {
+		invalidParams.Add(request.NewErrParamRequired("TransactStatements"))
+	}
+	if s.TransactStatements != nil && len(s.TransactStatements) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TransactStatements", 1))
+	}
+	if s.TransactStatements != nil {
+		for i, v := range s.TransactStatements {
+			if v == nil {
+				continue
+			}
+			if err := v.Validate(); err != nil {
+				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "TransactStatements", i), err.(request.ErrInvalidParams))
+			}
+		}
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetClientRequestToken sets the ClientRequestToken field's value.
+func (s *ExecuteTransactionInput) SetClientRequestToken(v string) *ExecuteTransactionInput {
+	s.ClientRequestToken = &v
+	return s
+}
+
+// SetTransactStatements sets the TransactStatements field's value.
+func (s *ExecuteTransactionInput) SetTransactStatements(v []*ParameterizedStatement) *ExecuteTransactionInput {
+	s.TransactStatements = v
+	return s
+}
+
+type ExecuteTransactionOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The response to a PartiQL transaction.
+	Responses []*ItemResponse `min:"1" type:"list"`
+}
+
+// String returns the string representation
+func (s ExecuteTransactionOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ExecuteTransactionOutput) GoString() string {
+	return s.String()
+}
+
+// SetResponses sets the Responses field's value.
+func (s *ExecuteTransactionOutput) SetResponses(v []*ItemResponse) *ExecuteTransactionOutput {
+	s.Responses = v
 	return s
 }
 
@@ -13087,6 +14579,48 @@ func (s *KeysAndAttributes) SetProjectionExpression(v string) *KeysAndAttributes
 	return s
 }
 
+// Describes a Kinesis data stream destination.
+type KinesisDataStreamDestination struct {
+	_ struct{} `type:"structure"`
+
+	// The current status of replication.
+	DestinationStatus *string `type:"string" enum:"DestinationStatus"`
+
+	// The human-readable string that corresponds to the replica status.
+	DestinationStatusDescription *string `type:"string"`
+
+	// The ARN for a specific Kinesis data stream.
+	StreamArn *string `min:"37" type:"string"`
+}
+
+// String returns the string representation
+func (s KinesisDataStreamDestination) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s KinesisDataStreamDestination) GoString() string {
+	return s.String()
+}
+
+// SetDestinationStatus sets the DestinationStatus field's value.
+func (s *KinesisDataStreamDestination) SetDestinationStatus(v string) *KinesisDataStreamDestination {
+	s.DestinationStatus = &v
+	return s
+}
+
+// SetDestinationStatusDescription sets the DestinationStatusDescription field's value.
+func (s *KinesisDataStreamDestination) SetDestinationStatusDescription(v string) *KinesisDataStreamDestination {
+	s.DestinationStatusDescription = &v
+	return s
+}
+
+// SetStreamArn sets the StreamArn field's value.
+func (s *KinesisDataStreamDestination) SetStreamArn(v string) *KinesisDataStreamDestination {
+	s.StreamArn = &v
+	return s
+}
+
 // There is no limit to the number of daily on-demand backups that can be taken.
 //
 // Up to 50 simultaneous table operations are allowed per account. These operations
@@ -13997,6 +15531,60 @@ func (s *LocalSecondaryIndexInfo) SetKeySchema(v []*KeySchemaElement) *LocalSeco
 // SetProjection sets the Projection field's value.
 func (s *LocalSecondaryIndexInfo) SetProjection(v *Projection) *LocalSecondaryIndexInfo {
 	s.Projection = v
+	return s
+}
+
+// Represents a PartiQL statment that uses parameters.
+type ParameterizedStatement struct {
+	_ struct{} `type:"structure"`
+
+	// The parameter values.
+	Parameters []*AttributeValue `min:"1" type:"list"`
+
+	// A PartiQL statment that uses parameters.
+	//
+	// Statement is a required field
+	Statement *string `min:"1" type:"string" required:"true"`
+}
+
+// String returns the string representation
+func (s ParameterizedStatement) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s ParameterizedStatement) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ParameterizedStatement) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "ParameterizedStatement"}
+	if s.Parameters != nil && len(s.Parameters) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Parameters", 1))
+	}
+	if s.Statement == nil {
+		invalidParams.Add(request.NewErrParamRequired("Statement"))
+	}
+	if s.Statement != nil && len(*s.Statement) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Statement", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetParameters sets the Parameters field's value.
+func (s *ParameterizedStatement) SetParameters(v []*AttributeValue) *ParameterizedStatement {
+	s.Parameters = v
+	return s
+}
+
+// SetStatement sets the Statement field's value.
+func (s *ParameterizedStatement) SetStatement(v string) *ParameterizedStatement {
+	s.Statement = &v
 	return s
 }
 
@@ -21050,6 +22638,58 @@ func BackupTypeFilter_Values() []string {
 }
 
 const (
+	// BatchStatementErrorCodeEnumConditionalCheckFailed is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumConditionalCheckFailed = "ConditionalCheckFailed"
+
+	// BatchStatementErrorCodeEnumItemCollectionSizeLimitExceeded is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumItemCollectionSizeLimitExceeded = "ItemCollectionSizeLimitExceeded"
+
+	// BatchStatementErrorCodeEnumRequestLimitExceeded is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumRequestLimitExceeded = "RequestLimitExceeded"
+
+	// BatchStatementErrorCodeEnumValidationError is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumValidationError = "ValidationError"
+
+	// BatchStatementErrorCodeEnumProvisionedThroughputExceeded is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumProvisionedThroughputExceeded = "ProvisionedThroughputExceeded"
+
+	// BatchStatementErrorCodeEnumTransactionConflict is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumTransactionConflict = "TransactionConflict"
+
+	// BatchStatementErrorCodeEnumThrottlingError is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumThrottlingError = "ThrottlingError"
+
+	// BatchStatementErrorCodeEnumInternalServerError is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumInternalServerError = "InternalServerError"
+
+	// BatchStatementErrorCodeEnumResourceNotFound is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumResourceNotFound = "ResourceNotFound"
+
+	// BatchStatementErrorCodeEnumAccessDenied is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumAccessDenied = "AccessDenied"
+
+	// BatchStatementErrorCodeEnumDuplicateItem is a BatchStatementErrorCodeEnum enum value
+	BatchStatementErrorCodeEnumDuplicateItem = "DuplicateItem"
+)
+
+// BatchStatementErrorCodeEnum_Values returns all elements of the BatchStatementErrorCodeEnum enum
+func BatchStatementErrorCodeEnum_Values() []string {
+	return []string{
+		BatchStatementErrorCodeEnumConditionalCheckFailed,
+		BatchStatementErrorCodeEnumItemCollectionSizeLimitExceeded,
+		BatchStatementErrorCodeEnumRequestLimitExceeded,
+		BatchStatementErrorCodeEnumValidationError,
+		BatchStatementErrorCodeEnumProvisionedThroughputExceeded,
+		BatchStatementErrorCodeEnumTransactionConflict,
+		BatchStatementErrorCodeEnumThrottlingError,
+		BatchStatementErrorCodeEnumInternalServerError,
+		BatchStatementErrorCodeEnumResourceNotFound,
+		BatchStatementErrorCodeEnumAccessDenied,
+		BatchStatementErrorCodeEnumDuplicateItem,
+	}
+}
+
+const (
 	// BillingModeProvisioned is a BillingMode enum value
 	BillingModeProvisioned = "PROVISIONED"
 
@@ -21198,6 +22838,34 @@ func ContributorInsightsStatus_Values() []string {
 		ContributorInsightsStatusDisabling,
 		ContributorInsightsStatusDisabled,
 		ContributorInsightsStatusFailed,
+	}
+}
+
+const (
+	// DestinationStatusEnabling is a DestinationStatus enum value
+	DestinationStatusEnabling = "ENABLING"
+
+	// DestinationStatusActive is a DestinationStatus enum value
+	DestinationStatusActive = "ACTIVE"
+
+	// DestinationStatusDisabling is a DestinationStatus enum value
+	DestinationStatusDisabling = "DISABLING"
+
+	// DestinationStatusDisabled is a DestinationStatus enum value
+	DestinationStatusDisabled = "DISABLED"
+
+	// DestinationStatusEnableFailed is a DestinationStatus enum value
+	DestinationStatusEnableFailed = "ENABLE_FAILED"
+)
+
+// DestinationStatus_Values returns all elements of the DestinationStatus enum
+func DestinationStatus_Values() []string {
+	return []string{
+		DestinationStatusEnabling,
+		DestinationStatusActive,
+		DestinationStatusDisabling,
+		DestinationStatusDisabled,
+		DestinationStatusEnableFailed,
 	}
 }
 

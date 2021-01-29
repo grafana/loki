@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -103,7 +104,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	if q.queryIngestersWithin > 0 {
 		now := time.Now()
 		origMinT := minT
-		minT = util.Max64(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
+		minT = math.Max64(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
 
 		if origMinT != minT {
 			level.Debug(log).Log("msg", "the min time of the query to ingesters has been manipulated", "original", origMinT, "updated", minT)

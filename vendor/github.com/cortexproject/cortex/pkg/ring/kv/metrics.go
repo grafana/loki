@@ -20,14 +20,22 @@ func RegistererWithKVName(reg prometheus.Registerer, name string) prometheus.Reg
 	return prometheus.WrapRegistererWith(prometheus.Labels{"kv_name": name}, reg)
 }
 
-// errorCode converts an error into an HTTP status code, modified from weaveworks/common/instrument
-func errorCode(err error) string {
+// getCasErrorCode converts the provided CAS error into the code that should be used to track the operation
+// in metrics.
+func getCasErrorCode(err error) string {
 	if err == nil {
 		return "200"
 	}
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); ok {
 		return strconv.Itoa(int(resp.GetCode()))
 	}
+
+	// If the error has been returned to abort the CAS operation, then we shouldn't
+	// consider it an error when tracking metrics.
+	if casErr, ok := err.(interface{ IsOperationAborted() bool }); ok && casErr.IsOperationAborted() {
+		return "200"
+	}
+
 	return "500"
 }
 
@@ -81,7 +89,7 @@ func (m metrics) Delete(ctx context.Context, key string) error {
 }
 
 func (m metrics) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	return instrument.CollectedRequest(ctx, "CAS", m.requestDuration, errorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "CAS", m.requestDuration, getCasErrorCode, func(ctx context.Context) error {
 		return m.c.CAS(ctx, key, f)
 	})
 }

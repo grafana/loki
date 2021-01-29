@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build gccgo appengine !s390x
+// +build !gc purego !s390x
 
 package sha3
 
