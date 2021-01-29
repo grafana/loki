@@ -126,11 +126,9 @@ When `--validation.reject-old-samples` is enabled, Loki accepts incoming timesta
 In order to mitigate this, there are a few options:
 1) Lower the valid acceptance range
 2) Create an _active_ validity window, such as `[most_recent_sample-max_chunk_age, now() + creation_grace_period]`.
-3) Introduce a new limit allowing a "variance budget".
 
 The first option is simple, already available, and likely somewhat reasonable.
 The second is simple to implement and an effective way to ensure Loki can ingest unordered logs but maintain a sliding validity window. I expect this to cover nearly all reasonable use cases and effectively mitigate bad actors.
-The third will be ignored in this doc due to complexity, but may be revisited, for exmaple using an incremental (online) standard deviation/variance algorithm such as [Welford's](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance).
 
 ### Caveats
 
@@ -139,6 +137,10 @@ query ingesters within read lag
 ### Concerns
 
 ### Future Opportunities
+
+#### Variance Budget
+
+Introduce a "variance budget" ingester limit, for example using an incremental (online) standard deviation/variance algorithm such as [Welford's](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance). This would allow writing to larger ranges than option (2) in the _Chunk Durations_ section.
 
 #### LSM Tree
 
