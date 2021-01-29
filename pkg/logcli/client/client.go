@@ -136,7 +136,7 @@ func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor int, limit i
 	qsb.SetString("query", queryStr)
 	qsb.SetInt("delay_for", int64(delayFor))
 	qsb.SetInt("limit", int64(limit))
-	qsb.SetInt("from", from)
+	qsb.SetInt("start", from)
 
 	return c.wsConnect(tailPath, qsb.Encode(), quiet)
 }
