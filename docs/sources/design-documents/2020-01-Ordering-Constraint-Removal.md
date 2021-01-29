@@ -115,7 +115,7 @@ The performance losses against the current approach includes:
 
 ### Flushing & Chunk Creation
 
-Loki regularly combines multiple blocks into a chunk and "flushes** it to storage. In order to ensure that reads over flushed chunks remain as performant as possible, we will re-order a possibly-overlapping set of blocks into a set of blocks that maintain monotonically increasing order between them.
+Loki regularly combines multiple blocks into a chunk and "flushes** it to storage. In order to ensure that reads over flushed chunks remain as performant as possible, we will re-order a possibly-overlapping set of blocks into a set of blocks that maintain monotonically increasing order between them. From the perspective of the rest of Loki’s components (queriers/rulers fetching chunks from storage), nothing has changed.
 
 **Note: In the case that data for a stream is ingested in order, this is effectively a no-op, making it well optimized for in-order writes (which is both the requirement and default in Loki currently). Thus, this should have little to no performance impact on ordered data while enabling Loki to ingest unordered data.**
 
@@ -150,18 +150,39 @@ Figure 5
 ```
 
 
-To mitigate this problem and preserve the benefits of chunk deduplication, we'll need to make chunk synchronization cutting less susceptible to non-determinism during concurrent writes. To do this, we can move the synchronization trigger from the `Append` code path to the asynchronous `FlushLoop`. Note, the semantics for _when_ a chunk is cut will not change: that is, on the first timestamp crossing the synchronization bound.
-
-
+To mitigate this problem and preserve the benefits of chunk deduplication, we'll need to make chunk synchronization less susceptible to non-determinism during concurrent writes. To do this, we can move the synchronization trigger from the `Append` code path to the asynchronous `FlushLoop`. Note, the semantics for _when_ a chunk is cut will not change: that is, on the first timestamp crossing the synchronization bound. However, _cutting_ the chunks for synchronization on the flush path mitigates the likelihood of nondeterministic cuts. In order to cut multiple chunks with different hashes, appends would need to cross this boundary at the same time the flush loop checks the stream, which should be very unlikely.
 
 ### Future Opportunities
+
+That ends the design portion of this document. Below, I'll describe some possible changes we can address in the future, should they become warranted.
 
 #### Variance Budget
 
 The intended approach of validating a "sliding validity" window for each stream is simple and effective at preventing misuse & bad actors from writing across the entire acceptable range for incoming timestamps. However, we may in the future wish to take a more sophisticated approach, introducing per tenant "variance" budgets, likely derived from the stream limit. This ingester limit could, for example use an incremental (online) standard deviation/variance algorithm such as [Welford's](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance), which would allow writing to larger ranges than option (2) in the _Chunk Durations_ section.
 
-#### LSM Tree
+#### LSM Tree: An alternative to be re-evaluated as necessary
 
-memory -> disk
-possibly more effective chunks?
-larger acceptable time range?
+Much of the proposed approach mirrors an [LSM-Tree](http://www.benstopford.com/2015/02/14/log-structured-merge-trees/) (Log Structured Merge Tree), albeit in memory instead of using disk. What a weird choice -- LSM Trees are designed to effectively use disk, so why not go that route? We currently have no wish to add extra disk dependencies to Loki where we can avoid it, but below I will outline what an LSM-Tree approach would look like. Ultimately, using disk would allow us to buffer larger amounts of data in the ingester before flushing,
+
+**Allowing us to**
+- Flush more efficiently utilized chunks in some cases by bufferring more before flushing
+- Keep open a wider validity window for incoming logs
+
+**At the cost of**
+- being susceptible to disk-related complexity & problems
+
+##### MemTable (head chunk)
+
+Writes in an LSM-Tree are first accepted to an in-memory structure called a _memtable_ (generally a balancing tree such as red-black) until the memtable hits a preconfigured size. In Loki, this corresponds to the stream’s head chunk, which is uncompressed. In order to allow randomly ordered writes, we’d likely need to use some tree structure as well (discussed in the in-memory approach).
+
+##### SSTables (blocks)
+
+Once a Memtable (headchunk) in an LSM-Tree hits a predefined size, it is flushed to disk as an immutable sorted structure called an SSTable (sorted strings table). In Loki, we can use either the pre-existing MemChunk format, which is ordered, compact, and contains a block index within it, or the pre-existing block format directly. These are stored on disk to lessen memory pressure and loaded at request for queries.
+
+##### Block Index
+
+Incoming reads in an LSM-Tree may need access to the SSTable entries in addition to the currently active memtable (head chunk). In order to improve this, we may cache the metadata including block offsets, start & end timestamps within an SSTable (block || MemChunk) in memory to mitigate lookups, seeking, and loading unnecessary data from disk.
+
+##### Compaction (flushing)
+
+Compaction in an LSM-Tree combines and reorders multiple SSTables (blocks || MemChunks). This is mainly covered in the _Flushing_ section of the in-memory approach, but _compaction_ is equivalent to _flushing_ for our case. That is, merge multiple SSTables on disk together ina n algorithm reminiscent of merge sort and flush them to storage in our ordered chunk format.
