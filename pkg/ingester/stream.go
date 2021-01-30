@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -117,18 +118,19 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 }
 
 // setChunks is used during checkpoint recovery
-func (s *stream) setChunks(chunks []Chunk) (entriesAdded int, err error) {
+func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
 	chks, err := fromWireChunks(s.cfg, chunks)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	s.chunks = chks
 	for _, c := range s.chunks {
 		entriesAdded += c.chunk.Size()
+		bytesAdded += c.chunk.UncompressedSize()
 	}
-	return entriesAdded, nil
+	return bytesAdded, entriesAdded, nil
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
@@ -139,9 +141,10 @@ func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
 	record *WALRecord,
-) error {
+) (int, error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
+	var bytesAdded int
 	prevNumChunks := len(s.chunks)
 	var lastChunkTimestamp time.Time
 	if prevNumChunks == 0 {
@@ -178,7 +181,7 @@ func (s *stream) Push(
 			if err != nil {
 				// This should be an unlikely situation, returning an error up the stack doesn't help much here
 				// so instead log this to help debug the issue if it ever arises.
-				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to Close chunk", "err", err)
+				level.Error(util_log.WithContext(ctx, util.Logger)).Log("msg", "failed to Close chunk", "err", err)
 			}
 			chunk.closed = true
 
@@ -199,6 +202,9 @@ func (s *stream) Push(
 			lastChunkTimestamp = entries[i].Timestamp
 			s.lastLine.ts = lastChunkTimestamp
 			s.lastLine.content = entries[i].Line
+
+			// length of string plus
+			bytesAdded += len(entries[i].Line)
 		}
 		chunk.lastUpdated = time.Now()
 	}
@@ -264,15 +270,15 @@ func (s *stream) Push(
 
 			fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
 
-			return httpgrpc.Errorf(http.StatusBadRequest, buf.String())
+			return bytesAdded, httpgrpc.Errorf(http.StatusBadRequest, buf.String())
 		}
-		return lastEntryWithErr.e
+		return bytesAdded, lastEntryWithErr.e
 	}
 
 	if len(s.chunks) != prevNumChunks {
 		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
-	return nil
+	return bytesAdded, nil
 }
 
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters

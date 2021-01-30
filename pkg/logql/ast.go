@@ -83,8 +83,10 @@ type LogSelectorExpr interface {
 }
 
 // Type alias for backward compatibility
-type Pipeline = log.Pipeline
-type SampleExtractor = log.SampleExtractor
+type (
+	Pipeline        = log.Pipeline
+	SampleExtractor = log.SampleExtractor
+)
 
 // PipelineExpr is an expression defining a log pipeline.
 type PipelineExpr interface {
@@ -251,7 +253,6 @@ func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, match string) (Log
 	default:
 		return nil, fmt.Errorf("unknown LogSelector: %v+", expr)
 	}
-
 }
 
 func (e *lineFilterExpr) Shardable() bool { return true }
@@ -787,9 +788,9 @@ type binOpExpr struct {
 
 func (e *binOpExpr) String() string {
 	if e.opts.ReturnBool {
-		return fmt.Sprintf("%s %s bool %s", e.SampleExpr.String(), e.op, e.RHS.String())
+		return fmt.Sprintf("(%s %s bool %s)", e.SampleExpr.String(), e.op, e.RHS.String())
 	}
-	return fmt.Sprintf("%s %s %s", e.SampleExpr.String(), e.op, e.RHS.String())
+	return fmt.Sprintf("(%s %s %s)", e.SampleExpr.String(), e.op, e.RHS.String())
 }
 
 // impl SampleExpr

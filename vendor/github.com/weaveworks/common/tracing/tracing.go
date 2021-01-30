@@ -10,7 +10,7 @@ import (
 
 // ErrInvalidConfiguration is an error to notify client to provide valid trace report agent or config server
 var (
-	ErrBlankTraceConfiguration = errors.New("no trace report agent or config server specified")
+	ErrBlankTraceConfiguration = errors.New("no trace report agent, config server, or collector endpoint specified")
 )
 
 // installJaeger registers Jaeger as the OpenTracing implementation.
@@ -35,7 +35,7 @@ func NewFromEnv(serviceName string) (io.Closer, error) {
 		return nil, errors.Wrap(err, "could not load jaeger tracer configuration")
 	}
 
-	if cfg.Sampler.SamplingServerURL == "" && cfg.Reporter.LocalAgentHostPort == "" {
+	if cfg.Sampler.SamplingServerURL == "" && cfg.Reporter.LocalAgentHostPort == "" && cfg.Reporter.CollectorEndpoint == "" {
 		return nil, ErrBlankTraceConfiguration
 	}
 

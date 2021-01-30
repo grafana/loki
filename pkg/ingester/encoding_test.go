@@ -42,6 +42,11 @@ func Test_Encoding_Series(t *testing.T) {
 
 	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
+
+	// Since we use a pool, there can be subtle differentiations between nil slices and len(0) slices.
+	// Both are valid, so check length.
+	require.Equal(t, 0, len(decoded.RefEntries))
+	decoded.RefEntries = nil
 	require.Equal(t, record, decoded)
 }
 
@@ -88,9 +93,74 @@ func Test_Encoding_Entries(t *testing.T) {
 	require.Equal(t, record, decoded)
 }
 
-func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
+func Benchmark_EncodeEntries(b *testing.B) {
+	var entries []logproto.Entry
+	for i := int64(0); i < 10000; i++ {
+		entries = append(entries, logproto.Entry{
+			Timestamp: time.Unix(0, i),
+			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
+		})
+	}
+	record := &WALRecord{
+		entryIndexMap: make(map[uint64]int),
+		UserID:        "123",
+		RefEntries: []RefEntries{
+			{
+				Ref:     456,
+				Entries: entries,
+			},
+			{
+				Ref:     789,
+				Entries: entries,
+			},
+		},
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	buf := recordPool.GetBytes()[:0]
+	defer recordPool.PutBytes(buf)
+
+	for n := 0; n < b.N; n++ {
+		record.encodeEntries(buf)
+	}
+}
+
+func Benchmark_DecodeWAL(b *testing.B) {
+	var entries []logproto.Entry
+	for i := int64(0); i < 10000; i++ {
+		entries = append(entries, logproto.Entry{
+			Timestamp: time.Unix(0, i),
+			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
+		})
+	}
+	record := &WALRecord{
+		entryIndexMap: make(map[uint64]int),
+		UserID:        "123",
+		RefEntries: []RefEntries{
+			{
+				Ref:     456,
+				Entries: entries,
+			},
+			{
+				Ref:     789,
+				Entries: entries,
+			},
+		},
+	}
+
+	buf := record.encodeEntries(nil)
+	rec := recordPool.GetRecord()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		require.NoError(b, decodeWALRecord(buf, rec))
+	}
+}
+
+func fillChunk(t testing.TB, c chunkenc.Chunk) {
 	t.Helper()
-	var i, inserted int64
+	var i int64
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      "entry for line 0",
@@ -99,11 +169,9 @@ func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
 	for c.SpaceFor(entry) {
 		require.NoError(t, c.Append(entry))
 		i++
-		inserted += int64(len(entry.Line))
 		entry.Timestamp = time.Unix(0, i)
 		entry.Line = fmt.Sprintf("entry for line %d", i)
 	}
-	return inserted
 }
 
 func dummyConf() *Config {
@@ -115,7 +183,6 @@ func dummyConf() *Config {
 }
 
 func Test_EncodingChunks(t *testing.T) {
-
 	conf := dummyConf()
 	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
 	fillChunk(t, c)
@@ -135,7 +202,11 @@ func Test_EncodingChunks(t *testing.T) {
 	}
 	there, err := toWireChunks(from, nil)
 	require.Nil(t, err)
-	backAgain, err := fromWireChunks(conf, there)
+	chunks := make([]Chunk, 0, len(there))
+	for _, c := range there {
+		chunks = append(chunks, c.Chunk)
+	}
+	backAgain, err := fromWireChunks(conf, chunks)
 	require.Nil(t, err)
 
 	for i, to := range backAgain {
@@ -185,7 +256,7 @@ func Test_EncodingCheckpoint(t *testing.T) {
 		},
 	}
 
-	b, err := encodeWithTypeHeader(s, CheckpointRecord)
+	b, err := encodeWithTypeHeader(s, CheckpointRecord, nil)
 	require.Nil(t, err)
 
 	out := &Series{}

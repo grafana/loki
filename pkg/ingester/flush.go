@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"sync"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	loki_util "github.com/grafana/loki/pkg/util"
@@ -106,10 +108,24 @@ const (
 	flushReasonSynced = "synced"
 )
 
+// Note: this is called both during the WAL replay (zero or more times)
+// and then after replay as well.
+func (i *Ingester) InitFlushQueues() {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
+		go i.flushLoop(j)
+	}
+}
+
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
-	i.sweepUsers(true)
+	i.flush(true)
+}
+
+func (i *Ingester) flush(mayRemoveStreams bool) {
+	i.sweepUsers(true, mayRemoveStreams)
 
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
@@ -117,12 +133,13 @@ func (i *Ingester) Flush() {
 	}
 
 	i.flushQueuesDone.Wait()
+
 }
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
-	i.sweepUsers(true)
+	i.sweepUsers(true, true)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -142,21 +159,21 @@ func (o *flushOp) Priority() int64 {
 }
 
 // sweepUsers periodically schedules series for flushing and garbage collects users with no series
-func (i *Ingester) sweepUsers(immediate bool) {
+func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
-		i.sweepInstance(instance, immediate)
+		i.sweepInstance(instance, immediate, mayRemoveStreams)
 	}
 }
 
-func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
+func (i *Ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
 	instance.streamsMtx.Lock()
 	defer instance.streamsMtx.Unlock()
 
 	for _, stream := range instance.streams {
 		i.sweepStream(instance, stream, immediate)
-		i.removeFlushedChunks(instance, stream)
+		i.removeFlushedChunks(instance, stream, mayRemoveStreams)
 	}
 }
 
@@ -199,7 +216,7 @@ func (i *Ingester) flushLoop(j int) {
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			level.Error(util.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
+			level.Error(util_log.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation
@@ -286,23 +303,28 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 }
 
 // must hold streamsMtx
-func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
+func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
 	now := time.Now()
 
 	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
 	prevNumChunks := len(stream.chunks)
+	var subtracted int
 	for len(stream.chunks) > 0 {
 		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) < i.cfg.RetainPeriod {
 			break
 		}
 
+		subtracted += stream.chunks[0].chunk.UncompressedSize()
 		stream.chunks[0].chunk = nil // erase reference so the chunk can be garbage-collected
 		stream.chunks = stream.chunks[1:]
 	}
 	memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
 
-	if len(stream.chunks) == 0 {
+	// Signal how much data has been flushed to lessen any WAL replay pressure.
+	i.replayController.Sub(int64(subtracted))
+
+	if mayRemoveStream && len(stream.chunks) == 0 {
 		delete(instance.streamsByFP, stream.fp)
 		delete(instance.streams, stream.labelsString)
 		instance.index.Delete(stream.labels, stream.fp)
@@ -321,32 +343,33 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	labelsBuilder.Set(nameLabel, logsValue)
 	metric := labelsBuilder.Labels()
 
-	wireChunks := make([]chunk.Chunk, 0, len(cs))
+	wireChunks := make([]chunk.Chunk, len(cs))
 
 	// use anonymous function to make lock releasing simpler.
 	err = func() error {
 		chunkMtx.Lock()
 		defer chunkMtx.Unlock()
 
-		for _, c := range cs {
+		for j, c := range cs {
 			// Ensure that new blocks are cut before flushing as data in the head block is not included otherwise.
 			if err := c.chunk.Close(); err != nil {
 				return err
 			}
 			firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
-			c := chunk.NewChunk(
+			ch := chunk.NewChunk(
 				userID, fp, metric,
 				chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
 				firstTime,
 				lastTime,
 			)
 
+			chunkSize := c.chunk.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
 			start := time.Now()
-			if err := c.Encode(); err != nil {
+			if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkSize))); err != nil {
 				return err
 			}
 			chunkEncodeTime.Observe(time.Since(start).Seconds())
-			wireChunks = append(wireChunks, c)
+			wireChunks[j] = ch
 		}
 		return nil
 	}()

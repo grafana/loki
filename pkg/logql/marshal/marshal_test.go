@@ -466,7 +466,6 @@ func Test_TailResponseMarshalLoop(t *testing.T) {
 }
 
 func Test_WriteSeriesResponseJSON(t *testing.T) {
-
 	for i, tc := range []struct {
 		input    logproto.SeriesResponse
 		expected string
@@ -511,4 +510,36 @@ func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string
 	require.NoError(t, err)
 
 	require.Equalf(t, expectedValue, actualValue, msg, args)
+}
+
+func Benchmark_Encode(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+
+	for n := 0; n < b.N; n++ {
+		for _, queryTest := range queryTests {
+			require.NoError(b, WriteQueryResponseJSON(logql.Result{Data: queryTest.actual}, buf))
+		}
+	}
+}
+
+type WebsocketWriterFunc func(int, []byte) error
+
+func (w WebsocketWriterFunc) WriteMessage(t int, d []byte) error { return w(t, d) }
+
+func Test_WriteTailResponseJSON(t *testing.T) {
+	require.NoError(t,
+		WriteTailResponseJSON(legacy.TailResponse{
+			Streams: []logproto.Stream{
+				{Labels: `{app="foo"}`, Entries: []logproto.Entry{{Timestamp: time.Unix(0, 1), Line: `foobar`}}},
+			},
+			DroppedEntries: []legacy.DroppedEntry{
+				{Timestamp: time.Unix(0, 2), Labels: `{app="dropped"}`},
+			},
+		},
+			WebsocketWriterFunc(func(i int, b []byte) error {
+				require.Equal(t, `{"streams":[{"stream":{"app":"foo"},"values":[["1","foobar"]]}],"dropped_entries":[{"timestamp":"2","labels":{"app":"dropped"}}]}`, string(b))
+				return nil
+			}),
+		),
+	)
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Queries are a set of matchers with time ranges - should not get into megabytes
@@ -16,13 +17,11 @@ const maxRemoteReadQuerySize = 1024 * 1024
 // RemoteReadHandler handles Prometheus remote read requests.
 func RemoteReadHandler(q storage.Queryable) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Read-Version"))
-
 		ctx := r.Context()
 		var req client.ReadRequest
-		logger := util.WithContext(r.Context(), util.Logger)
-		if err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRemoteReadQuerySize, &req, compressionType); err != nil {
-			level.Error(logger).Log("err", err.Error())
+		logger := log.WithContext(r.Context(), log.Logger)
+		if err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRemoteReadQuerySize, &req, util.RawSnappy); err != nil {
+			level.Error(logger).Log("msg", "failed to parse proto", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -68,7 +67,7 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 			return
 		}
 		w.Header().Add("Content-Type", "application/x-protobuf")
-		if err := util.SerializeProtoResponse(w, &resp, compressionType); err != nil {
+		if err := util.SerializeProtoResponse(w, &resp, util.RawSnappy); err != nil {
 			level.Error(logger).Log("msg", "error sending remote read response", "err", err)
 		}
 	})

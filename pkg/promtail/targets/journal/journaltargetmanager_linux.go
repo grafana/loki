@@ -23,6 +23,7 @@ type JournalTargetManager struct {
 
 // NewJournalTargetManager creates a new JournalTargetManager.
 func NewJournalTargetManager(
+	reg prometheus.Registerer,
 	logger log.Logger,
 	positions positions.Positions,
 	client api.EntryHandler,
@@ -38,8 +39,7 @@ func NewJournalTargetManager(
 			continue
 		}
 
-		registerer := prometheus.DefaultRegisterer
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "journal_pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "journal_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
 		if err != nil {
 			return nil, err
 		}

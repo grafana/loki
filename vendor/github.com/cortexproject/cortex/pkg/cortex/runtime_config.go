@@ -1,13 +1,20 @@
 package cortex
 
 import (
+	"errors"
 	"io"
+	"net/http"
 
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	errMultipleDocuments = errors.New("the provided runtime configuration contains multiple documents")
 )
 
 // runtimeConfigValues are values that can be reloaded from configuration file while Cortex is running.
@@ -24,8 +31,15 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 
 	decoder := yaml.NewDecoder(r)
 	decoder.SetStrict(true)
-	if err := decoder.Decode(&overrides); err != nil {
+
+	// Decode the first document. An empty document (EOF) is OK.
+	if err := decoder.Decode(&overrides); err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
+	}
+
+	// Ensure the provided YAML config is not composed of multiple documents,
+	if err := decoder.Decode(&runtimeConfigValues{}); !errors.Is(err, io.EOF) {
+		return nil, errMultipleDocuments
 	}
 
 	return overrides, nil
@@ -69,5 +83,50 @@ func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-ch
 		}()
 
 		return outCh
+	}
+}
+func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimits validation.Limits) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg, ok := runtimeCfgManager.GetConfig().(*runtimeConfigValues)
+		if !ok || cfg == nil {
+			util.WriteTextResponse(w, "runtime config file doesn't exist")
+			return
+		}
+
+		var output interface{}
+		switch r.URL.Query().Get("mode") {
+		case "diff":
+			// Default runtime config is just empty struct, but to make diff work,
+			// we set defaultLimits for every tenant that exists in runtime config.
+			defaultCfg := runtimeConfigValues{}
+			defaultCfg.TenantLimits = map[string]*validation.Limits{}
+			for k, v := range cfg.TenantLimits {
+				if v != nil {
+					defaultCfg.TenantLimits[k] = &defaultLimits
+				}
+			}
+
+			cfgYaml, err := util.YAMLMarshalUnmarshal(cfg)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			defaultCfgYaml, err := util.YAMLMarshalUnmarshal(defaultCfg)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			output, err = util.DiffConfig(defaultCfgYaml, cfgYaml)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+		default:
+			output = cfg
+		}
+		util.WriteYAMLResponse(w, output)
 	}
 }

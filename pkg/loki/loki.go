@@ -158,7 +158,7 @@ type Loki struct {
 	memberlistKV    *memberlist.KVInitService
 	compactor       *compactor.Compactor
 
-	httpAuthMiddleware middleware.Interface
+	HTTPAuthMiddleware middleware.Interface
 }
 
 // New makes a new Loki.
@@ -182,11 +182,11 @@ func (t *Loki) setupAuthMiddleware() {
 	if t.cfg.AuthEnabled {
 		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
-		t.httpAuthMiddleware = middleware.AuthenticateUser
+		t.HTTPAuthMiddleware = middleware.AuthenticateUser
 	} else {
 		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
 		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
-		t.httpAuthMiddleware = fakeHTTPAuthMiddleware
+		t.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
 	}
 }
 
@@ -202,6 +202,13 @@ var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info
 	default:
 		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 	}
+}
+
+func newDefaultConfig() *Config {
+	defaultConfig := &Config{}
+	defaultFS := flag.NewFlagSet("", flag.PanicOnError)
+	defaultConfig.RegisterFlags(defaultFS)
+	return defaultConfig
 }
 
 // Run starts Loki running, and blocks until a Loki stops.
@@ -227,6 +234,9 @@ func (t *Loki) Run() error {
 
 	// before starting servers, register /ready handler. It should reflect entire Loki.
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
+
+	// This adds a way to see the config and the changes compared to the defaults
+	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.cfg, newDefaultConfig()))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util.Logger).Log("msg", "Loki started") }
@@ -351,7 +361,7 @@ func (t *Loki) setupModuleManager() error {
 		Ingester:        {Store, Server, MemberlistKV},
 		Querier:         {Store, Ring, Server, IngesterQuerier},
 		QueryFrontend:   {Server, Overrides},
-		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier},
+		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides},
 		TableManager:    {Server},
 		Compactor:       {Server},
 		IngesterQuerier: {Ring},

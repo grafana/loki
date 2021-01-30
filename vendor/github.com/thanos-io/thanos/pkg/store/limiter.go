@@ -18,9 +18,19 @@ type ChunksLimiter interface {
 	Reserve(num uint64) error
 }
 
+type SeriesLimiter interface {
+	// Reserve num series out of the total number of series enforced by the limiter.
+	// Returns an error if the limit has been exceeded. This function must be
+	// goroutine safe.
+	Reserve(num uint64) error
+}
+
 // ChunksLimiterFactory is used to create a new ChunksLimiter. The factory is useful for
 // projects depending on Thanos (eg. Cortex) which have dynamic limits.
 type ChunksLimiterFactory func(failedCounter prometheus.Counter) ChunksLimiter
+
+// SeriesLimiterFactory is used to create a new SeriesLimiter.
+type SeriesLimiterFactory func(failedCounter prometheus.Counter) SeriesLimiter
 
 // Limiter is a simple mechanism for checking if something has passed a certain threshold.
 type Limiter struct {
@@ -54,6 +64,13 @@ func (l *Limiter) Reserve(num uint64) error {
 // NewChunksLimiterFactory makes a new ChunksLimiterFactory with a static limit.
 func NewChunksLimiterFactory(limit uint64) ChunksLimiterFactory {
 	return func(failedCounter prometheus.Counter) ChunksLimiter {
+		return NewLimiter(limit, failedCounter)
+	}
+}
+
+// NewSeriesLimiterFactory makes a new NewSeriesLimiterFactory with a static limit.
+func NewSeriesLimiterFactory(limit uint64) SeriesLimiterFactory {
+	return func(failedCounter prometheus.Counter) SeriesLimiter {
 		return NewLimiter(limit, failedCounter)
 	}
 }

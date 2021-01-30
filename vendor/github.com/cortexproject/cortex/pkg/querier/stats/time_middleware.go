@@ -16,14 +16,15 @@ func NewWallTimeMiddleware() WallTimeMiddleware {
 // Wrap implements middleware.Interface.
 func (m WallTimeMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		stats := FromContext(r.Context())
-		if stats == nil {
+		if !IsEnabled(r.Context()) {
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		startTime := time.Now()
 		next.ServeHTTP(w, r)
+
+		stats := FromContext(r.Context())
 		stats.AddWallTime(time.Since(startTime))
 	})
 }

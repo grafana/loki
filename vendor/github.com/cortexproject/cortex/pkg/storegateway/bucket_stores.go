@@ -28,7 +28,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -324,50 +324,69 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		return bs, nil
 	}
 
-	userLogger := util.WithUserID(userID, u.logger)
+	userLogger := util_log.WithUserID(userID, u.logger)
 
 	level.Info(userLogger).Log("msg", "creating user bucket store")
 
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket)
-
-	// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
-	// belong to the store-gateway shard. We need to run the BucketStore synching anyway
-	// in order to unload previous tenants in case of a resharding leading to tenants
-	// moving out from the store-gateway shard and also make sure both MetaFetcher and
-	// BucketStore metrics are correctly updated.
-	fetcherBkt := NewShardingBucketReaderAdapter(userID, u.shardingStrategy, userBkt)
-
 	fetcherReg := prometheus.NewRegistry()
-	fetcher, err := block.NewMetaFetcher(
-		userLogger,
-		u.cfg.BucketStore.MetaSyncConcurrency,
-		fetcherBkt,
-		filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
-		fetcherReg,
-		// The sharding strategy filter MUST be before the ones we create here (order matters).
-		append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
-			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
-			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),
-			// The duplicate filter has been intentionally omitted because it could cause troubles with
-			// the consistency check done on the querier. The duplicate filter removes redundant blocks
-			// but if the store-gateway removes redundant blocks before the querier discovers them, the
-			// consistency check on the querier will fail.
-		}...),
-		[]block.MetadataModifier{
-			// Remove Cortex external labels so that they're not injected when querying blocks.
-			NewReplicaLabelRemover(userLogger, []string{
-				tsdb.TenantIDExternalLabel,
-				tsdb.IngesterIDExternalLabel,
-				tsdb.ShardIDExternalLabel,
-			}),
-		},
-	)
-	if err != nil {
-		return nil, err
+
+	// The sharding strategy filter MUST be before the ones we create here (order matters).
+	filters := append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
+		block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
+		// Use our own custom implementation.
+		NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),
+		// The duplicate filter has been intentionally omitted because it could cause troubles with
+		// the consistency check done on the querier. The duplicate filter removes redundant blocks
+		// but if the store-gateway removes redundant blocks before the querier discovers them, the
+		// consistency check on the querier will fail.
+	}...)
+
+	modifiers := []block.MetadataModifier{
+		// Remove Cortex external labels so that they're not injected when querying blocks.
+		NewReplicaLabelRemover(userLogger, []string{
+			tsdb.TenantIDExternalLabel,
+			tsdb.IngesterIDExternalLabel,
+			tsdb.ShardIDExternalLabel,
+		}),
+	}
+
+	// Instantiate a different blocks metadata fetcher based on whether bucket index is enabled or not.
+	var fetcher block.MetadataFetcher
+	if u.cfg.BucketStore.BucketIndex.Enabled {
+		fetcher = NewBucketIndexMetadataFetcher(
+			userID,
+			u.bucket,
+			u.shardingStrategy,
+			u.logger,
+			fetcherReg,
+			filters,
+			modifiers)
+	} else {
+		// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
+		// belong to the store-gateway shard. We need to run the BucketStore synching anyway
+		// in order to unload previous tenants in case of a resharding leading to tenants
+		// moving out from the store-gateway shard and also make sure both MetaFetcher and
+		// BucketStore metrics are correctly updated.
+		fetcherBkt := NewShardingBucketReaderAdapter(userID, u.shardingStrategy, userBkt)
+
+		var err error
+		fetcher, err = block.NewMetaFetcher(
+			userLogger,
+			u.cfg.BucketStore.MetaSyncConcurrency,
+			fetcherBkt,
+			filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
+			fetcherReg,
+			filters,
+			modifiers,
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	bucketStoreReg := prometheus.NewRegistry()
-	bs, err = store.NewBucketStore(
+	bs, err := store.NewBucketStore(
 		userLogger,
 		bucketStoreReg,
 		userBkt,
@@ -377,7 +396,8 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.queryGate,
 		u.cfg.BucketStore.MaxChunkPoolBytes,
 		newChunksLimiterFactory(u.limits, userID),
-		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
+		store.NewSeriesLimiterFactory(0), // No series limiter.
+		u.logLevel.String() == "debug",   // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers

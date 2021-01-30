@@ -291,7 +291,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if relabelString, ok := logCtx.Config[cfgRelabelKey]; ok && relabelString != "" {
 		relabeled, err := relabelConfig(relabelString, labels)
 		if err != nil {
-			return nil, fmt.Errorf("error applying relabel config: %s err:%s", relabelString, err)
+			return nil, fmt.Errorf("error applying relabel config: %s err: %s", relabelString, err)
 		}
 		labels = relabeled
 	}

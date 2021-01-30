@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -22,6 +23,10 @@ type ClientMock struct {
 func (m *ClientMock) Upload(ctx context.Context, name string, r io.Reader) error {
 	args := m.Called(ctx, name, r)
 	return args.Error(0)
+}
+
+func (m *ClientMock) MockUpload(name string, err error) {
+	m.On("Upload", mock.Anything, name, mock.Anything).Return(err)
 }
 
 // Delete mocks objstore.Bucket.Delete()
@@ -78,6 +83,10 @@ func (m *ClientMock) Get(ctx context.Context, name string) (io.ReadCloser, error
 func (m *ClientMock) MockGet(name, content string, err error) {
 	if content != "" {
 		m.On("Exists", mock.Anything, name).Return(true, err)
+		m.On("Attributes", mock.Anything, name).Return(objstore.ObjectAttributes{
+			Size:         int64(len(content)),
+			LastModified: time.Now(),
+		}, nil)
 
 		// Since we return an ReadCloser and it can be consumed only once,
 		// each time the mocked Get() is called we do create a new one, so
@@ -89,6 +98,7 @@ func (m *ClientMock) MockGet(name, content string, err error) {
 	} else {
 		m.On("Exists", mock.Anything, name).Return(false, err)
 		m.On("Get", mock.Anything, name).Return(nil, errObjectDoesNotExist)
+		m.On("Attributes", mock.Anything, name).Return(nil, errObjectDoesNotExist)
 	}
 }
 

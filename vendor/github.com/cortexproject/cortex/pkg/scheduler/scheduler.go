@@ -23,9 +23,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -126,6 +128,7 @@ type schedulerRequest struct {
 	userID          string
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
+	statsEnabled    bool
 
 	enqueueTime time.Time
 
@@ -264,6 +267,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		userID:          msg.UserID,
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
+		statsEnabled:    msg.StatsEnabled,
 	}
 
 	req.parentSpanContext = parentSpanContext
@@ -271,7 +275,12 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.enqueueTime = time.Now()
 	req.ctxCancel = cancel
 
-	maxQueriers := s.limits.MaxQueriersPerUser(userID)
+	// aggregate the max queriers limit in the case of a multi tenant query
+	tenantIDs, err := tenant.TenantIDsFromOrgID(userID)
+	if err != nil {
+		return err
+	}
+	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
 	return s.requestQueue.EnqueueRequest(userID, req, maxQueriers, func() {
 		shouldCancel = false
@@ -371,6 +380,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
 			HttpRequest:     req.request,
+			StatsEnabled:    req.statsEnabled,
 		})
 		if err != nil {
 			errCh <- err

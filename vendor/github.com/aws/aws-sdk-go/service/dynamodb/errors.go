@@ -33,6 +33,13 @@ const (
 	// Backups have not yet been enabled for this table.
 	ErrCodeContinuousBackupsUnavailableException = "ContinuousBackupsUnavailableException"
 
+	// ErrCodeDuplicateItemException for service response error code
+	// "DuplicateItemException".
+	//
+	// There was an attempt to insert an item with the same primary key as an item
+	// that already exists in the DynamoDB table.
+	ErrCodeDuplicateItemException = "DuplicateItemException"
+
 	// ErrCodeExportConflictException for service response error code
 	// "ExportConflictException".
 	//
@@ -292,6 +299,7 @@ var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
 	"BackupNotFoundException":                  newErrorBackupNotFoundException,
 	"ConditionalCheckFailedException":          newErrorConditionalCheckFailedException,
 	"ContinuousBackupsUnavailableException":    newErrorContinuousBackupsUnavailableException,
+	"DuplicateItemException":                   newErrorDuplicateItemException,
 	"ExportConflictException":                  newErrorExportConflictException,
 	"ExportNotFoundException":                  newErrorExportNotFoundException,
 	"GlobalTableAlreadyExistsException":        newErrorGlobalTableAlreadyExistsException,

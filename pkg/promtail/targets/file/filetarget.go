@@ -10,8 +10,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
 
@@ -20,35 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/targets/target"
-)
-
-var (
-	readBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "promtail",
-		Name:      "read_bytes_total",
-		Help:      "Number of bytes read.",
-	}, []string{"path"})
-	totalBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "promtail",
-		Name:      "file_bytes_total",
-		Help:      "Number of bytes total.",
-	}, []string{"path"})
-	readLines = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "read_lines_total",
-		Help:      "Number of lines read.",
-	}, []string{"path"})
-	filesActive = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "promtail",
-		Name:      "files_active_total",
-		Help:      "Number of active files.",
-	})
-	logLengthHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "promtail",
-		Name:      "log_entries_bytes",
-		Help:      "the total count of bytes",
-		Buckets:   prometheus.ExponentialBuckets(16, 2, 8),
-	}, []string{"path"})
 )
 
 const (
@@ -76,7 +45,8 @@ func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 // FileTarget describes a particular set of logs.
 // nolint:golint
 type FileTarget struct {
-	logger log.Logger
+	metrics *Metrics
+	logger  log.Logger
 
 	handler          api.EntryHandler
 	positions        positions.Positions
@@ -95,7 +65,16 @@ type FileTarget struct {
 }
 
 // NewFileTarget create a new FileTarget.
-func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
+func NewFileTarget(
+	metrics *Metrics,
+	logger log.Logger,
+	handler api.EntryHandler,
+	positions positions.Positions,
+	path string,
+	labels model.LabelSet,
+	discoveredLabels model.LabelSet,
+	targetConfig *Config,
+) (*FileTarget, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -104,6 +83,7 @@ func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions positi
 
 	t := &FileTarget{
 		logger:           logger,
+		metrics:          metrics,
 		watcher:          watcher,
 		path:             path,
 		labels:           labels,
@@ -301,7 +281,7 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-		tailer, err := newTailer(t.logger, t.handler, t.positions, p)
+		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
 			continue
@@ -379,7 +359,7 @@ func (t *FileTarget) reportSize(ms []string) {
 				// the tail code will also check if the file exists before creating a tailer.
 				return
 			}
-			totalBytes.WithLabelValues(m).Set(float64(fi.Size()))
+			t.metrics.totalBytes.WithLabelValues(m).Set(float64(fi.Size()))
 		}
 
 	}

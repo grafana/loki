@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
+	"github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 )
@@ -27,26 +28,32 @@ type AlertStore interface {
 
 // AlertStoreConfig configures the alertmanager backend
 type AlertStoreConfig struct {
-	Type     string            `yaml:"type"`
-	ConfigDB client.Config     `yaml:"configdb"`
-	Local    local.StoreConfig `yaml:"local"`
+	Type     string        `yaml:"type"`
+	ConfigDB client.Config `yaml:"configdb"`
 
-	GCS gcp.GCSConfig `yaml:"gcs"`
-	S3  aws.S3Config  `yaml:"s3"`
+	// Object Storage Configs
+	Azure azure.BlobStorageConfig `yaml:"azure"`
+	GCS   gcp.GCSConfig           `yaml:"gcs"`
+	S3    aws.S3Config            `yaml:"s3"`
+	Local local.StoreConfig       `yaml:"local"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *AlertStoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.Local.RegisterFlags(f)
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
 	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
 
+	cfg.Azure.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("alertmanager.storage.", f)
+	cfg.Local.RegisterFlags(f)
 }
 
 // Validate config and returns error on failure
 func (cfg *AlertStoreConfig) Validate() error {
+	if err := cfg.Azure.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Azure Storage config")
+	}
 	if err := cfg.S3.Validate(); err != nil {
 		return errors.Wrap(err, "invalid S3 Storage config")
 	}
@@ -62,12 +69,14 @@ func NewAlertStore(cfg AlertStoreConfig) (AlertStore, error) {
 			return nil, err
 		}
 		return configdb.NewStore(c), nil
-	case "local":
-		return local.NewStore(cfg.Local)
+	case "azure":
+		return newObjAlertStore(azure.NewBlobStorage(&cfg.Azure))
 	case "gcs":
 		return newObjAlertStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
 	case "s3":
 		return newObjAlertStore(aws.NewS3ObjectClient(cfg.S3))
+	case "local":
+		return local.NewStore(cfg.Local)
 	default:
 		return nil, fmt.Errorf("unrecognized alertmanager storage backend %v, choose one of: azure, configdb, gcs, local, s3", cfg.Type)
 	}

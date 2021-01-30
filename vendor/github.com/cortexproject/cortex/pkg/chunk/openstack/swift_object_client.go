@@ -9,10 +9,10 @@ import (
 	"io/ioutil"
 
 	"github.com/ncw/swift"
-	thanos "github.com/thanos-io/thanos/pkg/objstore/swift"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
+	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type SwiftObjectClient struct {
@@ -22,7 +22,7 @@ type SwiftObjectClient struct {
 
 // SwiftConfig is config for the Swift Chunk Client.
 type SwiftConfig struct {
-	thanos.SwiftConfig `yaml:",inline"`
+	cortex_swift.Config `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.
@@ -37,42 +37,30 @@ func (cfg *SwiftConfig) Validate() error {
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.ContainerName, prefix+"swift.container-name", "cortex", "Name of the Swift container to put chunks in.")
-	f.StringVar(&cfg.DomainName, prefix+"swift.domain-name", "", "Openstack user's domain name.")
-	f.StringVar(&cfg.DomainId, prefix+"swift.domain-id", "", "Openstack user's domain id.")
-	f.StringVar(&cfg.UserDomainName, prefix+"swift.user-domain-name", "", "Openstack user's domain name.")
-	f.StringVar(&cfg.UserDomainID, prefix+"swift.user-domain-id", "", "Openstack user's domain id.")
-	f.StringVar(&cfg.Username, prefix+"swift.username", "", "Openstack username for the api.")
-	f.StringVar(&cfg.UserId, prefix+"swift.user-id", "", "Openstack userid for the api.")
-	f.StringVar(&cfg.Password, prefix+"swift.password", "", "Openstack api key.")
-	f.StringVar(&cfg.AuthUrl, prefix+"swift.auth-url", "", "Openstack authentication URL.")
-	f.StringVar(&cfg.RegionName, prefix+"swift.region-name", "", "Openstack Region to use eg LON, ORD - default is use first region (v2,v3 auth only)")
-	f.StringVar(&cfg.ProjectName, prefix+"swift.project-name", "", "Openstack project name (v2,v3 auth only).")
-	f.StringVar(&cfg.ProjectID, prefix+"swift.project-id", "", "Openstack project id (v2,v3 auth only).")
-	f.StringVar(&cfg.ProjectDomainName, prefix+"swift.project-domain-name", "", "Name of the project's domain (v3 auth only), only needed if it differs from the user domain.")
-	f.StringVar(&cfg.ProjectDomainID, prefix+"swift.project-domain-id", "", "Id of the project's domain (v3 auth only), only needed if it differs the from user domain.")
+	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
 func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
-	util.WarnExperimentalUse("OpenStack Swift Storage")
+	log.WarnExperimentalUse("OpenStack Swift Storage")
 
 	// Create a connection
 	c := &swift.Connection{
-		AuthUrl:  cfg.AuthUrl,
-		ApiKey:   cfg.Password,
-		UserName: cfg.Username,
-		UserId:   cfg.UserId,
-
+		AuthVersion:    cfg.AuthVersion,
+		AuthUrl:        cfg.AuthURL,
+		ApiKey:         cfg.Password,
+		UserName:       cfg.Username,
+		UserId:         cfg.UserID,
+		Retries:        cfg.MaxRetries,
+		ConnectTimeout: cfg.ConnectTimeout,
+		Timeout:        cfg.RequestTimeout,
 		TenantId:       cfg.ProjectID,
 		Tenant:         cfg.ProjectName,
 		TenantDomain:   cfg.ProjectDomainName,
 		TenantDomainId: cfg.ProjectDomainID,
-
-		Domain:   cfg.DomainName,
-		DomainId: cfg.DomainId,
-
-		Region: cfg.RegionName,
+		Domain:         cfg.DomainName,
+		DomainId:       cfg.DomainID,
+		Region:         cfg.RegionName,
 	}
 
 	switch {

@@ -38,6 +38,10 @@ message SchedulerToQuerier {
 
   // User who initiated the request. Needed to send reply back to frontend.
   string userID = 4;
+
+  // Whether query statistics tracking should be enabled. The response will include
+  // statistics only when this option is enabled.
+  bool statsEnabled = 5;
 }
 
 // Scheduler interface exposed to Frontend. Frontend can enqueue and cancel requests.
@@ -70,6 +74,7 @@ message FrontendToScheduler {
   // Following are used by ENQUEUE only.
   string userID = 4;
   httpgrpc.HTTPRequest httpRequest = 5;
+  bool statsEnabled = 6;
 }
 
 enum SchedulerToFrontendStatus {

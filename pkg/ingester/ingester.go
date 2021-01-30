@@ -150,6 +150,9 @@ type Ingester struct {
 	// Currently only used by the WAL to signal when the disk is full.
 	flushOnShutdownSwitch *OnceSwitch
 
+	// Only used by WAL & flusher to coordinate backpressure during replay.
+	replayController *replayController
+
 	metrics *ingesterMetrics
 
 	wal WAL
@@ -184,6 +187,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
 	}
+	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
 	if cfg.WAL.Enabled {
 		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
@@ -214,7 +218,15 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
+
 	if i.cfg.WAL.Recover {
+		// Ignore retain period during wal replay.
+		old := i.cfg.RetainPeriod
+		i.cfg.RetainPeriod = 0
+		defer func() {
+			i.cfg.RetainPeriod = old
+		}()
+
 		// Disable the in process stream limit checks while replaying the WAL
 		i.limiter.Disable()
 		defer i.limiter.Enable()
@@ -274,11 +286,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	}
 
-	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
-	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
-		go i.flushLoop(j)
-	}
+	i.InitFlushQueues()
 
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
 	err := i.lifecycler.StartAsync(context.Background())
@@ -349,7 +357,7 @@ func (i *Ingester) loop() {
 	for {
 		select {
 		case <-flushTicker.C:
-			i.sweepUsers(false)
+			i.sweepUsers(false, true)
 
 		case <-i.loopQuit:
 			return

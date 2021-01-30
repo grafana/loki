@@ -588,11 +588,11 @@ storage:
   local:
     # Directory to scan for rules
     # CLI flag: -ruler.storage.local.directory
-    [directory: <string> | default = ""]
+    [directory: <filename> | default = ""]
 
 # File path to store temporary rule files
 # CLI flag: -ruler.rule-path
-[rule_path: <string> | default = "/rules"]
+[rule_path: <filename> | default = "/rules"]
 
 # Comma-separated list of Alertmanager URLs to send notifications to.
 # Each Alertmanager URL is treated as a separate group in the configuration.
@@ -895,6 +895,33 @@ lifecycler:
 # Use a value of -1 to allow the ingester to query the store infinitely far back in time.
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0]
+
+
+# The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
+wal:
+  # Enables writing to WAL.
+  # CLI flag: -ingester.wal-enabled
+  [enabled: <boolean> | default = false]
+
+  # Directory where the WAL data should be stored and/or recovered from.
+  # CLI flag: -ingester.wal-dir
+  [dir: <filename> | default = "wal"]
+
+  # Recover data from existing WAL dir irrespective of WAL enabled/disabled.
+  # CLI flag: -ingester.recover-from-wal
+  [recover: <boolean> | default = false]
+
+  # When WAL is enabled, should chunks be flushed to long-term storage on shutdown.
+  # CLI flag: -ingester.flush-on-shutdown
+  [flush_on_shutdown: <boolean> | default = false]
+
+  # Interval at which checkpoints should be created.
+  # CLI flag: ingester.checkpoint-duration
+  [checkpoint_duration: <duration> | default = 5m]
+
+  # Maximum memory size the WAL may use during replay. After hitting this it will flush data to storage before continuing.
+  # A unit suffix (KB, MB, GB) may be applied.
+  [replay_memory_ceiling: <string> | default = 4GB]
 ```
 
 ## consul_config
@@ -1664,6 +1691,18 @@ logs in Loki.
 # Maximum number of stream matchers per query.
 # CLI flag: -querier.max-streams-matcher-per-query
 [max_streams_matchers_per_query: <int> | default = 1000]
+
+# Duration to delay the evaluation of rules to ensure.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
+
+# Maximum number of rules per rule group per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rules-per-rule-group
+[ruler_max_rules_per_rule_group: <int> | default = 0]
+
+# Maximum number of rule groups per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rule-groups-per-tenant
+[ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config

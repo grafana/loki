@@ -4,11 +4,13 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/targets/file"
+	"github.com/grafana/loki/pkg/promtail/targets/gcplog"
 	"github.com/grafana/loki/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/pkg/promtail/targets/lokipush"
 	"github.com/grafana/loki/pkg/promtail/targets/stdin"
@@ -20,6 +22,7 @@ const (
 	FileScrapeConfigs    = "fileScrapeConfigs"
 	JournalScrapeConfigs = "journalScrapeConfigs"
 	SyslogScrapeConfigs  = "syslogScrapeConfigs"
+	GcplogScrapeConfigs  = "gcplogScrapeConfigs"
 	PushScrapeConfigs    = "pushScrapeConfigs"
 )
 
@@ -39,6 +42,7 @@ type TargetManagers struct {
 // NewTargetManagers makes a new TargetManagers
 func NewTargetManagers(
 	app stdin.Shutdownable,
+	reg prometheus.Registerer,
 	logger log.Logger,
 	positionsConfig positions.Config,
 	client api.EntryHandler,
@@ -50,7 +54,7 @@ func NewTargetManagers(
 
 	if targetConfig.Stdin {
 		level.Debug(logger).Log("msg", "configured to read from stdin")
-		stdin, err := stdin.NewStdinTargetManager(logger, app, client, scrapeConfigs)
+		stdin, err := stdin.NewStdinTargetManager(reg, logger, app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err
 		}
@@ -71,6 +75,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[JournalScrapeConfigs] = append(targetScrapeConfigs[JournalScrapeConfigs], cfg)
 		case cfg.SyslogConfig != nil:
 			targetScrapeConfigs[SyslogScrapeConfigs] = append(targetScrapeConfigs[SyslogScrapeConfigs], cfg)
+		case cfg.GcplogConfig != nil:
+			targetScrapeConfigs[GcplogScrapeConfigs] = append(targetScrapeConfigs[GcplogScrapeConfigs], cfg)
 		case cfg.PushConfig != nil:
 			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
 		default:
@@ -78,10 +84,26 @@ func NewTargetManagers(
 		}
 	}
 
+	var (
+		fileMetrics   *file.Metrics
+		syslogMetrics *syslog.Metrics
+		gcplogMetrics *gcplog.Metrics
+	)
+	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
+		fileMetrics = file.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[SyslogScrapeConfigs]) > 0 {
+		syslogMetrics = syslog.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[GcplogScrapeConfigs]) > 0 {
+		gcplogMetrics = gcplog.NewMetrics(reg)
+	}
+
 	for target, scrapeConfigs := range targetScrapeConfigs {
 		switch target {
 		case FileScrapeConfigs:
 			fileTargetManager, err := file.NewFileTargetManager(
+				fileMetrics,
 				logger,
 				positions,
 				client,
@@ -94,6 +116,7 @@ func NewTargetManagers(
 			targetManagers = append(targetManagers, fileTargetManager)
 		case JournalScrapeConfigs:
 			journalTargetManager, err := journal.NewJournalTargetManager(
+				reg,
 				logger,
 				positions,
 				client,
@@ -105,6 +128,7 @@ func NewTargetManagers(
 			targetManagers = append(targetManagers, journalTargetManager)
 		case SyslogScrapeConfigs:
 			syslogTargetManager, err := syslog.NewSyslogTargetManager(
+				syslogMetrics,
 				logger,
 				client,
 				scrapeConfigs,
@@ -113,8 +137,20 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make syslog target manager")
 			}
 			targetManagers = append(targetManagers, syslogTargetManager)
+		case GcplogScrapeConfigs:
+			pubsubTargetManager, err := gcplog.NewGcplogTargetManager(
+				gcplogMetrics,
+				logger,
+				client,
+				scrapeConfigs,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make syslog target manager")
+			}
+			targetManagers = append(targetManagers, pubsubTargetManager)
 		case PushScrapeConfigs:
 			pushTargetManager, err := lokipush.NewPushTargetManager(
+				reg,
 				logger,
 				client,
 				scrapeConfigs,
