@@ -820,13 +820,13 @@ To subcribe to a specific events stream you need to provide either an `eventlog_
 Events are scraped periodically every 3 seconds by default but can be changed using `poll_interval`.
 
 A bookmark path `bookmark_path` is mandatory and will be used as a position file where Promtail will
-save his last known event processed, the same path should be provided to recover from interruption without loosing any logs.
+keep record of the last event processed. This file persists across promtail restarts.
 
-You can set `use_incoming_timestamp` if you want to keep incomming event timestamps, by default Promtail will use the timestamp of when
+You can set `use_incoming_timestamp` if you want to keep incomming event timestamps. By default Promtail will use the timestamp when
 the event was read from the event log.
 
-Promtail will serialize in JSON windows events and add `channel` and `computer` labels from the event received,
-you can add additional labels with the `labels` property.
+Promtail will serialize JSON windows events, adding `channel` and `computer` labels from the event received.
+You can add additional labels with the `labels` property.
 
 
 ```yaml
