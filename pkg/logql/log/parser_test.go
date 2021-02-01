@@ -126,7 +126,7 @@ func Benchmark_Parser(b *testing.B) {
 
 			b.Run("labels hints", func(b *testing.B) {
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
-				builder.parserKeyHints = newParserHint(tt.LabelParseHints, false, false, "")
+				builder.parserKeyHints = newParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "")
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(line, builder)
