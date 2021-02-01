@@ -52,7 +52,7 @@ platform:
 
 steps:
 - name: test
-  image: golang:nanoserver-1809
+  image: windowsservercore-1809
   commands:
   - dir
   - go test .\pkg\promtail\targets\windows\... -v
