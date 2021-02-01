@@ -43,22 +43,6 @@ steps:
 
 ---
 kind: pipeline
-name: promtail-windows
-
-platform:
-  os: windows
-  arch: amd64
-  version: 1809
-
-steps:
-- name: test
-  image: golang:windowsservercore-1809
-  commands:
-  - dir
-  - go test .\pkg\promtail\targets\windows\... -v
-
----
-kind: pipeline
 name: docker-amd64
 
 platform:
@@ -877,5 +861,20 @@ trigger:
 
 depends_on:
 - manifest
+
+---
+kind: pipeline
+name: promtail-windows
+
+platform:
+  os: windows
+  arch: amd64
+  version: 1809
+
+steps:
+- name: test
+  image: golang:windowsservercore-1809
+  commands:
+  - go test .\pkg\promtail\targets\windows\... -v
 
 ...

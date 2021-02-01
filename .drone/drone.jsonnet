@@ -70,7 +70,6 @@ local promtail_win() = pipeline('promtail-windows') {
     name: 'test',
     image: 'golang:windowsservercore-1809',
     commands: [
-      'dir',
       'go test .\\pkg\\promtail\\targets\\windows\\... -v',
     ],
   }],
@@ -217,7 +216,7 @@ local manifest(apps) = pipeline('manifest') {
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
     ],
   }
-] + [promtail_win()] + [
+] + [
   multiarch_image(arch) + (
     // When we're building Promtail for ARM, we want to use Dockerfile.arm32 to fix
     // a problem with the published Drone image. See Dockerfile.arm32 for more
@@ -289,4 +288,4 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
-]
+] + [promtail_win()]

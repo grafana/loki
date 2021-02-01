@@ -23,9 +23,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-var (
-	fs = afero.NewOsFs()
-)
+var fs = afero.NewOsFs()
 
 type Target struct {
 	subscription  win_eventlog.EvtHandle
@@ -150,7 +148,7 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 
 		entry.Timestamp = time.Now()
 		if t.cfg.UseIncomingTimestamp {
-			timeStamp, err := time.Parse(time.RFC3339Nano, fmt.Sprintf("%v", event.TimeCreated.SystemTime))
+			timeStamp, err := time.ParseInLocation(time.RFC3339Nano, fmt.Sprintf("%v", event.TimeCreated.SystemTime), nil)
 			if err != nil {
 				level.Warn(t.logger).Log("msg", "error parsing timestamp", "err", err)
 			} else {
