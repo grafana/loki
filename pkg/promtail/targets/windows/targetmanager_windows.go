@@ -21,19 +21,18 @@ type TargetManager struct {
 
 // NewTargetManager creates a new Windows managers.
 func NewTargetManager(
+	reg prometheus.Registerer,
 	logger log.Logger,
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 ) (*TargetManager, error) {
-
 	tm := &TargetManager{
 		logger:  logger,
 		targets: make(map[string]*Target),
 	}
 
 	for _, cfg := range scrapeConfigs {
-		registerer := prometheus.DefaultRegisterer
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "windows_pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "windows_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
 		if err != nil {
 			return nil, err
 		}

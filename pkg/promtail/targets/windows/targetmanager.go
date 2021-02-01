@@ -5,6 +5,7 @@ package windows
 import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
@@ -16,6 +17,7 @@ type TargetManager struct{}
 
 // NewTargetManager creates a new Windows managers.
 func NewTargetManager(
+	reg prometheus.Registerer,
 	logger log.Logger,
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,

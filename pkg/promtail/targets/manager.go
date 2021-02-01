@@ -182,7 +182,7 @@ func NewTargetManagers(
 			}
 			targetManagers = append(targetManagers, pushTargetManager)
 		case WindowsEventsConfigs:
-			windowsTargetManager, err := windows.NewTargetManager(logger, client, scrapeConfigs)
+			windowsTargetManager, err := windows.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make windows target manager")
 			}
@@ -196,7 +196,6 @@ func NewTargetManagers(
 		targetManagers: targetManagers,
 		positions:      positionFile,
 	}, nil
-
 }
 
 // ActiveTargets returns active targets per jobs
