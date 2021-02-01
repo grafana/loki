@@ -69,7 +69,7 @@ local promtail_win() = pipeline('promtail-windows') {
     name: 'test',
     image: 'golang:nanoserver-1809',
     commands: [
-      'go.exe test .\\pkg\\promtail\\targets\\windows\\... -v',
+      'go test .\\pkg\\promtail\\targets\\windows\\... -v',
     ],
   }],
 };
