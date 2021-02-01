@@ -64,11 +64,13 @@ local promtail_win() = pipeline('promtail-windows') {
  platform: {
     os: 'windows',
     arch: "amd64",
+    version: "1809",
   },
   steps: [{
     name: 'test',
     image: 'golang:nanoserver-1809',
     commands: [
+      'dir',
       'go test .\\pkg\\promtail\\targets\\windows\\... -v',
     ],
   }],
