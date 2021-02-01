@@ -52,7 +52,13 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 		grpc.WithInsecure(),
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
-	opts = append(opts, cfg.GRPCClientConfig.DialOption(instrumentation())...)
+
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation())
+	if err != nil {
+		return nil, err
+	}
+
+	opts = append(opts, dialOpts...)
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err

@@ -16,6 +16,7 @@ type ClientConfig struct {
 	CertPath           string `yaml:"tls_cert_path"`
 	KeyPath            string `yaml:"tls_key_path"`
 	CAPath             string `yaml:"tls_ca_path"`
+	ServerName         string `yaml:"tls_server_name"`
 	InsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify"`
 }
 
@@ -29,18 +30,15 @@ func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 	f.StringVar(&cfg.CertPath, prefix+".tls-cert-path", "", "Path to the client certificate file, which will be used for authenticating with the server. Also requires the key path to be configured.")
 	f.StringVar(&cfg.KeyPath, prefix+".tls-key-path", "", "Path to the key file for the client certificate. Also requires the client certificate to be configured.")
 	f.StringVar(&cfg.CAPath, prefix+".tls-ca-path", "", "Path to the CA certificates file to validate server certificate against. If not set, the host's root CA certificates are used.")
+	f.StringVar(&cfg.ServerName, prefix+".tls-server-name", "", "Override the expected name on the server certificate.")
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+".tls-insecure-skip-verify", false, "Skip validating server certificate.")
 }
 
 // GetTLSConfig initialises tls.Config from config options
 func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
-	// no tls config given at all
-	if cfg.CertPath == "" && cfg.KeyPath == "" && cfg.CAPath == "" {
-		return nil, nil
-	}
-
 	config := &tls.Config{
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		ServerName:         cfg.ServerName,
 	}
 
 	// read ca certificates
@@ -75,11 +73,15 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 }
 
 // GetGRPCDialOptions creates GRPC DialOptions for TLS
-func (cfg *ClientConfig) GetGRPCDialOptions() ([]grpc.DialOption, error) {
-	if tlsConfig, err := cfg.GetTLSConfig(); err != nil {
-		return nil, errors.Wrap(err, "error creating grpc dial options")
-	} else if tlsConfig != nil {
-		return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))}, nil
+func (cfg *ClientConfig) GetGRPCDialOptions(enabled bool) ([]grpc.DialOption, error) {
+	if !enabled {
+		return []grpc.DialOption{grpc.WithInsecure()}, nil
 	}
-	return []grpc.DialOption{grpc.WithInsecure()}, nil
+
+	tlsConfig, err := cfg.GetTLSConfig()
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating grpc dial options")
+	}
+
+	return []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))}, nil
 }
