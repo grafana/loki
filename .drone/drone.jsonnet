@@ -60,6 +60,19 @@ local arch_image(arch, tags='') = {
   }],
 };
 
+local promtail_win() = pipeline('promtail-windows') {
+ platform: {
+    os: 'windows',
+    arch: "amd64",
+  },
+  steps: [{
+    name: 'test',
+    commands: [
+      'go.exe test .\\pkg\\promtail\\targets\\windows\\... -v',
+    ],
+  }],
+};
+
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,master') {
   steps+: [
     // dry run for everything that is not tag or master
@@ -200,8 +213,8 @@ local manifest(apps) = pipeline('manifest') {
       make('check-generated-files', container=false) { depends_on: ['clone'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
     ],
-  },
-] + [
+  }
+] + [promtail_win()] + [
   multiarch_image(arch) + (
     // When we're building Promtail for ARM, we want to use Dockerfile.arm32 to fix
     // a problem with the published Drone image. See Dockerfile.arm32 for more
