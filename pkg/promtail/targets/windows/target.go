@@ -148,7 +148,7 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 
 		entry.Timestamp = time.Now()
 		if t.cfg.UseIncomingTimestamp {
-			timeStamp, err := time.ParseInLocation(time.RFC3339Nano, fmt.Sprintf("%v", event.TimeCreated.SystemTime), nil)
+			timeStamp, err := time.Parse(time.RFC3339Nano, fmt.Sprintf("%v", event.TimeCreated.SystemTime))
 			if err != nil {
 				level.Warn(t.logger).Log("msg", "error parsing timestamp", "err", err)
 			} else {
