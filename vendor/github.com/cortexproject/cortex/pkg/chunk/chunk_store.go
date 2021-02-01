@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -539,7 +540,7 @@ func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQ
 		return true
 	})
 	if err != nil {
-		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error querying storage", "err", err)
+		level.Error(util_log.WithContext(ctx, util.Logger)).Log("msg", "error querying storage", "err", err)
 	}
 	return entries, err
 }

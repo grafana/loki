@@ -17,6 +17,7 @@ cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
 cmd/fluent-bit/out_loki.so
 cmd/fluent-bit/out_loki.h
+cmd/migrate/migrate
 /loki
 /promtail
 /logcli

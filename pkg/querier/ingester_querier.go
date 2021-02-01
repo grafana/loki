@@ -100,31 +100,31 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 }
 
 func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
-	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
+	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Query(ctx, params.QueryRequest, stats.CollectTrailer(ctx))
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	iterators := make([]iter.EntryIterator, len(clients))
-	for i := range clients {
-		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), params.Direction)
+	iterators := make([]iter.EntryIterator, len(resps))
+	for i := range resps {
+		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Querier_QueryClient), params.Direction)
 	}
 	return iterators, nil
 }
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
-	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
+	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.QuerySample(ctx, params.SampleQueryRequest, stats.CollectTrailer(ctx))
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	iterators := make([]iter.SampleIterator, len(clients))
-	for i := range clients {
-		iterators[i] = iter.NewSampleQueryClientIterator(clients[i].response.(logproto.Querier_QuerySampleClient))
+	iterators := make([]iter.SampleIterator, len(resps))
+	for i := range resps {
+		iterators[i] = iter.NewSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
 	}
 	return iterators, nil
 }
@@ -146,7 +146,7 @@ func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest)
 }
 
 func (q *IngesterQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error) {
-	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
+	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
 	if err != nil {
@@ -154,8 +154,8 @@ func (q *IngesterQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (
 	}
 
 	tailClients := make(map[string]logproto.Querier_TailClient)
-	for i := range clients {
-		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
+	for i := range resps {
+		tailClients[resps[i].addr] = resps[i].response.(logproto.Querier_TailClient)
 	}
 
 	return tailClients, nil

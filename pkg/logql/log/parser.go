@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-	"strings"
 
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 
@@ -41,6 +40,9 @@ func NewJSONParser() *JSONParser {
 }
 
 func (j *JSONParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
 	it := jsoniter.ConfigFastest.BorrowIterator(line)
 	defer jsoniter.ConfigFastest.ReturnIterator(it)
 
@@ -91,7 +93,7 @@ func (j *JSONParser) nextKeyPrefix(prefix, field string) (string, bool) {
 	// first time we add return the field as prefix.
 	if len(prefix) == 0 {
 		field = sanitizeLabelKey(field, true)
-		if isValidKeyPrefix(field, j.lbs.ParserLabelHints()) {
+		if j.lbs.ParserLabelHints().ShouldExtractPrefix(field) {
 			return field, true
 		}
 		return "", false
@@ -102,31 +104,17 @@ func (j *JSONParser) nextKeyPrefix(prefix, field string) (string, bool) {
 	j.buf = append(j.buf, byte(jsonSpacer))
 	j.buf = append(j.buf, sanitizeLabelKey(field, false)...)
 	// if matches keep going
-	if isValidKeyPrefix(string(j.buf), j.lbs.ParserLabelHints()) {
+	if j.lbs.ParserLabelHints().ShouldExtractPrefix(string(j.buf)) {
 		return string(j.buf), true
 	}
 	return "", false
-
-}
-
-// isValidKeyPrefix extract an object if the prefix is valid
-func isValidKeyPrefix(objectprefix string, hints []string) bool {
-	if len(hints) == 0 {
-		return true
-	}
-	for _, k := range hints {
-		if strings.HasPrefix(k, objectprefix) {
-			return true
-		}
-	}
-	return false
 }
 
 func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field string) {
 	// the first time we use the field as label key.
 	if len(prefix) == 0 {
 		field = sanitizeLabelKey(field, true)
-		if !shouldExtractKey(field, j.lbs.ParserLabelHints()) {
+		if !j.lbs.ParserLabelHints().ShouldExtract(field) {
 			// we can skip the value
 			iter.Skip()
 			return
@@ -147,7 +135,7 @@ func (j *JSONParser) parseLabelValue(iter *jsoniter.Iterator, prefix, field stri
 	if j.lbs.BaseHas(string(j.buf)) {
 		j.buf = append(j.buf, duplicateSuffix...)
 	}
-	if !shouldExtractKey(string(j.buf), j.lbs.ParserLabelHints()) {
+	if !j.lbs.ParserLabelHints().ShouldExtract(string(j.buf)) {
 		iter.Skip()
 		return
 	}
@@ -171,18 +159,6 @@ func readValue(iter *jsoniter.Iterator) string {
 		iter.Skip()
 		return ""
 	}
-}
-
-func shouldExtractKey(key string, hints []string) bool {
-	if len(hints) == 0 {
-		return true
-	}
-	for _, k := range hints {
-		if k == key {
-			return true
-		}
-	}
-	return false
 }
 
 func addLabel(lbs *LabelsBuilder, key, value string) {
@@ -263,9 +239,12 @@ func NewLogfmtParser() *LogfmtParser {
 }
 
 func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
 	l.dec.Reset(line)
 	for l.dec.ScanKeyval() {
-		if !shouldExtractKey(string(l.dec.Key()), lbs.ParserLabelHints()) {
+		if !lbs.ParserLabelHints().ShouldExtract(string(l.dec.Key())) {
 			continue
 		}
 		key := string(l.dec.Key())

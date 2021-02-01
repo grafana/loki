@@ -29,7 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -63,8 +62,8 @@ type Config struct {
 	LookbackDelta time.Duration `yaml:"lookback_delta"`
 
 	// Blocks storage only.
-	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
-	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
+	StoreGatewayAddresses string       `yaml:"store_gateway_addresses"`
+	StoreGatewayClient    ClientConfig `yaml:"store_gateway_client"`
 
 	SecondStoreEngine        string       `yaml:"second_store_engine"`
 	UseSecondStoreBeforeTime flagext.Time `yaml:"use_second_store_before_time"`

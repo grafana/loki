@@ -3,8 +3,10 @@ package distributor
 import (
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,7 +62,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 	userID, _ := user.ExtractOrgID(r.Context())
-	logger := util.WithContext(r.Context(), util.Logger)
+	logger := util_log.WithContext(r.Context(), util.Logger)
 	body := lokiutil.NewSizeReader(r.Body)
 	contentType := r.Header.Get(contentType)
 	var req logproto.PushRequest
@@ -72,11 +74,16 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 			totalEntries     int64
 		)
 
+		mostRecentEntry := time.Unix(0, 0)
+
 		for _, s := range req.Streams {
 			streamLabelsSize += int64(len(s.Labels))
 			for _, e := range s.Entries {
 				totalEntries++
 				entriesSize += int64(len(e.Line))
+				if e.Timestamp.After(mostRecentEntry) {
+					mostRecentEntry = e.Timestamp
+				}
 			}
 		}
 
@@ -96,10 +103,11 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 			"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
 			"entriesSize", humanize.Bytes(uint64(entriesSize)),
 			"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
+			"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
 		)
 	}()
 
-	switch r.Header.Get(contentType) {
+	switch contentType {
 	case applicationJSON:
 		var err error
 

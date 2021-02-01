@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -34,7 +35,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
-		maxMessageSize: cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
+		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
 
@@ -64,7 +65,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 type schedulerProcessor struct {
 	log            log.Logger
 	handler        RequestHandler
-	grpcConfig     grpcclient.ConfigWithTLS
+	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
 
@@ -128,7 +129,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 
 				ctx = spanCtx
 			}
-			logger := util.WithContext(ctx, sp.log)
+			logger := util_log.WithContext(ctx, sp.log)
 
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 

@@ -47,7 +47,13 @@
 
    Commits will be squashed when they're merged.
 
-## Integration Tests
+## Testing
+
+We test code against two versions of Go, the minimum and maximum versions
+supported by our clients. To see which versions these are checkout our
+[README](README.md#supported-versions).
+
+### Integration Tests
 
 In addition to the unit tests, you may run the integration test suite. These
 directions describe setting up your environment to run integration tests for
@@ -97,7 +103,8 @@ Next, ensure the following APIs are enabled in the general project:
 - Google Compute Engine Instance Group Updater API
 - Google Compute Engine Instance Groups API
 - Kubernetes Engine API
-- Stackdriver Error Reporting API
+- Cloud Error Reporting API
+- Pub/Sub Lite API
 
 Next, create a Datastore database in the general project, and a Firestore
 database in the Firestore project.
@@ -144,7 +151,7 @@ $ gcloud auth login
 $ gcloud datastore indexes create datastore/testdata/index.yaml
 
 # Creates a Google Cloud storage bucket with the same name as your test project,
-# and with the Stackdriver Logging service account as owner, for the sink
+# and with the Cloud Logging service account as owner, for the sink
 # integration tests in logging.
 $ gsutil mb gs://$GCLOUD_TESTS_GOLANG_PROJECT_ID
 $ gsutil acl ch -g cloud-logs@google.com:O gs://$GCLOUD_TESTS_GOLANG_PROJECT_ID

@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -175,7 +176,7 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context, firstRun bool) error {
 
 // Remove blocks and remaining data for tenant marked for deletion.
 func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID string) error {
-	userLogger := util.WithUserID(userID, c.logger)
+	userLogger := util_log.WithUserID(userID, c.logger)
 	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
 
 	level.Info(userLogger).Log("msg", "deleting blocks for tenant marked for deletion")
@@ -277,7 +278,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 }
 
 func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun bool) (returnErr error) {
-	userLogger := util.WithUserID(userID, c.logger)
+	userLogger := util_log.WithUserID(userID, c.logger)
 	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
 	startTime := time.Now()
 

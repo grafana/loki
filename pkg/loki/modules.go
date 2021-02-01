@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
@@ -261,7 +262,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	}
 
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
-	util.CheckFatal("initializing bucket client", err)
+	util_log.CheckFatal("initializing bucket client", err)
 
 	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -315,7 +316,10 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		case Querier, Ruler:
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
-			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier)
+			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier,
+				calculateAsyncStoreQueryIngestersWithin(t.cfg.Querier.QueryIngestersWithin,
+					t.cfg.Ingester.MaxChunkAge, t.cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval),
+			)
 		case All:
 			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
 			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
@@ -580,4 +584,17 @@ func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge,
 			"greater than the default or remove it from the configuration to use the default", maxLookBackConfig, defaultMaxLookBack)
 	}
 	return maxLookBackConfig, nil
+}
+
+func calculateAsyncStoreQueryIngestersWithin(queryIngestersWithinConfig, maxChunkAge, querierResyncInterval time.Duration) time.Duration {
+	// 0 means do not limit queries, we would also not limit ingester queries from AsyncStore.
+	if queryIngestersWithinConfig == 0 {
+		return 0
+	}
+
+	minVal := maxChunkAge + shipper.UploadInterval + querierResyncInterval + (15 * time.Minute)
+	if queryIngestersWithinConfig < minVal {
+		return minVal
+	}
+	return queryIngestersWithinConfig
 }

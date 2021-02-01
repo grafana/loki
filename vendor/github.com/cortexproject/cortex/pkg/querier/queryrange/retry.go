@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type RetryMiddlewareMetrics struct {
@@ -70,7 +70,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 		if !ok || httpResp.Code/100 == 5 {
 			lastErr = err
-			level.Error(util.WithContext(ctx, r.log)).Log("msg", "error processing request", "try", tries, "err", err)
+			level.Error(util_log.WithContext(ctx, r.log)).Log("msg", "error processing request", "try", tries, "err", err)
 			continue
 		}
 

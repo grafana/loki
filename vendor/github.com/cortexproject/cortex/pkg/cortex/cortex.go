@@ -53,6 +53,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/process"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -310,7 +311,7 @@ func New(cfg Config) (*Cortex, error) {
 
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
 	if cfg.TenantFederation.Enabled {
-		util.WarnExperimentalUse("tenant-federation")
+		util_log.WarnExperimentalUse("tenant-federation")
 		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
@@ -352,12 +353,12 @@ func (t *Cortex) Run() error {
 	if c, err := process.NewProcessCollector(); err == nil {
 		prometheus.MustRegister(c)
 	} else {
-		level.Warn(util.Logger).Log("msg", "skipped registration of custom process metrics collector", "err", err)
+		level.Warn(util_log.Logger).Log("msg", "skipped registration of custom process metrics collector", "err", err)
 	}
 
 	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {
-			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
+			level.Warn(util_log.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
 		}
 	}
 
@@ -386,8 +387,8 @@ func (t *Cortex) Run() error {
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthcheck.New(sm))
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }
-	stopped := func() { level.Info(util.Logger).Log("msg", "Cortex stopped") }
+	healthy := func() { level.Info(util_log.Logger).Log("msg", "Cortex started") }
+	stopped := func() { level.Info(util_log.Logger).Log("msg", "Cortex stopped") }
 	serviceFailed := func(service services.Service) {
 		// if any service fails, stop entire Cortex
 		sm.StopAsync()
@@ -396,15 +397,15 @@ func (t *Cortex) Run() error {
 		for m, s := range t.ServiceMap {
 			if s == service {
 				if service.FailureCase() == util.ErrStopProcess {
-					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "err", service.FailureCase())
+					level.Info(util_log.Logger).Log("msg", "received stop signal via return error", "module", m, "err", service.FailureCase())
 				} else {
-					level.Error(util.Logger).Log("msg", "module failed", "module", m, "err", service.FailureCase())
+					level.Error(util_log.Logger).Log("msg", "module failed", "module", m, "err", service.FailureCase())
 				}
 				return
 			}
 		}
 
-		level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "err", service.FailureCase())
+		level.Error(util_log.Logger).Log("msg", "module failed", "module", "unknown", "err", service.FailureCase())
 	}
 
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))

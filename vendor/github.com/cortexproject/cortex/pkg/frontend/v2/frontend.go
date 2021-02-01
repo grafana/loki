@@ -29,10 +29,10 @@ import (
 
 // Config for a Frontend.
 type Config struct {
-	SchedulerAddress  string                   `yaml:"scheduler_address"`
-	DNSLookupPeriod   time.Duration            `yaml:"scheduler_dns_lookup_period"`
-	WorkerConcurrency int                      `yaml:"scheduler_worker_concurrency"`
-	GRPCClientConfig  grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+	SchedulerAddress  string            `yaml:"scheduler_address"`
+	DNSLookupPeriod   time.Duration     `yaml:"scheduler_dns_lookup_period"`
+	WorkerConcurrency int               `yaml:"scheduler_worker_concurrency"`
+	GRPCClientConfig  grpcclient.Config `yaml:"grpc_client_config"`
 
 	// Used to find local IP address, that is sent to scheduler and querier-worker.
 	InfNames []string `yaml:"instance_interface_names"`

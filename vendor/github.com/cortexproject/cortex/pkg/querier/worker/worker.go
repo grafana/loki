@@ -30,7 +30,7 @@ type Config struct {
 
 	QuerierID string `yaml:"id"`
 
-	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

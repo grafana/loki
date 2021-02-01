@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 
@@ -198,7 +199,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	var err error
 	defer t.dropTailClient(addr)
 
-	logger := util.WithContext(querierTailClient.Context(), util.Logger)
+	logger := util_log.WithContext(querierTailClient.Context(), util.Logger)
 	for {
 		if t.stopped {
 			if err := querierTailClient.CloseSend(); err != nil {

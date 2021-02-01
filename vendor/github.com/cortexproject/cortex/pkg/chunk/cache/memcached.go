@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -186,7 +186,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
-			batchKeys := keys[i:util.Min(i+batchSize, len(keys))]
+			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
 			c.inputCh <- &work{
 				keys:     batchKeys,
 				ctx:      ctx,

@@ -394,7 +394,7 @@ func (r mockRing) ReplicationFactor() int {
 	return int(r.replicationFactor)
 }
 
-func (r mockRing) IngesterCount() int {
+func (r mockRing) InstancesCount() int {
 	return len(r.ingesters)
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 // Data for single value (counter/gauge) with labels.
@@ -660,4 +661,40 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 		}
 	}
 	return data
+}
+
+// FromLabelPairsToLabels converts dto.LabelPair into labels.Labels.
+func FromLabelPairsToLabels(pairs []*dto.LabelPair) labels.Labels {
+	builder := labels.NewBuilder(nil)
+	for _, pair := range pairs {
+		builder.Set(pair.GetName(), pair.GetValue())
+	}
+	return builder.Labels()
+}
+
+// GetSumOfHistogramSampleCount returns the sum of samples count of histograms matching the provided metric name
+// and optional label matchers. Returns 0 if no metric matches.
+func GetSumOfHistogramSampleCount(families []*dto.MetricFamily, metricName string, matchers labels.Selector) uint64 {
+	sum := uint64(0)
+
+	for _, metric := range families {
+		if metric.GetName() != metricName {
+			continue
+		}
+
+		if metric.GetType() != dto.MetricType_HISTOGRAM {
+			continue
+		}
+
+		for _, series := range metric.GetMetric() {
+			if !matchers.Matches(FromLabelPairsToLabels(series.GetLabel())) {
+				continue
+			}
+
+			histogram := series.GetHistogram()
+			sum += histogram.GetSampleCount()
+		}
+	}
+
+	return sum
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Pluggable auto-scaler implementation
@@ -83,7 +84,7 @@ func (d callManager) backoffAndRetry(ctx context.Context, fn func(context.Contex
 	for backoff.Ongoing() {
 		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {
-				level.Warn(util.WithContext(ctx, util.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.NumRetries())
+				level.Warn(log.WithContext(ctx, log.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.NumRetries())
 				backoff.Wait()
 				continue
 			} else {
@@ -291,7 +292,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 			return err
 		}
 	}
-	level.Debug(util.Logger).Log("msg", "Updating Table",
+	level.Debug(log.Logger).Log("msg", "Updating Table",
 		"expectedWrite", expected.ProvisionedWrite,
 		"currentWrite", current.ProvisionedWrite,
 		"expectedRead", expected.ProvisionedRead,
@@ -301,7 +302,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 	if (current.ProvisionedRead != expected.ProvisionedRead ||
 		current.ProvisionedWrite != expected.ProvisionedWrite) &&
 		!expected.UseOnDemandIOMode {
-		level.Info(util.Logger).Log("msg", "updating provisioned throughput on table", "table", expected.Name, "old_read", current.ProvisionedRead, "old_write", current.ProvisionedWrite, "new_read", expected.ProvisionedRead, "new_write", expected.ProvisionedWrite)
+		level.Info(log.Logger).Log("msg", "updating provisioned throughput on table", "table", expected.Name, "old_read", current.ProvisionedRead, "old_write", current.ProvisionedWrite, "new_read", expected.ProvisionedRead, "new_write", expected.ProvisionedWrite)
 		if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 			return instrument.CollectedRequest(ctx, "DynamoDB.UpdateTable", d.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 				var dynamoBillingMode string
@@ -315,7 +316,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 				// an error if we set a table to the billing mode it is currently on.
 				if current.UseOnDemandIOMode != expected.UseOnDemandIOMode {
 					dynamoBillingMode = dynamodb.BillingModeProvisioned
-					level.Info(util.Logger).Log("msg", "updating billing mode on table", "table", expected.Name, "old_mode", current.UseOnDemandIOMode, "new_mode", expected.UseOnDemandIOMode)
+					level.Info(log.Logger).Log("msg", "updating billing mode on table", "table", expected.Name, "old_mode", current.UseOnDemandIOMode, "new_mode", expected.UseOnDemandIOMode)
 					updateTableInput.BillingMode = aws.String(dynamoBillingMode)
 				}
 
@@ -325,7 +326,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 		}); err != nil {
 			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics)
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "LimitExceededException" {
-				level.Warn(util.Logger).Log("msg", "update limit exceeded", "err", err)
+				level.Warn(log.Logger).Log("msg", "update limit exceeded", "err", err)
 			} else {
 				return err
 			}
@@ -335,7 +336,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 		// settings used in provisioned mode. Unfortunately the boilerplate wrappers for retry and tracking needed to be copied.
 		if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 			return instrument.CollectedRequest(ctx, "DynamoDB.UpdateTable", d.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-				level.Info(util.Logger).Log("msg", "updating billing mode on table", "table", expected.Name, "old_mode", current.UseOnDemandIOMode, "new_mode", expected.UseOnDemandIOMode)
+				level.Info(log.Logger).Log("msg", "updating billing mode on table", "table", expected.Name, "old_mode", current.UseOnDemandIOMode, "new_mode", expected.UseOnDemandIOMode)
 				updateTableInput := &dynamodb.UpdateTableInput{TableName: aws.String(expected.Name), BillingMode: aws.String(dynamodb.BillingModePayPerRequest)}
 				_, err := d.DynamoDB.UpdateTableWithContext(ctx, updateTableInput)
 				return err
@@ -343,7 +344,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 		}); err != nil {
 			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics)
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "LimitExceededException" {
-				level.Warn(util.Logger).Log("msg", "update limit exceeded", "err", err)
+				level.Warn(log.Logger).Log("msg", "update limit exceeded", "err", err)
 			} else {
 				return err
 			}

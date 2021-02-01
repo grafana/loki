@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -220,7 +221,7 @@ func (l *Limiter) convertGlobalToLocalLimit(userID string, globalLimit int) int 
 	// be written to more ingesters than it.
 	if shardSize := l.getShardSize(userID); shardSize > 0 {
 		// We use Min() to protect from the case the expected shard size is > available ingesters.
-		numIngesters = util.Min(numIngesters, util.ShuffleShardExpectedInstances(shardSize, l.getNumZones()))
+		numIngesters = util_math.Min(numIngesters, util.ShuffleShardExpectedInstances(shardSize, l.getNumZones()))
 	}
 
 	return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
@@ -236,7 +237,7 @@ func (l *Limiter) getShardSize(userID string) int {
 
 func (l *Limiter) getNumZones() int {
 	if l.zoneAwarenessEnabled {
-		return util.Max(l.ring.ZonesCount(), 1)
+		return util_math.Max(l.ring.ZonesCount(), 1)
 	}
 	return 1
 }

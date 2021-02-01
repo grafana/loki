@@ -74,7 +74,7 @@ type connectedFrontend struct {
 type Config struct {
 	MaxOutstandingPerTenant int `yaml:"max_outstanding_requests_per_tenant"`
 
-	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

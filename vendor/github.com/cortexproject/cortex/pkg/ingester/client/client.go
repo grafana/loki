@@ -55,7 +55,7 @@ func (c *closableHealthAndIngesterClient) Close() error {
 
 // Config is the configuration struct for the ingester client
 type Config struct {
-	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags registers configuration settings used by the ingester client config.

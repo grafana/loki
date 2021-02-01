@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -361,7 +362,7 @@ func (d *BucketScanBlocksFinder) getOrCreateMetaFetcher(userID string) (block.Me
 }
 
 func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
-	userLogger := util.WithUserID(userID, d.logger)
+	userLogger := util_log.WithUserID(userID, d.logger)
 	userBucket := bucket.NewUserBucketClient(userID, d.bucketClient)
 	userReg := prometheus.NewRegistry()
 

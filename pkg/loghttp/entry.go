@@ -23,10 +23,10 @@ type jsonExtension struct {
 	jsoniter.DummyExtension
 }
 
-type sliceEntryDecoder struct {
-}
+type sliceEntryDecoder struct{}
 
 func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+	*((*[]Entry)(ptr)) = (*((*[]Entry)(ptr)))[:0]
 	iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
 		i := 0
 		var ts time.Time

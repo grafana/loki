@@ -206,6 +206,11 @@ func (cfg *TSDBConfig) BlocksDir(userID string) string {
 	return filepath.Join(cfg.Dir, userID)
 }
 
+// IsShippingEnabled returns whether blocks shipping is enabled.
+func (cfg *TSDBConfig) IsBlocksShippingEnabled() bool {
+	return cfg.ShipInterval > 0
+}
+
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier and store-gateway.
 type BucketStoreConfig struct {
 	SyncDir                  string              `yaml:"sync_dir"`

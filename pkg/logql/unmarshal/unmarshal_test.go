@@ -129,4 +129,18 @@ func Test_ReadTailResponse(t *testing.T) {
 			{Timestamp: time.Unix(0, 1), Labels: loghttp.LabelSet{"app": "foo"}},
 		},
 	}, res)
+	// Do it twice to verify we reset correctly slices.
+	require.NoError(t, ReadTailResponseJSON(res, ws))
+
+	require.Equal(t, &loghttp.TailResponse{
+		Streams: []loghttp.Stream{
+			{
+				Labels:  loghttp.LabelSet{"app": "bar"},
+				Entries: []loghttp.Entry{{Timestamp: time.Unix(0, 2), Line: "2"}},
+			},
+		},
+		DroppedStreams: []loghttp.DroppedStream{
+			{Timestamp: time.Unix(0, 1), Labels: loghttp.LabelSet{"app": "foo"}},
+		},
+	}, res)
 }
