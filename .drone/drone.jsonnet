@@ -61,13 +61,13 @@ local arch_image(arch, tags='') = {
 };
 
 local promtail_win() = pipeline('promtail-windows') {
- type: 'exec',
  platform: {
     os: 'windows',
     arch: "amd64",
   },
   steps: [{
     name: 'test',
+    image: 'golang:nanoserver-1809',
     commands: [
       'go.exe test .\\pkg\\promtail\\targets\\windows\\... -v',
     ],

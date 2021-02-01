@@ -43,7 +43,6 @@ steps:
 
 ---
 kind: pipeline
-type: exec
 name: promtail-windows
 
 platform:
@@ -52,6 +51,7 @@ platform:
 
 steps:
 - name: test
+  image: golang:nanoserver-1809
   commands:
   - go.exe test .\pkg\promtail\targets\windows\... -v
 
