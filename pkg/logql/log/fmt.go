@@ -245,7 +245,14 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 
 func (lf *LabelsFormatter) RequiredLabelNames() []string {
 	var names []string
-	return names
+	for _, fm := range lf.formats {
+		if fm.Rename {
+			names = append(names, fm.Value)
+			continue
+		}
+		names = append(names, listNodeFields(fm.tmpl.Root)...)
+	}
+	return uniqueString(names)
 }
 
 func trunc(c int, s string) string {

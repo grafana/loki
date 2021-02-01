@@ -264,7 +264,6 @@ func Test_trunc(t *testing.T) {
 }
 
 func Test_substring(t *testing.T) {
-
 	tests := []struct {
 		start int
 		end   int
@@ -306,6 +305,23 @@ func TestLineFormatter_RequiredLabelNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.fmt, func(t *testing.T) {
 			require.Equal(t, tt.want, newMustLineFormatter(tt.fmt).RequiredLabelNames())
+		})
+	}
+}
+
+func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
+	tests := []struct {
+		name string
+		fmts []LabelFmt
+		want []string
+	}{
+		{"rename", []LabelFmt{NewRenameLabelFmt("foo", "bar")}, []string{"bar"}},
+		{"rename and fmt", []LabelFmt{NewRenameLabelFmt("fuzz", "bar"), NewTemplateLabelFmt("1", "{{ .foo | ToUpper | .buzz }} and {{.bar}}")}, []string{"bar", "foo", "buzz"}},
+		{"fmt", []LabelFmt{NewTemplateLabelFmt("1", "{{.blip}}"), NewTemplateLabelFmt("2", "{{ .foo | ToUpper | .buzz }} and {{.bar}}")}, []string{"blip", "foo", "buzz", "bar"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, mustNewLabelsFormatter(tt.fmts).RequiredLabelNames())
 		})
 	}
 }
