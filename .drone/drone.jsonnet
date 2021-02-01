@@ -61,6 +61,7 @@ local arch_image(arch, tags='') = {
 };
 
 local promtail_win() = pipeline('promtail-windows') {
+ type: 'exec',
  platform: {
     os: 'windows',
     arch: "amd64",

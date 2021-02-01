@@ -43,6 +43,7 @@ steps:
 
 ---
 kind: pipeline
+type: exec
 name: promtail-windows
 
 platform:
