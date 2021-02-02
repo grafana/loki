@@ -2193,6 +2193,17 @@ func TestParse(t *testing.T) {
 				},
 			},
 		},
+		{
+			in: `{app="foo"} | json bob="top.sub[\"index\"]"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newJSONExpressionParser([]log.JSONExpression{
+						log.NewJSONExpr("bob", `top.sub["index"]`),
+					}),
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)

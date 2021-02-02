@@ -46,6 +46,9 @@ import (
   LabelFormatExpr         *labelFmtExpr
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
+  JSONExpressionParser    *jsonExpressionParser
+  JSONExpression          log.JSONExpression
+  JSONExpressionList      []log.JSONExpression
   UnwrapExpr              *unwrapExpr
 }
 
@@ -82,6 +85,9 @@ import (
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
+%type <JSONExpressionParser>  jsonExpressionParser
+%type <JSONExpression>        jsonExpression
+%type <JSONExpressionList>    jsonExpressionList
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
 
@@ -211,6 +217,7 @@ pipelineExpr:
 pipelineStage:
    lineFilters                   { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
+  | PIPE jsonExpressionParser    { $$ = $2 }
   | PIPE labelFilter             { $$ = &labelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
@@ -225,6 +232,9 @@ labelParser:
   | LOGFMT         { $$ = newLabelParserExpr(OpParserTypeLogfmt, "") }
   | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
   ;
+
+jsonExpressionParser:
+    JSON jsonExpressionList { $$ = newJSONExpressionParser($2) }
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 
@@ -251,6 +261,14 @@ labelFilter:
     | labelFilter COMMA labelFilter                  { $$ = log.NewAndLabelFilter($1, $3 ) }
     | labelFilter OR labelFilter                     { $$ = log.NewOrLabelFilter($1, $3 ) }
     ;
+
+jsonExpression:
+    IDENTIFIER EQ STRING { $$ = log.NewJSONExpr($1, $3) }
+
+jsonExpressionList:
+    jsonExpression                          { $$ = []log.JSONExpression{$1} }
+  | jsonExpressionList COMMA jsonExpression { $$ = append($1, $3) }
+  ;
 
 unitFilter:
       durationFilter { $$ = $1 }
