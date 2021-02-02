@@ -1680,6 +1680,47 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 		},
+		{
+			// tests combining two streams + unwrap
+			`sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Series{
+				{
+					{
+						Labels: `{job="foo", bar="1"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: time.Unix(40, 0).UnixNano(), Hash: 1, Value: 0.},
+							{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 10.},
+							{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+							{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 2, Value: 0.},
+							{Timestamp: time.Unix(120, 0).UnixNano(), Hash: 2, Value: 0.},
+						},
+					},
+					{
+						Labels: `{job="foo", bar="2"}`,
+						Samples: []logproto.Sample{
+							{Timestamp: time.Unix(40, 0).UnixNano(), Hash: 1, Value: 0.},
+							{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 10.},
+							{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+							{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 2, Value: 0.},
+							{Timestamp: time.Unix(120, 0).UnixNano(), Hash: 2, Value: 0.},
+						},
+					},
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `sum(rate({job="foo"} | logfmt | bar > 0  | unwrap bazz [30s]))`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{},
+					Points: []promql.Point{
+						{T: 60000, V: 20. / 30.},
+						{T: 90000, V: 0},
+						{T: 120000, V: 0},
+					},
+				},
+			},
+		},
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
