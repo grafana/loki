@@ -15,8 +15,6 @@ func setScannerData(lex interface{}, data []interface{}) {
     field   string
     list    []interface{}
     int     int
-    a       []interface{}
-    m       map[string]interface{}
 }
 
 %token<empty>   DOT LSB RSB
@@ -46,7 +44,7 @@ key_access:
     LSB key RSB     { $$ = $2 }
 
 index_access:
-    LSB index RSB  { $$ = $2 }
+    LSB index RSB   { $$ = $2 }
 
 field:
   FIELD             { $$ = $1 }
@@ -55,4 +53,4 @@ key:
   STRING            { $$ = $1 }
 
 index:
-  INDEX            { $$ = $1 }
+  INDEX             { $$ = $1 }

@@ -270,7 +270,7 @@ func NewJSONExpressionParser(expressions []JSONExpression) (*JSONExpressionParse
 	var paths = make(map[string][]interface{})
 
 	for _, exp := range expressions {
-		path, err := json_expr.ParseJson(exp.Expression, false)
+		path, err := json_expr.ParseJSONExpression(exp.Expression, false)
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
 		}

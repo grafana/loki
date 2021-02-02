@@ -8,9 +8,10 @@ func init() {
 	JSONExprErrorVerbose = true
 }
 
-func ParseJson(d string, debug bool) ([]interface{}, error) {
-	s := NewScanner(strings.NewReader(d), debug)
+func ParseJSONExpression(expr string, debug bool) ([]interface{}, error) {
+	s := NewScanner(strings.NewReader(expr), debug)
 	JSONExprParse(s)
+
 	if s.err != nil {
 		return nil, s.err
 	}

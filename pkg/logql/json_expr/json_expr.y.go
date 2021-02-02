@@ -19,8 +19,6 @@ type JSONExprSymType struct {
 	field string
 	list  []interface{}
 	int   int
-	a     []interface{}
-	m     map[string]interface{}
 }
 
 const DOT = 57346
@@ -444,73 +442,73 @@ JSONExprdefault:
 
 	case 1:
 		JSONExprDollar = JSONExprS[JSONExprpt-1 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:34
+//line pkg/logql/json_expr/json_expr.y:32
 		{
 			setScannerData(JSONExprlex, JSONExprDollar[1].list)
 		}
 	case 2:
 		JSONExprDollar = JSONExprS[JSONExprpt-1 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:37
+//line pkg/logql/json_expr/json_expr.y:35
 		{
 			JSONExprVAL.list = []interface{}{JSONExprDollar[1].str}
 		}
 	case 3:
 		JSONExprDollar = JSONExprS[JSONExprpt-1 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:38
+//line pkg/logql/json_expr/json_expr.y:36
 		{
 			JSONExprVAL.list = []interface{}{JSONExprDollar[1].str}
 		}
 	case 4:
 		JSONExprDollar = JSONExprS[JSONExprpt-1 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:39
+//line pkg/logql/json_expr/json_expr.y:37
 		{
 			JSONExprVAL.list = []interface{}{JSONExprDollar[1].int}
 		}
 	case 5:
 		JSONExprDollar = JSONExprS[JSONExprpt-2 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:40
+//line pkg/logql/json_expr/json_expr.y:38
 		{
 			JSONExprVAL.list = append(JSONExprDollar[1].list, JSONExprDollar[2].str)
 		}
 	case 6:
 		JSONExprDollar = JSONExprS[JSONExprpt-2 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:41
+//line pkg/logql/json_expr/json_expr.y:39
 		{
 			JSONExprVAL.list = append(JSONExprDollar[1].list, JSONExprDollar[2].int)
 		}
 	case 7:
 		JSONExprDollar = JSONExprS[JSONExprpt-3 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:42
+//line pkg/logql/json_expr/json_expr.y:40
 		{
 			JSONExprVAL.list = append(JSONExprDollar[1].list, JSONExprDollar[3].str)
 		}
 	case 8:
 		JSONExprDollar = JSONExprS[JSONExprpt-3 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:46
+//line pkg/logql/json_expr/json_expr.y:44
 		{
 			JSONExprVAL.str = JSONExprDollar[2].str
 		}
 	case 9:
 		JSONExprDollar = JSONExprS[JSONExprpt-3 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:49
+//line pkg/logql/json_expr/json_expr.y:47
 		{
 			JSONExprVAL.int = JSONExprDollar[2].int
 		}
 	case 10:
 		JSONExprDollar = JSONExprS[JSONExprpt-1 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:52
+//line pkg/logql/json_expr/json_expr.y:50
 		{
 			JSONExprVAL.str = JSONExprDollar[1].field
 		}
 	case 11:
 		JSONExprDollar = JSONExprS[JSONExprpt-1 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:55
+//line pkg/logql/json_expr/json_expr.y:53
 		{
 			JSONExprVAL.str = JSONExprDollar[1].str
 		}
 	case 12:
 		JSONExprDollar = JSONExprS[JSONExprpt-1 : JSONExprpt+1]
-//line pkg/logql/json_expr/json_expr.y:58
+//line pkg/logql/json_expr/json_expr.y:56
 		{
 			JSONExprVAL.int = JSONExprDollar[1].int
 		}
