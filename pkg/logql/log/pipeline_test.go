@@ -93,3 +93,44 @@ func mustFilter(f Filterer, err error) Filterer {
 	}
 	return f
 }
+
+func BenchmarkJSONExpressionParser(b *testing.B) {
+	b.ReportAllocs()
+
+	parser, err := NewJSONExpressionParser([]JSONExpression{
+		NewJSONExpr("new_label", "context.arguments.steps[3]"),
+	})
+	if err != nil {
+		b.Fatal("cannot create new JSON expression parser")
+	}
+
+	p := NewPipeline([]Stage{
+		mustFilter(NewFilter("metrics.go", labels.MatchEqual)).ToStage(),
+		parser,
+		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "new_label", "bob")),
+	})
+	line := []byte(`{"ts":"2020-12-27T09:15:54.333026285Z","error":"action could not be completed", "context":{"file": "metrics.go", "arguments": {"steps": [1, 10, -90, "bob"]}}}`)
+	lbs := labels.Labels{
+		{Name: "cluster", Value: "ops-tool1"},
+		{Name: "name", Value: "querier"},
+		{Name: "pod", Value: "querier-5896759c79-q7q9h"},
+		{Name: "stream", Value: "stderr"},
+		{Name: "container", Value: "querier"},
+		{Name: "namespace", Value: "loki-dev"},
+		{Name: "job", Value: "loki-dev/querier"},
+		{Name: "pod_template_hash", Value: "5896759c79"},
+	}
+	b.ResetTimer()
+	sp := p.ForStream(lbs)
+	for n := 0; n < b.N; n++ {
+		resLine, resLbs, resOK = sp.Process(line)
+
+		if !resOK {
+			b.Fatalf("resulting line not ok: %s\n", line)
+		}
+
+		if resLbs.Labels().Get("new_label") != "bob" {
+			b.Fatalf("mismatch!: %s\n", line)
+		}
+	}
+}
