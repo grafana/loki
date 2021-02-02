@@ -41,7 +41,7 @@ type Client interface {
 	ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
 	ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
 	Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
-	LiveTailQueryConn(queryStr string, delayFor int, limit int, start int64, quiet bool) (*websocket.Conn, error)
+	LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
 }
 
@@ -131,14 +131,16 @@ func (c *DefaultClient) Series(matchers []string, start, end time.Time, quiet bo
 }
 
 // LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
-func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor int, limit int, start int64, quiet bool) (*websocket.Conn, error) {
-	qsb := util.NewQueryStringBuilder()
-	qsb.SetString("query", queryStr)
-	qsb.SetInt("delay_for", int64(delayFor))
-	qsb.SetInt("limit", int64(limit))
-	qsb.SetInt("start", start)
+func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetString("query", queryStr)
+	if delayFor != 0 {
+		params.SetInt("delay_for", int64(delayFor.Seconds()))
+	}
+	params.SetInt("limit", int64(limit))
+	params.SetInt("start", start.UnixNano())
 
-	return c.wsConnect(tailPath, qsb.Encode(), quiet)
+	return c.wsConnect(tailPath, params.Encode(), quiet)
 }
 
 func (c *DefaultClient) GetOrgID() string {
