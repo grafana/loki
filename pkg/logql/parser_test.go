@@ -2204,6 +2204,18 @@ func TestParse(t *testing.T) {
 				},
 			},
 		},
+		{
+			in: `{app="foo"} | json response_code="response.code", api_key="request.headers[\"X-API-KEY\"]"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newJSONExpressionParser([]log.JSONExpression{
+						log.NewJSONExpr("response_code", `response.code`),
+						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
+					}),
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)

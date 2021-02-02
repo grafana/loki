@@ -416,22 +416,10 @@ func (e *labelFmtExpr) String() string {
 	return sb.String()
 }
 
-type jsonExpr struct {
-	identifier string
-	expression string
-}
-
 type jsonExpressionParser struct {
 	expressions []log.JSONExpression
 
 	implicit
-}
-
-func newJSONExpr(identifier, expression string) *jsonExpr {
-	return &jsonExpr{
-		identifier: identifier,
-		expression: expression,
-	}
 }
 
 func newJSONExpressionParser(expressions []log.JSONExpression) *jsonExpressionParser {
