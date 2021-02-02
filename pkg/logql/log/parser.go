@@ -6,7 +6,7 @@ import (
 	"io"
 	"regexp"
 
-	"github.com/grafana/loki/pkg/logql/json_expr"
+	"github.com/grafana/loki/pkg/logql/jsonExpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 
 	jsoniter "github.com/json-iterator/go"
@@ -270,7 +270,7 @@ func NewJSONExpressionParser(expressions []JSONExpression) (*JSONExpressionParse
 	var paths = make(map[string][]interface{})
 
 	for _, exp := range expressions {
-		path, err := json_expr.ParseJSONExpression(exp.Expression, false)
+		path, err := jsonExpr.Parse(exp.Expression, false)
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
 		}

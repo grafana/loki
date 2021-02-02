@@ -1,4 +1,4 @@
-package json_expr
+package jsonExpr
 
 import (
 	"strings"
@@ -8,7 +8,7 @@ func init() {
 	JSONExprErrorVerbose = true
 }
 
-func ParseJSONExpression(expr string, debug bool) ([]interface{}, error) {
+func Parse(expr string, debug bool) ([]interface{}, error) {
 	s := NewScanner(strings.NewReader(expr), debug)
 	JSONExprParse(s)
 
