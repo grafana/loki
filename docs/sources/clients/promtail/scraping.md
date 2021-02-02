@@ -154,6 +154,36 @@ Keep in mind that labels prefixed with `__` will be dropped, so relabeling is re
     target_label: syslog_identifier
 ```
 
+## Windows Event Log
+
+On Windows Promtail supports reading from the event log.
+Windows event targets can be configured using the `windows_events` stanza:
+
+
+```yaml
+scrape_configs:
+- job_name: windows
+  windows_events:
+    use_incoming_timestamp: false
+    bookmark_path: "./bookmark.xml"
+    eventlog_name: "Application"
+    xpath_query: '*'
+    labels:
+      job: windows
+  relabel_configs:
+    - source_labels: ['computer']
+      target_label: 'host'
+```
+
+When Promtail receives an event it will attach the `channel` and `computer` labels
+and serialize the event in json.
+You can relabel default labels via [Relabeling](#relabeling) if required.
+
+Providing a path to a bookmark is mandatory, it will be used to persist the last event processed and allow
+resuming the target without skipping logs.
+
+see the [configuration](./configuration#windows_event) section for more information.
+
 ## Gcplog scraping
 Promtail supports scraping cloud resource logs(say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
 Configs are set in `gcplog` section in `scrape_config`
@@ -296,5 +326,5 @@ clients:
   - [ <client_option> ]
 ```
 
-Refer to [`client_config`](../configuration#client_config) from the Promtail
+Refer to [`client_config`](./configuration#client_config) from the Promtail
 Configuration reference for all available options.

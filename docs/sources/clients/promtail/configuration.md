@@ -33,6 +33,7 @@ and how to scrape logs from files.
     - [syslog](#syslog)
       - [Available Labels](#available-labels)
     - [loki_push_api](#loki_push_api)
+    - [windows_events] (#windows_events)
     - [relabel_configs](#relabel_configs)
     - [static_configs](#static_configs)
     - [file_sd_config](#file_sd_config)
@@ -808,6 +809,67 @@ labels:
 ```
 
 See [Example Push Config](#example-push-config)
+
+
+### windows_events
+
+The `windows_events` block configures Promtail to scrape windows event logs and send them to Loki.
+
+To subcribe to a specific events stream you need to provide either an `eventlog_name` or an `xpath_query`.
+
+Events are scraped periodically every 3 seconds by default but can be changed using `poll_interval`.
+
+A bookmark path `bookmark_path` is mandatory and will be used as a position file where Promtail will
+keep record of the last event processed. This file persists across promtail restarts.
+
+You can set `use_incoming_timestamp` if you want to keep incomming event timestamps. By default Promtail will use the timestamp when
+the event was read from the event log.
+
+Promtail will serialize JSON windows events, adding `channel` and `computer` labels from the event received.
+You can add additional labels with the `labels` property.
+
+
+```yaml
+# LCID (Locale ID) for event rendering
+# - 1033 to force English language
+# -  0 to use default Windows locale
+[locale: <int> | default = 0]
+
+# Name of eventlog, used only if xpath_query is empty
+# Example: "Application"
+[eventlog_name: <string> | default = ""]
+
+# xpath_query can be in defined short form like "Event/System[EventID=999]"
+# or you can form a XML Query. Refer to the Consuming Events article:
+# https://docs.microsoft.com/en-us/windows/win32/wes/consuming-events
+# XML query is the recommended form, because it is most flexible
+# You can create or debug XML Query by creating Custom View in Windows Event Viewer
+# and then copying resulting XML here
+[xpath_query: <string> | default = "*"]
+
+# Sets the bookmark location on the filesystem.
+# The bookmark contains the current position of the target in XML.
+# When restarting or rolling out promtail, the target will continue to scrape events where it left off based on the bookmark position.
+# The position is updated after each entry processed.
+[bookmark_path: <string> | default = ""]
+
+# PollInterval is the interval at which we're looking if new events are available. By default the target will check every 3seconds.
+[poll_interval: <duration> | default = 3s]
+
+# Allows to exclude the xml event data.
+[exclude_event_data: <bool> | default = false]
+
+# Allows to exclude the user data of each windows event.
+[exclude_event_data: <bool> | default = false]
+
+# Label map to add to every log line sent to the push API
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# If promtail should pass on the timestamp from the incoming log or not.
+# When false promtail will assign the current timestamp to the log when it was processed
+[use_incoming_timestamp: <bool> | default = false]
+```
 
 ### relabel_configs
 

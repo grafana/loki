@@ -34,6 +34,7 @@ require (
 	github.com/hpcloud/tail v1.0.0
 	github.com/imdario/mergo v0.3.9
 	github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da
+	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.10
@@ -52,6 +53,7 @@ require (
 	github.com/segmentio/fasthash v1.0.2
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
+	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.6.1
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
@@ -61,6 +63,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9
 	golang.org/x/net v0.0.0-20201224014010-6772e930b67b
+	golang.org/x/sys v0.0.0-20201223074533-0d417f636930
 	google.golang.org/api v0.36.0
 	google.golang.org/grpc v1.33.2
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
@@ -78,6 +81,8 @@ replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v
 replace k8s.io/client-go => k8s.io/client-go v0.19.4
 
 replace k8s.io/api => k8s.io/api v0.19.4
+
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
 // >v1.2.0 has some conflict with prometheus/alertmanager. Hence prevent the upgrade till it's fixed.
 replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
