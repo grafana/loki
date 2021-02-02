@@ -244,7 +244,7 @@ func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	}
 	l.dec.Reset(line)
 	for l.dec.ScanKeyval() {
-		if !lbs.ParserLabelHints().ShouldExtract(string(l.dec.Key())) {
+		if !lbs.ParserLabelHints().ShouldExtract(sanitizeLabelKey(string(l.dec.Key()), true)) {
 			continue
 		}
 		key := string(l.dec.Key())
