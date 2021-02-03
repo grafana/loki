@@ -32,8 +32,11 @@ func TestFormat(t *testing.T) {
 			useIncomingTimestamp: true,
 			expected: api.Entry{
 				Labels: model.LabelSet{
-					"jobname":       "pubsub-test",
-					"resource_type": "gcs",
+					"jobname":                "pubsub-test",
+					"resource_type":          "gcs",
+					"__backend_service_name": "http-loki",
+					"__bucket_name":          "loki-bucket",
+					"__instance_id":          "344555",
 				},
 				Entry: logproto.Entry{
 					Timestamp: mustTime(t, "2020-12-22T15:01:23.045123456Z"),
@@ -51,8 +54,11 @@ func TestFormat(t *testing.T) {
 			},
 			expected: api.Entry{
 				Labels: model.LabelSet{
-					"jobname":       "pubsub-test",
-					"resource_type": "gcs",
+					"jobname":                "pubsub-test",
+					"resource_type":          "gcs",
+					"__backend_service_name": "http-loki",
+					"__bucket_name":          "loki-bucket",
+					"__instance_id":          "344555",
 				},
 				Entry: logproto.Entry{
 					Timestamp: time.Now(),
@@ -90,5 +96,5 @@ func mustTime(t *testing.T, v string) time.Time {
 }
 
 const (
-	withAllFields = `{"logName": "https://project/gcs", "resource": {"type": "gcs", "labels": {"instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
+	withAllFields = `{"logName": "https://project/gcs", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
 )

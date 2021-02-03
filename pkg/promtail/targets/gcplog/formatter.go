@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // LogEntry that will be written to the pubsub topic.
@@ -44,6 +45,13 @@ func format(m *pubsub.Message, other model.LabelSet, useIncomingTimestamp bool) 
 
 	labels := model.LabelSet{
 		"resource_type": model.LabelValue(ge.Resource.Type),
+	}
+
+	for k, v := range ge.Resource.Labels {
+		if !model.LabelName(k).IsValid() || !model.LabelValue(k).IsValid() {
+			continue
+		}
+		labels[model.LabelName("__"+util.SnakeCase(k))] = model.LabelValue(v)
 	}
 
 	// add labels from config as well.
