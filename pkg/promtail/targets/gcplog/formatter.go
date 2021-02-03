@@ -43,14 +43,7 @@ func format(m *pubsub.Message, other model.LabelSet, useIncomingTimestamp bool) 
 	}
 
 	labels := model.LabelSet{
-		"logName":      model.LabelValue(ge.LogName),
-		"resourceType": model.LabelValue(ge.Resource.Type),
-	}
-	for k, v := range ge.Resource.Labels {
-		if !model.LabelName(k).IsValid() || !model.LabelValue(k).IsValid() {
-			continue
-		}
-		labels[model.LabelName(k)] = model.LabelValue(v)
+		"resource_type": model.LabelValue(ge.Resource.Type),
 	}
 
 	// add labels from config as well.
