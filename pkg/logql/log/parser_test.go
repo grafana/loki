@@ -263,6 +263,28 @@ func TestJSONExpressionParser(t *testing.T) {
 				{Name: "uuid", Value: "foo"},
 			},
 		},
+		{
+			"empty line",
+			[]byte("{}"),
+			[]JSONExpression{
+				NewJSONExpr("uuid", `pod.uuid`),
+			},
+			labels.Labels{},
+			labels.Labels{},
+		},
+		{
+			"existing labels are not affected",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("uuid", `will.not.work`),
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+		},
 	}
 	for _, tt := range tests {
 		j, err := NewJSONExpressionParser(tt.expressions)
