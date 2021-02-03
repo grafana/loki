@@ -6,7 +6,7 @@ import (
 	"io"
 	"regexp"
 
-	"github.com/grafana/loki/pkg/logql/jsonExpr"
+	"github.com/grafana/loki/pkg/logql/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 
 	jsoniter "github.com/json-iterator/go"
@@ -263,14 +263,13 @@ func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
 	expressions map[string][]interface{}
-	lbs         *LabelsBuilder
 }
 
 func NewJSONExpressionParser(expressions []JSONExpression) (*JSONExpressionParser, error) {
 	var paths = make(map[string][]interface{})
 
 	for _, exp := range expressions {
-		path, err := jsonExpr.Parse(exp.Expression, false)
+		path, err := jsonexpr.Parse(exp.Expression, false)
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
 		}

@@ -1,4 +1,4 @@
-package jsonExpr
+package jsonexpr
 
 import (
 	"strings"

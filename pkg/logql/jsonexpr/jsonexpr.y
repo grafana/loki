@@ -1,7 +1,7 @@
 // Inspired by https://github.com/sjjian/yacc-examples
 
 %{
-package jsonExpr
+package jsonexpr
 
 func setScannerData(lex interface{}, data []interface{}) {
 	lex.(*Scanner).data = data
