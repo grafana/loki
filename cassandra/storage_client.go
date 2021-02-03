@@ -19,8 +19,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
-	pkgutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Config for a StorageClient
@@ -109,7 +109,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cluster.ReconnectInterval = cfg.ReconnectInterval
 	cluster.NumConns = cfg.NumConnections
-	cluster.Logger = log.With(pkgutil.Logger, "module", "gocql", "client", name)
+	cluster.Logger = log.With(util_log.Logger, "module", "gocql", "client", name)
 	cluster.Registerer = prometheus.WrapRegistererWith(
 		prometheus.Labels{"client": name}, reg)
 	if cfg.Retries > 0 {
@@ -536,7 +536,7 @@ type noopConvictionPolicy struct{}
 // Convicted means connections are removed - we don't want that.
 // Implementats gocql.ConvictionPolicy.
 func (noopConvictionPolicy) AddFailure(err error, host *gocql.HostInfo) bool {
-	level.Error(pkgutil.Logger).Log("msg", "Cassandra host failure", "err", err, "host", host.String())
+	level.Error(util_log.Logger).Log("msg", "Cassandra host failure", "err", err, "host", host.String())
 	return false
 }
 

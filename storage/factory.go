@@ -23,7 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Supported storage engines
@@ -105,7 +105,7 @@ func (cfg *Config) Validate() error {
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")
 	}
-	if err := cfg.GCPStorageConfig.Validate(util.Logger); err != nil {
+	if err := cfg.GCPStorageConfig.Validate(util_log.Logger); err != nil {
 		return errors.Wrap(err, "invalid GCP Storage Storage config")
 	}
 	if err := cfg.Swift.Validate(); err != nil {
@@ -222,7 +222,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
-			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case "gcp":
@@ -256,7 +256,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
-			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case "azure":
@@ -308,7 +308,7 @@ func NewTableClient(name string, cfg Config, registerer prometheus.Registerer) (
 		}
 		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
-			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
 	case "gcp", "gcp-columnkey", "bigtable", "bigtable-hashed":

@@ -17,8 +17,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -202,7 +202,7 @@ func TestPurger_BuildPlan(t *testing.T) {
 				require.NoError(t, err)
 
 				deleteRequest := deleteRequests[0]
-				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
 
 				err = purger.buildDeletePlan(requestWithLogger)
 				require.NoError(t, err)
@@ -295,7 +295,7 @@ func TestPurger_ExecutePlan(t *testing.T) {
 				require.NoError(t, err)
 
 				deleteRequest := deleteRequests[0]
-				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
 				err = purger.buildDeletePlan(requestWithLogger)
 				require.NoError(t, err)
 
@@ -346,7 +346,7 @@ func TestPurger_Restarts(t *testing.T) {
 	require.NoError(t, err)
 
 	deleteRequest := deleteRequests[0]
-	requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util.Logger)
+	requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
 	err = purger.buildDeletePlan(requestWithLogger)
 	require.NoError(t, err)
 

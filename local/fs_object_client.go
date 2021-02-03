@@ -14,7 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
-	pkgUtil "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // FSConfig is the config for a FSObjectClient.
@@ -80,7 +80,7 @@ func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object i
 		return err
 	}
 
-	defer runutil.CloseWithLogOnErr(pkgUtil.Logger, fl, "fullPath: %s", fullPath)
+	defer runutil.CloseWithLogOnErr(util_log.Logger, fl, "fullPath: %s", fullPath)
 
 	_, err = io.Copy(fl, object)
 	if err != nil {
@@ -187,7 +187,7 @@ func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) error {
 	return filepath.Walk(f.cfg.Directory, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() && info.ModTime().Before(ts) {
-			level.Info(pkgUtil.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())
+			level.Info(util_log.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())
 			if err := os.Remove(path); err != nil {
 				return err
 			}
