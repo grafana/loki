@@ -150,9 +150,7 @@ The **json** parser operates in two modes:
 1. **without** parameters:
 
    Adding `| json` to your pipeline will extract all json properties as labels if the log line is a valid json document.
-   Nested properties are flattened into label keys using the `_` separator. The **json** parsers take no parameters and
-   can be added using the expression `| json` in your pipeline. It will extract all json properties as labels if the log
-   line is a valid json document. Nested properties are flattened into label keys using the `_` separator.
+   Nested properties are flattened into label keys using the `_` separator.
 
    Note: **Arrays are skipped**.
 
@@ -195,14 +193,14 @@ The **json** parser operates in two modes:
 
 2. **with** parameters:
 
-   Using `| json first_server="servers[0]" ua="request.headers[\"User-Agent\"]"` in your pipeline will extract only the
-   json properties specified to labels. You can specify one or more expressions in this way, the same
+   Using `| json label="expression", another="expression"` in your pipeline will extract only the
+   specified json fields to labels. You can specify one or more expressions in this way, the same
    as [`label_format`](#labels-format-expression); all expressions must be quoted.
 
    Currently, we only support field access (`my.field`, `my["field"]`) and array access (`list[0]`), and any combination
    of these in any level of nesting (`my.list[0]["field"]`).
 
-   For example the parameterised json parser will extract from the following document:
+   For example, `| json first_server="servers[0]", ua="request.headers[\"User-Agent\"]` will extract from the following document:
 
     ```json
     {
