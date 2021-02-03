@@ -2205,6 +2205,17 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{app="foo"} | json bob="top.params[0]"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newJSONExpressionParser([]log.JSONExpression{
+						log.NewJSONExpr("bob", `top.params[0]`),
+					}),
+				},
+			},
+		},
+		{
 			in: `{app="foo"} | json response_code="response.code", api_key="request.headers[\"X-API-KEY\"]"`,
 			exp: &pipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),

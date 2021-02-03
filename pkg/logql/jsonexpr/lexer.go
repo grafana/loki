@@ -23,6 +23,7 @@ func NewScanner(r io.Reader, debug bool) *Scanner {
 }
 
 func (sc *Scanner) Error(s string) {
+	sc.err = fmt.Errorf(s)
 	fmt.Printf("syntax error: %s\n", s)
 }
 
