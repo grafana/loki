@@ -118,7 +118,7 @@ func (sc *Scanner) scanStr() string {
 
 	for {
 		r := sc.read()
-		if r == '"' || r == 1 || r == ']' {
+		if r == '"' || r == ']' {
 			break
 		}
 		str = append(str, r)
