@@ -285,6 +285,20 @@ func TestJSONExpressionParser(t *testing.T) {
 				{Name: "foo", Value: "bar"},
 			},
 		},
+		{
+			"invalid JSON line",
+			[]byte(`invalid json`),
+			[]JSONExpression{
+				NewJSONExpr("uuid", `will.not.work`),
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: ErrorLabel, Value: errJSON},
+			},
+		},
 	}
 	for _, tt := range tests {
 		j, err := NewJSONExpressionParser(tt.expressions)
