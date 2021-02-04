@@ -94,22 +94,14 @@ func mustFilter(f Filterer, err error) Filterer {
 	return f
 }
 
-func BenchmarkJSONExpressionParser(b *testing.B) {
+func jsonBenchmark(b *testing.B, parser Stage) {
 	b.ReportAllocs()
-
-	parser, err := NewJSONExpressionParser([]JSONExpression{
-		NewJSONExpr("new_label", "context.arguments.steps[3]"),
-	})
-	if err != nil {
-		b.Fatal("cannot create new JSON expression parser")
-	}
 
 	p := NewPipeline([]Stage{
 		mustFilter(NewFilter("metrics.go", labels.MatchEqual)).ToStage(),
 		parser,
-		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "new_label", "bob")),
 	})
-	line := []byte(`{"ts":"2020-12-27T09:15:54.333026285Z","error":"action could not be completed", "context":{"file": "metrics.go", "arguments": {"steps": [1, 10, -90, "bob"]}}}`)
+	line := []byte(`{"ts":"2020-12-27T09:15:54.333026285Z","error":"action could not be completed", "context":{"file": "metrics.go"}}`)
 	lbs := labels.Labels{
 		{Name: "cluster", Value: "ops-tool1"},
 		{Name: "name", Value: "querier"},
@@ -129,8 +121,61 @@ func BenchmarkJSONExpressionParser(b *testing.B) {
 			b.Fatalf("resulting line not ok: %s\n", line)
 		}
 
-		if resLbs.Labels().Get("new_label") != "bob" {
-			b.Fatalf("mismatch!: %s\n", line)
+		if resLbs.Labels().Get("context_file") != "metrics.go" {
+			b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
 		}
 	}
+}
+
+func invalidJSONBenchmark(b *testing.B, parser Stage) {
+	b.ReportAllocs()
+
+	p := NewPipeline([]Stage{
+		mustFilter(NewFilter("invalid json", labels.MatchEqual)).ToStage(),
+		parser,
+	})
+	line := []byte(`invalid json`)
+	b.ResetTimer()
+	sp := p.ForStream(labels.Labels{})
+	for n := 0; n < b.N; n++ {
+		resLine, resLbs, resOK = sp.Process(line)
+
+		if !resOK {
+			b.Fatalf("resulting line not ok: %s\n", line)
+		}
+
+		if resLbs.Labels().Get(ErrorLabel) != errJSON {
+			b.Fatalf("no %s label found: %+v\n", ErrorLabel, resLbs.Labels())
+		}
+	}
+}
+
+func BenchmarkJSONParser(b *testing.B) {
+	jsonBenchmark(b, NewJSONParser())
+}
+
+func BenchmarkJSONParserInvalidLine(b *testing.B) {
+	invalidJSONBenchmark(b, NewJSONParser())
+}
+
+func BenchmarkJSONExpressionParser(b *testing.B) {
+	parser, err := NewJSONExpressionParser([]JSONExpression{
+		NewJSONExpr("context_file", "context.file"),
+	})
+	if err != nil {
+		b.Fatal("cannot create new JSON expression parser")
+	}
+
+	jsonBenchmark(b, parser)
+}
+
+func BenchmarkJSONExpressionParserInvalidLine(b *testing.B) {
+	parser, err := NewJSONExpressionParser([]JSONExpression{
+		NewJSONExpr("context_file", "some.expression"),
+	})
+	if err != nil {
+		b.Fatal("cannot create new JSON expression parser")
+	}
+
+	invalidJSONBenchmark(b, parser)
 }
