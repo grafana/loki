@@ -298,6 +298,10 @@ func (j *JSONExpressionParser) Process(line []byte, lbs *LabelsBuilder) ([]byte,
 			continue
 		}
 
+		if lbs.BaseHas(identifier) {
+			identifier = identifier + duplicateSuffix
+		}
+
 		lbs.Set(identifier, result)
 	}
 

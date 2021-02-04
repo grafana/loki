@@ -260,7 +260,8 @@ func TestJSONExpressionParser(t *testing.T) {
 				{Name: "uuid", Value: "bar"},
 			},
 			labels.Labels{
-				{Name: "uuid", Value: "foo"},
+				{Name: "uuid", Value: "bar"},
+				{Name: "uuid_extracted", Value: "foo"},
 			},
 		},
 		{
