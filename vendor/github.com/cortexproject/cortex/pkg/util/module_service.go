@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -45,7 +46,7 @@ func (w *moduleService) start(serviceContext context.Context) error {
 			continue
 		}
 
-		level.Debug(Logger).Log("msg", "module waiting for initialization", "module", w.name, "waiting_for", m)
+		level.Debug(util_log.Logger).Log("msg", "module waiting for initialization", "module", w.name, "waiting_for", m)
 
 		err := s.AwaitRunning(serviceContext)
 		if err != nil {
@@ -55,7 +56,7 @@ func (w *moduleService) start(serviceContext context.Context) error {
 
 	// we don't want to let this service to stop until all dependant services are stopped,
 	// so we use independent context here
-	level.Info(Logger).Log("msg", "initialising", "module", w.name)
+	level.Info(util_log.Logger).Log("msg", "initialising", "module", w.name)
 	err := w.service.StartAsync(context.Background())
 	if err != nil {
 		return errors.Wrapf(err, "error starting module: %s", w.name)
@@ -77,7 +78,7 @@ func (w *moduleService) stop(_ error) error {
 		// Only wait for other modules, if underlying service is still running.
 		w.waitForModulesToStop()
 
-		level.Debug(Logger).Log("msg", "stopping", "module", w.name)
+		level.Debug(util_log.Logger).Log("msg", "stopping", "module", w.name)
 
 		err = services.StopAndAwaitTerminated(context.Background(), w.service)
 	} else {
@@ -85,9 +86,9 @@ func (w *moduleService) stop(_ error) error {
 	}
 
 	if err != nil && err != ErrStopProcess {
-		level.Warn(Logger).Log("msg", "module failed with error", "module", w.name, "err", err)
+		level.Warn(util_log.Logger).Log("msg", "module failed with error", "module", w.name, "err", err)
 	} else {
-		level.Info(Logger).Log("msg", "module stopped", "module", w.name)
+		level.Info(util_log.Logger).Log("msg", "module stopped", "module", w.name)
 	}
 	return err
 }
@@ -100,7 +101,7 @@ func (w *moduleService) waitForModulesToStop() {
 			continue
 		}
 
-		level.Debug(Logger).Log("msg", "module waiting for", "module", w.name, "waiting_for", n)
+		level.Debug(util_log.Logger).Log("msg", "module waiting for", "module", w.name, "waiting_for", n)
 		// Passed context isn't canceled, so we can only get error here, if service
 		// fails. But we don't care *how* service stops, as long as it is done.
 		_ = s.AwaitTerminated(context.Background())

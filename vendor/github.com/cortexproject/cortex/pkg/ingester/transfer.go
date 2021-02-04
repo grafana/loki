@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
@@ -53,7 +54,7 @@ func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream clien
 		// round this loop.
 		if fromIngesterID == "" {
 			fromIngesterID = wireSeries.FromIngesterId
-			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+			level.Info(util_log.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
 
 			// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
 			err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
@@ -90,13 +91,13 @@ func (i *Ingester) fillUserStatesFromStream(userStates *userStates, stream clien
 	}
 
 	if seriesReceived == 0 {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
+		level.Error(util_log.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
 		retErr = fmt.Errorf("TransferChunks: no series")
 		return
 	}
 
 	if fromIngesterID == "" {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
+		level.Error(util_log.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
 		retErr = fmt.Errorf("no ingester id")
 		return
 	}
@@ -139,10 +140,10 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	// Close the stream last, as this is what tells the "from" ingester that
 	// it's OK to shut down.
 	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
-		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "from_ingester", fromIngesterID, "err", err)
+		level.Error(util_log.Logger).Log("msg", "Error closing TransferChunks stream", "from_ingester", fromIngesterID, "err", err)
 		return err
 	}
-	level.Info(util.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID, "series_received", seriesReceived)
+	level.Info(util_log.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID, "series_received", seriesReceived)
 
 	return nil
 }
@@ -186,12 +187,12 @@ func (i *Ingester) transfer(ctx context.Context, xfer func() error) error {
 			return
 		}
 
-		level.Error(util.Logger).Log("msg", "TransferChunks failed, not in ACTIVE state.", "state", state)
+		level.Error(util_log.Logger).Log("msg", "TransferChunks failed, not in ACTIVE state.", "state", state)
 
 		// Enter PENDING state (only valid from JOINING)
 		if i.lifecycler.GetState() == ring.JOINING {
 			if err := i.lifecycler.ChangeState(ctx, ring.PENDING); err != nil {
-				level.Error(util.Logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
 				os.Exit(1)
 			}
 		}
@@ -267,7 +268,7 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 func (i *Ingester) TransferOut(ctx context.Context) error {
 	// The blocks storage doesn't support blocks transferring.
 	if i.cfg.BlocksStorageEnabled {
-		level.Info(util.Logger).Log("msg", "transfer between a LEAVING ingester and a PENDING one is not supported for the blocks storage")
+		level.Info(util_log.Logger).Log("msg", "transfer between a LEAVING ingester and a PENDING one is not supported for the blocks storage")
 		return ring.ErrTransferDisabled
 	}
 
@@ -287,23 +288,23 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 	for backoff.Ongoing() {
 		err = i.transferOut(ctx)
 		if err == nil {
-			level.Info(util.Logger).Log("msg", "transfer successfully completed")
+			level.Info(util_log.Logger).Log("msg", "transfer successfully completed")
 			return nil
 		}
 
-		level.Warn(util.Logger).Log("msg", "transfer attempt failed", "err", err, "attempt", backoff.NumRetries()+1, "max_retries", i.cfg.MaxTransferRetries)
+		level.Warn(util_log.Logger).Log("msg", "transfer attempt failed", "err", err, "attempt", backoff.NumRetries()+1, "max_retries", i.cfg.MaxTransferRetries)
 
 		backoff.Wait()
 	}
 
-	level.Error(util.Logger).Log("msg", "all transfer attempts failed", "err", err)
+	level.Error(util_log.Logger).Log("msg", "all transfer attempts failed", "err", err)
 	return backoff.Err()
 }
 
 func (i *Ingester) transferOut(ctx context.Context) error {
 	userStatesCopy := i.userStates.cp()
 	if len(userStatesCopy) == 0 {
-		level.Info(util.Logger).Log("msg", "nothing to transfer")
+		level.Info(util_log.Logger).Log("msg", "nothing to transfer")
 		return nil
 	}
 
@@ -312,7 +313,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 		return fmt.Errorf("cannot find ingester to transfer chunks to: %w", err)
 	}
 
-	level.Info(util.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
+	level.Info(util_log.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
 	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.clientConfig)
 	if err != nil {
 		return err
@@ -367,12 +368,12 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 	}
 	i.flushQueuesDone.Wait()
 
-	level.Info(util.Logger).Log("msg", "successfully sent chunks", "to_ingester", targetIngester.Addr)
+	level.Info(util_log.Logger).Log("msg", "successfully sent chunks", "to_ingester", targetIngester.Addr)
 	return nil
 }
 
 // findTargetIngester finds an ingester in PENDING state.
-func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, error) {
+func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.InstanceDesc, error) {
 	ringDesc, err := i.lifecycler.KVStore.Get(ctx, i.lifecycler.RingKey)
 	if err != nil {
 		return nil, err

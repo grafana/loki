@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Relative to user-specific prefix.
@@ -65,7 +65,7 @@ func ReadTenantDeletionMark(ctx context.Context, bkt objstore.BucketReader, user
 
 	// Close reader before dealing with decode error.
 	if closeErr := r.Close(); closeErr != nil {
-		level.Warn(util.Logger).Log("msg", "failed to close bucket reader", "err", closeErr)
+		level.Warn(util_log.Logger).Log("msg", "failed to close bucket reader", "err", closeErr)
 	}
 
 	if err != nil {

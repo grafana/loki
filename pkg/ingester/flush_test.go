@@ -37,10 +37,6 @@ const (
 	samplesPerSeries = 100
 )
 
-func init() {
-	// util.Logger = log.NewLogfmtLogger(os.Stdout)
-}
-
 func TestChunkFlushingIdle(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.FlushCheckPeriod = 20 * time.Millisecond

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -110,7 +110,7 @@ promtail_custom_total_lines_count{test="app"} 2
 
 func TestMetricsPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	pl, err := NewPipeline(util.Logger, loadConfig(testMetricYaml), nil, registry)
+	pl, err := NewPipeline(util_log.Logger, loadConfig(testMetricYaml), nil, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ promtail_custom_loki_count 1
 
 func TestMetricsWithDropInPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	pl, err := NewPipeline(util.Logger, loadConfig(testMetricWithDropYaml), nil, registry)
+	pl, err := NewPipeline(util_log.Logger, loadConfig(testMetricWithDropYaml), nil, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestDefaultIdleDuration(t *testing.T) {
 			},
 		},
 	}
-	ms, err := New(util.Logger, nil, StageTypeMetric, metricsConfig, registry)
+	ms, err := New(util_log.Logger, nil, StageTypeMetric, metricsConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
@@ -358,15 +358,15 @@ func TestMetricStage_Process(t *testing.T) {
 	}
 
 	registry := prometheus.NewRegistry()
-	jsonStage, err := New(util.Logger, nil, StageTypeJSON, jsonConfig, registry)
+	jsonStage, err := New(util_log.Logger, nil, StageTypeJSON, jsonConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	regexStage, err := New(util.Logger, nil, StageTypeRegex, regexConfig, registry)
+	regexStage, err := New(util_log.Logger, nil, StageTypeRegex, regexConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	metricStage, err := New(util.Logger, nil, StageTypeMetric, metricsConfig, registry)
+	metricStage, err := New(util_log.Logger, nil, StageTypeMetric, metricsConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}

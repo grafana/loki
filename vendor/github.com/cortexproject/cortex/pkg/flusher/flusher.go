@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -87,7 +88,7 @@ func (f *Flusher) running(ctx context.Context) error {
 
 	// Sleeping to give a chance to Prometheus
 	// to collect the metrics.
-	level.Info(util.Logger).Log("msg", "sleeping to give chance for collection of metrics", "duration", postFlushSleepTime.String())
+	level.Info(util_log.Logger).Log("msg", "sleeping to give chance for collection of metrics", "duration", postFlushSleepTime.String())
 	time.Sleep(postFlushSleepTime)
 
 	if err := services.StopAndAwaitTerminated(ctx, ing); err != nil {

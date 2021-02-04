@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
@@ -19,7 +19,7 @@ func Test_multilineStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util.InitLogger(cfg)
+	util_log.InitLogger(cfg)
 	Debug = true
 
 	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString("3s")}
@@ -28,7 +28,7 @@ func Test_multilineStage_Process(t *testing.T) {
 
 	stage := &multilineStage{
 		cfg:    mcfg,
-		logger: util.Logger,
+		logger: util_log.Logger,
 	}
 
 	out := processEntries(stage,
@@ -51,7 +51,7 @@ func Test_multilineStage_MultiStreams(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util.InitLogger(cfg)
+	util_log.InitLogger(cfg)
 	Debug = true
 
 	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString("3s")}
@@ -60,7 +60,7 @@ func Test_multilineStage_MultiStreams(t *testing.T) {
 
 	stage := &multilineStage{
 		cfg:    mcfg,
-		logger: util.Logger,
+		logger: util_log.Logger,
 	}
 
 	out := processEntries(stage,
@@ -96,7 +96,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util.InitLogger(cfg)
+	util_log.InitLogger(cfg)
 	Debug = true
 
 	maxWait := 2 * time.Second
@@ -106,7 +106,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 
 	stage := &multilineStage{
 		cfg:    mcfg,
-		logger: util.Logger,
+		logger: util_log.Logger,
 	}
 
 	in := make(chan Entry, 2)

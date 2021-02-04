@@ -10,7 +10,7 @@ import (
 	consul "github.com/hashicorp/consul/api"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type mockKV struct {
@@ -78,12 +78,12 @@ func (m *mockKV) Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMet
 
 	m.cond.Broadcast()
 
-	level.Debug(util.Logger).Log("msg", "Put", "key", p.Key, "value", fmt.Sprintf("%.40q", p.Value), "modify_index", m.current)
+	level.Debug(util_log.Logger).Log("msg", "Put", "key", p.Key, "value", fmt.Sprintf("%.40q", p.Value), "modify_index", m.current)
 	return nil, nil
 }
 
 func (m *mockKV) CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error) {
-	level.Debug(util.Logger).Log("msg", "CAS", "key", p.Key, "modify_index", p.ModifyIndex, "value", fmt.Sprintf("%.40q", p.Value))
+	level.Debug(util_log.Logger).Log("msg", "CAS", "key", p.Key, "modify_index", p.ModifyIndex, "value", fmt.Sprintf("%.40q", p.Value))
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -110,14 +110,14 @@ func (m *mockKV) CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.Wr
 }
 
 func (m *mockKV) Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consul.QueryMeta, error) {
-	level.Debug(util.Logger).Log("msg", "Get", "key", key, "wait_index", q.WaitIndex)
+	level.Debug(util_log.Logger).Log("msg", "Get", "key", key, "wait_index", q.WaitIndex)
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	value := m.kvps[key]
 	if value == nil && q.WaitIndex == 0 {
-		level.Debug(util.Logger).Log("msg", "Get - not found", "key", key)
+		level.Debug(util_log.Logger).Log("msg", "Get - not found", "key", key)
 		return nil, &consul.QueryMeta{LastIndex: m.current}, nil
 	}
 
@@ -146,17 +146,17 @@ func (m *mockKV) Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consu
 			}
 		}
 		if time.Now().After(deadline) {
-			level.Debug(util.Logger).Log("msg", "Get - deadline exceeded", "key", key)
+			level.Debug(util_log.Logger).Log("msg", "Get - deadline exceeded", "key", key)
 			return nil, &consul.QueryMeta{LastIndex: q.WaitIndex}, nil
 		}
 	}
 
 	if value == nil {
-		level.Debug(util.Logger).Log("msg", "Get - not found", "key", key)
+		level.Debug(util_log.Logger).Log("msg", "Get - not found", "key", key)
 		return nil, &consul.QueryMeta{LastIndex: m.current}, nil
 	}
 
-	level.Debug(util.Logger).Log("msg", "Get", "key", key, "modify_index", value.ModifyIndex, "value", fmt.Sprintf("%.40q", value.Value))
+	level.Debug(util_log.Logger).Log("msg", "Get", "key", key, "modify_index", value.ModifyIndex, "value", fmt.Sprintf("%.40q", value.Value))
 	return copyKVPair(value), &consul.QueryMeta{LastIndex: value.ModifyIndex}, nil
 }
 
@@ -203,7 +203,7 @@ func (m *mockKV) ResetIndex() {
 	m.current = 0
 	m.cond.Broadcast()
 
-	level.Debug(util.Logger).Log("msg", "Reset")
+	level.Debug(util_log.Logger).Log("msg", "Reset")
 }
 
 func (m *mockKV) ResetIndexForKey(key string) {
@@ -215,7 +215,7 @@ func (m *mockKV) ResetIndexForKey(key string) {
 	}
 
 	m.cond.Broadcast()
-	level.Debug(util.Logger).Log("msg", "ResetIndexForKey", "key", key)
+	level.Debug(util_log.Logger).Log("msg", "ResetIndexForKey", "key", key)
 }
 
 // mockedMaxWaitTime returns the minimum duration between the input duration

@@ -12,7 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	pkg_util "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -80,7 +80,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 	runCompaction := func() {
 		err := c.Run(ctx)
 		if err != nil {
-			level.Error(pkg_util.Logger).Log("msg", "failed to run compaction", "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 		}
 	}
 
@@ -126,14 +126,14 @@ func (c *Compactor) Run(ctx context.Context) error {
 		table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient)
 		if err != nil {
 			status = statusFailure
-			level.Error(pkg_util.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 			continue
 		}
 
 		err = table.compact()
 		if err != nil {
 			status = statusFailure
-			level.Error(pkg_util.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		}
 
 		// check if context was cancelled before going for next table.

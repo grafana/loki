@@ -14,7 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
@@ -90,7 +90,7 @@ func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
 		if err := table.init(ctx, log); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to download table", "name", table.name)
+			level.Error(util_log.Logger).Log("msg", "failed to download table", "name", table.name)
 		}
 	}()
 
@@ -134,7 +134,7 @@ func LoadTable(ctx context.Context, name, cacheLocation string, storageClient St
 		cancelFunc:        func() {},
 	}
 
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
 
 	for _, fileInfo := range filesInfo {
 		if fileInfo.IsDir() {
@@ -144,14 +144,14 @@ func LoadTable(ctx context.Context, name, cacheLocation string, storageClient St
 		// if we fail to open a boltdb file, lets skip it and let sync operation re-download the file from storage.
 		boltdb, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(folderPath, fileInfo.Name()))
 		if err != nil {
-			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to open existing boltdb file %s, continuing without it to let the sync operation catch up", filepath.Join(folderPath, fileInfo.Name())), "err", err)
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open existing boltdb file %s, continuing without it to let the sync operation catch up", filepath.Join(folderPath, fileInfo.Name())), "err", err)
 			continue
 		}
 
 		table.dbs[fileInfo.Name()] = boltdb
 	}
 
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", name))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", name))
 	// sync the table to get new files and remove the deleted ones from storage.
 	err = table.Sync(ctx)
 	if err != nil {
@@ -173,12 +173,12 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 			status = statusFailure
 			t.err = err
 
-			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to initialize table %s, cleaning it up", t.name), "err", err)
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to initialize table %s, cleaning it up", t.name), "err", err)
 
 			// cleaning up files due to error to avoid returning invalid results.
 			for fileName := range t.dbs {
 				if err := t.cleanupDB(fileName); err != nil {
-					level.Error(util.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
+					level.Error(util_log.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
 				}
 			}
 		}
@@ -195,7 +195,7 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 		return
 	}
 
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, objects))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, objects))
 
 	folderPath, err := t.folderPathForTable(true)
 	if err != nil {
@@ -252,7 +252,7 @@ func (t *Table) Close() {
 
 	for name, db := range t.dbs {
 		if err := db.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to close file %s for table %s", name, t.name), "err", err)
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to close file %s for table %s", name, t.name), "err", err)
 		}
 	}
 
@@ -363,14 +363,14 @@ func (t *Table) cleanupDB(fileName string) error {
 
 // Sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *Table) Sync(ctx context.Context) error {
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
 
 	toDownload, toDelete, err := t.checkStorageForUpdates(ctx)
 	if err != nil {
 		return err
 	}
 
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.name, toDownload, toDelete))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.name, toDownload, toDelete))
 
 	for _, storageObject := range toDownload {
 		err = t.downloadFile(ctx, storageObject)
@@ -435,7 +435,7 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 
 // downloadFile first downloads file to a temp location so that we can close the existing db(if already exists), replace it with new one and then reopen it.
 func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObject) error {
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloading object from storage with key %s", storageObject.Key))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading object from storage with key %s", storageObject.Key))
 
 	dbName, err := getDBNameFromObjectKey(storageObject.Key)
 	if err != nil {

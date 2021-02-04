@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -236,7 +237,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 		start := time.Now()
 
-		level.Info(util.Logger).Log("msg", "recovering from checkpoint")
+		level.Info(util_log.Logger).Log("msg", "recovering from checkpoint")
 		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
 		if err != nil {
 			return err
@@ -246,19 +247,19 @@ func (i *Ingester) starting(ctx context.Context) error {
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util.Logger).Log(
+			level.Error(util_log.Logger).Log(
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util.Logger).Log(
+		level.Info(util_log.Logger).Log(
 			"msg", "recovered WAL checkpoint recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", checkpointRecoveryErr != nil,
 		)
 
-		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
@@ -268,13 +269,13 @@ func (i *Ingester) starting(ctx context.Context) error {
 		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
-			level.Error(util.Logger).Log(
+			level.Error(util_log.Logger).Log(
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util.Logger).Log(
+		level.Info(util_log.Logger).Log(
 			"msg", "WAL segment recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", segmentRecoveryErr != nil,
@@ -282,7 +283,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 		elapsed := time.Since(start)
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
-		level.Info(util.Logger).Log("msg", "recovery finished", "time", elapsed.String())
+		level.Info(util_log.Logger).Log("msg", "recovery finished", "time", elapsed.String())
 
 	}
 

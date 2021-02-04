@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -192,7 +193,7 @@ func generateRandomSuffix() string {
 	suffix := make([]byte, 4)
 	_, err := rand.Read(suffix)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to generate random suffix", "err", err)
+		level.Error(util_log.Logger).Log("msg", "failed to generate random suffix", "err", err)
 		return "error"
 	}
 	return fmt.Sprintf("%2x", suffix)

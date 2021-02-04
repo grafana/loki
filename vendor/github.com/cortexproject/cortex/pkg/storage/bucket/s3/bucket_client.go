@@ -28,6 +28,11 @@ func newS3Config(cfg Config) s3.Config {
 			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
 			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
 			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
+			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
+			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
+			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
+			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
 			Transport:             cfg.HTTP.Transport,
 		},
 		// Enforce signature version 2 if CLI flag is set

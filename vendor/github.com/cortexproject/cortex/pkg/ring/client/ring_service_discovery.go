@@ -1,12 +1,17 @@
 package client
 
 import (
+	"errors"
+
 	"github.com/cortexproject/cortex/pkg/ring"
 )
 
 func NewRingServiceDiscovery(r ring.ReadRing) PoolServiceDiscovery {
 	return func() ([]string, error) {
 		replicationSet, err := r.GetAllHealthy(ring.Reporting)
+		if errors.Is(err, ring.ErrEmptyRing) {
+			return nil, nil
+		}
 		if err != nil {
 			return nil, err
 		}

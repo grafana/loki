@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/go-kit/kit/log/level"
 )
@@ -118,7 +118,7 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient) *MultiClient {
 		mirrorTimeout:    cfg.MirrorTimeout,
 		mirroringEnabled: atomic.NewBool(cfg.MirrorEnabled),
 
-		logger: log.With(util.Logger, "component", "multikv"),
+		logger: log.With(util_log.Logger, "component", "multikv"),
 	}
 
 	ctx, cancelFn := context.WithCancel(context.Background())

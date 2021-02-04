@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -19,7 +19,7 @@ import (
 )
 
 func TestNewMulti(t *testing.T) {
-	_, err := NewMulti(nil, util.Logger, lokiflag.LabelSet{}, []Config{}...)
+	_, err := NewMulti(nil, util_log.Logger, lokiflag.LabelSet{}, []Config{}...)
 	if err == nil {
 		t.Fatal("expected err but got nil")
 	}
@@ -38,7 +38,7 @@ func TestNewMulti(t *testing.T) {
 		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"hi": "there"}},
 	}
 
-	clients, err := NewMulti(prometheus.DefaultRegisterer, util.Logger, lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "command"}}, cc1, cc2)
+	clients, err := NewMulti(prometheus.DefaultRegisterer, util_log.Logger, lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "command"}}, cc1, cc2)
 	if err != nil {
 		t.Fatalf("expected err: nil got:%v", err)
 	}

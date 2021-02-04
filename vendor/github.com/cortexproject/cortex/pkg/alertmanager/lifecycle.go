@@ -4,7 +4,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 )
 
-func (r *MultitenantAlertmanager) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.IngesterDesc) (ring.IngesterState, ring.Tokens) {
+func (r *MultitenantAlertmanager) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.IngesterState, ring.Tokens) {
 	// When we initialize the alertmanager instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
 	// tokens (if any).
@@ -24,5 +24,5 @@ func (r *MultitenantAlertmanager) OnRingInstanceRegister(_ *ring.BasicLifecycler
 
 func (r *MultitenantAlertmanager) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
 func (r *MultitenantAlertmanager) OnRingInstanceStopping(_ *ring.BasicLifecycler)              {}
-func (r *MultitenantAlertmanager) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.IngesterDesc) {
+func (r *MultitenantAlertmanager) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.InstanceDesc) {
 }

@@ -19,8 +19,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
-	"github.com/cortexproject/cortex/pkg/util"
 	cutil "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
@@ -175,7 +175,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
 				i.metrics.walDiskFullFailures.Inc()
 				i.flushOnShutdownSwitch.TriggerAnd(func() {
-					level.Error(util.Logger).Log(
+					level.Error(util_log.Logger).Log(
 						"msg",
 						"Error writing to WAL, disk full, no further messages will be logged for this error",
 					)

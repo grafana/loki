@@ -10,7 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
@@ -68,17 +68,17 @@ func (t *table) compact() error {
 		return err
 	}
 
-	level.Info(util.Logger).Log("msg", "listed files", "count", len(objects))
+	level.Info(util_log.Logger).Log("msg", "listed files", "count", len(objects))
 
 	if len(objects) < compactMinDBs {
-		level.Info(util.Logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
 		return nil
 	}
 
 	defer func() {
 		err := t.cleanup()
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to cleanup table", "name", t.name)
+			level.Error(util_log.Logger).Log("msg", "failed to cleanup table", "name", t.name)
 		}
 	}()
 
@@ -87,7 +87,7 @@ func (t *table) compact() error {
 		return err
 	}
 
-	level.Info(util.Logger).Log("msg", "starting compaction of dbs")
+	level.Info(util_log.Logger).Log("msg", "starting compaction of dbs")
 
 	errChan := make(chan error)
 	readObjectChan := make(chan string)
@@ -123,7 +123,7 @@ func (t *table) compact() error {
 
 					err = t.readFile(downloadAt)
 					if err != nil {
-						level.Error(util.Logger).Log("msg", "error reading file", "err", err)
+						level.Error(util_log.Logger).Log("msg", "error reading file", "err", err)
 						return
 					}
 				case <-t.quit:
@@ -148,7 +148,7 @@ func (t *table) compact() error {
 			}
 		}
 
-		level.Debug(util.Logger).Log("msg", "closing readObjectChan")
+		level.Debug(util_log.Logger).Log("msg", "closing readObjectChan")
 
 		close(readObjectChan)
 	}()
@@ -175,7 +175,7 @@ func (t *table) compact() error {
 	default:
 	}
 
-	level.Info(util.Logger).Log("msg", "finished compacting the dbs")
+	level.Info(util_log.Logger).Log("msg", "finished compacting the dbs")
 
 	// upload the compacted db
 	err = t.upload()
@@ -219,7 +219,7 @@ func (t *table) writeBatch(batch []indexEntry) error {
 
 // readFile reads a boltdb file from a path and writes the index in batched mode to compactedDB
 func (t *table) readFile(path string) error {
-	level.Debug(util.Logger).Log("msg", "reading file for compaction", "path", path)
+	level.Debug(util_log.Logger).Log("msg", "reading file for compaction", "path", path)
 
 	db, err := shipper_util.SafeOpenBoltdbFile(path)
 	if err != nil {
@@ -228,11 +228,11 @@ func (t *table) readFile(path string) error {
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to close db", "path", path, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to close db", "path", path, "err", err)
 		}
 
 		if err = os.Remove(path); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to remove file", "path", path, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to remove file", "path", path, "err", err)
 		}
 	}()
 
@@ -305,23 +305,23 @@ func (t *table) upload() error {
 
 	defer func() {
 		if err := compressedDB.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to close file", "path", compactedDBPath, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to close file", "path", compactedDBPath, "err", err)
 		}
 
 		if err := os.Remove(compressedDBPath); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to remove file", "path", compressedDBPath, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to remove file", "path", compressedDBPath, "err", err)
 		}
 	}()
 
 	objectKey := fmt.Sprintf("%s.gz", shipper_util.BuildObjectKey(t.name, uploaderName, fmt.Sprint(time.Now().Unix())))
-	level.Info(util.Logger).Log("msg", "uploading the compacted file", "objectKey", objectKey)
+	level.Info(util_log.Logger).Log("msg", "uploading the compacted file", "objectKey", objectKey)
 
 	return t.storageClient.PutObject(t.ctx, objectKey, compressedDB)
 }
 
 // removeObjectsFromStorage deletes objects from storage.
 func (t *table) removeObjectsFromStorage(objects []chunk.StorageObject) error {
-	level.Info(util.Logger).Log("msg", "removing source db files from storage", "count", len(objects))
+	level.Info(util_log.Logger).Log("msg", "removing source db files from storage", "count", len(objects))
 
 	for _, object := range objects {
 		err := t.storageClient.DeleteObject(t.ctx, object.Key)

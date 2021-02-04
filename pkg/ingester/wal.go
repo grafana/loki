@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -81,7 +81,7 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		return noopWAL{}, nil
 	}
 
-	tsdbWAL, err := wal.NewSize(util.Logger, registerer, cfg.Dir, walSegmentSize, false)
+	tsdbWAL, err := wal.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (w *walWrapper) Stop() error {
 	close(w.quit)
 	w.wait.Wait()
 	err := w.wal.Close()
-	level.Info(util.Logger).Log("msg", "stopped", "component", "wal")
+	level.Info(util_log.Logger).Log("msg", "stopped", "component", "wal")
 	return err
 }
 
@@ -150,7 +150,7 @@ func (w *walWrapper) checkpointWriter() *WALCheckpointWriter {
 }
 
 func (w *walWrapper) run() {
-	level.Info(util.Logger).Log("msg", "started", "component", "wal")
+	level.Info(util_log.Logger).Log("msg", "started", "component", "wal")
 	defer w.wait.Done()
 
 	checkpointer := NewCheckpointer(

@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
@@ -109,7 +109,7 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, tolerance float64) er
 			err := fmt.Errorf("expected %d samples for metric %s but got %d", expectedMetricLen,
 				expectedMetric.Metric, actualMetricLen)
 			if expectedMetricLen > 0 && actualMetricLen > 0 {
-				level.Error(util.Logger).Log("msg", err.Error(), "oldest-expected-ts", expectedMetric.Values[0].Timestamp,
+				level.Error(util_log.Logger).Log("msg", err.Error(), "oldest-expected-ts", expectedMetric.Values[0].Timestamp,
 					"newest-expected-ts", expectedMetric.Values[expectedMetricLen-1].Timestamp,
 					"oldest-actual-ts", actualMetric.Values[0].Timestamp, "newest-actual-ts", actualMetric.Values[actualMetricLen-1].Timestamp)
 			}

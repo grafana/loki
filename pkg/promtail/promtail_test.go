@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -46,7 +47,7 @@ func TestPromtail(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	logger = level.NewFilter(logger, level.AllowInfo())
-	util.Logger = logger
+	util_log.Logger = logger
 
 	initRandom()
 	dirName := "/tmp/promtail_test_" + randName()
@@ -428,7 +429,7 @@ func waitForEntries(timeoutSec int, handler *testServerHandler, expectedCounts m
 			if rcvd, ok := handler.receivedMap[file]; !ok || len(rcvd) != expectedCount {
 				waiting = waiting + " " + file
 				for _, e := range rcvd {
-					level.Info(util.Logger).Log("file", file, "entry", e.Line)
+					level.Info(util_log.Logger).Log("file", file, "entry", e.Line)
 				}
 			}
 		}

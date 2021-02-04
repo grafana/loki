@@ -5,10 +5,9 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/go-kit/kit/log/level"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // traced adds log trace lines on each db call
@@ -17,7 +16,7 @@ type traced struct {
 }
 
 func (t traced) trace(name string, args ...interface{}) {
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("%s: %#v", name, args))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("%s: %#v", name, args))
 }
 
 func (t traced) GetConfig(ctx context.Context, userID string) (cfg userconfig.View, err error) {

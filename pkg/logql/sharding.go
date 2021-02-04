@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
@@ -168,7 +168,7 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 	for _, res := range results {
 		if err := stats.JoinResults(ctx, res.Statistics); err != nil {
-			level.Warn(util.Logger).Log("msg", "unable to merge downstream results", "err", err)
+			level.Warn(util_log.Logger).Log("msg", "unable to merge downstream results", "err", err)
 		}
 	}
 
@@ -241,7 +241,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		for i, res := range results {
 			stepper, err := ResultStepEvaluator(res, params)
 			if err != nil {
-				level.Warn(util.Logger).Log(
+				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract StepEvaluator",
 					"err", err,
 					"expr", queries[i].Expr.String(),
@@ -306,7 +306,7 @@ func (ev *DownstreamEvaluator) Iterator(
 		for i, res := range results {
 			iter, err := ResultIterator(res, params)
 			if err != nil {
-				level.Warn(util.Logger).Log(
+				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract Iterator",
 					"err", err,
 					"expr", queries[i].Expr.String(),

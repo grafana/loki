@@ -170,10 +170,6 @@ type Config struct {
 	// for testing and for extending the ingester by adding calls to the client
 	IngesterClientFactory ring_client.PoolFactory `yaml:"-"`
 
-	// when true the distributor does not validate the label name, Cortex doesn't directly use
-	// this (and should never use it) but this feature is used by other projects built on top of it
-	SkipLabelNameValidation bool `yaml:"-"`
-
 	// This config is dynamically injected because defined in the querier config.
 	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
 }
@@ -496,8 +492,7 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 			return nil, err
 		}
 
-		skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
-		validatedSeries, err := d.validateSeries(ts, userID, skipLabelNameValidation)
+		validatedSeries, err := d.validateSeries(ts, userID, req.GetSkipLabelNameValidation())
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
@@ -568,7 +563,7 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 		op = ring.Write
 	}
 
-	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
 		timeseries := make([]ingester_client.PreallocTimeseries, 0, len(indexes))
 		var metadata []*ingester_client.MetricMetadata
 
@@ -621,7 +616,7 @@ func sortLabelsIfNeeded(labels []ingester_client.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []ingester_client.PreallocTimeseries, metadata []*ingester_client.MetricMetadata, source ingester_client.WriteRequest_SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []ingester_client.PreallocTimeseries, metadata []*ingester_client.MetricMetadata, source ingester_client.WriteRequest_SourceEnum) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -653,7 +648,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, time
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.
 func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, ingester_client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
-	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.IngesterDesc) (interface{}, error) {
+	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err

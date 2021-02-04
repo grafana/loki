@@ -23,6 +23,11 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
+var (
+	errNotIdle              = errors.New("the reader is not idle")
+	errUnloadedWhileLoading = errors.New("the index-header has been concurrently unloaded")
+)
+
 // LazyBinaryReaderMetrics holds metrics tracked by LazyBinaryReader.
 type LazyBinaryReaderMetrics struct {
 	loadCount         prometheus.Counter
@@ -133,7 +138,8 @@ func (r *LazyBinaryReader) Close() error {
 		defer r.onClosed(r)
 	}
 
-	return r.unload()
+	// Unload without checking if idle.
+	return r.unloadIfIdleSince(0)
 }
 
 // IndexVersion implements Reader.
@@ -203,7 +209,7 @@ func (r *LazyBinaryReader) LabelNames() ([]string, error) {
 
 // load ensures the underlying binary index-header reader has been successfully loaded. Returns
 // an error on failure. This function MUST be called with the read lock already acquired.
-func (r *LazyBinaryReader) load() error {
+func (r *LazyBinaryReader) load() (returnErr error) {
 	// Nothing to do if we already tried loading it.
 	if r.reader != nil {
 		return nil
@@ -216,8 +222,16 @@ func (r *LazyBinaryReader) load() error {
 	// the read lock once done.
 	r.readerMx.RUnlock()
 	r.readerMx.Lock()
-	defer r.readerMx.RLock()
-	defer r.readerMx.Unlock()
+	defer func() {
+		r.readerMx.Unlock()
+		r.readerMx.RLock()
+
+		// Between the write unlock and the subsequent read lock, the unload() may have run,
+		// so we make sure to catch this edge case.
+		if returnErr == nil && r.reader == nil {
+			returnErr = errUnloadedWhileLoading
+		}
+	}()
 
 	// Ensure none else tried to load it in the meanwhile.
 	if r.reader != nil {
@@ -245,17 +259,20 @@ func (r *LazyBinaryReader) load() error {
 	return nil
 }
 
-// unload closes underlying BinaryReader. Calling this function on a already unloaded reader is a no-op.
-func (r *LazyBinaryReader) unload() error {
-	// Always update the used timestamp so that the pool will not call unload() again until the next
-	// idle timeout is hit.
-	r.usedAt.Store(time.Now().UnixNano())
-
+// unloadIfIdleSince closes underlying BinaryReader if the reader is idle since given time (as unix nano). If idleSince is 0,
+// the check on the last usage is skipped. Calling this function on a already unloaded reader is a no-op.
+func (r *LazyBinaryReader) unloadIfIdleSince(ts int64) error {
 	r.readerMx.Lock()
 	defer r.readerMx.Unlock()
 
+	// Nothing to do if already unloaded.
 	if r.reader == nil {
 		return nil
+	}
+
+	// Do not unloadIfIdleSince if not idle.
+	if ts > 0 && r.usedAt.Load() > ts {
+		return errNotIdle
 	}
 
 	r.metrics.unloadCount.Inc()
@@ -268,6 +285,16 @@ func (r *LazyBinaryReader) unload() error {
 	return nil
 }
 
-func (r *LazyBinaryReader) lastUsedAt() int64 {
-	return r.usedAt.Load()
+// isIdleSince returns true if the reader is idle since given time (as unix nano).
+func (r *LazyBinaryReader) isIdleSince(ts int64) bool {
+	if r.usedAt.Load() > ts {
+		return false
+	}
+
+	// A reader can be considered idle only if it's loaded.
+	r.readerMx.RLock()
+	loaded := r.reader != nil
+	r.readerMx.RUnlock()
+
+	return loaded
 }

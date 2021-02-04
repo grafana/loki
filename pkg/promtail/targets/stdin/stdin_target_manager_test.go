@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -80,7 +80,7 @@ func Test_newReaderTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := fake.New(func() {})
-			got, err := newReaderTarget(prometheus.DefaultRegisterer, util.Logger, tt.in, c, tt.cfg)
+			got, err := newReaderTarget(prometheus.DefaultRegisterer, util_log.Logger, tt.in, c, tt.cfg)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("newReaderTarget() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -120,7 +120,7 @@ func Test_Shutdown(t *testing.T) {
 	stdIn = newFakeStdin("line")
 	appMock := &mockShutdownable{called: make(chan bool, 1)}
 	recorder := fake.New(func() {})
-	manager, err := NewStdinTargetManager(prometheus.DefaultRegisterer, util.Logger, appMock, recorder, []scrapeconfig.Config{{}})
+	manager, err := NewStdinTargetManager(prometheus.DefaultRegisterer, util_log.Logger, appMock, recorder, []scrapeconfig.Config{{}})
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 	require.Equal(t, true, <-appMock.called)
@@ -140,12 +140,12 @@ func compareEntries(t *testing.T, expected, actual []api.Entry) {
 func Test_StdinConfigs(t *testing.T) {
 
 	// should take the first config
-	require.Equal(t, scrapeconfig.DefaultScrapeConfig, getStdinConfig(util.Logger, []scrapeconfig.Config{
+	require.Equal(t, scrapeconfig.DefaultScrapeConfig, getStdinConfig(util_log.Logger, []scrapeconfig.Config{
 		scrapeconfig.DefaultScrapeConfig,
 		{},
 	}))
 	// or use the default if none if provided
-	require.Equal(t, defaultStdInCfg, getStdinConfig(util.Logger, []scrapeconfig.Config{}))
+	require.Equal(t, defaultStdInCfg, getStdinConfig(util_log.Logger, []scrapeconfig.Config{}))
 }
 
 var stagesConfig = `

@@ -1578,7 +1578,7 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 
 		uploaded, err := userDB.shipper.Sync(ctx)
 		if err != nil {
-			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
+			level.Warn(log.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
 		} else {
 			level.Debug(log.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
 		}
@@ -1590,7 +1590,7 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 		// the cached list of blocks in such case, so we're not handling it.
 		if uploaded > 0 {
 			if err := userDB.updateCachedShippedBlocks(); err != nil {
-				level.Error(util.Logger).Log("msg", "failed to update cached shipped blocks after shipper synchronisation", "user", userID, "err", err)
+				level.Error(log.Logger).Log("msg", "failed to update cached shipped blocks after shipper synchronisation", "user", userID, "err", err)
 			}
 		}
 
@@ -1811,7 +1811,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
-			level.Info(util.Logger).Log("msg", "flushing TSDB blocks: triggering shipping")
+			level.Info(log.Logger).Log("msg", "flushing TSDB blocks: triggering shipping")
 
 			select {
 			case i.TSDBState.shipTrigger <- ch:

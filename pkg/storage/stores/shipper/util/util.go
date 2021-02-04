@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 )
 
@@ -30,7 +30,7 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 
 	defer func() {
 		if err := readCloser.Close(); err != nil {
-			level.Error(util.Logger)
+			level.Error(util_log.Logger)
 		}
 	}()
 
@@ -52,7 +52,7 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 		return err
 	}
 
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
 
 	return f.Sync()
 }
@@ -82,7 +82,7 @@ func BuildObjectKey(tableName, uploader, dbName string) string {
 }
 
 func CompressFile(src, dest string) error {
-	level.Info(util.Logger).Log("msg", "compressing the file", "src", src, "dest", dest)
+	level.Info(util_log.Logger).Log("msg", "compressing the file", "src", src, "dest", dest)
 	uncompressedFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -90,7 +90,7 @@ func CompressFile(src, dest string) error {
 
 	defer func() {
 		if err := uncompressedFile.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to close uncompressed file", "path", src, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to close uncompressed file", "path", src, "err", err)
 		}
 	}()
 
@@ -101,7 +101,7 @@ func CompressFile(src, dest string) error {
 
 	defer func() {
 		if err := compressedFile.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to close compressed file", "path", dest, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to close compressed file", "path", dest, "err", err)
 		}
 	}()
 

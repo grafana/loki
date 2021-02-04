@@ -11,7 +11,7 @@ import (
 
 // loggerAdapter wraps a Logger and allows it to be passed to the stdlib
 // logger's SetOutput. It understand and parses output produced by memberlist
-// library (esp. level). Timestamp from memberlist can be ignored (eg. util.Logger
+// library (esp. level). Timestamp from memberlist can be ignored (eg. pkg/util/log.Logger
 // is set up to auto-include timestamp with every message already)
 type loggerAdapter struct {
 	log.Logger

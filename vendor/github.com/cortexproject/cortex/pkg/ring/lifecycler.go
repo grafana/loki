@@ -528,7 +528,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			ringDesc = in.(*Desc)
 		}
 
-		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
+		instanceDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
 			// The instance doesn't exist in the ring, so it's safe to set the registered timestamp
 			// as of now.
@@ -554,27 +554,27 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		// The instance already exists in the ring, so we can't change the registered timestamp (even if it's zero)
 		// but we need to update the local state accordingly.
-		i.setRegisteredAt(ingesterDesc.GetRegisteredAt())
+		i.setRegisteredAt(instanceDesc.GetRegisteredAt())
 
 		// If the ingester is in the JOINING state this means it crashed due to
 		// a failed token transfer or some other reason during startup. We want
 		// to set it back to PENDING in order to start the lifecycle from the
 		// beginning.
-		if ingesterDesc.State == JOINING {
+		if instanceDesc.State == JOINING {
 			level.Warn(log.Logger).Log("msg", "instance found in ring as JOINING, setting to PENDING",
 				"ring", i.RingName)
-			ingesterDesc.State = PENDING
+			instanceDesc.State = PENDING
 			return ringDesc, true, nil
 		}
 
 		// If the ingester failed to clean it's ring entry up in can leave it's state in LEAVING.
 		// Move it into ACTIVE to ensure the ingester joins the ring.
-		if ingesterDesc.State == LEAVING && len(ingesterDesc.Tokens) == i.cfg.NumTokens {
-			ingesterDesc.State = ACTIVE
+		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
+			instanceDesc.State = ACTIVE
 		}
 
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
-		i.setState(ingesterDesc.State)
+		i.setState(instanceDesc.State)
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 
@@ -705,18 +705,18 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			ringDesc = in.(*Desc)
 		}
 
-		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
+		instanceDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
 			// consul must have restarted
 			level.Info(log.Logger).Log("msg", "found empty ring, inserting tokens", "ring", i.RingName)
 			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
 		} else {
-			ingesterDesc.Timestamp = time.Now().Unix()
-			ingesterDesc.State = i.GetState()
-			ingesterDesc.Addr = i.Addr
-			ingesterDesc.Zone = i.Zone
-			ingesterDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()
-			ringDesc.Ingesters[i.ID] = ingesterDesc
+			instanceDesc.Timestamp = time.Now().Unix()
+			instanceDesc.State = i.GetState()
+			instanceDesc.Addr = i.Addr
+			instanceDesc.Zone = i.Zone
+			instanceDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()
+			ringDesc.Ingesters[i.ID] = instanceDesc
 		}
 
 		return ringDesc, true, nil

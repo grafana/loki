@@ -8,8 +8,8 @@ import (
 
 	"k8s.io/klog"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
@@ -76,7 +76,7 @@ func main() {
 		fmt.Println("Invalid log level")
 		os.Exit(1)
 	}
-	util.InitLogger(&config.ServerConfig.Config)
+	util_log.InitLogger(&config.ServerConfig.Config)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)
@@ -90,28 +90,28 @@ func main() {
 	if config.printConfig {
 		err := logutil.PrintConfig(os.Stderr, &config)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
+			level.Error(util_log.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
 		}
 	}
 
 	if config.logConfig {
 		err := logutil.LogConfig(&config)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to log config object", "err", err.Error())
+			level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
 		}
 	}
 
 	p, err := promtail.New(config.Config, config.dryRun)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)
+		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)
 	}
 
-	level.Info(util.Logger).Log("msg", "Starting Promtail", "version", version.Info())
+	level.Info(util_log.Logger).Log("msg", "Starting Promtail", "version", version.Info())
 	defer p.Shutdown()
 
 	if err := p.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
+		level.Error(util_log.Logger).Log("msg", "error starting promtail", "error", err)
 		os.Exit(1)
 	}
 }

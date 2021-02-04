@@ -19,47 +19,47 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 
 	tests := map[string]struct {
 		connectedIngestersAddr []string
-		ringIngesters          []ring.IngesterDesc
+		ringIngesters          []ring.InstanceDesc
 		expectedClientsAddr    []string
 	}{
 		"no connected ingesters and empty ring": {
 			connectedIngestersAddr: []string{},
-			ringIngesters:          []ring.IngesterDesc{},
+			ringIngesters:          []ring.InstanceDesc{},
 			expectedClientsAddr:    []string{},
 		},
 		"no connected ingesters and ring containing new ingesters": {
 			connectedIngestersAddr: []string{},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
+			ringIngesters:          []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE)},
 			expectedClientsAddr:    []string{"1.1.1.1"},
 		},
 		"connected ingesters and ring contain the same ingesters": {
 			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("2.2.2.2", ring.ACTIVE), mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
+			ringIngesters:          []ring.InstanceDesc{mockInstanceDesc("2.2.2.2", ring.ACTIVE), mockInstanceDesc("1.1.1.1", ring.ACTIVE)},
 			expectedClientsAddr:    []string{},
 		},
 		"ring contains new ingesters compared to the connected one": {
 			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE)},
+			ringIngesters:          []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("2.2.2.2", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)},
 			expectedClientsAddr:    []string{"2.2.2.2", "3.3.3.3"},
 		},
 		"connected ingesters contain ingesters not in the ring anymore": {
 			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE)},
+			ringIngesters:          []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)},
 			expectedClientsAddr:    []string{},
 		},
 		"connected ingesters contain ingesters not in the ring anymore and the ring contains new ingesters too": {
 			connectedIngestersAddr: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("3.3.3.3", ring.ACTIVE), mockIngesterDesc("4.4.4.4", ring.ACTIVE)},
+			ringIngesters:          []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE), mockInstanceDesc("4.4.4.4", ring.ACTIVE)},
 			expectedClientsAddr:    []string{"4.4.4.4"},
 		},
 		"ring contains ingester in LEAVING state not listed in the connected ingesters": {
 			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.LEAVING)},
+			ringIngesters:          []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("2.2.2.2", ring.LEAVING)},
 			expectedClientsAddr:    []string{},
 		},
 		"ring contains ingester in PENDING state not listed in the connected ingesters": {
 			connectedIngestersAddr: []string{"1.1.1.1"},
-			ringIngesters:          []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE), mockIngesterDesc("2.2.2.2", ring.PENDING)},
+			ringIngesters:          []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("2.2.2.2", ring.PENDING)},
 			expectedClientsAddr:    []string{},
 		},
 	}

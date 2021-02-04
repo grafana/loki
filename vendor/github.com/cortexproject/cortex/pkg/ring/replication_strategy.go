@@ -11,7 +11,7 @@ type ReplicationStrategy interface {
 	// Filter out unhealthy instances and checks if there're enough instances
 	// for an operation to succeed. Returns an error if there are not enough
 	// instances.
-	Filter(instances []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) (healthy []IngesterDesc, maxFailures int, err error)
+	Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) (healthy []InstanceDesc, maxFailures int, err error)
 }
 
 type defaultReplicationStrategy struct{}
@@ -26,7 +26,7 @@ func NewDefaultReplicationStrategy() ReplicationStrategy {
 // - Filters out unhealthy instances so the one doesn't even try to write to them.
 // - Checks there are enough instances for an operation to succeed.
 // The instances argument may be overwritten.
-func (s *defaultReplicationStrategy) Filter(instances []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]IngesterDesc, int, error) {
+func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]InstanceDesc, int, error) {
 	// We need a response from a quorum of instances, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
 	// than the replication factor, so use the bigger or the two.
@@ -71,7 +71,7 @@ func NewIgnoreUnhealthyInstancesReplicationStrategy() ReplicationStrategy {
 	return &ignoreUnhealthyInstancesReplicationStrategy{}
 }
 
-func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []IngesterDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ bool) (healthy []IngesterDesc, maxFailures int, err error) {
+func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []InstanceDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ bool) (healthy []InstanceDesc, maxFailures int, err error) {
 	now := time.Now()
 	// Filter out unhealthy instances.
 	for i := 0; i < len(instances); {
@@ -90,7 +90,7 @@ func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []Ingeste
 	return instances, len(instances) - 1, nil
 }
 
-func (r *Ring) IsHealthy(instance *IngesterDesc, op Operation, now time.Time) bool {
+func (r *Ring) IsHealthy(instance *InstanceDesc, op Operation, now time.Time) bool {
 	return instance.IsHealthy(op, r.cfg.HeartbeatTimeout, now)
 }
 

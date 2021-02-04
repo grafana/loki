@@ -8,11 +8,11 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 message Desc {
-	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
+	map<string,InstanceDesc> ingesters = 1 [(gogoproto.nullable) = false];
 	reserved 2;
 }
 
-message IngesterDesc {
+message InstanceDesc {
 	reserved 4, 5; // old, deprecated fields
 
 	string addr = 1;
