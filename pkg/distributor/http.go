@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"compress/gzip"
 	"math"
 	"net/http"
 
@@ -47,11 +48,22 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 	switch r.Header.Get(contentType) {
 	case applicationJSON:
 		var err error
+		body := r.Body
+
+		contentEncoding := r.Header.Get("Content-Encoding")
+		if contentEncoding == "gzip" {
+		  body, err = gzip.NewReader(r.Body)
+		  if err != nil {
+				return nil, err
+			}
+
+			defer body.Close()
+		}
 
 		if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-			err = unmarshal.DecodePushRequest(r.Body, &req)
+			err = unmarshal.DecodePushRequest(body, &req)
 		} else {
-			err = unmarshal_legacy.DecodePushRequest(r.Body, &req)
+			err = unmarshal_legacy.DecodePushRequest(body, &req)
 		}
 
 		if err != nil {
