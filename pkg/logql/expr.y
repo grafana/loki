@@ -2,7 +2,9 @@
 package logql
 
 import (
+  "fmt"
   "time"
+
   "github.com/prometheus/prometheus/pkg/labels"
   "github.com/grafana/loki/pkg/logql/log"
 
@@ -30,6 +32,8 @@ import (
   binOp                   string
   bytes                   uint64
   str                     string
+  empty                   interface{}
+  number                  float64
   duration                time.Duration
   LiteralExpr             *literalExpr
   BinOpModifier           BinOpOptions
@@ -42,6 +46,7 @@ import (
   DurationFilter          log.LabelFilterer
   LabelFilter             log.LabelFilterer
   UnitFilter              log.LabelFilterer
+  SignedNumber            string
   LineFormatExpr          *lineFmtExpr
   LabelFormatExpr         *labelFmtExpr
   LabelFormat             log.LabelFmt
@@ -84,9 +89,11 @@ import (
 %type <LabelsFormat>          labelsFormat
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
+%type <SignedNumber>          signedNumber
 
 %token <bytes> BYTES
-%token <str>      IDENTIFIER STRING NUMBER
+%token <str>      IDENTIFIER STRING
+%token <number>   NUMBER
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
@@ -157,9 +164,9 @@ convOp:
 
 rangeAggregationExpr:
       rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                        { $$ = newRangeAggregationExpr($3, $1, nil, nil) }
-    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS           { $$ = newRangeAggregationExpr($5, $1, nil, &$3) }
+    | rangeOp OPEN_PARENTHESIS signedNumber COMMA logRangeExpr CLOSE_PARENTHESIS           { $$ = newRangeAggregationExpr($5, $1, nil, &$3) }
     | rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS grouping               { $$ = newRangeAggregationExpr($3, $1, $5, nil) }
-    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping  { $$ = newRangeAggregationExpr($5, $1, $7, &$3) }
+    | rangeOp OPEN_PARENTHESIS signedNumber COMMA logRangeExpr CLOSE_PARENTHESIS grouping  { $$ = newRangeAggregationExpr($5, $1, $7, &$3) }
     ;
 
 vectorAggregationExpr:
@@ -168,9 +175,9 @@ vectorAggregationExpr:
     | vectorOp grouping OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS                      { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
     | vectorOp OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS grouping                      { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
     // Aggregations with 2 arguments.
-    | vectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS                 { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
-    | vectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS grouping        { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
-    | vectorOp grouping OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS        { $$ = mustNewVectorAggregationExpr($6, $1, $2, &$4) }
+    | vectorOp OPEN_PARENTHESIS signedNumber COMMA metricExpr CLOSE_PARENTHESIS                 { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
+    | vectorOp OPEN_PARENTHESIS signedNumber COMMA metricExpr CLOSE_PARENTHESIS grouping        { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
+    | vectorOp grouping OPEN_PARENTHESIS signedNumber COMMA metricExpr CLOSE_PARENTHESIS        { $$ = mustNewVectorAggregationExpr($6, $1, $2, &$4) }
     ;
 
 labelReplaceExpr:
@@ -277,13 +284,13 @@ bytesFilter:
     ;
 
 numberFilter:
-      IDENTIFIER GT NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1, mustNewFloat($3))}
-    | IDENTIFIER GTE NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER LT NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, mustNewFloat($3))}
-    | IDENTIFIER LTE NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER NEQ NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER EQ NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
+      IDENTIFIER GT signedNumber      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1, mustNewFloat($3))}
+    | IDENTIFIER GTE signedNumber     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER LT signedNumber      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, mustNewFloat($3))}
+    | IDENTIFIER LTE signedNumber     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER NEQ signedNumber     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER EQ signedNumber      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER CMP_EQ signedNumber  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     ;
 
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr
@@ -312,10 +319,14 @@ binOpModifier:
            ;
 
 literalExpr:
-           NUMBER         { $$ = mustNewLiteralExpr( $1, false ) }
-           | ADD NUMBER   { $$ = mustNewLiteralExpr( $2, false ) }
-           | SUB NUMBER   { $$ = mustNewLiteralExpr( $2, true ) }
+           signedNumber         { $$ = mustNewLiteralExpr( $1, false ) }
            ;
+
+signedNumber:
+            NUMBER { $$ = fmt.Sprintf("%v", $1) }
+          | ADD NUMBER { $$ = fmt.Sprintf("%v", $2) }
+          | SUB NUMBER { $$ = fmt.Sprintf("%v", -$2) }
+          ;
 
 vectorOp:
         SUM     { $$ = OpTypeSum }

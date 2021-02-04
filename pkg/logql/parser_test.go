@@ -2126,7 +2126,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in:  `quantile_over_time(foo,{namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms| unwrap latency [5m])`,
-			err: ParseError{msg: "syntax error: unexpected IDENTIFIER, expecting NUMBER or { or (", line: 1, col: 20},
+			err: ParseError{msg: "syntax error: unexpected IDENTIFIER", line: 1, col: 20},
 		},
 		{
 			in: `{app="foo"}
@@ -2192,6 +2192,79 @@ func TestParse(t *testing.T) {
 					},
 				},
 			},
+		},
+		// covering most numeric representations that ParseFloat (https://golang.org/pkg/strconv/#ParseFloat) supports
+		{
+			in: `{app="foo"} | temp > -30`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					&labelFilterExpr{
+						LabelFilterer: log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "temp", -30),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | temp < -1.5`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					&labelFilterExpr{
+						LabelFilterer: log.NewNumericLabelFilter(log.LabelFilterLesserThan, "temp", -1.5),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | temp == 1.123456`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					&labelFilterExpr{
+						LabelFilterer: log.NewNumericLabelFilter(log.LabelFilterEqual, "temp", 1.123456),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | temp < -1e6`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					&labelFilterExpr{
+						LabelFilterer: log.NewNumericLabelFilter(log.LabelFilterLesserThan, "temp", -1000000),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | temp == +1.1`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					&labelFilterExpr{
+						LabelFilterer: log.NewNumericLabelFilter(log.LabelFilterEqual, "temp", 1.1),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | temp == +0`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					&labelFilterExpr{
+						LabelFilterer: log.NewNumericLabelFilter(log.LabelFilterEqual, "temp", 0),
+					},
+				},
+			},
+		},
+
+		// TODO try get this case to work
+		{
+			in:  `1+------1`,
+			exp: &literalExpr{value: 2},
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
