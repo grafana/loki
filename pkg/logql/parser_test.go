@@ -2217,7 +2217,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `{app="foo"} | temp == 1.123456`,
+			in: `{app="foo"} | temp=1.123456`,
 			exp: &pipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
@@ -2239,7 +2239,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `{app="foo"} | temp == +1.1`,
+			in: `{app="foo"} | temp=+1.1`,
 			exp: &pipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
@@ -2250,7 +2250,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `{app="foo"} | temp == +0`,
+			in: `{app="foo"} | temp=+0`,
 			exp: &pipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
