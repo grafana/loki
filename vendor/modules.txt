@@ -147,7 +147,7 @@ github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.1.1
 ## explicit
 github.com/cespare/xxhash/v2
-# github.com/containerd/containerd v1.3.4
+# github.com/containerd/containerd v1.4.1
 github.com/containerd/containerd/errdefs
 github.com/containerd/containerd/log
 github.com/containerd/containerd/platforms
@@ -562,6 +562,10 @@ github.com/influxdata/go-syslog/v3/common
 github.com/influxdata/go-syslog/v3/nontransparent
 github.com/influxdata/go-syslog/v3/octetcounting
 github.com/influxdata/go-syslog/v3/rfc5424
+# github.com/influxdata/telegraf v1.16.3
+## explicit
+github.com/influxdata/telegraf
+github.com/influxdata/telegraf/plugins/inputs
 # github.com/jessevdk/go-flags v1.4.0
 github.com/jessevdk/go-flags
 # github.com/jmespath/go-jmespath v0.4.0
@@ -840,6 +844,7 @@ github.com/soheilhy/cmux
 # github.com/sony/gobreaker v0.4.1
 github.com/sony/gobreaker
 # github.com/spf13/afero v1.2.2
+## explicit
 github.com/spf13/afero
 github.com/spf13/afero/mem
 # github.com/spf13/pflag v1.0.5
@@ -1123,12 +1128,14 @@ golang.org/x/oauth2/jwt
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 # golang.org/x/sys v0.0.0-20201223074533-0d417f636930
+## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
+golang.org/x/sys/windows/svc/eventlog
 # golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
 golang.org/x/term
 # golang.org/x/text v0.3.4
@@ -1483,6 +1490,7 @@ sigs.k8s.io/yaml
 # github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 # k8s.io/client-go => k8s.io/client-go v0.19.4
 # k8s.io/api => k8s.io/api v0.19.4
+# github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1

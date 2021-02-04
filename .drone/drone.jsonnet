@@ -60,6 +60,21 @@ local arch_image(arch, tags='') = {
   }],
 };
 
+local promtail_win() = pipeline('promtail-windows') {
+ platform: {
+    os: 'windows',
+    arch: "amd64",
+    version: "1809",
+  },
+  steps: [{
+    name: 'test',
+    image: 'golang:windowsservercore-1809',
+    commands: [
+      'go test .\\pkg\\promtail\\targets\\windows\\... -v',
+    ],
+  }],
+};
+
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,master') {
   steps+: [
     // dry run for everything that is not tag or master
@@ -200,7 +215,7 @@ local manifest(apps) = pipeline('manifest') {
       make('check-generated-files', container=false) { depends_on: ['clone'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
     ],
-  },
+  }
 ] + [
   multiarch_image(arch) + (
     // When we're building Promtail for ARM, we want to use Dockerfile.arm32 to fix
@@ -273,4 +288,4 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
-]
+] + [promtail_win()]

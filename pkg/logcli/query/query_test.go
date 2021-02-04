@@ -551,7 +551,7 @@ func (t *testQueryClient) Series(matchers []string, from, through time.Time, qui
 	panic("implement me")
 }
 
-func (t *testQueryClient) LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error) {
+func (t *testQueryClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
 	panic("implement me")
 }
 

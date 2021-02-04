@@ -156,7 +156,7 @@ func main() {
 		}
 
 		if *tail {
-			rangeQuery.TailQuery(*delayFor, queryClient, out)
+			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
 			rangeQuery.DoQuery(queryClient, out, *statistics)
 		}
