@@ -1,4 +1,4 @@
-package json_expr
+package jsonexpr
 
 import (
 	"bufio"
@@ -23,6 +23,7 @@ func NewScanner(r io.Reader, debug bool) *Scanner {
 }
 
 func (sc *Scanner) Error(s string) {
+	sc.err = fmt.Errorf(s)
 	fmt.Printf("syntax error: %s\n", s)
 }
 
@@ -33,13 +34,13 @@ func (sc *Scanner) Reduced(rule, state int, lval *JSONExprSymType) bool {
 	return false
 }
 
-func (s *Scanner) Lex(lval *JSONExprSymType) int {
-	return s.lex(lval)
+func (sc *Scanner) Lex(lval *JSONExprSymType) int {
+	return sc.lex(lval)
 }
 
-func (s *Scanner) lex(lval *JSONExprSymType) int {
+func (sc *Scanner) lex(lval *JSONExprSymType) int {
 	for {
-		r := s.read()
+		r := sc.read()
 
 		if r == 0 {
 			return 0
@@ -49,10 +50,10 @@ func (s *Scanner) lex(lval *JSONExprSymType) int {
 		}
 
 		if isDigit(r) {
-			s.unread()
-			val, err := s.scanInt()
+			sc.unread()
+			val, err := sc.scanInt()
 			if err != nil {
-				s.err = fmt.Errorf(err.Error())
+				sc.err = fmt.Errorf(err.Error())
 				return 0
 			}
 
@@ -68,15 +69,15 @@ func (s *Scanner) lex(lval *JSONExprSymType) int {
 		case r == '.':
 			return DOT
 		case isIdentifier(r):
-			s.unread()
-			lval.field = s.scanField()
+			sc.unread()
+			lval.field = sc.scanField()
 			return FIELD
 		case r == '"':
-			s.unread()
-			lval.str = s.scanStr()
+			sc.unread()
+			lval.str = sc.scanStr()
 			return STRING
 		default:
-			s.err = fmt.Errorf("unexpected char %c", r)
+			sc.err = fmt.Errorf("unexpected char %c", r)
 			return 0
 		}
 	}
@@ -86,18 +87,18 @@ func isIdentifier(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_'
 }
 
-func (s *Scanner) scanField() string {
+func (sc *Scanner) scanField() string {
 	var str []rune
 
 	for {
-		r := s.read()
+		r := sc.read()
 		if !isIdentifier(r) {
-			s.unread()
+			sc.unread()
 			break
 		}
 
 		if r == '.' || r == scanner.EOF || r == rune(0) {
-			s.unread()
+			sc.unread()
 			break
 		}
 
@@ -106,18 +107,18 @@ func (s *Scanner) scanField() string {
 	return string(str)
 }
 
-func (s *Scanner) scanStr() string {
+func (sc *Scanner) scanStr() string {
 	var str []rune
 	//begin with ", end with "
-	r := s.read()
+	r := sc.read()
 	if r != '"' {
-		s.err = fmt.Errorf("unexpected char %c", r)
+		sc.err = fmt.Errorf("unexpected char %c", r)
 		return ""
 	}
 
 	for {
-		r := s.read()
-		if r == '"' || r == 1 || r == ']' {
+		r := sc.read()
+		if r == '"' || r == ']' {
 			break
 		}
 		str = append(str, r)
@@ -125,17 +126,17 @@ func (s *Scanner) scanStr() string {
 	return string(str)
 }
 
-func (s *Scanner) scanInt() (int, error) {
+func (sc *Scanner) scanInt() (int, error) {
 	var number []rune
 
 	for {
-		r := s.read()
+		r := sc.read()
 		if r == '.' && len(number) > 0 {
 			return 0, fmt.Errorf("cannot use float as array index")
 		}
 
 		if isWhitespace(r) || r == '.' || r == ']' {
-			s.unread()
+			sc.unread()
 			break
 		}
 
@@ -149,12 +150,12 @@ func (s *Scanner) scanInt() (int, error) {
 	return strconv.Atoi(string(number))
 }
 
-func (s *Scanner) read() rune {
-	ch, _, _ := s.buf.ReadRune()
+func (sc *Scanner) read() rune {
+	ch, _, _ := sc.buf.ReadRune()
 	return ch
 }
 
-func (s *Scanner) unread() { _ = s.buf.UnreadRune() }
+func (sc *Scanner) unread() { _ = sc.buf.UnreadRune() }
 
 func isWhitespace(ch rune) bool { return ch == ' ' || ch == '\t' || ch == '\n' }
 
