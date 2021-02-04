@@ -12,8 +12,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
 
-// ByAddr is a sortable list of IngesterDesc.
-type ByAddr []IngesterDesc
+// ByAddr is a sortable list of InstanceDesc.
+type ByAddr []InstanceDesc
 
 func (ts ByAddr) Len() int           { return len(ts) }
 func (ts ByAddr) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
@@ -32,15 +32,15 @@ func GetCodec() codec.Codec {
 // NewDesc returns an empty ring.Desc
 func NewDesc() *Desc {
 	return &Desc{
-		Ingesters: map[string]IngesterDesc{},
+		Ingesters: map[string]InstanceDesc{},
 	}
 }
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState, registeredAt time.Time) IngesterDesc {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState, registeredAt time.Time) InstanceDesc {
 	if d.Ingesters == nil {
-		d.Ingesters = map[string]IngesterDesc{}
+		d.Ingesters = map[string]InstanceDesc{}
 	}
 
 	registeredTimestamp := int64(0)
@@ -48,7 +48,7 @@ func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state Ingeste
 		registeredTimestamp = registeredAt.Unix()
 	}
 
-	ingester := IngesterDesc{
+	ingester := InstanceDesc{
 		Addr:                addr,
 		Timestamp:           time.Now().Unix(),
 		RegisteredTimestamp: registeredTimestamp,
@@ -87,8 +87,8 @@ func (d *Desc) ClaimTokens(from, to string) Tokens {
 }
 
 // FindIngestersByState returns the list of ingesters in the given state
-func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
-	var result []IngesterDesc
+func (d *Desc) FindIngestersByState(state IngesterState) []InstanceDesc {
+	var result []InstanceDesc
 	for _, ing := range d.Ingesters {
 		if ing.State == state {
 			result = append(result, ing)
@@ -125,7 +125,7 @@ func (d *Desc) TokensFor(id string) (myTokens, allTokens Tokens) {
 
 // GetRegisteredAt returns the timestamp when the instance has been registered to the ring
 // or a zero value if unknown.
-func (i *IngesterDesc) GetRegisteredAt() time.Time {
+func (i *InstanceDesc) GetRegisteredAt() time.Time {
 	if i == nil || i.RegisteredTimestamp == 0 {
 		return time.Time{}
 	}
@@ -133,7 +133,7 @@ func (i *IngesterDesc) GetRegisteredAt() time.Time {
 	return time.Unix(i.RegisteredTimestamp, 0)
 }
 
-func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
+func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
 	healthy := op.IsInstanceInStateHealthy(i.State)
 
 	return healthy && now.Unix()-i.Timestamp <= heartbeatTimeout.Milliseconds()/1000
@@ -245,8 +245,8 @@ func (d *Desc) MergeContent() []string {
 // buildNormalizedIngestersMap will do the following:
 // - sorts tokens and removes duplicates (only within single ingester)
 // - it doesn't modify input ring
-func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
-	out := map[string]IngesterDesc{}
+func buildNormalizedIngestersMap(inputRing *Desc) map[string]InstanceDesc {
+	out := map[string]InstanceDesc{}
 
 	// Make sure LEFT ingesters have no tokens
 	for n, ing := range inputRing.Ingesters {
@@ -284,7 +284,7 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 	return out
 }
 
-func conflictingTokensExist(normalizedIngesters map[string]IngesterDesc) bool {
+func conflictingTokensExist(normalizedIngesters map[string]InstanceDesc) bool {
 	count := 0
 	for _, ing := range normalizedIngesters {
 		count += len(ing.Tokens)
@@ -309,7 +309,7 @@ func conflictingTokensExist(normalizedIngesters map[string]IngesterDesc) bool {
 // 2) otherwise node names are compared, and node with "lower" name wins the token
 //
 // Modifies ingesters map with updated tokens.
-func resolveConflicts(normalizedIngesters map[string]IngesterDesc) {
+func resolveConflicts(normalizedIngesters map[string]InstanceDesc) {
 	size := 0
 	for _, ing := range normalizedIngesters {
 		size += len(ing.Tokens)

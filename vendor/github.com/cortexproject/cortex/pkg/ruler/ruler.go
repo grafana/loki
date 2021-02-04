@@ -86,6 +86,8 @@ type Config struct {
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration `yaml:"notification_timeout"`
+	// Client configs for interacting with the Alertmanager
+	Notifier NotifierConfig `yaml:"alertmanager_client"`
 
 	// Max time to tolerate outage for restoring "for" state of alert.
 	OutageTolerance time.Duration `yaml:"for_outage_tolerance"`
@@ -130,6 +132,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
 	cfg.StoreConfig.RegisterFlags(f)
 	cfg.Ring.RegisterFlags(f)
+	cfg.Notifier.RegisterFlags(f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
 	flagext.DeprecatedFlag(f, "ruler.client-timeout", "This flag has been renamed to ruler.configs.client-timeout")

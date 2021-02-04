@@ -10,7 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Object Alert Storage Schema
@@ -60,7 +60,7 @@ func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alerts.Ale
 		return alerts.AlertConfigDesc{}, err
 	}
 
-	defer runutil.CloseWithLogOnErr(util.Logger, readCloser, "close alert config reader")
+	defer runutil.CloseWithLogOnErr(util_log.Logger, readCloser, "close alert config reader")
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {

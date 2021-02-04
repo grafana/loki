@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -17,6 +18,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -209,9 +211,9 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 
 	cached, ok := s.get(ctx, key)
 	if ok {
-		response, extents, err = s.handleHit(ctx, r, cached)
+		response, extents, err = s.handleHit(ctx, r, cached, maxCacheTime)
 	} else {
-		response, extents, err = s.handleMiss(ctx, r)
+		response, extents, err = s.handleMiss(ctx, r, maxCacheTime)
 	}
 
 	if err == nil && len(extents) > 0 {
@@ -226,13 +228,17 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool {
+func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
 	for _, v := range headerValues {
 		if v == noStoreValue {
 			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
 			return false
 		}
+	}
+
+	if !s.isAtModifierCachable(req, maxCacheTime) {
+		return false
 	}
 
 	if s.cacheGenNumberLoader == nil {
@@ -257,6 +263,55 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool 
 	return true
 }
 
+var errAtModifierAfterEnd = errors.New("at modifier after end")
+
+// isAtModifierCachable returns true if the @ modifier result
+// is safe to cache.
+func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
+	// There are 2 cases when @ modifier is not safe to cache:
+	//   1. When @ modifier points to time beyond the maxCacheTime.
+	//   2. If the @ modifier time is > the query range end while being
+	//      below maxCacheTime. In such cases if any tenant is intentionally
+	//      playing with old data, we could cache empty result if we look
+	//      beyond query end.
+	query := r.GetQuery()
+	if !strings.Contains(query, "@") {
+		return true
+	}
+	expr, err := parser.ParseExpr(query)
+	if err != nil {
+		// We are being pessimistic in such cases.
+		level.Warn(s.logger).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
+		return false
+	}
+
+	end := r.GetEnd()
+	atModCachable := true
+	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
+		switch e := n.(type) {
+		case *parser.VectorSelector:
+			if e.Timestamp != nil && (*e.Timestamp > end || *e.Timestamp > maxCacheTime) {
+				atModCachable = false
+				return errAtModifierAfterEnd
+			}
+		case *parser.MatrixSelector:
+			ts := e.VectorSelector.(*parser.VectorSelector).Timestamp
+			if ts != nil && (*ts > end || *ts > maxCacheTime) {
+				atModCachable = false
+				return errAtModifierAfterEnd
+			}
+		case *parser.SubqueryExpr:
+			if e.Timestamp != nil && (*e.Timestamp > end || *e.Timestamp > maxCacheTime) {
+				atModCachable = false
+				return errAtModifierAfterEnd
+			}
+		}
+		return nil
+	})
+
+	return atModCachable
+}
+
 func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
 	for _, hv := range r.GetHeaders() {
 		if hv.GetName() != headerName {
@@ -269,13 +324,13 @@ func getHeaderValuesWithName(r Response, headerName string) (headerValues []stri
 	return
 }
 
-func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Extent, error) {
+func (s resultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime int64) (Response, []Extent, error) {
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if !s.shouldCacheResponse(ctx, response) {
+	if !s.shouldCacheResponse(ctx, r, response, maxCacheTime) {
 		return response, []Extent{}, nil
 	}
 
@@ -290,7 +345,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 	return response, extents, nil
 }
 
-func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent) (Response, []Extent, error) {
+func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent, maxCacheTime int64) (Response, []Extent, error) {
 	var (
 		reqResps []RequestResponse
 		err      error
@@ -315,7 +370,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.Response)
-		if !s.shouldCacheResponse(ctx, reqResp.Response) {
+		if !s.shouldCacheResponse(ctx, r, reqResp.Response, maxCacheTime) {
 			continue
 		}
 		extent, err := toExtent(ctx, reqResp.Request, s.extractor.ResponseWithoutHeaders(reqResp.Response))

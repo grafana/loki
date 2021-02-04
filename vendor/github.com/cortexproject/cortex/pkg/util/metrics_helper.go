@@ -11,6 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Data for single value (counter/gauge) with labels.
@@ -583,7 +585,7 @@ func (r *UserRegistries) RemoveUserRegistry(user string, hard bool) {
 func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) bool {
 	last, err := ur.reg.Gather()
 	if err != nil {
-		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
 		return false
 	}
 
@@ -605,7 +607,7 @@ func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) bool {
 
 	ur.lastGather, err = NewMetricFamilyMap(last)
 	if err != nil {
-		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
 		return false
 	}
 
@@ -656,7 +658,7 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 		}
 
 		if err != nil {
-			level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", entry.user, "err", err)
+			level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", entry.user, "err", err)
 			continue
 		}
 	}

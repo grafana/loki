@@ -18,7 +18,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -215,7 +215,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		return m.SyncTables(ctx)
 	}); err != nil {
-		level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
+		level.Error(util_log.Logger).Log("msg", "error syncing tables", "err", err)
 	}
 
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
@@ -231,7 +231,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
 				return m.SyncTables(ctx)
 			}); err != nil {
-				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error syncing tables", "err", err)
 			}
 		case <-ctx.Done():
 			return nil
@@ -254,7 +254,7 @@ func (m *TableManager) checkAndCreateExtraTables() error {
 		for _, tableDesc := range extraTables.Tables {
 			if _, ok := existingTablesMap[tableDesc.Name]; !ok {
 				// creating table
-				level.Info(util.Logger).Log("msg", "creating extra table",
+				level.Info(util_log.Logger).Log("msg", "creating extra table",
 					"tableName", tableDesc.Name,
 					"provisionedRead", tableDesc.ProvisionedRead,
 					"provisionedWrite", tableDesc.ProvisionedWrite,
@@ -272,7 +272,7 @@ func (m *TableManager) checkAndCreateExtraTables() error {
 				continue
 			}
 
-			level.Info(util.Logger).Log("msg", "checking throughput of extra table", "table", tableDesc.Name)
+			level.Info(util_log.Logger).Log("msg", "checking throughput of extra table", "table", tableDesc.Name)
 			// table already exists, lets check actual throughput for tables is same as what is in configurations, if not let us update it
 			current, _, err := extraTables.TableClient.DescribeTable(context.Background(), tableDesc.Name)
 			if err != nil {
@@ -280,7 +280,7 @@ func (m *TableManager) checkAndCreateExtraTables() error {
 			}
 
 			if !current.Equals(tableDesc) {
-				level.Info(util.Logger).Log("msg", "updating throughput of extra table",
+				level.Info(util_log.Logger).Log("msg", "updating throughput of extra table",
 					"table", tableDesc.Name,
 					"tableName", tableDesc.Name,
 					"provisionedRead", tableDesc.ProvisionedRead,
@@ -305,7 +305,7 @@ func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
 
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
+		level.Error(util_log.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 	}
 
 	// don't return error, otherwise timer service would stop.
@@ -321,7 +321,7 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 	}
 
 	expected := m.calculateExpectedTables()
-	level.Info(util.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
+	level.Info(util_log.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
 
 	toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, expected)
 	if err != nil {
@@ -473,7 +473,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 	merr := tsdb_errors.NewMulti()
 
 	for _, desc := range descriptions {
-		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
+		level.Info(util_log.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
 			numFailures++
@@ -490,12 +490,12 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDes
 	merr := tsdb_errors.NewMulti()
 
 	for _, desc := range descriptions {
-		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
+		level.Info(util_log.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
 		if !m.cfg.RetentionDeletesEnabled {
 			continue
 		}
 
-		level.Info(util.Logger).Log("msg", "deleting table", "table", desc.Name)
+		level.Info(util_log.Logger).Log("msg", "deleting table", "table", desc.Name)
 		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
 			numFailures++
@@ -509,7 +509,7 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDes
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, expected := range descriptions {
-		level.Debug(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
+		level.Debug(util_log.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
 		current, isActive, err := m.client.DescribeTable(ctx, expected.Name)
 		if err != nil {
 			return err
@@ -523,12 +523,12 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 		}
 
 		if !isActive {
-			level.Info(util.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name)
+			level.Info(util_log.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name)
 			continue
 		}
 
 		if expected.Equals(current) {
-			level.Info(util.Logger).Log("msg", "provisioned throughput on table, skipping", "table", current.Name, "read", current.ProvisionedRead, "write", current.ProvisionedWrite)
+			level.Info(util_log.Logger).Log("msg", "provisioned throughput on table, skipping", "table", current.Name, "read", current.ProvisionedRead, "write", current.ProvisionedWrite)
 			continue
 		}
 

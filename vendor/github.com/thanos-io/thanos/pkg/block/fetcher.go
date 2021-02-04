@@ -35,6 +35,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
 
+const FetcherConcurrency = 32
+
 type fetcherMetrics struct {
 	syncs        prometheus.Counter
 	syncFailures prometheus.Counter
@@ -301,6 +303,7 @@ func (f *BaseFetcher) fetchMetadata(ctx context.Context) (interface{}, error) {
 		ch  = make(chan ulid.ULID, f.concurrency)
 		mtx sync.Mutex
 	)
+	level.Debug(f.logger).Log("msg", "fetching meta data", "concurrency", f.concurrency)
 	for i := 0; i < f.concurrency; i++ {
 		eg.Go(func() error {
 			for id := range ch {

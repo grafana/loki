@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -101,7 +101,7 @@ func TestPipeline_Regex(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			pl, err := NewPipeline(util.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
+			pl, err := NewPipeline(util_log.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -322,7 +322,7 @@ func TestRegexParser_Parse(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := New(util.Logger, nil, StageTypeRegex, tt.config, nil)
+			p, err := New(util_log.Logger, nil, StageTypeRegex, tt.config, nil)
 			if err != nil {
 				t.Fatalf("failed to create regex parser: %s", err)
 			}
@@ -361,7 +361,7 @@ func BenchmarkRegexStage(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			stage, err := New(util.Logger, nil, StageTypeRegex, bm.config, nil)
+			stage, err := New(util_log.Logger, nil, StageTypeRegex, bm.config, nil)
 			if err != nil {
 				panic(err)
 			}

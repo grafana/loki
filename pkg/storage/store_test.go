@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/stretchr/testify/assert"
 
@@ -219,7 +219,7 @@ func getLocalStore() Store {
 	chunkStore, err := storage.NewStore(
 		storeConfig.Config,
 		chunk.StoreConfig{},
-		schemaConfig.SchemaConfig, limits, nil, nil, cortex_util.Logger)
+		schemaConfig.SchemaConfig, limits, nil, nil, util_log.Logger)
 
 	if err != nil {
 		panic(err)
@@ -808,7 +808,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		limits,
 		nil,
 		nil,
-		cortex_util.Logger,
+		util_log.Logger,
 	)
 	require.NoError(t, err)
 	store, err := NewStore(config, schemaConfig, chunkStore, nil)
@@ -854,7 +854,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		limits,
 		nil,
 		nil,
-		cortex_util.Logger,
+		util_log.Logger,
 	)
 	require.NoError(t, err)
 

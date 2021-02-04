@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -244,11 +245,11 @@ type MultitenantAlertmanager struct {
 	// effect here.
 	fallbackConfig string
 
-	// All the organization configurations that we have. Only used for instrumentation.
-	cfgs map[string]alerts.AlertConfigDesc
-
 	alertmanagersMtx sync.Mutex
 	alertmanagers    map[string]*Alertmanager
+	// Stores the current set of configurations we're running in each tenant's Alertmanager.
+	// Used for comparing configurations as we synchronize them.
+	cfgs map[string]alerts.AlertConfigDesc
 
 	logger              log.Logger
 	alertmanagerMetrics *alertmanagerMetrics
@@ -522,7 +523,7 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 func (am *MultitenantAlertmanager) stopping(_ error) error {
 	am.alertmanagersMtx.Lock()
 	for _, am := range am.alertmanagers {
-		am.Stop()
+		am.StopAndWait()
 	}
 	am.alertmanagersMtx.Unlock()
 	if am.peer != nil { // Tests don't setup any peer.
@@ -604,17 +605,16 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 
 	am.alertmanagersMtx.Lock()
 	defer am.alertmanagersMtx.Unlock()
-	for user, userAM := range am.alertmanagers {
-		if _, exists := cfgs[user]; !exists {
-			// The user alertmanager is only paused in order to retain the prometheus metrics
-			// it has reported to its registry. If a new config for this user appears, this structure
-			// will be reused.
-			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", user)
-			userAM.Pause()
-			delete(am.cfgs, user)
-			am.multitenantMetrics.lastReloadSuccessful.DeleteLabelValues(user)
-			am.multitenantMetrics.lastReloadSuccessfulTimestamp.DeleteLabelValues(user)
-			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
+	for userID, userAM := range am.alertmanagers {
+		if _, exists := cfgs[userID]; !exists {
+			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", userID)
+			userAM.Stop()
+			delete(am.alertmanagers, userID)
+			delete(am.cfgs, userID)
+			am.multitenantMetrics.lastReloadSuccessful.DeleteLabelValues(userID)
+			am.multitenantMetrics.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
+			am.alertmanagerMetrics.removeUserRegistry(userID)
+			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", userID)
 		}
 	}
 }
@@ -622,9 +622,6 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
-	am.alertmanagersMtx.Lock()
-	existing, hasExisting := am.alertmanagers[cfg.User]
-	am.alertmanagersMtx.Unlock()
 	var userAmConfig *amconfig.Config
 	var err error
 	var hasTemplateChanges bool
@@ -641,6 +638,10 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 	}
 
 	level.Debug(am.logger).Log("msg", "setting config", "user", cfg.User)
+
+	am.alertmanagersMtx.Lock()
+	defer am.alertmanagersMtx.Unlock()
+	existing, hasExisting := am.alertmanagers[cfg.User]
 
 	rawCfg := cfg.RawConfig
 	if cfg.RawConfig == "" {
@@ -694,9 +695,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 		if err != nil {
 			return err
 		}
-		am.alertmanagersMtx.Lock()
 		am.alertmanagers[cfg.User] = newAM
-		am.alertmanagersMtx.Unlock()
 	} else if am.cfgs[cfg.User].RawConfig != cfg.RawConfig || hasTemplateChanges {
 		level.Info(am.logger).Log("msg", "updating new per-tenant alertmanager", "user", cfg.User)
 		// If the config changed, apply the new one.
@@ -714,7 +713,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	newAM, err := New(&Config{
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
-		Logger:      util.Logger,
+		Logger:      util_log.Logger,
 		Peer:        am.peer,
 		PeerTimeout: am.cfg.Cluster.PeerTimeout,
 		Retention:   am.cfg.Retention,
@@ -749,11 +748,6 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Unlock()
 
 	if ok {
-		if !userAM.IsActive() {
-			level.Debug(am.logger).Log("msg", "the Alertmanager is not active", "user", userID)
-			http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
-			return
-		}
 
 		userAM.mux.ServeHTTP(w, req)
 		return

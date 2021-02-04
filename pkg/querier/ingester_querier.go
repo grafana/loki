@@ -9,7 +9,7 @@ import (
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -48,7 +48,7 @@ func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryD
 func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory) (*IngesterQuerier, error) {
 	iq := IngesterQuerier{
 		ring:            ring,
-		pool:            cortex_distributor.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
+		pool:            cortex_distributor.NewPool(clientCfg.PoolConfig, ring, clientFactory, util_log.Logger),
 		extraQueryDelay: extraQueryDelay,
 	}
 
@@ -74,7 +74,7 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(logproto.Q
 // forGivenIngesters runs f, in parallel, for given ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.IngesterDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.InstanceDesc) (interface{}, error) {
 		client, err := q.pool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err
@@ -175,7 +175,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	}
 
 	// Look for disconnected ingesters or new one we should (re)connect to
-	reconnectIngesters := []ring.IngesterDesc{}
+	reconnectIngesters := []ring.InstanceDesc{}
 
 	for _, ingester := range replicationSet.Ingesters {
 		if _, ok := connected[ingester.Addr]; ok {
@@ -232,7 +232,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 	}
 
 	// we want to check count of active tailers with only active ingesters
-	ingesters := make([]ring.IngesterDesc, 0, 1)
+	ingesters := make([]ring.InstanceDesc, 0, 1)
 	for i := range replicationSet.Ingesters {
 		if replicationSet.Ingesters[i].State == ring.ACTIVE {
 			ingesters = append(ingesters, replicationSet.Ingesters[i])

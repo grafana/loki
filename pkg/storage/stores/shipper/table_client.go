@@ -8,7 +8,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
@@ -54,7 +54,7 @@ func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, name string)
 	}
 
 	if len(dirs) != 0 {
-		level.Error(cortex_util.Logger).Log("msg", fmt.Sprintf("unexpected directories in %s folder, not touching them", name), "directories", fmt.Sprint(dirs))
+		level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected directories in %s folder, not touching them", name), "directories", fmt.Sprint(dirs))
 	}
 
 	for _, object := range objects {

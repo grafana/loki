@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -52,7 +53,7 @@ func (s *blocksStoreBalancedSet) starting(ctx context.Context) error {
 
 func (s *blocksStoreBalancedSet) resolve(ctx context.Context) error {
 	if err := s.dnsProvider.Resolve(ctx, s.serviceAddresses); err != nil {
-		level.Error(util.Logger).Log("msg", "failed to resolve store-gateway addresses", "err", err, "addresses", s.serviceAddresses)
+		level.Error(util_log.Logger).Log("msg", "failed to resolve store-gateway addresses", "err", err, "addresses", s.serviceAddresses)
 	}
 	return nil
 }

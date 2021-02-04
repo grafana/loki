@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -118,7 +118,7 @@ func (om *Manager) CloseListenerChannel(listener <-chan interface{}) {
 
 func (om *Manager) loop(ctx context.Context) error {
 	if om.cfg.LoadPath == "" {
-		level.Info(util.Logger).Log("msg", "runtime config disabled: file not specified")
+		level.Info(util_log.Logger).Log("msg", "runtime config disabled: file not specified")
 		<-ctx.Done()
 		return nil
 	}
@@ -132,7 +132,7 @@ func (om *Manager) loop(ctx context.Context) error {
 			err := om.loadConfig()
 			if err != nil {
 				// Log but don't stop on error - we don't want to halt all ingesters because of a typo
-				level.Error(util.Logger).Log("msg", "failed to load config", "err", err)
+				level.Error(util_log.Logger).Log("msg", "failed to load config", "err", err)
 			}
 		case <-ctx.Done():
 			return nil

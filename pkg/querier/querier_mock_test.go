@@ -287,7 +287,7 @@ type readRingMock struct {
 	replicationSet ring.ReplicationSet
 }
 
-func newReadRingMock(ingesters []ring.IngesterDesc) *readRingMock {
+func newReadRingMock(ingesters []ring.InstanceDesc) *readRingMock {
 	return &readRingMock{
 		replicationSet: ring.ReplicationSet{
 			Ingesters: ingesters,
@@ -302,7 +302,7 @@ func (r *readRingMock) Describe(ch chan<- *prometheus.Desc) {
 func (r *readRingMock) Collect(ch chan<- prometheus.Metric) {
 }
 
-func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
+func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
@@ -352,13 +352,13 @@ func (r *readRingMock) ShuffleShardWithLookback(identifier string, size int, loo
 }
 
 func mockReadRingWithOneActiveIngester() *readRingMock {
-	return newReadRingMock([]ring.IngesterDesc{
+	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
 	})
 }
 
-func mockIngesterDesc(addr string, state ring.IngesterState) ring.IngesterDesc {
-	return ring.IngesterDesc{
+func mockInstanceDesc(addr string, state ring.IngesterState) ring.InstanceDesc {
+	return ring.InstanceDesc{
 		Addr:      addr,
 		Timestamp: time.Now().UnixNano(),
 		State:     state,

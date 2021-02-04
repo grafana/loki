@@ -6,7 +6,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/hashicorp/memberlist"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // ringBroadcast implements memberlist.Broadcast interface, which is used by memberlist.TransmitLimitedQueue.
@@ -45,7 +45,7 @@ func (r ringBroadcast) Invalidates(old memberlist.Broadcast) bool {
 		// otherwise, we may be invalidating some older messages, which however covered different
 		// ingesters
 		if r.version >= oldb.version {
-			level.Debug(util.Logger).Log("msg", "Invalidating forwarded broadcast", "key", r.key, "version", r.version, "oldVersion", oldb.version, "content", fmt.Sprintf("%v", r.content), "oldContent", fmt.Sprintf("%v", oldb.content))
+			level.Debug(util_log.Logger).Log("msg", "Invalidating forwarded broadcast", "key", r.key, "version", r.version, "oldVersion", oldb.version, "content", fmt.Sprintf("%v", r.content), "oldContent", fmt.Sprintf("%v", oldb.content))
 			return true
 		}
 	}

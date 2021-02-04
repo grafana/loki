@@ -540,7 +540,7 @@ func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQ
 		return true
 	})
 	if err != nil {
-		level.Error(util_log.WithContext(ctx, util.Logger)).Log("msg", "error querying storage", "err", err)
+		level.Error(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "error querying storage", "err", err)
 	}
 	return entries, err
 }

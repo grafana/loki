@@ -3,7 +3,7 @@ package promtail
 import (
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -48,7 +48,7 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 	// Initialize promtail with some defaults and allow the options to override
 	// them.
 	promtail := &Promtail{
-		logger: util.Logger,
+		logger: util_log.Logger,
 		reg:    prometheus.DefaultRegisterer,
 	}
 	for _, o := range opts {

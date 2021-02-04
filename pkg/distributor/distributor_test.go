@@ -294,7 +294,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory
 		replicationFactor: 3,
 	}
 	for addr := range ingesters {
-		ingestersRing.ingesters = append(ingestersRing.ingesters, ring.IngesterDesc{
+		ingestersRing.ingesters = append(ingestersRing.ingesters, ring.InstanceDesc{
 			Addr: addr,
 		})
 	}
@@ -363,11 +363,11 @@ func (i *mockIngester) Close() error {
 // ingesters.
 type mockRing struct {
 	prometheus.Counter
-	ingesters         []ring.IngesterDesc
+	ingesters         []ring.InstanceDesc
 	replicationFactor uint32
 }
 
-func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
+func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	result := ring.ReplicationSet{
 		MaxErrors: 1,
 		Ingesters: buf[:0],

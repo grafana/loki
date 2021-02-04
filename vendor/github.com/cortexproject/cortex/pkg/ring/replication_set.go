@@ -9,7 +9,7 @@ import (
 // ReplicationSet describes the ingesters to talk to for a given key, and how
 // many errors to tolerate.
 type ReplicationSet struct {
-	Ingesters []IngesterDesc
+	Ingesters []InstanceDesc
 
 	// Maximum number of tolerated failing instances. Max errors and max unavailable zones are
 	// mutually exclusive.
@@ -22,11 +22,11 @@ type ReplicationSet struct {
 
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise.
-func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *IngesterDesc) (interface{}, error)) ([]interface{}, error) {
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
 	type instanceResult struct {
 		res      interface{}
 		err      error
-		instance *IngesterDesc
+		instance *InstanceDesc
 	}
 
 	// Initialise the result tracker, which is use to keep track of successes and failures.
@@ -46,7 +46,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 
 	// Spawn a goroutine for each instance.
 	for i := range r.Ingesters {
-		go func(i int, ing *IngesterDesc) {
+		go func(i int, ing *InstanceDesc) {
 			// Wait to send extra requests. Works only when zone-awareness is disabled.
 			if delay > 0 && r.MaxUnavailableZones == 0 && i >= len(r.Ingesters)-r.MaxErrors {
 				after := time.NewTimer(delay)

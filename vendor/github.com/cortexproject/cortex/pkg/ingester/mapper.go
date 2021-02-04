@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const maxMappedFP = 1 << 20 // About 1M fingerprints reserved for mapping.
@@ -105,7 +105,7 @@ func (m *fpMapper) maybeAddMapping(
 		// A new mapping has to be created.
 		mappedFP = m.nextMappedFP()
 		mappedFPs[ms] = mappedFP
-		level.Debug(util.Logger).Log(
+		level.Debug(util_log.Logger).Log(
 			"msg", "fingerprint collision detected, mapping to new fingerprint",
 			"old_fp", fp,
 			"new_fp", mappedFP,
@@ -119,7 +119,7 @@ func (m *fpMapper) maybeAddMapping(
 	m.mtx.Lock()
 	m.mappings[fp] = mappedFPs
 	m.mtx.Unlock()
-	level.Debug(util.Logger).Log(
+	level.Debug(util_log.Logger).Log(
 		"msg", "fingerprint collision detected, mapping to new fingerprint",
 		"old_fp", fp,
 		"new_fp", mappedFP,

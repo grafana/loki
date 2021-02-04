@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -88,7 +88,7 @@ func loadConfig(yml string) PipelineStages {
 
 func TestNewPipeline(t *testing.T) {
 
-	p, err := NewPipeline(util.Logger, loadConfig(testMultiStageYaml), nil, prometheus.DefaultRegisterer)
+	p, err := NewPipeline(util_log.Logger, loadConfig(testMultiStageYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		panic(err)
 	}
@@ -200,7 +200,7 @@ func TestPipeline_Process(t *testing.T) {
 			err := yaml.Unmarshal([]byte(tt.config), &config)
 			require.NoError(t, err)
 
-			p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
+			p, err := NewPipeline(util_log.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 
 			out := processEntries(p, newEntry(nil, tt.initialLabels, tt.entry, tt.t))[0]
@@ -273,7 +273,7 @@ func TestPipeline_Wrap(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
+	p, err := NewPipeline(util_log.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		panic(err)
 	}

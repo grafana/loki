@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -329,13 +329,13 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	// Checkpoint is named after the last WAL segment present so that when replaying the WAL
 	// we can start from that particular WAL segment.
 	checkpointDir := filepath.Join(w.segmentWAL.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", lastSegment))
-	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
+	level.Info(util_log.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
 	checkpointDirTemp := checkpointDir + ".tmp"
 
 	// cleanup any old partial checkpoints
 	if _, err := os.Stat(checkpointDirTemp); err == nil {
 		if err := os.RemoveAll(checkpointDirTemp); err != nil {
-			level.Error(util.Logger).Log("msg", "unable to cleanup old tmp checkpoint", "dir", checkpointDirTemp)
+			level.Error(util_log.Logger).Log("msg", "unable to cleanup old tmp checkpoint", "dir", checkpointDirTemp)
 			return false, err
 		}
 	}
@@ -344,7 +344,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 		return false, errors.Wrap(err, "create checkpoint dir")
 	}
 
-	checkpoint, err := wal.NewSize(log.With(util.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, false)
+	checkpoint, err := wal.NewSize(log.With(util_log.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, false)
 	if err != nil {
 		return false, errors.Wrap(err, "open checkpoint")
 	}
@@ -370,7 +370,7 @@ func (w *WALCheckpointWriter) Write(s *Series) error {
 
 	w.recs = append(w.recs, b)
 	w.bufSize += len(b)
-	level.Debug(util.Logger).Log("msg", "writing series", "size", humanize.Bytes(uint64(len(b))))
+	level.Debug(util_log.Logger).Log("msg", "writing series", "size", humanize.Bytes(uint64(len(b))))
 
 	// 1MB
 	if w.bufSize > 1<<20 {
@@ -382,7 +382,7 @@ func (w *WALCheckpointWriter) Write(s *Series) error {
 }
 
 func (w *WALCheckpointWriter) flush() error {
-	level.Debug(util.Logger).Log("msg", "flushing series", "totalSize", humanize.Bytes(uint64(w.bufSize)), "series", len(w.recs))
+	level.Debug(util_log.Logger).Log("msg", "flushing series", "totalSize", humanize.Bytes(uint64(w.bufSize)), "series", len(w.recs))
 	if err := w.checkpointWAL.Log(w.recs...); err != nil {
 		return err
 	}
@@ -491,21 +491,21 @@ func (w *WALCheckpointWriter) Close(abort bool) error {
 	if err := fileutil.Replace(w.checkpointWAL.Dir(), w.final); err != nil {
 		return errors.Wrap(err, "rename checkpoint directory")
 	}
-	level.Info(util.Logger).Log("msg", "atomic checkpoint finished", "old", w.checkpointWAL.Dir(), "new", w.final)
+	level.Info(util_log.Logger).Log("msg", "atomic checkpoint finished", "old", w.checkpointWAL.Dir(), "new", w.final)
 	// We delete the WAL segments which are before the previous checkpoint and not before the
 	// current checkpoint created. This is because if the latest checkpoint is corrupted for any reason, we
 	// should be able to recover from the older checkpoint which would need the older WAL segments.
 	if err := w.segmentWAL.Truncate(w.lastSegment + 1); err != nil {
 		// It is fine to have old WAL segments hanging around if deletion failed.
 		// We can try again next time.
-		level.Error(util.Logger).Log("msg", "error deleting old WAL segments", "err", err, "lastSegment", w.lastSegment)
+		level.Error(util_log.Logger).Log("msg", "error deleting old WAL segments", "err", err, "lastSegment", w.lastSegment)
 	}
 
 	if w.lastSegment >= 0 {
 		if err := w.deleteCheckpoints(w.lastSegment); err != nil {
 			// It is fine to have old checkpoints hanging around if deletion failed.
 			// We can try again next time.
-			level.Error(util.Logger).Log("msg", "error deleting old checkpoint", "err", err)
+			level.Error(util_log.Logger).Log("msg", "error deleting old checkpoint", "err", err)
 		}
 	}
 
@@ -562,7 +562,7 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	start := time.Now()
 	defer func() {
 		elapsed := time.Since(start)
-		level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
+		level.Info(util_log.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 		c.metrics.checkpointDuration.Observe(elapsed.Seconds())
 	}()
 
@@ -604,9 +604,9 @@ func (c *Checkpointer) Run() {
 	for {
 		select {
 		case <-ticker.C:
-			level.Info(util.Logger).Log("msg", "starting checkpoint")
+			level.Info(util_log.Logger).Log("msg", "starting checkpoint")
 			if err := c.PerformCheckpoint(); err != nil {
-				level.Error(util.Logger).Log("msg", "error checkpointing series", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error checkpointing series", "err", err)
 				continue
 			}
 		case <-c.quit:

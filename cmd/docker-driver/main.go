@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -29,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 	logger := newLogger(logLevel)
-	level.Info(util.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
+	level.Info(util_log.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
 
 	h := sdk.NewHandler(`{"Implements": ["LoggingDriver"]}`)
 

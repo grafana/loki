@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 )
@@ -151,7 +151,7 @@ func Test_ReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := New(util.Logger, Config{
+	p, err := New(util_log.Logger, Config{
 		SyncPeriod:    20 * time.Nanosecond,
 		PositionsFile: temp,
 		ReadOnly:      true,

@@ -26,7 +26,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // WALConfig is config for the Write Ahead Log.
@@ -109,7 +109,7 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 	if registerer != nil {
 		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, registerer)
 	}
-	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize/4, false)
+	tsdbWAL, err := wal.NewSize(util_log.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize/4, false)
 	if err != nil {
 		return nil, err
 	}
@@ -219,19 +219,19 @@ func (w *walWrapper) run() {
 		select {
 		case <-ticker.C:
 			start := time.Now()
-			level.Info(util.Logger).Log("msg", "starting checkpoint")
+			level.Info(util_log.Logger).Log("msg", "starting checkpoint")
 			if err := w.performCheckpoint(false); err != nil {
-				level.Error(util.Logger).Log("msg", "error checkpointing series", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error checkpointing series", "err", err)
 				continue
 			}
 			elapsed := time.Since(start)
-			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
+			level.Info(util_log.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 			w.checkpointDuration.Observe(elapsed.Seconds())
 		case <-w.quit:
 			if w.cfg.checkpointDuringShutdown {
-				level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
+				level.Info(util_log.Logger).Log("msg", "creating checkpoint before shutdown")
 				if err := w.performCheckpoint(true); err != nil {
-					level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
+					level.Error(util_log.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
 				}
 			}
 			return
@@ -292,7 +292,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	// Checkpoint is named after the last WAL segment present so that when replaying the WAL
 	// we can start from that particular WAL segment.
 	checkpointDir := filepath.Join(w.wal.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", lastSegment))
-	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
+	level.Info(util_log.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
 	checkpointDirTemp := checkpointDir + ".tmp"
 
 	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
@@ -389,14 +389,14 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	if err := w.wal.Truncate(lastCh); err != nil {
 		// It is fine to have old WAL segments hanging around if deletion failed.
 		// We can try again next time.
-		level.Error(util.Logger).Log("msg", "error deleting old WAL segments", "err", err)
+		level.Error(util_log.Logger).Log("msg", "error deleting old WAL segments", "err", err)
 	}
 
 	if lastCh >= 0 {
 		if err := w.deleteCheckpoints(lastCh); err != nil {
 			// It is fine to have old checkpoints hanging around if deletion failed.
 			// We can try again next time.
-			level.Error(util.Logger).Log("msg", "error deleting old checkpoint", "err", err)
+			level.Error(util_log.Logger).Log("msg", "error deleting old checkpoint", "err", err)
 		}
 	}
 
@@ -520,17 +520,17 @@ func recoverFromWAL(ingester *Ingester) error {
 		params.seriesCache[i] = make(map[string]map[uint64]*memorySeries)
 	}
 
-	level.Info(util.Logger).Log("msg", "recovering from checkpoint")
+	level.Info(util_log.Logger).Log("msg", "recovering from checkpoint")
 	start := time.Now()
 	userStates, idx, err := processCheckpointWithRepair(params)
 	if err != nil {
 		return err
 	}
 	elapsed := time.Since(start)
-	level.Info(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String())
+	level.Info(util_log.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String())
 
 	if segExists, err := segmentsExist(params.walDir); err == nil && !segExists {
-		level.Info(util.Logger).Log("msg", "no segments found, skipping recover from segments")
+		level.Info(util_log.Logger).Log("msg", "no segments found, skipping recover from segments")
 		ingester.userStatesMtx.Lock()
 		ingester.userStates = userStates
 		ingester.userStatesMtx.Unlock()
@@ -539,13 +539,13 @@ func recoverFromWAL(ingester *Ingester) error {
 		return err
 	}
 
-	level.Info(util.Logger).Log("msg", "recovering from WAL", "dir", params.walDir, "start_segment", idx)
+	level.Info(util_log.Logger).Log("msg", "recovering from WAL", "dir", params.walDir, "start_segment", idx)
 	start = time.Now()
 	if err := processWALWithRepair(idx, userStates, params); err != nil {
 		return err
 	}
 	elapsed = time.Since(start)
-	level.Info(util.Logger).Log("msg", "recovered from WAL", "time", elapsed.String())
+	level.Info(util_log.Logger).Log("msg", "recovered from WAL", "time", elapsed.String())
 
 	ingester.userStatesMtx.Lock()
 	ingester.userStates = userStates
@@ -563,11 +563,11 @@ func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int
 		return nil, -1, err
 	}
 	if idx < 0 {
-		level.Info(util.Logger).Log("msg", "no checkpoint found")
+		level.Info(util_log.Logger).Log("msg", "no checkpoint found")
 		return userStates, -1, nil
 	}
 
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("recovering from %s", lastCheckpointDir))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("recovering from %s", lastCheckpointDir))
 
 	err = processCheckpoint(lastCheckpointDir, userStates, params)
 	if err == nil {
@@ -577,7 +577,7 @@ func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int
 	// We don't call repair on checkpoint as losing even a single record is like losing the entire data of a series.
 	// We try recovering from the older checkpoint instead.
 	params.ingester.metrics.walCorruptionsTotal.Inc()
-	level.Error(util.Logger).Log("msg", "checkpoint recovery failed, deleting this checkpoint and trying to recover from old checkpoint", "err", err)
+	level.Error(util_log.Logger).Log("msg", "checkpoint recovery failed, deleting this checkpoint and trying to recover from old checkpoint", "err", err)
 
 	// Deleting this checkpoint to try the previous checkpoint.
 	if err := os.RemoveAll(lastCheckpointDir); err != nil {
@@ -599,7 +599,7 @@ func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int
 		return userStates, -1, nil
 	}
 
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("attempting recovery from %s", lastCheckpointDir))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("attempting recovery from %s", lastCheckpointDir))
 	if err := processCheckpoint(lastCheckpointDir, userStates, params); err != nil {
 		// We won't attempt the repair again even if its the old checkpoint.
 		params.ingester.metrics.walCorruptionsTotal.Inc()
@@ -782,18 +782,18 @@ func processWALWithRepair(startSegment int, userStates *userStates, params walRe
 	}
 
 	params.ingester.metrics.walCorruptionsTotal.Inc()
-	level.Error(util.Logger).Log("msg", "error in replaying from WAL", "err", corruptErr)
+	level.Error(util_log.Logger).Log("msg", "error in replaying from WAL", "err", corruptErr)
 
 	// Attempt repair.
-	level.Info(util.Logger).Log("msg", "attempting repair of the WAL")
-	w, err := wal.New(util.Logger, nil, params.walDir, true)
+	level.Info(util_log.Logger).Log("msg", "attempting repair of the WAL")
+	w, err := wal.New(util_log.Logger, nil, params.walDir, true)
 	if err != nil {
 		return err
 	}
 
 	err = w.Repair(corruptErr)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error in repairing WAL", "err", err)
+		level.Error(util_log.Logger).Log("msg", "error in repairing WAL", "err", err)
 	}
 
 	return tsdb_errors.NewMulti(err, w.Close()).Err()
@@ -970,7 +970,7 @@ func processWALSamples(userStates *userStates, stateCache map[string]*userState,
 					// If the series was not created in recovering checkpoint or
 					// from the labels of any records previous to this, there
 					// is no way to get the labels for this fingerprint.
-					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(samples.samples[i].Ref).String())
+					level.Warn(util_log.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(samples.samples[i].Ref).String())
 					continue
 				}
 			}

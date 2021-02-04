@@ -154,6 +154,12 @@ func (m *alertmanagerMetrics) addUserRegistry(user string, reg *prometheus.Regis
 	m.regs.AddUserRegistry(user, reg)
 }
 
+func (m *alertmanagerMetrics) removeUserRegistry(user string) {
+	// We neeed to go for a soft deletion here, as hard deletion requires
+	// that _all_ metrics except gauges are per-user.
+	m.regs.RemoveUserRegistry(user, false)
+}
+
 func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.alertsReceived
 	out <- m.alertsInvalid

@@ -18,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -74,7 +74,7 @@ func getStore() (lstore.Store, error) {
 		&validation.Overrides{},
 		prometheus.DefaultRegisterer,
 		nil,
-		cortex_util.Logger,
+		util_log.Logger,
 	)
 	if err != nil {
 		return nil, err

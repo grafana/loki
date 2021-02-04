@@ -62,7 +62,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 	userID, _ := user.ExtractOrgID(r.Context())
-	logger := util_log.WithContext(r.Context(), util.Logger)
+	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	body := lokiutil.NewSizeReader(r.Body)
 	contentType := r.Header.Get(contentType)
 	var req logproto.PushRequest

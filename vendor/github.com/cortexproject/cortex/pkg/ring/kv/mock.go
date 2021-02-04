@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // The mockClient does not anything.
@@ -13,7 +13,7 @@ import (
 type mockClient struct{}
 
 func buildMockClient() (Client, error) {
-	level.Warn(util.Logger).Log("msg", "created mockClient for testing only")
+	level.Warn(util_log.Logger).Log("msg", "created mockClient for testing only")
 	return mockClient{}, nil
 }
 

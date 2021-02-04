@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
@@ -22,7 +22,7 @@ func LogConfig(cfg interface{}) error {
 	cfgStr := string(lc)
 	cfgStrs := strings.Split(cfgStr, "\n")
 	for i := len(cfgStrs) - 1; i >= 0; i-- {
-		level.Info(util.Logger).Log("type", "config", "msg", cfgStrs[i])
+		level.Info(util_log.Logger).Log("type", "config", "msg", cfgStrs[i])
 	}
 	return nil
 }

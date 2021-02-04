@@ -7,7 +7,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/server"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -47,7 +47,7 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 
 		// if not closed yet, wait until server stops.
 		<-serverDone
-		level.Info(util.Logger).Log("msg", "server stopped")
+		level.Info(util_log.Logger).Log("msg", "server stopped")
 		return nil
 	}
 

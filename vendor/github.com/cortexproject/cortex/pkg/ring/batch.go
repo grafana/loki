@@ -16,7 +16,7 @@ type batchTracker struct {
 }
 
 type instance struct {
-	desc         IngesterDesc
+	desc         InstanceDesc
 	itemTrackers []*itemTracker
 	indexes      []int
 }
@@ -38,7 +38,7 @@ type itemTracker struct {
 // to send to that instance.
 //
 // Not implemented as a method on Ring so we can test separately.
-func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(IngesterDesc, []int) error, cleanup func()) error {
+func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(InstanceDesc, []int) error, cleanup func()) error {
 	if r.InstancesCount() <= 0 {
 		return fmt.Errorf("DoBatch: InstancesCount <= 0")
 	}
@@ -47,7 +47,7 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 	instances := make(map[string]instance, r.InstancesCount())
 
 	var (
-		bufDescs [GetBufferSize]IngesterDesc
+		bufDescs [GetBufferSize]InstanceDesc
 		bufHosts [GetBufferSize]string
 		bufZones [GetBufferSize]string
 	)

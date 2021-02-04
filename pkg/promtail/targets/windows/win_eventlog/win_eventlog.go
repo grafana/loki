@@ -32,7 +32,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/plugins/inputs"
@@ -365,7 +365,7 @@ func EvtSubscribe(logName, xquery string) (EvtHandle, error) {
 	if err != nil {
 		return 0, err
 	}
-	level.Debug(util.Logger).Log("msg", "Subcribed with handle id", "id", subsHandle)
+	level.Debug(util_log.Logger).Log("msg", "Subcribed with handle id", "id", subsHandle)
 
 	return subsHandle, nil
 }
@@ -394,7 +394,7 @@ func EvtSubscribeWithBookmark(logName, xquery string, bookMark EvtHandle) (EvtHa
 	if err != nil {
 		return 0, err
 	}
-	level.Debug(util.Logger).Log("msg", "Subcribed with handle id", "id", subsHandle)
+	level.Debug(util_log.Logger).Log("msg", "Subcribed with handle id", "id", subsHandle)
 
 	return subsHandle, nil
 }

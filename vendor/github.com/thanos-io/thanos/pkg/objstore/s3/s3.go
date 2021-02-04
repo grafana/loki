@@ -51,6 +51,11 @@ var DefaultConfig = Config{
 	HTTPConfig: HTTPConfig{
 		IdleConnTimeout:       model.Duration(90 * time.Second),
 		ResponseHeaderTimeout: model.Duration(2 * time.Minute),
+		TLSHandshakeTimeout:   model.Duration(10 * time.Second),
+		ExpectContinueTimeout: model.Duration(1 * time.Second),
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		MaxConnsPerHost:       0,
 	},
 	// Minimum file size after which an HTTP multipart request should be used to upload objects to storage.
 	// Set to 128 MiB as in the minio client.
@@ -94,6 +99,12 @@ type HTTPConfig struct {
 	ResponseHeaderTimeout model.Duration `yaml:"response_header_timeout"`
 	InsecureSkipVerify    bool           `yaml:"insecure_skip_verify"`
 
+	TLSHandshakeTimeout   model.Duration `yaml:"tls_handshake_timeout"`
+	ExpectContinueTimeout model.Duration `yaml:"expect_continue_timeout"`
+	MaxIdleConns          int            `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost   int            `yaml:"max_idle_conns_per_host"`
+	MaxConnsPerHost       int            `yaml:"max_conns_per_host"`
+
 	// Allow upstream callers to inject a round tripper
 	Transport http.RoundTripper `yaml:"-"`
 }
@@ -111,11 +122,12 @@ func DefaultTransport(config Config) *http.Transport {
 			DualStack: true,
 		}).DialContext,
 
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
+		MaxIdleConns:          config.HTTPConfig.MaxIdleConns,
+		MaxIdleConnsPerHost:   config.HTTPConfig.MaxIdleConnsPerHost,
 		IdleConnTimeout:       time.Duration(config.HTTPConfig.IdleConnTimeout),
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+		MaxConnsPerHost:       config.HTTPConfig.MaxConnsPerHost,
+		TLSHandshakeTimeout:   time.Duration(config.HTTPConfig.TLSHandshakeTimeout),
+		ExpectContinueTimeout: time.Duration(config.HTTPConfig.ExpectContinueTimeout),
 		// A custom ResponseHeaderTimeout was introduced
 		// to cover cases where the tcp connection works but
 		// the server never answers. Defaults to 2 minutes.

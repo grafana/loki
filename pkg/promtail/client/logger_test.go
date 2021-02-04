@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	cortexflag "github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -16,10 +16,10 @@ import (
 )
 
 func TestNewLogger(t *testing.T) {
-	_, err := NewLogger(nil, util.Logger, flagext.LabelSet{}, []Config{}...)
+	_, err := NewLogger(nil, util_log.Logger, flagext.LabelSet{}, []Config{}...)
 	require.Error(t, err)
 
-	l, err := NewLogger(nil, util.Logger, flagext.LabelSet{}, []Config{{URL: cortexflag.URLValue{URL: &url.URL{Host: "string"}}}}...)
+	l, err := NewLogger(nil, util_log.Logger, flagext.LabelSet{}, []Config{{URL: cortexflag.URLValue{URL: &url.URL{Host: "string"}}}}...)
 	require.NoError(t, err)
 	l.Chan() <- api.Entry{Labels: model.LabelSet{"foo": "bar"}, Entry: logproto.Entry{Timestamp: time.Now(), Line: "entry"}}
 	l.Stop()

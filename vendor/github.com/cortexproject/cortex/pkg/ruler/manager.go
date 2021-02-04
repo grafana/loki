@@ -171,8 +171,7 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	reg := prometheus.NewRegistry()
 	r.userManagerMetrics.AddUserRegistry(userID, reg)
 
-	logger := log.With(r.logger, "user", userID)
-	return r.managerFactory(ctx, userID, notifier, logger, reg), nil
+	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
 }
 
 func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {

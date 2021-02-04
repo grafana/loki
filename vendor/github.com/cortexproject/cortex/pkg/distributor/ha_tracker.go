@@ -21,7 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -155,7 +155,7 @@ func newClusterTracker(cfg HATrackerConfig, limits haTrackerLimits, reg promethe
 	}
 
 	t := &haTracker{
-		logger:              util.Logger,
+		logger:              util_log.Logger,
 		cfg:                 cfg,
 		updateTimeoutJitter: jitter,
 		limits:              limits,
@@ -259,7 +259,7 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 		// The callback within checkKVStore will return a replicasNotMatchError if the sample is being deduped,
 		// otherwise there may have been an actual error CAS'ing that we should log.
 		if !errors.Is(err, replicasNotMatchError{}) {
-			level.Error(util.Logger).Log("msg", "rejecting sample", "err", err)
+			level.Error(util_log.Logger).Log("msg", "rejecting sample", "err", err)
 		}
 	}
 	return err

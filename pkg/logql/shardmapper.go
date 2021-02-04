@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -271,7 +271,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 	default:
 		// this should not be reachable. If an operation is shardable it should
 		// have an optimization listed.
-		level.Warn(util.Logger).Log(
+		level.Warn(util_log.Logger).Log(
 			"msg", "unexpected operation which appears shardable, ignoring",
 			"operation", expr.operation,
 		)

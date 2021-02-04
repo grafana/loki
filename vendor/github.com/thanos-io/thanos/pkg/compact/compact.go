@@ -450,7 +450,7 @@ func (cg *Group) Resolution() int64 {
 
 // Planner returns blocks to compact.
 type Planner interface {
-	// Plan returns a block directories of blocks that should be compacted into single one.
+	// Plan returns a list of blocks that should be compacted into single one.
 	// The blocks can be overlapping. The provided metadata has to be ordered by minTime.
 	Plan(ctx context.Context, metasByMinTime []*metadata.Meta) ([]*metadata.Meta, error)
 }

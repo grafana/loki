@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/imdario/mergo"
@@ -81,7 +81,7 @@ func (t *PushTarget) run() error {
 	// We don't want the /debug and /metrics endpoints running
 	t.config.Server.RegisterInstrumentation = false
 
-	cortex_util.InitLogger(&t.config.Server)
+	util_log.InitLogger(&t.config.Server)
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {

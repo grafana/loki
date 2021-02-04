@@ -49,7 +49,7 @@ type ReadRing interface {
 	// Get returns n (or more) instances which form the replicas for the given key.
 	// bufDescs, bufHosts and bufZones are slices to be overwritten for the return value
 	// to avoid memory allocation; can be nil, or created with ring.MakeBuffersForGet().
-	Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, bufZones []string) (ReplicationSet, error)
+	Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error)
 
 	// GetAllHealthy returns all healthy instances in the ring, for the given operation.
 	// This function doesn't check if the quorum is honored, so doesn't fail if the number
@@ -304,7 +304,7 @@ func (r *Ring) loop(ctx context.Context) error {
 }
 
 // Get returns n (or more) instances which form the replicas for the given key.
-func (r *Ring) Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
+func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if r.ringDesc == nil || len(r.ringTokens) == 0 {
@@ -380,7 +380,7 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	}
 
 	now := time.Now()
-	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	instances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 	for _, instance := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&instance, op, now) {
 			instances = append(instances, instance)
@@ -403,7 +403,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 
 	// Build the initial replication set, excluding unhealthy instances.
-	healthyInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	healthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]struct{})
 	now := time.Now()
 
@@ -438,7 +438,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 			// enabled (data is replicated to RF different zones), there's no benefit in
 			// querying healthy instances from "failing zones". A zone is considered
 			// failed if there is single error.
-			filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+			filteredInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 			for _, instance := range healthyInstances {
 				if _, ok := zoneFailures[instance.Zone]; !ok {
 					filteredInstances = append(filteredInstances, instance)
@@ -648,7 +648,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		actualZones = []string{""}
 	}
 
-	shard := make(map[string]IngesterDesc, size)
+	shard := make(map[string]InstanceDesc, size)
 
 	// We need to iterate zones always in the same order to guarantee stability.
 	for _, zone := range actualZones {

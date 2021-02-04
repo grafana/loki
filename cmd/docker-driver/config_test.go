@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -117,7 +117,7 @@ func Test_parsePipeline(t *testing.T) {
 
 			// all configs are supposed to be valid
 			name := "foo"
-			_, err = stages.NewPipeline(util.Logger, got.PipelineStages, &name, prometheus.DefaultRegisterer)
+			_, err = stages.NewPipeline(util_log.Logger, got.PipelineStages, &name, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Error(err)
 			}

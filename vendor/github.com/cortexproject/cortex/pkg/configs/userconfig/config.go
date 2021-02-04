@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 
 	legacy_promql "github.com/cortexproject/cortex/pkg/configs/legacy_promql"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // An ID is the ID of a single users's Cortex configuration. When a
@@ -370,7 +370,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						labels.FromMap(rl.Annotations),
 						nil,
 						true,
-						log.With(util.Logger, "alert", rl.Alert.Value),
+						log.With(util_log.Logger, "alert", rl.Alert.Value),
 					))
 					continue
 				}
@@ -418,7 +418,7 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 
 				rule = rules.NewAlertingRule(
 					r.Name, expr, r.Duration, r.Labels, r.Annotations, nil, true,
-					log.With(util.Logger, "alert", r.Name),
+					log.With(util_log.Logger, "alert", r.Name),
 				)
 
 			case *legacy_promql.RecordStmt:

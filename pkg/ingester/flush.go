@@ -201,7 +201,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 
 func (i *Ingester) flushLoop(j int) {
 	defer func() {
-		level.Debug(util.Logger).Log("msg", "Ingester.flushLoop() exited")
+		level.Debug(util_log.Logger).Log("msg", "Ingester.flushLoop() exited")
 		i.flushQueuesDone.Done()
 	}()
 
@@ -212,11 +212,11 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		level.Debug(util.Logger).Log("msg", "flushing stream", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
+		level.Debug(util_log.Logger).Log("msg", "flushing stream", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			level.Error(util_log.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
+			level.Error(util_log.WithUserID(op.userID, util_log.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation
