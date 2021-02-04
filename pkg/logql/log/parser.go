@@ -288,6 +288,11 @@ func (j *JSONExpressionParser) Process(line []byte, lbs *LabelsBuilder) ([]byte,
 		return line, true
 	}
 
+	if !jsoniter.ConfigFastest.Valid(line) {
+		lbs.SetErr(errJSON)
+		return line, true
+	}
+
 	for identifier, paths := range j.expressions {
 		result := jsoniter.ConfigFastest.Get(line, paths...).ToString()
 		if result == "" {
