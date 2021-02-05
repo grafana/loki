@@ -109,7 +109,7 @@ func TestTable_Write(t *testing.T) {
 	now := time.Now()
 
 	// allow modifying last 5 shards
-	table.modifyShardsSince = now.Add(-5 * shardDBsByDuration).Unix()
+	table.modifyShardsSince = now.Add(-5 * ShardDBsByDuration).Unix()
 
 	// a couple of times for which we want to do writes to make the table create different shards
 	testCases := []struct {
@@ -120,13 +120,13 @@ func TestTable_Write(t *testing.T) {
 			writeTime: now,
 		},
 		{
-			writeTime: now.Add(-(shardDBsByDuration + 5*time.Minute)),
+			writeTime: now.Add(-(ShardDBsByDuration + 5*time.Minute)),
 		},
 		{
-			writeTime: now.Add(-(shardDBsByDuration*3 + 3*time.Minute)),
+			writeTime: now.Add(-(ShardDBsByDuration*3 + 3*time.Minute)),
 		},
 		{
-			writeTime: now.Add(-6 * shardDBsByDuration), // write with time older than table.modifyShardsSince
+			writeTime: now.Add(-6 * ShardDBsByDuration), // write with time older than table.modifyShardsSince
 			dbName:    fmt.Sprint(table.modifyShardsSince),
 		},
 	}
@@ -145,7 +145,7 @@ func TestTable_Write(t *testing.T) {
 
 			expectedDBName := tc.dbName
 			if expectedDBName == "" {
-				expectedDBName = fmt.Sprint(tc.writeTime.Truncate(shardDBsByDuration).Unix())
+				expectedDBName = fmt.Sprint(tc.writeTime.Truncate(ShardDBsByDuration).Unix())
 			}
 			db, ok := table.dbs[expectedDBName]
 			require.True(t, ok)
@@ -189,7 +189,7 @@ func TestTable_Upload(t *testing.T) {
 	// write a batch to another shard
 	batch = boltIndexClient.NewWriteBatch()
 	testutil.AddRecordsToBatch(batch, "test", 20, 10)
-	require.NoError(t, table.write(context.Background(), now.Add(shardDBsByDuration), batch.(*local.BoltWriteBatch).Writes["test"]))
+	require.NoError(t, table.write(context.Background(), now.Add(ShardDBsByDuration), batch.(*local.BoltWriteBatch).Writes["test"]))
 
 	// upload the dbs to storage
 	require.NoError(t, table.Upload(context.Background(), true))
@@ -382,9 +382,9 @@ func TestTable_ImmutableUploads(t *testing.T) {
 
 	// some dbs to setup
 	dbNames := []int64{
-		shardCutoff.Add(-shardDBsByDuration).Unix(),    // inactive shard, should upload
+		shardCutoff.Add(-ShardDBsByDuration).Unix(),    // inactive shard, should upload
 		shardCutoff.Add(-1 * time.Minute).Unix(),       // 1 minute before shard cutoff, should upload
-		time.Now().Truncate(shardDBsByDuration).Unix(), // active shard, should not upload
+		time.Now().Truncate(ShardDBsByDuration).Unix(), // active shard, should not upload
 	}
 
 	dbs := map[string]testutil.DBRecords{}

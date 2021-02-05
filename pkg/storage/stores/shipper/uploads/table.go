@@ -26,7 +26,7 @@ import (
 
 const (
 	// create a new db sharded by time based on when write request is received
-	shardDBsByDuration = 15 * time.Minute
+	ShardDBsByDuration = 15 * time.Minute
 
 	// a temp file is created during uploads with name of the db + tempFileSuffix
 	tempFileSuffix = ".temp"
@@ -245,12 +245,12 @@ func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
 	return lt.write(ctx, time.Now(), writes)
 }
 
-// write writes to a db locally. It shards the db files by truncating the passed time by shardDBsByDuration using https://golang.org/pkg/time/#Time.Truncate
+// write writes to a db locally. It shards the db files by truncating the passed time by ShardDBsByDuration using https://golang.org/pkg/time/#Time.Truncate
 // db files are named after the time shard i.e epoch of the truncated time.
 // If a db file does not exist for a shard it gets created.
 func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrites) error {
 	// do not write to files older than init time otherwise we might endup modifying file which was already created and uploaded before last shutdown.
-	shard := tm.Truncate(shardDBsByDuration).Unix()
+	shard := tm.Truncate(ShardDBsByDuration).Unix()
 	if shard < lt.modifyShardsSince {
 		shard = lt.modifyShardsSince
 	}
@@ -505,5 +505,5 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 func getOldestActiveShardTime() time.Time {
 	// upload files excluding active shard. It could so happen that we just started a new shard but the file for last shard is still being updated due to pending writes or pending flush to disk.
 	// To avoid uploading it, excluding previous active shard as well if it has been not more than a minute since it became inactive.
-	return time.Now().Add(-time.Minute).Truncate(shardDBsByDuration)
+	return time.Now().Add(-time.Minute).Truncate(ShardDBsByDuration)
 }
