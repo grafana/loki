@@ -581,7 +581,7 @@ JSON post body can be sent in the following format:
 }
 ```
 
-You can set `Content-Type: gzip` request header and post gzipped JSON.
+You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
 > **NOTE**: logs sent to Loki for every stream must be in timestamp-ascending
 > order; logs with identical timestamps are only allowed if their content
