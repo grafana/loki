@@ -6,6 +6,7 @@ import (
 
 	"cloud.google.com/go/pubsub"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,9 +19,50 @@ func TestFormat(t *testing.T) {
 		name                 string
 		msg                  *pubsub.Message
 		labels               model.LabelSet
+		relabel              []*relabel.Config
 		useIncomingTimestamp bool
 		expected             api.Entry
 	}{
+		{
+			name: "relabelling",
+			msg: &pubsub.Message{
+				Data: []byte(withAllFields),
+			},
+			labels: model.LabelSet{
+				"jobname": "pubsub-test",
+			},
+			relabel: []*relabel.Config{
+				{
+					SourceLabels: model.LabelNames{"__backend_service_name"},
+					Separator:    ";",
+					Regex:        relabel.MustNewRegexp("(.*)"),
+					TargetLabel:  "backend_service_name",
+					Action:       "replace",
+					Replacement:  "$1",
+				},
+				{
+					SourceLabels: model.LabelNames{"__bucket_name"},
+					Separator:    ";",
+					Regex:        relabel.MustNewRegexp("(.*)"),
+					TargetLabel:  "bucket_name",
+					Action:       "replace",
+					Replacement:  "$1",
+				},
+			},
+			useIncomingTimestamp: true,
+			expected: api.Entry{
+				Labels: model.LabelSet{
+					"jobname":              "pubsub-test",
+					"resource_type":        "gcs",
+					"backend_service_name": "http-loki",
+					"bucket_name":          "loki-bucket",
+				},
+				Entry: logproto.Entry{
+					Timestamp: mustTime(t, "2020-12-22T15:01:23.045123456Z"),
+					Line:      withAllFields,
+				},
+			},
+		},
 		{
 			name: "use-original-timestamp",
 			msg: &pubsub.Message{
@@ -64,7 +106,7 @@ func TestFormat(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := format(c.msg, c.labels, c.useIncomingTimestamp)
+			got, err := format(c.msg, c.labels, c.useIncomingTimestamp, c.relabel)
 
 			require.NoError(t, err)
 
@@ -90,5 +132,5 @@ func mustTime(t *testing.T, v string) time.Time {
 }
 
 const (
-	withAllFields = `{"logName": "https://project/gcs", "resource": {"type": "gcs", "labels": {"instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
+	withAllFields = `{"logName": "https://project/gcs", "resource": {"type": "gcs", "labels": {"backendServiceName": "http-loki", "bucketName": "loki-bucket", "instanceId": "344555"}}, "timestamp": "2020-12-22T15:01:23.045123456Z"}`
 )

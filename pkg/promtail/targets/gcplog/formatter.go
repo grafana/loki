@@ -8,9 +8,12 @@ import (
 	"cloud.google.com/go/pubsub"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // LogEntry that will be written to the pubsub topic.
@@ -35,18 +38,51 @@ type GCPLogEntry struct {
 	// anyway we will be sending the entire entry to Loki.
 }
 
-func format(m *pubsub.Message, other model.LabelSet, useIncomingTimestamp bool) (api.Entry, error) {
+func format(
+	m *pubsub.Message,
+	other model.LabelSet,
+	useIncomingTimestamp bool,
+	relabelConfig []*relabel.Config,
+) (api.Entry, error) {
 	var ge GCPLogEntry
 
 	if err := json.Unmarshal(m.Data, &ge); err != nil {
 		return api.Entry{}, err
 	}
 
-	labels := model.LabelSet{
-		"resource_type": model.LabelValue(ge.Resource.Type),
+	// mandatory label for gcplog
+	lbs := labels.NewBuilder(nil)
+	lbs.Set("resource_type", ge.Resource.Type)
+
+	// labels from gcp log entry. Add it as internal labels
+	for k, v := range ge.Resource.Labels {
+		lbs.Set("__"+util.SnakeCase(k), v)
 	}
 
-	// add labels from config as well.
+	var processed labels.Labels
+
+	// apply relabeling
+	if len(relabelConfig) > 0 {
+		processed = relabel.Process(lbs.Labels(), relabelConfig...)
+	} else {
+		processed = lbs.Labels()
+	}
+
+	// final labelset that will be sent to loki
+	labels := make(model.LabelSet)
+	for _, lbl := range processed {
+		// ignore internal labels
+		if strings.HasPrefix(lbl.Name, "__") {
+			continue
+		}
+		// ignore invalid labels
+		if !model.LabelName(lbl.Name).IsValid() || !model.LabelValue(lbl.Value).IsValid() {
+			continue
+		}
+		labels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
+	// add labels coming from scrapeconfig
 	labels = labels.Merge(other)
 
 	ts := time.Now()

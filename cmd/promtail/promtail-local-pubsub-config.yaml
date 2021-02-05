@@ -16,3 +16,13 @@ scrape_configs:
       use_incoming_timestamp: false # default rewrite timestamp.
       labels:
         job: pubsub-gcp
+
+    relabel_configs:
+      - action: replace
+        source_labels:
+          - __bucket_name
+        target_label: bucket_name
+      - action: replace
+        source_labels:
+          - __backend_service_name
+        target_label: backend_service_name
