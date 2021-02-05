@@ -49,6 +49,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -298,11 +299,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 					Validity: t.cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
+			t.cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.cfg) + 2*time.Minute
 		case Querier, Ruler:
 			// We do not want query to do any updates to index
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
 			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadWrite
+			t.cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.cfg) + 2*time.Minute
 		}
 	}
 
@@ -312,13 +315,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}
 
 	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
+		boltdbShipperMinIngesterQueryStoreDuration := boltdbShipperMinIngesterQueryStoreDuration(t.cfg)
 		switch t.cfg.Target {
 		case Querier, Ruler:
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
 			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier,
-				calculateAsyncStoreQueryIngestersWithin(t.cfg.Querier.QueryIngestersWithin,
-					t.cfg.Ingester.MaxChunkAge, t.cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval),
+				calculateAsyncStoreQueryIngestersWithin(t.cfg.Querier.QueryIngestersWithin, boltdbShipperMinIngesterQueryStoreDuration),
 			)
 		case All:
 			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
@@ -330,7 +333,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 				boltdbShipperConfigIdx++
 			}
 			mlb, err := calculateMaxLookBack(t.cfg.SchemaConfig.Configs[boltdbShipperConfigIdx], t.cfg.Ingester.QueryStoreMaxLookBackPeriod,
-				t.cfg.Ingester.MaxChunkAge, t.cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval)
+				boltdbShipperMinIngesterQueryStoreDuration)
 			if err != nil {
 				return nil, err
 			}
@@ -567,34 +570,49 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	return t.compactor, nil
 }
 
-func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, maxChunkAge, querierResyncInterval time.Duration) (time.Duration, error) {
+func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {
 	if pc.ObjectType != shipper.FilesystemObjectStoreType && maxLookBackConfig.Nanoseconds() != 0 {
 		return 0, errors.New("it is an error to specify a non zero `query_store_max_look_back_period` value when using any object store other than `filesystem`")
 	}
-	// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
-	defaultMaxLookBack := maxChunkAge + shipper.UploadInterval + querierResyncInterval + (15 * time.Minute)
 
 	if maxLookBackConfig == 0 {
-		// If the QueryStoreMaxLookBackPeriod is still it's default value of 0, set it to the default calculated value.
-		return defaultMaxLookBack, nil
-	} else if maxLookBackConfig > 0 && maxLookBackConfig < defaultMaxLookBack {
-		// If the QueryStoreMaxLookBackPeriod is > 0 (-1 is allowed for infinite), make sure it's at least greater than the default or throw an error
+		// If the QueryStoreMaxLookBackPeriod is still it's default value of 0, set it to the minDuration.
+		return minDuration, nil
+	} else if maxLookBackConfig > 0 && maxLookBackConfig < minDuration {
+		// If the QueryStoreMaxLookBackPeriod is > 0 (-1 is allowed for infinite), make sure it's at least greater than minDuration or throw an error
 		return 0, fmt.Errorf("the configured query_store_max_look_back_period of '%v' is less than the calculated default of '%v' "+
 			"which is calculated based on the max_chunk_age + 15 minute boltdb-shipper interval + 15 min additional buffer.  Increase this value"+
-			"greater than the default or remove it from the configuration to use the default", maxLookBackConfig, defaultMaxLookBack)
+			"greater than the default or remove it from the configuration to use the default", maxLookBackConfig, minDuration)
 	}
 	return maxLookBackConfig, nil
 }
 
-func calculateAsyncStoreQueryIngestersWithin(queryIngestersWithinConfig, maxChunkAge, querierResyncInterval time.Duration) time.Duration {
+func calculateAsyncStoreQueryIngestersWithin(queryIngestersWithinConfig, minDuration time.Duration) time.Duration {
 	// 0 means do not limit queries, we would also not limit ingester queries from AsyncStore.
 	if queryIngestersWithinConfig == 0 {
 		return 0
 	}
 
-	minVal := maxChunkAge + shipper.UploadInterval + querierResyncInterval + (15 * time.Minute)
-	if queryIngestersWithinConfig < minVal {
-		return minVal
+	if queryIngestersWithinConfig < minDuration {
+		return minDuration
 	}
 	return queryIngestersWithinConfig
+}
+
+// boltdbShipperQuerierIndexUpdateDelay returns duration it could take for queriers to serve the index since it was uploaded.
+// It also considers index cache validity because a querier could have cached index just before it was going to resync which means
+// it would keep serving index until the cache entries expire.
+func boltdbShipperQuerierIndexUpdateDelay(cfg Config) time.Duration {
+	return cfg.StorageConfig.IndexCacheValidity + cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval
+}
+
+// boltdbShipperIngesterIndexUploadDelay returns duration it could take for an index file containing id of a chunk to be uploaded to the shared store since it got flushed.
+func boltdbShipperIngesterIndexUploadDelay() time.Duration {
+	return uploads.ShardDBsByDuration + shipper.UploadInterval
+}
+
+// boltdbShipperMinIngesterQueryStoreDuration returns minimum duration(with some buffer) ingesters should query their stores to
+// avoid missing any logs or chunk ids due to async nature of BoltDB Shipper.
+func boltdbShipperMinIngesterQueryStoreDuration(cfg Config) time.Duration {
+	return cfg.Ingester.MaxChunkAge + boltdbShipperIngesterIndexUploadDelay() + boltdbShipperQuerierIndexUpdateDelay(cfg) + 2*time.Minute
 }
