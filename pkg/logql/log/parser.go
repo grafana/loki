@@ -294,9 +294,6 @@ func (j *JSONExpressionParser) Process(line []byte, lbs *LabelsBuilder) ([]byte,
 
 	for identifier, paths := range j.expressions {
 		result := jsoniter.ConfigFastest.Get(line, paths...).ToString()
-		if result == "" {
-			continue
-		}
 
 		if lbs.BaseHas(identifier) {
 			identifier = identifier + duplicateSuffix

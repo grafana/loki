@@ -228,7 +228,9 @@ func TestJSONExpressionParser(t *testing.T) {
 				NewJSONExpr("nope", `pod.nope`),
 			},
 			labels.Labels{},
-			labels.Labels{},
+			labels.Labels{
+				labels.Label{Name: "nope", Value: ""},
+			},
 		},
 		{
 			"null field",
@@ -237,7 +239,9 @@ func TestJSONExpressionParser(t *testing.T) {
 				NewJSONExpr("nf", `null_field`),
 			},
 			labels.Labels{},
-			labels.Labels{}, // null values are not assigned to labels
+			labels.Labels{
+				labels.Label{Name: "nf", Value: ""}, // null is coerced to an empty string
+			},
 		},
 		{
 			"boolean field",
@@ -265,13 +269,29 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 		},
 		{
+			"non-matching expression",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("request_size", `request.size.invalid`),
+			},
+			labels.Labels{
+				{Name: "uuid", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "uuid", Value: "bar"},
+				{Name: "request_size", Value: ""},
+			},
+		},
+		{
 			"empty line",
 			[]byte("{}"),
 			[]JSONExpression{
 				NewJSONExpr("uuid", `pod.uuid`),
 			},
 			labels.Labels{},
-			labels.Labels{},
+			labels.Labels{
+				labels.Label{Name: "uuid", Value: ""},
+			},
 		},
 		{
 			"existing labels are not affected",
@@ -284,6 +304,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
+				{Name: "uuid", Value: ""},
 			},
 		},
 		{
