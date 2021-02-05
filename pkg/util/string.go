@@ -24,7 +24,7 @@ func StringSliceContains(slice []string, value string) bool {
 func SnakeCase(s string) string {
 	var buf bytes.Buffer
 	for i, r := range s {
-		if unicode.IsUpper(r) && i > 0 {
+		if unicode.IsUpper(r) && i > 0 && s[i-1] != '_' {
 			fmt.Fprintf(&buf, "_")
 		}
 		r = unicode.ToLower(r)
