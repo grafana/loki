@@ -190,11 +190,11 @@ type WindowsEventsTargetConfig struct {
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 
-	// BoorkmarkPath sets the bookmark location on the filesystem.
+	// BookmarkPath sets the bookmark location on the filesystem.
 	// The bookmark contains the current position of the target in XML.
 	// When restarting or rollingout promtail, the target will continue to scrape events where it left off based on the bookmark position.
 	// The position is updated after each entry processed.
-	BoorkmarkPath string `yaml:"bookmark_path"`
+	BookmarkPath string `yaml:"bookmark_path"`
 
 	// PollInterval is the interval at which we're looking if new events are available. By default the target will check every 3seconds.
 	PollInterval time.Duration `yaml:"poll_interval"`

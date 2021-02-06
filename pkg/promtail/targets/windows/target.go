@@ -54,9 +54,9 @@ func New(
 	}
 	defer windows.CloseHandle(sigEvent)
 
-	bm, err := newBookMark(cfg.BoorkmarkPath)
+	bm, err := newBookMark(cfg.BookmarkPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create bookmark using path=%s: %w", cfg.BoorkmarkPath, err)
+		return nil, fmt.Errorf("failed to create bookmark using path=%s: %w", cfg.BookmarkPath, err)
 	}
 
 	t := &Target{
