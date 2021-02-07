@@ -139,31 +139,38 @@ func Test_ParserHints(t *testing.T) {
 			true,
 			15.0,
 			`{Ingester_TotalBatches="0", Ingester_TotalChunksMatched="0", caller="spanlogger.go:79", traceID="2e5c7234b8640997", ts="2021-02-02T14:35:05.983992774Z"}`,
+		},
+		{
 			`sum(rate({app="nginx"} | json | remote_user="foo" [1m]))`,
+			jsonLine,
 			true,
 			1.0,
 			`{}`,
 		},
 		{
 			`sum(rate({app="nginx"} | json | nonexistant_field="foo" [1m]))`,
+			jsonLine,
 			false,
 			0,
 			``,
 		},
 		{
 			`absent_over_time({app="nginx"} | json [1m])`,
+			jsonLine,
 			true,
 			1.0,
 			`{}`,
 		},
 		{
 			`absent_over_time({app="nginx"} | json | nonexistant_field="foo" [1m])`,
+			jsonLine,
 			false,
 			0,
 			``,
 		},
 		{
 			`absent_over_time({app="nginx"} | json | remote_user="foo" [1m])`,
+			jsonLine,
 			true,
 			1.0,
 			`{}`,
@@ -178,7 +185,6 @@ func Test_ParserHints(t *testing.T) {
 			ex, err := expr.Extractor()
 			require.NoError(t, err)
 			v, lbsRes, ok := ex.ForStream(lbs).Process(tt.line)
-			v, lbsRes, ok := ex.ForStream(lbs).Process(jsonLine)
 			var lbsResString string
 			if lbsRes != nil {
 				lbsResString = lbsRes.String()
