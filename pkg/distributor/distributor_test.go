@@ -59,13 +59,13 @@ func TestDistributor(t *testing.T) {
 		},
 		{
 			lines:         100,
-			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(100, 100, 1000)),
+			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, 100, 100, 1000),
 		},
 		{
 			lines:            100,
 			maxLineSize:      1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg(1, 10, "{foo=\"bar\"}")),
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10),
 		},
 		{
 			lines:            100,
@@ -180,9 +180,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  10 * (1.0 / float64(bytesInMB)),
 			pushes: []testPush{
 				{bytes: 5, expectedError: nil},
-				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(10, 1, 6))},
+				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, 10, 1, 6)},
 				{bytes: 5, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(10, 1, 1))},
+				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, 10, 1, 1)},
 			},
 		},
 		"global strategy: limit should be evenly shared across distributors": {
@@ -192,9 +192,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  5 * (1.0 / float64(bytesInMB)),
 			pushes: []testPush{
 				{bytes: 3, expectedError: nil},
-				{bytes: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(5, 1, 3))},
+				{bytes: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, 5, 1, 3)},
 				{bytes: 2, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(5, 1, 1))},
+				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, 5, 1, 1)},
 			},
 		},
 		"global strategy: burst should set to each distributor": {
@@ -204,9 +204,9 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSizeMB:  20 * (1.0 / float64(bytesInMB)),
 			pushes: []testPush{
 				{bytes: 15, expectedError: nil},
-				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(5, 1, 6))},
+				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, 5, 1, 6)},
 				{bytes: 5, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(5, 1, 1))},
+				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, 5, 1, 1)},
 			},
 		},
 	}

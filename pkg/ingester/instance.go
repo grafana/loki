@@ -216,7 +216,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
 	}
 
 	labels, err := logql.ParseLabels(pushReqStream.Labels)
