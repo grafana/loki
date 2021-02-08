@@ -30,6 +30,7 @@ pipeline_stages:
     expression: "^HTTP\\/(?P<protocol_version>[0-9\\.]+)$"
     source:     "protocol"
 `
+
 var testRegexYamlSourceWithMissingKey = `
 pipeline_stages:
 - json:
@@ -49,6 +50,10 @@ var testRegexLogLineWithMissingKey = `
 `
 
 var testRegexLogLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
+
+func init() {
+	Debug = true
+}
 
 func TestPipeline_Regex(t *testing.T) {
 	t.Parallel()
@@ -120,7 +125,6 @@ func TestPipelineWithMissingKey_Regex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	Debug = true
 	_ = processEntries(pl, newEntry(nil, nil, testRegexLogLineWithMissingKey, time.Now()))[0]
 
 	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"Can't convert <nil> to string\" type=null"
@@ -218,9 +222,7 @@ func TestRegexConfig_validate(t *testing.T) {
 	}
 }
 
-var (
-	regexLogFixture = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
-)
+var regexLogFixture = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
 
 func TestRegexParser_Parse(t *testing.T) {
 	t.Parallel()
@@ -328,7 +330,6 @@ func TestRegexParser_Parse(t *testing.T) {
 			}
 			out := processEntries(p, newEntry(tt.extracted, nil, tt.entry, time.Now()))[0]
 			assert.Equal(t, tt.expectedExtract, out.Extracted)
-
 		})
 	}
 }
@@ -373,7 +374,6 @@ func BenchmarkRegexStage(b *testing.B) {
 			out := stage.Run(in)
 			go func() {
 				for range out {
-
 				}
 			}()
 			for i := 0; i < b.N; i++ {

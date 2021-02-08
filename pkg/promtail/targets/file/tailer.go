@@ -60,6 +60,7 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 			Offset: pos,
 			Whence: 0,
 		},
+		Logger: util.NewLogAdapter(logger),
 	})
 	if err != nil {
 		return nil, err
@@ -78,7 +79,6 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 		posdone:   make(chan struct{}),
 		done:      make(chan struct{}),
 	}
-	tail.Logger = util.NewLogAdapter(logger)
 
 	go tailer.readLines()
 	go tailer.updatePosition()

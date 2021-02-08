@@ -6,13 +6,57 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://localhost:3100/loki/api/v1/push
+  - url: http://127.0.0.1:3100/loki/api/v1/push
+    external_labels:
+      windows: "true"
+      on_premise: "true"
+      host: "foo"
 
 scrape_configs:
-- job_name: system
-  static_configs:
-  - targets:
-      - localhost
-    labels:
-      job: varlogs
-      __path__: /var/log/*log
+  - job_name: plassys
+    static_configs:
+      - labels:
+          job: plassys-activity
+          __path__: '/Users/ctovena/Downloads/activity.txt'
+      - labels:
+          job: plassys-errors
+          __path__: '/Users/ctovena/Downloads/errors.txt'
+    # Promtail is currently panicing when configured with the following
+    # pipeline_stages, so we've commented them until the bug can be fixed.
+    # https://github.com/grafana/loki/issues/3120#issuecomment-768634514
+    #
+    pipeline_stages:
+      - match:
+          selector: '{job="plassys-activity"}'
+          stages:
+            - multiline:
+                firstline: '^\d{2}/\d/\d{4} \d{1,2}:\d{2}:\d{2}'
+                max_wait_time: 3s
+                max_lines: 2
+            - regex:
+                expression: '(?P<timestamp>.* (PM|AM)) -\s+(?P<log>.*)'
+            - timestamp:
+                format: '1/2/2006 3:04:05 PM'
+                source: timestamp
+            - drop:
+                older_than: 77777h
+                drop_counter_reason: "line_too_old"
+            - output:
+                source: log
+      - match:
+          selector: '{job="plassys-errors"}'
+          stages:
+            - multiline:
+                firstline: '^\d{2}/\d/\d{4} \d{1,2}:\d{2}:\d{2}'
+                max_wait_time: 3s
+                max_lines: 2
+            - regex:
+                expression: '(?P<timestamp>\d{2}/\d/\d{4} \d{1,2}:\d{2}:\d{2} (PM|AM)), (?P<log>.*)'
+            - timestamp:
+                format: '1/2/2006 3:04:05 PM'
+                source: timestamp
+            - output:
+                source: log
+            - drop:
+                older_than: 77777h
+                drop_counter_reason: "line_too_old"
