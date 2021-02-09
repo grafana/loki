@@ -21,8 +21,8 @@ type bookMark struct {
 // newBookMark creates a new windows event bookmark.
 // The bookmark will be saved at the given path. Use save to save the current position for a given event.
 func newBookMark(path string) (*bookMark, error) {
-	// 4kb buffer for rendering bookmark
-	buf := make([]byte, 4<<10)
+	// 16kb buffer for rendering bookmark
+	buf := make([]byte, 16<<10)
 
 	_, err := fs.Stat(path)
 	// creates a new bookmark file if none exists.
