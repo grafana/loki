@@ -274,6 +274,10 @@ func NewJSONExpressionParser(expressions []JSONExpression) (*JSONExpressionParse
 			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
 		}
 
+		if !model.LabelName(exp.Identifier).IsValid() {
+			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
+		}
+
 		paths[exp.Identifier] = path
 	}
 
