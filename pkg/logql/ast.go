@@ -428,7 +428,7 @@ func newJSONExpressionParser(expressions []log.JSONExpression) *jsonExpressionPa
 	}
 }
 
-func (j *jsonExpressionParser) Shardable() bool { return false }
+func (j *jsonExpressionParser) Shardable() bool { return true }
 
 func (j *jsonExpressionParser) Stage() (log.Stage, error) {
 	return log.NewJSONExpressionParser(j.expressions)
