@@ -43,6 +43,12 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 		}
 	}
 
+	// absent_over_time cannot be grouped (yet?), so set noLabels=true
+	// to make extraction more efficient and less likely to strip per query series limits.
+	if r.operation == OpRangeTypeAbsent {
+		noLabels = true
+	}
+
 	sort.Strings(groups)
 
 	var stages []log.Stage
