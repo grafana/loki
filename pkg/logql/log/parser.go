@@ -6,6 +6,7 @@ import (
 	"io"
 	"regexp"
 
+	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 
 	jsoniter "github.com/json-iterator/go"
@@ -259,3 +260,53 @@ func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 }
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
+
+type JSONExpressionParser struct {
+	expressions map[string][]interface{}
+}
+
+func NewJSONExpressionParser(expressions []JSONExpression) (*JSONExpressionParser, error) {
+	var paths = make(map[string][]interface{})
+
+	for _, exp := range expressions {
+		path, err := jsonexpr.Parse(exp.Expression, false)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
+		}
+
+		if !model.LabelName(exp.Identifier).IsValid() {
+			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
+		}
+
+		paths[exp.Identifier] = path
+	}
+
+	return &JSONExpressionParser{
+		expressions: paths,
+	}, nil
+}
+
+func (j *JSONExpressionParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
+
+	if !jsoniter.ConfigFastest.Valid(line) {
+		lbs.SetErr(errJSON)
+		return line, true
+	}
+
+	for identifier, paths := range j.expressions {
+		result := jsoniter.ConfigFastest.Get(line, paths...).ToString()
+
+		if lbs.BaseHas(identifier) {
+			identifier = identifier + duplicateSuffix
+		}
+
+		lbs.Set(identifier, result)
+	}
+
+	return line, true
+}
+
+func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }

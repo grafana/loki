@@ -416,6 +416,39 @@ func (e *labelFmtExpr) String() string {
 	return sb.String()
 }
 
+type jsonExpressionParser struct {
+	expressions []log.JSONExpression
+
+	implicit
+}
+
+func newJSONExpressionParser(expressions []log.JSONExpression) *jsonExpressionParser {
+	return &jsonExpressionParser{
+		expressions: expressions,
+	}
+}
+
+func (j *jsonExpressionParser) Shardable() bool { return true }
+
+func (j *jsonExpressionParser) Stage() (log.Stage, error) {
+	return log.NewJSONExpressionParser(j.expressions)
+}
+
+func (j *jsonExpressionParser) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeJSON))
+	for i, exp := range j.expressions {
+		sb.WriteString(exp.Identifier)
+		sb.WriteString("=")
+		sb.WriteString(strconv.Quote(exp.Expression))
+
+		if i+1 != len(j.expressions) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {

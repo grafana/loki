@@ -145,40 +145,100 @@ If an extracted label key name already exists in the original log stream, the ex
 
 We support currently support json, logfmt and regexp parsers.
 
-The **json** parsers take no parameters and can be added using the expression `| json` in your pipeline. It will extract all json properties as labels if the log line is a valid json document. Nested properties are flattened into label keys using the `_` separator. **Arrays are skipped**.
+The **json** parser operates in two modes:
 
-For example the json parsers will extract from the following document:
+1. **without** parameters:
 
-```json
-{
-	"protocol": "HTTP/2.0",
-	"servers": ["129.0.1.1","10.2.1.3"],
-	"request": {
-		"time": "6.032",
-		"method": "GET",
-		"host": "foo.grafana.net",
-		"size": "55",
-	},
-	"response": {
-		"status": 401,
-		"size": "228",
-		"latency_seconds": "6.031"
-	}
-}
-```
+   Adding `| json` to your pipeline will extract all json properties as labels if the log line is a valid json document.
+   Nested properties are flattened into label keys using the `_` separator.
 
-The following list of labels:
+   Note: **Arrays are skipped**.
 
-```kv
-"protocol" => "HTTP/2.0"
-"request_time" => "6.032"
-"request_method" => "GET"
-"request_host" => "foo.grafana.net"
-"request_size" => "55"
-"response_status" => "401"
-"response_size" => "228"
-"response_size" => "228"
-```
+   For example the json parsers will extract from the following document:
+
+   ```json
+   {
+       "protocol": "HTTP/2.0",
+       "servers": ["129.0.1.1","10.2.1.3"],
+       "request": {
+           "time": "6.032",
+           "method": "GET",
+           "host": "foo.grafana.net",
+           "size": "55",
+           "headers": {
+             "Accept": "*/*",
+             "User-Agent": "curl/7.68.0"
+           }
+       },
+       "response": {
+           "status": 401,
+           "size": "228",
+           "latency_seconds": "6.031"
+       }
+   }
+   ```
+
+   The following list of labels:
+
+   ```kv
+   "protocol" => "HTTP/2.0"
+   "request_time" => "6.032"
+   "request_method" => "GET"
+   "request_host" => "foo.grafana.net"
+   "request_size" => "55"
+   "response_status" => "401"
+   "response_size" => "228"
+   "response_size" => "228"
+   ```
+
+2. **with** parameters:
+
+   Using `| json label="expression", another="expression"` in your pipeline will extract only the
+   specified json fields to labels. You can specify one or more expressions in this way, the same
+   as [`label_format`](#labels-format-expression); all expressions must be quoted.
+
+   Currently, we only support field access (`my.field`, `my["field"]`) and array access (`list[0]`), and any combination
+   of these in any level of nesting (`my.list[0]["field"]`).
+
+   For example, `| json first_server="servers[0]", ua="request.headers[\"User-Agent\"]` will extract from the following document:
+
+    ```json
+    {
+        "protocol": "HTTP/2.0",
+        "servers": ["129.0.1.1","10.2.1.3"],
+        "request": {
+            "time": "6.032",
+            "method": "GET",
+            "host": "foo.grafana.net",
+            "size": "55",
+            "headers": {
+              "Accept": "*/*",
+              "User-Agent": "curl/7.68.0"
+            }
+        },
+        "response": {
+            "status": 401,
+            "size": "228",
+            "latency_seconds": "6.031"
+        }
+    }
+    ```
+
+   The following list of labels:
+
+    ```kv
+    "first_server" => "129.0.1.1"
+    "ua" => "curl/7.68.0"
+    ```
+
+   If an array or an object returned by an expression, it will be assigned to the label in json format.
+
+   For example, `| json server_list="servers", headers="request.headers` will extract:
+
+   ```kv
+   "server_list" => `["129.0.1.1","10.2.1.3"]`
+   "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
+   ```
 
 The **logfmt** parser can be added using the `| logfmt` and will extract all keys and values from the [logfmt](https://brandur.org/logfmt) formatted log line.
 

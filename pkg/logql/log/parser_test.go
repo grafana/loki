@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 
@@ -83,6 +84,298 @@ func Test_jsonParser_Parse(t *testing.T) {
 			_, _ = j.Process(tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.Labels())
+		})
+	}
+}
+
+func TestJSONExpressionParser(t *testing.T) {
+	testLine := []byte(`{"app":"foo","field with space":"value","field with ÜFT8👌":"value","null_field":null,"bool_field":false,"namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar", "params": [1,2,3]}}}`)
+
+	tests := []struct {
+		name        string
+		line        []byte
+		expressions []JSONExpression
+		lbs         labels.Labels
+		want        labels.Labels
+	}{
+		{
+			"single field",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("app", "app"),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+			},
+		},
+		{
+			"alternate syntax",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("test", `["field with space"]`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "test", Value: "value"},
+			},
+		},
+		{
+			"multiple fields",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("app", "app"),
+				NewJSONExpr("namespace", "namespace"),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+				{Name: "namespace", Value: "prod"},
+			},
+		},
+		{
+			"utf8",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("utf8", `["field with ÜFT8👌"]`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "utf8", Value: "value"},
+			},
+		},
+		{
+			"nested field",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("uuid", "pod.uuid"),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "uuid", Value: "foo"},
+			},
+		},
+		{
+			"nested field alternate syntax",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("uuid", `pod["uuid"]`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "uuid", Value: "foo"},
+			},
+		},
+		{
+			"nested field alternate syntax 2",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("uuid", `["pod"]["uuid"]`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "uuid", Value: "foo"},
+			},
+		},
+		{
+			"nested field alternate syntax 3",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("uuid", `["pod"].uuid`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "uuid", Value: "foo"},
+			},
+		},
+		{
+			"array element",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("param", `pod.deployment.params[0]`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "param", Value: "1"},
+			},
+		},
+		{
+			"full array",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("params", `pod.deployment.params`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "params", Value: "[1,2,3]"},
+			},
+		},
+		{
+			"full object",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("deployment", `pod.deployment`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "deployment", Value: `{"ref":"foobar", "params": [1,2,3]}`},
+			},
+		},
+		{
+			"expression matching nothing",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("nope", `pod.nope`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				labels.Label{Name: "nope", Value: ""},
+			},
+		},
+		{
+			"null field",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("nf", `null_field`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				labels.Label{Name: "nf", Value: ""}, // null is coerced to an empty string
+			},
+		},
+		{
+			"boolean field",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("bool", `bool_field`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				{Name: "bool", Value: `false`},
+			},
+		},
+		{
+			"label override",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("uuid", `pod.uuid`),
+			},
+			labels.Labels{
+				{Name: "uuid", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "uuid", Value: "bar"},
+				{Name: "uuid_extracted", Value: "foo"},
+			},
+		},
+		{
+			"non-matching expression",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("request_size", `request.size.invalid`),
+			},
+			labels.Labels{
+				{Name: "uuid", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "uuid", Value: "bar"},
+				{Name: "request_size", Value: ""},
+			},
+		},
+		{
+			"empty line",
+			[]byte("{}"),
+			[]JSONExpression{
+				NewJSONExpr("uuid", `pod.uuid`),
+			},
+			labels.Labels{},
+			labels.Labels{
+				labels.Label{Name: "uuid", Value: ""},
+			},
+		},
+		{
+			"existing labels are not affected",
+			testLine,
+			[]JSONExpression{
+				NewJSONExpr("uuid", `will.not.work`),
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: "uuid", Value: ""},
+			},
+		},
+		{
+			"invalid JSON line",
+			[]byte(`invalid json`),
+			[]JSONExpression{
+				NewJSONExpr("uuid", `will.not.work`),
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: ErrorLabel, Value: errJSON},
+			},
+		},
+	}
+	for _, tt := range tests {
+		j, err := NewJSONExpressionParser(tt.expressions)
+		if err != nil {
+			t.Fatalf("cannot create JSON expression parser: %s", err.Error())
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
+			_, _ = j.Process(tt.line, b)
+			sort.Sort(tt.want)
+			require.Equal(t, tt.want, b.Labels())
+		})
+	}
+}
+
+func TestJSONExpressionParserFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		expression JSONExpression
+		error      string
+	}{
+		{
+			"invalid field name",
+			NewJSONExpr("app", `field with space`),
+			"unexpected FIELD",
+		},
+		{
+			"missing opening square bracket",
+			NewJSONExpr("app", `"pod"]`),
+			"unexpected STRING, expecting LSB or FIELD",
+		},
+		{
+			"missing closing square bracket",
+			NewJSONExpr("app", `["pod"`),
+			"unexpected $end, expecting RSB",
+		},
+		{
+			"missing closing square bracket",
+			NewJSONExpr("app", `["pod""uuid"]`),
+			"unexpected STRING, expecting RSB",
+		},
+		{
+			"invalid nesting",
+			NewJSONExpr("app", `pod..uuid`),
+			"unexpected DOT, expecting FIELD",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewJSONExpressionParser([]JSONExpression{tt.expression})
+
+			require.NotNil(t, err)
+			require.Equal(t, err.Error(), fmt.Sprintf("cannot parse expression [%s]: syntax error: %s", tt.expression.Expression, tt.error))
 		})
 	}
 }
