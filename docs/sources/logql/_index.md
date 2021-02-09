@@ -231,6 +231,15 @@ The **json** parser operates in two modes:
     "ua" => "curl/7.68.0"
     ```
 
+   If an array or an object returned by an expression, it will be assigned to the label in json format.
+
+   For example, `| json server_list="servers", headers="request.headers` will extract:
+
+   ```kv
+   "server_list" => `["129.0.1.1","10.2.1.3"]`
+   "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
+   ```
+
 The **logfmt** parser can be added using the `| logfmt` and will extract all keys and values from the [logfmt](https://brandur.org/logfmt) formatted log line.
 
 For example the following log line:
