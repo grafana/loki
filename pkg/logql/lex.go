@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"strconv"
 	"strings"
 	"text/scanner"
 	"time"
@@ -127,7 +128,13 @@ func (l *lexer) Lex(lval *exprSymType) int {
 			return BYTES
 		}
 
-		lval.str = numberText
+		v, err := strconv.ParseFloat(numberText, 64)
+		if err != nil {
+			l.Error(err.Error())
+			return 0
+		}
+
+		lval.number = v
 		return NUMBER
 
 	case scanner.String, scanner.RawString:
@@ -138,6 +145,14 @@ func (l *lexer) Lex(lval *exprSymType) int {
 			return 0
 		}
 		return STRING
+	}
+
+	// scanning signed numbers
+	if r == '+' && unicode.IsNumber(l.Peek()) {
+		return ADD
+	}
+	if r == '-' && unicode.IsNumber(l.Peek()) {
+		return SUB
 	}
 
 	// scanning duration tokens
