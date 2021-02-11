@@ -6,6 +6,7 @@ INSTANCEURL="${3:-}"
 NAMESPACE="${4:-default}"
 CONTAINERROOT="${5:-/var/lib/docker}"
 PARSER="${6:-- docker:}"
+VERSION="${PROMTAIL_VERSION:-2.1.0}"
 
 if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$NAMESPACE" -o -z "$CONTAINERROOT" -o -z "$PARSER" ]; then
     echo "usage: $0 <instanceId> <apiKey> <url> [<namespace>[<container_root_path>[<parser>]]]"
@@ -291,7 +292,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        image: grafana/promtail:latest
+        image: grafana/promtail:<version>
         imagePullPolicy: Always
         name: promtail
         readinessProbe:
@@ -375,4 +376,5 @@ echo "$TEMPLATE" | sed \
   -e "s#<instanceUrl>#${INSTANCEURL}#" \
   -e "s#<namespace>#${NAMESPACE}#" \
   -e "s#<container_root_path>#${CONTAINERROOT}#" \
-  -e "s#<parser>#${PARSER}#"
+  -e "s#<parser>#${PARSER}#" \
+  -e "s#<version>#${VERSION}#"
