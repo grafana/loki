@@ -49,7 +49,6 @@ func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 	ingesterConfig.MaxTransferRetries = 0
 	ingesterConfig.WAL.Enabled = true
 	ingesterConfig.WAL.Dir = walDir
-	ingesterConfig.WAL.Recover = true
 	ingesterConfig.WAL.CheckpointDuration = time.Second
 
 	return ingesterConfig
