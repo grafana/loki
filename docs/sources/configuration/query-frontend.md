@@ -21,7 +21,7 @@ One of the most important functions of the query frontend is the ability to spli
 
 Use this ConfigMap to get the benefits of query parallelisation and caching with the query-frontend component.
 
-```
+```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
