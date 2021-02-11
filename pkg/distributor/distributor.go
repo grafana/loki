@@ -197,6 +197,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
+			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, userID).Add(float64(len(stream.Entries)))
+			bytes := 0
+			for _, e := range stream.Entries {
+				bytes += len(e.Line)
+			}
+			validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, userID).Add(float64(bytes))
 			continue
 		}
 		n := 0
@@ -230,7 +236,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg(int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
@@ -345,7 +351,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	}
 	ls, err := logql.ParseLabels(key)
 	if err != nil {
-		return "", httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
+		return "", httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
 	}
 	// ensure labels are correctly sorted.
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
