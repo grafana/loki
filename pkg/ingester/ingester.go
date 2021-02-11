@@ -220,7 +220,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 func (i *Ingester) starting(ctx context.Context) error {
 
-	if i.cfg.WAL.Recover {
+	if i.cfg.WAL.Enabled {
 		// Ignore retain period during wal replay.
 		old := i.cfg.RetainPeriod
 		i.cfg.RetainPeriod = 0

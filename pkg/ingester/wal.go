@@ -26,7 +26,6 @@ const defaultCeiling = 4 << 30 // 4GB
 type WALConfig struct {
 	Enabled             bool             `yaml:"enabled"`
 	Dir                 string           `yaml:"dir"`
-	Recover             bool             `yaml:"recover"`
 	CheckpointDuration  time.Duration    `yaml:"checkpoint_duration"`
 	FlushOnShutdown     bool             `yaml:"flush_on_shutdown"`
 	ReplayMemoryCeiling flagext.ByteSize `yaml:"replay_memory_ceiling"`
@@ -43,7 +42,6 @@ func (cfg *WALConfig) Validate() error {
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
 	f.BoolVar(&cfg.Enabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
-	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 5*time.Minute, "Interval at which checkpoints should be created.")
 	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown.")
 

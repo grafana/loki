@@ -907,10 +907,6 @@ wal:
   # CLI flag: -ingester.wal-dir
   [dir: <filename> | default = "wal"]
 
-  # Recover data from existing WAL dir irrespective of WAL enabled/disabled.
-  # CLI flag: -ingester.recover-from-wal
-  [recover: <boolean> | default = false]
-
   # When WAL is enabled, should chunks be flushed to long-term storage on shutdown.
   # CLI flag: -ingester.flush-on-shutdown
   [flush_on_shutdown: <boolean> | default = false]
