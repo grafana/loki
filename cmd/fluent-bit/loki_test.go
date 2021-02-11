@@ -52,6 +52,15 @@ func Test_loki_sendRecord(t *testing.T) {
 			},
 		},
 	}
+	var nestedJSONFixture = map[interface{}]interface{}{
+		"kubernetes": map[interface{}]interface{}{
+			"annotations": map[interface{}]interface{}{
+				"kubernetes.io/psp":  "test",
+				"prometheus.io/port": "8085",
+			},
+		},
+		"log": "\tstatus code: 403, request id: b41c1ffa-c586-4359-a7da-457dd8da4bad\n",
+	}
 
 	tests := []struct {
 		name    string
@@ -71,6 +80,7 @@ func Test_loki_sendRecord(t *testing.T) {
 		{"labelmap", &config{labelMap: map[string]interface{}{"bar": "other"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, simpleRecordFixture, []api.Entry{{Labels: model.LabelSet{"other": "500"}, Entry: logproto.Entry{Line: `{"foo":"bar"}`, Timestamp: now}}}, false},
 		{"byte array", &config{labelKeys: []string{"label"}, lineFormat: jsonFormat}, byteArrayRecordFixture, []api.Entry{{Labels: model.LabelSet{"label": "label"}, Entry: logproto.Entry{Line: `{"map":{"inner":"bar"},"outer":"foo"}`, Timestamp: now}}}, false},
 		{"mixed types", &config{labelKeys: []string{"label"}, lineFormat: jsonFormat}, mixedTypesRecordFixture, []api.Entry{{Labels: model.LabelSet{"label": "label"}, Entry: logproto.Entry{Line: `{"array":[42,42.42,"foo"],"float":42.42,"int":42,"map":{"nested":{"foo":"bar","invalid":"a\ufffdz"}}}`, Timestamp: now}}}, false},
+		{"JSON inner string escaping", &config{removeKeys: []string{"kubernetes"}, labelMap: map[string]interface{}{"kubernetes": map[string]interface{}{"annotations": map[string]interface{}{"kubernetes.io/psp": "label"}}}, lineFormat: jsonFormat}, nestedJSONFixture, []api.Entry{{Labels: model.LabelSet{"label": "test"}, Entry: logproto.Entry{Line: `{"log":"\tstatus code: 403, request id: b41c1ffa-c586-4359-a7da-457dd8da4bad\n"}`, Timestamp: now}}}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
