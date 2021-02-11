@@ -37,7 +37,7 @@ const (
 
 	TimestampActionOnDuplicateSkip    = "skip"
 	TimestampActionOnDuplicateFudge   = "fudge"
-	TimestampActionOnDuplicateDefault = TimestampActionOnDuplicateFudge
+	TimestampActionOnDuplicateDefault = TimestampActionOnDuplicateSkip
 
 	// Maximum number of "streams" for which we keep the last known timestamp
 	maxLastKnownTimestampsCacheSize = 10000

@@ -36,7 +36,8 @@ timestamp:
 
   # Which action should be taken in case the timestamp is identical
   # to or before the timestamp of a log line with the same labels.
-  # Valid values are: [skip, fudge]. Defaults to "fudge".
+  # fudge adds one nanosecond, skip does nothing
+  # Valid values are: [skip, fudge]. Defaults to "skip".
   [action_on_duplicate: <string>]
 ```
 
