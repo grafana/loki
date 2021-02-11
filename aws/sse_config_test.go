@@ -5,6 +5,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+
+	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 )
 
 func TestNewSSEParsedConfig(t *testing.T) {
@@ -15,14 +17,14 @@ func TestNewSSEParsedConfig(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		params      SSEConfig
+		params      cortex_s3.SSEConfig
 		expected    *SSEParsedConfig
 		expectedErr error
 	}{
 		{
 			name: "Test SSE encryption with SSES3 type",
-			params: SSEConfig{
-				Type: SSES3,
+			params: cortex_s3.SSEConfig{
+				Type: cortex_s3.SSES3,
 			},
 			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseS3Type,
@@ -30,8 +32,8 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type without context",
-			params: SSEConfig{
-				Type:     SSEKMS,
+			params: cortex_s3.SSEConfig{
+				Type:     cortex_s3.SSEKMS,
 				KMSKeyID: kmsKeyID,
 			},
 			expected: &SSEParsedConfig{
@@ -41,8 +43,8 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type with context",
-			params: SSEConfig{
-				Type:                 SSEKMS,
+			params: cortex_s3.SSEConfig{
+				Type:                 cortex_s3.SSEKMS,
 				KMSKeyID:             kmsKeyID,
 				KMSEncryptionContext: kmsEncryptionContext,
 			},
@@ -54,23 +56,23 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test invalid SSE type",
-			params: SSEConfig{
+			params: cortex_s3.SSEConfig{
 				Type: "invalid",
 			},
 			expectedErr: errors.New("SSE type is empty or invalid"),
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type without KMS Key ID",
-			params: SSEConfig{
-				Type:     SSEKMS,
+			params: cortex_s3.SSEConfig{
+				Type:     cortex_s3.SSEKMS,
 				KMSKeyID: "",
 			},
 			expectedErr: errors.New("KMS key id must be passed when SSE-KMS encryption is selected"),
 		},
 		{
 			name: "Test SSE with invalid KMS encryption context JSON",
-			params: SSEConfig{
-				Type:                 SSEKMS,
+			params: cortex_s3.SSEConfig{
+				Type:                 cortex_s3.SSEKMS,
 				KMSKeyID:             kmsKeyID,
 				KMSEncryptionContext: `INVALID_JSON`,
 			},

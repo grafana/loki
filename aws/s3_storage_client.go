@@ -27,6 +27,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -64,15 +65,15 @@ type S3Config struct {
 	S3ForcePathStyle bool
 
 	BucketNames      string
-	Endpoint         string     `yaml:"endpoint"`
-	Region           string     `yaml:"region"`
-	AccessKeyID      string     `yaml:"access_key_id"`
-	SecretAccessKey  string     `yaml:"secret_access_key"`
-	Insecure         bool       `yaml:"insecure"`
-	SSEEncryption    bool       `yaml:"sse_encryption"`
-	HTTPConfig       HTTPConfig `yaml:"http_config"`
-	SignatureVersion string     `yaml:"signature_version"`
-	SSEConfig        SSEConfig  `yaml:"sse"`
+	Endpoint         string              `yaml:"endpoint"`
+	Region           string              `yaml:"region"`
+	AccessKeyID      string              `yaml:"access_key_id"`
+	SecretAccessKey  string              `yaml:"secret_access_key"`
+	Insecure         bool                `yaml:"insecure"`
+	SSEEncryption    bool                `yaml:"sse_encryption"`
+	HTTPConfig       HTTPConfig          `yaml:"http_config"`
+	SignatureVersion string              `yaml:"signature_version"`
+	SSEConfig        cortex_s3.SSEConfig `yaml:"sse"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -165,8 +166,8 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 
 	// deprecated, but if used it assumes SSE-S3 type
 	if cfg.SSEEncryption {
-		return NewSSEParsedConfig(SSEConfig{
-			Type: SSES3,
+		return NewSSEParsedConfig(cortex_s3.SSEConfig{
+			Type: cortex_s3.SSES3,
 		})
 	}
 
