@@ -175,12 +175,14 @@ func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]in
 		return
 	}
 
-	labelsStr := labels.String()
-	lastTimestamp, ok := ts.lastKnownTimestamps.Get(labelsStr)
-	if ok && (lastTimestamp.(time.Time).Equal(*parsedTs) ||
-		lastTimestamp.(time.Time).After(*parsedTs)) {
-		ts.processActionOnDuplicate(labels, t)
-		return
+	if ts.lastKnownTimestamps != nil {
+		labelsStr := labels.String()
+		lastTimestamp, ok := ts.lastKnownTimestamps.Get(labelsStr)
+		if ok && (lastTimestamp.(time.Time).Equal(*parsedTs) ||
+			lastTimestamp.(time.Time).After(*parsedTs)) {
+			ts.processActionOnDuplicate(labels, t)
+			return
+		}
 	}
 
 	// Update the log entry timestamp with the parsed one
