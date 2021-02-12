@@ -72,9 +72,14 @@ func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registe
 		return nil, err
 	}
 
+	objectClient = util.NewPrefixedObjectClient(objectClient, cfg.SharedStoreKeyPrefix)
+	if cfg.SharedStoreType != "filesystem" {
+		objectClient = shipper_util.NewCachedObjectClient(objectClient)
+	}
+
 	compactor := Compactor{
 		cfg:          cfg,
-		objectClient: util.NewPrefixedObjectClient(objectClient, cfg.SharedStoreKeyPrefix),
+		objectClient: objectClient,
 		metrics:      newMetrics(r),
 	}
 
