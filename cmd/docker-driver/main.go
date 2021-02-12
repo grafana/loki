@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+
+	_ "net/http/pprof"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/docker/go-plugins-helpers/sdk"
@@ -34,6 +37,14 @@ func main() {
 	h := sdk.NewHandler(`{"Implements": ["LoggingDriver"]}`)
 
 	handlers(&h, newDriver(logger))
+
+	pprofPort := os.Getenv("PPROF_PORT")
+	if pprofPort != "" {
+		go func() {
+			err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil)
+			logger.Log("msg", "http server stopped", "err", err)
+		}()
+	}
 
 	if err := h.ServeUnix(socketAddress, 0); err != nil {
 		panic(err)
