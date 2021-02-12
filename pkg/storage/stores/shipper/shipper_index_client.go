@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
@@ -101,7 +102,7 @@ func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometh
 	return &shipper, nil
 }
 
-func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.Registerer) error {
+func (s *Shipper) init(objectClient chunk.ObjectClient, registerer prometheus.Registerer) error {
 	// When we run with target querier we don't have ActiveIndexDirectory set so using CacheLocation instead.
 	// Also it doesn't matter which directory we use since BoltDBIndexClient doesn't do anything with it but it is good to have a valid path.
 	boltdbIndexClientDir := s.cfg.ActiveIndexDirectory
@@ -115,7 +116,11 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 		return err
 	}
 
-	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, StorageKeyPrefix)
+	objectClient = util.NewPrefixedObjectClient(objectClient, StorageKeyPrefix)
+
+	if s.cfg.SharedStoreType != "filesystem" {
+		objectClient = shipper_util.NewCachedObjectClient(objectClient)
+	}
 
 	if s.cfg.Mode != ModeReadOnly {
 		uploader, err := s.getUploaderName()
@@ -129,7 +134,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.ResyncInterval + 2*time.Minute,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
+		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, objectClient, registerer)
 		if err != nil {
 			return err
 		}
@@ -144,7 +149,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			CacheTTL:          s.cfg.CacheTTL,
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, objectClient, registerer)
 		if err != nil {
 			return err
 		}

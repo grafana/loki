@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
@@ -66,9 +67,14 @@ func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registe
 		return nil, err
 	}
 
+	objectClient = util.NewPrefixedObjectClient(objectClient, shipper.StorageKeyPrefix)
+	if cfg.SharedStoreType != "filesystem" {
+		objectClient = shipper_util.NewCachedObjectClient(objectClient)
+	}
+
 	compactor := Compactor{
 		cfg:          cfg,
-		objectClient: util.NewPrefixedObjectClient(objectClient, shipper.StorageKeyPrefix),
+		objectClient: objectClient,
 		metrics:      newMetrics(r),
 	}
 
