@@ -15,6 +15,9 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 
+	// embed time zone data
+	_ "time/tzdata"
+
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/logentry/stages"
@@ -57,7 +60,6 @@ func (c *Config) Clone() flagext.Registerer {
 }
 
 func main() {
-
 	// Load config, merging config file and CLI flags
 	var config Config
 	if err := cfg.Parse(&config); err != nil {
