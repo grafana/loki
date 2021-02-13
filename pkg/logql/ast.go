@@ -21,6 +21,7 @@ import (
 type Expr interface {
 	logQLExpr()      // ensure it's not implemented accidentally
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
+	Foldable
 	fmt.Stringer
 }
 
@@ -148,6 +149,10 @@ func newMatcherExpr(matchers []*labels.Matcher) *matchersExpr {
 	return &matchersExpr{matchers: matchers}
 }
 
+func (e *matchersExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	return fn(x, e)
+}
+
 func (e *matchersExpr) Matchers() []*labels.Matcher {
 	return e.matchers
 }
@@ -186,6 +191,21 @@ func newPipelineExpr(left *matchersExpr, pipeline MultiStageExpr) LogSelectorExp
 		left:     left,
 		pipeline: pipeline,
 	}
+}
+
+func (e *pipelineExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	args := make([]Foldable, 0, len(e.pipeline)+1)
+	args = append(args, e.left)
+	for _, p := range e.pipeline {
+		args = append(args, p)
+	}
+
+	accum, err := foldAll(fn, x, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	return fn(accum, e)
 }
 
 func (e *pipelineExpr) Shardable() bool {
@@ -239,6 +259,18 @@ func newLineFilterExpr(left *lineFilterExpr, ty labels.MatchType, match string) 
 		ty:    ty,
 		match: match,
 	}
+}
+
+func (e *lineFilterExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	var err error
+	if e.left != nil {
+		x, err = e.left.Fold(fn, x)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return fn(x, e)
 }
 
 // AddFilterExpr adds a filter expression to a logselector expression.
@@ -317,6 +349,10 @@ func newLabelParserExpr(op, param string) *labelParserExpr {
 	}
 }
 
+func (e *labelParserExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	return fn(x, e)
+}
+
 func (e *labelParserExpr) Shardable() bool { return true }
 
 func (e *labelParserExpr) Stage() (log.Stage, error) {
@@ -349,6 +385,10 @@ type labelFilterExpr struct {
 	implicit
 }
 
+func (e *labelFilterExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	return fn(x, e)
+}
+
 func (e *labelFilterExpr) Shardable() bool { return true }
 
 func (e *labelFilterExpr) Stage() (log.Stage, error) {
@@ -368,6 +408,10 @@ func newLineFmtExpr(value string) *lineFmtExpr {
 	return &lineFmtExpr{
 		value: value,
 	}
+}
+
+func (e *lineFmtExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	return fn(x, e)
 }
 
 func (e *lineFmtExpr) Shardable() bool { return true }
@@ -390,6 +434,10 @@ func newLabelFmtExpr(fmts []log.LabelFmt) *labelFmtExpr {
 	return &labelFmtExpr{
 		formats: fmts,
 	}
+}
+
+func (e *labelFmtExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	return fn(x, e)
 }
 
 func (e *labelFmtExpr) Shardable() bool { return false }
@@ -472,6 +520,14 @@ type unwrapExpr struct {
 	postFilters []log.LabelFilterer
 }
 
+func newUnwrapExpr(id string, operation string) *unwrapExpr {
+	return &unwrapExpr{identifier: id, operation: operation}
+}
+
+func (u *unwrapExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	return fn(x, u)
+}
+
 func (u unwrapExpr) String() string {
 	var sb strings.Builder
 	if u.operation != "" {
@@ -490,15 +546,27 @@ func (u *unwrapExpr) addPostFilter(f log.LabelFilterer) *unwrapExpr {
 	return u
 }
 
-func newUnwrapExpr(id string, operation string) *unwrapExpr {
-	return &unwrapExpr{identifier: id, operation: operation}
-}
-
 type logRange struct {
 	left     LogSelectorExpr
 	interval time.Duration
 
 	unwrap *unwrapExpr
+}
+
+func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr) *logRange {
+	return &logRange{
+		left:     left,
+		interval: interval,
+		unwrap:   u,
+	}
+}
+
+func (r *logRange) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	accum, err := foldAll(fn, x, r.left, r.unwrap)
+	if err != nil {
+		return nil, err
+	}
+	return fn(accum, r)
 }
 
 // impls Stringer
@@ -513,14 +581,6 @@ func (r logRange) String() string {
 }
 
 func (r *logRange) Shardable() bool { return r.left.Shardable() }
-
-func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr) *logRange {
-	return &logRange{
-		left:     left,
-		interval: interval,
-		unwrap:   u,
-	}
-}
 
 const (
 	// vector ops
@@ -654,6 +714,14 @@ func newRangeAggregationExpr(left *logRange, operation string, gr *grouping, str
 	return e
 }
 
+func (e *rangeAggregationExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	accum, err := e.left.Fold(fn, x)
+	if err != nil {
+		return nil, err
+	}
+	return fn(accum, e)
+}
+
 func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.left
 }
@@ -764,6 +832,14 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *groupin
 	}
 }
 
+func (e *vectorAggregationExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	accum, err := e.left.Fold(fn, x)
+	if err != nil {
+		return nil, err
+	}
+	return fn(accum, e)
+}
+
 func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.Selector()
 }
@@ -817,6 +893,14 @@ type binOpExpr struct {
 	RHS  SampleExpr
 	op   string
 	opts BinOpOptions
+}
+
+func (e *binOpExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	accum, err := foldAll(fn, x, e.SampleExpr, e.RHS)
+	if err != nil {
+		return nil, err
+	}
+	return fn(accum, e)
 }
 
 func (e *binOpExpr) String() string {
@@ -925,6 +1009,9 @@ func (e *literalExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
+func (e *literalExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	return fn(x, e)
+}
 func (e *literalExpr) Selector() LogSelectorExpr               { return e }
 func (e *literalExpr) HasFilter() bool                         { return false }
 func (e *literalExpr) Shardable() bool                         { return true }
@@ -977,6 +1064,14 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 		re:          re,
 		regex:       regex,
 	}
+}
+
+func (e *labelReplaceExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	accum, err := e.left.Fold(fn, x)
+	if err != nil {
+		return nil, err
+	}
+	return fn(accum, e)
 }
 
 func (e *labelReplaceExpr) Selector() LogSelectorExpr {

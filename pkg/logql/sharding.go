@@ -66,6 +66,18 @@ type DownstreamSampleExpr struct {
 	SampleExpr
 }
 
+func (d DownstreamSampleExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	var err error
+	if d.SampleExpr != nil {
+		x, err = d.SampleExpr.Fold(fn, x)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return fn(x, d)
+}
+
 func (d DownstreamSampleExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.SampleExpr.String(), d.shard)
 }
@@ -74,6 +86,18 @@ func (d DownstreamSampleExpr) String() string {
 type DownstreamLogSelectorExpr struct {
 	shard *astmapper.ShardAnnotation
 	LogSelectorExpr
+}
+
+func (d DownstreamLogSelectorExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	var err error
+	if d.LogSelectorExpr != nil {
+		x, err = d.LogSelectorExpr.Fold(fn, x)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return fn(x, d)
 }
 
 func (d DownstreamLogSelectorExpr) String() string {
@@ -88,6 +112,18 @@ type ConcatSampleExpr struct {
 	next *ConcatSampleExpr
 }
 
+func (c ConcatSampleExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	foldables := []Foldable{c.DownstreamSampleExpr}
+	if c.next != nil {
+		foldables = append(foldables, c.next)
+	}
+	accum, err := foldAll(fn, x, foldables...)
+	if err != nil {
+		return nil, err
+	}
+	return fn(accum, c)
+}
+
 func (c ConcatSampleExpr) String() string {
 	if c.next == nil {
 		return c.DownstreamSampleExpr.String()
@@ -100,6 +136,18 @@ func (c ConcatSampleExpr) String() string {
 type ConcatLogSelectorExpr struct {
 	DownstreamLogSelectorExpr
 	next *ConcatLogSelectorExpr
+}
+
+func (c ConcatLogSelectorExpr) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	foldables := []Foldable{c.DownstreamLogSelectorExpr}
+	if c.next != nil {
+		foldables = append(foldables, c.next)
+	}
+	accum, err := foldAll(fn, x, foldables...)
+	if err != nil {
+		return nil, err
+	}
+	return fn(accum, c)
 }
 
 func (c ConcatLogSelectorExpr) String() string {
