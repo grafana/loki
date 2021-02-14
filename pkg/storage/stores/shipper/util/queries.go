@@ -33,10 +33,12 @@ func QueriesByTable(queries []chunk.IndexQuery) map[string][]chunk.IndexQuery {
 func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	errs := make(chan error)
 
+	id := NewIndexDeduper(callback)
+
 	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
 		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]
 		go func(queries []chunk.IndexQuery) {
-			errs <- tableQuerier.MultiQueries(ctx, queries, callback)
+			errs <- tableQuerier.MultiQueries(ctx, queries, id.Callback)
 		}(q)
 	}
 
