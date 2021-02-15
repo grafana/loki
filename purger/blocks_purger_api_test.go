@@ -3,22 +3,27 @@ package purger
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path"
 	"testing"
 
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestDeleteTenant(t *testing.T) {
 	bkt := objstore.NewInMemBucket()
-	api := newBlocksPurgerAPI(bkt, log.NewNopLogger())
+	api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger())
 
 	{
 		resp := httptest.NewRecorder()
@@ -80,11 +85,122 @@ func TestDeleteTenantStatus(t *testing.T) {
 				require.NoError(t, bkt.Upload(context.Background(), objName, bytes.NewReader(data)))
 			}
 
-			api := newBlocksPurgerAPI(bkt, log.NewNopLogger())
+			api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger())
 
-			res, err := api.checkBlocksForUser(context.Background(), username)
+			res, err := api.isBlocksForUserDeleted(context.Background(), username)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedBlocksDeleted, res)
 		})
 	}
+}
+
+func TestDeleteTenantRuleGroups(t *testing.T) {
+	ruleGroups := []ruleGroupKey{
+		{user: "userA", namespace: "namespace", group: "group"},
+		{user: "userB", namespace: "namespace1", group: "group"},
+		{user: "userB", namespace: "namespace2", group: "group"},
+	}
+
+	obj, rs := setupRuleGroupsStore(t, ruleGroups)
+	require.Equal(t, 3, obj.GetObjectCount())
+
+	api := newBlocksPurgerAPI(objstore.NewInMemBucket(), rs, log.NewNopLogger())
+
+	{
+		callDeleteTenantAPI(t, api, "user-with-no-rule-groups")
+		require.Equal(t, 3, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", false)
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	{
+		callDeleteTenantAPI(t, api, "userA")
+		require.Equal(t, 2, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Just deleted.
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	{
+		callDeleteTenantAPI(t, api, "userB")
+		require.Equal(t, 0, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Deleted previously
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", true)                    // Just deleted
+	}
+}
+
+func TestDeleteTenantRuleGroupsWithReadOnlyStore(t *testing.T) {
+	ruleGroups := []ruleGroupKey{
+		{user: "userA", namespace: "namespace", group: "group"},
+		{user: "userB", namespace: "namespace1", group: "group"},
+		{user: "userB", namespace: "namespace2", group: "group"},
+	}
+
+	obj, rs := setupRuleGroupsStore(t, ruleGroups)
+	require.Equal(t, 3, obj.GetObjectCount())
+
+	rs = &readOnlyRuleStore{RuleStore: rs}
+
+	api := newBlocksPurgerAPI(objstore.NewInMemBucket(), rs, log.NewNopLogger())
+
+	// Make sure there is no error reported.
+	callDeleteTenantAPI(t, api, "userA")
+	require.Equal(t, 3, obj.GetObjectCount())
+
+	verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", false) // Cannot delete from read-only store.
+	verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+}
+
+func callDeleteTenantAPI(t *testing.T, api *BlocksPurgerAPI, userID string) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	req := &http.Request{}
+	resp := httptest.NewRecorder()
+	api.DeleteTenant(resp, req.WithContext(ctx))
+
+	require.Equal(t, http.StatusOK, resp.Code)
+}
+
+func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, api *BlocksPurgerAPI, userID string, expected bool) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	req := &http.Request{}
+	resp := httptest.NewRecorder()
+	api.DeleteTenantStatus(resp, req.WithContext(ctx))
+
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	deleteResp := &DeleteTenantStatusResponse{}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), deleteResp))
+	require.Equal(t, expected, deleteResp.RuleGroupsDeleted)
+}
+
+func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rules.RuleStore) {
+	obj := chunk.NewMockStorage()
+	rs := objectclient.NewRuleStore(obj, 5)
+
+	// "upload" rule groups
+	for _, key := range ruleGroups {
+		desc := rules.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
+		require.NoError(t, rs.SetRuleGroup(context.Background(), key.user, key.namespace, desc))
+	}
+
+	return obj, rs
+}
+
+type ruleGroupKey struct {
+	user, namespace, group string
+}
+
+type readOnlyRuleStore struct {
+	rules.RuleStore
+}
+
+func (r *readOnlyRuleStore) SupportsModifications() bool {
+	return false
 }

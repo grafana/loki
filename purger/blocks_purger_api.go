@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -21,20 +22,21 @@ import (
 
 type BlocksPurgerAPI struct {
 	bucketClient objstore.Bucket
+	ruleStore    rules.RuleStore
 	logger       log.Logger
 }
 
-func NewBlocksPurgerAPI(storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, reg prometheus.Registerer) (*BlocksPurgerAPI, error) {
+func NewBlocksPurgerAPI(storageCfg cortex_tsdb.BlocksStorageConfig, ruleStore rules.RuleStore, logger log.Logger, reg prometheus.Registerer) (*BlocksPurgerAPI, error) {
 	bucketClient, err := createBucketClient(storageCfg, logger, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	return newBlocksPurgerAPI(bucketClient, logger), nil
+	return newBlocksPurgerAPI(bucketClient, ruleStore, logger), nil
 }
 
-func newBlocksPurgerAPI(bkt objstore.Bucket, logger log.Logger) *BlocksPurgerAPI {
-	return &BlocksPurgerAPI{bucketClient: bkt, logger: logger}
+func newBlocksPurgerAPI(bkt objstore.Bucket, ruleStore rules.RuleStore, logger log.Logger) *BlocksPurgerAPI {
+	return &BlocksPurgerAPI{bucketClient: bkt, ruleStore: ruleStore, logger: logger}
 }
 
 func (api *BlocksPurgerAPI) DeleteTenant(w http.ResponseWriter, r *http.Request) {
@@ -47,19 +49,45 @@ func (api *BlocksPurgerAPI) DeleteTenant(w http.ResponseWriter, r *http.Request)
 
 	err = cortex_tsdb.WriteTenantDeletionMark(r.Context(), api.bucketClient, userID, cortex_tsdb.NewTenantDeletionMark(time.Now()))
 	if err != nil {
+		level.Error(api.logger).Log("msg", "failed to write tenant deletion mark", "user", userID, "err", err)
+
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	level.Info(api.logger).Log("msg", "tenant deletion marker created", "user", userID)
+	level.Info(api.logger).Log("msg", "tenant deletion mark in blocks storage created", "user", userID)
+
+	if api.ruleStore != nil {
+		err := api.deleteRules(r.Context(), userID)
+		if err != nil {
+			level.Error(api.logger).Log("msg", "failed to delete tenant rule groups", "user", userID, "err", err)
+			http.Error(w, errors.Wrapf(err, "failed to delete tenant rule groups").Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (api *BlocksPurgerAPI) deleteRules(ctx context.Context, userID string) error {
+	if !api.ruleStore.SupportsModifications() {
+		level.Warn(api.logger).Log("msg", "cannot delete tenant rule groups, using read-only rule store", "user", userID)
+		return nil
+	}
+
+	err := api.ruleStore.DeleteNamespace(ctx, userID, "") // Empty namespace = delete all rule groups.
+	if err != nil && !errors.Is(err, rules.ErrGroupNamespaceNotFound) {
+		return err
+	}
+
+	level.Info(api.logger).Log("msg", "deleted all tenant rule groups", "user", userID)
+	return nil
 }
 
 type DeleteTenantStatusResponse struct {
 	TenantID                  string `json:"tenant_id"`
 	BlocksDeleted             bool   `json:"blocks_deleted"`
-	RuleGroupsDeleted         bool   `json:"rule_groups_deleted,omitempty"`          // Not yet supported.
+	RuleGroupsDeleted         bool   `json:"rule_groups_deleted"`
 	AlertManagerConfigDeleted bool   `json:"alert_manager_config_deleted,omitempty"` // Not yet supported.
 }
 
@@ -73,8 +101,13 @@ func (api *BlocksPurgerAPI) DeleteTenantStatus(w http.ResponseWriter, r *http.Re
 
 	result := DeleteTenantStatusResponse{}
 	result.TenantID = userID
-	result.BlocksDeleted, err = api.checkBlocksForUser(ctx, userID)
+	result.BlocksDeleted, err = api.isBlocksForUserDeleted(ctx, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
+	result.RuleGroupsDeleted, err = api.isRulesForUserDeleted(ctx, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -83,7 +116,21 @@ func (api *BlocksPurgerAPI) DeleteTenantStatus(w http.ResponseWriter, r *http.Re
 	util.WriteJSONResponse(w, result)
 }
 
-func (api *BlocksPurgerAPI) checkBlocksForUser(ctx context.Context, userID string) (bool, error) {
+func (api *BlocksPurgerAPI) isRulesForUserDeleted(ctx context.Context, userID string) (bool, error) {
+	if api.ruleStore == nil {
+		// If purger doesn't have access to rule store, then we cannot say that rules have been deleted.
+		return false, nil
+	}
+
+	list, err := api.ruleStore.ListRuleGroupsForUserAndNamespace(ctx, userID, "")
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list rule groups for tenant")
+	}
+
+	return len(list) == 0, nil
+}
+
+func (api *BlocksPurgerAPI) isBlocksForUserDeleted(ctx context.Context, userID string) (bool, error) {
 	var errBlockFound = errors.New("block found")
 
 	userBucket := bucket.NewUserBucketClient(userID, api.bucketClient)
