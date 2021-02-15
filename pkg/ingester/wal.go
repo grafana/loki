@@ -52,6 +52,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
 type WAL interface {
+	Start()
 	// Log marshalls the records and writes it into the WAL.
 	Log(*WALRecord) error
 	// Stop stops all the WAL operations.
@@ -60,6 +61,7 @@ type WAL interface {
 
 type noopWAL struct{}
 
+func (noopWAL) Start()               {}
 func (noopWAL) Log(*WALRecord) error { return nil }
 func (noopWAL) Stop() error          { return nil }
 
@@ -92,9 +94,12 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		seriesIter: seriesIter,
 	}
 
+	return w, nil
+}
+
+func (w *walWrapper) Start() {
 	w.wait.Add(1)
 	go w.run()
-	return w, nil
 }
 
 func (w *walWrapper) Log(record *WALRecord) error {
