@@ -285,6 +285,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 		level.Info(util_log.Logger).Log("msg", "recovery finished", "time", elapsed.String())
 
+		i.wal.Start()
 	}
 
 	i.InitFlushQueues()
