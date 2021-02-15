@@ -133,6 +133,7 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 	}
 
 	i.flushQueuesDone.Wait()
+	level.Debug(util_log.Logger).Log("msg", "flush queues have drained")
 
 }
 

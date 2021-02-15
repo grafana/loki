@@ -3,6 +3,9 @@ package ingester
 import (
 	"sync"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/dustin/go-humanize"
+	"github.com/go-kit/kit/log/level"
 	"go.uber.org/atomic"
 )
 
@@ -28,6 +31,7 @@ func (f *replayFlusher) Flush() {
 
 		instance.streamsMtx.Unlock()
 	}
+
 }
 
 type Flusher interface {
@@ -70,8 +74,23 @@ func (c *replayController) Cur() int {
 
 func (c *replayController) Flush() {
 	if c.isFlushing.CAS(false, true) {
+		c.metrics.recoveryIsFlushing.Set(1)
+		prior := c.currentBytes.Load()
+		level.Debug(util_log.Logger).Log(
+			"msg", "replay flusher pre-flush",
+			"bytes", humanize.Bytes(uint64(prior)),
+		)
+
 		c.flusher.Flush()
+
+		after := c.currentBytes.Load()
+		level.Debug(util_log.Logger).Log(
+			"msg", "replay flusher post-flush",
+			"bytes", humanize.Bytes(uint64(after)),
+		)
+
 		c.isFlushing.Store(false)
+		c.metrics.recoveryIsFlushing.Set(0)
 
 		// Broadcast after lock is acquired to prevent race conditions with cpu scheduling
 		// where the flush code could finish before the goroutine which initiated it gets to call
