@@ -47,7 +47,7 @@ type tailer struct {
 }
 
 func newTailer(orgID, query string, conn TailServer) (*tailer, error) {
-	expr, err := logql.ParseLogSelector(query)
+	expr, err := logql.ParseLogSelector(query, true)
 	if err != nil {
 		return nil, err
 	}

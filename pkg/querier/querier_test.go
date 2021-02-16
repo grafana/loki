@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -218,10 +217,6 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	request.Start = request.End.Add(-3 * time.Minute)
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m0s, limit: 2m0s)"), err)
-
-	request.Selector = "{type=~\".*\"}"
-	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errAtleastOneEqualityMatcherRequired), err)
 }
 
 func TestQuerier_SeriesAPI(t *testing.T) {
@@ -697,45 +692,6 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 				storeQueryInterval:    storeQueryInterval,
 			})
 
-		})
-	}
-}
-
-func TestQuerier_queryHasEqualityMatchers(t *testing.T) {
-	for i, tc := range []struct {
-		selector     string
-		expectedResp bool
-	}{
-		{
-			selector:     "{foo=\"bar\"}",
-			expectedResp: true,
-		},
-		{
-			selector:     "{foo=~\".*\"}",
-			expectedResp: false,
-		},
-		{
-			selector:     "{foo=~\"bar|baz\"}",
-			expectedResp: true,
-		},
-		{
-			selector:     "{foo!=\"bar\"}",
-			expectedResp: false,
-		},
-	} {
-		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			querier := Querier{}
-			request := logproto.QueryRequest{
-				Selector:  tc.selector,
-				Limit:     10,
-				Start:     time.Now().Add(-1 * time.Minute),
-				End:       time.Now(),
-				Direction: logproto.FORWARD,
-			}
-
-			resp, err := querier.queryHasEqualityMatchers(logql.SelectLogParams{QueryRequest: &request})
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedResp, resp)
 		})
 	}
 }

@@ -2320,7 +2320,7 @@ func TestIsParseError(t *testing.T) {
 func Test_PipelineCombined(t *testing.T) {
 	query := `{job="cortex-ops/query-frontend"} |= "logging.go" | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)" | (duration > 1s or status==200) and method="POST" | line_format "{{.duration}}|{{.method}}|{{.status}}"`
 
-	expr, err := ParseLogSelector(query)
+	expr, err := ParseLogSelector(query, true)
 	require.Nil(t, err)
 
 	p, err := expr.Pipeline()
@@ -2364,4 +2364,96 @@ func Benchmark_CompareParseLabels(b *testing.B) {
 			require.NoError(b, err)
 		}
 	})
+}
+
+func TestParseSampleExpr_equalityMatcher(t *testing.T) {
+	for _, tc := range []struct {
+		in  string
+		err error
+	}{
+		{
+			in: `count_over_time({foo="bar"}[5m])`,
+		},
+		{
+			in:  `count_over_time({foo!="bar"}[5m])`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+		{
+			in: `count_over_time({app="baz", foo!="bar"}[5m])`,
+		},
+		{
+			in: `count_over_time({app=~".+"}[5m])`,
+		},
+		{
+			in:  `count_over_time({app=~".*"}[5m])`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+		{
+			in: `count_over_time({app=~"bar|baz"}[5m])`,
+		},
+		{
+			in:  `count_over_time({app!~"bar|baz"}[5m])`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+		{
+			in:  `1 + count_over_time({app=~".*"}[5m])`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+		{
+			in:  `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".*"}[5m])`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+		{
+			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m])`,
+		},
+		{
+			in:  `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".*"}[5m]) + 1`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+		{
+			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
+		},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			_, err := ParseSampleExpr(tc.in, true)
+			require.Equal(t, tc.err, err)
+		})
+	}
+}
+
+func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
+	for _, tc := range []struct {
+		in  string
+		err error
+	}{
+		{
+			in: `{foo="bar"}`,
+		},
+		{
+			in:  `{foo!="bar"}`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+		{
+			in: `{app="baz", foo!="bar"}`,
+		},
+		{
+			in: `{app=~".+"}`,
+		},
+		{
+			in:  `{app=~".*"}`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+		{
+			in: `{foo=~"bar|baz"}`,
+		},
+		{
+			in:  `{foo!~"bar|baz"}`,
+			err: errors.New(errAtleastOneEqualityMatcherRequired),
+		},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			_, err := ParseLogSelector(tc.in, true)
+			require.Equal(t, tc.err, err)
+		})
+	}
 }

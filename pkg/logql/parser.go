@@ -7,9 +7,12 @@ import (
 	"sync"
 	"text/scanner"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/pkg/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 )
+
+const errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
 
 var parserPool = sync.Pool{
 	New: func() interface{} {
@@ -72,6 +75,19 @@ func ParseExpr(input string) (expr Expr, err error) {
 	return p.Parse()
 }
 
+// checkEqualityMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
+func checkEqualityMatchers(matchers []*labels.Matcher) error {
+	if len(matchers) == 0 {
+		return nil
+	}
+	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	if len(matchers) == 0 {
+		return errors.New(errAtleastOneEqualityMatcherRequired)
+	}
+
+	return nil
+}
+
 // ParseMatchers parses a string and returns labels matchers, if the expression contains
 // anything else it will return an error.
 func ParseMatchers(input string) ([]*labels.Matcher, error) {
@@ -87,7 +103,7 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 }
 
 // ParseSampleExpr parses a string and returns the sampleExpr
-func ParseSampleExpr(input string) (SampleExpr, error) {
+func ParseSampleExpr(input string, equalityMatcherRequired bool) (SampleExpr, error) {
 	expr, err := ParseExpr(input)
 	if err != nil {
 		return nil, err
@@ -96,11 +112,33 @@ func ParseSampleExpr(input string) (SampleExpr, error) {
 	if !ok {
 		return nil, errors.New("only sample expression supported")
 	}
+
+	if equalityMatcherRequired {
+		err = sampleExprCheckEqualityMatchers(sampleExpr)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return sampleExpr, nil
 }
 
+func sampleExprCheckEqualityMatchers(expr SampleExpr) error {
+	switch e := expr.(type) {
+	case *binOpExpr:
+		if err := sampleExprCheckEqualityMatchers(e.SampleExpr); err != nil {
+			return err
+		}
+
+		return sampleExprCheckEqualityMatchers(e.RHS)
+	case *literalExpr:
+		return nil
+	default:
+		return checkEqualityMatchers(expr.Selector().Matchers())
+	}
+}
+
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
-func ParseLogSelector(input string) (LogSelectorExpr, error) {
+func ParseLogSelector(input string, equalityMatcherRequired bool) (LogSelectorExpr, error) {
 	expr, err := ParseExpr(input)
 	if err != nil {
 		return nil, err
@@ -108,6 +146,13 @@ func ParseLogSelector(input string) (LogSelectorExpr, error) {
 	logSelector, ok := expr.(LogSelectorExpr)
 	if !ok {
 		return nil, errors.New("only log selector is supported")
+	}
+
+	if equalityMatcherRequired {
+		err = checkEqualityMatchers(logSelector.Matchers())
+		if err != nil {
+			return nil, err
+		}
 	}
 	return logSelector, nil
 }
