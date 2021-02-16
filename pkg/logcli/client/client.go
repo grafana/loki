@@ -30,9 +30,7 @@ const (
 	tailPath        = "/loki/api/v1/tail"
 )
 
-var (
-	userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
-)
+var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
 
 // Client contains all the methods to query a Loki instance, it's an interface to allow multiple implementations.
 type Client interface {
@@ -81,11 +79,11 @@ func (c *DefaultClient) QueryRange(queryStr string, limit int, start, end time.T
 	// The step is optional, so we do set it only if provided,
 	// otherwise we do leverage on the API defaults
 	if step != 0 {
-		params.SetInt("step", int64(step.Seconds()))
+		params.SetFloat("step", step.Seconds())
 	}
 
 	if interval != 0 {
-		params.SetInt("interval", int64(interval.Seconds()))
+		params.SetFloat("interval", interval.Seconds())
 	}
 
 	return c.doQuery(queryRangePath, params.Encode(), quiet)
@@ -159,7 +157,6 @@ func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp
 }
 
 func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{}) error {
-
 	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return err
@@ -239,7 +236,6 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 	}
 
 	conn, resp, err := ws.Dial(us, h)
-
 	if err != nil {
 		if resp == nil {
 			return nil, err
