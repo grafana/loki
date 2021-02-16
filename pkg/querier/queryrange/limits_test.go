@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -151,14 +151,14 @@ func Test_MaxQueryPallelism(t *testing.T) {
 	maxQueryParallelism := 2
 	f, err := newfakeRoundTripper()
 	require.Nil(t, err)
-	var count int32
-	var max int32
+	var count atomic.Int32
+	var max atomic.Int32
 	f.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		cur := atomic.AddInt32(&count, 1)
-		if cur > atomic.LoadInt32(&max) {
-			atomic.StoreInt32(&max, cur)
+		cur := count.Inc()
+		if cur > max.Load() {
+			max.Store(cur)
 		}
-		defer atomic.AddInt32(&count, -1)
+		defer count.Dec()
 		// simulate some work
 		time.Sleep(20 * time.Millisecond)
 	}))
@@ -167,7 +167,7 @@ func Test_MaxQueryPallelism(t *testing.T) {
 	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
 	require.Nil(t, err)
 
-	_, _ = NewLimitedRoundTripper(f, lokiCodec, fakeLimits{maxQueryParallelism: 10},
+	_, _ = NewLimitedRoundTripper(f, lokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
 				var wg sync.WaitGroup
@@ -183,6 +183,6 @@ func Test_MaxQueryPallelism(t *testing.T) {
 			})
 		}),
 	).RoundTrip(r)
-	maxFound := int(atomic.LoadInt32(&max))
+	maxFound := int(max.Load())
 	require.LessOrEqual(t, maxFound, maxQueryParallelism, "max query parallelism: ", maxFound, " went over the configured one:", maxQueryParallelism)
 }
