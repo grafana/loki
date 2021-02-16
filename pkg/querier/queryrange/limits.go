@@ -209,11 +209,11 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	for i := 0; i < parallelism; i++ {
 		go func() {
 			for w := range intermediate {
-				resp, err := rt.do(ctx, w.req)
+				resp, err := rt.do(w.ctx, w.req)
 				select {
 				case w.result <- result{response: resp, err: err}:
-				case <-ctx.Done():
-					w.result <- result{err: ctx.Err()}
+				case <-w.ctx.Done():
+					w.result <- result{err: w.ctx.Err()}
 				}
 
 			}
