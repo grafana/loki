@@ -21,6 +21,14 @@
             "settable": [
                 "value"
             ]
+        },
+        {
+            "name": "PPROF_PORT",
+            "description": "Activate pprof debugging endpoint for the given port.",
+            "value": "",
+            "settable": [
+                "value"
+            ]
         }
     ]
 }
