@@ -1,6 +1,8 @@
 package stages
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -87,7 +89,6 @@ func loadConfig(yml string) PipelineStages {
 }
 
 func TestNewPipeline(t *testing.T) {
-
 	p, err := NewPipeline(util_log.Logger, loadConfig(testMultiStageYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		panic(err)
@@ -255,7 +256,6 @@ func BenchmarkPipeline(b *testing.B) {
 
 			go func() {
 				for range out {
-
 				}
 			}()
 			for i := 0; i < b.N; i++ {
@@ -324,7 +324,88 @@ func TestPipeline_Wrap(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.shouldSend, received)
-
 		})
 	}
+}
+
+func newPipelineFromConfig(cfg, name string) (*Pipeline, error) {
+	var config map[string]interface{}
+
+	err := yaml.Unmarshal([]byte(cfg), &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPipeline(util_log.Logger, config["pipeline_stages"].([]interface{}), &name, prometheus.DefaultRegisterer)
+}
+
+func Test_PipelineParallel(t *testing.T) {
+	c := fake.New(func() {})
+	cfg := `
+pipeline_stages:
+- match:
+    selector: "{match=~\".*\"}"
+    stages:
+    - multiline:
+        firstline: '^{'
+        max_wait_time: 3s
+        max_lines: 2
+    - json:
+        expressions:
+          app:
+          message:
+    - labels:
+        app:
+    - output:
+        source: message
+- match:
+    selector: "{match=~\".*\"}"
+    stages:
+    - json:
+        expressions:
+          app:
+          message:
+    - labels:
+        app:
+    - output:
+        source: message
+`
+	p, err := newPipelineFromConfig(cfg, "test")
+	require.NoError(t, err)
+
+	e1 := p.Wrap(c)
+	e2 := api.AddLabelsMiddleware(model.LabelSet{"bar": "foo"}).Wrap(e1)
+	entryhandler := api.AddLabelsMiddleware(model.LabelSet{"foo": "bar"}).Wrap(e2)
+
+	var wg sync.WaitGroup
+	parallelism := 10
+	wg.Add(parallelism)
+
+	for i := 0; i < parallelism; i++ {
+		go func(i int) {
+			defer wg.Done()
+			entryhandler.Chan() <- api.Entry{
+				Labels: make(model.LabelSet),
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      fmt.Sprintf(`{app:"%d", `, 5),
+				},
+			}
+			entryhandler.Chan() <- api.Entry{
+				Labels: make(model.LabelSet),
+				Entry: logproto.Entry{
+					Timestamp: time.Now(),
+					Line:      fmt.Sprintf(` message:"%s"}`, time.Now()),
+				},
+			}
+			t.Log(i)
+		}(i)
+	}
+
+	wg.Wait()
+	entryhandler.Stop()
+	e2.Stop()
+	e1.Stop()
+	c.Stop()
+	t.Log(c.Received())
 }

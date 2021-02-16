@@ -45,6 +45,7 @@ var testTemplateLogLine = `
 	"message" : "this is a log line"
 }
 `
+
 var testTemplateLogLineWithMissingKey = `
 {
 	"time":"2012-11-01T22:08:41+00:00",
@@ -77,7 +78,6 @@ func TestPipelineWithMissingKey_Template(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	Debug = true
 
 	_ = processEntries(pl, newEntry(nil, nil, testTemplateLogLineWithMissingKey, time.Now()))
 

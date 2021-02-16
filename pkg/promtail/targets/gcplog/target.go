@@ -2,6 +2,7 @@ package gcplog
 
 import (
 	"context"
+	"sync"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/kit/log"
@@ -28,6 +29,7 @@ type GcplogTarget struct {
 	// lifecycle management
 	ctx    context.Context
 	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
 	// pubsub
 	ps   *pubsub.Client
@@ -48,7 +50,6 @@ func NewGcplogTarget(
 	jobName string,
 	config *scrapeconfig.GcplogTargetConfig,
 ) (*GcplogTarget, error) {
-
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ps, err := pubsub.NewClient(ctx, config.ProjectID)
@@ -77,7 +78,6 @@ func newGcplogTarget(
 	ctx context.Context,
 	cancel func(),
 ) *GcplogTarget {
-
 	return &GcplogTarget{
 		metrics:       metrics,
 		logger:        logger,
@@ -93,6 +93,9 @@ func newGcplogTarget(
 }
 
 func (t *GcplogTarget) run() error {
+	t.wg.Add(1)
+	defer t.wg.Done()
+
 	send := t.handler.Chan()
 
 	sub := t.ps.SubscriptionInProject(t.config.Subscription, t.config.ProjectID)
@@ -151,7 +154,8 @@ func (t *GcplogTarget) Details() interface{} {
 }
 
 func (t *GcplogTarget) Stop() error {
-	t.handler.Stop()
 	t.cancel()
+	t.wg.Wait()
+	t.handler.Stop()
 	return nil
 }

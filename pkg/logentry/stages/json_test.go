@@ -228,7 +228,6 @@ var logFixture = `
 
 func TestJSONParser_Parse(t *testing.T) {
 	t.Parallel()
-	Debug = true
 	tests := map[string]struct {
 		config          interface{}
 		extracted       map[string]interface{}
