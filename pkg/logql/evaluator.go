@@ -3,7 +3,6 @@ package logql
 import (
 	"container/heap"
 	"context"
-	"fmt"
 	"math"
 	"sort"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type QueryRangeType string
@@ -614,7 +614,7 @@ func binOpStepEvaluator(
 		case 1:
 			return errs[0]
 		default:
-			return fmt.Errorf("Multiple errors: %+v", errs)
+			return util.MultiError(errs)
 		}
 	})
 }
