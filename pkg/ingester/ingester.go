@@ -115,7 +115,6 @@ func (cfg *Config) Validate() error {
 		return errors.New("the use of the write ahead log (WAL) is incompatible with chunk transfers. It's suggested to use the WAL. Please try setting ingester.max-transfer-retries to 0 to disable transfers")
 	}
 	return nil
-
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -219,7 +218,6 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
-
 	if i.cfg.WAL.Enabled {
 		// Ignore retain period during wal replay.
 		old := i.cfg.RetainPeriod
@@ -447,7 +445,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
-	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
+	return sendBatches(ctx, heapItr, queryServer, req.Limit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -486,7 +484,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
-	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
+	return sendSampleBatches(ctx, heapItr, queryServer)
 }
 
 // boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.
