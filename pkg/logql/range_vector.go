@@ -119,6 +119,7 @@ func (r *rangeVectorIterator) load(start, end int64) {
 				var err error
 				metric, err = promql_parser.ParseMetric(lbs)
 				if err != nil {
+					_ = r.iter.Next()
 					continue
 				}
 				r.metrics[lbs] = metric
