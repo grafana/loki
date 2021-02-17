@@ -104,7 +104,7 @@ Once the previous two steps are completed, you can publish your draft!
 
 Loki docs are versioned. Follow the below steps to version Loki docs for this release.
 
-1. Clone Grafana website [repo] (https://github.com/grafana/website)
+1. Clone Grafana website [repo](https://github.com/grafana/website)
 1. Create new branch `git checkout -b loki-v1.2.3` (replace `v1.2.3` with current release version)
 1. Run `make project-doc-release`
 1. It prompts for two things. `Project name` and `version`. Project name is `loki` and version is current release version.
