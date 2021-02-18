@@ -28,8 +28,10 @@ var samples = []logproto.Sample{
 	{Timestamp: time.Unix(100, 1).UnixNano(), Hash: 11, Value: 1.},
 }
 
-var labelFoo, _ = promql_parser.ParseMetric("{app=\"foo\"}")
-var labelBar, _ = promql_parser.ParseMetric("{app=\"bar\"}")
+var (
+	labelFoo, _ = promql_parser.ParseMetric("{app=\"foo\"}")
+	labelBar, _ = promql_parser.ParseMetric("{app=\"bar\"}")
+)
 
 func newSampleIterator() iter.SampleIterator {
 	return iter.NewHeapSampleIterator(context.Background(), []iter.SampleIterator{
@@ -161,5 +163,26 @@ func Test_RangeVectorIterator(t *testing.T) {
 				require.Equal(t, len(tt.expectedTs), i)
 				require.Equal(t, len(tt.expectedVectors), i)
 			})
+	}
+}
+
+func Test_RangeVectorIteratorBadLabels(t *testing.T) {
+	badIterator := iter.NewPeekingSampleIterator(
+		iter.NewSeriesIterator(logproto.Series{
+			Labels:  "{badlabels=}",
+			Samples: samples,
+		}))
+	it := newRangeVectorIterator(badIterator, (30 * time.Second).Nanoseconds(),
+		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano())
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		for it.Next() {
+		}
+	}()
+	select {
+	case <-time.After(1 * time.Second):
+		require.Fail(t, "goroutine took too long")
+	case <-ctx.Done():
 	}
 }
