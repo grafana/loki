@@ -140,7 +140,7 @@
       frontend: {
         compress_responses: true,
         log_queries_longer_than: '5s',
-        max_outstanding_per_tenant: if !$._config.queryFrontend.sharded_queries_enabled then 256 else 1024,
+        max_outstanding_per_tenant: if !$._config.queryFrontend.sharded_queries_enabled then 256 else 2048,
       },
       frontend_worker: {
         frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
