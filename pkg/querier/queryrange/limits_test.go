@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -71,7 +72,7 @@ func Test_seriesLimiter(t *testing.T) {
 	lreq := &LokiRequest{
 		Query:     `rate({app="foo"} |= "foo"[1m])`,
 		Limit:     1000,
-		Step:      30000, //30sec
+		Step:      30000, // 30sec
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
@@ -144,4 +145,44 @@ func Test_seriesLimiter(t *testing.T) {
 	_, err = tpw(rt).RoundTrip(req)
 	require.Error(t, err)
 	require.LessOrEqual(t, *c, 4)
+}
+
+func Test_MaxQueryPallelism(t *testing.T) {
+	maxQueryParallelism := 2
+	f, err := newfakeRoundTripper()
+	require.Nil(t, err)
+	var count atomic.Int32
+	var max atomic.Int32
+	f.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		cur := count.Inc()
+		if cur > max.Load() {
+			max.Store(cur)
+		}
+		defer count.Dec()
+		// simulate some work
+		time.Sleep(20 * time.Millisecond)
+	}))
+	ctx := user.InjectOrgID(context.Background(), "foo")
+
+	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
+	require.Nil(t, err)
+
+	_, _ = NewLimitedRoundTripper(f, lokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+				var wg sync.WaitGroup
+				for i := 0; i < 10; i++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						_, _ = next.Do(c, &LokiRequest{})
+					}()
+				}
+				wg.Wait()
+				return nil, nil
+			})
+		}),
+	).RoundTrip(r)
+	maxFound := int(max.Load())
+	require.LessOrEqual(t, maxFound, maxQueryParallelism, "max query parallelism: ", maxFound, " went over the configured one:", maxQueryParallelism)
 }
