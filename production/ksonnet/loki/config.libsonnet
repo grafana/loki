@@ -140,7 +140,7 @@
       frontend: {
         compress_responses: true,
         log_queries_longer_than: '5s',
-        max_outstanding_per_tenant: 300,
+        max_outstanding_per_tenant: if !$._config.queryFrontend.sharded_queries_enabled then 256 else 1024,
       },
       frontend_worker: {
         frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
@@ -176,7 +176,9 @@
       limits_config: {
         enforce_metric_name: false,
         // align middleware parallelism with shard factor to optimize one-legged sharded queries.
-        max_query_parallelism: $._config.queryFrontend.shard_factor,
+        max_query_parallelism: if !$._config.queryFrontend.sharded_queries_enabled then
+          $._config.queryFrontend.shard_factor
+        else $._config.queryFrontend.shard_factor << 4,  // For a sharding factor of 16 (default), this is 256, or enough for 16 sharded queries.
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
         max_query_length: '12000h',  // 500 days
