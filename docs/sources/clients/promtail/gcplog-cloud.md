@@ -80,7 +80,7 @@ These messages stays in Pubsub Subscription till its acknowledged. Following com
 gcloud pubsub subscriptions seek <subscription-path> --time=<yyyy-mm-ddThh:mm:ss>
 ```
 
-To delete all the old messages till now, set `--time` to current time.
+To delete all the old messages until now, set `--time` to current time.
 
 ```bash
 gcloud pubsub subscriptions seek projects/my-project/subscriptions/cloud-logs --time=$(date +%Y-%m-%dT%H:%M:%S)
