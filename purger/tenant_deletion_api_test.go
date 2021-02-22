@@ -23,7 +23,7 @@ import (
 
 func TestDeleteTenant(t *testing.T) {
 	bkt := objstore.NewInMemBucket()
-	api := newBlocksPurgerAPI(bkt, nil, nil, log.NewNopLogger())
+	api := newTenantDeletionAPI(bkt, nil, nil, log.NewNopLogger())
 
 	{
 		resp := httptest.NewRecorder()
@@ -85,7 +85,7 @@ func TestDeleteTenantStatus(t *testing.T) {
 				require.NoError(t, bkt.Upload(context.Background(), objName, bytes.NewReader(data)))
 			}
 
-			api := newBlocksPurgerAPI(bkt, nil, nil, log.NewNopLogger())
+			api := newTenantDeletionAPI(bkt, nil, nil, log.NewNopLogger())
 
 			res, err := api.isBlocksForUserDeleted(context.Background(), username)
 			require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 	obj, rs := setupRuleGroupsStore(t, ruleGroups)
 	require.Equal(t, 3, obj.GetObjectCount())
 
-	api := newBlocksPurgerAPI(objstore.NewInMemBucket(), nil, rs, log.NewNopLogger())
+	api := newTenantDeletionAPI(objstore.NewInMemBucket(), nil, rs, log.NewNopLogger())
 
 	{
 		callDeleteTenantAPI(t, api, "user-with-no-rule-groups")
@@ -146,7 +146,7 @@ func TestDeleteTenantRuleGroupsWithReadOnlyStore(t *testing.T) {
 
 	rs = &readOnlyRuleStore{RuleStore: rs}
 
-	api := newBlocksPurgerAPI(objstore.NewInMemBucket(), nil, rs, log.NewNopLogger())
+	api := newTenantDeletionAPI(objstore.NewInMemBucket(), nil, rs, log.NewNopLogger())
 
 	// Make sure there is no error reported.
 	callDeleteTenantAPI(t, api, "userA")
@@ -156,7 +156,7 @@ func TestDeleteTenantRuleGroupsWithReadOnlyStore(t *testing.T) {
 	verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
 }
 
-func callDeleteTenantAPI(t *testing.T, api *BlocksPurgerAPI, userID string) {
+func callDeleteTenantAPI(t *testing.T, api *TenantDeletionAPI, userID string) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	req := &http.Request{}
@@ -166,7 +166,7 @@ func callDeleteTenantAPI(t *testing.T, api *BlocksPurgerAPI, userID string) {
 	require.Equal(t, http.StatusOK, resp.Code)
 }
 
-func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, api *BlocksPurgerAPI, userID string, expected bool) {
+func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, api *TenantDeletionAPI, userID string, expected bool) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	req := &http.Request{}
