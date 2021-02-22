@@ -72,7 +72,7 @@ This enables promtail to read log entries from the pubsub subscription created b
 
 ## Operations
 
-Sometimes you may have to check how much logs you are writting to the pubsub topic (mostly for cost estimation).
+Sometimes you may wish to clear the pending pubsub queue containing logs.
 
 These messages stays in Pubsub Subscription until they're acknowledged. The following command removes log messages without needing to be consumed via promtail or any other pubsub consumer.
 
