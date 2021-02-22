@@ -69,3 +69,19 @@ We need a service account with following permissions.
 - pubsub.subscriber
 
 This enables promtail to read log entries from the pubsub subscription created before.
+
+## Operations
+
+Sometimes you may wish to clear the pending pubsub queue containing logs.
+
+These messages stays in Pubsub Subscription until they're acknowledged. The following command removes log messages without needing to be consumed via promtail or any other pubsub consumer.
+
+```bash
+gcloud pubsub subscriptions seek <subscription-path> --time=<yyyy-mm-ddThh:mm:ss>
+```
+
+To delete all the old messages until now, set `--time` to current time.
+
+```bash
+gcloud pubsub subscriptions seek projects/my-project/subscriptions/cloud-logs --time=$(date +%Y-%m-%dT%H:%M:%S)
+```
