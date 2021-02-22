@@ -7,14 +7,14 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
-
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"go.etcd.io/bbolt"
-
-	"github.com/grafana/loki/pkg/chunkenc"
+	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 type StorageClient interface {
@@ -142,16 +142,35 @@ func safeOpenBoltDbFile(path string, ret chan *result) {
 	debug.SetPanicOnFault(true)
 	res := &result{}
 
+	var file *os.File
 	defer func() {
 		if r := recover(); r != nil {
 			res.err = fmt.Errorf("recovered from panic opening boltdb file: %v", r)
+
+			// clear the flock that may exist
+			maybeCleanFlock(file)
 		}
 
 		// Return the result object on the channel to unblock the calling thread
 		ret <- res
 	}()
 
-	b, err := local.OpenBoltdbFile(path)
+	b, err := openBoltdbFile(path, func(s string, i int, mode os.FileMode) (f *os.File, err error) {
+		file, err = os.OpenFile(s, i, mode)
+		return file, err
+	})
 	res.boltdb = b
 	res.err = err
+}
+
+func openBoltdbFile(path string, f func(string, int, os.FileMode) (*os.File, error)) (*bbolt.DB, error) {
+	return bbolt.Open(path, 0666, &bbolt.Options{Timeout: 5 * time.Second, OpenFile: f})
+}
+
+// open a dummy db with previous opened file
+// the error will trigger the flock cleanup
+func maybeCleanFlock(f *os.File) {
+	_, _ = openBoltdbFile("", func(string, int, os.FileMode) (*os.File, error) {
+		return f, errors.New("error for cleanup")
+	})
 }
