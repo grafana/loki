@@ -74,7 +74,7 @@ This enables promtail to read log entries from the pubsub subscription created b
 
 Sometimes you may have to check how much logs you are writting to the pubsub topic (mostly for cost estimation).
 
-These messages stays in Pubsub Subscription till its acknowledged. Following command just removes those log messages without having it to be consumed via promtail or any other pubsub consumer.
+These messages stays in Pubsub Subscription until they're acknowledged. The following command removes log messages without needing to be consumed via promtail or any other pubsub consumer.
 
 ```bash
 gcloud pubsub subscriptions seek <subscription-path> --time=<yyyy-mm-ddThh:mm:ss>
