@@ -182,7 +182,7 @@ func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, api *TenantDeletionAPI
 
 func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rules.RuleStore) {
 	obj := chunk.NewMockStorage()
-	rs := objectclient.NewRuleStore(obj, 5)
+	rs := objectclient.NewRuleStore(obj, 5, log.NewNopLogger())
 
 	// "upload" rule groups
 	for _, key := range ruleGroups {
