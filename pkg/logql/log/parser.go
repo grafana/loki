@@ -163,6 +163,9 @@ func readValue(iter *jsoniter.Iterator) string {
 
 func addLabel(lbs *LabelsBuilder, key, value string) {
 	key = sanitizeLabelKey(key, true)
+	if len(key) == 0 {
+		return
+	}
 	if lbs.BaseHas(key) {
 		key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 	}
