@@ -7,6 +7,7 @@ func Test_sanitizeLabelKey(t *testing.T) {
 		key  string
 		want string
 	}{
+		{"  ", ""},
 		{"1", "_1"},
 		{"1 1 1", "_1_1_1"},
 		{"abc", "abc"},
