@@ -164,6 +164,9 @@ func readValue(iter *jsoniter.Iterator) string {
 
 func addLabel(lbs *LabelsBuilder, key, value string) {
 	key = sanitizeLabelKey(key, true)
+	if len(key) == 0 {
+		return
+	}
 	if lbs.BaseHas(key) {
 		key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 	}
@@ -266,7 +269,7 @@ type JSONExpressionParser struct {
 }
 
 func NewJSONExpressionParser(expressions []JSONExpression) (*JSONExpressionParser, error) {
-	var paths = make(map[string][]interface{})
+	paths := make(map[string][]interface{})
 
 	for _, exp := range expressions {
 		path, err := jsonexpr.Parse(exp.Expression, false)
