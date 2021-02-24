@@ -63,10 +63,22 @@ func (p *parserHint) NoLabels() bool {
 
 // newParserHint creates a new parser hint using the list of labels that are seen and required in a query.
 func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
-	//Strip the _extracted suffix from any labels which had collisions with stream labels
-	for i := range requiredLabelNames {
-		requiredLabelNames[i] = strings.TrimSuffix(requiredLabelNames[i], "_extracted")
+	// If a parsed label collides with a stream label we add the `_extracted` suffix to it, however hints
+	// are used by the parsers before we know they will collide with a stream label and hence before the
+	// _extracted suffix is added. Therefore we must strip the _extracted suffix from any required labels
+	// that were parsed from somewhere in the query, say in a filter or an aggregation clause.
+	// Because it's possible for a valid json or logfmt key to already end with _extracted, we'll just
+	// leave the existing entry ending with _extracted but also add a version with the suffix removed.
+	extractedLabels := []string{}
+	for _, l := range requiredLabelNames {
+		if strings.HasSuffix(l, "_extracted") {
+			extractedLabels = append(extractedLabels, strings.TrimSuffix(l, "_extracted"))
+		}
 	}
+	if len(extractedLabels) > 0 {
+		requiredLabelNames = append(requiredLabelNames, extractedLabels...)
+	}
+
 	if len(groups) > 0 {
 		requiredLabelNames = append(requiredLabelNames, groups...)
 	}
