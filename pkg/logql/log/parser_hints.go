@@ -63,6 +63,10 @@ func (p *parserHint) NoLabels() bool {
 
 // newParserHint creates a new parser hint using the list of labels that are seen and required in a query.
 func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
+	//Strip the _extracted suffix from any labels which had collisions with stream labels
+	for i := range requiredLabelNames {
+		requiredLabelNames[i] = strings.TrimSuffix(requiredLabelNames[i], "_extracted")
+	}
 	if len(groups) > 0 {
 		requiredLabelNames = append(requiredLabelNames, groups...)
 	}

@@ -177,11 +177,11 @@ func Test_ParserHints(t *testing.T) {
 			`{}`,
 		},
 		{
-			`sum(count_over_time({app="nginx"} | json | cluster_extracted="us-east-west" [1m]))`,
+			`sum by (cluster_extracted)(count_over_time({app="nginx"} | json | cluster_extracted="us-east-west" [1m]))`,
 			jsonLine,
 			true,
 			1.0,
-			`{}`,
+			`{cluster_extracted="us-east-west"}`,
 		},
 	} {
 		tt := tt
