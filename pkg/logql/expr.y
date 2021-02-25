@@ -25,6 +25,7 @@ import (
   VectorAggregationExpr   SampleExpr
   MetricExpr              SampleExpr
   VectorOp                string
+  FilterOp                string
   BinOpExpr               SampleExpr
   LabelReplaceExpr        SampleExpr
   binOp                   string
@@ -35,6 +36,7 @@ import (
   BinOpModifier           BinOpOptions
   LabelParser             *labelParserExpr
   LineFilters             *lineFilterExpr
+  FunctionFilter          *functionLineFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
   BytesFilter             log.LabelFilterer
@@ -70,6 +72,7 @@ import (
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
+%type <FilterOp>              filterOp
 %type <BinOpExpr>             binOpExpr
 %type <LiteralExpr>           literalExpr
 %type <LabelReplaceExpr>      labelReplaceExpr
@@ -81,6 +84,7 @@ import (
 %type <NumberFilter>          numberFilter
 %type <DurationFilter>        durationFilter
 %type <LabelFilter>           labelFilter
+%type <FunctionFilter>        functionFilter
 %type <LineFilters>           lineFilters
 %type <LineFormatExpr>        lineFormatExpr
 %type <LabelFormatExpr>       labelFormatExpr
@@ -100,7 +104,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET
+                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET IP
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -230,11 +234,22 @@ pipelineExpr:
 
 pipelineStage:
    lineFilters                   { $$ = $1 }
+  | functionFilter               { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
   | PIPE labelFilter             { $$ = &labelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
+  ;
+
+filterOp:
+  IP { $$ = OpFilterIP }
+  ;
+
+
+functionFilter:
+  PIPE_EXACT filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = newFunctionLineFilterExpr($2, $4, labels.MatchEqual) }
+  | NEQ filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS      { $$ = newFunctionLineFilterExpr($2, $4, labels.MatchNotEqual) }
   ;
 
 lineFilters:

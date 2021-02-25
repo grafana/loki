@@ -227,6 +227,56 @@ func (e *pipelineExpr) HasFilter() bool {
 	return false
 }
 
+type functionLineFilterExpr struct {
+	ty     labels.MatchType
+	op     string
+	params string
+	implicit
+}
+
+func newFunctionLineFilterExpr(op, params string, ty labels.MatchType) *functionLineFilterExpr {
+	switch op {
+	case OpFilterIP:
+		// todo filter panic(newParseError("this is not an ip or range", 0, 0))
+	}
+	return &functionLineFilterExpr{
+		op:     op,
+		params: params,
+		ty:     ty,
+	}
+}
+
+func (e *functionLineFilterExpr) String() string {
+	var sb strings.Builder
+	switch e.ty {
+	case labels.MatchRegexp:
+		sb.WriteString("|~")
+	case labels.MatchNotRegexp:
+		sb.WriteString("!~")
+	case labels.MatchEqual:
+		sb.WriteString("|=")
+	case labels.MatchNotEqual:
+		sb.WriteString("!=")
+	}
+	sb.WriteString(" ")
+	sb.WriteString(e.op)
+	sb.WriteString("(")
+	sb.WriteString(strconv.Quote(e.params))
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (e *functionLineFilterExpr) Shardable() bool { return true }
+
+func (e *functionLineFilterExpr) Stage() (log.Stage, error) {
+	switch e.op {
+	case OpFilterIP:
+		return log.LineIpFilter(....)
+	default:
+		return nil,errors......
+	}
+}
+
 type lineFilterExpr struct {
 	left  *lineFilterExpr
 	ty    labels.MatchType
@@ -619,6 +669,9 @@ const (
 	OpConvDurationSeconds = "duration_seconds"
 
 	OpLabelReplace = "label_replace"
+
+	// function filter Op
+	OpFilterIP = "ip"
 )
 
 func IsComparisonOperator(op string) bool {

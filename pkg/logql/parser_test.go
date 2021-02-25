@@ -339,6 +339,23 @@ func TestParse(t *testing.T) {
 			err: logqlmodel.NewParseError("syntax error: unexpected RANGE", 0, 20),
 		},
 		{
+			in: `{ foo !~ "bar" } !~ ip("127.0.1")`,
+			err: ParseError{
+				msg:  "syntax error: unexpected ip, expecting STRING",
+				line: 0,
+				col:  21,
+			},
+		},
+		// todo throw panic.
+		// {
+		// 	in: `{ foo !~ "bar" } !~ ip("a")`,
+		// 	err: ParseError{
+		// 		msg:  "syntax error: unexpected a, expecting IP or IP range or IP CIDR",
+		// 		line: 0,
+		// 		col:  0,
+		// 	},
+		// },
+		{
 			in:  `sum(3 ,count_over_time({ foo = "bar" }[5h]))`,
 			err: logqlmodel.NewParseError("unsupported parameter for operation sum(3,", 0, 0),
 		},
@@ -370,6 +387,26 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "baz")},
+			),
+		},
+		{
+			in: `{foo="bar"} |= "baz" |= ip("123.123.123.123")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+					newFunctionLineFilterExpr(OpFilterIP, "123.123.123.123", labels.MatchEqual),
+				},
+			),
+		},
+		{
+			in: `{foo="bar"} |= "baz" != ip("123.123.123.123")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+					newFunctionLineFilterExpr(OpFilterIP, "123.123.123.123", labels.MatchNotEqual),
+				},
 			),
 		},
 		{
