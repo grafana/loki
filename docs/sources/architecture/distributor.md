@@ -8,7 +8,7 @@ This document builds upon the information in the [Loki Architecture](./) page.
 
 ## Where does it live?
 
-The distributor is the first component on Loki's write path. It's responsible for validating, preprocessing, and applying a subset of rate limiting to incoming data before sending it to the ingester component. 
+The distributor is the first component on Loki's write path downstream from any gateways providing auth or load balancing. It's responsible for validating, preprocessing, and applying a subset of rate limiting to incoming data before sending it to the ingester component. It is important that a load balancer sits in front of the distributor in order to properly balance traffic to them.
 
 ## What does it do?
 
@@ -36,6 +36,8 @@ In order to mitigate the chance of _losing_ data on any single ingester, the dis
 
 **Caveat: There's also an edge case where we acknowledge a write if 2 of the three ingesters do which means that in the case where 2 writes succeed, we can only lose one ingester before suffering data loss.**
 
+Replication factor isn't the only thing that prevents data loss, though, and arguably these days it's main purpose it to allow writes to continue uninterrupted during rollouts & restarts. The `ingester` component now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) which persists incoming writes to disk to ensure they're not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (i.e. multiple ingesters die and lose/corrupt their disks).
+
 ## Why does it deserve it's own component?
 
-Notably, the distributor is a stateless component. This makes it easy to scale and offload as much work as possible from the ingesters, which are the most critical component on the write path. The ability to independently scale these validation operations mean that Loki can also protect itself against denial of service attacks (either malicious or not) that could otherwise overload the ingesters. They act like the bouncer at the front door, ensuring everyong is appropriately dressed and has an invitation.
+Notably, the distributor is a stateless component. This makes it easy to scale and offload as much work as possible from the ingesters, which are the most critical component on the write path. The ability to independently scale these validation operations mean that Loki can also protect itself against denial of service attacks (either malicious or not) that could otherwise overload the ingesters. They act like the bouncer at the front door, ensuring everyong is appropriately dressed and has an invitation. It also allows us to fan-out writes according to our replication factor as described earlier.
