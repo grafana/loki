@@ -39,7 +39,7 @@ pipeline_stages:
       replace: '{{ if eq .Value "200" }}{{ Replace .Value "200" "HttpStatusOk" -1 }}{{ else }}{{ .Value | ToUpper }}{{ end }}'
 `
 
-var testReplaceYamlWithNestedCaputedGroups = `
+var testReplaceYamlWithNestedCapturedGroups = `
 ---
 pipeline_stages:
   -
@@ -111,7 +111,7 @@ func TestPipeline_Replace(t *testing.T) {
 			`11.11.11.11 - FRANK [25/JAN/2000:14:00:01 -0500] "GET /1986.JS HTTP/1.1" HttpStatusOk 932 "-" "MOZILLA/5.0 (WINDOWS; U; WINDOWS NT 5.1; DE; RV:1.9.1.7) GECKO/20091221 FIREFOX/3.5.7 GTB6"`,
 		},
 		"successfully run a pipeline with 1 regex stage with nested captured groups and with template and without source": {
-			testReplaceYamlWithNestedCaputedGroups,
+			testReplaceYamlWithNestedCapturedGroups,
 			testReplaceLogLine,
 			map[string]interface{}{
 				"IP_USER":	 "11.11.11.11 - FRANK",
