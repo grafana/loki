@@ -44,7 +44,7 @@ var testReplaceYamlWithNestedCapturedGroups = `
 pipeline_stages:
   -
     replace:
-      expression: "(?P<IP_USER>^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+)) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<ACTION_PATH>(?P<action>\\S+)\\s?(?P<path>\\S+)?)\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
+      expression: "(?P<ip_user>^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+)) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action_path>(?P<action>\\S+)\\s?(?P<path>\\S+)?)\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
       replace: '{{ if eq .Value "200" }}{{ Replace .Value "200" "HttpStatusOk" -1 }}{{ else }}{{ .Value | ToUpper }}{{ end }}'
 `
 
@@ -114,18 +114,18 @@ func TestPipeline_Replace(t *testing.T) {
 			testReplaceYamlWithNestedCapturedGroups,
 			testReplaceLogLine,
 			map[string]interface{}{
-				"IP_USER":	 "11.11.11.11 - FRANK",
-				"ACTION_PATH": "GET /1986.JS",
-				"ip":        "11.11.11.11",
-				"identd":    "-",
-				"user":      "FRANK",
-				"timestamp": "25/JAN/2000:14:00:01 -0500",
-				"action":    "GET",
-				"path":      "/1986.JS",
-				"protocol":  "HTTP/1.1",
-				"status":    "HttpStatusOk",
-				"referer":   "-",
-				"useragent": "MOZILLA/5.0 (WINDOWS; U; WINDOWS NT 5.1; DE; RV:1.9.1.7) GECKO/20091221 FIREFOX/3.5.7 GTB6",
+				"ip_user":		"11.11.11.11 - FRANK",
+				"action_path":	"GET /1986.JS",
+				"ip":        	"11.11.11.11",
+				"identd":    	"-",
+				"user":      	"FRANK",
+				"timestamp": 	"25/JAN/2000:14:00:01 -0500",
+				"action":    	"GET",
+				"path":      	"/1986.JS",
+				"protocol":  	"HTTP/1.1",
+				"status":    	"HttpStatusOk",
+				"referer":   	"-",
+				"useragent": 	"MOZILLA/5.0 (WINDOWS; U; WINDOWS NT 5.1; DE; RV:1.9.1.7) GECKO/20091221 FIREFOX/3.5.7 GTB6",
 			},
 			`11.11.11.11 - FRANK [25/JAN/2000:14:00:01 -0500] "GET /1986.JS HTTP/1.1" HttpStatusOk 932 "-" "MOZILLA/5.0 (WINDOWS; U; WINDOWS NT 5.1; DE; RV:1.9.1.7) GECKO/20091221 FIREFOX/3.5.7 GTB6"`,
 		},
