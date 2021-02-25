@@ -140,7 +140,6 @@ func TestStreamIterator(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Benchmark_PushStream(b *testing.B) {

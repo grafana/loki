@@ -316,7 +316,6 @@ func (s *stream) Bounds() (from, to time.Time) {
 		_, to = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 	return from, to
-
 }
 
 // Returns an iterator.

@@ -808,11 +808,16 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 	// cutting of blocks.
 	chunkStats.HeadChunkLines += int64(len(hb.entries))
 	streams := map[uint64]*logproto.Stream{}
-	for _, e := range hb.entries {
+
+	process := func(e entry) {
+		// apply time filtering
+		if e.t < mint || e.t >= maxt {
+			return
+		}
 		chunkStats.HeadChunkBytes += int64(len(e.s))
 		newLine, parsedLbs, ok := pipeline.ProcessString(e.s)
 		if !ok {
-			continue
+			return
 		}
 		var stream *logproto.Stream
 		lhash := parsedLbs.Hash()
@@ -826,7 +831,16 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 			Timestamp: time.Unix(0, e.t),
 			Line:      newLine,
 		})
+	}
 
+	if direction == logproto.FORWARD {
+		for _, e := range hb.entries {
+			process(e)
+		}
+	} else {
+		for i := len(hb.entries) - 1; i >= 0; i-- {
+			process(hb.entries[i])
+		}
 	}
 
 	if len(streams) == 0 {
@@ -877,6 +891,7 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extra
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
+		// todo(ctovena) not sure we need this sort.
 		sort.Sort(s)
 		seriesRes = append(seriesRes, *s)
 	}

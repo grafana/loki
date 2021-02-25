@@ -443,6 +443,7 @@ type timeRangedIterator struct {
 }
 
 // NewTimeRangedIterator returns an iterator which filters entries by time range.
+// Note: Only works with iterators that go forwards.
 func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator {
 	return &timeRangedIterator{
 		EntryIterator: it,
@@ -502,7 +503,6 @@ func NewReversedIter(it EntryIterator, limit uint32, preload bool) (EntryIterato
 		entriesWithLabels: make([]entryWithLabels, 0, 1024),
 		limit:             limit,
 	}, it.Error()
-
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +578,6 @@ func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
 		iter: it,
 		buf:  entryBufferPool.Get().(*entryBuffer),
 	}, it.Error()
-
 	if err != nil {
 		return nil, err
 	}
