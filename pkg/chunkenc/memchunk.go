@@ -671,27 +671,33 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 // Iterator implements Chunk.
 func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
-	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
+	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
+	var headIterator iter.EntryIterator
 
 	for _, b := range c.blocks {
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
-		its = append(its, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
+		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
 	}
 
 	if !c.head.isEmpty() {
-		its = append(its, c.head.iterator(ctx, direction, mint, maxt, pipeline))
+		headIterator = c.head.iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
 	if direction == logproto.FORWARD {
+		// add the headblock iterator at the end.
+		if headIterator != nil {
+			blockItrs = append(blockItrs, headIterator)
+		}
 		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(its, ""),
+			iter.NewNonOverlappingIterator(blockItrs, ""),
 			time.Unix(0, mint),
 			time.Unix(0, maxt),
 		), nil
 	}
-	for i, it := range its {
+	// reverse each block entries
+	for i, it := range blockItrs {
 		r, err := iter.NewEntryReversedIter(
 			iter.NewTimeRangedIterator(it,
 				time.Unix(0, mint),
@@ -700,14 +706,18 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if err != nil {
 			return nil, err
 		}
-		its[i] = r
+		blockItrs[i] = r
+	}
+	// except the head block which is already reversed via the heapIterator.
+	if headIterator != nil {
+		blockItrs = append(blockItrs, headIterator)
+	}
+	// then reverse all iterators.
+	for i, j := 0, len(blockItrs)-1; i < j; i, j = i+1, j-1 {
+		blockItrs[i], blockItrs[j] = blockItrs[j], blockItrs[i]
 	}
 
-	for i, j := 0, len(its)-1; i < j; i, j = i+1, j-1 {
-		its[i], its[j] = its[j], its[i]
-	}
-
-	return iter.NewNonOverlappingIterator(its, ""), nil
+	return iter.NewNonOverlappingIterator(blockItrs, ""), nil
 }
 
 // Iterator implements Chunk.
