@@ -30,4 +30,7 @@ message Series {
   uint64 fingerprint = 2;
   repeated cortex.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
+  // Last timestamp of the last chunk.
+  google.protobuf.Timestamp to = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  string lastLine = 6;
 }

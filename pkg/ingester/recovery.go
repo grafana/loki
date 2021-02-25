@@ -123,6 +123,8 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		}
 
 		bytesAdded, entriesAdded, err := stream.setChunks(series.Chunks)
+		stream.lastLine.ts = series.To
+		stream.lastLine.content = series.LastLine
 
 		if err != nil {
 			return err

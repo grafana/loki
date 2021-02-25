@@ -269,6 +269,9 @@ func (s *streamIterator) Next() bool {
 	s.current.Fingerprint = uint64(stream.fp)
 	s.current.Labels = client.FromLabelsToLabelAdapters(stream.labels)
 
+	s.current.To = stream.lastLine.ts
+	s.current.LastLine = stream.lastLine.content
+
 	return true
 }
 

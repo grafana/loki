@@ -243,6 +243,8 @@ func Test_EncodingCheckpoint(t *testing.T) {
 		UserID:      "fake",
 		Fingerprint: 123,
 		Labels:      client.FromLabelsToLabelAdapters(ls),
+		To:          time.Unix(10, 0),
+		LastLine:    "lastLine",
 		Chunks: []Chunk{
 			{
 				From:        from,
@@ -275,12 +277,17 @@ func Test_EncodingCheckpoint(t *testing.T) {
 	outChunks := out.Chunks
 	out.Chunks = nil
 
+	zero := time.Unix(0, 0)
+
+	require.Equal(t, true, s.To.Equal(out.To))
+	s.To = zero
+	out.To = zero
+
 	require.Equal(t, s, out)
 	require.Equal(t, len(sChunks), len(outChunks))
 	for i, exp := range sChunks {
 
 		got := outChunks[i]
-		zero := time.Unix(0, 0)
 		// Issues diffing zero-value time.Locations against nil ones.
 		// Check/override them individually so that other fields get tested in an extensible manner.
 		require.Equal(t, true, exp.From.Equal(got.From))
