@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"text/template"
 	"time"
-
+	
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/mitchellh/mapstructure"
@@ -117,7 +117,6 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 
 	// Get string of matched captured groups. We will use this to extract all named captured groups
 	match := r.expression.FindStringSubmatch(*input)
-
 	matchAllIndex := r.expression.FindAllStringSubmatchIndex(*input, -1)
 
 	if matchAllIndex == nil {
@@ -167,7 +166,6 @@ func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td 
 	var result string
 	previousInputEndIndex := 0
 	capturedMap := make(map[string]string)
-
 	// For a simple string like `11.11.11.11 - frank 12.12.12.12 - frank`
 	// if the regex is "(\\d{2}.\\d{2}.\\d{2}.\\d{2}) - (\\S+)"
 	// FindAllStringSubmatchIndex would return [[0 19 0 11 14 19] [20 37 20 31 34 37]].
@@ -177,6 +175,9 @@ func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td 
 	// 14-19 is "frank". So, we advance by 2 index to get the next match
 	for _, matchIndex := range matchAllIndex {
 		for i := 2; i < len(matchIndex); i += 2 {
+			if matchIndex[i] == -1 {
+				continue
+			}
 			capturedString := input[matchIndex[i]:matchIndex[i+1]]
 			buf := &bytes.Buffer{}
 			td["Value"] = capturedString
@@ -185,8 +186,10 @@ func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td 
 				return "", nil, err
 			}
 			st := buf.String()
-			result += input[previousInputEndIndex:matchIndex[i]] + st
-			previousInputEndIndex = matchIndex[i+1]
+			if previousInputEndIndex == 0 || previousInputEndIndex < matchIndex[i]  {
+				result += input[previousInputEndIndex:matchIndex[i]] + st
+				previousInputEndIndex = matchIndex[i+1]
+			}
 			capturedMap[capturedString] = st
 		}
 	}
