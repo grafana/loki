@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 /*
@@ -44,7 +45,6 @@ func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *S
 		metrics:        metrics,
 		limits:         limits,
 	}
-
 }
 
 // Query constructs a Query
@@ -173,7 +173,6 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	return results, nil
-
 }
 
 type errorQuerier struct{}
@@ -181,6 +180,7 @@ type errorQuerier struct{}
 func (errorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	return nil, errors.New("Unimplemented")
 }
+
 func (errorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, errors.New("Unimplemented")
 }
@@ -276,7 +276,6 @@ func (ev *DownstreamEvaluator) Iterator(
 			Params: params,
 			Shards: shards,
 		}})
-
 		if err != nil {
 			return nil, err
 		}
@@ -333,7 +332,6 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 				vec = append(vec, cur...)
 			}
 			return done, ts, vec
-
 		},
 		func() (lastErr error) {
 			for _, eval := range evaluators {
@@ -356,7 +354,7 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 			case 1:
 				return errs[0]
 			default:
-				return fmt.Errorf("Multiple errors: %+v", errs)
+				return util.MultiError(errs)
 			}
 		},
 	)
@@ -394,5 +392,4 @@ func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
 		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), ValueTypeStreams)
 	}
 	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
-
 }

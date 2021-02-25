@@ -20,12 +20,13 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
 	testSize        = int64(300)
 	ErrMock         = errors.New("mock error")
-	ErrMockMultiple = errors.New("Multiple errors: [mock error mock error]")
+	ErrMockMultiple = util.MultiError{ErrMock, ErrMock}
 )
 
 func TestEngine_LogsInstantQuery(t *testing.T) {

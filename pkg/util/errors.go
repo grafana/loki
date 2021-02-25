@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	"google.golang.org/grpc/codes"
@@ -48,6 +49,16 @@ func (es MultiError) Err() error {
 		return nil
 	}
 	return es
+}
+
+// Is tells if all errors are the same as the target error.
+func (es MultiError) Is(target error) bool {
+	for _, err := range es {
+		if !errors.Is(err, target) {
+			return false
+		}
+	}
+	return true
 }
 
 // IsConnCanceled returns true, if error is from a closed gRPC connection.
