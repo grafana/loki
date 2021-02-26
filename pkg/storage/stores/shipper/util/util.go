@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"go.etcd.io/bbolt"
 
@@ -154,4 +155,21 @@ func safeOpenBoltDbFile(path string, ret chan *result) {
 	b, err := local.OpenBoltdbFile(path)
 	res.boltdb = b
 	res.err = err
+}
+
+// RemoveDirectories will return a new slice with any StorageObjects identified as directories removed.
+func RemoveDirectories(incoming []chunk.StorageObject) []chunk.StorageObject {
+	outgoing := make([]chunk.StorageObject, 0, len(incoming))
+	for _, o := range incoming {
+		if IsDirectory(o.Key) {
+			continue
+		}
+		outgoing = append(outgoing, o)
+	}
+	return outgoing
+}
+
+// IsDirectory will return true if the string ends in a forward slash
+func IsDirectory(key string) bool {
+	return strings.HasSuffix(key, "/")
 }

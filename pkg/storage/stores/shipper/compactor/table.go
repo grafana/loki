@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -109,7 +108,7 @@ func (t *table) compact() error {
 					}
 
 					// The s3 client can also return the directory itself in the ListObjects.
-					if strings.HasSuffix(objectKey, "/") {
+					if shipper_util.IsDirectory(objectKey) {
 						continue
 					}
 
