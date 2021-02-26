@@ -55,14 +55,15 @@ type boltDBIndexClient interface {
 }
 
 type Config struct {
-	ActiveIndexDirectory string        `yaml:"active_index_directory"`
-	SharedStoreType      string        `yaml:"shared_store"`
-	CacheLocation        string        `yaml:"cache_location"`
-	CacheTTL             time.Duration `yaml:"cache_ttl"`
-	ResyncInterval       time.Duration `yaml:"resync_interval"`
-	QueryReadyNumDays    int           `yaml:"query_ready_num_days"`
-	IngesterName         string        `yaml:"-"`
-	Mode                 int           `yaml:"-"`
+	ActiveIndexDirectory   string        `yaml:"active_index_directory"`
+	SharedStoreType        string        `yaml:"shared_store"`
+	CacheLocation          string        `yaml:"cache_location"`
+	CacheTTL               time.Duration `yaml:"cache_ttl"`
+	ResyncInterval         time.Duration `yaml:"resync_interval"`
+	QueryReadyNumDays      int           `yaml:"query_ready_num_days"`
+	IngesterName           string        `yaml:"-"`
+	Mode                   int           `yaml:"-"`
+	IngesterDBRetainPeriod time.Duration `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -132,7 +133,7 @@ func (s *Shipper) init(objectClient chunk.ObjectClient, registerer prometheus.Re
 			Uploader:       uploader,
 			IndexDir:       s.cfg.ActiveIndexDirectory,
 			UploadInterval: UploadInterval,
-			DBRetainPeriod: s.cfg.ResyncInterval + 2*time.Minute,
+			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
 		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, objectClient, registerer)
 		if err != nil {
