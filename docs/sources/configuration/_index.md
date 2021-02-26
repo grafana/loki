@@ -1189,7 +1189,7 @@ aws:
     # CLI flag: -dynamodb.chunk.get-max-parallelism
     [chunk_get_max_parallelism: <int> | default = 32]
 
-# Configures storing chunks in Bigtable. Required fields only required
+# Configures storing indexes in Bigtable. Required fields only required
 # when bigtable is defined in config.
 bigtable:
   # BigTable project ID
@@ -1204,7 +1204,7 @@ bigtable:
   # The CLI flags prefix for this block config is: bigtable
   [grpc_client_config: <grpc_client_config>]
 
-# Configures storing index in GCS. Required fields only required
+# Configures storing chunks in GCS. Required fields only required
 # when gcs is defined in config.
 gcs:
   # Name of GCS bucket to put chunks in.
