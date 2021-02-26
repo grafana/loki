@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -175,4 +176,21 @@ func attemptCleanFlock(f *os.File) {
 	_, _ = openBoltdbFile("", func(string, int, os.FileMode) (*os.File, error) {
 		return f, errors.New("error for cleanup")
 	})
+}
+
+// RemoveDirectories will return a new slice with any StorageObjects identified as directories removed.
+func RemoveDirectories(incoming []chunk.StorageObject) []chunk.StorageObject {
+	outgoing := make([]chunk.StorageObject, 0, len(incoming))
+	for _, o := range incoming {
+		if IsDirectory(o.Key) {
+			continue
+		}
+		outgoing = append(outgoing, o)
+	}
+	return outgoing
+}
+
+// IsDirectory will return true if the string ends in a forward slash
+func IsDirectory(key string) bool {
+	return strings.HasSuffix(key, "/")
 }

@@ -210,8 +210,11 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 
 	level.Debug(spanLogger).Log("total-files-downloaded", len(objects))
 
+	objects = shipper_util.RemoveDirectories(objects)
+
 	// open all the downloaded dbs
 	for _, object := range objects {
+
 		dbName, err := getDBNameFromObjectKey(object.Key)
 		if err != nil {
 			return err
@@ -405,7 +408,10 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 	t.dbsMtx.RLock()
 	defer t.dbsMtx.RUnlock()
 
+	objects = shipper_util.RemoveDirectories(objects)
+
 	for _, object := range objects {
+
 		dbName, err := getDBNameFromObjectKey(object.Key)
 		if err != nil {
 			return nil, nil, err
@@ -501,6 +507,11 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 				object, ok := <-queue
 				if !ok {
 					break
+				}
+
+				// The s3 client can also return the directory itself in the ListObjects.
+				if shipper_util.IsDirectory(object.Key) {
+					continue
 				}
 
 				var dbName string
