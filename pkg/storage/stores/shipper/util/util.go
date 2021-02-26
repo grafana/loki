@@ -147,8 +147,9 @@ func safeOpenBoltDbFile(path string, ret chan *result) {
 		if r := recover(); r != nil {
 			res.err = fmt.Errorf("recovered from panic opening boltdb file: %v", r)
 
-			// clear the flock that may exist
-			maybeCleanFlock(file)
+			// A panic when opening the boltdb file may have left a lingering flock
+			// at the OS level, attempt to clear the flock that may exist
+			attemptCleanFlock(file)
 		}
 
 		// Return the result object on the channel to unblock the calling thread
@@ -168,8 +169,9 @@ func openBoltdbFile(path string, f func(string, int, os.FileMode) (*os.File, err
 }
 
 // open a dummy db with previous opened file
-// the error will trigger the flock cleanup
-func maybeCleanFlock(f *os.File) {
+// intentionally throw an error using the provided OpenFile function
+// the error will trigger the flock cleanup within boltdb and should free all resources
+func attemptCleanFlock(f *os.File) {
 	_, _ = openBoltdbFile("", func(string, int, os.FileMode) (*os.File, error) {
 		return f, errors.New("error for cleanup")
 	})
