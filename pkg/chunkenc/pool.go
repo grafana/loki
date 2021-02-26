@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"runtime"
 	"sync"
 
 	"github.com/golang/snappy"
@@ -226,6 +227,7 @@ func (pool *ZstdPool) GetReader(src io.Reader) io.Reader {
 	if err != nil {
 		panic(err)
 	}
+	runtime.SetFinalizer(reader, (*zstd.Decoder).Close)
 	return reader
 }
 
