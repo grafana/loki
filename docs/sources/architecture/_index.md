@@ -64,6 +64,8 @@ and to ensure that it is within the configured tenant (or global) limits. Valid
 chunks are then split into batches and sent to multiple [ingesters](#ingester)
 in parallel.
 
+For more information, see the [Distributor](./distributor) page.
+
 #### Hashing
 
 Distributors use consistent hashing in conjunction with a configurable
