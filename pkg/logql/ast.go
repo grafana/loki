@@ -271,9 +271,9 @@ func (e *functionLineFilterExpr) Shardable() bool { return true }
 func (e *functionLineFilterExpr) Stage() (log.Stage, error) {
 	switch e.op {
 	case OpFilterIP:
-		return log.LineIpFilter(....)
+		return log.NewLineIpFilter(e.params)
 	default:
-		return nil,errors......
+		return nil, fmt.Errorf("unknown function %q", e.op)
 	}
 }
 

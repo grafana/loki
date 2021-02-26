@@ -1,4 +1,4 @@
-package logql
+package log
 
 import (
 	"testing"
