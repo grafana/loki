@@ -443,6 +443,7 @@ type timeRangedIterator struct {
 }
 
 // NewTimeRangedIterator returns an iterator which filters entries by time range.
+// Note: Only works with iterators that go forwards.
 func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator {
 	return &timeRangedIterator{
 		EntryIterator: it,

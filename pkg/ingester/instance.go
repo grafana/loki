@@ -184,7 +184,6 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 				return err
 			}
 		}
-
 	}
 
 	return appendErr
@@ -391,7 +390,6 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 		series = make([]logproto.SeriesIdentifier, 0, len(dedupedSeries))
 		for _, v := range dedupedSeries {
 			series = append(series, v)
-
 		}
 	}
 
@@ -529,7 +527,13 @@ func isDone(ctx context.Context) bool {
 	}
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+// QuerierQueryServer is the GRPC server stream we use to send batch of entries.
+type QuerierQueryServer interface {
+	Context() context.Context
+	Send(res *logproto.QueryResponse) error
+}
+
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
 	ingStats := stats.GetIngesterData(ctx)
 	if limit == 0 {
 		// send all batches.
@@ -617,10 +621,8 @@ func (o *OnceSwitch) Trigger() {
 // TriggerAnd will ensure the switch is on and run the provided function if
 // the switch was not already toggled on.
 func (o *OnceSwitch) TriggerAnd(fn func()) {
-
 	triggeredPrior := o.triggered.Swap(true)
 	if !triggeredPrior && fn != nil {
 		fn()
 	}
-
 }

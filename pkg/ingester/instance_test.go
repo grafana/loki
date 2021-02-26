@@ -14,7 +14,9 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -245,7 +247,6 @@ func Test_SeriesQuery(t *testing.T) {
 			require.Equal(t, tc.expectedResponse, resp.Series)
 		})
 	}
-
 }
 
 func entries(n int, t time.Time) []logproto.Entry {
@@ -333,7 +334,6 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 			inst.addTailersToNewStream(newStream(nil, 0, lbs, NilMetrics))
 		}
 	})
-
 }
 
 func Benchmark_OnceSwitch(b *testing.B) {
@@ -359,3 +359,80 @@ func Benchmark_OnceSwitch(b *testing.B) {
 		wg.Wait()
 	}
 }
+
+func Test_Iterator(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	defaultLimits := defaultLimitsTestConfig()
+	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+	instance := newInstance(&ingesterConfig, "fake", NewLimiter(overrides, &ringCountMock{count: 1}, 1), noopWAL{}, NilMetrics, nil)
+	ctx := context.TODO()
+	direction := logproto.BACKWARD
+	limit := uint32(2)
+
+	// insert data.
+	for i := 0; i < 10; i++ {
+		stream := "dispatcher"
+		if i%2 == 0 {
+			stream = "worker"
+		}
+		require.NoError(t,
+			instance.Push(ctx, &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
+						},
+					},
+				},
+			}),
+		)
+	}
+
+	// prepare iterators.
+	itrs, err := instance.Query(ctx,
+		logql.SelectLogParams{
+			QueryRequest: &logproto.QueryRequest{
+				Selector:  `{job="3"} | logfmt`,
+				Limit:     limit,
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, 100000000),
+				Direction: direction,
+			},
+		},
+	)
+	require.NoError(t, err)
+	heapItr := iter.NewHeapIterator(ctx, itrs, direction)
+
+	// assert the order is preserved.
+	var res *logproto.QueryResponse
+	require.NoError(t,
+		sendBatches(ctx, heapItr,
+			fakeQueryServer(
+				func(qr *logproto.QueryResponse) error {
+					res = qr
+					return nil
+				},
+			),
+			limit),
+	)
+	require.Equal(t, 2, len(res.Streams))
+	// each entry translated into a unique stream
+	require.Equal(t, 1, len(res.Streams[0].Entries))
+	require.Equal(t, 1, len(res.Streams[1].Entries))
+	// sort by entries we expect 9 and 8 this is because readbatch uses a map to build the response.
+	// map have no order guarantee
+	sort.Slice(res.Streams, func(i, j int) bool {
+		return res.Streams[i].Entries[0].Timestamp.UnixNano() > res.Streams[j].Entries[0].Timestamp.UnixNano()
+	})
+	require.Equal(t, int64(9), res.Streams[0].Entries[0].Timestamp.UnixNano())
+	require.Equal(t, int64(8), res.Streams[1].Entries[0].Timestamp.UnixNano())
+}
+
+type fakeQueryServer func(*logproto.QueryResponse) error
+
+func (f fakeQueryServer) Send(res *logproto.QueryResponse) error {
+	return f(res)
+}
+func (f fakeQueryServer) Context() context.Context { return context.TODO() }

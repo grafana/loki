@@ -1023,3 +1023,35 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 		})
 	}
 }
+
+func Test_HeadIteratorReverse(t *testing.T) {
+	c := NewMemChunk(EncSnappy, testBlockSize, testTargetSize)
+	genEntry := func(i int64) *logproto.Entry {
+		return &logproto.Entry{
+			Timestamp: time.Unix(0, i),
+			Line:      fmt.Sprintf(`msg="%d"`, i),
+		}
+	}
+	var i int64
+	for e := genEntry(i); c.SpaceFor(e); e, i = genEntry(i+1), i+1 {
+		require.NoError(t, c.Append(e))
+	}
+
+	assertOrder := func(t *testing.T, total int64) {
+		expr, err := logql.ParseLogSelector(`{app="foo"} | logfmt`)
+		require.NoError(t, err)
+		p, err := expr.Pipeline()
+		require.NoError(t, err)
+		it, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(0, i), logproto.BACKWARD, p.ForStream(labels.Labels{{Name: "app", Value: "foo"}}))
+		require.NoError(t, err)
+		for it.Next() {
+			total--
+			require.Equal(t, total, it.Entry().Timestamp.UnixNano())
+		}
+	}
+
+	assertOrder(t, i)
+	// let's try again without the headblock.
+	require.NoError(t, c.cut())
+	assertOrder(t, i)
+}
