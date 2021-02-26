@@ -108,6 +108,11 @@ func (t *table) compact() error {
 						return
 					}
 
+					// The s3 client can also return the directory itself in the ListObjects.
+					if shipper_util.IsDirectory(objectKey) {
+						continue
+					}
+
 					var dbName string
 					dbName, err = shipper_util.GetDBNameFromObjectKey(objectKey)
 					if err != nil {
