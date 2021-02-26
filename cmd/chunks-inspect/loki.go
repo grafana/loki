@@ -105,7 +105,7 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 	Block 1 Checksum
 	...
 	Uvarint # blocks <-------------------------- A
-	Block1 Uvarint # entires
+	Block1 Uvarint # entries
 	Block1 Varint64 mint
 	Block1 Varint64 maxt
 	Block1 Varint64 offset --------------------> B
