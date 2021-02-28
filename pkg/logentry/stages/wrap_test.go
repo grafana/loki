@@ -310,6 +310,38 @@ func Test_wrapStage_Run(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "ingest timestamp",
+			config: &WrapConfig{
+				Labels:          nil,
+				IngestTimestamp: &reallyTrue,
+			},
+			inputEntry: Entry{
+				Extracted: map[string]interface{}{},
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "test line 1",
+					},
+				},
+			},
+			expectedEntry: Entry{
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0), // Ignored in test execution below
+						Line:      "{\"" + entryKey + "\":\"test line 1\"}",
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -329,7 +361,12 @@ func Test_wrapStage_Run(t *testing.T) {
 			// so there is no reason to verify it
 			assert.Equal(t, tt.expectedEntry.Labels, out[0].Labels)
 			assert.Equal(t, tt.expectedEntry.Line, out[0].Line)
-			assert.Equal(t, tt.expectedEntry.Timestamp, out[0].Timestamp)
+			if *tt.config.IngestTimestamp {
+				assert.True(t, out[0].Timestamp.After(tt.inputEntry.Timestamp))
+			} else {
+				assert.Equal(t, tt.expectedEntry.Timestamp, out[0].Timestamp)
+			}
+
 		})
 	}
 }
