@@ -59,7 +59,7 @@ func ip(pat, line string) (bool, error) {
 		// if first byte is digit, and if second or third or fourth byte is '.' then good chance
 		// it can be ip.
 		// example: "1.x" or "12.x" or "123.x"
-		if unicode.IsDigit(rune(line[i])) && (line[i+11] == '.' || line[i+2] == '.' || line[i+3] == '.') {
+		if unicode.IsDigit(rune(line[i])) && (line[i+1] == '.' || line[i+2] == '.' || line[i+3] == '.') {
 			start := i
 			end := strings.LastIndexAny(line[start:], IPV4_CHARSET)
 			ip, err := parseIP4(line[start : start+end+1])

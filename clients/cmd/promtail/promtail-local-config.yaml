@@ -15,4 +15,4 @@ scrape_configs:
       - localhost
     labels:
       job: varlogs
-      __path__: /var/log/*log
+      __path__: /Users/kaviraj/nginx_logs.txt
