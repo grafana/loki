@@ -15,6 +15,8 @@ For example, if you wanted to remove the labels `container` and `pod` but still 
 }
 ```
 
+The original message will be stored under the `_entry` key
+
 This stage is useful if you have some label or other metadata you would like to keep but it doesn't make a good label (isn't useful for querying or is too high cardinality)
 
 The querying capabilities of Loki make it easy to still access this data and filter/aggregate on it at query time.
