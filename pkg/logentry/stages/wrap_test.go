@@ -276,6 +276,40 @@ func Test_wrapStage_Run(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "escape quotes",
+			config: &WrapConfig{
+				Labels:          []string{"foo", "ex\"tr2"},
+				IngestTimestamp: &reallyFalse,
+			},
+			inputEntry: Entry{
+				Extracted: map[string]interface{}{
+					"extr1":   "etr1val",
+					"ex\"tr2": `"fd"`,
+				},
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "test line 1",
+					},
+				},
+			},
+			expectedEntry: Entry{
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "{\"ex\\\"tr2\":\"\\\"fd\\\"\",\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
