@@ -4,11 +4,13 @@
 
 > [Blazing fast](#Performances) Syslog parsers
 
+_By [@leodido](https://github.com/leodido)_.
+
 To wrap up, this package provides:
 
 - a [RFC5424-compliant parser and builder](/rfc5424)
 - a [RFC3164-compliant parser](/rfc3164) - ie., BSD-syslog messages
-- a parser which works on streams for syslog with [octet counting](https://tools.ietf.org/html/rfc5425#section-4.3) framing technique, see [octetcounting](/cotentcounting)
+- a parser which works on streams for syslog with [octet counting](https://tools.ietf.org/html/rfc5425#section-4.3) framing technique, see [octetcounting](/octetcounting)
 - a parser which works on streams for syslog with [non-transparent](https://tools.ietf.org/html/rfc6587#section-3.4.2) framing technique, see [nontransparent](/nontransparent)
 
 This library provides the pieces to parse Syslog messages transported following various RFCs.
@@ -199,7 +201,7 @@ To run the benchmark execute the following command.
 make bench
 ```
 
-On my machine<sup>[1](#mymachine)</sup> this are the results obtained paring RFC5424 syslog messages with best effort mode on.
+On my machine<sup>[1](#mymachine)</sup> these are the results obtained paring RFC5424 syslog messages with best effort mode on.
 
 ```
 [no]_empty_input__________________________________  4524100        274 ns/op      272 B/op        4 allocs/op

@@ -218,6 +218,9 @@ func NewParser(options ...syslog.ParserOption) syslog.Parser {
 	return m
 }
 
+// WithMaxMessageLength does nothing for this parser
+func (m *machine) WithMaxMessageLength(length int) {}
+
 // HasBestEffort tells whether the receiving parser has best effort mode on or off.
 func (m *machine) HasBestEffort() bool {
 	return m.bestEffort

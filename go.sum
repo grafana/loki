@@ -919,8 +919,8 @@ github.com/inconshreveable/mousetrap v1.0.0/go.mod h1:PxqpIevigyE2G7u3NXJIT2ANyt
 github.com/influxdata/flux v0.65.0/go.mod h1:BwN2XG2lMszOoquQaFdPET8FRQfrXiZsWmcMO9rkaVY=
 github.com/influxdata/flux v0.65.1/go.mod h1:J754/zds0vvpfwuq7Gc2wRdVwEodfpCFM7mYlOw2LqY=
 github.com/influxdata/go-syslog/v2 v2.0.1/go.mod h1:hjvie1UTaD5E1fTnDmxaCw8RRDrT4Ve+XHr5O2dKSCo=
-github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da h1:yEuttQd/3jcdlUYYyDPub5y/JVCYR0UPuxH4xclZi/c=
-github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da/go.mod h1:aXdIdfn2OcGnMhOTojXmwZqXKgC3MU5riiNvzwwG9OY=
+github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48 h1:0WbZ+ZVg74wbyQoRx1TD4D1Xoz8MsXJSTwdP9F7RMeQ=
+github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48/go.mod h1:aXdIdfn2OcGnMhOTojXmwZqXKgC3MU5riiNvzwwG9OY=
 github.com/influxdata/influxdb v1.7.7/go.mod h1:qZna6X/4elxqT3yI9iZYdZrWWdeFOOprn86kgg4+IzY=
 github.com/influxdata/influxdb v1.8.0/go.mod h1:SIzcnsjaHRFpmlxpJ4S3NT64qtEKYweNTUMb/vh0OMQ=
 github.com/influxdata/influxdb v1.8.1/go.mod h1:SIzcnsjaHRFpmlxpJ4S3NT64qtEKYweNTUMb/vh0OMQ=

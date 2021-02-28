@@ -161,9 +161,12 @@ type SyslogTargetConfig struct {
 	// Labels optionally holds labels to associate with each record read from syslog.
 	Labels model.LabelSet `yaml:"labels"`
 
-	// UseIncomingTimestamp sets the timestamp to the incoming syslog mesages
+	// UseIncomingTimestamp sets the timestamp to the incoming syslog messages
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// MaxMessageLength sets the maximum limit to the length of syslog messages
+	MaxMessageLength int `yaml:"max_message_length"`
 }
 
 // WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.

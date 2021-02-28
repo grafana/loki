@@ -14,7 +14,7 @@ import (
 // the callback function with the parsed messages. The parser automatically
 // detects octet counting.
 // The function returns on EOF or unrecoverable errors.
-func ParseStream(r io.Reader, callback func(res *syslog.Result)) error {
+func ParseStream(r io.Reader, callback func(res *syslog.Result), maxMessageLength int) error {
 	buf := bufio.NewReader(r)
 
 	firstByte, err := buf.Peek(1)
@@ -24,9 +24,9 @@ func ParseStream(r io.Reader, callback func(res *syslog.Result)) error {
 
 	b := firstByte[0]
 	if b == '<' {
-		nontransparent.NewParser(syslog.WithListener(callback)).Parse(buf)
+		nontransparent.NewParser(syslog.WithListener(callback), syslog.WithMaxMessageLength(maxMessageLength)).Parse(buf)
 	} else if b >= '0' && b <= '9' {
-		octetcounting.NewParser(syslog.WithListener(callback)).Parse(buf)
+		octetcounting.NewParser(syslog.WithListener(callback), syslog.WithMaxMessageLength(maxMessageLength)).Parse(buf)
 	} else {
 		return fmt.Errorf("invalid or unsupported framing. first byte: '%s'", firstByte)
 	}

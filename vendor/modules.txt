@@ -555,7 +555,7 @@ github.com/hpcloud/tail/winfile
 # github.com/imdario/mergo v0.3.9
 ## explicit
 github.com/imdario/mergo
-# github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da
+# github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48
 ## explicit
 github.com/influxdata/go-syslog/v3
 github.com/influxdata/go-syslog/v3/common
