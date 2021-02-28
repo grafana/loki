@@ -1,19 +1,29 @@
 package stages
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"reflect"
+	"sort"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	json "github.com/json-iterator/go"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 )
 
-const ()
+const (
+	entryKey = "_entry"
+)
 
-var ()
+var (
+	reallyTrue  = true
+	reallyFalse = false
+)
 
 type Wrapped struct {
 	Labels map[string]string `json:",inline"`
@@ -30,7 +40,7 @@ func (w *Wrapped) UnmarshalJSON(data []byte) error {
 	w.Labels = map[string]string{}
 	for k, v := range *m {
 		// _entry key goes to the Entry field, everything else becomes a label
-		if k == "_entry" {
+		if k == entryKey {
 			if s, ok := v.(string); ok {
 				w.Entry = s
 			} else {
@@ -56,22 +66,46 @@ func (p Wrapped) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	// Create a map and set the already marshalled line entry
-	m := map[string]json.RawMessage{
-		"_entry": b,
+	// Creating a map and marshalling from a map results in a non deterministic ordering of the resulting json object
+	// This is functionally ok but really annoying to humans and automated tests.
+	// Instead we will build the json ourselves after sorting all the labels to get a consistent output
+	keys := make([]string, 0, len(p.Labels))
+	for k := range p.Labels {
+		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 
-	// Add labels to the map, we do this at the top level to make querying more intuitive and easier.
-	for k, v := range p.Labels {
-		// Also marshal the label values to properly escape them as well
-		lv, err := json.Marshal(v)
+	var buf bytes.Buffer
+
+	buf.WriteString("{")
+	for i, k := range keys {
+		if i != 0 {
+			buf.WriteString(",")
+		}
+		// marshal key
+		key, err := json.Marshal(k)
 		if err != nil {
 			return nil, err
 		}
-		m[k] = lv
+		buf.Write(key)
+		buf.WriteString(":")
+		// marshal value
+		val, err := json.Marshal(p.Labels[k])
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(val)
 	}
+	// Only add the comma if something exists in the buffer other than "{"
+	if buf.Len() > 1 {
+		buf.WriteString(",")
+	}
+	// Add the line entry
+	buf.WriteString("\"" + entryKey + "\":")
+	buf.Write(b)
 
-	return json.Marshal(m)
+	buf.WriteString("}")
+	return buf.Bytes(), nil
 }
 
 // WrapConfig contains the configuration for a wrapStage
@@ -82,7 +116,10 @@ type WrapConfig struct {
 
 // validateWrapConfig validates the WrapConfig for the wrapStage
 func validateWrapConfig(cfg *WrapConfig) error {
-
+	// Default the IngestTimestamp value to be true
+	if cfg.IngestTimestamp == nil {
+		cfg.IngestTimestamp = &reallyTrue
+	}
 	return nil
 }
 
@@ -128,21 +165,21 @@ func (m *wrapStage) wrap(e Entry) Entry {
 	wrappedLabels := make(map[string]string, len(m.cfg.Labels))
 	foundLables := []model.LabelName{}
 
-	// Iterate through all the labels and extract any that match our list of labels to embed
-	for lk, lv := range lbls {
+	// Iterate through all the extracted map (which also includes all the labels)
+	for lk, lv := range e.Extracted {
 		for _, wl := range m.cfg.Labels {
-			if string(lk) == wl {
-				wrappedLabels[wl] = string(lv)
-				foundLables = append(foundLables, lk)
+			if lk == wl {
+				sv, err := getString(lv)
+				if err != nil {
+					if Debug {
+						level.Debug(m.logger).Log("msg", fmt.Sprintf("value for key: '%s' cannot be converted to a string and cannot be wrapped", lk), "err", err, "type", reflect.TypeOf(lv))
+					}
+					continue
+				}
+				wrappedLabels[wl] = sv
+				foundLables = append(foundLables, model.LabelName(lk))
 			}
 		}
-	}
-
-	// TODO also iterate through extracted map?
-
-	// Remove the found labels from the entry labels
-	for _, fl := range foundLables {
-		delete(lbls, fl)
 	}
 
 	// Embed the extracted labels into the wrapper object
@@ -154,7 +191,16 @@ func (m *wrapStage) wrap(e Entry) Entry {
 	// Marshal to json
 	wl, err := json.Marshal(w)
 	if err != nil {
+		if Debug {
+			level.Debug(m.logger).Log("msg", fmt.Sprintf("wrap stage failed to marshal wrapped object to json, wrapping will be skipped"), "err", err)
+		}
+		return e
+	}
 
+	// Remove anything found which is also a label, do this after the marshalling to not remove labels until
+	// we are sure the line can be successfully wrapped.
+	for _, fl := range foundLables {
+		delete(lbls, fl)
 	}
 
 	// Replace the labels and the line with new values

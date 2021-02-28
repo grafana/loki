@@ -1,271 +1,41 @@
 package stages
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
 	"testing"
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
 var testWrapYaml = `
 pipeline_stages:
-- wrap:
-    labels:
-      - pod
-      - container
-    ingest_timestamp: false
+- match:
+    selector: "{container=\"foo\"}"
+    stages:
+    - wrap:
+        labels:
+          - pod
+          - container
+        ingest_timestamp: false
+- match:
+    selector: "{container=\"bar\"}"
+    stages:
+    - wrap:
+        labels:
+          - pod
+          - container
+        ingest_timestamp: true
 `
-
-func Test_wrapStage_Process(t *testing.T) {
-	// Enable debug logging
-	cfg := &ww.Config{}
-	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg)
-	Debug = true
-
-	tests := []struct {
-		name       string
-		config     *DropConfig
-		labels     model.LabelSet
-		extracted  map[string]interface{}
-		t          time.Time
-		entry      string
-		shouldDrop bool
-	}{
-		{
-			name: "Longer Than Should Drop",
-			config: &DropConfig{
-				LongerThan: ptrFromString("10b"),
-			},
-			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
-			entry:      "12345678901",
-			shouldDrop: true,
-		},
-		{
-			name: "Longer Than Should Not Drop When Equal",
-			config: &DropConfig{
-				LongerThan: ptrFromString("10b"),
-			},
-			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
-			entry:      "1234567890",
-			shouldDrop: false,
-		},
-		{
-			name: "Longer Than Should Not Drop When Less",
-			config: &DropConfig{
-				LongerThan: ptrFromString("10b"),
-			},
-			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
-			entry:      "123456789",
-			shouldDrop: false,
-		},
-		{
-			name: "Older than Should Drop",
-			config: &DropConfig{
-				OlderThan: ptrFromString("1h"),
-			},
-			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
-			t:          time.Now().Add(-2 * time.Hour),
-			shouldDrop: true,
-		},
-		{
-			name: "Older than Should Not Drop",
-			config: &DropConfig{
-				OlderThan: ptrFromString("1h"),
-			},
-			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
-			t:          time.Now().Add(-5 * time.Minute),
-			shouldDrop: false,
-		},
-		{
-			name: "Matched Source",
-			config: &DropConfig{
-				Source: ptrFromString("key"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "",
-			},
-			shouldDrop: true,
-		},
-		{
-			name: "Did not match Source",
-			config: &DropConfig{
-				Source: ptrFromString("key1"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "val1",
-			},
-			shouldDrop: false,
-		},
-		{
-			name: "Matched Source and Value",
-			config: &DropConfig{
-				Source: ptrFromString("key"),
-				Value:  ptrFromString("val1"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "val1",
-			},
-			shouldDrop: true,
-		},
-		{
-			name: "Did not match Source and Value",
-			config: &DropConfig{
-				Source: ptrFromString("key"),
-				Value:  ptrFromString("val1"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "VALRUE1",
-			},
-			shouldDrop: false,
-		},
-		{
-			name: "Regex Matched Source and Value",
-			config: &DropConfig{
-				Source:     ptrFromString("key"),
-				Expression: ptrFromString(".*val.*"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "val1",
-			},
-			shouldDrop: true,
-		},
-		{
-			name: "Regex Did not match Source and Value",
-			config: &DropConfig{
-				Source:     ptrFromString("key"),
-				Expression: ptrFromString(".*val.*"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "pal1",
-			},
-			shouldDrop: false,
-		},
-		{
-			name: "Regex No Matching Source",
-			config: &DropConfig{
-				Source:     ptrFromString("key"),
-				Expression: ptrFromString(".*val.*"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"pokey": "pal1",
-			},
-			shouldDrop: false,
-		},
-		{
-			name: "Regex Did Not Match Line",
-			config: &DropConfig{
-				Expression: ptrFromString(".*val.*"),
-			},
-			labels:     model.LabelSet{},
-			entry:      "this is a line which does not match the regex",
-			extracted:  map[string]interface{}{},
-			shouldDrop: false,
-		},
-		{
-			name: "Regex Matched Line",
-			config: &DropConfig{
-				Expression: ptrFromString(".*val.*"),
-			},
-			labels:     model.LabelSet{},
-			entry:      "this is a line with the word value in it",
-			extracted:  map[string]interface{}{},
-			shouldDrop: true,
-		},
-		{
-			name: "Match Source and Length Both Match",
-			config: &DropConfig{
-				Source:     ptrFromString("key"),
-				LongerThan: ptrFromString("10b"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "pal1",
-			},
-			entry:      "12345678901",
-			shouldDrop: true,
-		},
-		{
-			name: "Match Source and Length Only First Matches",
-			config: &DropConfig{
-				Source:     ptrFromString("key"),
-				LongerThan: ptrFromString("10b"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "pal1",
-			},
-			entry:      "123456789",
-			shouldDrop: false,
-		},
-		{
-			name: "Match Source and Length Only Second Matches",
-			config: &DropConfig{
-				Source:     ptrFromString("key"),
-				LongerThan: ptrFromString("10b"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"WOOOOOOOOOOOOOO": "pal1",
-			},
-			entry:      "123456789012",
-			shouldDrop: false,
-		},
-		{
-			name: "Everything Must Match",
-			config: &DropConfig{
-				Source:     ptrFromString("key"),
-				Expression: ptrFromString(".*val.*"),
-				OlderThan:  ptrFromString("1h"),
-				LongerThan: ptrFromString("10b"),
-			},
-			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
-				"key": "must contain value to match",
-			},
-			t:          time.Now().Add(-2 * time.Hour),
-			entry:      "12345678901",
-			shouldDrop: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateDropConfig(tt.config)
-			if err != nil {
-				t.Error(err)
-			}
-			m, err := newDropStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
-			require.NoError(t, err)
-			out := processEntries(m, newEntry(tt.extracted, tt.labels, tt.entry, tt.t))
-			if tt.shouldDrop {
-				assert.Len(t, out, 0)
-			} else {
-				assert.Len(t, out, 1)
-			}
-		})
-	}
-}
 
 // TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestWrapPipeline(t *testing.T) {
@@ -292,7 +62,7 @@ func TestWrapPipeline(t *testing.T) {
 
 	out := processEntries(pl,
 		newEntry(nil, l1Lbls, testMatchLogLineApp1, testTime),
-		newEntry(nil, l2Lbls, testMatchLogLineApp2, testTime),
+		newEntry(nil, l2Lbls, testRegexLogLine, testTime),
 	)
 
 	// Both lines should succeed
@@ -306,7 +76,13 @@ func TestWrapPipeline(t *testing.T) {
 	assert.Equal(t, expectedLbls, out[0].Labels)
 	assert.Equal(t, expectedLbls, out[1].Labels)
 
-	//Unmarshal the wrapped object
+	// Validate timestamps
+	// Line 1 should use the first matcher and should use the log line timestamp
+	assert.Equal(t, testTime, out[0].Timestamp)
+	// Line 2 should use the second matcher and should get timestamp by the wrap stage
+	assert.True(t, out[1].Timestamp.After(testTime))
+
+	// Unmarshal the wrapped object and validate line1
 	w := &Wrapped{}
 	assert.NoError(t, json.Unmarshal([]byte(out[0].Entry.Entry.Line), w))
 	expectedWrappedLbls := map[string]string{
@@ -316,59 +92,210 @@ func TestWrapPipeline(t *testing.T) {
 	assert.Equal(t, expectedWrappedLbls, w.Labels)
 	assert.Equal(t, testMatchLogLineApp1, w.Entry)
 
-	//assert.Equal(t, out[0].Line, testMatchLogLineApp2)
+	// Validate line 2
+	w = &Wrapped{}
+	assert.NoError(t, json.Unmarshal([]byte(out[1].Entry.Entry.Line), w))
+	expectedWrappedLbls = map[string]string{
+		"pod":       "foo-vvsdded",
+		"container": "bar",
+	}
+	assert.Equal(t, expectedWrappedLbls, w.Labels)
+	assert.Equal(t, testRegexLogLine, w.Entry)
 }
 
-func Test_validateWrapConfig(t *testing.T) {
+func Test_wrapStage_Run(t *testing.T) {
+	// Enable debug logging
+	cfg := &ww.Config{}
+	require.Nil(t, cfg.LogLevel.Set("debug"))
+	util_log.InitLogger(cfg)
+	Debug = true
+
 	tests := []struct {
-		name    string
-		config  *DropConfig
-		wantErr error
+		name          string
+		config        *WrapConfig
+		inputEntry    Entry
+		expectedEntry Entry
 	}{
 		{
-			name:    "ErrEmpty",
-			config:  &DropConfig{},
-			wantErr: errors.New(ErrDropStageEmptyConfig),
+			name: "no supplied labels list",
+			config: &WrapConfig{
+				Labels:          nil,
+				IngestTimestamp: &reallyFalse,
+			},
+			inputEntry: Entry{
+				Extracted: map[string]interface{}{},
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "test line 1",
+					},
+				},
+			},
+			expectedEntry: Entry{
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "{\"" + entryKey + "\":\"test line 1\"}",
+					},
+				},
+			},
 		},
 		{
-			name: "Invalid Duration",
-			config: &DropConfig{
-				OlderThan: &dropInvalidDur,
+			name: "match one supplied label",
+			config: &WrapConfig{
+				Labels:          []string{"foo"},
+				IngestTimestamp: &reallyFalse,
 			},
-			wantErr: fmt.Errorf(
-				ErrDropStageInvalidDuration,
-				dropInvalidDur,
-				`time: unknown unit "y" in duration "10y"`,
-			),
+			inputEntry: Entry{
+				Extracted: map[string]interface{}{},
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "test line 1",
+					},
+				},
+			},
+			expectedEntry: Entry{
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "{\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+					},
+				},
+			},
 		},
 		{
-			name: "Invalid Config",
-			config: &DropConfig{
-				Value:      &dropVal,
-				Expression: &dropRegex,
+			name: "match all supplied labels",
+			config: &WrapConfig{
+				Labels:          []string{"foo", "bar"},
+				IngestTimestamp: &reallyFalse,
 			},
-			wantErr: errors.New(ErrDropStageInvalidConfig),
+			inputEntry: Entry{
+				Extracted: map[string]interface{}{},
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "test line 1",
+					},
+				},
+			},
+			expectedEntry: Entry{
+				Entry: api.Entry{
+					Labels: model.LabelSet{},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "{\"bar\":\"baz\",\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+					},
+				},
+			},
 		},
 		{
-			name: "Invalid Regex",
-			config: &DropConfig{
-				Expression: &dropInvalidRegex,
+			name: "match extracted map and labels",
+			config: &WrapConfig{
+				Labels:          []string{"foo", "extr1"},
+				IngestTimestamp: &reallyFalse,
 			},
-			wantErr: fmt.Errorf(ErrDropStageInvalidRegex, "error parsing regexp: invalid named capture: `(?P<ts[0-9]+).*`"),
+			inputEntry: Entry{
+				Extracted: map[string]interface{}{
+					"extr1": "etr1val",
+					"extr2": "etr2val",
+				},
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "test line 1",
+					},
+				},
+			},
+			expectedEntry: Entry{
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "{\"extr1\":\"etr1val\",\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+					},
+				},
+			},
 		},
 		{
-			name: "Invalid Bytesize",
-			config: &DropConfig{
-				LongerThan: &dropInvalidByteSize,
+			name: "extracted map value not convertable to a string",
+			config: &WrapConfig{
+				Labels:          []string{"foo", "extr2"},
+				IngestTimestamp: &reallyFalse,
 			},
-			wantErr: fmt.Errorf(ErrDropStageInvalidByteSize, "strconv.UnmarshalText: parsing \"23QB\": invalid syntax"),
+			inputEntry: Entry{
+				Extracted: map[string]interface{}{
+					"extr1": "etr1val",
+					"extr2": []int{1, 2, 3},
+				},
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo": "bar",
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "test line 1",
+					},
+				},
+			},
+			expectedEntry: Entry{
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"bar": "baz",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "{\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+					},
+				},
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validateDropConfig(tt.config); ((err != nil) && (err.Error() != tt.wantErr.Error())) || (err == nil && tt.wantErr != nil) {
-				t.Errorf("validateDropConfig() error = %v, wantErr = %v", err, tt.wantErr)
+			err := validateWrapConfig(tt.config)
+			if err != nil {
+				t.Error(err)
 			}
+			m, err := newWrapStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
+			require.NoError(t, err)
+			// Normal pipeline operation will put all the labels into the extracted map
+			// replicate that here.
+			for labelName, labelValue := range tt.inputEntry.Labels {
+				tt.inputEntry.Extracted[string(labelName)] = string(labelValue)
+			}
+			out := processEntries(m, tt.inputEntry)
+			// Only verify the labels, line, and timestamp, this stage doesn't modify the extracted map
+			// so there is no reason to verify it
+			assert.Equal(t, tt.expectedEntry.Labels, out[0].Labels)
+			assert.Equal(t, tt.expectedEntry.Line, out[0].Line)
+			assert.Equal(t, tt.expectedEntry.Timestamp, out[0].Timestamp)
 		})
 	}
 }
