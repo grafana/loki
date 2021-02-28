@@ -58,10 +58,10 @@ func (w *Wrapped) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON creates a Wrapped struct as JSON where the Labels are flattened into the top level of the object
-func (p Wrapped) MarshalJSON() ([]byte, error) {
+func (w Wrapped) MarshalJSON() ([]byte, error) {
 
 	// Marshal the entry to properly escape if it's json or contains quotes
-	b, err := json.Marshal(p.Entry)
+	b, err := json.Marshal(w.Entry)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +69,8 @@ func (p Wrapped) MarshalJSON() ([]byte, error) {
 	// Creating a map and marshalling from a map results in a non deterministic ordering of the resulting json object
 	// This is functionally ok but really annoying to humans and automated tests.
 	// Instead we will build the json ourselves after sorting all the labels to get a consistent output
-	keys := make([]string, 0, len(p.Labels))
-	for k := range p.Labels {
+	keys := make([]string, 0, len(w.Labels))
+	for k := range w.Labels {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
@@ -90,7 +90,7 @@ func (p Wrapped) MarshalJSON() ([]byte, error) {
 		buf.Write(key)
 		buf.WriteString(":")
 		// marshal value
-		val, err := json.Marshal(p.Labels[k])
+		val, err := json.Marshal(w.Labels[k])
 		if err != nil {
 			return nil, err
 		}
@@ -114,6 +114,7 @@ type WrapConfig struct {
 	IngestTimestamp *bool    `mapstructure:"ingest_timestamp"`
 }
 
+//nolint:unparam // Always returns nil until someone adds more validation and can remove this.
 // validateWrapConfig validates the WrapConfig for the wrapStage
 func validateWrapConfig(cfg *WrapConfig) error {
 	// Default the IngestTimestamp value to be true
@@ -192,7 +193,7 @@ func (m *wrapStage) wrap(e Entry) Entry {
 	wl, err := json.Marshal(w)
 	if err != nil {
 		if Debug {
-			level.Debug(m.logger).Log("msg", fmt.Sprintf("wrap stage failed to marshal wrapped object to json, wrapping will be skipped"), "err", err)
+			level.Debug(m.logger).Log("msg", "wrap stage failed to marshal wrapped object to json, wrapping will be skipped", "err", err)
 		}
 		return e
 	}

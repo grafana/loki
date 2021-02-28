@@ -40,7 +40,7 @@ pipeline_stages:
 // TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestWrapPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	plName := "test_pipeline"
+	plName := "test_pipeline_deal_with_it_linter"
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testWrapYaml), &plName, registry)
 	require.NoError(t, err)
 
