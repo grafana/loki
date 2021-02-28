@@ -60,31 +60,27 @@ func TestWrapPipeline(t *testing.T) {
 
 	testTime := time.Now()
 
-	out := processEntries(pl,
-		newEntry(nil, l1Lbls, testMatchLogLineApp1, testTime),
-		newEntry(nil, l2Lbls, testRegexLogLine, testTime),
-	)
-
-	// Both lines should succeed
-	assert.Len(t, out, 2)
+	// Submit these both separately to get a deterministic output
+	out1 := processEntries(pl, newEntry(nil, l1Lbls, testMatchLogLineApp1, testTime))[0]
+	out2 := processEntries(pl, newEntry(nil, l2Lbls, testRegexLogLine, testTime))[0]
 
 	// Expected labels should remove the wrapped labels
 	expectedLbls := model.LabelSet{
 		"namespace": "dev",
 		"cluster":   "us-eu-1",
 	}
-	assert.Equal(t, expectedLbls, out[0].Labels)
-	assert.Equal(t, expectedLbls, out[1].Labels)
+	assert.Equal(t, expectedLbls, out1.Labels)
+	assert.Equal(t, expectedLbls, out2.Labels)
 
 	// Validate timestamps
 	// Line 1 should use the first matcher and should use the log line timestamp
-	assert.Equal(t, testTime, out[0].Timestamp)
+	assert.Equal(t, testTime, out1.Timestamp)
 	// Line 2 should use the second matcher and should get timestamp by the wrap stage
-	assert.True(t, out[1].Timestamp.After(testTime))
+	assert.True(t, out2.Timestamp.After(testTime))
 
 	// Unmarshal the wrapped object and validate line1
 	w := &Wrapped{}
-	assert.NoError(t, json.Unmarshal([]byte(out[0].Entry.Entry.Line), w))
+	assert.NoError(t, json.Unmarshal([]byte(out1.Entry.Entry.Line), w))
 	expectedWrappedLbls := map[string]string{
 		"pod":       "foo-xsfs3",
 		"container": "foo",
@@ -94,7 +90,7 @@ func TestWrapPipeline(t *testing.T) {
 
 	// Validate line 2
 	w = &Wrapped{}
-	assert.NoError(t, json.Unmarshal([]byte(out[1].Entry.Entry.Line), w))
+	assert.NoError(t, json.Unmarshal([]byte(out2.Entry.Entry.Line), w))
 	expectedWrappedLbls = map[string]string{
 		"pod":       "foo-vvsdded",
 		"container": "bar",
