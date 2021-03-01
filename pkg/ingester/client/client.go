@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 
