@@ -17,7 +17,7 @@ Parsing stages:
 Transform stages:
 
   - [template](template/): Use Go templates to modify extracted data.
-  - [wrap](wrap/): Wraps a log line in a JSON object allowing extracted values and labels to be placed inside the log line.
+  - [pack](pack/): Packs a log line in a JSON object allowing extracted values and labels to be placed inside the log line.
 
 Action stages:
 
