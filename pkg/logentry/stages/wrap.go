@@ -25,13 +25,13 @@ var (
 	reallyFalse = false
 )
 
-type Wrapped struct {
+type Packed struct {
 	Labels map[string]string `json:",inline"`
 	Entry  string            `json:"_entry"`
 }
 
-// UnmarshalJSON populates a Wrapped struct where every key except the _entry key is added to the Labels field
-func (w *Wrapped) UnmarshalJSON(data []byte) error {
+// UnmarshalJSON populates a Packed struct where every key except the _entry key is added to the Labels field
+func (w *Packed) UnmarshalJSON(data []byte) error {
 	m := &map[string]interface{}{}
 	err := json.Unmarshal(data, m)
 	if err != nil {
@@ -57,8 +57,8 @@ func (w *Wrapped) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON creates a Wrapped struct as JSON where the Labels are flattened into the top level of the object
-func (w Wrapped) MarshalJSON() ([]byte, error) {
+// MarshalJSON creates a Packed struct as JSON where the Labels are flattened into the top level of the object
+func (w Packed) MarshalJSON() ([]byte, error) {
 
 	// Marshal the entry to properly escape if it's json or contains quotes
 	b, err := json.Marshal(w.Entry)
@@ -108,15 +108,15 @@ func (w Wrapped) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// WrapConfig contains the configuration for a wrapStage
-type WrapConfig struct {
+// PackConfig contains the configuration for a packStage
+type PackConfig struct {
 	Labels          []string `mapstrcuture:"labels"`
 	IngestTimestamp *bool    `mapstructure:"ingest_timestamp"`
 }
 
 //nolint:unparam // Always returns nil until someone adds more validation and can remove this.
-// validateWrapConfig validates the WrapConfig for the wrapStage
-func validateWrapConfig(cfg *WrapConfig) error {
+// validatePackConfig validates the PackConfig for the packStage
+func validatePackConfig(cfg *PackConfig) error {
 	// Default the IngestTimestamp value to be true
 	if cfg.IngestTimestamp == nil {
 		cfg.IngestTimestamp = &reallyTrue
@@ -124,46 +124,46 @@ func validateWrapConfig(cfg *WrapConfig) error {
 	return nil
 }
 
-// newWrapStage creates a DropStage from config
-func newWrapStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
-	cfg := &WrapConfig{}
+// newPackStage creates a DropStage from config
+func newPackStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+	cfg := &PackConfig{}
 	err := mapstructure.WeakDecode(config, cfg)
 	if err != nil {
 		return nil, err
 	}
-	err = validateWrapConfig(cfg)
+	err = validatePackConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &wrapStage{
-		logger:    log.With(logger, "component", "stage", "type", "wrap"),
+	return &packStage{
+		logger:    log.With(logger, "component", "stage", "type", "pack"),
 		cfg:       cfg,
 		dropCount: getDropCountMetric(registerer),
 	}, nil
 }
 
-// wrapStage applies Label matchers to determine if the include stages should be run
-type wrapStage struct {
+// packStage applies Label matchers to determine if the include stages should be run
+type packStage struct {
 	logger    log.Logger
-	cfg       *WrapConfig
+	cfg       *PackConfig
 	dropCount *prometheus.CounterVec
 }
 
-func (m *wrapStage) Run(in chan Entry) chan Entry {
+func (m *packStage) Run(in chan Entry) chan Entry {
 	out := make(chan Entry)
 	go func() {
 		defer close(out)
 		for e := range in {
-			out <- m.wrap(e)
+			out <- m.pack(e)
 		}
 	}()
 	return out
 }
 
-func (m *wrapStage) wrap(e Entry) Entry {
+func (m *packStage) pack(e Entry) Entry {
 	lbls := e.Labels
-	wrappedLabels := make(map[string]string, len(m.cfg.Labels))
+	packedLabels := make(map[string]string, len(m.cfg.Labels))
 	foundLables := []model.LabelName{}
 
 	// Iterate through all the extracted map (which also includes all the labels)
@@ -173,19 +173,19 @@ func (m *wrapStage) wrap(e Entry) Entry {
 				sv, err := getString(lv)
 				if err != nil {
 					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("value for key: '%s' cannot be converted to a string and cannot be wrapped", lk), "err", err, "type", reflect.TypeOf(lv))
+						level.Debug(m.logger).Log("msg", fmt.Sprintf("value for key: '%s' cannot be converted to a string and cannot be packed", lk), "err", err, "type", reflect.TypeOf(lv))
 					}
 					continue
 				}
-				wrappedLabels[wl] = sv
+				packedLabels[wl] = sv
 				foundLables = append(foundLables, model.LabelName(lk))
 			}
 		}
 	}
 
 	// Embed the extracted labels into the wrapper object
-	w := Wrapped{
-		Labels: wrappedLabels,
+	w := Packed{
+		Labels: packedLabels,
 		Entry:  e.Line,
 	}
 
@@ -193,13 +193,13 @@ func (m *wrapStage) wrap(e Entry) Entry {
 	wl, err := json.Marshal(w)
 	if err != nil {
 		if Debug {
-			level.Debug(m.logger).Log("msg", "wrap stage failed to marshal wrapped object to json, wrapping will be skipped", "err", err)
+			level.Debug(m.logger).Log("msg", "pack stage failed to marshal packed object to json, packing will be skipped", "err", err)
 		}
 		return e
 	}
 
 	// Remove anything found which is also a label, do this after the marshalling to not remove labels until
-	// we are sure the line can be successfully wrapped.
+	// we are sure the line can be successfully packed.
 	for _, fl := range foundLables {
 		delete(lbls, fl)
 	}
@@ -217,6 +217,6 @@ func (m *wrapStage) wrap(e Entry) Entry {
 }
 
 // Name implements Stage
-func (m *wrapStage) Name() string {
-	return StageTypeWrap
+func (m *packStage) Name() string {
+	return StageTypePack
 }

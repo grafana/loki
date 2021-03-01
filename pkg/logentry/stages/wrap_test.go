@@ -17,12 +17,12 @@ import (
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
-var testWrapYaml = `
+var testPackYaml = `
 pipeline_stages:
 - match:
     selector: "{container=\"foo\"}"
     stages:
-    - wrap:
+    - pack:
         labels:
           - pod
           - container
@@ -30,7 +30,7 @@ pipeline_stages:
 - match:
     selector: "{container=\"bar\"}"
     stages:
-    - wrap:
+    - pack:
         labels:
           - pod
           - container
@@ -38,10 +38,10 @@ pipeline_stages:
 `
 
 // TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
-func TestWrapPipeline(t *testing.T) {
+func TestPackPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	plName := "test_pipeline_deal_with_it_linter"
-	pl, err := NewPipeline(util_log.Logger, loadConfig(testWrapYaml), &plName, registry)
+	pl, err := NewPipeline(util_log.Logger, loadConfig(testPackYaml), &plName, registry)
 	require.NoError(t, err)
 
 	l1Lbls := model.LabelSet{
@@ -64,7 +64,7 @@ func TestWrapPipeline(t *testing.T) {
 	out1 := processEntries(pl, newEntry(nil, l1Lbls, testMatchLogLineApp1, testTime))[0]
 	out2 := processEntries(pl, newEntry(nil, l2Lbls, testRegexLogLine, testTime))[0]
 
-	// Expected labels should remove the wrapped labels
+	// Expected labels should remove the packed labels
 	expectedLbls := model.LabelSet{
 		"namespace": "dev",
 		"cluster":   "us-eu-1",
@@ -75,31 +75,31 @@ func TestWrapPipeline(t *testing.T) {
 	// Validate timestamps
 	// Line 1 should use the first matcher and should use the log line timestamp
 	assert.Equal(t, testTime, out1.Timestamp)
-	// Line 2 should use the second matcher and should get timestamp by the wrap stage
+	// Line 2 should use the second matcher and should get timestamp by the pack stage
 	assert.True(t, out2.Timestamp.After(testTime))
 
-	// Unmarshal the wrapped object and validate line1
-	w := &Wrapped{}
+	// Unmarshal the packed object and validate line1
+	w := &Packed{}
 	assert.NoError(t, json.Unmarshal([]byte(out1.Entry.Entry.Line), w))
-	expectedWrappedLbls := map[string]string{
+	expectedPackedLabels := map[string]string{
 		"pod":       "foo-xsfs3",
 		"container": "foo",
 	}
-	assert.Equal(t, expectedWrappedLbls, w.Labels)
+	assert.Equal(t, expectedPackedLabels, w.Labels)
 	assert.Equal(t, testMatchLogLineApp1, w.Entry)
 
 	// Validate line 2
-	w = &Wrapped{}
+	w = &Packed{}
 	assert.NoError(t, json.Unmarshal([]byte(out2.Entry.Entry.Line), w))
-	expectedWrappedLbls = map[string]string{
+	expectedPackedLabels = map[string]string{
 		"pod":       "foo-vvsdded",
 		"container": "bar",
 	}
-	assert.Equal(t, expectedWrappedLbls, w.Labels)
+	assert.Equal(t, expectedPackedLabels, w.Labels)
 	assert.Equal(t, testRegexLogLine, w.Entry)
 }
 
-func Test_wrapStage_Run(t *testing.T) {
+func Test_packStage_Run(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
@@ -108,13 +108,13 @@ func Test_wrapStage_Run(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		config        *WrapConfig
+		config        *PackConfig
 		inputEntry    Entry
 		expectedEntry Entry
 	}{
 		{
 			name: "no supplied labels list",
-			config: &WrapConfig{
+			config: &PackConfig{
 				Labels:          nil,
 				IngestTimestamp: &reallyFalse,
 			},
@@ -146,7 +146,7 @@ func Test_wrapStage_Run(t *testing.T) {
 		},
 		{
 			name: "match one supplied label",
-			config: &WrapConfig{
+			config: &PackConfig{
 				Labels:          []string{"foo"},
 				IngestTimestamp: &reallyFalse,
 			},
@@ -177,7 +177,7 @@ func Test_wrapStage_Run(t *testing.T) {
 		},
 		{
 			name: "match all supplied labels",
-			config: &WrapConfig{
+			config: &PackConfig{
 				Labels:          []string{"foo", "bar"},
 				IngestTimestamp: &reallyFalse,
 			},
@@ -206,7 +206,7 @@ func Test_wrapStage_Run(t *testing.T) {
 		},
 		{
 			name: "match extracted map and labels",
-			config: &WrapConfig{
+			config: &PackConfig{
 				Labels:          []string{"foo", "extr1"},
 				IngestTimestamp: &reallyFalse,
 			},
@@ -240,7 +240,7 @@ func Test_wrapStage_Run(t *testing.T) {
 		},
 		{
 			name: "extracted map value not convertable to a string",
-			config: &WrapConfig{
+			config: &PackConfig{
 				Labels:          []string{"foo", "extr2"},
 				IngestTimestamp: &reallyFalse,
 			},
@@ -274,7 +274,7 @@ func Test_wrapStage_Run(t *testing.T) {
 		},
 		{
 			name: "escape quotes",
-			config: &WrapConfig{
+			config: &PackConfig{
 				Labels:          []string{"foo", "ex\"tr2"},
 				IngestTimestamp: &reallyFalse,
 			},
@@ -308,7 +308,7 @@ func Test_wrapStage_Run(t *testing.T) {
 		},
 		{
 			name: "ingest timestamp",
-			config: &WrapConfig{
+			config: &PackConfig{
 				Labels:          nil,
 				IngestTimestamp: &reallyTrue,
 			},
@@ -341,11 +341,11 @@ func Test_wrapStage_Run(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateWrapConfig(tt.config)
+			err := validatePackConfig(tt.config)
 			if err != nil {
 				t.Error(err)
 			}
-			m, err := newWrapStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
+			m, err := newPackStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			// Normal pipeline operation will put all the labels into the extracted map
 			// replicate that here.

@@ -1,9 +1,9 @@
 ---
-title: wrap
+title: pack
 ---
-# `wrap` stage
+# `pack` stage
 
-The `wrap` stage is a transform stage which lets you embed extracted values and labels into the log line by wrapping the log line in a JSON object.
+The `pack` stage is a transform stage which lets you embed extracted values and labels into the log line by packing the log line in a JSON object.
 
 For example, if you wanted to remove the labels `container` and `pod` but still wanted to keep their values you could use this stage to create the following output:
 
@@ -21,10 +21,10 @@ This stage is useful if you have some label or other metadata you would like to 
 
 The querying capabilities of Loki make it easy to still access this data and filter/aggregate on it at query time.
 
-## Wrap stage schema
+## Pack stage schema
 
 ```yaml
-wrap:
+pack:
   # Name from extracted data and/or line labels
   # Labels provided here are automatically removed from the output labels.
   labels:
@@ -43,7 +43,7 @@ wrap:
 Removing the container label and embed it into the log line (Kubernetes pods could have multiple containers)
 
 ```yaml
-wrap:
+pack:
   labels:
     - container
 ```
@@ -57,15 +57,15 @@ This would create a log line
 }
 ```
 
-Loki 2.0 has some tools to make querying wrapped log lines easier as well.
+Loki 2.0 has some tools to make querying packed log lines easier as well.
 
-Display the log line as if it were never wrapped:
+Display the log line as if it were never packed:
 
 ```
 {cluster="us-central1", job="myjob"} | json | line_format "{{._entry}}"
 ```
 
-Use the wrapped labels for filtering:
+Use the packed labels for filtering:
 
 ```
 {cluster="us-central1", job="myjob"} | json | container="myapp" | line_format "{{._entry}}"

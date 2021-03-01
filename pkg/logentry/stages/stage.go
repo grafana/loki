@@ -28,7 +28,7 @@ const (
 	StageTypeTenant    = "tenant"
 	StageTypeDrop      = "drop"
 	StageTypeMultiline = "multiline"
-	StageTypeWrap      = "wrap"
+	StageTypePack      = "pack"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -146,8 +146,8 @@ func New(logger log.Logger, jobName *string, stageType string,
 		if err != nil {
 			return nil, err
 		}
-	case StageTypeWrap:
-		s, err = newWrapStage(logger, cfg, registerer)
+	case StageTypePack:
+		s, err = newPackStage(logger, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}
