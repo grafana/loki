@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -22,12 +22,12 @@ import (
 
 type TenantDeletionAPI struct {
 	bucketClient objstore.Bucket
-	ruleStore    rules.RuleStore
+	ruleStore    rulestore.RuleStore
 	logger       log.Logger
 	cfgProvider  bucket.TenantConfigProvider
 }
 
-func NewTenantDeletionAPI(storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider bucket.TenantConfigProvider, ruleStore rules.RuleStore, logger log.Logger, reg prometheus.Registerer) (*TenantDeletionAPI, error) {
+func NewTenantDeletionAPI(storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider bucket.TenantConfigProvider, ruleStore rulestore.RuleStore, logger log.Logger, reg prometheus.Registerer) (*TenantDeletionAPI, error) {
 	bucketClient, err := createBucketClient(storageCfg, logger, reg)
 	if err != nil {
 		return nil, err
@@ -36,7 +36,7 @@ func NewTenantDeletionAPI(storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvide
 	return newTenantDeletionAPI(bucketClient, cfgProvider, ruleStore, logger), nil
 }
 
-func newTenantDeletionAPI(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, ruleStore rules.RuleStore, logger log.Logger) *TenantDeletionAPI {
+func newTenantDeletionAPI(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, ruleStore rulestore.RuleStore, logger log.Logger) *TenantDeletionAPI {
 	return &TenantDeletionAPI{
 		bucketClient: bkt,
 		ruleStore:    ruleStore,
@@ -82,7 +82,7 @@ func (api *TenantDeletionAPI) deleteRules(ctx context.Context, userID string) er
 	}
 
 	err := api.ruleStore.DeleteNamespace(ctx, userID, "") // Empty namespace = delete all rule groups.
-	if err != nil && !errors.Is(err, rules.ErrGroupNamespaceNotFound) {
+	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
 		return err
 	}
 
