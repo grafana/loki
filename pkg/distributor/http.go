@@ -73,6 +73,11 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 	switch contentEncoding {
 	case "":
 		body = lokiutil.NewSizeReader(r.Body)
+	case "snappy":
+		// Snappy-decoding is done by `util.ParseProtoReader(..., util.RawSnappy)` below.
+		// Pass on body bytes. Note: HTTP clients do not need to set this header,
+		// but they sometimes do. See #3407.
+		body = lokiutil.NewSizeReader(r.Body)
 	case "gzip":
 		gzipReader, err := gzip.NewReader(r.Body)
 		if err != nil {
@@ -145,6 +150,8 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 		}
 
 	default:
+		// When no content-type header is set or when it is set to
+		// `application/x-protobuf`: expect snappy compression.
 		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
 			return nil, err
 		}
