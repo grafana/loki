@@ -240,11 +240,7 @@ type PushTargetConfig struct {
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
-	PipelineStages: []interface{}{
-		map[interface{}]interface{}{
-			stages.StageTypeDocker: nil,
-		},
-	},
+	PipelineStages: stages.PipelineStages{},
 }
 
 // HasServiceDiscoveryConfig checks to see if the service discovery used for
