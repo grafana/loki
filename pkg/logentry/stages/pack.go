@@ -164,7 +164,7 @@ func (m *packStage) Run(in chan Entry) chan Entry {
 func (m *packStage) pack(e Entry) Entry {
 	lbls := e.Labels
 	packedLabels := make(map[string]string, len(m.cfg.Labels))
-	foundLables := []model.LabelName{}
+	foundLabels := []model.LabelName{}
 
 	// Iterate through all the extracted map (which also includes all the labels)
 	for lk, lv := range e.Extracted {
@@ -178,7 +178,7 @@ func (m *packStage) pack(e Entry) Entry {
 					continue
 				}
 				packedLabels[wl] = sv
-				foundLables = append(foundLables, model.LabelName(lk))
+				foundLabels = append(foundLabels, model.LabelName(lk))
 			}
 		}
 	}
@@ -200,7 +200,7 @@ func (m *packStage) pack(e Entry) Entry {
 
 	// Remove anything found which is also a label, do this after the marshalling to not remove labels until
 	// we are sure the line can be successfully packed.
-	for _, fl := range foundLables {
+	for _, fl := range foundLabels {
 		delete(lbls, fl)
 	}
 
