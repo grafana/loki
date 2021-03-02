@@ -186,6 +186,13 @@ func newWork(ctx context.Context, req queryrange.Request) work {
 }
 
 func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	var wg sync.WaitGroup
+	intermediate := make(chan work)
+	defer func() {
+		wg.Wait()
+		close(intermediate)
+	}()
+
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
@@ -203,8 +210,6 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	parallelism := rt.limits.MaxQueryParallelism(userid)
-	intermediate := make(chan work)
-	defer close(intermediate)
 
 	for i := 0; i < parallelism; i++ {
 		go func() {
@@ -222,13 +227,19 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 
 	response, err := rt.middleware.Wrap(
 		queryrange.HandlerFunc(func(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+			wg.Add(1)
+			defer wg.Done()
+
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			w := newWork(ctx, r)
 			intermediate <- w
 			select {
 			case response := <-w.result:
 				return response.response, response.err
 			case <-ctx.Done():
-				return nil, err
+				return nil, ctx.Err()
 			}
 		})).Do(ctx, request)
 	if err != nil {
