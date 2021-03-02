@@ -1,4 +1,4 @@
-local apps = ['loki', 'loki-canary', 'promtail','logcli'];
+local apps = ['loki', 'loki-canary', 'promtail', 'logcli'];
 local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
@@ -61,10 +61,10 @@ local arch_image(arch, tags='') = {
 };
 
 local promtail_win() = pipeline('promtail-windows') {
- platform: {
+  platform: {
     os: 'windows',
-    arch: "amd64",
-    version: "1809",
+    arch: 'amd64',
+    version: '1809',
   },
   steps: [{
     name: 'test',
@@ -215,7 +215,7 @@ local manifest(apps) = pipeline('manifest') {
       make('check-generated-files', container=false) { depends_on: ['clone'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
     ],
-  }
+  },
 ] + [
   multiarch_image(arch) + (
     // When we're building Promtail for ARM, we want to use Dockerfile.arm32 to fix
@@ -265,26 +265,6 @@ local manifest(apps) = pipeline('manifest') {
           './tools/deploy.sh',
         ],
         depends_on: ['clone'],
-      },
-    ],
-  },
-] + [
-  pipeline('prune-ci-tags') {
-    trigger: condition('include').tagMaster,
-    depends_on: ['manifest'],
-    steps: [
-      {
-        name: 'trigger',
-        image: 'grafana/loki-build-image:%s' % build_image_version,
-        environment: {
-          DOCKER_USERNAME: { from_secret: 'docker_username' },
-          DOCKER_PASSWORD: { from_secret: 'docker_password' },
-        },
-        commands: [
-          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki -delete',
-          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/promtail -delete',
-          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki-canary -delete',
-        ],
       },
     ],
   },
