@@ -40,9 +40,9 @@ type Flusher interface {
 
 // replayController handles coordinating backpressure between WAL replays and chunk flushing.
 type replayController struct {
+	currentBytes atomic.Int64
 	cfg          WALConfig
 	metrics      *ingesterMetrics
-	currentBytes atomic.Int64
 	cond         *sync.Cond
 	isFlushing   atomic.Bool
 	flusher      Flusher
