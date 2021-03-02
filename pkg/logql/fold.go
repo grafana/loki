@@ -1,6 +1,5 @@
 package logql
 
-// type signature isn't great. Will be overloaded with receivers
 type FoldFn = func(accum interface{}, x interface{}) (interface{}, error)
 
 func foldAll(fn FoldFn, initial interface{}, xs ...Foldable) (interface{}, error) {
