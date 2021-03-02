@@ -476,6 +476,10 @@ func newJSONExpressionParser(expressions []log.JSONExpression) *jsonExpressionPa
 	}
 }
 
+func (e *jsonExpressionParser) Fold(fn FoldFn, x interface{}) (interface{}, error) {
+	return fn(x, e)
+}
+
 func (j *jsonExpressionParser) Shardable() bool { return true }
 
 func (j *jsonExpressionParser) Stage() (log.Stage, error) {
