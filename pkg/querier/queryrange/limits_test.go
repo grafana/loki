@@ -187,7 +187,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	require.LessOrEqual(t, maxFound, maxQueryParallelism, "max query parallelism: ", maxFound, " went over the configured one:", maxQueryParallelism)
 }
 
-func Test_MaxQueryParallelismLateCancel(t *testing.T) {
+func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	maxQueryParallelism := 2
 	f, err := newfakeRoundTripper()
 	require.Nil(t, err)
