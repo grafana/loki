@@ -147,7 +147,7 @@ func Test_seriesLimiter(t *testing.T) {
 	require.LessOrEqual(t, *c, 4)
 }
 
-func Test_MaxQueryPallelism(t *testing.T) {
+func Test_MaxQueryParallelism(t *testing.T) {
 	maxQueryParallelism := 2
 	f, err := newfakeRoundTripper()
 	require.Nil(t, err)
@@ -185,4 +185,32 @@ func Test_MaxQueryPallelism(t *testing.T) {
 	).RoundTrip(r)
 	maxFound := int(max.Load())
 	require.LessOrEqual(t, maxFound, maxQueryParallelism, "max query parallelism: ", maxFound, " went over the configured one:", maxQueryParallelism)
+}
+
+func Test_MaxQueryParallelismLateCancel(t *testing.T) {
+	maxQueryParallelism := 2
+	f, err := newfakeRoundTripper()
+	require.Nil(t, err)
+
+	f.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// simulate some work
+		time.Sleep(20 * time.Millisecond)
+	}))
+	ctx := user.InjectOrgID(context.Background(), "foo")
+
+	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
+	require.Nil(t, err)
+
+	_, _ = NewLimitedRoundTripper(f, lokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+				for i := 0; i < 10; i++ {
+					go func() {
+						_, _ = next.Do(c, &LokiRequest{})
+					}()
+				}
+				return nil, nil
+			})
+		}),
+	).RoundTrip(r)
 }
