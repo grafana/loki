@@ -20,7 +20,7 @@ func Test_Foldable(t *testing.T) {
 
 	expected := audit{
 		groupings: []*grouping{
-			&grouping{
+			{
 				groups:  []string{"cluster"},
 				without: false,
 			},
