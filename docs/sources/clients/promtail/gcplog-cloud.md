@@ -31,18 +31,20 @@ $ gcloud pubsub topics create cloud-logs
 We create a log sink to forward cloud logs into pubsub topic created before
 
 ```bash
-$ gcloud beta logging sinks create $SINK_NAME $SINK_LOCATION $OPTIONAL_FLAGS
+$ gcloud logging sinks create $SINK_NAME $SINK_LOCATION $OPTIONAL_FLAGS
 ```
 
 e.g:
 ```bash
-$ gcloud beta logging sinks create cloud-logs pubsub.googleapis.com/projects/my-project/topics/cloud-logs \
+$ gcloud logging sinks create cloud-logs pubsub.googleapis.com/projects/my-project/topics/cloud-logs \
 --log-filter='resource.type=("gcs_bucket")' \
 --description="Cloud logs"
 ```
 
 Above command also adds `log-filter` option which represents what type of logs should get into the destination `pubsub` topic.
 For more information on adding `log-filter` refer this [document](https://cloud.google.com/logging/docs/export/configure_export_v2#creating_sink)
+
+We cover more advanced `log-filter` [below](#Advanced-Log-filter)
 
 ## Create Pubsub subscription for Loki
 
@@ -84,4 +86,38 @@ To delete all the old messages until now, set `--time` to current time.
 
 ```bash
 gcloud pubsub subscriptions seek projects/my-project/subscriptions/cloud-logs --time=$(date +%Y-%m-%dT%H:%M:%S)
+```
+
+# Advanced log filter
+
+So far the document explains about adding just GCS bucket logs into Loki, But most often one may have to add multiple cloud resource logs and may also want to exclude some unnecessary logs.
+Here you will find one such way to add complex logs export filter.
+
+We use `log-filter` option to include logs and `exclusion` option to exclude specific logs.
+
+## Use Case
+Include following cloud resource logs
+- GCS bucket
+- Kubernetes
+- IAM
+- HTTP Load balancer
+
+And we exclude specific HTTP load balancer logs based on payload and status code.
+
+```
+$ gcloud logging sinks create cloud-logs pubsub.googleapis.com/projects/my-project/topics/cloud-logs \
+--log-filter='resource.type=("gcs_bucket OR k8s_cluster OR service_account OR iam_role OR api OR audited_resource OR http_load_balancer")' \
+--description="Cloud logs" \
+--exclusion='name=http_load_balancer,filter=<<EOF
+resource.type="http_load_balancer"
+(
+	(
+		jsonPayload.statusDetails=("byte_range_caching" OR "websocket_closed")
+	)
+		OR
+	(
+		http_request.status=(101 OR 206)
+	)
+)
+EOF
 ```
