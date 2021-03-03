@@ -53,9 +53,9 @@ func (Streams) String() string {
 	return ""
 }
 
-func (ss Streams) lines() int64 {
+func (streams Streams) lines() int64 {
 	var res int64
-	for _, s := range ss {
+	for _, s := range streams {
 		res += int64(len(s.Entries))
 	}
 	return res

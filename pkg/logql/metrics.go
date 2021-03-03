@@ -76,7 +76,6 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 	if err != nil {
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
-	rt = string(GetRangeType(p))
 
 	// Tag throughput metric by latency type based on a threshold.
 	// Latency below the threshold is fast, above is slow.
