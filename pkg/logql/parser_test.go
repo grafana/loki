@@ -467,6 +467,26 @@ func TestParse(t *testing.T) {
 				}, OpRangeTypeBytes, nil, nil),
 		},
 		{
+			in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack)[5m])`,
+			exp: newRangeAggregationExpr(
+				&logRange{
+					left: newPipelineExpr(
+						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+						MultiStageExpr{
+							newLineFilterExpr(
+								newLineFilterExpr(
+									newLineFilterExpr(
+										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+										labels.MatchRegexp, "blip"),
+									labels.MatchNotEqual, "flip"),
+								labels.MatchNotRegexp, "flap"),
+							newLabelParserExpr(OpParserTypeUnpack, ""),
+						},
+					),
+					interval: 5 * time.Minute,
+				}, OpRangeTypeBytes, nil, nil),
+		},
+		{
 			in: `
 			label_replace(
 				bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m]),
@@ -1064,6 +1084,26 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{app="foo"} |= "bar" | unpack | json | latency >= 250ms or ( status_code < 500 and status_code > 200)`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypeUnpack, ""),
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&labelFilterExpr{
+						LabelFilterer: log.NewOrLabelFilter(
+							log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+							log.NewAndLabelFilter(
+								log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+								log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+							),
+						),
+					},
+				},
+			},
+		},
+		{
 			in: `{app="foo"} |= "bar" | json | (duration > 1s or status!= 200) and method!="POST"`,
 			exp: &pipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
@@ -1317,7 +1357,8 @@ func TestParse(t *testing.T) {
 					newUnwrapExpr("foo", "")),
 				OpRangeTypeStdvar, nil, nil,
 			),
-		}, {
+		},
+		{
 			in: `stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap duration(foo) [5m])`,
 			exp: newRangeAggregationExpr(
@@ -2237,7 +2278,6 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseMatchers(t *testing.T) {
-
 	tests := []struct {
 		input   string
 		want    []*labels.Matcher
@@ -2286,7 +2326,6 @@ func TestParseMatchers(t *testing.T) {
 }
 
 func TestIsParseError(t *testing.T) {
-
 	tests := []struct {
 		name  string
 		errFn func() error

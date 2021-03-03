@@ -54,6 +54,7 @@ var tokens = map[string]int{
 	OpParserTypeJSON:   JSON,
 	OpParserTypeRegexp: REGEXP,
 	OpParserTypeLogfmt: LOGFMT,
+	OpParserTypeUnpack: UNPACK,
 
 	// fmt
 	OpFmtLabel: LABEL_FMT,
@@ -195,7 +196,7 @@ func (l *lexer) Error(msg string) {
 func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
-	//copy the scanner to avoid advancing it in case it's not a duration.
+	// copy the scanner to avoid advancing it in case it's not a duration.
 	s := *l
 	consumed := 0
 	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
@@ -235,7 +236,7 @@ func isDurationRune(r rune) bool {
 func tryScanBytes(number string, l *scanner.Scanner) (uint64, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
-	//copy the scanner to avoid advancing it in case it's not a duration.
+	// copy the scanner to avoid advancing it in case it's not a duration.
 	s := *l
 	consumed := 0
 	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {

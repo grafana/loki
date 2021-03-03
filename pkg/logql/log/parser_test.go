@@ -395,6 +395,7 @@ func Benchmark_Parser(b *testing.B) {
 	jsonLine := `{"proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
 	logfmtLine := `level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`
 	nginxline := `10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1" 200 60755 "https://grafana.com/go/observabilitycon/grafana-the-open-and-composable-observability-platform/?tech=ggl-o&pg=oss-graf&plcmt=hero-txt" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Safari/605.1.15" "123.123.123.123, 35.35.122.223" "TLSv1.3"`
+	packedLike := `{"job":"123","pod":"someuid123","app":"foo","_entry":"10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1"}`
 
 	for _, tt := range []struct {
 		name            string
@@ -403,6 +404,7 @@ func Benchmark_Parser(b *testing.B) {
 		LabelParseHints []string //  hints to reduce label extractions.
 	}{
 		{"json", jsonLine, NewJSONParser(), []string{"response_latency_seconds"}},
+		{"unpack", packedLike, NewUnpackParser(), []string{"pod"}},
 		{"logfmt", logfmtLine, NewLogfmtParser(), []string{"info", "throughput", "org_id"}},
 		{"regex greedy", nginxline, mustNewRegexParser(`GET (?P<path>.*?)/\?`), []string{"path"}},
 		{"regex status digits", nginxline, mustNewRegexParser(`HTTP/1.1" (?P<statuscode>\d{3}) `), []string{"statuscode"}},
@@ -629,6 +631,74 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			_, _ = p.Process(tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.Labels())
+		})
+	}
+}
+
+func Test_unpackParser_Parse(t *testing.T) {
+	tests := []struct {
+		name string
+		line []byte
+		lbs  labels.Labels
+
+		wantLbs  labels.Labels
+		wantLine []byte
+	}{
+		{
+			"should extract only map[string]string",
+			[]byte(`{"bar":1,"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}}`),
+			labels.Labels{{Name: "cluster", Value: "us-central1"}},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+				{Name: "namespace", Value: "prod"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			[]byte(`some message`),
+		},
+		{
+			"wrong json",
+			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "__error__", Value: "JSONParserErr"},
+			},
+			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
+		},
+		{
+			"not a map",
+			[]byte(`["foo","bar"]`),
+			labels.Labels{{Name: "cluster", Value: "us-central1"}},
+			labels.Labels{
+				{Name: "__error__", Value: "JSONParserErr"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			[]byte(`["foo","bar"]`),
+		},
+		{
+			"should rename",
+			[]byte(`{"bar":1,"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}}`),
+			labels.Labels{
+				{Name: "cluster", Value: "us-central1"},
+				{Name: "app", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+				{Name: "app_extracted", Value: "foo"},
+				{Name: "namespace", Value: "prod"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			[]byte(`some message`),
+		},
+	}
+	for _, tt := range tests {
+		j := NewUnpackParser()
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
+			l, _ := j.Process(tt.line, b)
+			sort.Sort(tt.wantLbs)
+			require.Equal(t, tt.wantLbs, b.Labels())
+			require.Equal(t, tt.wantLine, l)
 		})
 	}
 }

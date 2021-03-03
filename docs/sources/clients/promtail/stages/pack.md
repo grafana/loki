@@ -57,28 +57,32 @@ This would create a log line
 }
 ```
 
-Loki 2.0 has some tools to make querying packed log lines easier as well.
+**Loki 2.2 also includes a new [`unpack`](../../../../logql/#unpack) parser to work with the pack stage.**
 
-Display the log line as if it were never packed:
+For example:
 
+```logql
+{cluster="us-central1", job="myjob"} | unpack
 ```
-{cluster="us-central1", job="myjob"} | json | line_format "{{._entry}}"
-```
+
+Will automatically unpack embedded labels and log line and replace the log line with the original log line automatically.
+
+### More Examples
 
 Use the packed labels for filtering:
 
-```
-{cluster="us-central1", job="myjob"} | json | container="myapp" | line_format "{{._entry}}"
+```logql
+{cluster="us-central1", job="myjob"} | unpack | container="myapp"
 ```
 
 You can even use the `json` parser twice if your original message was json:
 
-```
-{cluster="us-central1", job="myjob"} | json | container="myapp" | line_format "{{._entry}}" | json | val_from_original_log_json="foo"
+```logql
+{cluster="us-central1", job="myjob"} | unpack | container="myapp" | json | val_from_original_log_json="foo"
 ```
 
 Or any other parser
 
-```
-{cluster="us-central1", job="myjob"} | json | container="myapp" | line_format "{{._entry}}" | logfmt | val_from_original_log_json="foo"
+```logql
+{cluster="us-central1", job="myjob"} | unpack | container="myapp" | logfmt | val_from_original_log_json="foo"
 ```

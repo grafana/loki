@@ -13,6 +13,7 @@ import (
 	ww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/logproto"
+	logql_log "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/promtail/api"
 )
 
@@ -139,7 +140,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"" + entryKey + "\":\"test line 1\"}",
+						Line:      "{\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -170,7 +171,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+						Line:      "{\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -199,7 +200,7 @@ func Test_packStage_Run(t *testing.T) {
 					Labels: model.LabelSet{},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"bar\":\"baz\",\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+						Line:      "{\"bar\":\"baz\",\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -233,7 +234,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"extr1\":\"etr1val\",\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+						Line:      "{\"extr1\":\"etr1val\",\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -267,7 +268,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+						Line:      "{\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -301,7 +302,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"ex\\\"tr2\":\"\\\"fd\\\"\",\"foo\":\"bar\",\"" + entryKey + "\":\"test line 1\"}",
+						Line:      "{\"ex\\\"tr2\":\"\\\"fd\\\"\",\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -333,7 +334,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0), // Ignored in test execution below
-						Line:      "{\"" + entryKey + "\":\"test line 1\"}",
+						Line:      "{\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -362,7 +363,6 @@ func Test_packStage_Run(t *testing.T) {
 			} else {
 				assert.Equal(t, tt.expectedEntry.Timestamp, out[0].Timestamp)
 			}
-
 		})
 	}
 }

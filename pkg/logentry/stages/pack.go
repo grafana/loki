@@ -14,10 +14,8 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-)
 
-const (
-	entryKey = "_entry"
+	logql_log "github.com/grafana/loki/pkg/logql/log"
 )
 
 var (
@@ -40,7 +38,7 @@ func (w *Packed) UnmarshalJSON(data []byte) error {
 	w.Labels = map[string]string{}
 	for k, v := range *m {
 		// _entry key goes to the Entry field, everything else becomes a label
-		if k == entryKey {
+		if k == logql_log.PackedEntryKey {
 			if s, ok := v.(string); ok {
 				w.Entry = s
 			} else {
@@ -59,7 +57,6 @@ func (w *Packed) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON creates a Packed struct as JSON where the Labels are flattened into the top level of the object
 func (w Packed) MarshalJSON() ([]byte, error) {
-
 	// Marshal the entry to properly escape if it's json or contains quotes
 	b, err := json.Marshal(w.Entry)
 	if err != nil {
@@ -101,7 +98,7 @@ func (w Packed) MarshalJSON() ([]byte, error) {
 		buf.WriteString(",")
 	}
 	// Add the line entry
-	buf.WriteString("\"" + entryKey + "\":")
+	buf.WriteString("\"" + logql_log.PackedEntryKey + "\":")
 	buf.Write(b)
 
 	buf.WriteString("}")

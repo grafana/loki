@@ -27,6 +27,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b>=10GB`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
@@ -64,6 +65,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"}[5m]))`,
 		`sum(count_over_time({job="mysql"} | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
+		`sum(count_over_time({job="mysql"} | unpack | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
 		`topk by (name)(10,sum(rate({region="us-east1"}[5m])))`,
@@ -328,6 +330,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 		wantErr bool
 	}{
 		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false},
+		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false},
 		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
 		{"regexp err ", OpParserTypeRegexp, "foo", nil, true},

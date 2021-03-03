@@ -18,6 +18,7 @@ const (
 	duplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
+	PackedEntryKey  = "_entry"
 )
 
 var (
@@ -313,3 +314,68 @@ func (j *JSONExpressionParser) Process(line []byte, lbs *LabelsBuilder) ([]byte,
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
+
+type UnpackParser struct{}
+
+// NewUnpackParser creates a new unpack stage.
+// The unpack stage will parse a json log line as map[string]string where each key will be translated into labels.
+// A special key _entry will also be used to replace the original log line. This is to be used in conjunction with Promtail pack stage.
+// see https://grafana.com/docs/loki/latest/clients/promtail/stages/pack/
+func NewUnpackParser() *UnpackParser {
+	return &UnpackParser{}
+}
+
+func (UnpackParser) RequiredLabelNames() []string { return []string{} }
+
+func (u *UnpackParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
+	it := jsoniter.ConfigFastest.BorrowIterator(line)
+	defer jsoniter.ConfigFastest.ReturnIterator(it)
+
+	entry, err := u.unpack(it, lbs)
+	if err != nil {
+		lbs.SetErr(errJSON)
+		return line, true
+	}
+	return entry, true
+}
+
+func (u *UnpackParser) unpack(it *jsoniter.Iterator, lbs *LabelsBuilder) ([]byte, error) {
+	// we only care about object and values.
+	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
+		return nil, fmt.Errorf("expecting json object(%d), got %d", jsoniter.ObjectValue, nextType)
+	}
+	var entry []byte
+	_ = it.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
+		switch iter.WhatIsNext() {
+		case jsoniter.StringValue:
+			// we only unpack map[string]string. Anything else is skipped.
+			if field == PackedEntryKey {
+				s := iter.ReadStringAsSlice()
+				// todo(ctovena): we should just reslice the original line since the property is contiguous
+				// but jsoniter doesn't allow us to do this right now.
+				// https://github.com/buger/jsonparser might do a better job at this.
+				entry = make([]byte, len(s))
+				copy(entry, s)
+				return true
+			}
+			if !lbs.ParserLabelHints().ShouldExtract(field) {
+				iter.Skip()
+				return true
+			}
+			if lbs.BaseHas(field) {
+				field = field + duplicateSuffix
+			}
+			lbs.Set(field, iter.ReadString())
+		default:
+			iter.Skip()
+		}
+		return true
+	})
+	if it.Error != nil && it.Error != io.EOF {
+		return nil, it.Error
+	}
+	return entry, nil
+}
