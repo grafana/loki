@@ -29,12 +29,18 @@ var (
 	}
 }`)
 
+	packedLine = []byte(`{
+		"remote_user": "foo",
+		"upstream_addr": "10.0.0.1:80",
+		"protocol": "HTTP/2.0",
+		"cluster": "us-east-west",
+		"_entry":"foo"
+	}`)
+
 	logfmtLine = []byte(`ts=2021-02-02T14:35:05.983992774Z caller=spanlogger.go:79 org_id=3677 traceID=2e5c7234b8640997 Ingester.TotalReached=15 Ingester.TotalChunksMatched=0 Ingester.TotalBatches=0`)
 )
 
 func Test_ParserHints(t *testing.T) {
-	lbs := labels.Labels{{Name: "app", Value: "nginx"}, {Name: "cluster", Value: "us-central-west"}}
-
 	t.Parallel()
 	for _, tt := range []struct {
 		expr      string
@@ -185,14 +191,14 @@ func Test_ParserHints(t *testing.T) {
 		},
 		{
 			`sum by (cluster_extracted)(count_over_time({app="nginx"} | unpack | cluster_extracted="us-east-west" [1m]))`,
-			jsonLine,
+			packedLine,
 			true,
 			1.0,
 			`{cluster_extracted="us-east-west"}`,
 		},
 		{
 			`sum(rate({app="nginx"} | unpack | nonexistant_field="foo" [1m]))`,
-			jsonLine,
+			packedLine,
 			false,
 			0,
 			``,
@@ -200,7 +206,7 @@ func Test_ParserHints(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.expr, func(t *testing.T) {
-			t.Parallel()
+			lbs := labels.Labels{{Name: "app", Value: "nginx"}, {Name: "cluster", Value: "us-central-west"}}
 			expr, err := logql.ParseSampleExpr(tt.expr)
 			require.NoError(t, err)
 
