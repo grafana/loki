@@ -306,9 +306,11 @@ module Fluent
 
           if @extract_kubernetes_labels && record.key?('kubernetes')
             kubernetes_labels = record['kubernetes']['labels']
-            kubernetes_labels.each_key do |l|
-              new_key = l.gsub(%r{[.\-\/]}, '_')
-              chunk_labels[new_key] = kubernetes_labels[l]
+            if !kubernetes_labels.nil?
+              kubernetes_labels.each_key do |l|
+                new_key = l.gsub(%r{[.\-\/]}, '_')
+                chunk_labels[new_key] = kubernetes_labels[l]
+              end
             end
           end
 
