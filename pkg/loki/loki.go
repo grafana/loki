@@ -9,6 +9,7 @@ import (
 
 	frontend "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/querier/worker"
+	"github.com/felixge/fgprof"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 
@@ -238,6 +239,8 @@ func (t *Loki) Run() error {
 
 	// This adds a way to see the config and the changes compared to the defaults
 	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.cfg, newDefaultConfig()))
+
+	t.Server.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started") }
