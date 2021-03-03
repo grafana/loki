@@ -17,7 +17,19 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ## Master / Unreleased
 
-_add changes here which are unreleased_
+-_add changes here which are unreleased_
+
+### Promtail config changes
+
+In [this PR](https://github.com/grafana/loki/pull/3404), we reverted a bug that caused `scrape_configs` entries without a
+`pipeline_stages` definition to default to the `docker` pipeline stage.
+
+If any of your `scrape_configs` are missing this definition, you should add the following to maintain this behaviour:
+
+```yaml
+pipeline_stages:
+  - docker: {}
+```
 
 ## 2.1.0
 
