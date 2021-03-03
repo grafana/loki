@@ -689,6 +689,19 @@ func Test_unpackParser_Parse(t *testing.T) {
 			},
 			[]byte(`some message`),
 		},
+		{
+			"should not change log and labels if no packed entry",
+			[]byte(`{"bar":1,"app":"foo","namespace":"prod","pod":{"uid":"1"}}`),
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			[]byte(`{"bar":1,"app":"foo","namespace":"prod","pod":{"uid":"1"}}`),
+		},
 	}
 	for _, tt := range tests {
 		j := NewUnpackParser()
