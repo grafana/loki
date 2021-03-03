@@ -57,28 +57,38 @@ This would create a log line
 }
 ```
 
-Loki 2.0 has some tools to make querying packed log lines easier as well.
+**Loki 2.2 introduced a new [`unpack`](../../../../logql/#unpack) parser to work with the pack stage.**
+
+For example:
+
+```logql
+{cluster="us-central1", job="myjob"} | unpack
+```
+
+Will automatically unpack embedded labels and log line.
+
+Alternatively Loki 2.0 has also some tools to make querying packed log lines easier.
 
 Display the log line as if it were never packed:
 
-```
+```logql
 {cluster="us-central1", job="myjob"} | json | line_format "{{._entry}}"
 ```
 
 Use the packed labels for filtering:
 
-```
+```logql
 {cluster="us-central1", job="myjob"} | json | container="myapp" | line_format "{{._entry}}"
 ```
 
 You can even use the `json` parser twice if your original message was json:
 
-```
+```logql
 {cluster="us-central1", job="myjob"} | json | container="myapp" | line_format "{{._entry}}" | json | val_from_original_log_json="foo"
 ```
 
 Or any other parser
 
-```
+```logql
 {cluster="us-central1", job="myjob"} | json | container="myapp" | line_format "{{._entry}}" | logfmt | val_from_original_log_json="foo"
 ```

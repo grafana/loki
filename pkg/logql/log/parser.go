@@ -317,6 +317,10 @@ func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{}
 
 type UnpackParser struct{}
 
+// NewUnpackParser creates a new unpack stage.
+// The unpack stage will parse a json log line as map[string]string where each key will be translated into labels.
+// A special key _entry will also be used to replace the original log line. This is to be used in conjunction with Promtail pack stage.
+// see https://grafana.com/docs/loki/latest/clients/promtail/stages/pack/
 func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{}
 }

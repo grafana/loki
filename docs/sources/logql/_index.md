@@ -143,7 +143,11 @@ In case of errors, for instance if the line is not in the expected format, the l
 
 If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However if an extracted key appears twice, only the latest label value will be kept.
 
-We support currently support json, logfmt and regexp parsers.
+We support currently support [json](#json), [logfmt](#logfmt), [regexp](#regexp) and [unpack](#unpack) parsers.
+
+It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
+
+##### Json
 
 The **json** parser operates in two modes:
 
@@ -240,6 +244,8 @@ The **json** parser operates in two modes:
    "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
    ```
 
+##### logfmt
+
 The **logfmt** parser can be added using the `| logfmt` and will extract all keys and values from the [logfmt](https://brandur.org/logfmt) formatted log line.
 
 For example the following log line:
@@ -260,6 +266,8 @@ will get those labels extracted:
 "status" => "200"
 ```
 
+##### regexp
+
 Unlike the logfmt and json, which extract implicitly all values and takes no parameters, the **regexp** parser takes a single parameter `| regexp "<re>"` which is the regular expression using the [Golang](https://golang.org/) [RE2 syntax](https://github.com/google/re2/wiki/Syntax).
 
 The regular expression must contain a least one named sub-match (e.g `(?P<name>re)`), each sub-match will extract a different label.
@@ -279,7 +287,24 @@ those labels:
 "duration" => "1.5s"
 ```
 
-It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
+##### unpack
+
+The `unpack` parser will parse a json log line, and unpack all embedded labels via the [`pack`](../clients/promtail/stages/pack/) stage.
+**A special property `_entry` will also be used to replace the original log line**.
+
+For example, using `| unpack` with the following log line:
+
+```json
+{
+  "container": "myapp",
+  "pod": "pod-3223f",
+  "_entry": "original log message"
+}
+```
+
+allows to extract the `container` and `pod` labels and the `original log message` as the new log line.
+
+> You can combine `unpack` with `json` parser (or any other parsers) if the original embedded log line is specific format.
 
 #### Label Filter Expression
 
