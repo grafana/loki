@@ -43,7 +43,9 @@ Terraform will prompt for following variables.
 2. zone - GCP zone (e.g: `us-central1-b`)
 3. region - GCP region (e.g: `us-central1`)
 4. project - GCP Project ID
-5. logname - Logname is the name we use to create pubsub topics, log router and pubsub subscription.
+5. name - name we use to create pubsub topics, log router and pubsub subscription.
+6. inclusion_filter - To include cloud resources to export.
+7. exclusions - Ignore these logs while exporting.
 
 you can pass these variables via CLI.
 
