@@ -53,6 +53,14 @@ func (Streams) String() string {
 	return ""
 }
 
+func (ss Streams) lines() int64 {
+	var res int64
+	for _, s := range ss {
+		res += int64(len(s.Entries))
+	}
+	return res
+}
+
 // Result is the result of a query execution.
 type Result struct {
 	Data       promql_parser.Value
@@ -159,7 +167,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	}
 
 	if q.record {
-		RecordMetrics(ctx, q.params, status, statResult)
+		RecordMetrics(ctx, q.params, status, statResult, data)
 	}
 
 	return Result{
@@ -293,7 +301,6 @@ func (q *query) evalLiteral(_ context.Context, expr *literalExpr) (promql_parser
 	}
 
 	return PopulateMatrixFromScalar(s, q.params), nil
-
 }
 
 func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {

@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logql/stats"
 )
@@ -64,19 +65,27 @@ var (
 	})
 )
 
-func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result) {
-	logger := util_log.WithContext(ctx, util_log.Logger)
+func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result, result promql_parser.Value) {
+	var (
+		logger        = util_log.WithContext(ctx, util_log.Logger)
+		rt            = string(GetRangeType(p))
+		latencyType   = latencyTypeFast
+		returnedLines = 0
+	)
 	queryType, err := QueryType(p.Query())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
-	rt := string(GetRangeType(p))
+	rt = string(GetRangeType(p))
 
 	// Tag throughput metric by latency type based on a threshold.
 	// Latency below the threshold is fast, above is slow.
-	latencyType := latencyTypeFast
 	if stats.Summary.ExecTime > slowQueryThresholdSecond {
 		latencyType = latencyTypeSlow
+	}
+
+	if result != nil && result.Type() == ValueTypeStreams {
+		returnedLines = int(result.(Streams).lines())
 	}
 
 	// we also log queries, useful for troubleshooting slow queries.
@@ -89,6 +98,8 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"step", p.Step(),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
+		"limit", p.Limit(),
+		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 	)
