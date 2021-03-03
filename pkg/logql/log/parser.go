@@ -316,7 +316,7 @@ func (j *JSONExpressionParser) Process(line []byte, lbs *LabelsBuilder) ([]byte,
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type UnpackParser struct {
-	kvBuffer []string
+	lbsBuffer []string
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -325,7 +325,7 @@ type UnpackParser struct {
 // see https://grafana.com/docs/loki/latest/clients/promtail/stages/pack/
 func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{
-		kvBuffer: make([]string, 0, 16),
+		lbsBuffer: make([]string, 0, 16),
 	}
 }
 
@@ -335,7 +335,7 @@ func (u *UnpackParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	if lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
-	u.kvBuffer = u.kvBuffer[:0]
+	u.lbsBuffer = u.lbsBuffer[:0]
 	it := jsoniter.ConfigFastest.BorrowIterator(line)
 	defer jsoniter.ConfigFastest.ReturnIterator(it)
 
@@ -374,7 +374,7 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 				field = field + duplicateSuffix
 			}
 			// append to the buffer of labels
-			u.kvBuffer = append(u.kvBuffer, field, iter.ReadString())
+			u.lbsBuffer = append(u.lbsBuffer, field, iter.ReadString())
 		default:
 			iter.Skip()
 		}
@@ -385,8 +385,8 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 	}
 	// flush the buffer if we found a packed entry.
 	if isPacked {
-		for i := 0; i < len(u.kvBuffer); i = i + 2 {
-			lbs.Set(u.kvBuffer[i], u.kvBuffer[i+1])
+		for i := 0; i < len(u.lbsBuffer); i = i + 2 {
+			lbs.Set(u.lbsBuffer[i], u.lbsBuffer[i+1])
 		}
 	}
 	return entry, nil
