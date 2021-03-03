@@ -33,7 +33,7 @@ and how to scrape logs from files.
     - [syslog](#syslog)
       - [Available Labels](#available-labels)
     - [loki_push_api](#loki_push_api)
-    - [windows_events] (#windows_events)
+    - [windows_events](#windows_events)
     - [relabel_configs](#relabel_configs)
     - [static_configs](#static_configs)
     - [file_sd_config](#file_sd_config)
