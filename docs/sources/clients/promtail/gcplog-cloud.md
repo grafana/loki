@@ -90,10 +90,9 @@ gcloud pubsub subscriptions seek projects/my-project/subscriptions/cloud-logs --
 
 # Advanced log filter
 
-So far the document explains about adding just GCS bucket logs into Loki, But most often one may have to add multiple cloud resource logs and may also want to exclude some unnecessary logs.
-Here you will find one such way to add complex logs export filter.
+So far we've covered admitting GCS bucket logs into Loki, but often one may need to add multiple cloud resource logs and may also need to exclude unnecessary logs. The following is a more complex example.
 
-We use `log-filter` option to include logs and `exclusion` option to exclude specific logs.
+We use the `log-filter` option to include logs and the `exclusion` option to exclude them.
 
 ## Use Case
 Include following cloud resource logs
