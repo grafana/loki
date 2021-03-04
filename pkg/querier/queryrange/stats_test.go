@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
@@ -70,7 +69,7 @@ func Test_StatsHTTP(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		next   http.Handler
-		expect func(t *testing.T, ctx context.Context, p logql.Params, status string, stats stats.Result)
+		expect func(t *testing.T, data *queryData)
 	}{
 		{
 			"should not record metric if nothing is recorded",
@@ -78,7 +77,7 @@ func Test_StatsHTTP(t *testing.T) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = false
 			}),
-			func(t *testing.T, ctx context.Context, p logql.Params, status string, stats stats.Result) {
+			func(t *testing.T, data *queryData) {
 				t.Fail()
 			},
 		},
@@ -94,12 +93,12 @@ func Test_StatsHTTP(t *testing.T) {
 				})
 				data.statistics = nil
 			}),
-			func(t *testing.T, ctx context.Context, p logql.Params, status string, s stats.Result) {
-				require.Equal(t, fmt.Sprintf("%d", http.StatusOK), status)
-				require.Equal(t, "foo", p.Query())
-				require.Equal(t, logproto.BACKWARD, p.Direction())
-				require.Equal(t, uint32(100), p.Limit())
-				require.Equal(t, stats.Result{}, s)
+			func(t *testing.T, data *queryData) {
+				require.Equal(t, fmt.Sprintf("%d", http.StatusOK), data.status)
+				require.Equal(t, "foo", data.params.Query())
+				require.Equal(t, logproto.BACKWARD, data.params.Direction())
+				require.Equal(t, uint32(100), data.params.Limit())
+				require.Equal(t, stats.Result{}, *data.statistics)
 			},
 		},
 		{
@@ -115,18 +114,41 @@ func Test_StatsHTTP(t *testing.T) {
 				data.statistics = &statsResult
 				w.WriteHeader(http.StatusTeapot)
 			}),
-			func(t *testing.T, ctx context.Context, p logql.Params, status string, s stats.Result) {
-				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), status)
-				require.Equal(t, "foo", p.Query())
-				require.Equal(t, logproto.BACKWARD, p.Direction())
-				require.Equal(t, uint32(100), p.Limit())
-				require.Equal(t, statsResult, s)
+			func(t *testing.T, data *queryData) {
+				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
+				require.Equal(t, "foo", data.params.Query())
+				require.Equal(t, logproto.BACKWARD, data.params.Direction())
+				require.Equal(t, uint32(100), data.params.Limit())
+				require.Equal(t, statsResult, *data.statistics)
+			},
+		},
+		{
+			"result",
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				data := r.Context().Value(ctxKey).(*queryData)
+				data.recorded = true
+				data.params = paramsFromRequest(&LokiRequest{
+					Query:     "foo",
+					Direction: logproto.BACKWARD,
+					Limit:     100,
+				})
+				data.statistics = &statsResult
+				data.result = streams
+				w.WriteHeader(http.StatusTeapot)
+			}),
+			func(t *testing.T, data *queryData) {
+				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
+				require.Equal(t, "foo", data.params.Query())
+				require.Equal(t, logproto.BACKWARD, data.params.Direction())
+				require.Equal(t, uint32(100), data.params.Limit())
+				require.Equal(t, statsResult, *data.statistics)
+				require.Equal(t, streams, data.result)
 			},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			statsHTTPMiddleware(metricRecorderFn(func(ctx context.Context, p logql.Params, status string, stats stats.Result) {
-				test.expect(t, ctx, p, status, stats)
+			statsHTTPMiddleware(metricRecorderFn(func(data *queryData) {
+				test.expect(t, data)
 			})).Wrap(test.next).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/foo", strings.NewReader("")))
 		})
 	}
