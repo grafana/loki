@@ -52,6 +52,8 @@ const (
 	Varbit
 	// Bigchunk encoding
 	Bigchunk
+	// PrometheusXorChunk is a wrapper around Prometheus XOR-encoded chunk.
+	PrometheusXorChunk
 )
 
 type encoding struct {
@@ -76,6 +78,12 @@ var encodings = map[Encoding]encoding{
 		Name: "Bigchunk",
 		New: func() Chunk {
 			return newBigchunk()
+		},
+	},
+	PrometheusXorChunk: {
+		Name: "PrometheusXorChunk",
+		New: func() Chunk {
+			return newPrometheusXorChunk()
 		},
 	},
 }
