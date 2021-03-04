@@ -311,15 +311,15 @@ func (t *SyslogTarget) ListenAddress() net.Addr {
 }
 
 func (t *SyslogTarget) idleTimeout() time.Duration {
-	if tm := t.config.IdleTimeout; tm != 0 {
-		return tm
+	if t.config.IdleTimeout != 0 {
+		return t.config.IdleTimeout
 	}
 	return defaultIdleTimeout
 }
 
 func (t *SyslogTarget) maxMessageLength() int {
-	if maxMessageLength := t.config.MaxMessageLength; maxMessageLength != 0 {
-		return maxMessageLength
+	if t.config.MaxMessageLength != 0 {
+		return t.config.MaxMessageLength
 	}
 	return defaultMaxMessageLength
 }
