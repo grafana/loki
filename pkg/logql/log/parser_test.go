@@ -702,6 +702,19 @@ func Test_unpackParser_Parse(t *testing.T) {
 			},
 			[]byte(`{"bar":1,"app":"foo","namespace":"prod","pod":{"uid":"1"}}`),
 		},
+		{
+			"non json with escaped quotes",
+			[]byte(`{"_entry":"I0303 17:49:45.976518    1526 kubelet_getters.go:178] \"Pod status updated\" pod=\"openshift-etcd/etcd-ip-10-0-150-50.us-east-2.compute.internal\" status=Running"}`),
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			[]byte(`I0303 17:49:45.976518    1526 kubelet_getters.go:178] "Pod status updated" pod="openshift-etcd/etcd-ip-10-0-150-50.us-east-2.compute.internal" status=Running`),
+		},
 	}
 	for _, tt := range tests {
 		j := NewUnpackParser()
