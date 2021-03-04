@@ -160,7 +160,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			newMustLineFormatter("{{ addf .foo 1.5 | subf .bar | mulf .baz | divf .bazz }}"),
 			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
 			[]byte("3.8476190476190477"),
-			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3"}, {Name: "baz", Value: "10"}, {Name: "bazz", Value: "20"}},
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
 		},
 		{
 			"mathfloatround",
@@ -197,8 +197,6 @@ func Test_lineFormatter_Format(t *testing.T) {
 			[]byte("mod is 2"),
 			labels.Labels{{Name: "foo", Value: "20"}},
 		},
-		
-		
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

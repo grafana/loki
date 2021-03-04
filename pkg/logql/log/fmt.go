@@ -78,7 +78,6 @@ var (
 	}
 )
 
-
 type LineFormatter struct {
 	*template.Template
 	buf *bytes.Buffer
