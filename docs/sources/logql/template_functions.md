@@ -371,3 +371,43 @@ Examples:
 {{ if .err hasSuffix "Timeout" }} timeout {{end}}
 {{ if hasPrefix "he" "hello" }} yes {{end}}
 ```
+
+## add 
+
+> **Note:** Added in Loki 2.2
+
+Sum numbers with add. Supports multiple numbers
+
+```template
+{{ add 3 2 5 }} // output: 10
+```
+
+## sub
+
+> **Note:** Added in Loki 2.2
+
+Subtract numbers
+
+```template
+{{ sub 5 2 }} // output: 3
+```
+
+## mul
+
+> **Note:** Added in Loki 2.2
+
+Mulitply numbers. Supports multiple numbers
+
+```template
+{{ mul 5 2 3}} // output: 30
+```
+
+## div
+
+> **Note:** Added in Loki 2.2
+
+Integer divide numbers.
+
+```template
+{{ div 10 2}} // output: 5
+```
