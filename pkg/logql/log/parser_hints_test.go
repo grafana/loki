@@ -41,6 +41,8 @@ var (
 )
 
 func Test_ParserHints(t *testing.T) {
+	lbs := labels.Labels{{Name: "app", Value: "nginx"}, {Name: "cluster", Value: "us-central-west"}}
+
 	t.Parallel()
 	for _, tt := range []struct {
 		expr      string
@@ -206,13 +208,13 @@ func Test_ParserHints(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.expr, func(t *testing.T) {
-			lbs := labels.Labels{{Name: "app", Value: "nginx"}, {Name: "cluster", Value: "us-central-west"}}
+			t.Parallel()
 			expr, err := logql.ParseSampleExpr(tt.expr)
 			require.NoError(t, err)
 
 			ex, err := expr.Extractor()
 			require.NoError(t, err)
-			v, lbsRes, ok := ex.ForStream(lbs).Process(tt.line)
+			v, lbsRes, ok := ex.ForStream(lbs).Process(append([]byte{}, tt.line...))
 			var lbsResString string
 			if lbsRes != nil {
 				lbsResString = lbsRes.String()
