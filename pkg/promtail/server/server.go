@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"text/template"
 
+	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -99,8 +100,8 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers) (Server, error
 	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
+	serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 	return serv, nil
-
 }
 
 // serviceDiscovery serves the service discovery page.
@@ -261,6 +262,7 @@ func (s *noopServer) Run() error {
 	level.Info(s.log).Log("msg", "received shutdown signal", "sig", sig)
 	return nil
 }
+
 func (s *noopServer) Shutdown() {
 	s.sigs <- syscall.SIGTERM
 }

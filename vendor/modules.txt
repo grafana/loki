@@ -351,6 +351,7 @@ github.com/facette/natsort
 ## explicit
 github.com/fatih/color
 # github.com/felixge/fgprof v0.9.1
+## explicit
 github.com/felixge/fgprof
 # github.com/felixge/httpsnoop v1.0.1
 github.com/felixge/httpsnoop
