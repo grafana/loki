@@ -1,0 +1,7 @@
+apiVersion: loki.openshift.io/v1beta1
+kind: LokiStack
+metadata:
+  name: lokistack-sample
+spec:
+  # Add fields here
+  foo: bar
