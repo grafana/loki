@@ -13,7 +13,7 @@ import (
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	stats "github.com/grafana/loki/v2/pkg/logql/stats"
 	github_com_grafana_loki_pkg_logproto "github.com/grafana/loki/v2/v2/pkg/logproto"
-	logproto "github.com/grafana/loki/v2/v2/pkg/logproto"
+	logproto "github.com/grafana/loki/v2/pkg/logproto"
 	io "io"
 	math "math"
 	reflect "reflect"
