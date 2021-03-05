@@ -11,10 +11,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"golang.org/x/net/context"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/logql/log"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 const bufferSizeForTailResponse = 5

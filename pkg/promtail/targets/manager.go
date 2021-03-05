@@ -6,17 +6,17 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/file"
-	"github.com/grafana/loki/pkg/promtail/targets/gcplog"
-	"github.com/grafana/loki/pkg/promtail/targets/journal"
-	"github.com/grafana/loki/pkg/promtail/targets/lokipush"
-	"github.com/grafana/loki/pkg/promtail/targets/stdin"
-	"github.com/grafana/loki/pkg/promtail/targets/syslog"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
-	"github.com/grafana/loki/pkg/promtail/targets/windows"
+	"github.com/grafana/loki/v2/pkg/promtail/api"
+	"github.com/grafana/loki/v2/pkg/promtail/positions"
+	"github.com/grafana/loki/v2/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/file"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/gcplog"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/journal"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/lokipush"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/stdin"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/syslog"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/windows"
 )
 
 const (

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
+	"github.com/grafana/loki/v2/pkg/storage/stores/shipper/testutil"
 )
 
 const (

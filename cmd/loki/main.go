@@ -13,14 +13,14 @@ import (
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
 
-	_ "github.com/grafana/loki/pkg/build"
-	"github.com/grafana/loki/pkg/cfg"
-	"github.com/grafana/loki/pkg/loki"
-	logutil "github.com/grafana/loki/pkg/util"
+	_ "github.com/grafana/loki/v2/pkg/build"
+	"github.com/grafana/loki/v2/pkg/cfg"
+	"github.com/grafana/loki/v2/pkg/loki"
+	logutil "github.com/grafana/loki/v2/pkg/util"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v2/pkg/util/validation"
 )
 
 func init() {

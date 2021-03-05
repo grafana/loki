@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/promtail/client/fake"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v2/pkg/promtail/scrapeconfig"
 )
 
 func TestSyslogTarget_NewlineSeparatedMessages(t *testing.T) {

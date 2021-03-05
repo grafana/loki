@@ -12,9 +12,9 @@ import (
 	"github.com/go-kit/kit/log"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/promtail/client/fake"
-	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/targets/testutils"
+	"github.com/grafana/loki/v2/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v2/pkg/promtail/positions"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/testutils"
 )
 
 func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {

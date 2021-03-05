@@ -11,11 +11,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/promtail/api"
+	lokiflag "github.com/grafana/loki/v2/pkg/util/flagext"
 
-	"github.com/grafana/loki/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v2/pkg/promtail/client/fake"
 )
 
 func TestNewMulti(t *testing.T) {

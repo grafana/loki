@@ -16,11 +16,11 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/unmarshal"
-	unmarshal_legacy "github.com/grafana/loki/pkg/logql/unmarshal/legacy"
-	lokiutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/loghttp"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql/unmarshal"
+	unmarshal_legacy "github.com/grafana/loki/v2/pkg/logql/unmarshal/legacy"
+	lokiutil "github.com/grafana/loki/v2/pkg/util"
 )
 
 var (

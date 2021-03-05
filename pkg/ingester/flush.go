@@ -20,8 +20,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	loki_util "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/chunkenc"
+	loki_util "github.com/grafana/loki/v2/pkg/util"
 )
 
 var (

@@ -7,10 +7,10 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/promtail/client"
-	"github.com/grafana/loki/pkg/promtail/config"
-	"github.com/grafana/loki/pkg/promtail/server"
-	"github.com/grafana/loki/pkg/promtail/targets"
+	"github.com/grafana/loki/v2/pkg/promtail/client"
+	"github.com/grafana/loki/v2/pkg/promtail/config"
+	"github.com/grafana/loki/v2/pkg/promtail/server"
+	"github.com/grafana/loki/v2/pkg/promtail/targets"
 )
 
 // Option is a function that can be passed to the New method of Promtail and

@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logentry/metric"
+	"github.com/grafana/loki/v2/pkg/logentry/metric"
 )
 
 const (

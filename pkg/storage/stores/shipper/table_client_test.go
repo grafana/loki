@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/util"
+	"github.com/grafana/loki/v2/pkg/storage/stores/util"
 )
 
 func TestBoltDBShipperTableClient(t *testing.T) {

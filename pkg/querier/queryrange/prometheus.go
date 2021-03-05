@@ -11,7 +11,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/v2/pkg/logql/stats"
 )
 
 var (
