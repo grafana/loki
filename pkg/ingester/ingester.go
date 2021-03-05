@@ -32,9 +32,9 @@ import (
 	"github.com/grafana/loki/v2/pkg/logql/stats"
 	"github.com/grafana/loki/v2/pkg/storage"
 	"github.com/grafana/loki/v2/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/v2/pkg/util/validation"
 	errUtil "github.com/grafana/loki/v2/pkg/util"
 	listutil "github.com/grafana/loki/v2/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util/validation"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
