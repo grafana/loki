@@ -16,10 +16,10 @@ import (
 	"github.com/spf13/afero"
 	"golang.org/x/sys/windows"
 
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
-	"github.com/grafana/loki/pkg/promtail/targets/windows/win_eventlog"
+	"github.com/grafana/loki/v2/pkg/promtail/api"
+	"github.com/grafana/loki/v2/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/windows/win_eventlog"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 

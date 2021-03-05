@@ -480,7 +480,7 @@ func (m *LokiLabelNamesResponse) GetVersion() uint32 {
 
 type LokiData struct {
 	ResultType string                                        `protobuf:"bytes,1,opt,name=ResultType,proto3" json:"resultType"`
-	Result     []github_com_grafana_loki_pkg_logproto.Stream `protobuf:"bytes,2,rep,name=Result,proto3,customtype=github.com/grafana/loki/pkg/logproto.Stream" json:"result"`
+	Result     []github_com_grafana_loki_pkg_logproto.Stream `protobuf:"bytes,2,rep,name=Result,proto3,customtype=github.com/grafana/loki/v2/pkg/logproto.Stream" json:"result"`
 }
 
 func (m *LokiData) Reset()      { *m = LokiData{} }

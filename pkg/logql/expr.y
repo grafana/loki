@@ -4,7 +4,7 @@ package logql
 import (
   "time"
   "github.com/prometheus/prometheus/pkg/labels"
-  "github.com/grafana/loki/pkg/logql/log"
+  "github.com/grafana/loki/v2/pkg/logql/log"
 
 )
 %}
