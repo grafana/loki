@@ -2,9 +2,10 @@ package manager
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -14,12 +15,14 @@ import (
 )
 
 type TestAppendable struct {
-	remoteWriter remote.WriteClient
+	logger       log.Logger
+	remoteWriter *remote.WriteClient
 }
 
 type TestAppender struct {
+	logger       log.Logger
 	ctx          context.Context
-	remoteWriter remote.WriteClient
+	remoteWriter *remote.WriteClient
 
 	labels  []labels.Labels
 	samples []client.Sample
@@ -44,7 +47,7 @@ func (a *TestAppender) encodeRequest(l labels.Labels, s client.Sample) ([]byte, 
 	ts := prompb.TimeSeries{
 		Labels: labelsToLabelsProto(l, nil),
 		Samples: []prompb.Sample{
-			prompb.Sample{
+			{
 				Value:     s.Value,
 				Timestamp: s.TimestampMs,
 			},
@@ -65,6 +68,7 @@ func (a *TestAppender) encodeRequest(l labels.Labels, s client.Sample) ([]byte, 
 func (a *TestAppendable) Appender(ctx context.Context) storage.Appender {
 	return &TestAppender{
 		ctx:          ctx,
+		logger:       a.logger,
 		remoteWriter: a.remoteWriter,
 	}
 }
@@ -84,8 +88,6 @@ func (a *TestAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) 
 		Value:       v,
 	})
 
-	fmt.Printf("GOT HERE! %v %v %v\n\n\n", l, t, v)
-
 	return 0, nil
 }
 
@@ -100,27 +102,34 @@ func (a *TestAppender) AddFast(ref uint64, t int64, v float64) error {
 // the appender so far, as Rollback would do. In any case, an Appender
 // must not be used anymore after Commit has been called.
 func (a *TestAppender) Commit() error {
-
-	if len(a.samples) == 0 {
-		return nil
+	if a.remoteWriter == nil {
+		level.Debug(a.logger).Log("msg", "no remote_write client defined, skipping commit")
 	}
 
-	fmt.Printf("COMMIT TO TSDB!\n\n")
-	req := client.ToWriteRequest(a.labels, a.samples, nil, client.API)
-	b, err := req.Marshal()
+	level.Debug(a.logger).Log("msg", "writing to remote_write target")
+	writer := *a.remoteWriter
+
+	req, err := a.prepareRequest()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	var dst []byte
-	x := snappy.Encode(dst, b)
-
-	err = a.remoteWriter.Store(a.ctx, x)
+	err = writer.Store(a.ctx, req)
 	if err != nil {
-		fmt.Printf("%v", err)
+		return err
 	}
 
 	return nil
+}
+
+func (a *TestAppender) prepareRequest() ([]byte, error) {
+	req := client.ToWriteRequest(a.labels, a.samples, nil, client.API)
+	reqBytes, err := req.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	return snappy.Encode(nil, reqBytes), nil
 }
 
 // Rollback rolls back all modifications made in the appender so far.

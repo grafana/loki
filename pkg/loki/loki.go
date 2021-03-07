@@ -10,6 +10,7 @@ import (
 	frontend "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/felixge/fgprof"
+	"github.com/grafana/loki/pkg/ruler/config"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 
@@ -41,7 +42,6 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/tracing"
 	serverutil "github.com/grafana/loki/pkg/util/server"
@@ -66,7 +66,7 @@ type Config struct {
 	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
 	Worker           worker.Config               `yaml:"frontend_worker,omitempty"`
 	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
-	Ruler            ruler.Config                `yaml:"ruler,omitempty"`
+	Ruler            config.Config               `yaml:"ruler,omitempty"`
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`

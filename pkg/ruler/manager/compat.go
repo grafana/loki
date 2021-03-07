@@ -10,6 +10,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	rulerConfig "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
@@ -87,7 +89,7 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 }
 
 func MemstoreTenantManager(
-	cfg ruler.Config,
+	cfg rulerConfig.Config,
 	engine *logql.Engine,
 	overrides RulesLimits,
 ) ruler.ManagerFactory {
@@ -109,26 +111,8 @@ func MemstoreTenantManager(
 		queryFunc := engineQueryFunc(engine, overrides, userID)
 		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
-		// cortex
-		//u, err := url.Parse("http://localhost:8001/api/prom/push")
-
-		// prometheus
-		u, err := url.Parse("http://localhost:9090/api/v1/write")
-		if err != nil {
-			panic(err)
-		}
-
-		writeClient, err := remote.NewWriteClient("cortex", &remote.ClientConfig{
-			URL:              &config.URL{u},
-			Timeout:          model.Duration(5 * time.Second),
-			HTTPClientConfig: config.HTTPClientConfig{},
-		})
-		if err != nil {
-			panic(err)
-		}
-
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      &TestAppendable{remoteWriter: writeClient},
+			Appendable:      &TestAppendable{remoteWriter: newRemoteWriter(logger, cfg), logger: logger},
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
@@ -147,6 +131,30 @@ func MemstoreTenantManager(
 
 		return mgr
 	})
+}
+
+func newRemoteWriter(logger log.Logger, cfg rulerConfig.Config) *remote.WriteClient {
+	if cfg.RemoteWriteConfig.URL == "" {
+		return nil
+	}
+
+	u, err := url.Parse(cfg.RemoteWriteConfig.URL)
+	if err != nil {
+		level.Warn(logger).Log("url", cfg.RemoteWriteConfig.URL, "msg", "cannot parse remote_write url", "err", err)
+		return nil
+	}
+
+	writeClient, err := remote.NewWriteClient("cortex", &remote.ClientConfig{
+		URL:              &config.URL{u},
+		Timeout:          model.Duration(5 * time.Second),
+		HTTPClientConfig: config.HTTPClientConfig{},
+	})
+	if err != nil {
+		level.Warn(logger).Log("remote_write_url", cfg.RemoteWriteConfig.URL, "msg", "cannot create remote_write client", "err", err)
+		return nil
+	}
+
+	return &writeClient
 }
 
 type GroupLoader struct{}
