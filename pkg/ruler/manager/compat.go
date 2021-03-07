@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"net/url"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -19,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
 	yaml "gopkg.in/yaml.v3"
@@ -106,8 +109,26 @@ func MemstoreTenantManager(
 		queryFunc := engineQueryFunc(engine, overrides, userID)
 		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
+		// cortex
+		//u, err := url.Parse("http://localhost:8001/api/prom/push")
+
+		// prometheus
+		u, err := url.Parse("http://localhost:9090/api/v1/write")
+		if err != nil {
+			panic(err)
+		}
+
+		writeClient, err := remote.NewWriteClient("cortex", &remote.ClientConfig{
+			URL:              &config.URL{u},
+			Timeout:          model.Duration(5 * time.Second),
+			HTTPClientConfig: config.HTTPClientConfig{},
+		})
+		if err != nil {
+			panic(err)
+		}
+
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NoopAppender{},
+			Appendable:      &TestAppendable{remoteWriter: writeClient},
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
