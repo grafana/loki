@@ -54,7 +54,8 @@ func NewBucket(rootDir string) (*Bucket, error) {
 
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(_ context.Context, dir string, f func(string) error) error {
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	params := objstore.ApplyIterOptions(options...)
 	absDir := filepath.Join(b.rootDir, dir)
 	info, err := os.Stat(absDir)
 	if err != nil {
@@ -84,7 +85,19 @@ func (b *Bucket) Iter(_ context.Context, dir string, f func(string) error) error
 				// Skip empty directories.
 				continue
 			}
+
 			name += objstore.DirDelim
+
+			if params.Recursive {
+				// Recursively list files in the subdirectory.
+				if err := b.Iter(ctx, name, f, options...); err != nil {
+					return err
+				}
+
+				// The callback f() has already been called for the subdirectory
+				// files so we should skip to next filesystem entry.
+				continue
+			}
 		}
 		if err := f(name); err != nil {
 			return err

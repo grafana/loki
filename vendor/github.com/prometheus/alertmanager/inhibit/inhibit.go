@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/alertmanager/config"
+	"github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/alertmanager/provider"
 	"github.com/prometheus/alertmanager/store"
 	"github.com/prometheus/alertmanager/types"
@@ -71,7 +72,7 @@ func (ih *Inhibitor) run(ctx context.Context) {
 			}
 			// Update the inhibition rules' cache.
 			for _, r := range ih.rules {
-				if r.SourceMatchers.Match(a.Labels) {
+				if r.SourceMatchers.Matches(a.Labels) {
 					if err := r.scache.Set(a); err != nil {
 						level.Error(ih.logger).Log("msg", "error on set alert", "err", err)
 					}
@@ -128,13 +129,13 @@ func (ih *Inhibitor) Mutes(lset model.LabelSet) bool {
 	fp := lset.Fingerprint()
 
 	for _, r := range ih.rules {
-		if !r.TargetMatchers.Match(lset) {
+		if !r.TargetMatchers.Matches(lset) {
 			// If target side of rule doesn't match, we don't need to look any further.
 			continue
 		}
 		// If we are here, the target side matches. If the source side matches, too, we
 		// need to exclude inhibiting alerts for which the same is true.
-		if inhibitedByFP, eq := r.hasEqual(lset, r.SourceMatchers.Match(lset)); eq {
+		if inhibitedByFP, eq := r.hasEqual(lset, r.SourceMatchers.Matches(lset)); eq {
 			ih.marker.SetInhibited(fp, inhibitedByFP.String())
 			return true
 		}
@@ -152,10 +153,10 @@ func (ih *Inhibitor) Mutes(lset model.LabelSet) bool {
 type InhibitRule struct {
 	// The set of Filters which define the group of source alerts (which inhibit
 	// the target alerts).
-	SourceMatchers types.Matchers
+	SourceMatchers labels.Matchers
 	// The set of Filters which define the group of target alerts (which are
 	// inhibited by the source alerts).
-	TargetMatchers types.Matchers
+	TargetMatchers labels.Matchers
 	// A set of label names whose label values need to be identical in source and
 	// target alerts in order for the inhibition to take effect.
 	Equal map[model.LabelName]struct{}
@@ -167,23 +168,50 @@ type InhibitRule struct {
 // NewInhibitRule returns a new InhibitRule based on a configuration definition.
 func NewInhibitRule(cr *config.InhibitRule) *InhibitRule {
 	var (
-		sourcem types.Matchers
-		targetm types.Matchers
+		sourcem labels.Matchers
+		targetm labels.Matchers
 	)
-
+	// cr.SourceMatch will be deprecated. This for loop appends regex matchers.
 	for ln, lv := range cr.SourceMatch {
-		sourcem = append(sourcem, types.NewMatcher(model.LabelName(ln), lv))
+		matcher, err := labels.NewMatcher(labels.MatchEqual, ln, lv)
+		if err != nil {
+			// This error must not happen because the config already validates the yaml.
+			panic(err)
+		}
+		sourcem = append(sourcem, matcher)
 	}
+	// cr.SourceMatchRE will be deprecated. This for loop appends regex matchers.
 	for ln, lv := range cr.SourceMatchRE {
-		sourcem = append(sourcem, types.NewRegexMatcher(model.LabelName(ln), lv.Regexp))
+		matcher, err := labels.NewMatcher(labels.MatchRegexp, ln, lv.String())
+		if err != nil {
+			// This error must not happen because the config already validates the yaml.
+			panic(err)
+		}
+		sourcem = append(sourcem, matcher)
 	}
+	// We append the new-style matchers. This can be simplified once the deprecated matcher syntax is removed.
+	sourcem = append(sourcem, cr.SourceMatchers...)
 
+	// cr.TargetMatch will be deprecated. This for loop appends regex matchers.
 	for ln, lv := range cr.TargetMatch {
-		targetm = append(targetm, types.NewMatcher(model.LabelName(ln), lv))
+		matcher, err := labels.NewMatcher(labels.MatchEqual, ln, lv)
+		if err != nil {
+			// This error must not happen because the config already validates the yaml.
+			panic(err)
+		}
+		targetm = append(targetm, matcher)
 	}
+	// cr.TargetMatchRE will be deprecated. This for loop appends regex matchers.
 	for ln, lv := range cr.TargetMatchRE {
-		targetm = append(targetm, types.NewRegexMatcher(model.LabelName(ln), lv.Regexp))
+		matcher, err := labels.NewMatcher(labels.MatchRegexp, ln, lv.String())
+		if err != nil {
+			// This error must not happen because the config already validates the yaml.
+			panic(err)
+		}
+		targetm = append(targetm, matcher)
 	}
+	// We append the new-style matchers. This can be simplified once the deprecated matcher syntax is removed.
+	targetm = append(targetm, cr.TargetMatchers...)
 
 	equal := map[model.LabelName]struct{}{}
 	for _, ln := range cr.Equal {
@@ -214,7 +242,7 @@ Outer:
 				continue Outer
 			}
 		}
-		if excludeTwoSidedMatch && r.TargetMatchers.Match(a.Labels) {
+		if excludeTwoSidedMatch && r.TargetMatchers.Matches(a.Labels) {
 			continue Outer
 		}
 		return a.Fingerprint(), true

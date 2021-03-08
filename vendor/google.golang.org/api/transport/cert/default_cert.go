@@ -110,6 +110,10 @@ func (s *secureConnectSource) getClientCertificate(info *tls.CertificateRequestI
 	if defaultCert.cachedCert != nil && !isCertificateExpired(defaultCert.cachedCert) {
 		return defaultCert.cachedCert, nil
 	}
+	// Expand OS environment variables in the cert provider command such as "$HOME".
+	for i := 0; i < len(s.metadata.Cmd); i++ {
+		s.metadata.Cmd[i] = os.ExpandEnv(s.metadata.Cmd[i])
+	}
 	command := s.metadata.Cmd
 	data, err := exec.Command(command[0], command[1:]...).Output()
 	if err != nil {

@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	gokit "github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
@@ -80,13 +79,12 @@ func main() {
 		log.Println("Failed to create limit overrides:", err)
 		os.Exit(1)
 	}
-	lg := gokit.NewLogfmtLogger(gokit.NewSyncWriter(os.Stdout))
-	err = sourceConfig.Validate(lg)
+	err = sourceConfig.Validate()
 	if err != nil {
 		log.Println("Failed to validate source store config:", err)
 		os.Exit(1)
 	}
-	err = destConfig.Validate(lg)
+	err = destConfig.Validate()
 	if err != nil {
 		log.Println("Failed to validate dest store config:", err)
 		os.Exit(1)

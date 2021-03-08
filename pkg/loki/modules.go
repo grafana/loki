@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -451,8 +452,15 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
 	t.Server.HTTP.Handle("/api/prom/tail", defaultHandler)
 
-	return services.NewIdleService(nil, func(_ error) error {
-		t.frontend.Close()
+	return services.NewIdleService(func (ctx context.Context) error {
+		return services.StartAndAwaitRunning(ctx, t.frontend)
+	}, func(_ error) error {
+		// Log but not return in case of error, so that other following dependencies
+		// are stopped too.
+		if err := services.StopAndAwaitTerminated(context.Background(), t.frontend); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to stop frontend service", "err", err)
+		}
+
 		if t.stopper != nil {
 			t.stopper.Stop()
 		}
@@ -484,7 +492,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		}
 	}
 
-	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig, manager.GroupLoader{})
+	t.RulerStorage, err = cortex_ruler.NewLegacyRuleStore(t.cfg.Ruler.StoreConfig, manager.GroupLoader{}, util_log.Logger)
 
 	return
 }
@@ -517,7 +525,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return
 	}
 
-	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage)
+	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage, util_log.Logger)
 
 	// Expose HTTP endpoints.
 	if t.cfg.Ruler.EnableAPI {

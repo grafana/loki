@@ -52,6 +52,15 @@ func (r ReplicationStatus) Empty() bool {
 	return r == ""
 }
 
+// AdvancedPutOptions for internal use - to be utilized by replication, ILM transition
+// implementation on MinIO server
+type AdvancedPutOptions struct {
+	SourceVersionID   string
+	SourceETag        string
+	ReplicationStatus ReplicationStatus
+	SourceMTime       time.Time
+}
+
 // PutObjectOptions represents options specified by user for PutObject call
 type PutObjectOptions struct {
 	UserMetadata            map[string]string
@@ -72,9 +81,7 @@ type PutObjectOptions struct {
 	LegalHold               LegalHoldStatus
 	SendContentMd5          bool
 	DisableMultipart        bool
-	ReplicationVersionID    string
-	ReplicationStatus       ReplicationStatus
-	ReplicationMTime        time.Time
+	Internal                AdvancedPutOptions
 }
 
 // getNumThreads - gets the number of threads to be used in the multipart
@@ -136,11 +143,14 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 		header.Set(amzWebsiteRedirectLocation, opts.WebsiteRedirectLocation)
 	}
 
-	if !opts.ReplicationStatus.Empty() {
-		header.Set(amzBucketReplicationStatus, string(opts.ReplicationStatus))
+	if !opts.Internal.ReplicationStatus.Empty() {
+		header.Set(amzBucketReplicationStatus, string(opts.Internal.ReplicationStatus))
 	}
-	if !opts.ReplicationMTime.IsZero() {
-		header.Set(minIOBucketReplicationSourceMTime, opts.ReplicationMTime.Format(time.RFC3339))
+	if !opts.Internal.SourceMTime.IsZero() {
+		header.Set(minIOBucketSourceMTime, opts.Internal.SourceMTime.Format(time.RFC3339Nano))
+	}
+	if opts.Internal.SourceETag != "" {
+		header.Set(minIOBucketSourceETag, opts.Internal.SourceETag)
 	}
 	if len(opts.UserTags) != 0 {
 		header.Set(amzTaggingHeader, s3utils.TagEncode(opts.UserTags))
@@ -230,6 +240,7 @@ func (c Client) putObjectCommon(ctx context.Context, bucketName, objectName stri
 		}
 		return c.putObjectMultipart(ctx, bucketName, objectName, reader, size, opts)
 	}
+
 	if size < 0 {
 		return c.putObjectMultipartStreamNoLength(ctx, bucketName, objectName, reader, opts)
 	}
@@ -284,10 +295,11 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 	buf := make([]byte, partSize)
 
 	for partNumber <= totalPartsCount {
-		length, rerr := io.ReadFull(reader, buf)
+		length, rerr := readFull(reader, buf)
 		if rerr == io.EOF && partNumber > 1 {
 			break
 		}
+
 		if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
 			return UploadInfo{}, rerr
 		}

@@ -72,6 +72,9 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		apiURL = n.conf.APIURL.Copy()
 	)
 	apiURL.Path += fmt.Sprintf("%s/%s", n.conf.APIKey, tmpl(n.conf.RoutingKey))
+	if err != nil {
+		return false, fmt.Errorf("templating error: %s", err)
+	}
 
 	buf, err := n.createVictorOpsPayload(ctx, as...)
 	if err != nil {

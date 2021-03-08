@@ -56,6 +56,10 @@ func (m *MetadataFetcherMetrics) AddUserRegistry(user string, reg *prometheus.Re
 	m.regs.AddUserRegistry(user, reg)
 }
 
+func (m *MetadataFetcherMetrics) RemoveUserRegistry(user string) {
+	m.regs.RemoveUserRegistry(user, false)
+}
+
 func (m *MetadataFetcherMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.syncs
 	out <- m.syncFailures

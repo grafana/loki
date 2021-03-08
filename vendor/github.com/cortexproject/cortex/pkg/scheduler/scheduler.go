@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -47,11 +48,14 @@ type Scheduler struct {
 	connectedFrontends   map[string]*connectedFrontend
 
 	requestQueue *queue.RequestQueue
+	activeUsers  *util.ActiveUsersCleanupService
 
 	pendingRequestsMu sync.Mutex
 	pendingRequests   map[requestKey]*schedulerRequest // Request is kept in this map even after being dispatched to querier. It can still be canceled at that time.
 
 	// Metrics.
+	queueLength              *prometheus.GaugeVec
+	discardedRequests        *prometheus.CounterVec
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
@@ -84,20 +88,25 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // NewScheduler creates a new Scheduler.
 func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Scheduler, error) {
-	queueLength := promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_queue_length",
-		Help: "Number of queries in the queue.",
-	}, []string{"user"})
-
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
 		limits: limits,
 
-		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, queueLength),
 		pendingRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
 	}
+
+	s.queueLength = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_query_scheduler_queue_length",
+		Help: "Number of queries in the queue.",
+	}, []string{"user"})
+
+	s.discardedRequests = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_query_scheduler_discarded_requests_total",
+		Help: "Total number of query requests discarded.",
+	}, []string{"user"})
+	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, s.queueLength, s.discardedRequests)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 		Name:    "cortex_query_scheduler_queue_duration_seconds",
@@ -113,13 +122,15 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
 
-	s.Service = services.NewIdleService(nil, s.stopping)
+	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
+
+	s.Service = services.NewIdleService(s.starting, s.stopping)
 	return s, nil
 }
 
-// Limits needed for the Query Frontend - interface used for decoupling.
+// Limits needed for the Query Scheduler - interface used for decoupling.
 type Limits interface {
-	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
+	// MaxQueriersPerUser returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
 	MaxQueriersPerUser(user string) int
 }
 
@@ -140,7 +151,7 @@ type schedulerRequest struct {
 	parentSpanContext opentracing.SpanContext
 }
 
-// This method handles connection from frontend.
+// FrontendLoop handles connection from frontend.
 func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_FrontendLoopServer) error {
 	frontendAddress, frontendCtx, err := s.frontendConnected(frontend)
 	if err != nil {
@@ -270,9 +281,11 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		statsEnabled:    msg.StatsEnabled,
 	}
 
+	now := time.Now()
+
 	req.parentSpanContext = parentSpanContext
 	req.queueSpan, req.ctx = opentracing.StartSpanFromContextWithTracer(ctx, tracer, "queued", opentracing.ChildOf(parentSpanContext))
-	req.enqueueTime = time.Now()
+	req.enqueueTime = now
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
@@ -282,6 +295,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	}
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
+	s.activeUsers.UpdateUserTimestamp(userID, now)
 	return s.requestQueue.EnqueueRequest(userID, req, maxQueriers, func() {
 		shouldCancel = false
 
@@ -451,10 +465,19 @@ func (s *Scheduler) isRunningOrStopping() bool {
 	return st == services.Running || st == services.Stopping
 }
 
+func (s *Scheduler) starting(ctx context.Context) error {
+	return services.StartAndAwaitRunning(ctx, s.activeUsers)
+}
+
 // Close the Scheduler.
 func (s *Scheduler) stopping(_ error) error {
 	s.requestQueue.Stop()
-	return nil
+	return services.StopAndAwaitTerminated(context.Background(), s.activeUsers)
+}
+
+func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
+	s.queueLength.DeleteLabelValues(user)
+	s.discardedRequests.DeleteLabelValues(user)
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {

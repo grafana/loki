@@ -55,6 +55,25 @@ func NewMockStorage() *MockStorage {
 	}
 }
 
+func (m *MockStorage) GetSortedObjectKeys() []string {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	keys := make([]string, 0, len(m.objects))
+	for k := range m.objects {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (m *MockStorage) GetObjectCount() int {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	return len(m.objects)
+}
+
 // Stop doesn't do anything.
 func (*MockStorage) Stop() {
 }

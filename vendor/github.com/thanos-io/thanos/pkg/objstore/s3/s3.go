@@ -32,6 +32,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type ctxKey int
+
 const (
 	// DirDelim is the delimiter used to model a directory structure in an object store bucket.
 	DirDelim = "/"
@@ -44,6 +46,13 @@ const (
 
 	// SSES3 is the name of the SSE-S3 method for objstore encryption.
 	SSES3 = "SSE-S3"
+
+	// sseConfigKey is the context key to override SSE config. This feature is used by downstream
+	// projects (eg. Cortex) to inject custom SSE config on a per-request basis. Future work or
+	// refactoring can introduce breaking changes as far as the functionality is preserved.
+	// NOTE: we're using a context value only because it's a very specific S3 option. If SSE will
+	// be available to wider set of backends we should probably add a variadic option to Get() and Upload().
+	sseConfigKey = ctxKey(0)
 )
 
 var DefaultConfig = Config{
@@ -147,7 +156,7 @@ type Bucket struct {
 	logger          log.Logger
 	name            string
 	client          *minio.Client
-	sse             encrypt.ServerSide
+	defaultSSE      encrypt.ServerSide
 	putUserMetadata map[string]string
 	partSize        uint64
 	listObjectsV1   bool
@@ -286,7 +295,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		logger:          logger,
 		name:            config.Bucket,
 		client:          client,
-		sse:             sse,
+		defaultSSE:      sse,
 		putUserMetadata: config.PutUserMetadata,
 		partSize:        config.PartSize,
 		listObjectsV1:   config.ListObjectsVersion == "v1",
@@ -336,7 +345,7 @@ func ValidateForTests(conf Config) error {
 
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) error {
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
 	// object itself as one prefix item.
 	if dir != "" {
@@ -345,7 +354,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) err
 
 	opts := minio.ListObjectsOptions{
 		Prefix:    dir,
-		Recursive: false,
+		Recursive: objstore.ApplyIterOptions(options...).Recursive,
 		UseV1:     b.listObjectsV1,
 	}
 
@@ -371,7 +380,12 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) err
 }
 
 func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	opts := &minio.GetObjectOptions{ServerSideEncryption: b.sse}
+	sse, err := b.getServerSideEncryption(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := &minio.GetObjectOptions{ServerSideEncryption: sse}
 	if length != -1 {
 		if err := opts.SetRange(off, off+length-1); err != nil {
 			return nil, err
@@ -423,6 +437,11 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 
 // Upload the contents of the reader as an object into the bucket.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
+	sse, err := b.getServerSideEncryption(ctx)
+	if err != nil {
+		return err
+	}
+
 	// TODO(https://github.com/thanos-io/thanos/issues/678): Remove guessing length when minio provider will support multipart upload without this.
 	size, err := objstore.TryToGetSize(r)
 	if err != nil {
@@ -443,7 +462,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		size,
 		minio.PutObjectOptions{
 			PartSize:             partSize,
-			ServerSideEncryption: b.sse,
+			ServerSideEncryption: sse,
 			UserMetadata:         b.putUserMetadata,
 		},
 	); err != nil {
@@ -477,6 +496,18 @@ func (b *Bucket) IsObjNotFoundErr(err error) bool {
 }
 
 func (b *Bucket) Close() error { return nil }
+
+// getServerSideEncryption returns the SSE to use.
+func (b *Bucket) getServerSideEncryption(ctx context.Context) (encrypt.ServerSide, error) {
+	if value := ctx.Value(sseConfigKey); value != nil {
+		if sse, ok := value.(encrypt.ServerSide); ok {
+			return sse, nil
+		}
+		return nil, errors.New("invalid SSE config override provided in the context")
+	}
+
+	return b.defaultSSE, nil
+}
 
 func configFromEnv() Config {
 	c := Config{
@@ -551,4 +582,10 @@ func NewTestBucketFromConfig(t testing.TB, location string, c Config, reuseBucke
 			t.Logf("deleting bucket %s failed: %s", bktToCreate, err)
 		}
 	}, nil
+}
+
+// ContextWithSSEConfig returns a context with a  custom SSE config set. The returned context should be
+// provided to S3 objstore client functions to override the default SSE config.
+func ContextWithSSEConfig(ctx context.Context, value encrypt.ServerSide) context.Context {
+	return context.WithValue(ctx, sseConfigKey, value)
 }

@@ -406,7 +406,13 @@ func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
 func (d *Desc) GetTokens() []uint32 {
 	instances := make([][]uint32, 0, len(d.Ingesters))
 	for _, instance := range d.Ingesters {
-		instances = append(instances, instance.Tokens)
+		// Tokens may not be sorted for an older version of Cortex which, so we enforce sorting here.
+		tokens := instance.Tokens
+		if !sort.IsSorted(Tokens(tokens)) {
+			sort.Sort(Tokens(tokens))
+		}
+
+		instances = append(instances, tokens)
 	}
 
 	return MergeTokens(instances)
@@ -417,7 +423,13 @@ func (d *Desc) GetTokens() []uint32 {
 func (d *Desc) getTokensByZone() map[string][]uint32 {
 	zones := map[string][][]uint32{}
 	for _, instance := range d.Ingesters {
-		zones[instance.Zone] = append(zones[instance.Zone], instance.Tokens)
+		// Tokens may not be sorted for an older version of Cortex which, so we enforce sorting here.
+		tokens := instance.Tokens
+		if !sort.IsSorted(Tokens(tokens)) {
+			sort.Sort(Tokens(tokens))
+		}
+
+		zones[instance.Zone] = append(zones[instance.Zone], tokens)
 	}
 
 	// Merge tokens per zone.

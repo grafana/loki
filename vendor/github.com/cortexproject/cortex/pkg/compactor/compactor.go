@@ -5,8 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
 	"math/rand"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -29,6 +32,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+)
+
+const (
+	blocksMarkedForDeletionName = "cortex_compactor_blocks_marked_for_deletion_total"
+	blocksMarkedForDeletionHelp = "Total number of blocks marked for deletion in compactor."
 )
 
 var (
@@ -152,12 +160,19 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
+// ConfigProvider defines the per-tenant config provider for the Compactor.
+type ConfigProvider interface {
+	bucket.TenantConfigProvider
+	CompactorBlocksRetentionPeriod(user string) time.Duration
+}
+
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
 type Compactor struct {
 	services.Service
 
 	compactorCfg Config
 	storageCfg   cortex_tsdb.BlocksStorageConfig
+	cfgProvider  ConfigProvider
 	logger       log.Logger
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
@@ -210,7 +225,7 @@ type Compactor struct {
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider ConfigProvider, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
 	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
@@ -225,7 +240,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 		blocksCompactorFactory = DefaultBlocksCompactorFactory
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory)
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, cfgProvider, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -236,6 +251,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 func newCompactor(
 	compactorCfg Config,
 	storageCfg cortex_tsdb.BlocksStorageConfig,
+	cfgProvider ConfigProvider,
 	logger log.Logger,
 	registerer prometheus.Registerer,
 	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
@@ -245,6 +261,7 @@ func newCompactor(
 	c := &Compactor{
 		compactorCfg:           compactorCfg,
 		storageCfg:             storageCfg,
+		cfgProvider:            cfgProvider,
 		parentLogger:           logger,
 		logger:                 log.With(logger, "component", "compactor"),
 		registerer:             registerer,
@@ -286,8 +303,9 @@ func newCompactor(
 			Help: "Number of tenants failed processing during the current compaction run. Reset to 0 when compactor is idle.",
 		}),
 		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_blocks_marked_for_deletion_total",
-			Help: "Total number of blocks marked for deletion in compactor.",
+			Name:        blocksMarkedForDeletionName,
+			Help:        blocksMarkedForDeletionHelp,
+			ConstLabels: prometheus.Labels{"reason": "compaction"},
 		}),
 		garbageCollectedBlocks: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_garbage_collected_blocks_total",
@@ -400,7 +418,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
 		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
 		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
-	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
+	}, c.bucketClient, c.usersScanner, c.cfgProvider, c.parentLogger, c.registerer)
 
 	// Ensure an initial cleanup occurred before starting the compactor.
 	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {
@@ -477,6 +495,8 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 		users[i], users[j] = users[j], users[i]
 	})
 
+	// Keep track of users owned by this shard, so that we can delete the local files for all other users.
+	ownedUsers := map[string]struct{}{}
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
@@ -494,6 +514,8 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 			level.Debug(c.logger).Log("msg", "skipping user because it is not owned by this shard", "user", userID)
 			continue
 		}
+
+		ownedUsers[userID] = struct{}{}
 
 		if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
 			c.compactionRunSkippedTenants.Inc()
@@ -515,6 +537,33 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 
 		c.compactionRunSucceededTenants.Inc()
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
+	}
+
+	// Delete local files for unowned tenants, if there are any. This cleans up
+	// leftover local files for tenants that belong to different compactors now,
+	// or have been deleted completely.
+	for userID := range c.listTenantsWithMetaSyncDirectories() {
+		if _, owned := ownedUsers[userID]; owned {
+			continue
+		}
+
+		dir := c.metaSyncDirForUser(userID)
+		s, err := os.Stat(dir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				level.Warn(c.logger).Log("msg", "failed to stat local directory with user data", "dir", dir, "err", err)
+			}
+			continue
+		}
+
+		if s.IsDir() {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				level.Info(c.logger).Log("msg", "deleted directory for user not owned by this shard", "dir", dir)
+			} else {
+				level.Warn(c.logger).Log("msg", "failed to delete directory for user not owned by this shard", "dir", dir, "err", err)
+			}
+		}
 	}
 
 	succeeded = true
@@ -542,8 +591,7 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
-	bucket := bucket.NewUserBucketClient(userID, c.bucketClient)
-
+	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
 
@@ -565,10 +613,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
 		bucket,
-		// The fetcher stores cached metas in the "meta-syncer/" sub directory,
-		// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
-		// the directory used by the Thanos Syncer, whatever is the user ID.
-		path.Join(c.compactorCfg.DataDir, "compactor-meta-"+userID),
+		c.metaSyncDirForUser(userID),
 		reg,
 		// List of filters to apply (order matters).
 		[]block.MetadataFilter{
@@ -697,4 +742,38 @@ func isAllowedUser(enabledUsers, disabledUsers map[string]struct{}, userID strin
 	}
 
 	return true
+}
+
+const compactorMetaPrefix = "compactor-meta-"
+
+// metaSyncDirForUser returns directory to store cached meta files.
+// The fetcher stores cached metas in the "meta-syncer/" sub directory,
+// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
+// the directory used by the Thanos Syncer, whatever is the user ID.
+func (c *Compactor) metaSyncDirForUser(userID string) string {
+	return filepath.Join(c.compactorCfg.DataDir, compactorMetaPrefix+userID)
+}
+
+// This function returns tenants with meta sync directories found on local disk. On error, it returns nil map.
+func (c *Compactor) listTenantsWithMetaSyncDirectories() map[string]struct{} {
+	result := map[string]struct{}{}
+
+	files, err := ioutil.ReadDir(c.compactorCfg.DataDir)
+	if err != nil {
+		return nil
+	}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		if !strings.HasPrefix(f.Name(), compactorMetaPrefix) {
+			continue
+		}
+
+		result[f.Name()[len(compactorMetaPrefix):]] = struct{}{}
+	}
+
+	return result
 }

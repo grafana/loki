@@ -20,6 +20,11 @@ import (
 
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
 
+// IsRequestBodyTooLarge returns true if the error is "http: request body too large".
+func IsRequestBodyTooLarge(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "http: request body too large")
+}
+
 // BasicAuth configures basic authentication for HTTP clients.
 type BasicAuth struct {
 	Username string `yaml:"basic_auth_username"`

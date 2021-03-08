@@ -274,3 +274,8 @@ func (t *DateTime) UnmarshalBinary(data []byte) error {
 
 	return nil
 }
+
+// Equal checks if two DateTime instances are equal using time.Time's Equal method
+func (t DateTime) Equal(t2 DateTime) bool {
+	return time.Time(t).Equal(time.Time(t2))
+}

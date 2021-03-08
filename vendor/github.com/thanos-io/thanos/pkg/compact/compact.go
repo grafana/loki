@@ -543,7 +543,7 @@ func (e HaltError) Error() string {
 // IsHaltError returns true if the base error is a HaltError.
 // If a multierror is passed, any halt error will return true.
 func IsHaltError(err error) bool {
-	if multiErr, ok := errors.Cause(err).(errutil.MultiError); ok {
+	if multiErr, ok := errors.Cause(err).(errutil.NonNilMultiError); ok {
 		for _, err := range multiErr {
 			if _, ok := errors.Cause(err).(HaltError); ok {
 				return true
@@ -576,7 +576,7 @@ func (e RetryError) Error() string {
 // IsRetryError returns true if the base error is a RetryError.
 // If a multierror is passed, all errors must be retriable.
 func IsRetryError(err error) bool {
-	if multiErr, ok := errors.Cause(err).(errutil.MultiError); ok {
+	if multiErr, ok := errors.Cause(err).(errutil.NonNilMultiError); ok {
 		for _, err := range multiErr {
 			if _, ok := errors.Cause(err).(RetryError); !ok {
 				return false

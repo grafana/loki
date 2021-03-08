@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -31,6 +32,7 @@ type userStates struct {
 	limiter *Limiter
 	cfg     Config
 	metrics *ingesterMetrics
+	logger  log.Logger
 }
 
 type userState struct {
@@ -43,6 +45,7 @@ type userState struct {
 	ingestedAPISamples  *ewmaRate
 	ingestedRuleSamples *ewmaRate
 	activeSeries        *ActiveSeries
+	logger              log.Logger
 
 	seriesInMetric *metricCounter
 
@@ -61,11 +64,12 @@ const (
 	perMetricSeriesLimit = "per_metric_series_limit"
 )
 
-func newUserStates(limiter *Limiter, cfg Config, metrics *ingesterMetrics) *userStates {
+func newUserStates(limiter *Limiter, cfg Config, metrics *ingesterMetrics, logger log.Logger) *userStates {
 	return &userStates{
 		limiter: limiter,
 		cfg:     cfg,
 		metrics: metrics,
+		logger:  logger,
 	}
 }
 
@@ -128,6 +132,7 @@ func (us *userStates) getOrCreate(userID string) *userState {
 	state, ok := us.get(userID)
 	if !ok {
 
+		logger := log.With(us.logger, "user", userID)
 		// Speculatively create a userState object and try to store it
 		// in the map.  Another goroutine may have got there before
 		// us, in which case this userState will be discarded
@@ -140,6 +145,7 @@ func (us *userStates) getOrCreate(userID string) *userState {
 			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			seriesInMetric:      newMetricCounter(us.limiter),
+			logger:              logger,
 
 			memSeries:             us.metrics.memSeries,
 			memSeriesCreatedTotal: us.metrics.memSeriesCreatedTotal.WithLabelValues(userID),
@@ -150,7 +156,7 @@ func (us *userStates) getOrCreate(userID string) *userState {
 			activeSeries:      NewActiveSeries(),
 			activeSeriesGauge: us.metrics.activeSeriesPerUser.WithLabelValues(userID),
 		}
-		state.mapper = newFPMapper(state.fpToSeries)
+		state.mapper = newFPMapper(state.fpToSeries, logger)
 		stored, ok := us.states.LoadOrStore(userID, state)
 		if !ok {
 			us.metrics.memUsers.Inc()

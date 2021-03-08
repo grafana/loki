@@ -47,14 +47,16 @@ type RequestQueue struct {
 	queues  *queues
 	stopped bool
 
-	queueLength *prometheus.GaugeVec // Per user.
+	queueLength       *prometheus.GaugeVec   // Per user and reason.
+	discardedRequests *prometheus.CounterVec // Per user.
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, queueLength *prometheus.GaugeVec) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
 	q := &RequestQueue{
 		queues:                  newUserQueues(maxOutstandingPerTenant),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		queueLength:             queueLength,
+		discardedRequests:       discardedRequests,
 	}
 
 	q.cond = sync.NewCond(&q.mtx)
@@ -62,7 +64,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, queueLength *prometheus.GaugeV
 	return q
 }
 
-// Puts the request into the queue. MaxQueries is user-specific value that specifies how many queriers can
+// EnqueueRequest puts the request into the queue. MaxQueries is user-specific value that specifies how many queriers can
 // this user use (zero or negative = all queriers). It is passed to each EnqueueRequest, because it can change
 // between calls.
 //
@@ -91,6 +93,7 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers in
 		}
 		return nil
 	default:
+		q.discardedRequests.WithLabelValues(userID).Inc()
 		return ErrTooManyRequests
 	}
 }

@@ -6,7 +6,7 @@ option go_package = "queryrange";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
-import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
 import "google/protobuf/any.proto";
 
 option (gogoproto.marshaler_all) = true;
@@ -41,8 +41,8 @@ message PrometheusData {
 }
 
 message SampleStream {
-  repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
-  repeated cortex.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+  repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
+  repeated cortexpb.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
 }
 
 message CachedResponse  {

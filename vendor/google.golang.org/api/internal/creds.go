@@ -64,28 +64,40 @@ const (
 
 // credentialsFromJSON returns a google.Credentials based on the input.
 //
-// - If the JSON is a service account and no scopes provided, returns self-signed JWT auth flow
-// - Otherwise, returns OAuth 2.0 flow.
+// - A self-signed JWT auth flow will be executed if: the data file is a service
+//   account, no user are scopes provided, an audience is provided, a user
+//   specified endpoint is not provided, and credentials will not be
+//   impersonated.
+//
+// - Otherwise, executes a stanard OAuth 2.0 flow.
 func credentialsFromJSON(ctx context.Context, data []byte, ds *DialSettings) (*google.Credentials, error) {
 	cred, err := google.CredentialsFromJSON(ctx, data, ds.GetScopes()...)
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > 0 && len(ds.Scopes) == 0 && (ds.DefaultAudience != "" || len(ds.Audiences) > 0) {
-		var f struct {
-			Type string `json:"type"`
-			// The rest JSON fields are omitted because they are not used.
-		}
-		if err := json.Unmarshal(cred.JSON, &f); err != nil {
+	// Standard OAuth 2.0 Flow
+	if len(data) == 0 ||
+		len(ds.Scopes) > 0 ||
+		(ds.DefaultAudience == "" && len(ds.Audiences) == 0) ||
+		ds.ImpersonationConfig != nil ||
+		ds.Endpoint != "" {
+		return cred, nil
+	}
+
+	// Check if JSON is a service account and if so create a self-signed JWT.
+	var f struct {
+		Type string `json:"type"`
+		// The rest JSON fields are omitted because they are not used.
+	}
+	if err := json.Unmarshal(cred.JSON, &f); err != nil {
+		return nil, err
+	}
+	if f.Type == serviceAccountKey {
+		ts, err := selfSignedJWTTokenSource(data, ds.DefaultAudience, ds.Audiences)
+		if err != nil {
 			return nil, err
 		}
-		if f.Type == serviceAccountKey {
-			ts, err := selfSignedJWTTokenSource(data, ds.DefaultAudience, ds.Audiences)
-			if err != nil {
-				return nil, err
-			}
-			cred.TokenSource = ts
-		}
+		cred.TokenSource = ts
 	}
 	return cred, err
 }

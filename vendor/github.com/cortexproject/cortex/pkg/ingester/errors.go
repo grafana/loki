@@ -20,7 +20,7 @@ func makeLimitError(errorType string, err error) error {
 	return &validationError{
 		errorType: errorType,
 		err:       err,
-		code:      http.StatusTooManyRequests,
+		code:      http.StatusBadRequest,
 	}
 }
 
@@ -44,7 +44,7 @@ func makeMetricLimitError(errorType string, labels labels.Labels, err error) err
 	return &validationError{
 		errorType: errorType,
 		err:       err,
-		code:      http.StatusTooManyRequests,
+		code:      http.StatusBadRequest,
 		labels:    labels,
 	}
 }

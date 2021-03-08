@@ -170,7 +170,7 @@ func (s *ShardLabelSeries) Labels() labels.Labels {
 }
 
 // LabelValues impls storage.Querier
-func (q *MockShardedQueryable) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q *MockShardedQueryable) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 

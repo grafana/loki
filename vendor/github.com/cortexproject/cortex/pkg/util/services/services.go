@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -21,7 +22,7 @@ func NewIdleService(up StartingFn, down StoppingFn) *BasicService {
 type OneIteration func(ctx context.Context) error
 
 // Runs iteration function on every interval tick. When iteration returns error, service fails.
-func NewTimerService(interval time.Duration, start StartingFn, iter OneIteration, stop StoppingFn) Service {
+func NewTimerService(interval time.Duration, start StartingFn, iter OneIteration, stop StoppingFn) *BasicService {
 	run := func(ctx context.Context) error {
 		t := time.NewTicker(interval)
 		defer t.Stop()
@@ -129,4 +130,16 @@ func StopAndAwaitTerminated(ctx context.Context, service Service) error {
 
 	// can happen e.g. if context was canceled
 	return err
+}
+
+// DescribeService returns name of the service, if it has one, or returns string representation of the service.
+func DescribeService(service Service) string {
+	name := ""
+	if named, ok := service.(NamedService); ok {
+		name = named.ServiceName()
+	}
+	if name == "" {
+		name = fmt.Sprintf("%v", service)
+	}
+	return name
 }

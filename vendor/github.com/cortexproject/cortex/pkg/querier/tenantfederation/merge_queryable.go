@@ -86,7 +86,7 @@ type mergeQuerier struct {
 // For the label "tenantLabelName" it will return all the tenant IDs available.
 // For the label "original_" + tenantLabelName it will return all the values
 // of the underlying queriers for tenantLabelName.
-func (m *mergeQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if name == defaultTenantLabel {
 		return m.tenantIDs, nil, nil
 	}
@@ -98,7 +98,7 @@ func (m *mergeQuerier) LabelValues(name string) ([]string, storage.Warnings, err
 	}
 
 	return m.mergeDistinctStringSlice(func(q storage.Querier) ([]string, storage.Warnings, error) {
-		return q.LabelValues(name)
+		return q.LabelValues(name, matchers...)
 	})
 }
 

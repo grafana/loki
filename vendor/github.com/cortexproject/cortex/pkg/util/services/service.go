@@ -53,33 +53,33 @@ func (s State) String() string {
 //                                                                      └────────┘
 //
 type Service interface {
-	// Starts Service asynchronously. Service must be in New State, otherwise error is returned.
+	// StartAsync starts Service asynchronously. Service must be in New State, otherwise error is returned.
 	// Context is used as a parent context for service own context.
 	StartAsync(ctx context.Context) error
 
-	// Waits until service gets into Running state.
+	// AwaitRunning waits until service gets into Running state.
 	// If service is in New or Starting state, this method is blocking.
 	// If service is already in Running state, returns immediately with no error.
 	// If service is in a state, from which it cannot get into Running state, error is returned immediately.
 	AwaitRunning(ctx context.Context) error
 
-	// Tell the service to stop. This method doesn't block and can be called multiple times.
+	// StopAsync tell the service to stop. This method doesn't block and can be called multiple times.
 	// If Service is New, it is Terminated without having been started nor stopped.
 	// If Service is in Starting or Running state, this initiates shutdown and returns immediately.
 	// If Service has already been stopped, this method returns immediately, without taking action.
 	StopAsync()
 
-	// Waits for the service to reach Terminated or Failed state. If service is already in one of these states,
+	// AwaitTerminated waits for the service to reach Terminated or Failed state. If service is already in one of these states,
 	// when method is called, method returns immediately.
 	// If service enters Terminated state, this method returns nil.
 	// If service enters Failed state, or context is finished before reaching Terminated or Failed, error is returned.
 	AwaitTerminated(ctx context.Context) error
 
-	// If Service is in Failed state, this method returns the error.
+	// FailureCase returns error if Service is in Failed state.
 	// If Service is not in Failed state, this method returns nil.
 	FailureCase() error
 
-	// Returns current state of the service.
+	// State returns current state of the service.
 	State() State
 
 	// AddListener adds listener to this service. Listener will be notified on subsequent state transitions
@@ -92,6 +92,14 @@ type Service interface {
 	// at once. However, multiple listeners' callbacks may execute concurrently, and listeners may execute
 	// in an order different from the one in which they were registered.
 	AddListener(listener Listener)
+}
+
+// NamedService extends Service with a name.
+type NamedService interface {
+	Service
+
+	// ServiceName returns name of the service, if it has one.
+	ServiceName() string
 }
 
 // Listener receives notifications about Service state changes.
