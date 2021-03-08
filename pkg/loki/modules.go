@@ -452,7 +452,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
 	t.Server.HTTP.Handle("/api/prom/tail", defaultHandler)
 
-	return services.NewIdleService(func (ctx context.Context) error {
+	return services.NewIdleService(func(ctx context.Context) error {
 		return services.StartAndAwaitRunning(ctx, t.frontend)
 	}, func(_ error) error {
 		// Log but not return in case of error, so that other following dependencies
