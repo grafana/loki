@@ -151,7 +151,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			fmt.Sprintf("logs[%s] - step: %s", time.Duration(tt.selRange), time.Duration(tt.step)),
 			func(t *testing.T) {
 				it := newRangeVectorIterator(newfakePeekingSampleIterator(), tt.selRange,
-					tt.step, tt.start.UnixNano(), tt.end.UnixNano())
+					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), 0)
 
 				i := 0
 				for it.Next() {
@@ -173,7 +173,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 			Samples: samples,
 		}))
 	it := newRangeVectorIterator(badIterator, (30 * time.Second).Nanoseconds(),
-		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano())
+		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer cancel()

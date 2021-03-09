@@ -175,8 +175,8 @@ func (ev *DefaultEvaluator) StepEvaluator(
 			nextEv = SampleEvaluatorFunc(func(ctx context.Context, nextEvaluator SampleEvaluator, expr SampleExpr, p Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.left.interval),
-						End:      q.End(),
+						Start:    q.Start().Add(-rangExpr.left.interval).Add(-rangExpr.left.offset),
+						End:      q.End().Add(-rangExpr.left.offset),
 						Selector: e.String(), // intentionally send the the vector for reducing labels.
 						Shards:   q.Shards(),
 					},
@@ -191,8 +191,8 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	case *rangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.left.interval),
-				End:      q.End(),
+				Start:    q.Start().Add(-e.left.interval).Add(-e.left.offset),
+				End:      q.End().Add(-e.left.offset),
 				Selector: expr.String(),
 				Shards:   q.Shards(),
 			},
@@ -412,11 +412,15 @@ func rangeAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
+	var offset int64
+	if expr.offset != nil {
+		offset = expr.offset.offset.Nanoseconds()
+	}
 	iter := newRangeVectorIterator(
 		it,
 		expr.left.interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
-		q.Start().UnixNano(), q.End().UnixNano(),
+		q.Start().UnixNano(), q.End().UnixNano(), offset,
 	)
 	if expr.operation == OpRangeTypeAbsent {
 		return &absentRangeVectorEvaluator{

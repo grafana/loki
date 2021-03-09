@@ -499,6 +499,7 @@ func newUnwrapExpr(id string, operation string) *unwrapExpr {
 type logRange struct {
 	left     LogSelectorExpr
 	interval time.Duration
+	offset   time.Duration
 
 	unwrap *unwrapExpr
 }
@@ -521,6 +522,22 @@ func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr) *l
 		left:     left,
 		interval: interval,
 		unwrap:   u,
+	}
+}
+
+type offsetExpr struct {
+	offset time.Duration
+}
+
+func (o *offsetExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(" %s %s", OpOffset, o.offset.String()))
+	return sb.String()
+}
+
+func newOffsetExpr(offset time.Duration) *offsetExpr {
+	return &offsetExpr{
+		offset: offset,
 	}
 }
 
@@ -582,6 +599,7 @@ const (
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
+	OpOffset = "offset"
 
 	// conversion Op
 	OpConvBytes           = "bytes"
@@ -623,11 +641,16 @@ type rangeAggregationExpr struct {
 	operation string
 
 	params   *float64
+	offset   *offsetExpr
 	grouping *grouping
 	implicit
 }
 
 func newRangeAggregationExpr(left *logRange, operation string, gr *grouping, stringParams *string) SampleExpr {
+	return newRangeAggregationExprWithOffset(left, operation, nil, gr, stringParams)
+}
+
+func newRangeAggregationExprWithOffset(left *logRange, operation string, offset *offsetExpr, gr *grouping, stringParams *string) SampleExpr {
 	var params *float64
 	if stringParams != nil {
 		if operation != OpRangeTypeQuantile {
@@ -645,9 +668,13 @@ func newRangeAggregationExpr(left *logRange, operation string, gr *grouping, str
 			panic(newParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
 		}
 	}
+	if offset != nil {
+		left.offset = offset.offset
+	}
 	e := &rangeAggregationExpr{
 		left:      left,
 		operation: operation,
+		offset:    offset,
 		grouping:  gr,
 		params:    params,
 	}
@@ -695,6 +722,9 @@ func (e *rangeAggregationExpr) String() string {
 		sb.WriteString(",")
 	}
 	sb.WriteString(e.left.String())
+	if e.offset != nil {
+		sb.WriteString(e.offset.String())
+	}
 	sb.WriteString(")")
 	if e.grouping != nil {
 		sb.WriteString(e.grouping.String())
