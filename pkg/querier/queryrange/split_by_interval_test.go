@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -19,7 +20,6 @@ import (
 var nilMetrics = NewSplitByMetrics(nil)
 
 func Test_splitQuery(t *testing.T) {
-
 	tests := []struct {
 		name     string
 		req      queryrange.Request
@@ -102,6 +102,173 @@ func Test_splitQuery(t *testing.T) {
 	}
 }
 
+func Test_splitMetricQuery(t *testing.T) {
+	const seconds = 1e3 // 1e3 milliseconds per second.
+
+	for i, tc := range []struct {
+		input    queryrange.Request
+		expected []queryrange.Request
+		interval time.Duration
+	}{
+		// the step is lower than the interval therefore we should split only once.
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(0, 60*time.Minute.Nanoseconds()),
+				Step:    15 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix(0, 60*time.Minute.Nanoseconds()),
+					Step:    15 * seconds,
+				},
+			},
+			interval: 24 * time.Hour,
+		},
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(60*60, 0),
+				Step:    15 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix(60*60, 0),
+					Step:    15 * seconds,
+				},
+			},
+			interval: 3 * time.Hour,
+		},
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(24*3600, 0),
+				Step:    15 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix(24*3600, 0),
+					Step:    15 * seconds,
+				},
+			},
+			interval: 24 * time.Hour,
+		},
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(3*3600, 0),
+				Step:    15 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix(3*3600, 0),
+					Step:    15 * seconds,
+				},
+			},
+			interval: 3 * time.Hour,
+		},
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(2*24*3600, 0),
+				Step:    15 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix((24*3600)-15, 0),
+					Step:    15 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix((24 * 3600), 0),
+					EndTs:   time.Unix((2 * 24 * 3600), 0),
+					Step:    15 * seconds,
+				},
+			},
+			interval: 24 * time.Hour,
+		},
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(2*3*3600, 0),
+				Step:    15 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix((3*3600)-15, 0),
+					Step:    15 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix((3 * 3600), 0),
+					EndTs:   time.Unix((2 * 3 * 3600), 0),
+					Step:    15 * seconds,
+				},
+			},
+			interval: 3 * time.Hour,
+		},
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(3*3600, 0),
+				EndTs:   time.Unix(3*24*3600, 0),
+				Step:    15 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(3*3600, 0),
+					EndTs:   time.Unix((24*3600)-15, 0),
+					Step:    15 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(24*3600, 0),
+					EndTs:   time.Unix((2*24*3600)-15, 0),
+					Step:    15 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(2*24*3600, 0),
+					EndTs:   time.Unix(3*24*3600, 0),
+					Step:    15 * seconds,
+				},
+			},
+			interval: 24 * time.Hour,
+		},
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(2*3600, 0),
+				EndTs:   time.Unix(3*3*3600, 0),
+				Step:    15 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(2*3600, 0),
+					EndTs:   time.Unix((3*3600)-15, 0),
+					Step:    15 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(3*3600, 0),
+					EndTs:   time.Unix((2*3*3600)-15, 0),
+					Step:    15 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(2*3*3600, 0),
+					EndTs:   time.Unix(3*3*3600, 0),
+					Step:    15 * seconds,
+				},
+			},
+			interval: 3 * time.Hour,
+		},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			splits := splitMetricByTime(tc.input, tc.interval)
+			require.Equal(t, tc.expected, splits)
+		})
+	}
+}
+
 func Test_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
@@ -129,6 +296,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		l,
 		lokiCodec,
+		splitByTime,
 		nilMetrics,
 	).Wrap(next)
 
@@ -270,7 +438,6 @@ func Test_splitByInterval_Do(t *testing.T) {
 			require.Equal(t, tt.want, res)
 		})
 	}
-
 }
 
 func Test_series_splitByInterval_Do(t *testing.T) {
@@ -297,6 +464,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		l,
 		lokiCodec,
+		splitByTime,
 		nilMetrics,
 	).Wrap(next)
 
@@ -335,7 +503,6 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 			require.Equal(t, tt.want, res)
 		})
 	}
-
 }
 
 func Test_ExitEarly(t *testing.T) {
@@ -378,6 +545,7 @@ func Test_ExitEarly(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		l,
 		lokiCodec,
+		splitByTime,
 		nilMetrics,
 	).Wrap(next)
 
@@ -427,7 +595,6 @@ func Test_DoesntDeadlock(t *testing.T) {
 	n := 10
 
 	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
-
 		return &LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
@@ -457,6 +624,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		l,
 		lokiCodec,
+		splitByTime,
 		nilMetrics,
 	).Wrap(next)
 
@@ -489,5 +657,4 @@ func Test_DoesntDeadlock(t *testing.T) {
 	// give runtime a bit of slack when catching up -- this isn't an exact science :(
 	// Allow for 1% increase in goroutines
 	require.LessOrEqual(t, endingGoroutines, startingGoroutines*101/100)
-
 }
