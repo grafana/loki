@@ -13,13 +13,12 @@ import (
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
 	logutil "github.com/grafana/loki/pkg/util"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -33,7 +32,7 @@ type Config struct {
 	verifyConfig    bool
 	printConfig     bool
 	logConfig       bool
-	configFile      string
+	configFile      lokiflag.ConfigFiles
 	configExpandEnv bool
 }
 
@@ -43,7 +42,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.printConfig, "print-config-stderr", false, "Dump the entire Loki config object to stderr")
 	f.BoolVar(&c.logConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
-	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
+	f.Var(&c.configFile, "config.file", "yaml file to load. Multiple files can be provided (e.g: --config.file=file1.yaml --config.file=file2.yaml)")
 	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }

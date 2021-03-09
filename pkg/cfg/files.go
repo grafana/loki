@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/drone/envsubst"
 	"github.com/pkg/errors"
@@ -42,19 +43,25 @@ func dJSON(y []byte) Source {
 // using https://pkg.go.dev/github.com/drone/envsubst?tab=overview
 func YAML(f string, expandEnvVars bool) Source {
 	return func(dst Cloneable) error {
-		y, err := ioutil.ReadFile(f)
-		if err != nil {
-			return err
-		}
-		if expandEnvVars {
-			s, err := envsubst.EvalEnv(string(y))
+		files := strings.Split(f, ",")
+		for _, file := range files {
+			y, err := ioutil.ReadFile(file)
 			if err != nil {
 				return err
 			}
-			y = []byte(s)
+			if expandEnvVars {
+				s, err := envsubst.EvalEnv(string(y))
+				if err != nil {
+					return err
+				}
+				y = []byte(s)
+			}
+			err = dYAML(y)(dst)
+			if err != nil {
+				return errors.Wrap(err, file)
+			}
 		}
-		err = dYAML(y)(dst)
-		return errors.Wrap(err, f)
+		return nil
 	}
 }
 

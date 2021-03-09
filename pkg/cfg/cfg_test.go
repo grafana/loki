@@ -9,6 +9,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const cfgFile1 = `
+server:
+  port: 2000
+  timeout: 60h
+tls:
+  cert: cert
+  key: key
+`
+const cfgFile2 = `
+server:
+  port: 3000
+  timeout: 60h
+tls:
+  cert: cert
+  key: key
+ `
+
 func TestParse(t *testing.T) {
 	yamlSource := dYAML([]byte(`
 server:
@@ -62,4 +79,25 @@ tls:
 	)
 	require.Error(t, err)
 	require.Equal(t, err.Error(), "yaml: unmarshal errors:\n  line 2: field servers not found in type cfg.Data\n  line 6: field keey not found in type cfg.TLS")
+}
+
+func TestParseWithMultipleYAML(t *testing.T) {
+	data := Data{}
+	cfgFiles := []string{cfgFile1, cfgFile2}
+	for _, file := range cfgFiles {
+		err := dYAML([]byte(file))(&data)
+		require.NoError(t, err)
+	}
+	expectedData := Data{
+		Verbose: false,
+		Server: Server{
+			Port:    3000,
+			Timeout: time.Duration(60 * time.Hour),
+		},
+		TLS: TLS{
+			Cert: "cert",
+			Key:  "key",
+		},
+	}
+	require.Equal(t, expectedData, data, nil)
 }

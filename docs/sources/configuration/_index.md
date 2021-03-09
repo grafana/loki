@@ -62,7 +62,7 @@ that the order of configs reads correctly top to bottom when viewed in Grafana's
 To specify which configuration file to load, pass the `-config.file` flag at the
 command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML),
 defined by the scheme below. Brackets indicate that a parameter is optional. For
-non-list parameters the value is set to the specified default.
+non-list parameters the value is set to the specified default. Also, multiple configuration files can be passed `-config.file=file1.yaml -config.file=file2.yaml`. A final configuration is generated from the given files. If there are common values, values in the latest file takes precedence i.e here values from `file2.yaml` will have precedence over `file1.yaml`.
 
 ### Use environment variables in the configuration
 

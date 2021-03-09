@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail"
 	"github.com/grafana/loki/pkg/promtail/config"
 	logutil "github.com/grafana/loki/pkg/util"
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
 func init() {
@@ -36,7 +37,7 @@ type Config struct {
 	printConfig     bool
 	logConfig       bool
 	dryRun          bool
-	configFile      string
+	configFile      lokiflag.ConfigFiles
 	configExpandEnv bool
 }
 
@@ -46,7 +47,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.logConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.BoolVar(&c.dryRun, "dry-run", false, "Start Promtail but print entries instead of sending them to Loki.")
-	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
+	f.Var(&c.configFile, "config.file", "yaml file to load. Multiple files can be provided (e.g: --config.file=file1.yaml --config.file=file2.yaml)")
 	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }
