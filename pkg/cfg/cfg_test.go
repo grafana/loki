@@ -92,7 +92,7 @@ func TestParseWithMultipleYAML(t *testing.T) {
 		Verbose: false,
 		Server: Server{
 			Port:    3000,
-			Timeout: time.Duration(60 * time.Hour),
+			Timeout: 60 * time.Hour,
 		},
 		TLS: TLS{
 			Cert: "cert",
