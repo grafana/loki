@@ -25,16 +25,16 @@ type RangeVectorIterator interface {
 }
 
 type rangeVectorIterator struct {
-	iter                         iter.PeekingSampleIterator
-	selRange, step, end, current int64
-	window                       map[string]*promql.Series
-	metrics                      map[string]labels.Labels
-	at                           []promql.Sample
+	iter                                 iter.PeekingSampleIterator
+	selRange, step, end, current, offset int64
+	window                               map[string]*promql.Series
+	metrics                              map[string]labels.Labels
+	at                                   []promql.Sample
 }
 
 func newRangeVectorIterator(
 	it iter.PeekingSampleIterator,
-	selRange, step, start, end int64) *rangeVectorIterator {
+	selRange, step, start, end, offset int64) *rangeVectorIterator {
 	// forces at least one step.
 	if step == 0 {
 		step = 1
@@ -43,6 +43,7 @@ func newRangeVectorIterator(
 		iter:     it,
 		step:     step,
 		end:      end,
+		offset:   offset,
 		selRange: selRange,
 		current:  start - step, // first loop iteration will set it to start
 		window:   map[string]*promql.Series{},
@@ -56,8 +57,8 @@ func (r *rangeVectorIterator) Next() bool {
 	if r.current > r.end {
 		return false
 	}
-	rangeEnd := r.current
-	rangeStart := r.current - r.selRange
+	rangeEnd := r.current - r.offset
+	rangeStart := rangeEnd - r.selRange
 	// load samples
 	r.popBack(rangeStart)
 	r.load(rangeStart, rangeEnd)
@@ -130,7 +131,7 @@ func (r *rangeVectorIterator) load(start, end int64) {
 			r.window[lbs] = series
 		}
 		p := promql.Point{
-			T: sample.Timestamp,
+			T: sample.Timestamp + r.offset/1e+6,
 			V: sample.Value,
 		}
 		series.Points = append(series.Points, p)
@@ -149,7 +150,7 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 		r.at = append(r.at, promql.Sample{
 			Point: promql.Point{
 				V: aggregator(series.Points),
-				T: ts,
+				T: ts + r.offset/1e+6,
 			},
 			Metric: series.Metric,
 		})

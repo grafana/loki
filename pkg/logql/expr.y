@@ -50,6 +50,7 @@ import (
   JSONExpression          log.JSONExpression
   JSONExpressionList      []log.JSONExpression
   UnwrapExpr              *unwrapExpr
+  OffsetExpr              *offsetExpr
 }
 
 %start root
@@ -90,6 +91,7 @@ import (
 %type <JSONExpressionList>    jsonExpressionList
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
+%type <OffsetExpr>            offsetExpr
 
 %token <bytes> BYTES
 %token <str>      IDENTIFIER STRING NUMBER
@@ -98,7 +100,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  ABSENT_OVER_TIME LABEL_REPLACE UNPACK
+                  ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -166,6 +168,10 @@ rangeAggregationExpr:
     | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS           { $$ = newRangeAggregationExpr($5, $1, nil, &$3) }
     | rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS grouping               { $$ = newRangeAggregationExpr($3, $1, $5, nil) }
     | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS grouping  { $$ = newRangeAggregationExpr($5, $1, $7, &$3) }
+    | rangeOp OPEN_PARENTHESIS logRangeExpr offsetExpr CLOSE_PARENTHESIS                        { $$ = newRangeAggregationExprWithOffset($3, $1, $4, nil, nil) }
+    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr offsetExpr CLOSE_PARENTHESIS           { $$ = newRangeAggregationExprWithOffset($5, $1, $6, nil, &$3) }
+    | rangeOp OPEN_PARENTHESIS logRangeExpr offsetExpr CLOSE_PARENTHESIS grouping               { $$ = newRangeAggregationExprWithOffset($3, $1, $4, $6, nil) }
+    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr offsetExpr CLOSE_PARENTHESIS grouping  { $$ = newRangeAggregationExprWithOffset($5, $1, $6, $8, &$3) }
     ;
 
 vectorAggregationExpr:
@@ -363,6 +369,8 @@ rangeOp:
     | ABSENT_OVER_TIME   { $$ = OpRangeTypeAbsent }
     ;
 
+offsetExpr:
+    OFFSET DURATION { $$ = newOffsetExpr( $2 ) }
 
 labels:
       IDENTIFIER                 { $$ = []string{ $1 } }
