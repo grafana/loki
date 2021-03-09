@@ -374,9 +374,11 @@ Examples:
 
 ## add 
 
-> **Note:** Added in Loki 2.2
+> **Note:** Added in Loki 2.2.
 
-Sum numbers with add. Supports multiple numbers
+Sum numbers. Supports multiple numbers
+
+Signature: `func(i ...interface{}) int64`
 
 ```template
 {{ add 3 2 5 }} // output: 10
@@ -384,9 +386,11 @@ Sum numbers with add. Supports multiple numbers
 
 ## sub
 
-> **Note:** Added in Loki 2.2
+> **Note:** Added in Loki 2.2.
 
-Subtract numbers
+Subtract numbers.
+
+Signature: `func(a, b interface{}) int64`
 
 ```template
 {{ sub 5 2 }} // output: 3
@@ -394,9 +398,11 @@ Subtract numbers
 
 ## mul
 
-> **Note:** Added in Loki 2.2
+> **Note:** Added in Loki 2.2.
 
-Mulitply numbers. Supports multiple numbers
+Mulitply numbers. Supports multiple numbers.
+
+Signature: `func(a interface{}, v ...interface{}) int64`
 
 ```template
 {{ mul 5 2 3}} // output: 30
@@ -404,10 +410,188 @@ Mulitply numbers. Supports multiple numbers
 
 ## div
 
-> **Note:** Added in Loki 2.2
+> **Note:** Added in Loki 2.2.
 
 Integer divide numbers.
 
+Signature: `func(a, b interface{}) int64`
+
 ```template
 {{ div 10 2}} // output: 5
+```
+
+## addf
+
+> **Note:** Added in Loki 2.2.
+
+Sum numbers. Supports multiple numbers.
+
+Signature: `func(i ...interface{}) float64`
+
+```template
+{{ addf 3.5 2 5 }} // output: 10.5
+```
+
+## subf
+
+> **Note:** Added in Loki 2.2.
+
+Subtract numbers. Supports multiple numbers.
+
+Signature: `func(a interface{}, v ...interface{}) float64`
+
+```template
+{{ subf  5.5 2 1.5 }} // output: 2
+```
+
+## mulf
+
+> **Note:** Added in Loki 2.2.
+
+Mulitply numbers. Supports multiple numbers
+
+Signature: `func(a interface{}, v ...interface{}) float64`
+
+```template
+{{ mulf 5.5 2 2.5 }} // output: 27.5
+```
+
+## divf
+
+> **Note:** Added in Loki 2.2.
+
+Divide numbers. Supports multiple numbers.
+
+Signature: `func(a interface{}, v ...interface{}) float64`
+
+```template
+{{ divf 10 2 4}} // output: 1.25
+```
+## mod
+
+> **Note:** Added in Loki 2.2.
+
+Modulo wit mod.
+
+Signature: `func(a, b interface{}) int64`
+
+```template
+{{ mod 10 3}} // output: 1
+```
+
+## max
+
+> **Note:** Added in Loki 2.2.
+
+Return the largest of a series of integers:
+
+Signature: `max(a interface{}, i ...interface{}) int64`
+
+```template
+{{ max 1 2 3 }} //output 3
+```
+
+## min
+
+> **Note:** Added in Loki 2.2.
+
+Return the smallest of a series of integers.
+
+Signature: `min(a interface{}, i ...interface{}) int64`
+
+```template
+{{ max 1 2 3 }} //output 1
+```
+
+## maxf
+
+> **Note:** Added in Loki 2.2.
+
+Return the largest of a series of floats:
+
+Signature: `maxf(a interface{}, i ...interface{}) float64`
+
+```template
+{{ maxf 1 2.5 3 }} //output 3
+```
+
+
+## minf
+
+> **Note:** Added in Loki 2.2.
+
+Return the smallest of a series of floats.
+
+Signature: `minf(a interface{}, i ...interface{}) float64`
+
+```template
+{{ minf 1 2.5 3 }} //output 1.5
+```
+
+## ceil
+
+> **Note:** Added in Loki 2.2.
+
+Returns the greatest float value greater than or equal to input value
+
+Signature: `ceil(a interface{}) float64`
+
+```template
+{{ ceil 123.001 }} //output 124.0
+```
+
+## floor
+
+> **Note:** Added in Loki 2.2.
+
+Returns the greatest float value less than or equal to input value
+
+Signature: `floor(a interface{}) float64`
+
+```template
+{{ floor 123.9999 }} //output 123.0
+```
+
+## round
+
+> **Note:** Added in Loki 2.2.
+
+Returns a float value with the remainder rounded to the given number of digits after the decimal point.
+
+Signature: ` round(a interface{}, p int, rOpt ...float64) float64`
+
+```template
+{{ round 123.555555 3 }} //output 123.556
+```
+
+We can also provide a `roundOn` number as third parameter
+
+```template
+{{ round 123.88571428571 5 .2 }} //output 123.88572
+```
+
+With default `roundOn` of `.5` the above value would be `123.88571`
+
+## int
+
+> **Note:** Added in Loki 2.2.
+
+Convert value to an int.
+
+Signature: `toInt(v interface{}) int`
+
+```template
+{{ "3" | int }} //output 3
+```
+
+## float64
+
+> **Note:** Added in Loki 2.2.
+
+Convert to a float64.
+
+Signature: `toFloat64(v interface{}) float64`
+
+```template
+{{ "3.5" | float64 }} //output 3.5
 ```

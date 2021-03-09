@@ -157,17 +157,17 @@ func Test_lineFormatter_Format(t *testing.T) {
 		},
 		{
 			"mathfloat",
-			newMustLineFormatter("{{ addf .foo 1.5 | subf .bar | mulf .baz | divf .bazz }}"),
-			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
+			newMustLineFormatter("{{ addf .foo 1.5 | subf .bar 1.5 | mulf .baz | divf .bazz }}"),
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
 			[]byte("3.8476190476190477"),
-			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
 		},
 		{
 			"mathfloatround",
-			newMustLineFormatter("{{ round (addf .foo 1.5 | subf .bar | mulf .baz | divf .bazz) 5 }}"),
-			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
-			[]byte("3.84762"),
-			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
+			newMustLineFormatter("{{ round (addf .foo 1.5 | subf .bar | mulf .baz | divf .bazz) 5 .2}}"),
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.4"}},
+			[]byte("3.88572"),
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.4"}},
 		},
 		{
 			"min",
@@ -196,6 +196,20 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "foo", Value: "20"}},
 			[]byte("mod is 2"),
 			labels.Labels{{Name: "foo", Value: "20"}},
+		},
+		{
+			"float64inttoString",
+			newMustLineFormatter("{{ \"2.5\" | float64 | int | add 10 | toString }}"),
+			labels.Labels{{Name: "foo", Value: "2.5"}},
+			[]byte("12"),
+			labels.Labels{{Name: "foo", Value: "2.5"}},
+		},
+		{
+			"float64toString",
+			newMustLineFormatter("{{ .foo | float64 | addf 10 | toString }}"),
+			labels.Labels{{Name: "foo", Value: "2.5"}},
+			[]byte("12.5"),
+			labels.Labels{{Name: "foo", Value: "2.5"}},
 		},
 	}
 	for _, tt := range tests {
