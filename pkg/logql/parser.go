@@ -2,6 +2,7 @@ package logql
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +22,8 @@ var parserPool = sync.Pool{
 		return p
 	},
 }
+
+const maxInputSize = 5120
 
 func init() {
 	// Improve the error messages coming out of yacc.
@@ -53,6 +56,10 @@ func (p *parser) Parse() (Expr, error) {
 
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (expr Expr, err error) {
+	if len(input) >= maxInputSize {
+		return nil, newParseError(fmt.Sprintf("input size too long > %d", maxInputSize), 0, 0)
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			var ok bool
@@ -64,6 +71,7 @@ func ParseExpr(input string) (expr Expr, err error) {
 			}
 		}
 	}()
+
 	p := parserPool.Get().(*parser)
 	defer parserPool.Put(p)
 
