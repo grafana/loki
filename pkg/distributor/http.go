@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
+	gokit "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -43,29 +45,67 @@ const applicationJSON = "application/json"
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := ParseRequest(r)
+	logger := util_log.WithContext(r.Context(), util_log.Logger)
+	userID, _ := user.ExtractOrgID(r.Context())
+	req, err := ParseRequest(logger, userID, r)
 	if err != nil {
+		if d.tenantConfigs.LogPushRequest(userID) {
+			level.Debug(logger).Log(
+				"msg", "push request failed",
+				"code", http.StatusBadRequest,
+				"err", err,
+			)
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	if d.tenantConfigs.LogPushRequestStreams(userID) {
+		var sb strings.Builder
+		for _, s := range req.Streams {
+			sb.WriteString(s.Labels)
+		}
+		level.Debug(logger).Log(
+			"msg", "push request streams",
+			"streams", sb.String(),
+		)
+	}
+
 	_, err = d.Push(r.Context(), req)
 	if err == nil {
+		if d.tenantConfigs.LogPushRequest(userID) {
+			level.Debug(logger).Log(
+				"msg", "push request successful",
+			)
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
-		http.Error(w, string(resp.Body), int(resp.Code))
+		body := string(resp.Body)
+		if d.tenantConfigs.LogPushRequest(userID) {
+			level.Debug(logger).Log(
+				"msg", "push request failed",
+				"code", resp.Code,
+				"err", body,
+			)
+		}
+		http.Error(w, body, int(resp.Code))
 	} else {
+		if d.tenantConfigs.LogPushRequest(userID) {
+			level.Debug(logger).Log(
+				"msg", "push request failed",
+				"code", http.StatusInternalServerError,
+				"err", err.Error(),
+			)
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
-	userID, _ := user.ExtractOrgID(r.Context())
-	logger := util_log.WithContext(r.Context(), util_log.Logger)
+func ParseRequest(logger gokit.Logger, userID string, r *http.Request) (*logproto.PushRequest, error) {
 
 	var body lokiutil.SizeReader
 
