@@ -21,27 +21,21 @@ For the given pipeline:
 ```yaml
 kubernetes_sd_configs:
  - role: pod 
-relabel_configs:
-  - action: replace
-    source_labels:
-      - __meta_kubernetes_pod_node_name
-    target_label: node_name
-  - action: replace
-    source_labels:
-      - __meta_kubernetes_namespace
-    target_label: namespace
 pipeline_stages:
 - docker: {}    
 - labelallow:
     - kubernetes_pod_name
-    - 
+    - kubernetes_container_name
 ```
 
-Given the following log line:
+Given the following incoming labels:
 
-```
-log message\n
-```
+- `kubernetes_pod_name`: `"loki-pqrs"`
+- `kubernetes_container_name`: `"loki"`
+- `kubernetes_pod_template_hash`: `"79f5db67b"`
+- `kubernetes_controller_revision_hash`: `"774858987d"`
 
-The first stage would append the value of the`kubernetes_pod_name` label into the beginning of the log line. 
-The labeldrop stage would drop the label from being sent to Loki, and it would now be part of the log line instead.
+Only the below labels would be sent to `loki`
+
+- `kubernetes_pod_name`: `"loki-pqrs"`
+- `contaikubernetes_container_namener`: `"loki"`
