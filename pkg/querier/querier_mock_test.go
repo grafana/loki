@@ -359,7 +359,7 @@ func mockReadRingWithOneActiveIngester() *readRingMock {
 	})
 }
 
-func mockInstanceDesc(addr string, state ring.IngesterState) ring.InstanceDesc {
+func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
 	return ring.InstanceDesc{
 		Addr:      addr,
 		Timestamp: time.Now().UnixNano(),

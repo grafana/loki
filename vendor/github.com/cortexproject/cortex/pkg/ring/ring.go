@@ -84,7 +84,7 @@ type ReadRing interface {
 
 var (
 	// Write operation that also extends replica set, if instance state is not ACTIVE.
-	Write = NewOp([]IngesterState{ACTIVE}, func(s IngesterState) bool {
+	Write = NewOp([]InstanceState{ACTIVE}, func(s InstanceState) bool {
 		// We do not want to Write to instances that are not ACTIVE, but we do want
 		// to write the extra replica somewhere.  So we increase the size of the set
 		// of replicas for the key.
@@ -93,9 +93,9 @@ var (
 	})
 
 	// WriteNoExtend is like Write, but with no replicaset extension.
-	WriteNoExtend = NewOp([]IngesterState{ACTIVE}, nil)
+	WriteNoExtend = NewOp([]InstanceState{ACTIVE}, nil)
 
-	Read = NewOp([]IngesterState{ACTIVE, PENDING, LEAVING}, func(s IngesterState) bool {
+	Read = NewOp([]InstanceState{ACTIVE, PENDING, LEAVING}, func(s InstanceState) bool {
 		// To match Write with extended replica set we have to also increase the
 		// size of the replica set for Read, but we can read from LEAVING ingesters.
 		return s != ACTIVE && s != LEAVING
@@ -743,7 +743,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 // GetInstanceState returns the current state of an instance or an error if the
 // instance does not exist in the ring.
-func (r *Ring) GetInstanceState(instanceID string) (IngesterState, error) {
+func (r *Ring) GetInstanceState(instanceID string) (InstanceState, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -832,14 +832,14 @@ type Operation uint32
 
 // NewOp constructs new Operation with given "healthy" states for operation, and optional function to extend replica set.
 // Result of calling shouldExtendReplicaSet is cached.
-func NewOp(healthyStates []IngesterState, shouldExtendReplicaSet func(s IngesterState) bool) Operation {
+func NewOp(healthyStates []InstanceState, shouldExtendReplicaSet func(s InstanceState) bool) Operation {
 	op := Operation(0)
 	for _, s := range healthyStates {
 		op |= (1 << s)
 	}
 
 	if shouldExtendReplicaSet != nil {
-		for _, s := range []IngesterState{ACTIVE, LEAVING, PENDING, JOINING, LEAVING, LEFT} {
+		for _, s := range []InstanceState{ACTIVE, LEAVING, PENDING, JOINING, LEAVING, LEFT} {
 			if shouldExtendReplicaSet(s) {
 				op |= (0x10000 << s)
 			}
@@ -850,14 +850,14 @@ func NewOp(healthyStates []IngesterState, shouldExtendReplicaSet func(s Ingester
 }
 
 // IsInstanceInStateHealthy is used during "filtering" phase to remove undesired instances based on their state.
-func (op Operation) IsInstanceInStateHealthy(s IngesterState) bool {
+func (op Operation) IsInstanceInStateHealthy(s InstanceState) bool {
 	return op&(1<<s) > 0
 }
 
 // ShouldExtendReplicaSetOnState returns true if given a state of instance that's going to be
 // added to the replica set, the replica set size should be extended by 1
 // more instance for the given operation.
-func (op Operation) ShouldExtendReplicaSetOnState(s IngesterState) bool {
+func (op Operation) ShouldExtendReplicaSetOnState(s InstanceState) bool {
 	return op&(0x10000<<s) > 0
 }
 

@@ -17,6 +17,9 @@ service Frontend {
   // After calling this method, client enters a loop, in which it waits for
   // a "FrontendToClient" message and replies with single "ClientToFrontend" message.
   rpc Process(stream ClientToFrontend) returns (stream FrontendToClient) {};
+
+  // The client notifies the query-frontend that it started a graceful shutdown.
+  rpc NotifyClientShutdown(NotifyClientShutdownRequest) returns (NotifyClientShutdownResponse);
 }
 
 enum Type {
@@ -38,3 +41,9 @@ message ClientToFrontend {
   string clientID = 2;
   stats.Stats stats = 3;
 }
+
+message NotifyClientShutdownRequest {
+  string clientID = 1;
+}
+
+message NotifyClientShutdownResponse {}

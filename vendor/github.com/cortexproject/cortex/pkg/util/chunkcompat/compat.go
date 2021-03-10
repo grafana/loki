@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -34,8 +35,8 @@ func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeries
 
 	result := model.Matrix{}
 	for _, series := range serieses {
-		metric := client.FromLabelAdaptersToMetric(series.Labels)
-		chunks, err := FromChunks("", client.FromLabelAdaptersToLabels(series.Labels), series.Chunks)
+		metric := cortexpb.FromLabelAdaptersToMetric(series.Labels)
+		chunks, err := FromChunks("", cortexpb.FromLabelAdaptersToLabels(series.Labels), series.Chunks)
 		if err != nil {
 			return nil, err
 		}

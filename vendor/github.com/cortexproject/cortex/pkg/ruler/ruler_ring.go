@@ -19,7 +19,7 @@ const (
 )
 
 // RingOp is the operation used for distributing rule groups between rulers.
-var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
+var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
 	// Only ACTIVE rulers get any rule groups. If instance is not ACTIVE, we need to find another ruler.
 	return s != ring.ACTIVE
 })

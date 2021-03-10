@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 )
@@ -95,7 +95,7 @@ type SampleValidationConfig interface {
 }
 
 // ValidateSample returns an err if the sample is invalid.
-func ValidateSample(cfg SampleValidationConfig, userID string, metricName string, s client.Sample) error {
+func ValidateSample(cfg SampleValidationConfig, userID string, metricName string, s cortexpb.Sample) error {
 	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, metricName, model.Time(s.TimestampMs))
@@ -118,7 +118,7 @@ type LabelValidationConfig interface {
 }
 
 // ValidateLabels returns an err if the labels are invalid.
-func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelAdapter, skipLabelNameValidation bool) error {
+func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) error {
 	if cfg.EnforceMetricName(userID) {
 		metricName, err := extract.MetricNameFromLabelAdapters(ls)
 		if err != nil {
@@ -135,7 +135,7 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelA
 	numLabelNames := len(ls)
 	if numLabelNames > cfg.MaxLabelNamesPerSeries(userID) {
 		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, numLabelNames, cfg.MaxLabelNamesPerSeries(userID), client.FromLabelAdaptersToMetric(ls).String())
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, numLabelNames, cfg.MaxLabelNamesPerSeries(userID), cortexpb.FromLabelAdaptersToMetric(ls).String())
 	}
 
 	maxLabelNameLength := cfg.MaxLabelNameLength(userID)
@@ -184,7 +184,7 @@ type MetadataValidationConfig interface {
 }
 
 // ValidateMetadata returns an err if a metric metadata is invalid.
-func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *client.MetricMetadata) error {
+func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *cortexpb.MetricMetadata) error {
 	if cfg.EnforceMetadataMetricName(userID) && metadata.GetMetricFamilyName() == "" {
 		DiscardedMetadata.WithLabelValues(missingMetricName, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataMissingMetricName)
@@ -219,7 +219,7 @@ func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *cli
 // this function formats label adapters as a metric name with labels, while preserving
 // label order, and keeping duplicates. If there are multiple "__name__" labels, only
 // first one is used as metric name, other ones will be included as regular labels.
-func formatLabelSet(ls []client.LabelAdapter) string {
+func formatLabelSet(ls []cortexpb.LabelAdapter) string {
 	metricName, hasMetricName := "", false
 
 	labelStrings := make([]string, 0, len(ls))

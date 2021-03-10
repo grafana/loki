@@ -13,10 +13,14 @@ import (
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // state represents the Alertmanager silences and notification log internal state.
 type state struct {
+	services.Service
+
 	userID string
 	logger log.Logger
 	reg    prometheus.Registerer
@@ -34,12 +38,11 @@ type state struct {
 	stateReplicationFailed   *prometheus.CounterVec
 
 	msgc   chan *clusterpb.Part
-	stopc  chan struct{}
 	readyc chan struct{}
 }
 
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
-func newReplicatedStates(userID string, rf int, f func(context.Context, string, *clusterpb.Part) error, pf func(string) int, stopc chan struct{}, l log.Logger, r prometheus.Registerer) *state {
+func newReplicatedStates(userID string, rf int, f func(context.Context, string, *clusterpb.Part) error, pf func(string) int, l log.Logger, r prometheus.Registerer) *state {
 
 	s := &state{
 		logger:             l,
@@ -50,7 +53,6 @@ func newReplicatedStates(userID string, rf int, f func(context.Context, string, 
 		states:             make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
 		msgc:               make(chan *clusterpb.Part),
 		readyc:             make(chan struct{}),
-		stopc:              stopc,
 		reg:                r,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
@@ -70,7 +72,8 @@ func newReplicatedStates(userID string, rf int, f func(context.Context, string, 
 		}, []string{"key"}),
 	}
 
-	go s.handleBroadcasts()
+	s.Service = services.NewBasicService(nil, s.running, nil)
+
 	return s
 }
 
@@ -142,23 +145,22 @@ func (s *state) Ready() bool {
 	return false
 }
 
-func (s *state) handleBroadcasts() {
+func (s *state) running(ctx context.Context) error {
 	for {
 		select {
 		case p := <-s.msgc:
 			// If the replication factor is <= 1, we don't need to replicate any state anywhere else.
 			if s.replicationFactor <= 1 {
-				return
+				return nil
 			}
 
 			s.stateReplicationTotal.WithLabelValues(p.Key).Inc()
-			ctx := context.Background() //TODO: I probably need a better context
 			if err := s.replicateStateFunc(ctx, s.userID, p); err != nil {
 				s.stateReplicationFailed.WithLabelValues(p.Key).Inc()
 				level.Error(s.logger).Log("msg", "failed to replicate state to other alertmanagers", "user", s.userID, "key", p.Key, "err", err)
 			}
-		case <-s.stopc:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }

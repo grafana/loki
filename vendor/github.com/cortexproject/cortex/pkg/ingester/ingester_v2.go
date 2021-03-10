@@ -684,12 +684,12 @@ func (i *Ingester) v2UpdateActiveSeries() {
 }
 
 // v2Push adds metrics to a block
-func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	var firstPartialErr error
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
 	// retain anything from `req` past the call to ReuseSlice
-	defer client.ReuseSlice(req.Timeseries)
+	defer cortexpb.ReuseSlice(req.Timeseries)
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -710,7 +710,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	i.userStatesMtx.RUnlock()
 
 	if err := db.acquireAppendLock(); err != nil {
-		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
+		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
 	}
 	defer db.releaseAppendLock()
 
@@ -735,7 +735,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 		// that even if we have a reference it's not guaranteed to be still valid.
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
-		cachedRef, cachedRefExists := db.refCache.Ref(startAppend, client.FromLabelAdaptersToLabels(ts.Labels))
+		cachedRef, cachedRefExists := db.refCache.Ref(startAppend, cortexpb.FromLabelAdaptersToLabels(ts.Labels))
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
@@ -761,7 +761,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 				var ref uint64
 
 				// Copy the label set because both TSDB and the cache may retain it.
-				copiedLabels = client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
 				if ref, err = app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
 					db.refCache.SetRef(startAppend, copiedLabels, ref)
@@ -816,12 +816,12 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 		}
 
 		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
-			db.activeSeries.UpdateSeries(client.FromLabelAdaptersToLabels(ts.Labels), startAppend, func(l labels.Labels) labels.Labels {
+			db.activeSeries.UpdateSeries(cortexpb.FromLabelAdaptersToLabels(ts.Labels), startAppend, func(l labels.Labels) labels.Labels {
 				// If we have already made a copy during this push, no need to create new one.
 				if copiedLabels != nil {
 					return copiedLabels
 				}
-				return client.CopyLabels(l)
+				return cortexpb.CopyLabels(l)
 			})
 		}
 	}
@@ -847,9 +847,9 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
 
 	switch req.Source {
-	case client.RULE:
+	case cortexpb.RULE:
 		db.ingestedRuleSamples.add(int64(succeededSamplesCount))
-	case client.API:
+	case cortexpb.API:
 		fallthrough
 	default:
 		db.ingestedAPISamples.add(int64(succeededSamplesCount))
@@ -861,10 +861,10 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 		if errors.As(firstPartialErr, &ve) {
 			code = ve.code
 		}
-		return &client.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
+		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 
-	return &client.WriteResponse{}, nil
+	return &cortexpb.WriteResponse{}, nil
 }
 
 func (u *userTSDB) acquireAppendLock() error {
@@ -927,14 +927,14 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	for ss.Next() {
 		series := ss.At()
 
-		ts := client.TimeSeries{
-			Labels: client.FromLabelsToLabelAdapters(series.Labels()),
+		ts := cortexpb.TimeSeries{
+			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
 		it := series.Iterator()
 		for it.Next() {
 			t, v := it.At()
-			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
+			ts.Samples = append(ts.Samples, cortexpb.Sample{Value: v, TimestampMs: t})
 		}
 
 		numSamples += len(ts.Samples)
@@ -1059,7 +1059,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 
 	// Generate the response merging all series sets.
 	result := &client.MetricsForLabelMatchersResponse{
-		Metric: make([]*client.Metric, 0),
+		Metric: make([]*cortexpb.Metric, 0),
 	}
 
 	mergedSet := storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
@@ -1069,8 +1069,8 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 			return nil, ctx.Err()
 		}
 
-		result.Metric = append(result.Metric, &client.Metric{
-			Labels: client.FromLabelsToLabelAdapters(mergedSet.At().Labels()),
+		result.Metric = append(result.Metric, &cortexpb.Metric{
+			Labels: cortexpb.FromLabelsToLabelAdapters(mergedSet.At().Labels()),
 		})
 	}
 
@@ -2027,10 +2027,10 @@ func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB) (mint, maxt in
 	return
 }
 
-func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []client.LabelAdapter) error {
+func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortexpb.LabelAdapter) error {
 	if ingestErr == nil {
 		return nil
 	}
 
-	return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), client.FromLabelAdaptersToLabels(labels).String())
+	return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
 }

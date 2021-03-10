@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -312,13 +312,13 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
-		Metric model.Metric    `json:"metric"`
-		Values []client.Sample `json:"values"`
+		Metric model.Metric      `json:"metric"`
+		Values []cortexpb.Sample `json:"values"`
 	}
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = client.FromMetricsToLabelAdapters(stream.Metric)
+	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
 }
@@ -326,10 +326,10 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler.
 func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	stream := struct {
-		Metric model.Metric    `json:"metric"`
-		Values []client.Sample `json:"values"`
+		Metric model.Metric      `json:"metric"`
+		Values []cortexpb.Sample `json:"values"`
 	}{
-		Metric: client.FromLabelAdaptersToMetric(s.Labels),
+		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
 		Values: s.Samples,
 	}
 	return json.Marshal(stream)
@@ -339,7 +339,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	output := map[string]*SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			metric := client.FromLabelAdaptersToLabels(stream.Labels).String()
+			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
 				existing = &SampleStream{

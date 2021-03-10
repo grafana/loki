@@ -21,7 +21,7 @@ message InstanceDesc {
 	// by this instance.
 	int64 timestamp = 2;
 
-	IngesterState state = 3;
+	InstanceState state = 3;
 	repeated uint32 tokens = 6;
 	string zone = 7;
 
@@ -41,7 +41,7 @@ message InstanceDesc {
 	int64 registered_timestamp = 8;
 }
 
-enum IngesterState {
+enum InstanceState {
 	ACTIVE = 0;
 	LEAVING = 1;
 
@@ -49,6 +49,6 @@ enum IngesterState {
 	JOINING = 3;
 
 	// This state is only used by gossiping code to distribute information about
-	// ingesters that have been removed from the ring. Ring users should not use it directly.
+	// instances that have been removed from the ring. Ring users should not use it directly.
 	LEFT = 4;
 }

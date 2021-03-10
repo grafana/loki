@@ -147,14 +147,13 @@ func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) textpars
 	}
 }
 
-// IsTesting is only set from tests to get special behaviour to verify that custom sample encode and decode is used,
+// isTesting is only set from tests to get special behaviour to verify that custom sample encode and decode is used,
 // both when using jsonitor or standard json package.
-// It is public, so that test in client package can verify that it works for deprecated "client.Sample" type too.
-var IsTesting = false
+var isTesting = false
 
 // MarshalJSON implements json.Marshaler.
 func (s Sample) MarshalJSON() ([]byte, error) {
-	if IsTesting && math.IsNaN(s.Value) {
+	if isTesting && math.IsNaN(s.Value) {
 		return nil, fmt.Errorf("test sample")
 	}
 
@@ -180,7 +179,7 @@ func (s *Sample) UnmarshalJSON(b []byte) error {
 	s.TimestampMs = int64(t)
 	s.Value = float64(v)
 
-	if IsTesting && math.IsNaN(float64(v)) {
+	if isTesting && math.IsNaN(float64(v)) {
 		return fmt.Errorf("test sample")
 	}
 	return nil
@@ -189,7 +188,7 @@ func (s *Sample) UnmarshalJSON(b []byte) error {
 func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	sample := (*Sample)(ptr)
 
-	if IsTesting && math.IsNaN(sample.Value) {
+	if isTesting && math.IsNaN(sample.Value) {
 		stream.Error = fmt.Errorf("test sample")
 		return
 	}
@@ -222,7 +221,7 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		return
 	}
 
-	if IsTesting && math.IsNaN(v) {
+	if isTesting && math.IsNaN(v) {
 		iter.Error = fmt.Errorf("test sample")
 		return
 	}

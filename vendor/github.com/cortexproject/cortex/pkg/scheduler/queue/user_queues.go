@@ -3,9 +3,22 @@ package queue
 import (
 	"math/rand"
 	"sort"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
+
+// querier holds information about a querier registered in the queue.
+type querier struct {
+	// Number of active connections.
+	connections int
+
+	// True if the querier notified it's gracefully shutting down.
+	shuttingDown bool
+
+	// When the last connection has been unregistered.
+	disconnectedAt time.Time
+}
 
 // This struct holds user queues for pending requests. It also keeps track of connected queriers,
 // and mapping between users and queriers.
@@ -19,8 +32,13 @@ type queues struct {
 
 	maxUserQueueSize int
 
-	// Number of connections per querier.
-	querierConnections map[string]int
+	// How long to wait before removing a querier which has got disconnected
+	// but hasn't notified about a graceful shutdown.
+	forgetDelay time.Duration
+
+	// Tracks queriers registered to the queue.
+	queriers map[string]*querier
+
 	// Sorted list of querier names, used when creating per-user shard.
 	sortedQueriers []string
 }
@@ -41,13 +59,14 @@ type userQueue struct {
 	index int
 }
 
-func newUserQueues(maxUserQueueSize int) *queues {
+func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration) *queues {
 	return &queues{
-		userQueues:         map[string]*userQueue{},
-		users:              nil,
-		maxUserQueueSize:   maxUserQueueSize,
-		querierConnections: map[string]int{},
-		sortedQueriers:     nil,
+		userQueues:       map[string]*userQueue{},
+		users:            nil,
+		maxUserQueueSize: maxUserQueueSize,
+		forgetDelay:      forgetDelay,
+		queriers:         map[string]*querier{},
+		sortedQueriers:   nil,
 	}
 }
 
@@ -121,7 +140,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *queues) getNextQueueForQuerier(lastUserIndex int, querier string) (chan Request, string, int) {
+func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (chan Request, string, int) {
 	uid := lastUserIndex
 
 	for iters := 0; iters < len(q.users); iters++ {
@@ -141,7 +160,7 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querier string) (chan
 		q := q.userQueues[u]
 
 		if q.queriers != nil {
-			if _, ok := q.queriers[querier]; !ok {
+			if _, ok := q.queriers[querierID]; !ok {
 				// This querier is not handling the user.
 				continue
 			}
@@ -152,41 +171,103 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querier string) (chan
 	return nil, "", uid
 }
 
-func (q *queues) addQuerierConnection(querier string) {
-	conns := q.querierConnections[querier]
+func (q *queues) addQuerierConnection(querierID string) {
+	info := q.queriers[querierID]
+	if info != nil {
+		info.connections++
 
-	q.querierConnections[querier] = conns + 1
+		// Reset in case the querier re-connected while it was in the forget waiting period.
+		info.shuttingDown = false
+		info.disconnectedAt = time.Time{}
+
+		return
+	}
 
 	// First connection from this querier.
-	if conns == 0 {
-		q.sortedQueriers = append(q.sortedQueriers, querier)
-		sort.Strings(q.sortedQueriers)
+	q.queriers[querierID] = &querier{connections: 1}
+	q.sortedQueriers = append(q.sortedQueriers, querierID)
+	sort.Strings(q.sortedQueriers)
 
-		q.recomputeUserQueriers()
-	}
+	q.recomputeUserQueriers()
 }
 
-func (q *queues) removeQuerierConnection(querier string) {
-	conns := q.querierConnections[querier]
-	if conns <= 0 {
+func (q *queues) removeQuerierConnection(querierID string, now time.Time) {
+	info := q.queriers[querierID]
+	if info == nil || info.connections <= 0 {
 		panic("unexpected number of connections for querier")
 	}
 
-	conns--
-	if conns > 0 {
-		q.querierConnections[querier] = conns
-	} else {
-		delete(q.querierConnections, querier)
-
-		ix := sort.SearchStrings(q.sortedQueriers, querier)
-		if ix >= len(q.sortedQueriers) || q.sortedQueriers[ix] != querier {
-			panic("incorrect state of sorted queriers")
-		}
-
-		q.sortedQueriers = append(q.sortedQueriers[:ix], q.sortedQueriers[ix+1:]...)
-
-		q.recomputeUserQueriers()
+	// Decrease the number of active connections.
+	info.connections--
+	if info.connections > 0 {
+		return
 	}
+
+	// There no more active connections. If the forget delay is configured then
+	// we can remove it only if querier has announced a graceful shutdown.
+	if info.shuttingDown || q.forgetDelay == 0 {
+		q.removeQuerier(querierID)
+		return
+	}
+
+	// No graceful shutdown has been notified yet, so we should track the current time
+	// so that we'll remove the querier as soon as we receive the graceful shutdown
+	// notification (if any) or once the threshold expires.
+	info.disconnectedAt = now
+}
+
+func (q *queues) removeQuerier(querierID string) {
+	delete(q.queriers, querierID)
+
+	ix := sort.SearchStrings(q.sortedQueriers, querierID)
+	if ix >= len(q.sortedQueriers) || q.sortedQueriers[ix] != querierID {
+		panic("incorrect state of sorted queriers")
+	}
+
+	q.sortedQueriers = append(q.sortedQueriers[:ix], q.sortedQueriers[ix+1:]...)
+
+	q.recomputeUserQueriers()
+}
+
+// notifyQuerierShutdown records that a querier has sent notification about a graceful shutdown.
+func (q *queues) notifyQuerierShutdown(querierID string) {
+	info := q.queriers[querierID]
+	if info == nil {
+		// The querier may have already been removed, so we just ignore it.
+		return
+	}
+
+	// If there are no more connections, we should remove the querier.
+	if info.connections == 0 {
+		q.removeQuerier(querierID)
+		return
+	}
+
+	// Otherwise we should annotate we received a graceful shutdown notification
+	// and the querier will be removed once all connections are unregistered.
+	info.shuttingDown = true
+}
+
+// forgetDisconnectedQueriers removes all disconnected queriers that have gone since at least
+// the forget delay. Returns the number of forgotten queriers.
+func (q *queues) forgetDisconnectedQueriers(now time.Time) int {
+	// Nothing to do if the forget delay is disabled.
+	if q.forgetDelay == 0 {
+		return 0
+	}
+
+	// Remove all queriers with no connections that have gone since at least the forget delay.
+	threshold := now.Add(-q.forgetDelay)
+	forgotten := 0
+
+	for querierID := range q.queriers {
+		if info := q.queriers[querierID]; info.connections == 0 && info.disconnectedAt.Before(threshold) {
+			q.removeQuerier(querierID)
+			forgotten++
+		}
+	}
+
+	return forgotten
 }
 
 func (q *queues) recomputeUserQueriers() {
@@ -197,9 +278,9 @@ func (q *queues) recomputeUserQueriers() {
 	}
 }
 
-// Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
 // shuffleQueriersForUser returns nil if queriersToSelect is 0 or there are not enough queriers to select from.
 // In that case *all* queriers should be used.
+// Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
 func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
 	if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
 		return nil

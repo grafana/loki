@@ -38,7 +38,7 @@ func NewDesc() *Desc {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState, registeredAt time.Time) InstanceDesc {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time) InstanceDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]InstanceDesc{}
 	}
@@ -87,7 +87,7 @@ func (d *Desc) ClaimTokens(from, to string) Tokens {
 }
 
 // FindIngestersByState returns the list of ingesters in the given state
-func (d *Desc) FindIngestersByState(state IngesterState) []InstanceDesc {
+func (d *Desc) FindIngestersByState(state InstanceState) []InstanceDesc {
 	var result []InstanceDesc
 	for _, ing := range d.Ingesters {
 		if ing.State == state {

@@ -13,7 +13,7 @@ import (
 	strings "strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -620,15 +620,15 @@ func toProto(m loghttp.Matrix) []queryrange.SampleStream {
 	}
 	res := make([]queryrange.SampleStream, 0, len(m))
 	for _, stream := range m {
-		samples := make([]client.Sample, 0, len(stream.Values))
+		samples := make([]cortexpb.Sample, 0, len(stream.Values))
 		for _, s := range stream.Values {
-			samples = append(samples, client.Sample{
+			samples = append(samples, cortexpb.Sample{
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			})
 		}
 		res = append(res, queryrange.SampleStream{
-			Labels:  client.FromMetricsToLabelAdapters(stream.Metric),
+			Labels:  cortexpb.FromMetricsToLabelAdapters(stream.Metric),
 			Samples: samples,
 		})
 	}

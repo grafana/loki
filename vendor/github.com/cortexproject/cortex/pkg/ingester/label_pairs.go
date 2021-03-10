@@ -7,13 +7,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 )
 
 // A series is uniquely identified by its set of label name/value
 // pairs, which may arrive in any order over the wire
-type labelPairs []client.LabelAdapter
+type labelPairs []cortexpb.LabelAdapter
 
 func (a labelPairs) String() string {
 	var b strings.Builder

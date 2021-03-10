@@ -21,7 +21,7 @@ func NewLeaveOnStoppingDelegate(next BasicLifecyclerDelegate, logger log.Logger)
 	}
 }
 
-func (d *LeaveOnStoppingDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (IngesterState, Tokens) {
+func (d *LeaveOnStoppingDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 }
 
@@ -45,10 +45,10 @@ type TokensPersistencyDelegate struct {
 	next       BasicLifecyclerDelegate
 	logger     log.Logger
 	tokensPath string
-	loadState  IngesterState
+	loadState  InstanceState
 }
 
-func NewTokensPersistencyDelegate(path string, state IngesterState, next BasicLifecyclerDelegate, logger log.Logger) *TokensPersistencyDelegate {
+func NewTokensPersistencyDelegate(path string, state InstanceState, next BasicLifecyclerDelegate, logger log.Logger) *TokensPersistencyDelegate {
 	return &TokensPersistencyDelegate{
 		next:       next,
 		logger:     logger,
@@ -57,7 +57,7 @@ func NewTokensPersistencyDelegate(path string, state IngesterState, next BasicLi
 	}
 }
 
-func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (IngesterState, Tokens) {
+func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	// Skip if no path has been configured.
 	if d.tokensPath == "" {
 		level.Info(d.logger).Log("msg", "not loading tokens from file, tokens file path is empty")
@@ -126,7 +126,7 @@ func NewAutoForgetDelegate(forgetPeriod time.Duration, next BasicLifecyclerDeleg
 	}
 }
 
-func (d *AutoForgetDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (IngesterState, Tokens) {
+func (d *AutoForgetDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 }
 

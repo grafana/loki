@@ -114,7 +114,7 @@ func NewActiveUsersCleanupService(cleanupInterval, inactiveTimeout time.Duration
 		inactiveTimeout: inactiveTimeout,
 	}
 
-	s.Service = services.NewTimerService(cleanupInterval, nil, s.iteration, nil)
+	s.Service = services.NewTimerService(cleanupInterval, nil, s.iteration, nil).WithName("active users cleanup")
 	return s
 }
 

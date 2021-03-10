@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
@@ -41,6 +42,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const notificationLogMaintenancePeriod = 15 * time.Minute
@@ -137,7 +140,13 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = cfg.Peer
 	} else if cfg.ShardingEnabled {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
-		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.ReplicateStateFunc, cfg.GetPositionFunc, am.stop, am.logger, am.registry)
+		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.ReplicateStateFunc, cfg.GetPositionFunc, am.logger, am.registry)
+
+		if err := state.Service.StartAsync(context.Background()); err != nil {
+			return nil, errors.Wrap(err, "failed to start ring-based replication service")
+		}
+
+		am.state = state
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}
@@ -319,12 +328,23 @@ func (am *Alertmanager) Stop() {
 		am.dispatcher.Stop()
 	}
 
+	if service, ok := am.state.(services.Service); ok {
+		service.StopAsync()
+	}
+
 	am.alerts.Close()
 	close(am.stop)
 }
 
 func (am *Alertmanager) StopAndWait() {
 	am.Stop()
+
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(am.logger).Log("msg", "error while stopping ring-based replication service", "err", err)
+		}
+	}
+
 	am.wg.Wait()
 }
 

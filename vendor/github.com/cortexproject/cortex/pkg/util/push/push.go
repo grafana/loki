@@ -8,13 +8,13 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
-type Func func(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
+type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 
 // Handler is a http.Handler which accepts WriteRequests.
 func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
@@ -28,7 +28,7 @@ func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push F
 				logger = log.WithSourceIPs(source, logger)
 			}
 		}
-		var req client.PreallocWriteRequest
+		var req cortexpb.PreallocWriteRequest
 		err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
@@ -38,7 +38,7 @@ func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push F
 
 		req.SkipLabelNameValidation = false
 		if req.Source == 0 {
-			req.Source = client.API
+			req.Source = cortexpb.API
 		}
 
 		if _, err := push(ctx, &req.WriteRequest); err != nil {
