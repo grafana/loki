@@ -13,7 +13,7 @@ const (
 	ErrEmptyLabelAllowStageConfig = "labelallow stage config cannot be empty"
 )
 
-// labelallowConfig is a slice of labels to be added
+// labelallowConfig is a slice of labels to be included
 type LabelAllowConfig []string
 
 func validateLabelAllowConfig(c LabelAllowConfig) error {
