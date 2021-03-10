@@ -208,7 +208,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 		if i.configs.LogStreamCreation(i.instanceID) {
 			level.Info(util_log.Logger).Log(
 				"msg", "failed to create stream, exceeded limit",
-				"tenant", i.instanceID,
+				"org_id", i.instanceID,
 				"err", err,
 				"stream", pushReqStream.Labels,
 			)
@@ -225,6 +225,14 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 
 	labels, err := logql.ParseLabels(pushReqStream.Labels)
 	if err != nil {
+		if i.configs.LogStreamCreation(i.instanceID) {
+			level.Info(util_log.Logger).Log(
+				"msg", "failed to create stream, failed to parse labels",
+				"org_id", i.instanceID,
+				"err", err,
+				"stream", pushReqStream.Labels,
+			)
+		}
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	fp := i.getHashForLabels(labels)
@@ -252,7 +260,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Info(util_log.Logger).Log(
 			"msg", "successfully created stream",
-			"tenant", i.instanceID,
+			"org_id", i.instanceID,
 			"stream", pushReqStream.Labels,
 		)
 	}
