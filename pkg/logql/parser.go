@@ -57,7 +57,7 @@ func (p *parser) Parse() (Expr, error) {
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
-		return nil, newParseError(fmt.Sprintf("input size too long > %d", maxInputSize), 0, 0)
+		return nil, newParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
 
 	defer func() {
