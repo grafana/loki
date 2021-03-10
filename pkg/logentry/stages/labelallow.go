@@ -54,7 +54,7 @@ type labelAllowStage struct {
 func (l *labelAllowStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for label := range labels {
 		if _, ok := l.labels[string(label)]; !ok {
-			delete(labels, model.LabelName(label))
+			delete(labels, label)
 		}
 	}
 }
