@@ -76,6 +76,15 @@ The same rules that apply for [Prometheus Label Selectors](https://prometheus.io
 
 **Important note:** The `=~` regex operator is fully anchored, meaning regex must match against the *entire* string, including newlines. The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
 
+#### Offset modifier
+The offset modifier allows changing the time offset for individual range vectors in a query.
+
+For example, the following expression counts all the logs within the last ten minutes to five minutes rather than last five minutes for the MySQL job. Note that the `offset` modifier always needs to follow the range vector selector immediately.
+```logql
+count_over_time({job="mysql"}[5m] offset 5m) // GOOD
+count_over_time({job="mysql"}[5m]) offset 5m // INVALID
+```
+
 ### Log Pipeline
 
 A log pipeline can be appended to a log stream selector to further process and filter log streams. It usually is composed of one or multiple expressions, each expressions is executed in sequence for each log line. If an expression filters out a log line, the pipeline will stop at this point and start processing the next line.
