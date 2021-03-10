@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -48,8 +49,8 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := user.ExtractOrgID(r.Context())
 	req, err := ParseRequest(logger, userID, r)
 	if err != nil {
-		if userID != "" && d.tenantConfigs.LogPushRequest(userID) {
-			level.Info(logger).Log(
+		if d.tenantConfigs.LogPushRequest(userID) {
+			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusBadRequest,
 				"err", err,
@@ -59,21 +60,21 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if userID != "" && d.tenantConfigs.LogPushRequestStreams(userID) {
-		streams := make([]string, 0, len(req.Streams))
+	if d.tenantConfigs.LogPushRequestStreams(userID) {
+		var sb strings.Builder
 		for _, s := range req.Streams {
-			streams = append(streams, s.Labels)
+			sb.WriteString(s.Labels)
 		}
-		level.Info(logger).Log(
+		level.Debug(logger).Log(
 			"msg", "push request streams",
-			"streams", streams,
+			"streams", sb.String(),
 		)
 	}
 
 	_, err = d.Push(r.Context(), req)
 	if err == nil {
-		if userID != "" && d.tenantConfigs.LogPushRequest(userID) {
-			level.Info(logger).Log(
+		if d.tenantConfigs.LogPushRequest(userID) {
+			level.Debug(logger).Log(
 				"msg", "push request successful",
 			)
 		}
@@ -84,8 +85,8 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)
-		if userID != "" && d.tenantConfigs.LogPushRequest(userID) {
-			level.Info(logger).Log(
+		if d.tenantConfigs.LogPushRequest(userID) {
+			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", resp.Code,
 				"err", body,
@@ -93,8 +94,8 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, body, int(resp.Code))
 	} else {
-		if userID != "" && d.tenantConfigs.LogPushRequest(userID) {
-			level.Info(logger).Log(
+		if d.tenantConfigs.LogPushRequest(userID) {
+			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusInternalServerError,
 				"err", err.Error(),
