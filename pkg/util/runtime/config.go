@@ -15,10 +15,18 @@ type TenantConfigs struct {
 	tenantConfig  TenantConfig
 }
 
+// DefaultTenantConfigs creates and returns a new TenantConfigs with the defaults populated.
+func DefaultTenantConfigs() *TenantConfigs {
+	return &TenantConfigs{
+		defaultConfig: &Config{},
+		tenantConfig:  nil,
+	}
+}
+
 // NewTenantConfig makes a new TenantConfigs
 func NewTenantConfigs(tenantConfig TenantConfig) (*TenantConfigs, error) {
 	return &TenantConfigs{
-		defaultConfig: &Config{},
+		defaultConfig: DefaultTenantConfigs().defaultConfig,
 		tenantConfig:  tenantConfig,
 	}, nil
 }
