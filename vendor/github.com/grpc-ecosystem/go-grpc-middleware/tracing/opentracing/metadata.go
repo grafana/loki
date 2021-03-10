@@ -5,7 +5,6 @@ package grpc_opentracing
 
 import (
 	"encoding/base64"
-	"fmt"
 	"strings"
 
 	"google.golang.org/grpc/metadata"
@@ -31,12 +30,8 @@ func (m metadataTextMap) Set(key, val string) {
 func (m metadataTextMap) ForeachKey(callback func(key, val string) error) error {
 	for k, vv := range m {
 		for _, v := range vv {
-			if decodedKey, decodedVal, err := metadata.DecodeKeyValue(k, v); err == nil {
-				if err = callback(decodedKey, decodedVal); err != nil {
-					return err
-				}
-			} else {
-				return fmt.Errorf("failed decoding opentracing from gRPC metadata: %v", err)
+			if err := callback(k, v); err != nil {
+				return err
 			}
 		}
 	}

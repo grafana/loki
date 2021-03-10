@@ -23,17 +23,18 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/alertmanager/config"
-	"github.com/prometheus/alertmanager/types"
+	"github.com/prometheus/alertmanager/pkg/labels"
 )
 
 // DefaultRouteOpts are the defaulting routing options which apply
 // to the root route of a routing tree.
 var DefaultRouteOpts = RouteOpts{
-	GroupWait:      30 * time.Second,
-	GroupInterval:  5 * time.Minute,
-	RepeatInterval: 4 * time.Hour,
-	GroupBy:        map[model.LabelName]struct{}{},
-	GroupByAll:     false,
+	GroupWait:         30 * time.Second,
+	GroupInterval:     5 * time.Minute,
+	RepeatInterval:    4 * time.Hour,
+	GroupBy:           map[model.LabelName]struct{}{},
+	GroupByAll:        false,
+	MuteTimeIntervals: []string{},
 }
 
 // A Route is a node that contains definitions of how to handle alerts.
@@ -43,9 +44,9 @@ type Route struct {
 	// The configuration parameters for matches of this route.
 	RouteOpts RouteOpts
 
-	// Equality or regex matchers an alert has to fulfill to match
+	// Matchers an alert has to fulfill to match
 	// this route.
-	Matchers types.Matchers
+	Matchers labels.Matchers
 
 	// If true, an alert matches further routes on the same level.
 	Continue bool
@@ -65,6 +66,7 @@ func NewRoute(cr *config.Route, parent *Route) *Route {
 	if cr.Receiver != "" {
 		opts.Receiver = cr.Receiver
 	}
+
 	if cr.GroupBy != nil {
 		opts.GroupBy = map[model.LabelName]struct{}{}
 		for _, ln := range cr.GroupBy {
@@ -88,15 +90,34 @@ func NewRoute(cr *config.Route, parent *Route) *Route {
 	}
 
 	// Build matchers.
-	var matchers types.Matchers
+	var matchers labels.Matchers
 
+	// cr.Match will be deprecated. This for loop appends matchers.
 	for ln, lv := range cr.Match {
-		matchers = append(matchers, types.NewMatcher(model.LabelName(ln), lv))
+		matcher, err := labels.NewMatcher(labels.MatchEqual, ln, lv)
+		if err != nil {
+			// This error must not happen because the config already validates the yaml.
+			panic(err)
+		}
+		matchers = append(matchers, matcher)
 	}
+
+	// cr.MatchRE will be deprecated. This for loop appends regex matchers.
 	for ln, lv := range cr.MatchRE {
-		matchers = append(matchers, types.NewRegexMatcher(model.LabelName(ln), lv.Regexp))
+		matcher, err := labels.NewMatcher(labels.MatchRegexp, ln, lv.String())
+		if err != nil {
+			// This error must not happen because the config already validates the yaml.
+			panic(err)
+		}
+		matchers = append(matchers, matcher)
 	}
+
+	// We append the new-style matchers. This can be simplified once the deprecated matcher syntax is removed.
+	matchers = append(matchers, cr.Matchers...)
+
 	sort.Sort(matchers)
+
+	opts.MuteTimeIntervals = cr.MuteTimeIntervals
 
 	route := &Route{
 		parent:    parent,
@@ -122,7 +143,7 @@ func NewRoutes(croutes []*config.Route, parent *Route) []*Route {
 // Match does a depth-first left-to-right search through the route tree
 // and returns the matching routing nodes.
 func (r *Route) Match(lset model.LabelSet) []*Route {
-	if !r.Matchers.Match(lset) {
+	if !r.Matchers.Matches(lset) {
 		return nil
 	}
 
@@ -186,6 +207,9 @@ type RouteOpts struct {
 	GroupWait      time.Duration
 	GroupInterval  time.Duration
 	RepeatInterval time.Duration
+
+	// A list of time intervals for which the route is muted.
+	MuteTimeIntervals []string
 }
 
 func (ro *RouteOpts) String() string {

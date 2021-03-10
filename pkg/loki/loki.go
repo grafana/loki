@@ -9,6 +9,7 @@ import (
 
 	frontend "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/querier/worker"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/felixge/fgprof"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
@@ -23,13 +24,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
@@ -113,14 +112,14 @@ func (c *Config) Clone() flagext.Registerer {
 
 // Validate the config and returns an error if the validation
 // doesn't pass
-func (c *Config) Validate(log log.Logger) error {
+func (c *Config) Validate() error {
 	if err := c.SchemaConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid schema config")
 	}
 	if err := c.StorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}
-	if err := c.QueryRange.Validate(log); err != nil {
+	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid queryrange config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
@@ -155,7 +154,7 @@ type Loki struct {
 	tableManager    *chunk.TableManager
 	frontend        *frontend.Frontend
 	ruler           *cortex_ruler.Ruler
-	RulerStorage    rules.RuleStore
+	RulerStorage    rulestore.RuleStore
 	rulerAPI        *cortex_ruler.API
 	stopper         queryrange.Stopper
 	runtimeConfig   *runtimeconfig.Manager

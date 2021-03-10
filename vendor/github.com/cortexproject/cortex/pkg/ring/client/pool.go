@@ -69,7 +69,9 @@ func NewPool(clientName string, cfg PoolConfig, discovery PoolServiceDiscovery, 
 		clientsMetric: clientsMetric,
 	}
 
-	p.Service = services.NewTimerService(cfg.CheckInterval, nil, p.iteration, nil)
+	p.Service = services.
+		NewTimerService(cfg.CheckInterval, nil, p.iteration, nil).
+		WithName(fmt.Sprintf("%s client pool", p.clientName))
 	return p
 }
 

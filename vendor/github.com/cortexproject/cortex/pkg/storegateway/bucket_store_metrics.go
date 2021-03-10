@@ -167,6 +167,10 @@ func (m *BucketStoreMetrics) AddUserRegistry(user string, reg *prometheus.Regist
 	m.regs.AddUserRegistry(user, reg)
 }
 
+func (m *BucketStoreMetrics) RemoveUserRegistry(user string) {
+	m.regs.RemoveUserRegistry(user, false)
+}
+
 func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.blockLoads
 	out <- m.blockLoadFailures

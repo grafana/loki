@@ -50,10 +50,6 @@ func WithDefaultLimits(l Limits, conf queryrange.Config) Limits {
 		overrides: true,
 	}
 
-	if conf.SplitQueriesByDay {
-		res.splitDuration = 24 * time.Hour
-	}
-
 	if conf.SplitQueriesByInterval != 0 {
 		res.splitDuration = conf.SplitQueriesByInterval
 	}

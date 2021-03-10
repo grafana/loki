@@ -45,7 +45,7 @@ func NewKVInitService(cfg *KVConfig, logger log.Logger) *KVInitService {
 		watcher: services.NewFailureWatcher(),
 		logger:  logger,
 	}
-	kvinit.Service = services.NewBasicService(nil, kvinit.running, kvinit.stopping)
+	kvinit.Service = services.NewBasicService(nil, kvinit.running, kvinit.stopping).WithName("memberlist KV service")
 	return kvinit
 }
 

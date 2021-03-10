@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+// TODO: Rename to ingesterpb
+package cortex;
+
+option go_package = "client";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+service Ingester {
+  rpc Push(cortexpb.WriteRequest) returns (cortexpb.WriteResponse) {};
+  rpc Query(QueryRequest) returns (QueryResponse) {};
+  rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
+
+  rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
+  rpc LabelNames(LabelNamesRequest) returns (LabelNamesResponse) {};
+  rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
+  rpc AllUserStats(UserStatsRequest) returns (UsersStatsResponse) {};
+  rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
+  rpc MetricsMetadata(MetricsMetadataRequest) returns (MetricsMetadataResponse) {};
+
+  // TransferChunks allows leaving ingester (client) to stream chunks directly to joining ingesters (server).
+  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
+}
+
+message ReadRequest {
+  repeated QueryRequest queries = 1;
+}
+
+message ReadResponse {
+  repeated QueryResponse results = 1;
+}
+
+message QueryRequest {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+  repeated LabelMatcher matchers = 3;
+}
+
+message QueryResponse {
+  repeated cortexpb.TimeSeries timeseries = 1 [(gogoproto.nullable) = false];
+}
+
+// QueryStreamResponse contains a batch of timeseries chunks or timeseries. Only one of these series will be populated.
+message QueryStreamResponse {
+  repeated TimeSeriesChunk chunkseries = 1 [(gogoproto.nullable) = false];
+  repeated cortexpb.TimeSeries timeseries = 2 [(gogoproto.nullable) = false];
+}
+
+message LabelValuesRequest {
+  string label_name = 1;
+  int64 start_timestamp_ms = 2;
+  int64 end_timestamp_ms = 3;
+  LabelMatchers matchers = 4;
+}
+
+message LabelValuesResponse {
+  repeated string label_values = 1;
+}
+
+message LabelNamesRequest {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+}
+
+message LabelNamesResponse {
+  repeated string label_names = 1;
+}
+
+message UserStatsRequest {}
+
+message UserStatsResponse {
+  double ingestion_rate = 1;
+  uint64 num_series = 2;
+  double api_ingestion_rate = 3;
+  double rule_ingestion_rate = 4;
+}
+
+message UserIDStatsResponse {
+  string user_id = 1;
+  UserStatsResponse data = 2;
+}
+
+message UsersStatsResponse {
+  repeated UserIDStatsResponse stats = 1;
+}
+
+message MetricsForLabelMatchersRequest {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+  repeated LabelMatchers matchers_set = 3;
+}
+
+message MetricsForLabelMatchersResponse {
+  repeated cortexpb.Metric metric = 1;
+}
+
+message MetricsMetadataRequest {
+}
+
+message MetricsMetadataResponse {
+  repeated cortexpb.MetricMetadata metadata = 1;
+}
+
+message TimeSeriesChunk {
+  string from_ingester_id = 1;
+  string user_id = 2;
+  repeated cortexpb.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
+  repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
+}
+
+message Chunk {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+  int32 encoding = 3;
+  bytes data = 4;
+}
+
+message TransferChunksResponse {
+}
+
+message LabelMatchers {
+  repeated LabelMatcher matchers = 1;
+}
+
+enum MatchType {
+  EQUAL = 0;
+  NOT_EQUAL = 1;
+  REGEX_MATCH = 2;
+  REGEX_NO_MATCH = 3;
+}
+
+message LabelMatcher {
+  MatchType type = 1;
+  string name = 2;
+  string value = 3;
+}
+
+message TimeSeriesFile {
+  string from_ingester_id = 1;
+  string user_id = 2;
+  string filename = 3;
+  bytes data = 4;
+}

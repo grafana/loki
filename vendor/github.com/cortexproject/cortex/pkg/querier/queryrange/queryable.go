@@ -131,7 +131,7 @@ func (q *ShardedQuerier) setResponseHeaders(headers []*PrometheusResponseHeader)
 }
 
 // LabelValues returns all potential values for a label name.
-func (q *ShardedQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q *ShardedQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 

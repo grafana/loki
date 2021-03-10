@@ -90,7 +90,7 @@ func CanParallelize(node parser.Node) bool {
 		return true
 
 	default:
-		level.Error(util_log.Logger).Log("err", fmt.Sprintf("CanParallel: unhandled node type %T", node))
+		level.Error(util_log.Logger).Log("err", fmt.Sprintf("CanParallel: unhandled node type %T", node)) //lint:ignore faillint allow global logger for now
 		return false
 	}
 

@@ -178,6 +178,8 @@ message LabelValuesRequest {
   // The content of this field and whether it's supported depends on the
   // implementation of a specific store.
   google.protobuf.Any hints = 6;
+
+  repeated LabelMatcher matchers = 7 [(gogoproto.nullable) = false];
 }
 
 message LabelValuesResponse {

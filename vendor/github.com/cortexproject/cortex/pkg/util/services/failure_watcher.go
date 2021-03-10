@@ -24,12 +24,12 @@ func (w *FailureWatcher) Chan() <-chan error {
 
 func (w *FailureWatcher) WatchService(service Service) {
 	service.AddListener(NewListener(nil, nil, nil, nil, func(from State, failure error) {
-		w.ch <- errors.Wrapf(failure, "service %v failed", service)
+		w.ch <- errors.Wrapf(failure, "service %s failed", DescribeService(service))
 	}))
 }
 
 func (w *FailureWatcher) WatchManager(manager *Manager) {
 	manager.AddListener(NewManagerListener(nil, nil, func(service Service) {
-		w.ch <- errors.Wrapf(service.FailureCase(), "service %v failed", service)
+		w.ch <- errors.Wrapf(service.FailureCase(), "service %s failed", DescribeService(service))
 	}))
 }

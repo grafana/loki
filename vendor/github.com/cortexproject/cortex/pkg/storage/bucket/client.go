@@ -55,6 +55,15 @@ type Config struct {
 	// Not used internally, meant to allow callers to wrap Buckets
 	// created using this config
 	Middlewares []func(objstore.Bucket) (objstore.Bucket, error) `yaml:"-"`
+
+	// Used to inject additional backends into the config. Allows for this config to
+	// be embedded in multiple contexts and support non-object storage based backends.
+	ExtraBackends []string `yaml:"-"`
+}
+
+// Returns the supportedBackends for the package and any custom backends injected into the config.
+func (cfg *Config) supportedBackends() []string {
+	return append(supportedBackends, cfg.ExtraBackends...)
 }
 
 // RegisterFlags registers the backend storage config.
@@ -69,11 +78,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Filesystem.RegisterFlagsWithPrefix(prefix, f)
 
-	f.StringVar(&cfg.Backend, prefix+"backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
+	f.StringVar(&cfg.Backend, prefix+"backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
 }
 
 func (cfg *Config) Validate() error {
-	if !util.StringsContain(supportedBackends, cfg.Backend) {
+	if !util.StringsContain(cfg.supportedBackends(), cfg.Backend) {
 		return ErrUnsupportedStorageBackend
 	}
 

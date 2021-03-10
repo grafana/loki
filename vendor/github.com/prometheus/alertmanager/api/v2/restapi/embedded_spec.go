@@ -612,6 +612,10 @@ func init() {
         "isRegex"
       ],
       "properties": {
+        "isEqual": {
+          "type": "boolean",
+          "default": true
+        },
         "isRegex": {
           "type": "boolean"
         },
@@ -1421,6 +1425,10 @@ func init() {
         "isRegex"
       ],
       "properties": {
+        "isEqual": {
+          "type": "boolean",
+          "default": true
+        },
         "isRegex": {
           "type": "boolean"
         },

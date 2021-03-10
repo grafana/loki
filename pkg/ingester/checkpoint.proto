@@ -6,7 +6,7 @@ option go_package = "ingester";
 
 import "google/protobuf/timestamp.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
 
 // Chunk is a {de,}serializable intermediate type for chunkDesc which allows
 // efficient loading/unloading to disk during WAL checkpoint recovery.
@@ -28,7 +28,7 @@ message Series {
   string userID = 1;
   // post mapped fingerprint is necessary because subsequent wal writes will reference it.
   uint64 fingerprint = 2;
-  repeated cortex.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
+  repeated cortexpb.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
   // Last timestamp of the last chunk.
   google.protobuf.Timestamp to = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];

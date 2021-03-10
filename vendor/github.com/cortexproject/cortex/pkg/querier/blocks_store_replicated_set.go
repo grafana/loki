@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
@@ -17,15 +18,23 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+type loadBalancingStrategy int
+
+const (
+	noLoadBalancing = loadBalancingStrategy(iota)
+	randomLoadBalancing
+)
+
 // BlocksStoreSet implementation used when the blocks are sharded and replicated across
 // a set of store-gateway instances.
 type blocksStoreReplicationSet struct {
 	services.Service
 
-	storesRing       *ring.Ring
-	clientsPool      *client.Pool
-	shardingStrategy string
-	limits           BlocksStoreLimits
+	storesRing        *ring.Ring
+	clientsPool       *client.Pool
+	shardingStrategy  string
+	balancingStrategy loadBalancingStrategy
+	limits            BlocksStoreLimits
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -35,16 +44,18 @@ type blocksStoreReplicationSet struct {
 func newBlocksStoreReplicationSet(
 	storesRing *ring.Ring,
 	shardingStrategy string,
+	balancingStrategy loadBalancingStrategy,
 	limits BlocksStoreLimits,
 	clientConfig ClientConfig,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
-		storesRing:       storesRing,
-		clientsPool:      newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
-		shardingStrategy: shardingStrategy,
-		limits:           limits,
+		storesRing:        storesRing,
+		clientsPool:       newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
+		shardingStrategy:  shardingStrategy,
+		balancingStrategy: balancingStrategy,
+		limits:            limits,
 	}
 
 	var err error
@@ -106,8 +117,8 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", blockID.String())
 		}
 
-		// Pick the first non excluded store-gateway instance.
-		addr := getFirstNonExcludedInstanceAddr(set, exclude[blockID])
+		// Pick a non excluded store-gateway instance.
+		addr := getNonExcludedInstanceAddr(set, exclude[blockID], s.balancingStrategy)
 		if addr == "" {
 			return nil, fmt.Errorf("no store-gateway instance left after checking exclude for block %s", blockID.String())
 		}
@@ -130,7 +141,14 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 	return clients, nil
 }
 
-func getFirstNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string) string {
+func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balancingStrategy loadBalancingStrategy) string {
+	if balancingStrategy == randomLoadBalancing {
+		// Randomize the list of instances to not always query the same one.
+		rand.Shuffle(len(set.Ingesters), func(i, j int) {
+			set.Ingesters[i], set.Ingesters[j] = set.Ingesters[j], set.Ingesters[i]
+		})
+	}
+
 	for _, instance := range set.Ingesters {
 		if !util.StringsContain(exclude, instance.Addr) {
 			return instance.Addr

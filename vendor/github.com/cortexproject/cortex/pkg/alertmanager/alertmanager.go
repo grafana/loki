@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
+	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
 	"github.com/prometheus/alertmanager/inhibit"
@@ -32,6 +34,7 @@ import (
 	"github.com/prometheus/alertmanager/provider/mem"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/template"
+	"github.com/prometheus/alertmanager/timeinterval"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
@@ -52,6 +55,13 @@ type Config struct {
 	PeerTimeout time.Duration
 	Retention   time.Duration
 	ExternalURL *url.URL
+
+	ShardingEnabled    bool
+	ReplicationFactor  int
+	ReplicateStateFunc func(context.Context, string, *clusterpb.Part) error
+	// The alertmanager replication protocol relies on a position related to other replicas.
+	// This position is then used to identify who should notify about the alert first.
+	GetPositionFunc func(userID string) int
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -59,6 +69,7 @@ type Alertmanager struct {
 	cfg             *Config
 	api             *api.API
 	logger          log.Logger
+	state           State
 	nflog           *nflog.Log
 	silences        *silence.Silences
 	marker          types.Marker
@@ -95,6 +106,13 @@ func init() {
 	}()
 }
 
+// State helps with replication and synchronization of notifications and silences across several alertmanager replicas.
+type State interface {
+	AddState(string, cluster.State, prometheus.Registerer) cluster.ClusterChannel
+	Position() int
+	WaitReady()
+}
+
 // New creates a new Alertmanager.
 func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am := &Alertmanager{
@@ -109,6 +127,22 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.registry = reg
 
+	// We currently have 3 operational modes:
+	// 1) Alertmanager clustering with upstream Gossip
+	// 2) Alertmanager sharding and ring-based replication
+	// 3) Alertmanager no replication
+	// These are covered in order.
+	if cfg.Peer != nil {
+		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with gossip-based replication")
+		am.state = cfg.Peer
+	} else if cfg.ShardingEnabled {
+		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
+		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.ReplicateStateFunc, cfg.GetPositionFunc, am.stop, am.logger, am.registry)
+	} else {
+		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
+		am.state = &NilPeer{}
+	}
+
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
 	var err error
@@ -122,10 +156,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
-	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
-		am.nflog.SetBroadcast(c.Broadcast)
-	}
+
+	c := am.state.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
+	am.nflog.SetBroadcast(c.Broadcast)
 
 	am.marker = types.NewMarker(am.registry)
 
@@ -139,10 +172,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create silences: %v", err)
 	}
-	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, am.registry)
-		am.silences.SetBroadcast(c.Broadcast)
-	}
+
+	c = am.state.AddState("sil:"+cfg.UserID, am.silences, am.registry)
+	am.silences.SetBroadcast(c.Broadcast)
 
 	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
 
@@ -161,9 +193,10 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		Alerts:     am.alerts,
 		Silences:   am.silences,
 		StatusFunc: am.marker.Status,
-		Peer:       cfg.Peer,
-		Registry:   am.registry,
-		Logger:     log.With(am.logger, "component", "api"),
+		// Cortex should not expose cluster information back to its tenants.
+		Peer:     &NilPeer{},
+		Registry: am.registry,
+		Logger:   log.With(am.logger, "component", "api"),
 		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
 			return am.dispatcher.Groups(f1, f2)
 		},
@@ -189,14 +222,16 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	}
 
 	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
+
+	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.
 	return am, nil
 }
 
 // clusterWait returns a function that inspects the current peer state and returns
 // a duration of one base timeout for each peer with a higher ID than ourselves.
-func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
+func clusterWait(position func() int, timeout time.Duration) func() time.Duration {
 	return func() time.Duration {
-		return time.Duration(p.Position()) * timeout
+		return time.Duration(position()) * timeout
 	}
 }
 
@@ -229,7 +264,8 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 
 	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, log.With(am.logger, "component", "inhibitor"))
 
-	waitFunc := clusterWait(am.cfg.Peer, am.cfg.PeerTimeout)
+	waitFunc := clusterWait(am.state.Position, am.cfg.PeerTimeout)
+
 	timeoutFunc := func(d time.Duration) time.Duration {
 		if d < notify.MinTimeout {
 			d = notify.MinTimeout
@@ -242,13 +278,19 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		return nil
 	}
 
+	muteTimes := make(map[string][]timeinterval.TimeInterval, len(conf.MuteTimeIntervals))
+	for _, ti := range conf.MuteTimeIntervals {
+		muteTimes[ti.Name] = ti.TimeIntervals
+	}
+
 	pipeline := am.pipelineBuilder.New(
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
 		silence.NewSilencer(am.silences, am.marker, am.logger),
+		muteTimes,
 		am.nflog,
-		am.cfg.Peer,
+		am.state,
 	)
 	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,
@@ -284,6 +326,10 @@ func (am *Alertmanager) Stop() {
 func (am *Alertmanager) StopAndWait() {
 	am.Stop()
 	am.wg.Wait()
+}
+
+func (am *Alertmanager) mergePartialExternalState(part *clusterpb.Part) error {
+	return am.state.(*state).MergePartialState(part)
 }
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
@@ -355,3 +401,20 @@ func md5HashAsMetricValue(data []byte) float64 {
 	copy(bytes, smallSum)
 	return float64(binary.LittleEndian.Uint64(bytes))
 }
+
+// NilPeer and NilChannel implements the Alertmanager clustering interface used by the API to expose cluster information.
+// In a multi-tenant environment, we choose not to expose these to tenants and thus are not implemented.
+type NilPeer struct{}
+
+func (p *NilPeer) Name() string                   { return "" }
+func (p *NilPeer) Status() string                 { return "ready" }
+func (p *NilPeer) Peers() []cluster.ClusterMember { return nil }
+func (p *NilPeer) Position() int                  { return 0 }
+func (p *NilPeer) WaitReady()                     {}
+func (p *NilPeer) AddState(string, cluster.State, prometheus.Registerer) cluster.ClusterChannel {
+	return &NilChannel{}
+}
+
+type NilChannel struct{}
+
+func (c *NilChannel) Broadcast([]byte) {}

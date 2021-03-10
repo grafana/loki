@@ -31,6 +31,14 @@
     "docs_url": "https://pkg.go.dev/cloud.google.com/go/area120/tables/apiv1alpha1",
     "release_level": "alpha"
   },
+  "cloud.google.com/go/artifactregistry/apiv1beta2": {
+    "distribution_name": "cloud.google.com/go/artifactregistry/apiv1beta2",
+    "description": "Artifact Registry API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://pkg.go.dev/cloud.google.com/go/artifactregistry/apiv1beta2",
+    "release_level": "beta"
+  },
   "cloud.google.com/go/asset/apiv1": {
     "distribution_name": "cloud.google.com/go/asset/apiv1",
     "description": "Cloud Asset API",
@@ -505,7 +513,7 @@
   },
   "cloud.google.com/go/osconfig/agentendpoint/apiv1": {
     "distribution_name": "cloud.google.com/go/osconfig/agentendpoint/apiv1",
-    "description": "Cloud OS Config API",
+    "description": "OS Config API",
     "language": "Go",
     "client_library_type": "generated",
     "docs_url": "https://pkg.go.dev/cloud.google.com/go/osconfig/agentendpoint/apiv1",
@@ -521,7 +529,7 @@
   },
   "cloud.google.com/go/osconfig/apiv1": {
     "distribution_name": "cloud.google.com/go/osconfig/apiv1",
-    "description": "Cloud OS Config API",
+    "description": "OS Config API",
     "language": "Go",
     "client_library_type": "generated",
     "docs_url": "https://pkg.go.dev/cloud.google.com/go/osconfig/apiv1",
@@ -597,7 +605,7 @@
     "language": "Go",
     "client_library_type": "generated",
     "docs_url": "https://pkg.go.dev/cloud.google.com/go/pubsublite/apiv1",
-    "release_level": "ga"
+    "release_level": "beta"
   },
   "cloud.google.com/go/recaptchaenterprise/apiv1": {
     "distribution_name": "cloud.google.com/go/recaptchaenterprise/apiv1",
@@ -725,6 +733,14 @@
     "language": "Go",
     "client_library_type": "generated",
     "docs_url": "https://pkg.go.dev/cloud.google.com/go/securitycenter/settings/apiv1beta1",
+    "release_level": "beta"
+  },
+  "cloud.google.com/go/servicedirectory/apiv1": {
+    "distribution_name": "cloud.google.com/go/servicedirectory/apiv1",
+    "description": "Service Directory API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://pkg.go.dev/cloud.google.com/go/servicedirectory/apiv1",
     "release_level": "beta"
   },
   "cloud.google.com/go/servicedirectory/apiv1beta1": {

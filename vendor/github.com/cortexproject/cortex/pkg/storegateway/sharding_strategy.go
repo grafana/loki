@@ -189,12 +189,12 @@ func NewShardingBucketReaderAdapter(userID string, strategy ShardingStrategy, wr
 }
 
 // Iter implements objstore.BucketReader.
-func (a *shardingBucketReaderAdapter) Iter(ctx context.Context, dir string, f func(string) error) error {
+func (a *shardingBucketReaderAdapter) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	// Skip iterating the bucket if the tenant doesn't belong to the shard. From the caller
 	// perspective, this will look like the tenant has no blocks in the storage.
 	if len(a.strategy.FilterUsers(ctx, []string{a.userID})) == 0 {
 		return nil
 	}
 
-	return a.InstrumentedBucketReader.Iter(ctx, dir, f)
+	return a.InstrumentedBucketReader.Iter(ctx, dir, f, options...)
 }

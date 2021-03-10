@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package distributor;
+
+option go_package = "distributorpb";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+service Distributor {
+  rpc Push(cortexpb.WriteRequest) returns (cortexpb.WriteResponse) {};
+}

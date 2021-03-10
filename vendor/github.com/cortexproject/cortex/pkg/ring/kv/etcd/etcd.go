@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"go.etcd.io/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/pkg/transport"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -227,6 +227,11 @@ outer:
 			backoff.Reset()
 
 			for _, event := range resp.Events {
+				if event.Kv.Version == 0 && event.Kv.Value == nil {
+					// Delete notification. Since not all KV store clients (and Cortex codecs) support this, we ignore it.
+					continue
+				}
+
 				out, err := c.codec.Decode(event.Kv.Value)
 				if err != nil {
 					level.Error(util_log.Logger).Log("msg", "error decoding key", "key", key, "err", err)

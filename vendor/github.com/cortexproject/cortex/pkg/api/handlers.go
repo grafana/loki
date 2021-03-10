@@ -190,6 +190,7 @@ func NewQuerierHandler(
 	api := v1.NewAPI(
 		engine,
 		errorTranslateQueryable{queryable}, // Translate errors to errors expected by API.
+		nil,                                // No remote write support.
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
@@ -237,7 +238,7 @@ func NewQuerierHandler(
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(prefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
+	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(prefix + "/api/v1/read").Methods("POST").Handler(promRouter)
 	router.Path(prefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
 	router.Path(prefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
@@ -249,7 +250,7 @@ func NewQuerierHandler(
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(legacyPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
+	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(legacyPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
 	router.Path(legacyPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(legacyPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)

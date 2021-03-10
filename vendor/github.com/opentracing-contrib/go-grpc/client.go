@@ -1,15 +1,16 @@
 package otgrpc
 
 import (
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	"github.com/opentracing/opentracing-go/log"
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 	"io"
 	"runtime"
 	"sync/atomic"
+
+	opentracing "github.com/opentracing/opentracing-go"
+	"context"
+	"github.com/opentracing/opentracing-go/ext"
+	"github.com/opentracing/opentracing-go/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 // OpenTracingClientInterceptor returns a grpc.UnaryClientInterceptor suitable
@@ -67,7 +68,7 @@ func OpenTracingClientInterceptor(tracer opentracing.Tracer, optFuncs ...Option)
 			clientSpan.LogFields(log.String("event", "error"), log.String("message", err.Error()))
 		}
 		if otgrpcOpts.decorator != nil {
-			otgrpcOpts.decorator(clientSpan, method, req, resp, err)
+			otgrpcOpts.decorator(ctx, clientSpan, method, req, resp, err)
 		}
 		return err
 	}
@@ -128,6 +129,10 @@ func OpenTracingStreamClientInterceptor(tracer opentracing.Tracer, optFuncs ...O
 }
 
 func newOpenTracingClientStream(cs grpc.ClientStream, method string, desc *grpc.StreamDesc, clientSpan opentracing.Span, otgrpcOpts *options) grpc.ClientStream {
+	// Grab the client stream context because when the finish function or the goroutine below will be
+	// executed it's not guaranteed cs.Context() will be valid.
+	csCtx := cs.Context()
+
 	finishChan := make(chan struct{})
 
 	isFinished := new(int32)
@@ -147,7 +152,7 @@ func newOpenTracingClientStream(cs grpc.ClientStream, method string, desc *grpc.
 			SetSpanTags(clientSpan, err, true)
 		}
 		if otgrpcOpts.decorator != nil {
-			otgrpcOpts.decorator(clientSpan, method, nil, nil, err)
+			otgrpcOpts.decorator(csCtx, clientSpan, method, nil, nil, err)
 		}
 	}
 	go func() {
@@ -155,8 +160,8 @@ func newOpenTracingClientStream(cs grpc.ClientStream, method string, desc *grpc.
 		case <-finishChan:
 			// The client span is being finished by another code path; hence, no
 			// action is necessary.
-		case <-cs.Context().Done():
-			finishFunc(cs.Context().Err())
+		case <-csCtx.Done():
+			finishFunc(csCtx.Err())
 		}
 	}()
 	otcs := &openTracingClientStream{

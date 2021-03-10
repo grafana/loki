@@ -216,6 +216,20 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 	return m
 }
 
+func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
+	m.memMetadataCreatedTotal.DeleteLabelValues(userID)
+	m.memMetadataRemovedTotal.DeleteLabelValues(userID)
+	m.activeSeriesPerUser.DeleteLabelValues(userID)
+
+	if m.memSeriesCreatedTotal != nil {
+		m.memSeriesCreatedTotal.DeleteLabelValues(userID)
+	}
+
+	if m.memSeriesRemovedTotal != nil {
+		m.memSeriesRemovedTotal.DeleteLabelValues(userID)
+	}
+}
+
 // TSDB metrics collector. Each tenant has its own registry, that TSDB code uses.
 type tsdbMetrics struct {
 	// Metrics aggregated from Thanos shipper.
@@ -244,6 +258,14 @@ type tsdbMetrics struct {
 	tsdbChunksCreatedTotal       *prometheus.Desc
 	tsdbChunksRemovedTotal       *prometheus.Desc
 	tsdbMmapChunkCorruptionTotal *prometheus.Desc
+
+	// Follow metrics are from https://github.com/prometheus/prometheus/blob/fbe960f2c1ad9d6f5fe2f267d2559bf7ecfab6df/tsdb/db.go#L179
+	tsdbLoadedBlocks       *prometheus.Desc
+	tsdbSymbolTableSize    *prometheus.Desc
+	tsdbReloads            *prometheus.Desc
+	tsdbReloadsFailed      *prometheus.Desc
+	tsdbTimeRetentionCount *prometheus.Desc
+	tsdbBlocksBytes        *prometheus.Desc
 
 	checkpointDeleteFail    *prometheus.Desc
 	checkpointDeleteTotal   *prometheus.Desc
@@ -353,6 +375,30 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_mmap_chunk_corruptions_total",
 			"Total number of memory-mapped TSDB chunk corruptions.",
 			nil, nil),
+		tsdbLoadedBlocks: prometheus.NewDesc(
+			"cortex_ingester_tsdb_blocks_loaded",
+			"Number of currently loaded data blocks",
+			nil, nil),
+		tsdbReloads: prometheus.NewDesc(
+			"cortex_ingester_tsdb_reloads_total",
+			"Number of times the database reloaded block data from disk.",
+			nil, nil),
+		tsdbReloadsFailed: prometheus.NewDesc(
+			"cortex_ingester_tsdb_reloads_failures_total",
+			"Number of times the database failed to reloadBlocks block data from disk.",
+			nil, nil),
+		tsdbSymbolTableSize: prometheus.NewDesc(
+			"cortex_ingester_tsdb_symbol_table_size_bytes",
+			"Size of symbol table in memory for loaded blocks",
+			[]string{"user"}, nil),
+		tsdbBlocksBytes: prometheus.NewDesc(
+			"cortex_ingester_tsdb_storage_blocks_bytes",
+			"The number of bytes that are currently used for local storage by all blocks.",
+			[]string{"user"}, nil),
+		tsdbTimeRetentionCount: prometheus.NewDesc(
+			"cortex_ingester_tsdb_time_retentions_total",
+			"The number of times that blocks were deleted because the maximum time limit was exceeded.",
+			nil, nil),
 		checkpointDeleteFail: prometheus.NewDesc(
 			"cortex_ingester_tsdb_checkpoint_deletions_failed_total",
 			"Total number of TSDB checkpoint deletions that failed.",
@@ -405,6 +451,12 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbChunksCreatedTotal
 	out <- sm.tsdbChunksRemovedTotal
 	out <- sm.tsdbMmapChunkCorruptionTotal
+	out <- sm.tsdbLoadedBlocks
+	out <- sm.tsdbSymbolTableSize
+	out <- sm.tsdbReloads
+	out <- sm.tsdbReloadsFailed
+	out <- sm.tsdbTimeRetentionCount
+	out <- sm.tsdbBlocksBytes
 	out <- sm.checkpointDeleteFail
 	out <- sm.checkpointDeleteTotal
 	out <- sm.checkpointCreationFail
@@ -442,6 +494,12 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUser(out, sm.tsdbChunksCreatedTotal, "prometheus_tsdb_head_chunks_created_total")
 	data.SendSumOfCountersPerUser(out, sm.tsdbChunksRemovedTotal, "prometheus_tsdb_head_chunks_removed_total")
 	data.SendSumOfCounters(out, sm.tsdbMmapChunkCorruptionTotal, "prometheus_tsdb_mmap_chunk_corruptions_total")
+	data.SendSumOfGauges(out, sm.tsdbLoadedBlocks, "prometheus_tsdb_blocks_loaded")
+	data.SendSumOfGaugesPerUser(out, sm.tsdbSymbolTableSize, "prometheus_tsdb_symbol_table_size_bytes")
+	data.SendSumOfCounters(out, sm.tsdbReloads, "prometheus_tsdb_reloads_total")
+	data.SendSumOfCounters(out, sm.tsdbReloadsFailed, "prometheus_tsdb_reloads_failures_total")
+	data.SendSumOfCounters(out, sm.tsdbTimeRetentionCount, "prometheus_tsdb_time_retentions_total")
+	data.SendSumOfGaugesPerUser(out, sm.tsdbBlocksBytes, "prometheus_tsdb_storage_blocks_bytes")
 	data.SendSumOfCounters(out, sm.checkpointDeleteFail, "prometheus_tsdb_checkpoint_deletions_failed_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")
 	data.SendSumOfCounters(out, sm.checkpointCreationFail, "prometheus_tsdb_checkpoint_creations_failed_total")

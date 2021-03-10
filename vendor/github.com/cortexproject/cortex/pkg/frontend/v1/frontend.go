@@ -19,7 +19,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -45,15 +47,20 @@ type Limits interface {
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
 // for requests which failed.
 type Frontend struct {
+	services.Service
+
 	cfg    Config
 	log    log.Logger
 	limits Limits
 
 	requestQueue *queue.RequestQueue
+	activeUsers  *util.ActiveUsersCleanupService
 
 	// Metrics.
-	numClients    prometheus.GaugeFunc
-	queueDuration prometheus.Histogram
+	queueLength       *prometheus.GaugeVec
+	discardedRequests *prometheus.CounterVec
+	numClients        prometheus.GaugeFunc
+	queueDuration     prometheus.Histogram
 }
 
 type request struct {
@@ -66,18 +73,21 @@ type request struct {
 	response chan *httpgrpc.HTTPResponse
 }
 
-// New creates a new frontend.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
-	queueLength := promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_query_frontend_queue_length",
-		Help: "Number of queries in the queue.",
-	}, []string{"user"})
+// New creates a new frontend. Frontend implements service, and must be started and stopped.
+func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) *Frontend {
 
 	f := &Frontend{
-		cfg:          cfg,
-		log:          log,
-		limits:       limits,
-		requestQueue: queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, queueLength),
+		cfg:    cfg,
+		log:    log,
+		limits: limits,
+		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_query_frontend_queue_length",
+			Help: "Number of queries in the queue.",
+		}, []string{"user"}),
+		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_frontend_discarded_requests_total",
+			Help: "Total number of query requests discarded.",
+		}, []string{"user"}),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",
@@ -85,17 +95,31 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, f.queueLength, f.discardedRequests)
+	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
+
 	f.numClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_frontend_connected_clients",
 		Help: "Number of worker clients currently connected to the frontend.",
 	}, f.requestQueue.GetConnectedQuerierWorkersMetric)
 
-	return f, nil
+	f.Service = services.NewIdleService(f.starting, f.stopping)
+	return f
 }
 
-// Close stops new requests and errors out any pending requests.
-func (f *Frontend) Close() {
+func (f *Frontend) starting(ctx context.Context) error {
+	return services.StartAndAwaitRunning(ctx, f.activeUsers)
+}
+
+func (f *Frontend) stopping(_ error) error {
+	// Stops new requests and errors out any pending requests.
 	f.requestQueue.Stop()
+	return services.StopAndAwaitTerminated(context.Background(), f.activeUsers)
+}
+
+func (f *Frontend) cleanupInactiveUserMetrics(user string) {
+	f.queueLength.DeleteLabelValues(user)
+	f.discardedRequests.DeleteLabelValues(user)
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
@@ -263,13 +287,17 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 		return err
 	}
 
-	req.enqueueTime = time.Now()
+	now := time.Now()
+	req.enqueueTime = now
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
 	// aggregate the max queriers limit in the case of a multi tenant query
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
 
-	err = f.requestQueue.EnqueueRequest(tenant.JoinTenantIDs(tenantIDs), req, maxQueriers, nil)
+	joinedTenantID := tenant.JoinTenantIDs(tenantIDs)
+	f.activeUsers.UpdateUserTimestamp(joinedTenantID, now)
+
+	err = f.requestQueue.EnqueueRequest(joinedTenantID, req, maxQueriers, nil)
 	if err == queue.ErrTooManyRequests {
 		return errTooManyRequest
 	}

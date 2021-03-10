@@ -6,11 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 )
 
@@ -237,4 +240,15 @@ func formatLabelSet(ls []client.LabelAdapter) string {
 	}
 
 	return fmt.Sprintf("%s{%s}", metricName, strings.Join(labelStrings, ", "))
+}
+
+func DeletePerUserValidationMetrics(userID string, log log.Logger) {
+	filter := map[string]string{"user": userID}
+
+	if err := util.DeleteMatchingLabels(DiscardedSamples, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(DiscardedMetadata, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)
+	}
 }

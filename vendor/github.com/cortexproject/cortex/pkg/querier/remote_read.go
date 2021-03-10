@@ -3,23 +3,24 @@ package querier
 import (
 	"net/http"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Queries are a set of matchers with time ranges - should not get into megabytes
 const maxRemoteReadQuerySize = 1024 * 1024
 
 // RemoteReadHandler handles Prometheus remote read requests.
-func RemoteReadHandler(q storage.Queryable) http.Handler {
+func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		var req client.ReadRequest
-		logger := log.WithContext(r.Context(), log.Logger)
+		logger := util_log.WithContext(r.Context(), logger)
 		if err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRemoteReadQuerySize, &req, util.RawSnappy); err != nil {
 			level.Error(logger).Log("msg", "failed to parse proto", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)

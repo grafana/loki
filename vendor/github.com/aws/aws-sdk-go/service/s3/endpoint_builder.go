@@ -22,6 +22,11 @@ const (
 	outpostAccessPointPrefixTemplate = accessPointPrefixTemplate + "{" + outpostPrefixLabel + "}."
 )
 
+// hasCustomEndpoint returns true if endpoint is a custom endpoint
+func hasCustomEndpoint(r *request.Request) bool {
+	return len(aws.StringValue(r.Config.Endpoint)) > 0
+}
+
 // accessPointEndpointBuilder represents the endpoint builder for access point arn
 type accessPointEndpointBuilder arn.AccessPointARN
 
@@ -55,16 +60,19 @@ func (a accessPointEndpointBuilder) build(req *request.Request) error {
 			req.ClientInfo.PartitionID, cfgRegion, err)
 	}
 
-	if err = updateRequestEndpoint(req, endpoint.URL); err != nil {
-		return err
-	}
+	endpoint.URL = endpoints.AddScheme(endpoint.URL, aws.BoolValue(req.Config.DisableSSL))
 
-	const serviceEndpointLabel = "s3-accesspoint"
+	if !hasCustomEndpoint(req) {
+		if err = updateRequestEndpoint(req, endpoint.URL); err != nil {
+			return err
+		}
+		const serviceEndpointLabel = "s3-accesspoint"
 
-	// dual stack provided by endpoint resolver
-	cfgHost := req.HTTPRequest.URL.Host
-	if strings.HasPrefix(cfgHost, "s3") {
-		req.HTTPRequest.URL.Host = serviceEndpointLabel + cfgHost[2:]
+		// dual stack provided by endpoint resolver
+		cfgHost := req.HTTPRequest.URL.Host
+		if strings.HasPrefix(cfgHost, "s3") {
+			req.HTTPRequest.URL.Host = serviceEndpointLabel + cfgHost[2:]
+		}
 	}
 
 	protocol.HostPrefixBuilder{
@@ -116,14 +124,17 @@ func (o outpostAccessPointEndpointBuilder) build(req *request.Request) error {
 			req.ClientInfo.PartitionID, resolveRegion, err)
 	}
 
-	if err = updateRequestEndpoint(req, endpoint.URL); err != nil {
-		return err
-	}
+	endpoint.URL = endpoints.AddScheme(endpoint.URL, aws.BoolValue(req.Config.DisableSSL))
 
-	// add url host as s3-outposts
-	cfgHost := req.HTTPRequest.URL.Host
-	if strings.HasPrefix(cfgHost, endpointsID) {
-		req.HTTPRequest.URL.Host = resolveService + cfgHost[len(endpointsID):]
+	if !hasCustomEndpoint(req) {
+		if err = updateRequestEndpoint(req, endpoint.URL); err != nil {
+			return err
+		}
+		// add url host as s3-outposts
+		cfgHost := req.HTTPRequest.URL.Host
+		if strings.HasPrefix(cfgHost, endpointsID) {
+			req.HTTPRequest.URL.Host = resolveService + cfgHost[len(endpointsID):]
+		}
 	}
 
 	protocol.HostPrefixBuilder{
@@ -159,7 +170,6 @@ func resolveRegionalEndpoint(r *request.Request, region string, endpointsID stri
 }
 
 func updateRequestEndpoint(r *request.Request, endpoint string) (err error) {
-	endpoint = endpoints.AddScheme(endpoint, aws.BoolValue(r.Config.DisableSSL))
 
 	r.HTTPRequest.URL, err = url.Parse(endpoint + r.Operation.HTTPPath)
 	if err != nil {

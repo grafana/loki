@@ -1,3 +1,7 @@
+## Master
+
+* [3446](https://github.com/grafana/loki/pull/3446) **pracucci, owen-d**: Remove deprecated config `querier.split-queries-by-day` in favor of `querier.split-queries-by-interval`
+
 ## 2.1.0 (2020/12/23)
 
 Happy Holidays from the Loki team! Please enjoy a new Loki release to welcome in the New Year!

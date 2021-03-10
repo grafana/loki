@@ -182,7 +182,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	if err := conf.Validate(util_log.Logger); err != nil {
+	if err := conf.Validate(); err != nil {
 		return err
 	}
 

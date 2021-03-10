@@ -421,3 +421,5 @@ func (r mockRing) ShuffleShard(identifier string, size int) ring.ReadRing {
 func (r mockRing) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
 	return r
 }
+
+func (r mockRing) CleanupShuffleShardCache(identifier string) {}

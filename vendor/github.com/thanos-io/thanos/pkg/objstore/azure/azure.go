@@ -107,33 +107,49 @@ func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket
 
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) error {
-
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	prefix := dir
 	if prefix != "" && !strings.HasSuffix(prefix, DirDelim) {
 		prefix += DirDelim
 	}
 
 	marker := blob.Marker{}
+	params := objstore.ApplyIterOptions(options...)
+	listOptions := blob.ListBlobsSegmentOptions{Prefix: prefix}
 
 	for i := 1; ; i++ {
-		list, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, DirDelim, blob.ListBlobsSegmentOptions{
-			Prefix: prefix,
-		})
+		var (
+			blobPrefixes []blob.BlobPrefix
+			blobItems    []blob.BlobItem
+		)
 
-		if err != nil {
-			return errors.Wrapf(err, "cannot list blobs in directory %s (iteration #%d)", dir, i)
+		if params.Recursive {
+			list, err := b.containerURL.ListBlobsFlatSegment(ctx, marker, listOptions)
+			if err != nil {
+				return errors.Wrapf(err, "cannot list flat blobs with prefix %s (iteration #%d)", dir, i)
+			}
+
+			marker = list.NextMarker
+			blobItems = list.Segment.BlobItems
+			blobPrefixes = nil
+		} else {
+			list, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, DirDelim, listOptions)
+			if err != nil {
+				return errors.Wrapf(err, "cannot list hierarchy blobs with prefix %s (iteration #%d)", dir, i)
+			}
+
+			marker = list.NextMarker
+			blobItems = list.Segment.BlobItems
+			blobPrefixes = list.Segment.BlobPrefixes
 		}
-
-		marker = list.NextMarker
 
 		var listNames []string
 
-		for _, blob := range list.Segment.BlobItems {
+		for _, blob := range blobItems {
 			listNames = append(listNames, blob.Name)
 		}
 
-		for _, blobPrefix := range list.Segment.BlobPrefixes {
+		for _, blobPrefix := range blobPrefixes {
 			listNames = append(listNames, blobPrefix.Name)
 		}
 

@@ -235,7 +235,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
+	if ok, _ := d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize); !ok {
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))

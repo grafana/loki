@@ -234,7 +234,7 @@ type largeTotalIndexSizeFilter struct {
 var _ Planner = &largeTotalIndexSizeFilter{}
 
 // WithLargeTotalIndexSizeFilter wraps Planner with largeTotalIndexSizeFilter that checks the given plans and estimates total index size.
-// When found, it marks block for no compaction by placing no-compact.json and updating cache.
+// When found, it marks block for no compaction by placing no-compact-mark.json and updating cache.
 // NOTE: The estimation is very rough as it assumes extreme cases of indexes sharing no bytes, thus summing all source index sizes.
 // Adjust limit accordingly reducing to some % of actual limit you want to give.
 // TODO(bwplotka): This is short term fix for https://github.com/thanos-io/thanos/issues/1424, replace with vertical block sharding https://github.com/thanos-io/thanos/pull/3390.
@@ -278,7 +278,8 @@ PlanLoop:
 				biggestIndex = i
 			}
 			totalIndexBytes += indexSize
-			if totalIndexBytes >= t.totalMaxIndexSizeBytes {
+			// Leave 15% headroom for index compaction bloat.
+			if totalIndexBytes >= int64(float64(t.totalMaxIndexSizeBytes)*0.85) {
 				// Marking blocks for no compact to limit size.
 				// TODO(bwplotka): Make sure to reset cache once this is done: https://github.com/thanos-io/thanos/issues/3408
 				if err := block.MarkForNoCompact(
