@@ -62,7 +62,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg := testConfig
 	cfg.SplitQueriesByInterval = time.Hour
 	cfg.CacheResults = false
-	// split in 6 with 4 in // max.
+	// split in 7 with 2 in // max.
 	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -96,7 +96,7 @@ func Test_seriesLimiter(t *testing.T) {
 
 	_, err = tpw(rt).RoundTrip(req)
 	require.NoError(t, err)
-	require.Equal(t, 6, *count)
+	require.Equal(t, 7, *count)
 
 	// 2 series should not be allowed.
 	c := new(int)
