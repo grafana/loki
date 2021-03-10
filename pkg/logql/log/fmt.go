@@ -55,8 +55,6 @@ var (
 		"trimAll",
 		"trimSuffix",
 		"trimPrefix",
-		"toString",
-		"int64",
 		"int",
 		"float64",
 		"add",

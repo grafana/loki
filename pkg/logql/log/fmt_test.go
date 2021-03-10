@@ -198,17 +198,10 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.Labels{{Name: "foo", Value: "20"}},
 		},
 		{
-			"float64inttoString",
-			newMustLineFormatter("{{ \"2.5\" | float64 | int | add 10 | toString }}"),
+			"float64int",
+			newMustLineFormatter("{{ \"2.5\" | float64 | int | add 10}}"),
 			labels.Labels{{Name: "foo", Value: "2.5"}},
 			[]byte("12"),
-			labels.Labels{{Name: "foo", Value: "2.5"}},
-		},
-		{
-			"float64toString",
-			newMustLineFormatter("{{ .foo | float64 | addf 10 | toString }}"),
-			labels.Labels{{Name: "foo", Value: "2.5"}},
-			[]byte("12.5"),
 			labels.Labels{{Name: "foo", Value: "2.5"}},
 		},
 	}
