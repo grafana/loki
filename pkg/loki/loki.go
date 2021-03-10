@@ -12,6 +12,7 @@ import (
 	"github.com/felixge/fgprof"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+	"github.com/grafana/loki/pkg/util/runtime"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
@@ -145,6 +146,7 @@ type Loki struct {
 	Server          *server.Server
 	ring            *ring.Ring
 	overrides       *validation.Overrides
+	tenantConfigs   *runtime.TenantConfigs
 	distributor     *distributor.Distributor
 	ingester        *ingester.Ingester
 	querier         *querier.Querier
@@ -344,6 +346,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(TenantConfigs, t.initTenantConfigs)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -360,12 +363,13 @@ func (t *Loki) setupModuleManager() error {
 	deps := map[string][]string{
 		Ring:            {RuntimeConfig, Server, MemberlistKV},
 		Overrides:       {RuntimeConfig},
-		Distributor:     {Ring, Server, Overrides},
+		TenantConfigs:   {RuntimeConfig},
+		Distributor:     {Ring, Server, Overrides, TenantConfigs},
 		Store:           {Overrides},
-		Ingester:        {Store, Server, MemberlistKV},
-		Querier:         {Store, Ring, Server, IngesterQuerier},
-		QueryFrontend:   {Server, Overrides},
-		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides},
+		Ingester:        {Store, Server, MemberlistKV, TenantConfigs},
+		Querier:         {Store, Ring, Server, IngesterQuerier, TenantConfigs},
+		QueryFrontend:   {Server, Overrides, TenantConfigs},
+		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:    {Server},
 		Compactor:       {Server},
 		IngesterQuerier: {Ring},

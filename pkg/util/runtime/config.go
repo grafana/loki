@@ -1,0 +1,33 @@
+package runtime
+
+type Config struct {
+}
+
+// TenantConfig is a function that returns configs for given tenant, or
+// nil, if there are no tenant-specific configs.
+type TenantConfig func(userID string) *Config
+
+// TenantConfigs periodically fetch a set of per-user configs, and provides convenience
+// functions for fetching the correct value.
+type TenantConfigs struct {
+	defaultConfig *Config
+	tenantConfig  TenantConfig
+}
+
+// NewTenantConfig makes a new TenantConfigs
+func NewTenantConfigs(tenantConfig TenantConfig) (*TenantConfigs, error) {
+	return &TenantConfigs{
+		defaultConfig: &Config{},
+		tenantConfig:  tenantConfig,
+	}, nil
+}
+
+func (o *TenantConfigs) getOverridesForUser(userID string) *Config {
+	if o.tenantConfig != nil {
+		l := o.tenantConfig(userID)
+		if l != nil {
+			return l
+		}
+	}
+	return o.defaultConfig
+}

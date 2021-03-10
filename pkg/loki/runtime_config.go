@@ -7,6 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -15,6 +16,7 @@ import (
 // These values are then pushed to the components that are interested in them.
 type runtimeConfigValues struct {
 	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
+	TenantConfig map[string]*runtime.Config    `yaml:"configs"`
 
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
@@ -42,6 +44,19 @@ func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLi
 		}
 
 		return cfg.TenantLimits[userID]
+	}
+}
+
+func tenantConfigFromRuntimeConfig(c *runtimeconfig.Manager) runtime.TenantConfig {
+	if c == nil {
+		return nil
+	}
+	return func(userID string) *runtime.Config {
+		cfg, ok := c.GetConfig().(*runtimeConfigValues)
+		if !ok || cfg == nil {
+			return nil
+		}
+		return cfg.TenantConfig[userID]
 	}
 }
 

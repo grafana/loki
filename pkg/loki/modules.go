@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ruler/manager"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+	"github.com/grafana/loki/pkg/util/runtime"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -60,6 +61,7 @@ const (
 	Ring            string = "ring"
 	RuntimeConfig   string = "runtime-config"
 	Overrides       string = "overrides"
+	TenantConfigs   string = "tenant-configs"
 	Server          string = "server"
 	Distributor     string = "distributor"
 	Ingester        string = "ingester"
@@ -137,6 +139,12 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 func (t *Loki) initOverrides() (_ services.Service, err error) {
 	t.overrides, err = validation.NewOverrides(t.cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
 	// overrides are not a service, since they don't have any operational state.
+	return nil, err
+}
+
+func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
+	t.tenantConfigs, err = runtime.NewTenantConfigs(tenantConfigFromRuntimeConfig(t.runtimeConfig))
+	// tenantConfigs are not a service, since they don't have any operational state.
 	return nil, err
 }
 
