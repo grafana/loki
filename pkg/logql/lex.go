@@ -5,6 +5,7 @@ import (
 	"text/scanner"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
@@ -133,7 +134,12 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	case scanner.String, scanner.RawString:
 		var err error
-		lval.str, err = strutil.Unquote(l.TokenText())
+		tokenText := l.TokenText()
+		if !utf8.ValidString(tokenText) {
+			l.Error("invalid UTF-8 rune")
+			return 0
+		}
+		lval.str, err = strutil.Unquote(tokenText)
 		if err != nil {
 			l.Error(err.Error())
 			return 0
