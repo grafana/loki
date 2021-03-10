@@ -205,7 +205,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, nil)
 	require.NoError(t, err)
 
 	mkSample := func(i int) *logproto.PushRequest {
@@ -239,7 +239,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, false, iter.Next())
 
 	// create a new ingester now
-	i, err = New(ingesterConfig, client.Config{}, store, limits, nil)
+	i, err = New(ingesterConfig, client.Config{}, store, limits, nil, nil)
 	require.NoError(t, err)
 
 	// recover the checkpointed series

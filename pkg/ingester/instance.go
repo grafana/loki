@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -79,6 +80,7 @@ type instance struct {
 	tailerMtx sync.RWMutex
 
 	limiter *Limiter
+	configs *runtime.TenantConfigs
 
 	wal WAL
 
@@ -89,14 +91,7 @@ type instance struct {
 	metrics *ingesterMetrics
 }
 
-func newInstance(
-	cfg *Config,
-	instanceID string,
-	limiter *Limiter,
-	wal WAL,
-	metrics *ingesterMetrics,
-	flushOnShutdownSwitch *OnceSwitch,
-) *instance {
+func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch) *instance {
 	i := &instance{
 		cfg:         cfg,
 		streams:     map[string]*stream{},
@@ -110,6 +105,7 @@ func newInstance(
 
 		tailers: map[uint32]*tailer{},
 		limiter: limiter,
+		configs: configs,
 
 		wal:                   wal,
 		metrics:               metrics,
@@ -209,6 +205,15 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	}
 
 	if err != nil {
+		if i.configs.LogStreamCreation(i.instanceID) {
+			level.Info(util_log.Logger).Log(
+				"msg", "failed to create stream, exceeded limit",
+				"tenant", i.instanceID,
+				"err", err,
+				"stream", pushReqStream.Labels,
+			)
+		}
+
 		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
 		bytes := 0
 		for _, e := range pushReqStream.Entries {
@@ -243,6 +248,14 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)
+
+	if i.configs.LogStreamCreation(i.instanceID) {
+		level.Info(util_log.Logger).Log(
+			"msg", "successfully created stream",
+			"tenant", i.instanceID,
+			"stream", pushReqStream.Labels,
+		)
+	}
 
 	return stream, nil
 }

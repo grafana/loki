@@ -1,6 +1,7 @@
 package runtime
 
 type Config struct {
+	LogStreamCreation bool `yaml:"log_stream_creation"`
 }
 
 // TenantConfig is a function that returns configs for given tenant, or
@@ -30,4 +31,8 @@ func (o *TenantConfigs) getOverridesForUser(userID string) *Config {
 		}
 	}
 	return o.defaultConfig
+}
+
+func (o *TenantConfigs) LogStreamCreation(userID string) bool {
+	return o.getOverridesForUser(userID).LogStreamCreation
 }
