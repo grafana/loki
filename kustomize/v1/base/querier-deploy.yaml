@@ -1,0 +1,61 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: querier
+  name: loki-querier
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: querier
+      loki.grafana.com/gossip: "true"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: querier
+        loki.grafana.com/gossip: "true"
+    spec:
+      containers:
+      - name: loki-querier
+        image: loki
+        args:
+          - -target=querier
+          - -config.file=/etc/loki/config/loki-config.yaml
+          - -log.level=debug
+        ports:
+        - containerPort: 3100
+          name: metrics
+        - containerPort: 9095
+          name: grpc
+        - containerPort: 7946
+          name: gossip-ring
+        livenessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /metrics
+            port: 3100
+            scheme: HTTP
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3100
+            scheme: HTTP
+          initialDelaySeconds: 15
+          timeoutSeconds: 1
+        volumeMounts:
+        - mountPath: /etc/loki/config/
+          name: loki-config
+          readOnly: false
+        - mountPath: /tmp/loki
+          name: storage
+          readOnly: false
+      volumes:
+      - configMap:
+          name: loki-config
+        name: loki-config
+      - emptyDir: {}
+        name: storage
+

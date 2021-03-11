@@ -1,0 +1,97 @@
+auth_enabled: true
+chunk_store_config:
+  max_look_back_period: 0s
+#  chunk_cache_config:
+#    filesystem:
+#      directory: /tmp/loki/chunk-cache
+distributor:
+  ring:
+    kvstore:
+      store: memberlist
+frontend:
+  compress_responses: true
+  max_outstanding_per_tenant: 200
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+  parallelism: 32
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 2h
+  chunk_retain_period: 1m
+  chunk_target_size: 1572864
+  lifecycler:
+    heartbeat_period: 5s
+    interface_names:
+      - eth0
+    join_after: 60s
+    num_tokens: 512
+    ring:
+      heartbeat_timeout: 1m
+      kvstore:
+        store: memberlist
+  max_transfer_retries: 0
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+limits_config:
+  enforce_metric_name: false
+  ingestion_burst_size_mb: 20
+  ingestion_rate_mb: 10
+  ingestion_rate_strategy: global
+  max_cache_freshness_per_query: 10m
+  max_global_streams_per_user: 25000
+  max_query_length: 12000h
+  max_query_parallelism: 32
+  max_streams_per_user: 0
+  reject_old_samples: true
+  reject_old_samples_max_age: 24h
+memberlist:
+  abort_if_cluster_join_fails: false
+  bind_port: 7946
+  join_members:
+    - dns+loki-gossip-ring:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+querier:
+  engine:
+    max_look_back_period: 5m
+    timeout: 3m
+  extra_query_delay: 0s
+  query_ingesters_within: 2h
+  query_timeout: 1h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache: {}
+  split_queries_by_interval: 30m
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: filesystem
+      schema: v11
+      store: boltdb
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 120s
+  http_server_write_timeout: 1m
+storage_config:
+  boltdb:
+    directory: /tmp/loki/index
+  filesystem:
+    directory: /tmp/loki/chunks
+tracing:
+  enabled: false

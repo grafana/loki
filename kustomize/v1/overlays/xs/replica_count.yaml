@@ -1,0 +1,7 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki-ingester
+spec:
+  replicas: 3

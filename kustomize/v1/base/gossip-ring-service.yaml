@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-gossip-ring
+spec:
+  clusterIP: None
+  ports:
+  - name: gossip
+    port: 7946
+    protocol: TCP
+    targetPort: 7946
+  selector:
+    app.kubernetes.io/provider: openshift
+    app.kubernetes.io/name: loki
+    loki.grafana.com/gossip: "true"
