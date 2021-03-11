@@ -19,12 +19,29 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 -_add changes here which are unreleased_
 
-### Promtail config changes
+## 2.2.0
 
-In [this PR](https://github.com/grafana/loki/pull/3404), we reverted a bug that caused `scrape_configs` entries without a
-`pipeline_stages` definition to default to the `docker` pipeline stage.
+### Loki
 
-If any of your `scrape_configs` are missing this definition, you should add the following to maintain this behaviour:
+**Be sure to upgrade to 2.0 or 2.1 BEFORE upgrading to 2.2**
+
+In Loki 2.2 we changed the internal version of our chunk format from v2 to v3, this is a transparent change and is only relevant if you every try to _downgrade_ a Loki installation. We incorporated the code to read v3 chunks in 2.0.1 and 2.1, as well as 2.2 and any future releases.
+
+**If you upgrade to 2.2+ any chunks created can only be read by 2.0.1, 2.1 and 2.2+**
+
+This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrading to 2.2 so that if you need to rollback for any reason you can do so easily.
+
+**Note:** 2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and ugrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
+
+### Promtail 
+
+For 2.0 we eliminated the long deprecated `entry_parser` configuration in Promtail configs, however in doing so we introduced a very confusing and erroneous default behavior:
+
+If you did not specify a `pipeline_stages` entry you would be provided with a default which included the `docker` pipeline stage.  This can lead to some very confusing results.
+
+In [3404](https://github.com/grafana/loki/pull/3404), we corrected this behavior
+
+**If you are using docker, and any of your `scrape_configs` are missing a `pipeline_stages` definition**, you should add the following to obtain the correct behaviour:
 
 ```yaml
 pipeline_stages:
