@@ -45,12 +45,20 @@ type Writer struct {
 	// Writer will attempt to send to the server in a single request. Objects
 	// smaller than the size will be sent in a single request, while larger
 	// objects will be split over multiple requests. The size will be rounded up
-	// to the nearest multiple of 256K. If zero, chunking will be disabled and
-	// the object will be uploaded in a single request.
+	// to the nearest multiple of 256K.
 	//
-	// ChunkSize will default to a reasonable value. If you perform many concurrent
-	// writes of small objects, you may wish set ChunkSize to a value that matches
-	// your objects' sizes to avoid consuming large amounts of memory.
+	// ChunkSize will default to a reasonable value. If you perform many
+	// concurrent writes of small objects (under ~8MB), you may wish set ChunkSize
+	// to a value that matches your objects' sizes to avoid consuming large
+	// amounts of memory. See
+	// https://cloud.google.com/storage/docs/json_api/v1/how-tos/upload#size
+	// for more information about performance trade-offs related to ChunkSize.
+	//
+	// If ChunkSize is set to zero, chunking will be disabled and the object will
+	// be uploaded in a single request without the use of a buffer. This will
+	// further reduce memory used during uploads, but will also prevent the writer
+	// from retrying in case of a transient error from the server, since a buffer
+	// is required in order to retry the failed request.
 	//
 	// ChunkSize must be set before the first Write call.
 	ChunkSize int
@@ -117,10 +125,15 @@ func (w *Writer) open() error {
 		if w.MD5 != nil {
 			rawObj.Md5Hash = base64.StdEncoding.EncodeToString(w.MD5)
 		}
+		if w.o.c.envHost != "" {
+			w.o.c.raw.BasePath = fmt.Sprintf("%s://%s", w.o.c.scheme, w.o.c.envHost)
+		}
 		call := w.o.c.raw.Objects.Insert(w.o.bucket, rawObj).
 			Media(pr, mediaOpts...).
 			Projection("full").
-			Context(w.ctx)
+			Context(w.ctx).
+			Name(w.o.object)
+
 		if w.ProgressFunc != nil {
 			call.ProgressUpdater(func(n, _ int64) { w.ProgressFunc(n) })
 		}
@@ -144,21 +157,12 @@ func (w *Writer) open() error {
 				call.UserProject(w.o.userProject)
 			}
 			setClientHeader(call.Header())
-			// If the chunk size is zero, then no chunking is done on the Reader,
-			// which means we cannot retry: the first call will read the data, and if
-			// it fails, there is no way to re-read.
-			if w.ChunkSize == 0 {
-				resp, err = call.Do()
-			} else {
-				// We will only retry here if the initial POST, which obtains a URI for
-				// the resumable upload, fails with a retryable error. The upload itself
-				// has its own retry logic.
-				err = runWithRetry(w.ctx, func() error {
-					var err2 error
-					resp, err2 = call.Do()
-					return err2
-				})
-			}
+
+			// The internals that perform call.Do automatically retry both the initial
+			// call to set up the upload as well as calls to upload individual chunks
+			// for a resumable upload (as long as the chunk size is non-zero). Hence
+			// there is no need to add retries here.
+			resp, err = call.Do()
 		}
 		if err != nil {
 			w.mu.Lock()
@@ -178,6 +182,9 @@ func (w *Writer) open() error {
 // error even though the write failed (or will fail). Always
 // use the error returned from Writer.Close to determine if
 // the upload was successful.
+//
+// Writes will be retried on transient errors from the server, unless
+// Writer.ChunkSize has been set to zero.
 func (w *Writer) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	werr := w.err
@@ -227,7 +234,7 @@ func (w *Writer) Close() error {
 }
 
 // monitorCancel is intended to be used as a background goroutine. It monitors the
-// the context, and when it observes that the context has been canceled, it manually
+// context, and when it observes that the context has been canceled, it manually
 // closes things that do not take a context.
 func (w *Writer) monitorCancel() {
 	select {

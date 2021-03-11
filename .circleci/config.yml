@@ -1,7 +1,7 @@
 version: 2
 
-.tags: &tags # tags need to be explicitely defined (whitelist)
-  tags: {only: "/.*/"}
+.tags: &tags # tags need to be explicitly defined (whitelist)
+  tags: { only: "/.*/" }
 
 .only-tags: &only-tags
   <<: *tags
@@ -11,7 +11,7 @@ version: 2
   branches: { only: master }
   <<: *tags
 
-.no-master: &no-master # contrary to tags, the branches must be excluded (blacklist)
+.no-master: &no-master # contrary to tags, the branches must be excluded
   branches: { ignore: master }
 
 workflows:
@@ -20,113 +20,28 @@ workflows:
     jobs:
       # publish jobs depend on this as well,
       # thus tags need to be allowed for these
-      - lint: {filters: {<<: *tags}}
-      - test: {filters: {<<: *tags}}
+      - test: { filters: { <<: *tags } }
 
-      - build/loki:
-          requires: [ lint, test ]
-          filters: {<<: *no-master}
-      - publish/loki:
-          requires: [ lint, test ]
-          filters: { <<: *tag-or-master }
-
-      - build/canary:
-          requires: [ lint, test ]
-          filters: {<<: *no-master}
-      - publish/canary:
-          requires: [ lint, test ]
-          filters: { <<: *tag-or-master }
-
-      - build/promtail:
-          requires: [ lint, test ]
-          filters: {<<: *no-master}
       - build/promtail-windows:
-          requires: [ lint, test ]
-      - publish/promtail:
-          requires: [ lint, test ]
-          filters: { <<: *tag-or-master }
+          requires: [test]
 
       - build/docker-driver:
-          requires: [ lint, test ]
-          filters: {<<: *no-master}
+          requires: [test]
+          filters: { <<: *no-master }
       - publish/docker-driver:
-          requires: [ lint, test ]
+          requires: [test]
           filters: { <<: *tag-or-master }
 
       - publish/binaries:
-          requires: [ lint, test ]
+          requires: [test]
           filters: { <<: *only-tags }
-
-      - deploy:
-          requires:
-            - publish/loki
-            - publish/promtail
-            - publish/canary
-            - publish/docker-driver
-          filters: {<<: *tag-or-master}
-    
-      - test-helm:
-          requires: [ lint, test ]
-          filters: {<<: *tags}
-      - publish-helm:
-          requires: [ test-helm ]
-          filters: {<<: *tag-or-master}
 
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.5.0
-  working_directory: /go/src/github.com/grafana/loki
-
-.machine: &machine
-  machine:
-    image: ubuntu-1604:201903-01
-  working_directory: ~/go/src/github.com/grafana/loki
-  environment:
-    APP: to-be-set
-    GOPATH: /home/circleci/go
-
-.rootless: &rootless
-  run:
-    name: rootless
-    command: |
-      sudo apt-get install -qy uidmap libseccomp-dev binfmt-support go-bindata
-      sudo docker run --privileged linuxkit/binfmt:v0.6
-
-.img: &img
-  run:
-    name: img
-    # TODO: switch to https://github.com/genuinetools/img once 5a8119fb4ce7d712ca2ed589a345213fdf576268 is released
-    command: |
-      sudo curl -fSL "https://github.com/sh0rez/img/releases/download/v0.5.8/img-linux-amd64" -o "/usr/local/bin/img"
-      sudo chmod a+x "/usr/local/bin/img"
-
-# builds a container
-.container: &container
-  <<: *machine
-  steps:
-    - checkout
-    - <<: *rootless
-    - <<: *img
-    - run:
-        name: container
-        command: |
-          make $APP-image
-
-# builds and pushes a container
-.publish: &publish
-  <<: *machine
-  steps:
-    - checkout
-    - <<: *rootless
-    - <<: *img
-    - run:
-        name: login
-        command: img login -u "$DOCKER_USER" -p "$DOCKER_PASS"
-    - run:
-        name: push image
-        command: make $APP-push
+    - image: grafana/loki-build-image:0.12.0
+  working_directory: /src/loki
 
 jobs:
   test:
@@ -136,58 +51,23 @@ jobs:
       - run:
           name: Unit Tests
           command: make BUILD_IN_CONTAINER=false test
-
-  lint:
-    <<: *defaults
-    steps:
-      - checkout
       - run:
-          name: Lint
-          command: make lint
-      - run:
-          name: Check Generated Files
-          command: make BUILD_IN_CONTAINER=false check-generated-files
-
-  # Loki
-  build/loki:
-    <<: *container
-    environment:
-      APP: loki
-
-  publish/loki:
-    <<: *publish
-    environment:
-      APP: loki
-
-  # Loki
-  build/canary:
-    <<: *container
-    environment:
-      APP: loki-canary
-
-  publish/canary:
-    <<: *publish
-    environment:
-      APP: loki-canary
+          name: Upload Codecov
+          command: |
+            bash <(curl -s https://codecov.io/bash)
 
   # Promtail
-  build/promtail:
-    <<: *container
-    environment:
-      APP: promtail
-
   build/promtail-windows:
     <<: *defaults
     steps:
       - checkout
+      - setup_remote_docker
+      - run:
+          name: touch-protos
+          command: make touch-protos
       - run:
           name: build
-          command: make GOOS=windows promtail
-
-  publish/promtail:
-    <<: *publish
-    environment:
-      APP: promtail
+          command: make GOOS=windows GOGC=10 promtail
 
   # Docker driver
   build/docker-driver:
@@ -218,55 +98,3 @@ jobs:
       - run:
           name: github release
           command: make BUILD_IN_CONTAINER=false publish
-
-  deploy:
-    <<: *defaults
-    steps:
-      - checkout
-      - run: |
-                curl -s --header "Content-Type: application/json" \
-                  --data "{\"build_parameters\": {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make print-images)\"}}" \
-                  --request POST \
-                  https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN
-
-  test-helm:
-    environment:
-      CT_VERSION: 2.3.3
-    machine:
-      image: ubuntu-1604:201903-01
-    steps:
-      - checkout
-      - run:
-          name: Install k3s
-          command: |
-            curl -sfL https://get.k3s.io | sh -
-            sudo chmod 755 /etc/rancher/k3s/k3s.yaml
-            mkdir -p ~/.kube
-            cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      - run:
-          name: Install Helm
-          command: |
-            curl -L https://git.io/get_helm.sh | bash
-            kubectl apply -f tools/helm.yaml
-            helm init --service-account helm --wait
-      - run:
-          name: Install Chart Testing tool
-          command: |
-            pip install yamale yamllint
-            curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
-            sudo tar -C /usr/local/bin -xvf ct.tgz
-            sudo mv /usr/local/bin/etc /etc/ct/
-      - run:
-          name: Run Chart Tests
-          command: |
-            ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
-            ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
-
-  publish-helm:
-    <<: *defaults
-    steps:
-      - add_ssh_keys:
-          fingerprints:
-            - "5a:d3:08:5e:f7:53:a0:c4:e9:5d:83:c6:02:6a:d9:bd"
-      - checkout
-      - run: make helm-publish

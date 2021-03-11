@@ -1,0 +1,50 @@
+{{- if .Values.syslogService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "promtail.fullname" . }}-syslog
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "promtail.name" . }}
+    chart: {{ template "promtail.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    {{- with .Values.syslogService.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- toYaml .Values.syslogService.annotations | nindent 4 }}
+spec:
+  type: {{ .Values.syslogService.type }}
+  {{- if .Values.syslogService.clusterIP }}
+  clusterIP: {{ .Values.syslogService.clusterIP }}
+  {{end}}
+  {{- if .Values.syslogService.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.syslogService.loadBalancerIP }}
+  {{- end }}
+  {{- if .Values.syslogService.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+{{ toYaml .Values.syslogService.loadBalancerSourceRanges | indent 4 }}
+  {{- end -}}
+  {{- if .Values.syslogService.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.syslogService.externalIPs | indent 4 }}
+  {{- end }}
+  {{- if .Values.syslogService.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ .Values.syslogService.externalTrafficPolicy }}
+  {{- end }}
+  ports:
+    - port: {{ .Values.syslogService.port }}
+      protocol: TCP
+      name: syslog
+      targetPort: syslog
+{{- if (and (eq .Values.syslogService.type "NodePort") (not (empty .Values.syslogService.nodePort))) }}
+      nodePort: {{ .Values.syslogService.nodePort }}
+{{- end }}
+{{- if .Values.extraPorts }}
+{{ toYaml .Values.extraPorts | indent 4}}
+{{- end }}
+  selector:
+    app: {{ template "promtail.name" . }}
+    release: {{ .Release.Name }}
+{{- end }}

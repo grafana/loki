@@ -29,10 +29,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify/fsnotify.v1"
 	yaml "gopkg.in/yaml.v2"
 
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 )
 
@@ -45,10 +47,29 @@ var (
 	}
 )
 
+func init() {
+	discovery.RegisterConfig(&SDConfig{})
+}
+
 // SDConfig is the configuration for file based discovery.
 type SDConfig struct {
 	Files           []string       `yaml:"files"`
 	RefreshInterval model.Duration `yaml:"refresh_interval,omitempty"`
+}
+
+// Name returns the name of the Config.
+func (*SDConfig) Name() string { return "file" }
+
+// NewDiscoverer returns a Discoverer for the Config.
+func (c *SDConfig) NewDiscoverer(opts discovery.DiscovererOptions) (discovery.Discoverer, error) {
+	return NewDiscovery(c, opts.Logger), nil
+}
+
+// SetDirectory joins any relative file paths with dir.
+func (c *SDConfig) SetDirectory(dir string) {
+	for i, file := range c.Files {
+		c.Files[i] = config.JoinDir(dir, file)
+	}
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -135,8 +156,9 @@ func NewTimestampCollector() *TimestampCollector {
 var (
 	fileSDScanDuration = prometheus.NewSummary(
 		prometheus.SummaryOpts{
-			Name: "prometheus_sd_file_scan_duration_seconds",
-			Help: "The duration of the File-SD scan in seconds.",
+			Name:       "prometheus_sd_file_scan_duration_seconds",
+			Help:       "The duration of the File-SD scan in seconds.",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		})
 	fileSDReadErrorsCount = prometheus.NewCounter(
 		prometheus.CounterOpts{

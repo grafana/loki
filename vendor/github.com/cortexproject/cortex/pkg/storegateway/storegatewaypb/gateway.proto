@@ -1,0 +1,23 @@
+syntax = "proto3";
+package gatewaypb;
+
+import "github.com/thanos-io/thanos/pkg/store/storepb/rpc.proto";
+
+option go_package = "storegatewaypb";
+
+service StoreGateway {
+    // Series streams each Series for given label matchers and time range.
+    //
+    // Series should strictly stream full series after series, optionally split by time. This means that a single frame can contain
+    // partition of the single series, but once a new series is started to be streamed it means that no more data will
+    // be sent for previous one.
+    //
+    // Series are sorted.
+    rpc Series(thanos.SeriesRequest) returns (stream thanos.SeriesResponse);
+
+    // LabelNames returns all label names that is available.
+    rpc LabelNames(thanos.LabelNamesRequest) returns (thanos.LabelNamesResponse);
+
+    // LabelValues returns all label values for given label name.
+    rpc LabelValues(thanos.LabelValuesRequest) returns (thanos.LabelValuesResponse);
+}

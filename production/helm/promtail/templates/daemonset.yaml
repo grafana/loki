@@ -16,10 +16,7 @@ spec:
       app: {{ template "promtail.name" . }}
       release: {{ .Release.Name }}
   updateStrategy:
-    type: {{ .Values.deploymentStrategy }}
-  {{- if ne .Values.deploymentStrategy "RollingUpdate" }}
-    rollingUpdate: null
-  {{- end }}
+    {{- toYaml .Values.deploymentStrategy | nindent 4 }}
   template:
     metadata:
       labels:
@@ -27,7 +24,7 @@ spec:
         release: {{ .Release.Name }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}          
+        {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
@@ -38,16 +35,40 @@ spec:
     {{- if .Values.priorityClassName }}
       priorityClassName: {{ .Values.priorityClassName }}
     {{- end }}
+    {{- if .Values.initContainer.enabled }}
+      initContainers:
+      - name: init
+        image: busybox
+        command:
+        - sh
+        - -c
+        - sysctl -w fs.inotify.max_user_instances={{ .Values.initContainer.fsInotifyMaxUserInstances }}
+        securityContext:
+          privileged: true
+    {{- end }}
+      {{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.image.pullSecrets }}
+        - name: {{ . }}
+      {{- end}}
+      {{- end }}
       containers:
         - name: promtail
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "-config.file=/etc/promtail/promtail.yaml"
+            {{- if not (or .Values.config.client.url .Values.config.clients) }}
             {{- if and .Values.loki.user .Values.loki.password }}
-            - "-client.url={{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
+            - "-client.url={{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push"
             {{- else }}
-            - "-client.url={{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
+            - "-client.url={{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push"
+            {{- end }}
+            {{- end }}
+            {{- if .Values.extraCommandlineArgs }}
+            {{- range .Values.extraCommandlineArgs }}
+            - {{ . | quote }}
+            {{- end }}
             {{- end }}
           volumeMounts:
             - name: config
@@ -57,14 +78,24 @@ spec:
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           env:
-          - name: HOSTNAME
-            valueFrom:
-              fieldRef:
-                fieldPath: spec.nodeName
+            {{- with .Values.env }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           ports:
             - containerPort: {{ .Values.config.server.http_listen_port }}
               name: http-metrics
+            {{- if .Values.syslogService.enabled }}
+            - containerPort: {{ .Values.syslogService.port }}
+              name: syslog
+            {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           {{- if .Values.livenessProbe }}
@@ -93,4 +124,6 @@ spec:
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

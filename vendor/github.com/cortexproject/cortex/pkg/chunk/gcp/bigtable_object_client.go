@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/math"
 )
 
 type bigtableObjectClient struct {
@@ -19,18 +19,21 @@ type bigtableObjectClient struct {
 	client    *bigtable.Client
 }
 
-// NewBigtableObjectClient makes a new chunk.ObjectClient that stores chunks in
+// NewBigtableObjectClient makes a new chunk.Client that stores chunks in
 // Bigtable.
-func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
-	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
+func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	if err != nil {
+		return nil, err
+	}
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err
 	}
 	return newBigtableObjectClient(cfg, schemaCfg, client), nil
 }
 
-func newBigtableObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) chunk.ObjectClient {
+func newBigtableObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) chunk.Client {
 	return &bigtableObjectClient{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
@@ -109,7 +112,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 		)
 
 		for i := 0; i < len(keys); i += maxRowReads {
-			page := keys[i:util.Min(i+maxRowReads, len(keys))]
+			page := keys[i:math.Min(i+maxRowReads, len(keys))]
 			go func(page bigtable.RowList) {
 				decodeContext := chunk.NewDecodeContext()
 
@@ -159,4 +162,21 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 	}
 
 	return output, nil
+}
+
+func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	if err != nil {
+		return err
+	}
+
+	tableName, err := s.schemaCfg.ChunkTableFor(chunkRef.From)
+	if err != nil {
+		return err
+	}
+
+	mut := bigtable.NewMutation()
+	mut.DeleteCellsInColumn(columnFamily, column)
+
+	return s.client.Open(tableName).Apply(ctx, chunkID, mut)
 }

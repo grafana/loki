@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "fluent-bit-loki.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "fluent-bit-loki.name" . }}
+    chart: {{ template "fluent-bit-loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  fluent-bit.conf: |-
+    [SERVICE]
+        HTTP_Server    On
+        HTTP_Listen    0.0.0.0
+        HTTP_PORT      {{ .Values.config.port }}
+        Flush          1
+        Daemon         Off
+        Log_Level      {{ .Values.config.loglevel }}
+        Parsers_File   parsers.conf
+    [INPUT]
+        Name           tail
+        Tag            kube.*
+        Path           /var/log/containers/*.log
+        Parser         docker
+        DB             /run/fluent-bit/flb_kube.db
+        Mem_Buf_Limit  {{ .Values.config.memBufLimit }}
+    [FILTER]
+        Name           kubernetes
+        Match          kube.*
+        Kube_URL       https://kubernetes.default.svc:443
+        Merge_Log On
+        K8S-Logging.Exclude {{ .Values.config.k8sLoggingExclude }}
+        K8S-Logging.Parser {{ .Values.config.k8sLoggingParser }}
+    [Output]
+        Name grafana-loki
+        Match *
+        {{- if and .Values.loki.user .Values.loki.password }}
+        Url {{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}{{ .Values.loki.servicePath }}
+          {{- else }}
+        Url {{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}{{ .Values.loki.servicePath }}
+        {{- end }}
+        TenantID {{ .Values.config.tenantID }}
+        BatchWait {{ .Values.config.batchWait }}
+        BatchSize {{ int .Values.config.batchSize }}
+        Labels {{ .Values.config.labels }}
+        RemoveKeys {{ include "helm-toolkit.utils.joinListWithComma" .Values.config.removeKeys }}
+        AutoKubernetesLabels {{ .Values.config.autoKubernetesLabels }}
+        LabelMapPath /fluent-bit/etc/labelmap.json
+        LineFormat {{ .Values.config.lineFormat }}
+        LogLevel {{ .Values.config.loglevel }}
+    {{- range $extraOutput := .Values.config.extraOutputs }}
+    [OUTPUT]
+    {{- range $key,$value := $extraOutput }}
+        {{ $key }} {{ $value }}
+    {{- end }}
+    {{- end }}
+  parsers.conf: |-
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+    {{- range $parser:= .Values.config.parsers }}
+    [PARSER]
+    {{- range $key,$value := $parser }}
+        {{ $key }} {{ $value }}
+    {{- end }}
+    {{- end }}
+
+  labelmap.json: |-
+    {{- .Values.config.labelMap | toPrettyJson | nindent 4}}
+

@@ -18,4 +18,10 @@ memcached {
   memcached_index_writes: $.memcached {
     name: 'memcached-index-writes',
   },
+
+  // Dedicated memcached instance used to cache query results.
+  memcached_frontend: $.memcached {
+    name: 'memcached-frontend',
+    max_item_size: '5m',
+  },
 }

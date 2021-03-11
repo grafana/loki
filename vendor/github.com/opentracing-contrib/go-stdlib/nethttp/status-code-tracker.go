@@ -17,6 +17,10 @@ func (w *statusCodeTracker) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
+func (w *statusCodeTracker) Write(b []byte) (int, error) {
+	return w.ResponseWriter.Write(b)
+}
+
 // wrappedResponseWriter returns a wrapped version of the original
 // ResponseWriter and only implements the same combination of additional
 // interfaces as the original.  This implementation is based on

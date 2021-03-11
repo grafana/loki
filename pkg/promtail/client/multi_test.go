@@ -1,48 +1,80 @@
 package client
 
 import (
-	"errors"
 	"net/url"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/promtail/api"
-
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/grafana/loki/pkg/promtail/client/fake"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+
+	"github.com/grafana/loki/pkg/promtail/client/fake"
 )
 
 func TestNewMulti(t *testing.T) {
-	_, err := NewMulti(util.Logger, []Config{}...)
+	_, err := NewMulti(nil, util_log.Logger, lokiflag.LabelSet{}, []Config{}...)
 	if err == nil {
 		t.Fatal("expected err but got nil")
 	}
 	host1, _ := url.Parse("http://localhost:3100")
 	host2, _ := url.Parse("https://grafana.com")
-	expectedCfg1 := Config{BatchSize: 20, URL: flagext.URLValue{URL: host1}}
-	expectedCfg2 := Config{BatchSize: 10, URL: flagext.URLValue{URL: host2}}
+	cc1 := Config{
+		BatchSize:      20,
+		BatchWait:      1 * time.Second,
+		URL:            flagext.URLValue{URL: host1},
+		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "yaml"}},
+	}
+	cc2 := Config{
+		BatchSize:      10,
+		BatchWait:      1 * time.Second,
+		URL:            flagext.URLValue{URL: host2},
+		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"hi": "there"}},
+	}
 
-	clients, err := NewMulti(util.Logger, expectedCfg1, expectedCfg2)
+	clients, err := NewMulti(prometheus.DefaultRegisterer, util_log.Logger, lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "command"}}, cc1, cc2)
 	if err != nil {
 		t.Fatalf("expected err: nil got:%v", err)
 	}
-	multi := clients.(MultiClient)
-	if len(multi) != 2 {
-		t.Fatalf("expected client: 2 got:%d", len(multi))
+	multi := clients.(*MultiClient)
+	if len(multi.clients) != 2 {
+		t.Fatalf("expected client: 2 got:%d", len(multi.clients))
 	}
-	cfg1 := clients.(MultiClient)[0].(*client).cfg
-
-	if !reflect.DeepEqual(cfg1, expectedCfg1) {
-		t.Fatalf("expected cfg: %v got:%v", expectedCfg1, cfg1)
+	actualCfg1 := clients.(*MultiClient).clients[0].(*client).cfg
+	// Yaml should overried the command line so 'order: yaml' should be expected
+	expectedCfg1 := Config{
+		BatchSize:      20,
+		BatchWait:      1 * time.Second,
+		URL:            flagext.URLValue{URL: host1},
+		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "yaml"}},
 	}
 
-	cfg2 := clients.(MultiClient)[1].(*client).cfg
+	if !reflect.DeepEqual(actualCfg1, expectedCfg1) {
+		t.Fatalf("expected cfg: %v got:%v", expectedCfg1, actualCfg1)
+	}
 
-	if !reflect.DeepEqual(cfg2, expectedCfg2) {
-		t.Fatalf("expected cfg: %v got:%v", expectedCfg2, cfg2)
+	actualCfg2 := clients.(*MultiClient).clients[1].(*client).cfg
+	// No overlapping label keys so both should be in the output
+	expectedCfg2 := Config{
+		BatchSize: 10,
+		BatchWait: 1 * time.Second,
+		URL:       flagext.URLValue{URL: host2},
+		ExternalLabels: lokiflag.LabelSet{
+			LabelSet: model.LabelSet{
+				"order": "command",
+				"hi":    "there",
+			},
+		},
+	}
+
+	if !reflect.DeepEqual(actualCfg2, expectedCfg2) {
+		t.Fatalf("expected cfg: %v got:%v", expectedCfg2, actualCfg2)
 	}
 }
 
@@ -52,10 +84,13 @@ func TestMultiClient_Stop(t *testing.T) {
 	stopping := func() {
 		stopped++
 	}
-	fc := &fake.Client{OnStop: stopping}
+	fc := fake.New(stopping)
 	clients := []Client{fc, fc, fc, fc}
-	m := MultiClient(clients)
-
+	m := &MultiClient{
+		clients: clients,
+		entries: make(chan api.Entry),
+	}
+	m.start()
 	m.Stop()
 
 	if stopped != len(clients) {
@@ -64,40 +99,19 @@ func TestMultiClient_Stop(t *testing.T) {
 }
 
 func TestMultiClient_Handle(t *testing.T) {
+	f := fake.New(func() {})
+	clients := []Client{f, f, f, f, f, f}
+	m := &MultiClient{
+		clients: clients,
+		entries: make(chan api.Entry),
+	}
+	m.start()
 
-	var called int
+	m.Chan() <- api.Entry{Labels: model.LabelSet{"foo": "bar"}, Entry: logproto.Entry{Line: "foo"}}
 
-	errorFn := api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error { called++; return errors.New("") })
-	okFn := api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error { called++; return nil })
+	m.Stop()
 
-	errfc := &fake.Client{OnHandleEntry: errorFn}
-	okfc := &fake.Client{OnHandleEntry: okFn}
-	t.Run("some error", func(t *testing.T) {
-		clients := []Client{okfc, errfc, okfc, errfc, errfc, okfc}
-		m := MultiClient(clients)
-
-		if err := m.Handle(nil, time.Now(), ""); err == nil {
-			t.Fatal("expected err got nil")
-		}
-
-		if called != len(clients) {
-			t.Fatal("missing handle call")
-		}
-
-	})
-	t.Run("no error", func(t *testing.T) {
-		called = 0
-		clients := []Client{okfc, okfc, okfc, okfc, okfc, okfc}
-		m := MultiClient(clients)
-
-		if err := m.Handle(nil, time.Now(), ""); err != nil {
-			t.Fatal("expected err to be nil")
-		}
-
-		if called != len(clients) {
-			t.Fatal("missing handle call")
-		}
-
-	})
-
+	if len(f.Received()) != len(clients) {
+		t.Fatal("missing handle call")
+	}
 }

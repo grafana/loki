@@ -18,12 +18,12 @@ import (
 	"fmt"
 	"time"
 
-	"go.opencensus.io"
+	opencensus "go.opencensus.io"
 )
 
 // UserAgent is the user agent to be added to the outgoing
 // requests from the exporters.
-var UserAgent = fmt.Sprintf("opencensus-go [%s]", opencensus.Version())
+var UserAgent = fmt.Sprintf("opencensus-go/%s", opencensus.Version())
 
 // MonotonicEndTime returns the end time at present
 // but offset from start, monotonically.
@@ -33,5 +33,5 @@ var UserAgent = fmt.Sprintf("opencensus-go [%s]", opencensus.Version())
 // end as a monotonic time.
 // See https://golang.org/pkg/time/#hdr-Monotonic_Clocks
 func MonotonicEndTime(start time.Time) time.Time {
-	return start.Add(time.Now().Sub(start))
+	return start.Add(time.Since(start))
 }

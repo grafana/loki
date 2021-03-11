@@ -24,9 +24,10 @@ import (
 	"strconv"
 	"time"
 
-	"cloud.google.com/go/bigtable/internal/gax"
 	btopt "cloud.google.com/go/bigtable/internal/option"
+	"cloud.google.com/go/internal/trace"
 	"github.com/golang/protobuf/proto"
+	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
 	gtransport "google.golang.org/api/transport/grpc"
 	btpb "google.golang.org/genproto/googleapis/bigtable/v2"
@@ -67,11 +68,14 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 	if err != nil {
 		return nil, err
 	}
+	// Add gRPC client interceptors to supply Google client information. No external interceptors are passed.
+	o = append(o, btopt.ClientInterceptorOptions(nil, nil)...)
+
 	// Default to a small connection pool that can be overridden.
 	o = append(o,
 		option.WithGRPCConnectionPool(4),
 		// Set the max size to correspond to server-side limits.
-		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(100<<20), grpc.MaxCallRecvMsgSize(100<<20))),
+		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(1<<28), grpc.MaxCallRecvMsgSize(1<<28))),
 		// TODO(grpc/grpc-go#1388) using connection pool without WithBlock
 		// can cause RPCs to fail randomly. We can delete this after the issue is fixed.
 		option.WithGRPCDialOption(grpc.WithBlock()))
@@ -99,8 +103,13 @@ var (
 	idempotentRetryCodes  = []codes.Code{codes.DeadlineExceeded, codes.Unavailable, codes.Aborted}
 	isIdempotentRetryCode = make(map[codes.Code]bool)
 	retryOptions          = []gax.CallOption{
-		gax.WithDelayTimeoutSettings(100*time.Millisecond, 2000*time.Millisecond, 1.2),
-		gax.WithRetryCodes(idempotentRetryCodes),
+		gax.WithRetry(func() gax.Retryer {
+			return gax.OnCodes(idempotentRetryCodes, gax.Backoff{
+				Initial:    100 * time.Millisecond,
+				Max:        2 * time.Second,
+				Multiplier: 1.2,
+			})
+		}),
 	}
 )
 
@@ -112,6 +121,15 @@ func init() {
 
 func (c *Client) fullTableName(table string) string {
 	return fmt.Sprintf("projects/%s/instances/%s/tables/%s", c.project, c.instance, table)
+}
+
+// mergeOutgoingMetadata returns a context populated by the existing outgoing
+// metadata merged with the provided mds.
+func mergeOutgoingMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
+	ctxMD, _ := metadata.FromOutgoingContext(ctx)
+	// The ordering matters, hence why ctxMD comes first.
+	allMDs := append([]metadata.MD{ctxMD}, mds...)
+	return metadata.NewOutgoingContext(ctx, metadata.Join(allMDs...))
 }
 
 // A Table refers to a table.
@@ -142,15 +160,14 @@ func (c *Client) Open(table string) *Table {
 //
 // By default, the yielded rows will contain all values in all cells.
 // Use RowFilter to limit the cells returned.
-func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) error {
+func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) (err error) {
 	ctx = mergeOutgoingMetadata(ctx, t.md)
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable.ReadRows")
+	defer func() { trace.EndSpan(ctx, err) }()
 
 	var prevRowKey string
-	var err error
-	ctx = traceStartSpan(ctx, "cloud.google.com/go/bigtable.ReadRows")
-	defer func() { traceEndSpan(ctx, err) }()
 	attrMap := make(map[string]interface{})
-	err = gax.Invoke(ctx, func(ctx context.Context) error {
+	err = gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		if !arg.valid() {
 			// Empty row set, no need to make an API call.
 			// NOTE: we must return early if arg == RowList{} because reading
@@ -185,12 +202,12 @@ func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts
 				attrMap["rowKey"] = prevRowKey
 				attrMap["error"] = err.Error()
 				attrMap["time_secs"] = time.Since(startTime).Seconds()
-				tracePrintf(ctx, attrMap, "Retry details in ReadRows")
+				trace.TracePrintf(ctx, attrMap, "Retry details in ReadRows")
 				return err
 			}
 			attrMap["time_secs"] = time.Since(startTime).Seconds()
 			attrMap["rowCount"] = len(res.Chunks)
-			tracePrintf(ctx, attrMap, "Details in ReadRows")
+			trace.TracePrintf(ctx, attrMap, "Details in ReadRows")
 
 			for _, cc := range res.Chunks {
 				row, err := cr.Process(cc)
@@ -468,17 +485,17 @@ const maxMutations = 100000
 
 // Apply mutates a row atomically. A mutation must contain at least one
 // operation and at most 100000 operations.
-func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) error {
+func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) (err error) {
 	ctx = mergeOutgoingMetadata(ctx, t.md)
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/Apply")
+	defer func() { trace.EndSpan(ctx, err) }()
+
 	after := func(res proto.Message) {
 		for _, o := range opts {
 			o.after(res)
 		}
 	}
 
-	var err error
-	ctx = traceStartSpan(ctx, "cloud.google.com/go/bigtable/Apply")
-	defer func() { traceEndSpan(ctx, err) }()
 	var callOptions []gax.CallOption
 	if m.cond == nil {
 		req := &btpb.MutateRowRequest{
@@ -491,7 +508,7 @@ func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...Appl
 			callOptions = retryOptions
 		}
 		var res *btpb.MutateRowResponse
-		err := gax.Invoke(ctx, func(ctx context.Context) error {
+		err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 			var err error
 			res, err = t.c.client.MutateRow(ctx, req)
 			return err
@@ -524,7 +541,7 @@ func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...Appl
 		callOptions = retryOptions
 	}
 	var cmRes *btpb.CheckAndMutateRowResponse
-	err = gax.Invoke(ctx, func(ctx context.Context) error {
+	err = gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		cmRes, err = t.c.client.CheckAndMutateRow(ctx, req)
 		return err
@@ -573,6 +590,9 @@ func NewMutation() *Mutation {
 // If the filter matches any cell in the row, mtrue is applied;
 // otherwise, mfalse is applied.
 // Either given mutation may be nil.
+//
+// The application of a ReadModifyWrite is atomic; concurrent ReadModifyWrites will
+// be executed serially by the server.
 func NewCondMutation(cond Filter, mtrue, mfalse *Mutation) *Mutation {
 	return &Mutation{cond: cond, mtrue: mtrue, mfalse: mfalse}
 }
@@ -641,8 +661,11 @@ type entryErr struct {
 // will correspond to the relevant rowKeys/muts arguments.
 //
 // Conditional mutations cannot be applied in bulk and providing one will result in an error.
-func (t *Table) ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutation, opts ...ApplyOption) ([]error, error) {
+func (t *Table) ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutation, opts ...ApplyOption) (errs []error, err error) {
 	ctx = mergeOutgoingMetadata(ctx, t.md)
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/ApplyBulk")
+	defer func() { trace.EndSpan(ctx, err) }()
+
 	if len(rowKeys) != len(muts) {
 		return nil, fmt.Errorf("mismatched rowKeys and mutation array lengths: %d, %d", len(rowKeys), len(muts))
 	}
@@ -656,15 +679,11 @@ func (t *Table) ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutatio
 		origEntries[i] = &entryErr{Entry: &btpb.MutateRowsRequest_Entry{RowKey: []byte(key), Mutations: mut.ops}}
 	}
 
-	var err error
-	ctx = traceStartSpan(ctx, "cloud.google.com/go/bigtable/ApplyBulk")
-	defer func() { traceEndSpan(ctx, err) }()
-
 	for _, group := range groupEntries(origEntries, maxMutations) {
 		attrMap := make(map[string]interface{})
-		err = gax.Invoke(ctx, func(ctx context.Context) error {
+		err = gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 			attrMap["rowCount"] = len(group)
-			tracePrintf(ctx, attrMap, "Row count in ApplyBulk")
+			trace.TracePrintf(ctx, attrMap, "Row count in ApplyBulk")
 			err := t.doApplyBulk(ctx, group, opts...)
 			if err != nil {
 				// We want to retry the entire request with the current group
@@ -683,9 +702,8 @@ func (t *Table) ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutatio
 		}
 	}
 
-	// Accumulate all of the errors into an array to return, interspersed with nils for successful
+	// All the errors are accumulated into an array and returned, interspersed with nils for successful
 	// entries. The absence of any errors means we should return nil.
-	var errs []error
 	var foundErr bool
 	for _, entry := range origEntries {
 		if entry.Err != nil {
@@ -704,7 +722,7 @@ func (t *Table) getApplyBulkRetries(entries []*entryErr) []*entryErr {
 	var retryEntries []*entryErr
 	for _, entry := range entries {
 		err := entry.Err
-		if err != nil && isIdempotentRetryCode[grpc.Code(err)] && mutationsAreRetryable(entry.Entry.Mutations) {
+		if err != nil && isIdempotentRetryCode[status.Code(err)] && mutationsAreRetryable(entry.Entry.Mutations) {
 			// There was an error and the entry is retryable.
 			retryEntries = append(retryEntries, entry)
 		}
@@ -867,19 +885,12 @@ func (m *ReadModifyWrite) Increment(family, column string, delta int64) {
 	})
 }
 
-// mergeOutgoingMetadata returns a context populated by the existing outgoing metadata,
-// if any, joined with internal metadata.
-func mergeOutgoingMetadata(ctx context.Context, md metadata.MD) context.Context {
-	mdCopy, _ := metadata.FromOutgoingContext(ctx)
-	return metadata.NewOutgoingContext(ctx, metadata.Join(mdCopy, md))
-}
-
 // SampleRowKeys returns a sample of row keys in the table. The returned row keys will delimit contiguous sections of
 // the table of approximately equal size, which can be used to break up the data for distributed tasks like mapreduces.
 func (t *Table) SampleRowKeys(ctx context.Context) ([]string, error) {
 	ctx = mergeOutgoingMetadata(ctx, t.md)
 	var sampledRowKeys []string
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		sampledRowKeys = nil
 		req := &btpb.SampleRowKeysRequest{
 			TableName:    t.c.fullTableName(t.table),

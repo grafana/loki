@@ -1,25 +1,29 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
 func TestJSONLOutput_Format(t *testing.T) {
 	t.Parallel()
 
 	timestamp, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
-	emptyLabels := labels.New()
-	someLabels := labels.New(labels.Label{Name: "type", Value: "test"})
+	emptyLabels := loghttp.LabelSet{}
+	someLabels := loghttp.LabelSet(map[string]string{
+		"type": "test",
+	})
 
 	tests := map[string]struct {
 		options      *LogOutputOptions
 		timestamp    time.Time
-		lbls         *labels.Labels
+		lbls         loghttp.LabelSet
 		maxLabelsLen int
 		line         string
 		expected     string
@@ -27,34 +31,34 @@ func TestJSONLOutput_Format(t *testing.T) {
 		"empty line with no labels": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&emptyLabels,
+			emptyLabels,
 			0,
 			"",
-			`{"labels":{},"line":"","timestamp":"2006-01-02T08:04:05Z"}`,
+			`{"labels":{},"line":"","timestamp":"2006-01-02T08:04:05Z"}` + "\n",
 		},
 		"empty line with labels": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			len(someLabels.String()),
 			"",
-			`{"labels":{"type":"test"},"line":"","timestamp":"2006-01-02T08:04:05Z"}`,
+			`{"labels":{"type":"test"},"line":"","timestamp":"2006-01-02T08:04:05Z"}` + "\n",
 		},
 		"timezone option set to a Local one": {
 			&LogOutputOptions{Timezone: time.FixedZone("test", 2*60*60), NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello",
-			`{"labels":{"type":"test"},"line":"Hello","timestamp":"2006-01-02T10:04:05+02:00"}`,
+			`{"labels":{"type":"test"},"line":"Hello","timestamp":"2006-01-02T10:04:05+02:00"}` + "\n",
 		},
 		"labels output disabled": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: true},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello",
-			`{"line":"Hello","timestamp":"2006-01-02T08:04:05Z"}`,
+			`{"line":"Hello","timestamp":"2006-01-02T08:04:05Z"}` + "\n",
 		},
 	}
 
@@ -63,10 +67,11 @@ func TestJSONLOutput_Format(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
+			writer := &bytes.Buffer{}
+			out := &JSONLOutput{writer, testData.options}
+			out.FormatAndPrintln(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
 
-			out := &JSONLOutput{testData.options}
-			actual := out.Format(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
-
+			actual := writer.String()
 			assert.Equal(t, testData.expected, actual)
 			assert.NoError(t, isValidJSON(actual))
 		})

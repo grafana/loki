@@ -1,4 +1,16 @@
-#!/bin/sh
+#!/bin/bash
+
+# sed-wrap runs the appropriate sed command based on the
+# underlying value of $OSTYPE
+sed-wrap() {
+  if [[ "$OSTYPE" == "linux"* ]]; then
+    # Linux
+    sed -i "$1" $2
+  else
+    # macOS, BSD
+    sed -i '' "$1" $2
+  fi
+}
 
 echo
 echo "Last 5 tags:"
@@ -49,27 +61,25 @@ if [[ "${CONTINUE}" != "y" ]]; then
 fi
 
 echo "Updating helm and ksonnet image versions"
-sed -i '' "s/.*promtail:.*/    promtail: '\''grafana\/promtail:${VERSION}'\'',/" production/ksonnet/promtail/config.libsonnet
-sed -i '' "s/.*loki:.*/    loki: '\''grafana\/loki:${VERSION}'\'',/" production/ksonnet/loki/images.libsonnet
-sed -i '' "s/.*tag:.*/  tag: ${VERSION}/" production/helm/loki/values.yaml
-sed -i '' "s/.*tag:.*/  tag: ${VERSION}/" production/helm/promtail/values.yaml
+sed-wrap "s/.*promtail:.*/    promtail: 'grafana\/promtail:${VERSION}',/" production/ksonnet/promtail/config.libsonnet
+sed-wrap "s/.*loki_canary:.*/    loki_canary: 'grafana\/loki-canary:${VERSION}',/" production/ksonnet/loki-canary/config.libsonnet
+sed-wrap "s/.*loki:.*/    loki: 'grafana\/loki:${VERSION}',/" production/ksonnet/loki/images.libsonnet
+sed-wrap "s/.*tag:.*/  tag: ${VERSION}/" production/helm/loki/values.yaml
+sed-wrap "s/.*tag:.*/  tag: ${VERSION}/" production/helm/promtail/values.yaml
 
 echo "Updating helm charts"
-sed -i '' "s/^version:.*/version: ${LOKI_VERSION}/" production/helm/loki/Chart.yaml
-sed -i '' "s/^version:.*/version: ${PROMTAIL_VERSION}/" production/helm/promtail/Chart.yaml
-sed -i '' "s/^version:.*/version: ${LOKI_STACK_VERSION}/" production/helm/loki-stack/Chart.yaml
+sed-wrap "s/^version:.*/version: ${LOKI_VERSION}/" production/helm/loki/Chart.yaml
+sed-wrap "s/^version:.*/version: ${PROMTAIL_VERSION}/" production/helm/promtail/Chart.yaml
+sed-wrap "s/^version:.*/version: ${LOKI_STACK_VERSION}/" production/helm/loki-stack/Chart.yaml
+
+sed-wrap "s/^appVersion:.*/appVersion: ${VERSION}/" production/helm/loki/Chart.yaml
+sed-wrap "s/^appVersion:.*/appVersion: ${VERSION}/" production/helm/promtail/Chart.yaml
+sed-wrap "s/^appVersion:.*/appVersion: ${VERSION}/" production/helm/loki-stack/Chart.yaml
+
 echo
 echo "######################################################################################################"
-echo "NEXT STEPS"
 echo
-echo "Verify the changes, then commit and push and get them merged to master"
+echo "Version numbers updated, create a new branch, commit and push"
 echo
-echo "Once merged to master"
-echo
-echo "git pull"
-echo "git tag -a ${VERSION} -m \"tagging release ${VERSION}\""
-echo "git push origin ${VERSION}"
-echo
-echo "This should initiate the CircleCI build to push the images and finish the release"
 echo "######################################################################################################"
 

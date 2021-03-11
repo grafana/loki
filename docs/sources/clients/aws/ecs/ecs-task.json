@@ -1,0 +1,56 @@
+{
+    "containerDefinitions": [
+        {
+            "essential": true,
+            "image": "grafana/fluent-bit-plugin-loki:1.6.0-amd64",
+            "name": "log_router",
+            "firelensConfiguration": {
+                "type": "fluentbit",
+                "options": {
+                    "enable-ecs-log-metadata": "true"
+                }
+            },
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "firelens-container",
+                    "awslogs-region": "us-east-2",
+                    "awslogs-create-group": "true",
+                    "awslogs-stream-prefix": "firelens"
+                }
+            },
+            "memoryReservation": 50
+        },
+        {
+            "command": [
+                "/bin/sh -c \"while true; do sleep 15 ;echo hello_world; done\""
+            ],
+            "entryPoint": [
+                "sh",
+                "-c"
+            ],
+            "essential": true,
+            "image": "alpine:3.12",
+            "logConfiguration": {
+                "logDriver": "awsfirelens",
+                "options": {
+                    "Name": "loki",
+                    "Url": "https://<userid>:<grafancloud apikey>@logs-prod-us-central1.grafana.net/loki/api/v1/push",
+                    "Labels": "{job=\"firelens\"}",
+                    "RemoveKeys": "container_id,ecs_task_arn",
+                    "LabelKeys": "container_name,ecs_task_definition,source,ecs_cluster",
+                    "LineFormat": "key_value"
+                }
+            },
+            "name": "sample-app"
+        }
+    ],
+    "cpu": "256",
+    "executionRoleArn": "arn:aws:iam::00000000:role/ecsTaskExecutionRole",
+    "family": "loki-fargate-task-definition",
+    "memory": "512",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ]
+}

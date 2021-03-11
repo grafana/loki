@@ -10,6 +10,8 @@ service FakeServer {
     rpc Succeed(google.protobuf.Empty) returns (google.protobuf.Empty) {};
     rpc FailWithError(google.protobuf.Empty) returns (google.protobuf.Empty) {};
     rpc FailWithHTTPError(FailWithHTTPErrorRequest) returns (google.protobuf.Empty) {};
+    rpc Sleep(google.protobuf.Empty) returns (google.protobuf.Empty) {};
+    rpc StreamSleep(google.protobuf.Empty) returns (stream google.protobuf.Empty) {};
 }
 
 message FailWithHTTPErrorRequest {

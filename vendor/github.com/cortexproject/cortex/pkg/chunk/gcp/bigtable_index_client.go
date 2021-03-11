@@ -8,16 +8,18 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/bigtable"
+	"github.com/go-kit/kit/log"
 	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/pkg/errors"
+	"github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 const (
@@ -26,7 +28,6 @@ const (
 	column       = "c"
 	separator    = "\000"
 	maxRowReads  = 100
-	null         = string('\xff')
 )
 
 // Config for a StorageClient
@@ -36,16 +37,27 @@ type Config struct {
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	ColumnKey      bool
-	DistributeKeys bool
+	ColumnKey      bool `yaml:"-"`
+	DistributeKeys bool `yaml:"-"`
+
+	TableCacheEnabled    bool          `yaml:"table_cache_enabled"`
+	TableCacheExpiration time.Duration `yaml:"table_cache_expiration"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Project, "bigtable.project", "", "Bigtable project ID.")
-	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
+	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID. Please refer to https://cloud.google.com/docs/authentication/production for more information about how to configure authentication.")
+	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
+	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 
-	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
+	// This overrides our default from TLS disabled to TLS enabled
+	cfg.GRPCClientConfig.TLSEnabled = true
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
+}
+
+func (cfg *Config) Validate(log log.Logger) error {
+	return cfg.GRPCClientConfig.Validate(log)
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
@@ -54,8 +66,6 @@ type storageClientColumnKey struct {
 	schemaCfg chunk.SchemaConfig
 	client    *bigtable.Client
 	keysFn    keysFn
-
-	distributeKeys bool
 }
 
 // storageClientV1 implements chunk.storageClient for GCP.
@@ -65,8 +75,11 @@ type storageClientV1 struct {
 
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	if err != nil {
+		return nil, err
+	}
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +102,11 @@ func newStorageClientV1(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtab
 
 // NewStorageClientColumnKey returns a new v2 StorageClient.
 func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	if err != nil {
+		return nil, err
+	}
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +124,7 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 			// We hash the row key and prepend it back to the key for better distribution.
 			// We preserve the existing key to make migrations and o11y easier.
 			if cfg.DistributeKeys {
-				hashValue = hashPrefix(hashValue) + "-" + hashValue
+				hashValue = HashPrefix(hashValue) + "-" + hashValue
 			}
 
 			return hashValue, string(rangeValue)
@@ -116,9 +132,9 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 	}
 }
 
-// hashPrefix calculates a 64bit hash of the input string and hex-encodes
+// HashPrefix calculates a 64bit hash of the input string and hex-encodes
 // the result, taking care to zero pad etc.
-func hashPrefix(input string) string {
+func HashPrefix(input string) string {
 	prefix := hashAdd(hashNew(), input)
 	var encodedUint64 [8]byte
 	binary.LittleEndian.PutUint64(encodedUint64[:], prefix)
@@ -147,6 +163,18 @@ type bigtableWriteBatch struct {
 }
 
 func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+		mutation.Set(columnFamily, columnKey, 0, value)
+	})
+}
+
+func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+		mutation.DeleteCellsInColumn(columnFamily, columnKey)
+	})
+}
+
+func (b bigtableWriteBatch) addMutation(tableName, hashValue string, rangeValue []byte, callback func(mutation *bigtable.Mutation, columnKey string)) {
 	rows, ok := b.tables[tableName]
 	if !ok {
 		rows = map[string]*bigtable.Mutation{}
@@ -160,7 +188,7 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 		rows[rowKey] = mutation
 	}
 
-	mutation.Set(columnFamily, columnKey, 0, value)
+	callback(mutation, columnKey)
 }
 
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
@@ -224,7 +252,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 		table := s.client.Open(tq.name)
 
 		for i := 0; i < len(tq.rows); i += maxRowReads {
-			page := tq.rows[i:util.Min(i+maxRowReads, len(tq.rows))]
+			page := tq.rows[i:math.Min(i+maxRowReads, len(tq.rows))]
 			go func(page bigtable.RowList, tq tableQuery) {
 				var processingErr error
 				// rows are returned in key order, not order in row list
@@ -301,11 +329,11 @@ func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQ
 	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	const null = string('\xff')
 
-	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
-	defer sp.Finish()
+	log, ctx := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
+	defer log.Finish()
 
 	table := s.client.Open(query.TableName)
 
@@ -330,7 +358,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 
 	err := table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
 		if query.ValueEqual == nil || bytes.Equal(r[columnFamily][0].Value, query.ValueEqual) {
-			return callback(&rowBatch{
+			return callback(query, &rowBatch{
 				row: r,
 			})
 		}
@@ -338,7 +366,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 		return true
 	})
 	if err != nil {
-		sp.LogFields(otlog.String("error", err.Error()))
+		log.Error(err)
 		return errors.WithStack(err)
 	}
 	return nil

@@ -1,0 +1,10 @@
+site_name: Loki
+theme:
+  name: "material"
+  palette:
+    primary: "grey"
+    accent: "amber"
+  logo: logo.png
+  favicon: logo.png
+markdown_extensions:
+  - codehilite

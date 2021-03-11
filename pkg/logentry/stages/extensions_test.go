@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
@@ -65,17 +65,15 @@ func TestNewDocker(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewDocker(util.Logger, prometheus.DefaultRegisterer)
+			p, err := NewDocker(util_log.Logger, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatalf("failed to create Docker parser: %s", err)
 			}
-			lbs := toLabelSet(tt.labels)
-			extr := map[string]interface{}{}
-			p.Process(lbs, extr, &tt.t, &tt.entry)
+			out := processEntries(p, newEntry(nil, toLabelSet(tt.labels), tt.entry, tt.t))[0]
 
-			assertLabels(t, tt.expectedLabels, lbs)
-			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
-			if tt.t.Unix() != tt.expectedT.Unix() {
+			assertLabels(t, tt.expectedLabels, out.Labels)
+			assert.Equal(t, tt.expectedEntry, out.Line, "did not receive expected log entry")
+			if out.Timestamp.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}
 		})
@@ -141,17 +139,15 @@ func TestNewCri(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewCRI(util.Logger, prometheus.DefaultRegisterer)
+			p, err := NewCRI(util_log.Logger, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatalf("failed to create CRI parser: %s", err)
 			}
-			lbs := toLabelSet(tt.labels)
-			extr := map[string]interface{}{}
-			p.Process(lbs, extr, &tt.t, &tt.entry)
+			out := processEntries(p, newEntry(nil, toLabelSet(tt.labels), tt.entry, tt.t))[0]
 
-			assertLabels(t, tt.expectedLabels, lbs)
-			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
-			if tt.t.Unix() != tt.expectedT.Unix() {
+			assertLabels(t, tt.expectedLabels, out.Labels)
+			assert.Equal(t, tt.expectedEntry, out.Line, "did not receive expected log entry")
+			if out.Timestamp.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}
 		})

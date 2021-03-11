@@ -3,17 +3,13 @@ package client
 import (
 	"flag"
 
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
-	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
-	"github.com/weaveworks/common/middleware"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -36,23 +32,13 @@ type closableHealthAndIngesterClient struct {
 	conn *grpc.ClientConn
 }
 
-func instrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
-	return []grpc.UnaryClientInterceptor{
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-			middleware.ClientUserHeaderInterceptor,
-			cortex_middleware.PrometheusGRPCUnaryInstrumentation(ingesterClientRequestDuration),
-		}, []grpc.StreamClientInterceptor{
-			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
-			middleware.StreamClientUserHeaderInterceptor,
-			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
-		}
-}
-
 // MakeIngesterClient makes a new IngesterClient
 func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
-	opts := []grpc.DialOption{grpc.WithInsecure()}
-	opts = append(opts, cfg.GRPCClientConfig.DialOption(instrumentation())...)
-	conn, err := grpc.Dial(addr, opts...)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(ingesterClientRequestDuration))
+	if err != nil {
+		return nil, err
+	}
+	conn, err := grpc.Dial(addr, dialOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -74,5 +60,9 @@ type Config struct {
 
 // RegisterFlags registers configuration settings used by the ingester client config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlags("ingester.client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
+}
+
+func (cfg *Config) Validate(log log.Logger) error {
+	return cfg.GRPCClientConfig.Validate(log)
 }

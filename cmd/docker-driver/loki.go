@@ -6,11 +6,13 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logentry/stages"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/client"
 )
 
 var jobName = "docker"
@@ -20,6 +22,8 @@ type loki struct {
 	handler api.EntryHandler
 	labels  model.LabelSet
 	logger  log.Logger
+
+	stop func()
 }
 
 // New create a new Loki logger that forward logs to Loki instance
@@ -29,33 +33,47 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, err := client.New(cfg.clientConfig, logger)
+	c, err := client.New(prometheus.DefaultRegisterer, cfg.clientConfig, logger)
 	if err != nil {
 		return nil, err
 	}
 	var handler api.EntryHandler = c
+	var stop func() = func() {}
 	if len(cfg.pipeline.PipelineStages) != 0 {
 		pipeline, err := stages.NewPipeline(logger, cfg.pipeline.PipelineStages, &jobName, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
 		}
 		handler = pipeline.Wrap(c)
+		stop = handler.Stop
 	}
 	return &loki{
 		client:  c,
 		labels:  cfg.labels,
 		logger:  logger,
 		handler: handler,
+		stop:    stop,
 	}, nil
 }
 
 // Log implements `logger.Logger`
 func (l *loki) Log(m *logger.Message) error {
 	if len(bytes.Fields(m.Line)) == 0 {
-		level.Info(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
+		level.Debug(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
 	}
-	return l.handler.Handle(l.labels.Clone(), m.Timestamp, string(m.Line))
+	lbs := l.labels.Clone()
+	if m.Source != "" {
+		lbs["source"] = model.LabelValue(m.Source)
+	}
+	l.handler.Chan() <- api.Entry{
+		Labels: lbs,
+		Entry: logproto.Entry{
+			Timestamp: m.Timestamp,
+			Line:      string(m.Line),
+		},
+	}
+	return nil
 }
 
 // Log implements `logger.Logger`
@@ -65,6 +83,7 @@ func (l *loki) Name() string {
 
 // Log implements `logger.Logger`
 func (l *loki) Close() error {
-	l.client.Stop()
+	l.stop()
+	l.client.StopNow()
 	return nil
 }

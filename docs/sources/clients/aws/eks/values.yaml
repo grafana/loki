@@ -1,0 +1,219 @@
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+affinity: {}
+
+annotations: {}
+
+# The update strategy to apply to the DaemonSet
+##
+deploymentStrategy: {}
+#  rollingUpdate:
+#    maxUnavailable: 1
+#  type: RollingUpdate
+
+initContainer:
+  enabled: false
+  fsInotifyMaxUserInstances: 128
+
+image:
+  repository: grafana/promtail
+  tag: 1.6.0
+  pullPolicy: IfNotPresent
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be manually created in the namespace.
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  ##
+  # pullSecrets:
+  #   - myRegistryKeySecretName
+
+livenessProbe: {}
+
+loki:
+  serviceName: "logs-prod-us-central1.grafana.net"
+  servicePort: 443
+  serviceScheme: https
+  user: <grafana cloud user id>
+  password: <grafana cloud api key>
+
+
+nameOverride: promtail
+
+## Node labels for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+nodeSelector: {}
+
+pipelineStages:
+- docker:
+- match:
+    selector: '{app="eventrouter"}'
+    stages:
+    - json:
+        expressions:
+          namespace: event.metadata.namespace
+    - labels:
+        namespace: ""
+
+## Pod Labels
+podLabels: {}
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "http-metrics"
+
+## Assign a PriorityClassName to pods if set
+# priorityClassName:
+
+rbac:
+  create: true
+  pspEnabled: true
+
+readinessProbe:
+  failureThreshold: 5
+  httpGet:
+    path: /ready
+    port: http-metrics
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+
+resources: {}
+#  limits:
+#    cpu: 200m
+#    memory: 128Mi
+#  requests:
+#    cpu: 100m
+#    memory: 128Mi
+
+# Custom scrape_configs to override the default ones in the configmap
+scrapeConfigs: []
+
+# Custom scrape_configs together with the default ones in the configmap
+extraScrapeConfigs:
+  - job_name: journal
+    journal:
+      path: /var/log/journal
+      max_age: 12h
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: 'unit'
+      - source_labels: ['__journal__hostname']
+        target_label: 'hostname'
+
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsGroup: 0
+  runAsUser: 0
+
+serviceAccount:
+  create: true
+  name:
+
+## Tolerations for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+tolerations:
+- key: node-role.kubernetes.io/master
+  operator: Exists
+  effect: NoSchedule
+
+# Extra volumes to scrape logs from
+volumes:
+- name: docker
+  hostPath:
+    path: /var/lib/docker/containers
+- name: pods
+  hostPath:
+    path: /var/log/pods
+
+# Custom volumes together with the default ones
+extraVolumes:
+  - name: journal
+    hostPath:
+      path: /var/log/journal
+
+volumeMounts:
+- name: docker
+  mountPath: /var/lib/docker/containers
+  readOnly: true
+- name: pods
+  mountPath: /var/log/pods
+  readOnly: true
+
+# Custom volumeMounts together with the default ones
+extraVolumeMounts:
+  - name: journal
+    mountPath: /var/log/journal
+    readOnly: true
+
+# Add extra Commandline args while starting up promtail.
+# more info : https://github.com/grafana/loki/pull/1530
+
+extraCommandlineArgs: []
+# example:
+# extraCommandlineArgs:
+#   - -client.external-labels=hostname=$(HOSTNAME)
+
+config:
+  client:
+    # Maximum wait period before sending batch
+    batchwait: 1s
+    # Maximum batch size to accrue before sending, unit is byte
+    batchsize: 102400
+
+    # Maximum time to wait for server to respond to a request
+    timeout: 10s
+
+    backoff_config:
+      # Initial backoff time between retries
+      min_period: 100ms
+      # Maximum backoff time between retries
+      max_period: 5s
+      # Maximum number of retries when sending batches, 0 means infinite retries
+      max_retries: 20
+
+    # The labels to add to any time series or alerts when communicating with loki
+    external_labels: {}
+
+  server:
+    http_listen_port: 3101
+
+  positions:
+    filename: /run/promtail/positions.yaml
+  target_config:
+    # Period to resync directories being watched and files being tailed
+    sync_period: 10s
+
+serviceMonitor:
+  enabled: false
+  interval: ""
+  additionalLabels: {}
+  annotations: {}
+  # scrapeTimeout: 10s
+
+# Extra env variables to pass to the promtail container
+env: []
+
+# enable and configure if using the syslog scrape config
+syslogService:
+  enabled: false
+  type: ClusterIP
+  port: 1514
+  ## Specify the nodePort value for the LoadBalancer and NodePort service types.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+  ##
+  # nodePort:
+  ## Provide any additional annotations which may be required. This can be used to
+  ## set the LoadBalancer service type to internal only.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+  ##
+  annotations: {}
+  labels: {}
+  ## Use loadBalancerIP to request a specific static IP,
+  ## otherwise leave blank
+  ##
+  loadBalancerIP:
+  # loadBalancerSourceRanges: []
+  ## Set the externalTrafficPolicy in the Service to either Cluster or Local
+  # externalTrafficPolicy: Cluster

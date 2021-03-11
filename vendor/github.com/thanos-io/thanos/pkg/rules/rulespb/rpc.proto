@@ -1,0 +1,137 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
+syntax = "proto3";
+package thanos;
+
+import "store/storepb/types.proto";
+import "store/labelpb/types.proto";
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "rulespb";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+
+// Do not generate XXX fields to reduce memory footprint and opening a door
+// for zero-copy casts to/from prometheus data types.
+option (gogoproto.goproto_unkeyed_all) = false;
+option (gogoproto.goproto_unrecognized_all) = false;
+option (gogoproto.goproto_sizecache_all) = false;
+
+/// Rules represents API that is responsible for gathering rules and their statuses.
+service Rules {
+    /// Rules has info for all rules.
+    /// Returned rules are expected to include external labels.
+    rpc Rules(RulesRequest) returns (stream RulesResponse);
+}
+
+message RulesRequest {
+    enum Type {
+        ALL = 0;
+        /// This will make sure strings.ToLower(.String()) will match 'alert' and 'record' values for
+        /// Prometheus HTTP API.
+        /// NOTE: The implementation has to return empty rule groups as well.
+        ALERT  = 1;
+        RECORD = 2;
+    }
+    Type type = 1;
+    PartialResponseStrategy partial_response_strategy = 2;
+}
+
+message RulesResponse {
+    oneof result {
+        /// group for rule groups. It is up to server implementation to decide how many of those to put here within single frame.
+        RuleGroup group = 1;
+
+        /// warning is considered an information piece in place of series for warning purposes.
+        /// It is used to warn rule API users about suspicious cases or partial response (if enabled).
+        string warning = 2;
+    }
+}
+
+
+/// RuleGroups is set of rule groups.
+/// This and below APIs are meant to be used for unmarshaling and marshsaling rules from/to Prometheus API.
+/// That's why json tag has to be customized and matching https://github.com/prometheus/prometheus/blob/c530b4b456cc5f9ec249f771dff187eb7715dc9b/web/api/v1/api.go#L955
+/// NOTE: See rules_custom_test.go for compatibility tests.
+///
+/// For rule parsing from YAML configuration other struct is used: https://github.com/prometheus/prometheus/blob/20b1f596f6fb16107ef0c244d240b0ad6da36829/pkg/rulefmt/rulefmt.go#L105
+message RuleGroups {
+    repeated RuleGroup groups = 1 [(gogoproto.jsontag) = "groups" ];
+}
+
+/// RuleGroup has info for rules which are part of a group.
+message RuleGroup {
+    string name                               = 1 [(gogoproto.jsontag) = "name" ];
+    string file                               = 2 [(gogoproto.jsontag) = "file" ];
+    repeated Rule rules                       = 3 [(gogoproto.jsontag) = "rules" ];
+    double interval                           = 4 [(gogoproto.jsontag) = "interval" ];
+    double evaluation_duration_seconds        = 5 [(gogoproto.jsontag) = "evaluationTime" ]; // TODO: Is it really second?
+    google.protobuf.Timestamp last_evaluation = 6 [(gogoproto.jsontag) = "lastEvaluation", (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+
+    // Thanos specific.
+    PartialResponseStrategy PartialResponseStrategy = 8 [(gogoproto.jsontag) = "partialResponseStrategy" ];
+}
+
+message Rule {
+    oneof result {
+        RecordingRule recording = 1;
+        Alert alert= 2;
+    }
+}
+
+/// AlertState represents state of the alert. Has to match 1:1 Prometheus AlertState:
+//
+// StateInactive is the state of an alert that is neither firing nor pending.
+//StateInactive AlertState = iota
+// StatePending is the state of an alert that has been active for less than
+// the configured threshold duration.
+//StatePending
+// StateFiring is the state of an alert that has been active for longer than
+// the configured threshold duration.
+//StateFiring
+enum AlertState {
+    INACTIVE            = 0;
+    PENDING             = 1;
+    FIRING              = 2;
+}
+
+message AlertInstance {
+    ZLabelSet labels                     = 1 [(gogoproto.jsontag) = "labels", (gogoproto.nullable) = false ];
+    ZLabelSet annotations                = 2 [(gogoproto.jsontag) = "annotations", (gogoproto.nullable) = false ];
+    AlertState state                     = 3 [(gogoproto.jsontag) = "state" ];
+    google.protobuf.Timestamp active_at  = 4 [(gogoproto.jsontag) = "activeAt,omitempty", (gogoproto.stdtime) = true];
+    string value                         = 5 [(gogoproto.jsontag) = "value" ];
+
+    // Thanos specific. Used mainly for alert API purposes.
+    PartialResponseStrategy PartialResponseStrategy = 6 [(gogoproto.jsontag) = "partialResponseStrategy" ];
+}
+
+message Alert {
+    /// state returns the maximum state of alert instances for this rule.
+    AlertState state                          = 1 [(gogoproto.jsontag) = "state" ];
+    string name                               = 2 [(gogoproto.jsontag) = "name" ];
+    string query                              = 3 [(gogoproto.jsontag) = "query" ];
+    double duration_seconds                   = 4 [(gogoproto.jsontag) = "duration" ];
+    ZLabelSet labels                          = 5 [(gogoproto.jsontag) = "labels", (gogoproto.nullable) = false ];
+    ZLabelSet annotations                     = 6 [(gogoproto.jsontag) = "annotations", (gogoproto.nullable) = false ];
+    repeated AlertInstance alerts             = 7 [(gogoproto.jsontag) = "alerts" ];
+    string health                             = 8 [(gogoproto.jsontag) = "health" ];
+    string last_error                         = 9 [(gogoproto.jsontag) = "lastError,omitempty" ];
+    double evaluation_duration_seconds        = 10 [(gogoproto.jsontag) = "evaluationTime" ];
+    google.protobuf.Timestamp last_evaluation = 11 [(gogoproto.jsontag) = "lastEvaluation", (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+}
+
+message RecordingRule {
+    string name                               = 1 [(gogoproto.jsontag) = "name" ];
+    string query                              = 2 [(gogoproto.jsontag) = "query" ];
+    ZLabelSet labels                          = 3 [(gogoproto.jsontag) = "labels", (gogoproto.nullable) = false ];
+    string health                             = 4 [(gogoproto.jsontag) = "health" ];
+    string last_error                         = 5 [(gogoproto.jsontag) = "lastError,omitempty" ];
+    double evaluation_duration_seconds        = 6 [(gogoproto.jsontag) = "evaluationTime" ];
+    google.protobuf.Timestamp last_evaluation = 7 [(gogoproto.jsontag) = "lastEvaluation", (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+}

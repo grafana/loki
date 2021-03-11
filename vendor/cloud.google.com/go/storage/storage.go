@@ -23,12 +23,13 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"regexp"
 	"sort"
@@ -46,14 +47,19 @@ import (
 	htransport "google.golang.org/api/transport/http"
 )
 
+// Methods which can be used in signed URLs.
+var signedURLMethods = map[string]bool{"DELETE": true, "GET": true, "HEAD": true, "POST": true, "PUT": true}
+
 var (
 	// ErrBucketNotExist indicates that the bucket does not exist.
 	ErrBucketNotExist = errors.New("storage: bucket doesn't exist")
 	// ErrObjectNotExist indicates that the object does not exist.
 	ErrObjectNotExist = errors.New("storage: object doesn't exist")
+	// errMethodNotValid indicates that given HTTP method is not valid.
+	errMethodNotValid = fmt.Errorf("storage: HTTP method should be one of %v", reflect.ValueOf(signedURLMethods).MapKeys())
 )
 
-const userAgent = "gcloud-golang-storage/20151204"
+var userAgent = fmt.Sprintf("gcloud-golang-storage/%s", version.Repo)
 
 const (
 	// ScopeFullControl grants permissions to manage your
@@ -82,30 +88,61 @@ func setClientHeader(headers http.Header) {
 type Client struct {
 	hc  *http.Client
 	raw *raw.Service
+	// Scheme describes the scheme under the current host.
+	scheme string
+	// EnvHost is the host set on the STORAGE_EMULATOR_HOST variable.
+	envHost string
+	// ReadHost is the default host used on the reader.
+	readHost string
 }
 
 // NewClient creates a new Google Cloud Storage client.
 // The default scope is ScopeFullControl. To use a different scope, like ScopeReadOnly, use option.WithScopes.
 func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error) {
-	o := []option.ClientOption{
-		option.WithScopes(ScopeFullControl),
-		option.WithUserAgent(userAgent),
+	var host, readHost, scheme string
+
+	if host = os.Getenv("STORAGE_EMULATOR_HOST"); host == "" {
+		scheme = "https"
+		readHost = "storage.googleapis.com"
+
+		// Prepend default options to avoid overriding options passed by the user.
+		opts = append([]option.ClientOption{option.WithScopes(ScopeFullControl), option.WithUserAgent(userAgent)}, opts...)
+	} else {
+		scheme = "http"
+		readHost = host
+
+		opts = append([]option.ClientOption{option.WithoutAuthentication()}, opts...)
 	}
-	opts = append(o, opts...)
+
 	hc, ep, err := htransport.NewClient(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("dialing: %v", err)
 	}
-	rawService, err := raw.New(hc)
+	rawService, err := raw.NewService(ctx, option.WithHTTPClient(hc))
 	if err != nil {
 		return nil, fmt.Errorf("storage client: %v", err)
 	}
-	if ep != "" {
+	if ep == "" {
+		// Override the default value for BasePath from the raw client.
+		// TODO: remove when the raw client uses this endpoint as its default (~end of 2020)
+		rawService.BasePath = "https://storage.googleapis.com/storage/v1/"
+	} else {
+		// If the endpoint has been set explicitly, use this for the BasePath
+		// as well as readHost
 		rawService.BasePath = ep
+		u, err := url.Parse(ep)
+		if err != nil {
+			return nil, fmt.Errorf("supplied endpoint %v is not valid: %v", ep, err)
+		}
+		readHost = u.Host
 	}
+
 	return &Client{
-		hc:  hc,
-		raw: rawService,
+		hc:       hc,
+		raw:      rawService,
+		scheme:   scheme,
+		envHost:  host,
+		readHost: readHost,
 	}, nil
 }
 
@@ -117,6 +154,94 @@ func (c *Client) Close() error {
 	c.hc = nil
 	c.raw = nil
 	return nil
+}
+
+// SigningScheme determines the API version to use when signing URLs.
+type SigningScheme int
+
+const (
+	// SigningSchemeDefault is presently V2 and will change to V4 in the future.
+	SigningSchemeDefault SigningScheme = iota
+
+	// SigningSchemeV2 uses the V2 scheme to sign URLs.
+	SigningSchemeV2
+
+	// SigningSchemeV4 uses the V4 scheme to sign URLs.
+	SigningSchemeV4
+)
+
+// URLStyle determines the style to use for the signed URL. pathStyle is the
+// default. All non-default options work with V4 scheme only. See
+// https://cloud.google.com/storage/docs/request-endpoints for details.
+type URLStyle interface {
+	// host should return the host portion of the signed URL, not including
+	// the scheme (e.g. storage.googleapis.com).
+	host(bucket string) string
+
+	// path should return the path portion of the signed URL, which may include
+	// both the bucket and object name or only the object name depending on the
+	// style.
+	path(bucket, object string) string
+}
+
+type pathStyle struct{}
+
+type virtualHostedStyle struct{}
+
+type bucketBoundHostname struct {
+	hostname string
+}
+
+func (s pathStyle) host(bucket string) string {
+	return "storage.googleapis.com"
+}
+
+func (s virtualHostedStyle) host(bucket string) string {
+	return bucket + ".storage.googleapis.com"
+}
+
+func (s bucketBoundHostname) host(bucket string) string {
+	return s.hostname
+}
+
+func (s pathStyle) path(bucket, object string) string {
+	p := bucket
+	if object != "" {
+		p += "/" + object
+	}
+	return p
+}
+
+func (s virtualHostedStyle) path(bucket, object string) string {
+	return object
+}
+
+func (s bucketBoundHostname) path(bucket, object string) string {
+	return object
+}
+
+// PathStyle is the default style, and will generate a URL of the form
+// "storage.googleapis.com/<bucket-name>/<object-name>".
+func PathStyle() URLStyle {
+	return pathStyle{}
+}
+
+// VirtualHostedStyle generates a URL relative to the bucket's virtual
+// hostname, e.g. "<bucket-name>.storage.googleapis.com/<object-name>".
+func VirtualHostedStyle() URLStyle {
+	return virtualHostedStyle{}
+}
+
+// BucketBoundHostname generates a URL with a custom hostname tied to a
+// specific GCS bucket. The desired hostname should be passed in using the
+// hostname argument. Generated urls will be of the form
+// "<bucket-bound-hostname>/<object-name>". See
+// https://cloud.google.com/storage/docs/request-endpoints#cname and
+// https://cloud.google.com/load-balancing/docs/https/adding-backend-buckets-to-load-balancers
+// for details. Note that for CNAMEs, only HTTP is supported, so Insecure must
+// be set to true.
+func BucketBoundHostname(hostname string) URLStyle {
+	return bucketBoundHostname{hostname: hostname}
 }
 
 // SignedURLOptions allows you to restrict the access to the signed URL.
@@ -141,8 +266,9 @@ type SignedURLOptions struct {
 	// Exactly one of PrivateKey or SignBytes must be non-nil.
 	PrivateKey []byte
 
-	// SignBytes is a function for implementing custom signing.
-	// If your application is running on Google App Engine, you can use appengine's internal signing function:
+	// SignBytes is a function for implementing custom signing. For example, if
+	// your application is running on Google App Engine, you can use
+	// appengine's internal signing function:
 	//     ctx := appengine.NewContext(request)
 	//     acc, _ := appengine.ServiceAccount(ctx)
 	//     url, err := SignedURL("bucket", "object", &SignedURLOptions{
@@ -163,7 +289,8 @@ type SignedURLOptions struct {
 	Method string
 
 	// Expires is the expiration time on the signed URL. It must be
-	// a datetime in the future.
+	// a datetime in the future. For SigningSchemeV4, the expiration may be no
+	// more than seven days in the future.
 	// Required.
 	Expires time.Time
 
@@ -173,18 +300,47 @@ type SignedURLOptions struct {
 	ContentType string
 
 	// Headers is a list of extension headers the client must provide
-	// in order to use the generated signed URL.
+	// in order to use the generated signed URL. Each must be a string of the
+	// form "key:values", with multiple values separated by a semicolon.
 	// Optional.
 	Headers []string
+
+	// QueryParameters is a map of additional query parameters. When
+	// SigningScheme is V4, this is used in computing the signature, and the
+	// client must use the same query parameters when using the generated signed
+	// URL.
+	// Optional.
+	QueryParameters url.Values
 
 	// MD5 is the base64 encoded MD5 checksum of the file.
 	// If provided, the client should provide the exact value on the request
 	// header in order to use the signed URL.
 	// Optional.
 	MD5 string
+
+	// Style provides options for the type of URL to use. Options are
+	// PathStyle (default), BucketBoundHostname, and VirtualHostedStyle. See
+	// https://cloud.google.com/storage/docs/request-endpoints for details.
+	// Only supported for V4 signing.
+	// Optional.
+	Style URLStyle
+
+	// Insecure determines whether the signed URL should use HTTPS (default) or
+	// HTTP.
+	// Only supported for V4 signing.
+	// Optional.
+	Insecure bool
+
+	// Scheme determines the version of URL signing to use. Default is
+	// SigningSchemeV2.
+	Scheme SigningScheme
 }
 
 var (
+	tabRegex = regexp.MustCompile(`[\t]+`)
+	// I was tempted to call this spacex. :)
+	spaceRegex = regexp.MustCompile(` +`)
+
 	canonicalHeaderRegexp    = regexp.MustCompile(`(?i)^(x-goog-[^:]+):(.*)?$`)
 	excludedCanonicalHeaders = map[string]bool{
 		"x-goog-encryption-key":        true,
@@ -192,26 +348,31 @@ var (
 	}
 )
 
-// sanitizeHeaders applies the specifications for canonical extension headers at
+// v2SanitizeHeaders applies the specifications for canonical extension headers at
 // https://cloud.google.com/storage/docs/access-control/signed-urls#about-canonical-extension-headers.
-func sanitizeHeaders(hdrs []string) []string {
+func v2SanitizeHeaders(hdrs []string) []string {
 	headerMap := map[string][]string{}
 	for _, hdr := range hdrs {
 		// No leading or trailing whitespaces.
 		sanitizedHeader := strings.TrimSpace(hdr)
 
+		var header, value string
 		// Only keep canonical headers, discard any others.
 		headerMatches := canonicalHeaderRegexp.FindStringSubmatch(sanitizedHeader)
 		if len(headerMatches) == 0 {
 			continue
 		}
+		header = headerMatches[1]
+		value = headerMatches[2]
 
-		header := strings.ToLower(strings.TrimSpace(headerMatches[1]))
-		if excludedCanonicalHeaders[headerMatches[1]] {
+		header = strings.ToLower(strings.TrimSpace(header))
+		value = strings.TrimSpace(value)
+
+		if excludedCanonicalHeaders[header] {
 			// Do not keep any deliberately excluded canonical headers when signing.
 			continue
 		}
-		value := strings.TrimSpace(headerMatches[2])
+
 		if len(value) > 0 {
 			// Remove duplicate headers by appending the values of duplicates
 			// in their order of appearance.
@@ -221,20 +382,70 @@ func sanitizeHeaders(hdrs []string) []string {
 
 	var sanitizedHeaders []string
 	for header, values := range headerMap {
-		// There should be no spaces around the colon separating the
-		// header name from the header value or around the values
-		// themselves. The values should be separated by commas.
+		// There should be no spaces around the colon separating the header name
+		// from the header value or around the values themselves. The values
+		// should be separated by commas.
+		//
 		// NOTE: The semantics for headers without a value are not clear.
-		//       However from specifications these should be edge-cases
-		//       anyway and we should assume that there will be no
-		//       canonical headers using empty values. Any such headers
-		//       are discarded at the regexp stage above.
-		sanitizedHeaders = append(
-			sanitizedHeaders,
-			fmt.Sprintf("%s:%s", header, strings.Join(values, ",")),
-		)
+		// However from specifications these should be edge-cases anyway and we
+		// should assume that there will be no canonical headers using empty
+		// values. Any such headers are discarded at the regexp stage above.
+		sanitizedHeaders = append(sanitizedHeaders, fmt.Sprintf("%s:%s", header, strings.Join(values, ",")))
 	}
 	sort.Strings(sanitizedHeaders)
+	return sanitizedHeaders
+}
+
+// v4SanitizeHeaders applies the specifications for canonical extension headers
+// at https://cloud.google.com/storage/docs/access-control/signed-urls#about-canonical-extension-headers.
+//
+// V4 does a couple things differently from V2:
+// - Headers get sorted by key, instead of by key:value. We do this in
+//   signedURLV4.
+// - There's no canonical regexp: we simply split headers on :.
+// - We don't exclude canonical headers.
+// - We replace leading and trailing spaces in header values, like v2, but also
+//   all intermediate space duplicates get stripped. That is, there's only ever
+//   a single consecutive space.
+func v4SanitizeHeaders(hdrs []string) []string {
+	headerMap := map[string][]string{}
+	for _, hdr := range hdrs {
+		// No leading or trailing whitespaces.
+		sanitizedHeader := strings.TrimSpace(hdr)
+
+		var key, value string
+		headerMatches := strings.Split(sanitizedHeader, ":")
+		if len(headerMatches) < 2 {
+			continue
+		}
+
+		key = headerMatches[0]
+		value = headerMatches[1]
+
+		key = strings.ToLower(strings.TrimSpace(key))
+		value = strings.TrimSpace(value)
+		value = string(spaceRegex.ReplaceAll([]byte(value), []byte(" ")))
+		value = string(tabRegex.ReplaceAll([]byte(value), []byte("\t")))
+
+		if len(value) > 0 {
+			// Remove duplicate headers by appending the values of duplicates
+			// in their order of appearance.
+			headerMap[key] = append(headerMap[key], value)
+		}
+	}
+
+	var sanitizedHeaders []string
+	for header, values := range headerMap {
+		// There should be no spaces around the colon separating the header name
+		// from the header value or around the values themselves. The values
+		// should be separated by commas.
+		//
+		// NOTE: The semantics for headers without a value are not clear.
+		// However from specifications these should be edge-cases anyway and we
+		// should assume that there will be no canonical headers using empty
+		// values. Any such headers are discarded at the regexp stage above.
+		sanitizedHeaders = append(sanitizedHeaders, fmt.Sprintf("%s:%s", header, strings.Join(values, ",")))
+	}
 	return sanitizedHeaders
 }
 
@@ -243,29 +454,236 @@ func sanitizeHeaders(hdrs []string) []string {
 // Google account or signing in. For more information about the signed
 // URLs, see https://cloud.google.com/storage/docs/accesscontrol#Signed-URLs.
 func SignedURL(bucket, name string, opts *SignedURLOptions) (string, error) {
+	now := utcNow()
+	if err := validateOptions(opts, now); err != nil {
+		return "", err
+	}
+
+	switch opts.Scheme {
+	case SigningSchemeV2:
+		opts.Headers = v2SanitizeHeaders(opts.Headers)
+		return signedURLV2(bucket, name, opts)
+	case SigningSchemeV4:
+		opts.Headers = v4SanitizeHeaders(opts.Headers)
+		return signedURLV4(bucket, name, opts, now)
+	default: // SigningSchemeDefault
+		opts.Headers = v2SanitizeHeaders(opts.Headers)
+		return signedURLV2(bucket, name, opts)
+	}
+}
+
+func validateOptions(opts *SignedURLOptions, now time.Time) error {
 	if opts == nil {
-		return "", errors.New("storage: missing required SignedURLOptions")
+		return errors.New("storage: missing required SignedURLOptions")
 	}
 	if opts.GoogleAccessID == "" {
-		return "", errors.New("storage: missing required GoogleAccessID")
+		return errors.New("storage: missing required GoogleAccessID")
 	}
 	if (opts.PrivateKey == nil) == (opts.SignBytes == nil) {
-		return "", errors.New("storage: exactly one of PrivateKey or SignedBytes must be set")
+		return errors.New("storage: exactly one of PrivateKey or SignedBytes must be set")
 	}
-	if opts.Method == "" {
-		return "", errors.New("storage: missing required method option")
+	opts.Method = strings.ToUpper(opts.Method)
+	if _, ok := signedURLMethods[opts.Method]; !ok {
+		return errMethodNotValid
 	}
 	if opts.Expires.IsZero() {
-		return "", errors.New("storage: missing required expires option")
+		return errors.New("storage: missing required expires option")
 	}
 	if opts.MD5 != "" {
 		md5, err := base64.StdEncoding.DecodeString(opts.MD5)
 		if err != nil || len(md5) != 16 {
-			return "", errors.New("storage: invalid MD5 checksum")
+			return errors.New("storage: invalid MD5 checksum")
 		}
 	}
-	opts.Headers = sanitizeHeaders(opts.Headers)
+	if opts.Style == nil {
+		opts.Style = PathStyle()
+	}
+	if _, ok := opts.Style.(pathStyle); !ok && opts.Scheme == SigningSchemeV2 {
+		return errors.New("storage: only path-style URLs are permitted with SigningSchemeV2")
+	}
+	if opts.Scheme == SigningSchemeV4 {
+		cutoff := now.Add(604801 * time.Second) // 7 days + 1 second
+		if !opts.Expires.Before(cutoff) {
+			return errors.New("storage: expires must be within seven days from now")
+		}
+	}
+	return nil
+}
 
+const (
+	iso8601      = "20060102T150405Z"
+	yearMonthDay = "20060102"
+)
+
+// utcNow returns the current time in UTC and is a variable to allow for
+// reassignment in tests to provide deterministic signed URL values.
+var utcNow = func() time.Time {
+	return time.Now().UTC()
+}
+
+// extractHeaderNames takes in a series of key:value headers and returns the
+// header names only.
+func extractHeaderNames(kvs []string) []string {
+	var res []string
+	for _, header := range kvs {
+		nameValue := strings.Split(header, ":")
+		res = append(res, nameValue[0])
+	}
+	return res
+}
+
+// pathEncodeV4 creates an encoded string that matches the v4 signature spec.
+// Following the spec precisely is necessary in order to ensure that the URL
+// and signing string are correctly formed, and Go's url.PathEncode and
+// url.QueryEncode don't generate an exact match without some additional logic.
+func pathEncodeV4(path string) string {
+	segments := strings.Split(path, "/")
+	var encodedSegments []string
+	for _, s := range segments {
+		encodedSegments = append(encodedSegments, url.QueryEscape(s))
+	}
+	encodedStr := strings.Join(encodedSegments, "/")
+	encodedStr = strings.Replace(encodedStr, "+", "%20", -1)
+	return encodedStr
+}
+
+// signedURLV4 creates a signed URL using the sigV4 algorithm.
+func signedURLV4(bucket, name string, opts *SignedURLOptions, now time.Time) (string, error) {
+	buf := &bytes.Buffer{}
+	fmt.Fprintf(buf, "%s\n", opts.Method)
+
+	u := &url.URL{Path: opts.Style.path(bucket, name)}
+	u.RawPath = pathEncodeV4(u.Path)
+
+	// Note: we have to add a / here because GCS does so auto-magically, despite
+	// our encoding not doing so (and we have to exactly match their
+	// canonical query).
+	fmt.Fprintf(buf, "/%s\n", u.RawPath)
+
+	headerNames := append(extractHeaderNames(opts.Headers), "host")
+	if opts.ContentType != "" {
+		headerNames = append(headerNames, "content-type")
+	}
+	if opts.MD5 != "" {
+		headerNames = append(headerNames, "content-md5")
+	}
+	sort.Strings(headerNames)
+	signedHeaders := strings.Join(headerNames, ";")
+	timestamp := now.Format(iso8601)
+	credentialScope := fmt.Sprintf("%s/auto/storage/goog4_request", now.Format(yearMonthDay))
+	canonicalQueryString := url.Values{
+		"X-Goog-Algorithm":     {"GOOG4-RSA-SHA256"},
+		"X-Goog-Credential":    {fmt.Sprintf("%s/%s", opts.GoogleAccessID, credentialScope)},
+		"X-Goog-Date":          {timestamp},
+		"X-Goog-Expires":       {fmt.Sprintf("%d", int(opts.Expires.Sub(now).Seconds()))},
+		"X-Goog-SignedHeaders": {signedHeaders},
+	}
+	// Add user-supplied query parameters to the canonical query string. For V4,
+	// it's necessary to include these.
+	for k, v := range opts.QueryParameters {
+		canonicalQueryString[k] = append(canonicalQueryString[k], v...)
+	}
+
+	fmt.Fprintf(buf, "%s\n", canonicalQueryString.Encode())
+
+	// Fill in the hostname based on the desired URL style.
+	u.Host = opts.Style.host(bucket)
+
+	// Fill in the URL scheme.
+	if opts.Insecure {
+		u.Scheme = "http"
+	} else {
+		u.Scheme = "https"
+	}
+
+	var headersWithValue []string
+	headersWithValue = append(headersWithValue, "host:"+u.Host)
+	headersWithValue = append(headersWithValue, opts.Headers...)
+	if opts.ContentType != "" {
+		headersWithValue = append(headersWithValue, "content-type:"+opts.ContentType)
+	}
+	if opts.MD5 != "" {
+		headersWithValue = append(headersWithValue, "content-md5:"+opts.MD5)
+	}
+	// Trim extra whitespace from headers and replace with a single space.
+	var trimmedHeaders []string
+	for _, h := range headersWithValue {
+		trimmedHeaders = append(trimmedHeaders, strings.Join(strings.Fields(h), " "))
+	}
+	canonicalHeaders := strings.Join(sortHeadersByKey(trimmedHeaders), "\n")
+	fmt.Fprintf(buf, "%s\n\n", canonicalHeaders)
+	fmt.Fprintf(buf, "%s\n", signedHeaders)
+
+	// If the user provides a value for X-Goog-Content-SHA256, we must use
+	// that value in the request string. If not, we use UNSIGNED-PAYLOAD.
+	sha256Header := false
+	for _, h := range trimmedHeaders {
+		if strings.HasPrefix(strings.ToLower(h), "x-goog-content-sha256") && strings.Contains(h, ":") {
+			sha256Header = true
+			fmt.Fprintf(buf, "%s", strings.SplitN(h, ":", 2)[1])
+			break
+		}
+	}
+	if !sha256Header {
+		fmt.Fprint(buf, "UNSIGNED-PAYLOAD")
+	}
+
+	sum := sha256.Sum256(buf.Bytes())
+	hexDigest := hex.EncodeToString(sum[:])
+	signBuf := &bytes.Buffer{}
+	fmt.Fprint(signBuf, "GOOG4-RSA-SHA256\n")
+	fmt.Fprintf(signBuf, "%s\n", timestamp)
+	fmt.Fprintf(signBuf, "%s\n", credentialScope)
+	fmt.Fprintf(signBuf, "%s", hexDigest)
+
+	signBytes := opts.SignBytes
+	if opts.PrivateKey != nil {
+		key, err := parseKey(opts.PrivateKey)
+		if err != nil {
+			return "", err
+		}
+		signBytes = func(b []byte) ([]byte, error) {
+			sum := sha256.Sum256(b)
+			return rsa.SignPKCS1v15(
+				rand.Reader,
+				key,
+				crypto.SHA256,
+				sum[:],
+			)
+		}
+	}
+	b, err := signBytes(signBuf.Bytes())
+	if err != nil {
+		return "", err
+	}
+	signature := hex.EncodeToString(b)
+	canonicalQueryString.Set("X-Goog-Signature", string(signature))
+	u.RawQuery = canonicalQueryString.Encode()
+	return u.String(), nil
+}
+
+// takes a list of headerKey:headervalue1,headervalue2,etc and sorts by header
+// key.
+func sortHeadersByKey(hdrs []string) []string {
+	headersMap := map[string]string{}
+	var headersKeys []string
+	for _, h := range hdrs {
+		parts := strings.Split(h, ":")
+		k := parts[0]
+		v := parts[1]
+		headersMap[k] = v
+		headersKeys = append(headersKeys, k)
+	}
+	sort.Strings(headersKeys)
+	var sorted []string
+	for _, k := range headersKeys {
+		v := headersMap[k]
+		sorted = append(sorted, fmt.Sprintf("%s:%s", k, v))
+	}
+	return sorted
+}
+
+func signedURLV2(bucket, name string, opts *SignedURLOptions) (string, error) {
 	signBytes := opts.SignBytes
 	if opts.PrivateKey != nil {
 		key, err := parseKey(opts.PrivateKey)
@@ -712,11 +1130,11 @@ type ObjectAttrs struct {
 	// data is rejected if its MD5 hash does not match this field.
 	MD5 []byte
 
-	// CRC32C is the CRC32 checksum of the object's content using
-	// the Castagnoli93 polynomial. This field is read-only, except when
-	// used from a Writer. If set on a Writer and Writer.SendCRC32C
-	// is true, the uploaded data is rejected if its CRC32c hash does not
-	// match this field.
+	// CRC32C is the CRC32 checksum of the object's content using the Castagnoli93
+	// polynomial. This field is read-only, except when used from a Writer or
+	// Composer. In those cases, if the SendCRC32C field in the Writer or Composer
+	// is set to is true, the uploaded data is rejected if its CRC32C hash does
+	// not match this field.
 	CRC32C uint32
 
 	// MediaLink is an URL to the object's content. This field is read-only.
@@ -737,13 +1155,12 @@ type ObjectAttrs struct {
 	// of a particular object. This field is read-only.
 	Metageneration int64
 
-	// StorageClass is the storage class of the object.
-	// This value defines how objects in the bucket are stored and
-	// determines the SLA and the cost of storage. Typical values are
-	// "MULTI_REGIONAL", "REGIONAL", "NEARLINE", "COLDLINE", "STANDARD"
-	// and "DURABLE_REDUCED_AVAILABILITY".
-	// It defaults to "STANDARD", which is equivalent to "MULTI_REGIONAL"
-	// or "REGIONAL" depending on the bucket's location settings.
+	// StorageClass is the storage class of the object. This defines
+	// how objects are stored and determines the SLA and the cost of storage.
+	// Typical values are "STANDARD", "NEARLINE", "COLDLINE" and "ARCHIVE".
+	// Defaults to "STANDARD".
+	// See https://cloud.google.com/storage/docs/storage-classes for all
+	// valid values.
 	StorageClass string
 
 	// Created is the time the object was created. This field is read-only.
@@ -778,6 +1195,10 @@ type ObjectAttrs struct {
 	// ObjectIterator.Next. When set, no other fields in ObjectAttrs will be
 	// populated.
 	Prefix string
+
+	// Etag is the HTTP/1.1 Entity tag for the object.
+	// This field is read-only.
+	Etag string
 }
 
 // convertTime converts a time in RFC3339 format to time.Time.
@@ -830,6 +1251,7 @@ func newObject(o *raw.Object) *ObjectAttrs {
 		Created:                 convertTime(o.TimeCreated),
 		Deleted:                 convertTime(o.TimeDeleted),
 		Updated:                 convertTime(o.Updated),
+		Etag:                    o.Etag,
 	}
 }
 
@@ -870,17 +1292,78 @@ type Query struct {
 	// Versions indicates whether multiple versions of the same
 	// object will be included in the results.
 	Versions bool
+
+	// fieldSelection is used to select only specific fields to be returned by
+	// the query. It's used internally and is populated for the user by
+	// calling Query.SetAttrSelection
+	fieldSelection string
 }
 
-// contentTyper implements ContentTyper to enable an
-// io.ReadCloser to specify its MIME type.
-type contentTyper struct {
-	io.Reader
-	t string
+// attrToFieldMap maps the field names of ObjectAttrs to the underlying field
+// names in the API call. Only the ObjectAttrs field names are visible to users
+// because they are already part of the public API of the package.
+var attrToFieldMap = map[string]string{
+	"Bucket":                  "bucket",
+	"Name":                    "name",
+	"ContentType":             "contentType",
+	"ContentLanguage":         "contentLanguage",
+	"CacheControl":            "cacheControl",
+	"EventBasedHold":          "eventBasedHold",
+	"TemporaryHold":           "temporaryHold",
+	"RetentionExpirationTime": "retentionExpirationTime",
+	"ACL":                     "acl",
+	"Owner":                   "owner",
+	"ContentEncoding":         "contentEncoding",
+	"ContentDisposition":      "contentDisposition",
+	"Size":                    "size",
+	"MD5":                     "md5Hash",
+	"CRC32C":                  "crc32c",
+	"MediaLink":               "mediaLink",
+	"Metadata":                "metadata",
+	"Generation":              "generation",
+	"Metageneration":          "metageneration",
+	"StorageClass":            "storageClass",
+	"CustomerKeySHA256":       "customerEncryption",
+	"KMSKeyName":              "kmsKeyName",
+	"Created":                 "timeCreated",
+	"Deleted":                 "timeDeleted",
+	"Updated":                 "updated",
+	"Etag":                    "etag",
 }
 
-func (c *contentTyper) ContentType() string {
-	return c.t
+// SetAttrSelection makes the query populate only specific attributes of
+// objects. When iterating over objects, if you only need each object's name
+// and size, pass []string{"Name", "Size"} to this method. Only these fields
+// will be fetched for each object across the network; the other fields of
+// ObjectAttr will remain at their default values. This is a performance
+// optimization; for more information, see
+// https://cloud.google.com/storage/docs/json_api/v1/how-tos/performance
+func (q *Query) SetAttrSelection(attrs []string) error {
+	fieldSet := make(map[string]bool)
+
+	for _, attr := range attrs {
+		field, ok := attrToFieldMap[attr]
+		if !ok {
+			return fmt.Errorf("storage: attr %v is not valid", attr)
+		}
+		fieldSet[field] = true
+	}
+
+	if len(fieldSet) > 0 {
+		var b bytes.Buffer
+		b.WriteString("items(")
+		first := true
+		for field := range fieldSet {
+			if !first {
+				b.WriteString(",")
+			}
+			first = false
+			b.WriteString(field)
+		}
+		b.WriteString(")")
+		q.fieldSelection = b.String()
+	}
+	return nil
 }
 
 // Conditions constrain methods to act on specific generations of

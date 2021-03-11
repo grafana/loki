@@ -22,37 +22,48 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
+	errs "github.com/weaveworks/common/errors"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
-// ChunkLen is the length of a chunk in bytes.
-const ChunkLen = 1024
+const (
+	// ChunkLen is the length of a chunk in bytes.
+	ChunkLen = 1024
+
+	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
+	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
+)
 
 var (
 	errChunkBoundsExceeded = errors.New("attempted access outside of chunk boundaries")
-	errAddedToEvictedChunk = errors.New("attempted to add sample to evicted chunk")
 )
 
 // Chunk is the interface for all chunks. Chunks are generally not
 // goroutine-safe.
 type Chunk interface {
 	// Add adds a SamplePair to the chunks, performs any necessary
-	// re-encoding, and adds any necessary overflow chunks. It returns the
-	// new version of the original chunk, followed by overflow chunks, if
-	// any. The first chunk returned might be the same as the original one
-	// or a newly allocated version. In any case, take the returned chunk as
-	// the relevant one and discard the original chunk.
-	Add(sample model.SamplePair) ([]Chunk, error)
-	NewIterator() Iterator
+	// re-encoding, and creates any necessary overflow chunk.
+	// The returned Chunk is the overflow chunk if it was created.
+	// The returned Chunk is nil if the sample got appended to the same chunk.
+	Add(sample model.SamplePair) (Chunk, error)
+	// NewIterator returns an iterator for the chunks.
+	// The iterator passed as argument is for re-use. Depending on implementation,
+	// the iterator can be re-used or a new iterator can be allocated.
+	NewIterator(Iterator) Iterator
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
 	Utilization() float64
 
-	// Slice returns a smaller chunk the includes all samples between start and end
+	// Slice returns a smaller chunk that includes all samples between start and end
 	// (inclusive).  Its may over estimate. On some encodings it is a noop.
 	Slice(start, end model.Time) Chunk
+
+	// Rebound returns a smaller chunk that includes all samples between start and end (inclusive).
+	// We do not want to change existing Slice implementations because
+	// it is built specifically for query optimization and is a noop for some of the encodings.
+	Rebound(start, end model.Time) (Chunk, error)
 
 	// Len returns the number of samples in the chunk.  Implementations may be
 	// expensive.
@@ -120,12 +131,13 @@ func RangeValues(it Iterator, in metric.Interval) ([]model.SamplePair, error) {
 // addToOverflowChunk is a utility function that creates a new chunk as overflow
 // chunk, adds the provided sample to it, and returns a chunk slice containing
 // the provided old chunk followed by the new overflow chunk.
-func addToOverflowChunk(c Chunk, s model.SamplePair) ([]Chunk, error) {
-	overflowChunks, err := New().Add(s)
+func addToOverflowChunk(s model.SamplePair) (Chunk, error) {
+	overflowChunk := New()
+	_, err := overflowChunk.Add(s)
 	if err != nil {
 		return nil, err
 	}
-	return []Chunk{c, overflowChunks[0]}, nil
+	return overflowChunk, nil
 }
 
 // transcodeAndAdd is a utility function that transcodes the dst chunk into the
@@ -136,27 +148,33 @@ func transcodeAndAdd(dst Chunk, src Chunk, s model.SamplePair) ([]Chunk, error) 
 	Ops.WithLabelValues(Transcode).Inc()
 
 	var (
-		head            = dst
-		body, NewChunks []Chunk
-		err             error
+		head     = dst
+		newChunk Chunk
+		body     = []Chunk{head}
+		err      error
 	)
 
-	it := src.NewIterator()
+	it := src.NewIterator(nil)
 	for it.Scan() {
-		if NewChunks, err = head.Add(it.Value()); err != nil {
+		if newChunk, err = head.Add(it.Value()); err != nil {
 			return nil, err
 		}
-		body = append(body, NewChunks[:len(NewChunks)-1]...)
-		head = NewChunks[len(NewChunks)-1]
+		if newChunk != nil {
+			body = append(body, newChunk)
+			head = newChunk
+		}
 	}
 	if it.Err() != nil {
 		return nil, it.Err()
 	}
 
-	if NewChunks, err = head.Add(s); err != nil {
+	if newChunk, err = head.Add(s); err != nil {
 		return nil, err
 	}
-	return append(body, NewChunks...), nil
+	if newChunk != nil {
+		body = append(body, newChunk)
+	}
+	return body, nil
 }
 
 // indexAccessor allows accesses to samples by index.
@@ -238,4 +256,41 @@ func (it *indexAccessingChunkIterator) Batch(size int) Batch {
 // err implements Iterator.
 func (it *indexAccessingChunkIterator) Err() error {
 	return it.acc.err()
+}
+
+func reboundChunk(c Chunk, start, end model.Time) (Chunk, error) {
+	itr := c.NewIterator(nil)
+	if !itr.FindAtOrAfter(start) {
+		return nil, ErrSliceNoDataInRange
+	}
+
+	pc, err := NewForEncoding(c.Encoding())
+	if err != nil {
+		return nil, err
+	}
+
+	for !itr.Value().Timestamp.After(end) {
+		oc, err := pc.Add(itr.Value())
+		if err != nil {
+			return nil, err
+		}
+
+		if oc != nil {
+			return nil, ErrSliceChunkOverflow
+		}
+		if !itr.Scan() {
+			break
+		}
+	}
+
+	err = itr.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	if pc.Len() == 0 {
+		return nil, ErrSliceNoDataInRange
+	}
+
+	return pc, nil
 }

@@ -59,4 +59,3 @@ The service name to connect to Loki. Defaults to the same logic as "loki.fullnam
 {{- end -}}
 {{- end -}}
 {{- end -}}
-

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go/utils"
 
 	"github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/internal/baggage/remote"
@@ -36,16 +37,16 @@ const defaultSamplingProbability = 0.001
 // Configuration configures and creates Jaeger Tracer
 type Configuration struct {
 	// ServiceName specifies the service name to use on the tracer.
-	// Can be provided via environment variable named JAEGER_SERVICE_NAME
+	// Can be provided by FromEnv() via the environment variable named JAEGER_SERVICE_NAME
 	ServiceName string `yaml:"serviceName"`
 
-	// Disabled can be provided via environment variable named JAEGER_DISABLED
+	// Disabled can be provided by FromEnv() via the environment variable named JAEGER_DISABLED
 	Disabled bool `yaml:"disabled"`
 
-	// RPCMetrics can be provided via environment variable named JAEGER_RPC_METRICS
+	// RPCMetrics can be provided by FromEnv() via the environment variable named JAEGER_RPC_METRICS
 	RPCMetrics bool `yaml:"rpc_metrics"`
 
-	// Tags can be provided via environment variable named JAEGER_TAGS
+	// Tags can be provided by FromEnv() via the environment variable named JAEGER_TAGS
 	Tags []opentracing.Tag `yaml:"tags"`
 
 	Sampler             *SamplerConfig             `yaml:"sampler"`
@@ -57,8 +58,8 @@ type Configuration struct {
 
 // SamplerConfig allows initializing a non-default sampler.  All fields are optional.
 type SamplerConfig struct {
-	// Type specifies the type of the sampler: const, probabilistic, rateLimiting, or remote
-	// Can be set by exporting an environment variable named JAEGER_SAMPLER_TYPE
+	// Type specifies the type of the sampler: const, probabilistic, rateLimiting, or remote.
+	// Can be provided by FromEnv() via the environment variable named JAEGER_SAMPLER_TYPE
 	Type string `yaml:"type"`
 
 	// Param is a value passed to the sampler.
@@ -69,23 +70,36 @@ type SamplerConfig struct {
 	// - for "remote" sampler, param is the same as for "probabilistic"
 	//   and indicates the initial sampling rate before the actual one
 	//   is received from the mothership.
-	// Can be set by exporting an environment variable named JAEGER_SAMPLER_PARAM
+	// Can be provided by FromEnv() via the environment variable named JAEGER_SAMPLER_PARAM
 	Param float64 `yaml:"param"`
 
-	// SamplingServerURL is the address of jaeger-agent's HTTP sampling server
-	// Can be set by exporting an environment variable named JAEGER_SAMPLER_MANAGER_HOST_PORT
+	// SamplingServerURL is the URL of sampling manager that can provide
+	// sampling strategy to this service.
+	// Can be provided by FromEnv() via the environment variable named JAEGER_SAMPLING_ENDPOINT
 	SamplingServerURL string `yaml:"samplingServerURL"`
 
-	// MaxOperations is the maximum number of operations that the sampler
+	// SamplingRefreshInterval controls how often the remotely controlled sampler will poll
+	// sampling manager for the appropriate sampling strategy.
+	// Can be provided by FromEnv() via the environment variable named JAEGER_SAMPLER_REFRESH_INTERVAL
+	SamplingRefreshInterval time.Duration `yaml:"samplingRefreshInterval"`
+
+	// MaxOperations is the maximum number of operations that the PerOperationSampler
 	// will keep track of. If an operation is not tracked, a default probabilistic
 	// sampler will be used rather than the per operation specific sampler.
-	// Can be set by exporting an environment variable named JAEGER_SAMPLER_MAX_OPERATIONS
+	// Can be provided by FromEnv() via the environment variable named JAEGER_SAMPLER_MAX_OPERATIONS.
 	MaxOperations int `yaml:"maxOperations"`
 
-	// SamplingRefreshInterval controls how often the remotely controlled sampler will poll
-	// jaeger-agent for the appropriate sampling strategy.
-	// Can be set by exporting an environment variable named JAEGER_SAMPLER_REFRESH_INTERVAL
-	SamplingRefreshInterval time.Duration `yaml:"samplingRefreshInterval"`
+	// Opt-in feature for applications that require late binding of span name via explicit
+	// call to SetOperationName when using PerOperationSampler. When this feature is enabled,
+	// the sampler will return retryable=true from OnCreateSpan(), thus leaving the sampling
+	// decision as non-final (and the span as writeable). This may lead to degraded performance
+	// in applications that always provide the correct span name on trace creation.
+	//
+	// For backwards compatibility this option is off by default.
+	OperationNameLateBinding bool `yaml:"operationNameLateBinding"`
+
+	// Options can be used to programmatically pass additional options to the Remote sampler.
+	Options []jaeger.SamplerOption
 }
 
 // ReporterConfig configures the reporter. All fields are optional.
@@ -93,35 +107,51 @@ type ReporterConfig struct {
 	// QueueSize controls how many spans the reporter can keep in memory before it starts dropping
 	// new spans. The queue is continuously drained by a background go-routine, as fast as spans
 	// can be sent out of process.
-	// Can be set by exporting an environment variable named JAEGER_REPORTER_MAX_QUEUE_SIZE
+	// Can be provided by FromEnv() via the environment variable named JAEGER_REPORTER_MAX_QUEUE_SIZE
 	QueueSize int `yaml:"queueSize"`
 
 	// BufferFlushInterval controls how often the buffer is force-flushed, even if it's not full.
 	// It is generally not useful, as it only matters for very low traffic services.
-	// Can be set by exporting an environment variable named JAEGER_REPORTER_FLUSH_INTERVAL
+	// Can be provided by FromEnv() via the environment variable named JAEGER_REPORTER_FLUSH_INTERVAL
 	BufferFlushInterval time.Duration
 
 	// LogSpans, when true, enables LoggingReporter that runs in parallel with the main reporter
 	// and logs all submitted spans. Main Configuration.Logger must be initialized in the code
 	// for this option to have any effect.
-	// Can be set by exporting an environment variable named JAEGER_REPORTER_LOG_SPANS
+	// Can be provided by FromEnv() via the environment variable named JAEGER_REPORTER_LOG_SPANS
 	LogSpans bool `yaml:"logSpans"`
 
-	// LocalAgentHostPort instructs reporter to send spans to jaeger-agent at this address
-	// Can be set by exporting an environment variable named JAEGER_AGENT_HOST / JAEGER_AGENT_PORT
+	// LocalAgentHostPort instructs reporter to send spans to jaeger-agent at this address.
+	// Can be provided by FromEnv() via the environment variable named JAEGER_AGENT_HOST / JAEGER_AGENT_PORT
 	LocalAgentHostPort string `yaml:"localAgentHostPort"`
 
-	// CollectorEndpoint instructs reporter to send spans to jaeger-collector at this URL
-	// Can be set by exporting an environment variable named JAEGER_ENDPOINT
+	// DisableAttemptReconnecting when true, disables udp connection helper that periodically re-resolves
+	// the agent's hostname and reconnects if there was a change. This option only
+	// applies if LocalAgentHostPort is specified.
+	// Can be provided by FromEnv() via the environment variable named JAEGER_REPORTER_ATTEMPT_RECONNECTING_DISABLED
+	DisableAttemptReconnecting bool `yaml:"disableAttemptReconnecting"`
+
+	// AttemptReconnectInterval controls how often the agent client re-resolves the provided hostname
+	// in order to detect address changes. This option only applies if DisableAttemptReconnecting is false.
+	// Can be provided by FromEnv() via the environment variable named JAEGER_REPORTER_ATTEMPT_RECONNECT_INTERVAL
+	AttemptReconnectInterval time.Duration
+
+	// CollectorEndpoint instructs reporter to send spans to jaeger-collector at this URL.
+	// Can be provided by FromEnv() via the environment variable named JAEGER_ENDPOINT
 	CollectorEndpoint string `yaml:"collectorEndpoint"`
 
 	// User instructs reporter to include a user for basic http authentication when sending spans to jaeger-collector.
-	// Can be set by exporting an environment variable named JAEGER_USER
+	// Can be provided by FromEnv() via the environment variable named JAEGER_USER
 	User string `yaml:"user"`
 
 	// Password instructs reporter to include a password for basic http authentication when sending spans to
-	// jaeger-collector. Can be set by exporting an environment variable named JAEGER_PASSWORD
+	// jaeger-collector.
+	// Can be provided by FromEnv() via the environment variable named JAEGER_PASSWORD
 	Password string `yaml:"password"`
+
+	// HTTPHeaders instructs the reporter to add these headers to the http request when reporting spans.
+	// This field takes effect only when using HTTPTransport by setting the CollectorEndpoint.
+	HTTPHeaders map[string]string `yaml:"http_headers"`
 }
 
 // BaggageRestrictionsConfig configures the baggage restrictions manager which can be used to whitelist
@@ -181,13 +211,14 @@ func (c Configuration) New(
 // NewTracer returns a new tracer based on the current configuration, using the given options,
 // and a closer func that can be used to flush buffers before shutdown.
 func (c Configuration) NewTracer(options ...Option) (opentracing.Tracer, io.Closer, error) {
+	if c.Disabled {
+		return &opentracing.NoopTracer{}, &nullCloser{}, nil
+	}
+
 	if c.ServiceName == "" {
 		return nil, nil, errors.New("no service name provided")
 	}
 
-	if c.Disabled {
-		return &opentracing.NoopTracer{}, &nullCloser{}, nil
-	}
 	opts := applyOptions(options...)
 	tracerMetrics := jaeger.NewMetrics(opts.metrics, nil)
 	if c.RPCMetrics {
@@ -231,8 +262,10 @@ func (c Configuration) NewTracer(options ...Option) (opentracing.Tracer, io.Clos
 		jaeger.TracerOptions.Logger(opts.logger),
 		jaeger.TracerOptions.CustomHeaderKeys(c.Headers),
 		jaeger.TracerOptions.Gen128Bit(opts.gen128Bit),
+		jaeger.TracerOptions.PoolSpans(opts.poolSpans),
 		jaeger.TracerOptions.ZipkinSharedRPCSpan(opts.zipkinSharedRPCSpan),
 		jaeger.TracerOptions.MaxTagValueLength(opts.maxTagValueLength),
+		jaeger.TracerOptions.NoDebugFlagOnForcedSampling(opts.noDebugFlagOnForcedSampling),
 	}
 
 	for _, tag := range opts.tags {
@@ -329,7 +362,7 @@ func (sc *SamplerConfig) NewSampler(
 			return jaeger.NewProbabilisticSampler(sc.Param)
 		}
 		return nil, fmt.Errorf(
-			"Invalid Param for probabilistic sampler: %v. Expecting value between 0 and 1",
+			"invalid Param for probabilistic sampler; expecting value between 0 and 1, received %v",
 			sc.Param,
 		)
 	}
@@ -347,16 +380,14 @@ func (sc *SamplerConfig) NewSampler(
 			jaeger.SamplerOptions.Metrics(metrics),
 			jaeger.SamplerOptions.InitialSampler(initSampler),
 			jaeger.SamplerOptions.SamplingServerURL(sc.SamplingServerURL),
+			jaeger.SamplerOptions.MaxOperations(sc.MaxOperations),
+			jaeger.SamplerOptions.OperationNameLateBinding(sc.OperationNameLateBinding),
+			jaeger.SamplerOptions.SamplingRefreshInterval(sc.SamplingRefreshInterval),
 		}
-		if sc.MaxOperations != 0 {
-			options = append(options, jaeger.SamplerOptions.MaxOperations(sc.MaxOperations))
-		}
-		if sc.SamplingRefreshInterval != 0 {
-			options = append(options, jaeger.SamplerOptions.SamplingRefreshInterval(sc.SamplingRefreshInterval))
-		}
+		options = append(options, sc.Options...)
 		return jaeger.NewRemotelyControlledSampler(serviceName, options...), nil
 	}
-	return nil, fmt.Errorf("Unknown sampler type %v", sc.Type)
+	return nil, fmt.Errorf("unknown sampler type (%s)", sc.Type)
 }
 
 // NewReporter instantiates a new reporter that submits spans to the collector
@@ -365,7 +396,7 @@ func (rc *ReporterConfig) NewReporter(
 	metrics *jaeger.Metrics,
 	logger jaeger.Logger,
 ) (jaeger.Reporter, error) {
-	sender, err := rc.newTransport()
+	sender, err := rc.newTransport(logger)
 	if err != nil {
 		return nil, err
 	}
@@ -382,14 +413,22 @@ func (rc *ReporterConfig) NewReporter(
 	return reporter, err
 }
 
-func (rc *ReporterConfig) newTransport() (jaeger.Transport, error) {
+func (rc *ReporterConfig) newTransport(logger jaeger.Logger) (jaeger.Transport, error) {
 	switch {
-	case rc.CollectorEndpoint != "" && rc.User != "" && rc.Password != "":
-		return transport.NewHTTPTransport(rc.CollectorEndpoint, transport.HTTPBatchSize(1),
-			transport.HTTPBasicAuth(rc.User, rc.Password)), nil
 	case rc.CollectorEndpoint != "":
-		return transport.NewHTTPTransport(rc.CollectorEndpoint, transport.HTTPBatchSize(1)), nil
+		httpOptions := []transport.HTTPOption{transport.HTTPBatchSize(1), transport.HTTPHeaders(rc.HTTPHeaders)}
+		if rc.User != "" && rc.Password != "" {
+			httpOptions = append(httpOptions, transport.HTTPBasicAuth(rc.User, rc.Password))
+		}
+		return transport.NewHTTPTransport(rc.CollectorEndpoint, httpOptions...), nil
 	default:
-		return jaeger.NewUDPTransport(rc.LocalAgentHostPort, 0)
+		return jaeger.NewUDPTransportWithParams(jaeger.UDPTransportParams{
+			AgentClientUDPParams: utils.AgentClientUDPParams{
+				HostPort:                   rc.LocalAgentHostPort,
+				Logger:                     logger,
+				DisableAttemptReconnecting: rc.DisableAttemptReconnecting,
+				AttemptReconnectInterval:   rc.AttemptReconnectInterval,
+			},
+		})
 	}
 }

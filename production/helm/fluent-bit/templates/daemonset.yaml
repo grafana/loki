@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ template "fluent-bit-loki.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "fluent-bit-loki.name" . }}
+    chart: {{ template "fluent-bit-loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+    {{- toYaml .Values.annotations | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "fluent-bit-loki.name" . }}
+      release: {{ .Release.Name }}
+  updateStrategy:
+    type: {{ .Values.deploymentStrategy }}
+  {{- if ne .Values.deploymentStrategy "RollingUpdate" }}
+    rollingUpdate: null
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "fluent-bit-loki.name" . }}
+        release: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ template "fluent-bit-loki.serviceAccountName" . }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      {{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.image.pullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+      {{- end }}
+      containers:
+        - name: fluent-bit-loki
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+            - name: config
+              mountPath: /fluent-bit/etc
+            - name: run
+              mountPath: /run/fluent-bit
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.config.port }}
+              name: http-metrics
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      terminationGracePeriodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: {{ template "fluent-bit-loki.fullname" . }}
+        - name: run
+          hostPath:
+            path: /run/fluent-bit
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

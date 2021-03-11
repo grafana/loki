@@ -2,9 +2,18 @@ package stages
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	// Debug is used to wrap debug log statements, the go-kit logger won't let us introspect the current log level
+	// so this global is used for that purpose. This allows us to skip allocations of log messages at the
+	// debug level when debug level logging is not enabled. Log level allocations can become very expensive
+	// as we log numerous log entries per log line at debug level.
+	Debug = false
 )
 
 const (
@@ -56,6 +65,22 @@ func convertDateLayout(predef string, location *time.Location) parser {
 		}
 	case "Unix":
 		return func(t string) (time.Time, error) {
+			if strings.Count(t, ".") == 1 {
+				split := strings.Split(t, ".")
+				if len(split) != 2 {
+					return time.Time{}, fmt.Errorf("can't split %v into two parts", t)
+				}
+				sec, err := strconv.ParseInt(split[0], 10, 64)
+				if err != nil {
+					return time.Time{}, err
+				}
+				frac, err := strconv.ParseInt(split[1], 10, 64)
+				if err != nil {
+					return time.Time{}, err
+				}
+				nsec := int64(float64(frac) * math.Pow(10, float64(9-len(split[1]))))
+				return time.Unix(sec, nsec), nil
+			}
 			i, err := strconv.ParseInt(t, 10, 64)
 			if err != nil {
 				return time.Time{}, err
@@ -70,6 +95,14 @@ func convertDateLayout(predef string, location *time.Location) parser {
 			}
 			return time.Unix(0, i*int64(time.Millisecond)), nil
 		}
+	case "UnixUs":
+		return func(t string) (time.Time, error) {
+			i, err := strconv.ParseInt(t, 10, 64)
+			if err != nil {
+				return time.Time{}, err
+			}
+			return time.Unix(0, i*int64(time.Microsecond)), nil
+		}
 	case "UnixNs":
 		return func(t string) (time.Time, error) {
 			i, err := strconv.ParseInt(t, 10, 64)
@@ -79,7 +112,7 @@ func convertDateLayout(predef string, location *time.Location) parser {
 			return time.Unix(0, i), nil
 		}
 	default:
-		if !strings.Contains(predef, "2006") {
+		if !strings.Contains(predef, "06") && !strings.Contains(predef, "2006") {
 			return func(t string) (time.Time, error) {
 				return parseTimestampWithoutYear(predef, location, t, time.Now())
 			}

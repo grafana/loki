@@ -1,15 +1,13 @@
 package stages
 
 import (
-	"encoding/json"
-	//"encoding/json"
-	//"fmt"
 	"reflect"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/jmespath/go-jmespath"
+	json "github.com/json-iterator/go"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -68,7 +66,7 @@ type jsonStage struct {
 }
 
 // newJSONStage creates a new json pipeline stage from a config.
-func newJSONStage(logger log.Logger, config interface{}) (*jsonStage, error) {
+func newJSONStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := parseJSONConfig(config)
 	if err != nil {
 		return nil, err
@@ -77,11 +75,11 @@ func newJSONStage(logger log.Logger, config interface{}) (*jsonStage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &jsonStage{
+	return toStage(&jsonStage{
 		cfg:         cfg,
 		expressions: expressions,
 		logger:      log.With(logger, "component", "stage", "type", "json"),
-	}, nil
+	}), nil
 }
 
 func parseJSONConfig(config interface{}) (*JSONConfig, error) {
@@ -96,18 +94,22 @@ func parseJSONConfig(config interface{}) (*JSONConfig, error) {
 // Process implements Stage
 func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	// If a source key is provided, the json stage should process it
-	// from the exctracted map, otherwise should fallback to the entry
+	// from the extracted map, otherwise should fallback to the entry
 	input := entry
 
 	if j.cfg.Source != nil {
 		if _, ok := extracted[*j.cfg.Source]; !ok {
-			level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
+			if Debug {
+				level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
+			}
 			return
 		}
 
 		value, err := getString(extracted[*j.cfg.Source])
 		if err != nil {
-			level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
+			if Debug {
+				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]))
+			}
 			return
 		}
 
@@ -115,21 +117,27 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 	}
 
 	if input == nil {
-		level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
+		if Debug {
+			level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
+		}
 		return
 	}
 
 	var data map[string]interface{}
 
 	if err := json.Unmarshal([]byte(*input), &data); err != nil {
-		level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
+		if Debug {
+			level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
+		}
 		return
 	}
 
 	for n, e := range j.expressions {
 		r, err := e.Search(data)
 		if err != nil {
-			level.Debug(j.logger).Log("msg", "failed to search JMES expression", "err", err)
+			if Debug {
+				level.Debug(j.logger).Log("msg", "failed to search JMES expression", "err", err)
+			}
 			continue
 		}
 
@@ -141,11 +149,15 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			extracted[n] = r
 		case bool:
 			extracted[n] = r
+		case nil:
+			extracted[n] = nil
 		default:
 			// If the value wasn't a string or a number, marshal it back to json
 			jm, err := json.Marshal(r)
 			if err != nil {
-				level.Debug(j.logger).Log("msg", "failed to marshal complex type back to string", "err", err)
+				if Debug {
+					level.Debug(j.logger).Log("msg", "failed to marshal complex type back to string", "err", err)
+				}
 				continue
 			}
 			extracted[n] = string(jm)

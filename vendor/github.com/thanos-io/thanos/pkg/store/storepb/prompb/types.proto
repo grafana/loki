@@ -1,0 +1,88 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
+// Copyright 2017 Prometheus Team
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package prometheus_copy;
+
+option go_package = "prompb";
+
+import "gogoproto/gogo.proto";
+import "store/labelpb/types.proto";
+
+// Do not generate XXX fields to reduce memory footprint and opening a door
+// for zero-copy casts to/from prometheus data types.
+option (gogoproto.goproto_unkeyed_all) = false;
+option (gogoproto.goproto_unrecognized_all) = false;
+option (gogoproto.goproto_sizecache_all) = false;
+
+message Sample {
+  double value    = 1;
+  int64 timestamp = 2;
+}
+
+// TimeSeries represents samples and labels for a single time series.
+message TimeSeries {
+  // Labels have to be sorted by label names and without duplicated label names.
+  // TODO(bwplotka): Don't use zero copy ZLabels, see https://github.com/thanos-io/thanos/pull/3279 for details.
+  repeated thanos.Label labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
+  repeated Sample samples      = 2 [(gogoproto.nullable) = false];
+}
+
+// Matcher specifies a rule, which can match or set of labels or not.
+message LabelMatcher {
+  enum Type {
+    EQ  = 0;
+    NEQ = 1;
+    RE  = 2;
+    NRE = 3;
+  }
+  Type type    = 1;
+  string name  = 2;
+  string value = 3;
+}
+
+message ReadHints {
+  int64 step_ms = 1;  // Query step size in milliseconds.
+  string func = 2;    // String representation of surrounding function or aggregation.
+  int64 start_ms = 3; // Start time in milliseconds.
+  int64 end_ms = 4;   // End time in milliseconds.
+  repeated string grouping = 5; // List of label names used in aggregation.
+  bool by = 6; // Indicate whether it is without or by.
+  int64 range_ms = 7; // Range vector selector range in milliseconds.
+}
+
+// Chunk represents a TSDB chunk.
+// Time range [min, max] is inclusive.
+message Chunk {
+  int64 min_time_ms = 1;
+  int64 max_time_ms = 2;
+
+  // We require this to match chunkenc.Encoding.
+  enum Encoding {
+    UNKNOWN = 0;
+    XOR     = 1;
+  }
+  Encoding type  = 3;
+  bytes data     = 4;
+}
+
+// ChunkedSeries represents single, encoded time series.
+message ChunkedSeries {
+  // Labels should be sorted.
+  repeated thanos.Label labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
+  // Chunks will be in start time order and may overlap.
+  repeated Chunk chunks = 2 [(gogoproto.nullable) = false];
+}

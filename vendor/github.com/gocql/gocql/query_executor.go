@@ -112,7 +112,15 @@ func (q *queryExecutor) do(ctx context.Context, qry ExecutableQuery) *Iter {
 		iter = q.attemptQuery(ctx, qry, conn)
 		iter.host = selectedHost.Info()
 		// Update host
-		selectedHost.Mark(iter.err)
+		switch iter.err {
+		case context.Canceled, context.DeadlineExceeded, ErrNotFound:
+			// those errors represents logical errors, they should not count
+			// toward removing a node from the pool
+			selectedHost.Mark(nil)
+			return iter
+		default:
+			selectedHost.Mark(iter.err)
+		}
 
 		// Exit if the query was successful
 		// or no retry policy defined or retry attempts were reached

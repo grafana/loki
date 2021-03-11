@@ -2,6 +2,7 @@ package metric
 
 import (
 	"strings"
+	"time"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
@@ -56,7 +57,7 @@ type Gauges struct {
 }
 
 // NewGauges creates a new gauge vec.
-func NewGauges(name, help string, config interface{}) (*Gauges, error) {
+func NewGauges(name, help string, config interface{}, maxIdleSec int64) (*Gauges, error) {
 	cfg, err := parseGaugeConfig(config)
 	if err != nil {
 		return nil, err
@@ -67,12 +68,14 @@ func NewGauges(name, help string, config interface{}) (*Gauges, error) {
 	}
 	return &Gauges{
 		metricVec: newMetricVec(func(labels map[string]string) prometheus.Metric {
-			return prometheus.NewGauge(prometheus.GaugeOpts{
+			return &expiringGauge{prometheus.NewGauge(prometheus.GaugeOpts{
 				Help:        help,
 				Name:        name,
 				ConstLabels: labels,
-			})
-		}),
+			}),
+				0,
+			}
+		}, maxIdleSec),
 		Cfg: cfg,
 	}, nil
 }
@@ -80,4 +83,54 @@ func NewGauges(name, help string, config interface{}) (*Gauges, error) {
 // With returns the gauge associated with a stream labelset.
 func (g *Gauges) With(labels model.LabelSet) prometheus.Gauge {
 	return g.metricVec.With(labels).(prometheus.Gauge)
+}
+
+type expiringGauge struct {
+	prometheus.Gauge
+	lastModSec int64
+}
+
+// Set sets the Gauge to an arbitrary value.
+func (g *expiringGauge) Set(val float64) {
+	g.Gauge.Set(val)
+	g.lastModSec = time.Now().Unix()
+}
+
+// Inc increments the Gauge by 1. Use Add to increment it by arbitrary
+// values.
+func (g *expiringGauge) Inc() {
+	g.Gauge.Inc()
+	g.lastModSec = time.Now().Unix()
+}
+
+// Dec decrements the Gauge by 1. Use Sub to decrement it by arbitrary
+// values.
+func (g *expiringGauge) Dec() {
+	g.Gauge.Dec()
+	g.lastModSec = time.Now().Unix()
+}
+
+// Add adds the given value to the Gauge. (The value can be negative,
+// resulting in a decrease of the Gauge.)
+func (g *expiringGauge) Add(val float64) {
+	g.Gauge.Add(val)
+	g.lastModSec = time.Now().Unix()
+}
+
+// Sub subtracts the given value from the Gauge. (The value can be
+// negative, resulting in an increase of the Gauge.)
+func (g *expiringGauge) Sub(val float64) {
+	g.Gauge.Sub(val)
+	g.lastModSec = time.Now().Unix()
+}
+
+// SetToCurrentTime sets the Gauge to the current Unix time in seconds.
+func (g *expiringGauge) SetToCurrentTime() {
+	g.Gauge.SetToCurrentTime()
+	g.lastModSec = time.Now().Unix()
+}
+
+// HasExpired implements Expirable
+func (g *expiringGauge) HasExpired(currentTimeSec int64, maxAgeSec int64) bool {
+	return currentTimeSec-g.lastModSec >= maxAgeSec
 }

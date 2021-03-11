@@ -17,20 +17,19 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	html_template "html/template"
 	"math"
 	"net/url"
 	"regexp"
 	"sort"
 	"strings"
+	text_template "text/template"
 	"time"
 
-	html_template "html/template"
-	text_template "text/template"
-
 	"github.com/pkg/errors"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/strutil"
 )
@@ -219,7 +218,7 @@ func NewTemplateExpander(
 					seconds := int64(v) % 60
 					minutes := (int64(v) / 60) % 60
 					hours := (int64(v) / 60 / 60) % 24
-					days := (int64(v) / 60 / 60 / 24)
+					days := int64(v) / 60 / 60 / 24
 					// For days to minutes, we display seconds as an integer.
 					if days != 0 {
 						return fmt.Sprintf("%s%dd %dh %dm %ds", sign, days, hours, minutes, seconds)
@@ -230,7 +229,7 @@ func NewTemplateExpander(
 					if minutes != 0 {
 						return fmt.Sprintf("%s%dm %ds", sign, minutes, seconds)
 					}
-					// For seconds, we display 4 significant digts.
+					// For seconds, we display 4 significant digits.
 					return fmt.Sprintf("%s%.4gs", sign, v)
 				}
 				prefix := ""
@@ -242,6 +241,9 @@ func NewTemplateExpander(
 					v *= 1000
 				}
 				return fmt.Sprintf("%.4g%ss", v, prefix)
+			},
+			"humanizePercentage": func(v float64) string {
+				return fmt.Sprintf("%.4g%%", v*100)
 			},
 			"humanizeTimestamp": func(v float64) string {
 				if math.IsNaN(v) || math.IsInf(v, 0) {

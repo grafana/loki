@@ -5,18 +5,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	proto "github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -46,31 +45,34 @@ type cachingIndexClient struct {
 	chunk.IndexClient
 	cache    cache.Cache
 	validity time.Duration
-	limits   *validation.Overrides
+	limits   StoreLimits
+	logger   log.Logger
 }
 
-func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits *validation.Overrides) chunk.IndexClient {
-	if c == nil {
+func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits, logger log.Logger) chunk.IndexClient {
+	if c == nil || cache.IsEmptyTieredCache(c) {
 		return client
 	}
 
 	return &cachingIndexClient{
 		IndexClient: client,
-		cache:       cache.NewSnappy(c),
+		cache:       cache.NewSnappy(c, logger),
 		validity:    validity,
 		limits:      limits,
+		logger:      logger,
 	}
 }
 
 func (s *cachingIndexClient) Stop() {
 	s.cache.Stop()
+	s.IndexClient.Stop()
 }
 
 func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	// We cache the entire row, so filter client side.
 	callback = chunk_util.QueryFilter(callback)
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -226,7 +228,7 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 		hashed = append(hashed, cache.HashKey(keys[i]))
 		out, err := proto.Marshal(&batches[i])
 		if err != nil {
-			level.Warn(util.Logger).Log("msg", "error marshalling ReadBatch", "err", err)
+			level.Warn(s.logger).Log("msg", "error marshalling ReadBatch", "err", err)
 			cacheEncodeErrs.Inc()
 			return
 		}
@@ -234,7 +236,6 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 	}
 
 	s.cache.Store(ctx, hashed, bufs)
-	return
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {

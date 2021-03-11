@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package queryrange;
+
+option go_package = "queryrange";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+import "google/protobuf/any.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message PrometheusRequest {
+  string path = 1;
+  int64 start = 2;
+  int64 end = 3;
+  int64 step = 4;
+  google.protobuf.Duration timeout = 5 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  string query = 6;
+  CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
+}
+
+message PrometheusResponseHeader {
+  string Name = 1 [(gogoproto.jsontag) = "-"];
+  repeated string Values = 2 [(gogoproto.jsontag) = "-"];
+}
+
+message PrometheusResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  PrometheusData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+  repeated PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+}
+
+message PrometheusData {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated SampleStream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+}
+
+message SampleStream {
+  repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
+  repeated cortexpb.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+}
+
+message CachedResponse  {
+	string key = 1 [(gogoproto.jsontag) = "key"];
+
+	// List of cached responses; non-overlapping and in order.
+	repeated Extent extents = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "extents"];
+}
+
+message Extent  {
+	int64 start = 1 [(gogoproto.jsontag) = "start"];
+  int64 end = 2 [(gogoproto.jsontag) = "end"];
+  // reserved the previous key to ensure cache transition
+  reserved 3;
+  string trace_id = 4 [(gogoproto.jsontag) = "-"];
+  google.protobuf.Any response = 5 [(gogoproto.jsontag) = "response"];
+}
+
+message CachingOptions {
+  bool disabled = 1;
+}

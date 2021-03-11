@@ -1,6 +1,6 @@
 package logging
 
-var global Interface = Noop()
+var global = Noop()
 
 // Global returns the global logger.
 func Global() Interface {

@@ -1,6 +1,7 @@
 package encoding
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"strconv"
@@ -14,25 +15,36 @@ type Config struct{}
 
 var (
 	// DefaultEncoding exported for use in unit tests elsewhere
-	DefaultEncoding             = DoubleDelta
-	alwaysMarshalFullsizeChunks = true
-	bigchunkSizeCapBytes        = 0
+	DefaultEncoding      = Bigchunk
+	bigchunkSizeCapBytes = 0
 )
 
 // RegisterFlags registers configuration settings.
 func (Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&DefaultEncoding, "ingester.chunk-encoding", "Encoding version to use for chunks.")
-	flag.BoolVar(&alwaysMarshalFullsizeChunks, "store.fullsize-chunks", alwaysMarshalFullsizeChunks, "When saving varbit chunks, pad to 1024 bytes")
-	flag.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
+	f.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
+}
+
+// Validate errors out if the encoding is set to Delta.
+func (Config) Validate() error {
+	if DefaultEncoding == Delta {
+		// Delta is deprecated.
+		return errors.New("delta encoding is deprecated")
+	}
+	return nil
 }
 
 // String implements flag.Value.
 func (e Encoding) String() string {
+	if known, found := encodings[e]; found {
+		return known.Name
+	}
 	return fmt.Sprintf("%d", e)
 }
 
 const (
-	// Delta encoding
+	// Delta encoding is no longer supported and will be automatically changed to DoubleDelta.
+	// It still exists here to not change the `ingester.chunk-encoding` flag values.
 	Delta Encoding = iota
 	// DoubleDelta encoding
 	DoubleDelta
@@ -40,6 +52,8 @@ const (
 	Varbit
 	// Bigchunk encoding
 	Bigchunk
+	// PrometheusXorChunk is a wrapper around Prometheus XOR-encoded chunk.
+	PrometheusXorChunk
 )
 
 type encoding struct {
@@ -48,12 +62,6 @@ type encoding struct {
 }
 
 var encodings = map[Encoding]encoding{
-	Delta: {
-		Name: "Delta",
-		New: func() Chunk {
-			return newDeltaEncodedChunk(d1, d0, true, ChunkLen)
-		},
-	},
 	DoubleDelta: {
 		Name: "DoubleDelta",
 		New: func() Chunk {
@@ -72,10 +80,24 @@ var encodings = map[Encoding]encoding{
 			return newBigchunk()
 		},
 	},
+	PrometheusXorChunk: {
+		Name: "PrometheusXorChunk",
+		New: func() Chunk {
+			return newPrometheusXorChunk()
+		},
+	},
 }
 
 // Set implements flag.Value.
 func (e *Encoding) Set(s string) error {
+	// First see if the name was given
+	for k, v := range encodings {
+		if s == v.Name {
+			*e = k
+			return nil
+		}
+	}
+	// Otherwise, accept a number
 	i, err := strconv.Atoi(s)
 	if err != nil {
 		return err

@@ -1,34 +1,42 @@
 {
-    "dependencies": [
-        {
-            "name": "ksonnet-util",
-            "source": {
-                "git": {
-                    "remote": "https://github.com/grafana/jsonnet-libs",
-                    "subdir": "ksonnet-util"
-                }
-            },
-            "version": "master"
-        },
-        {
-            "name": "consul",
-            "source": {
-                "git": {
-                    "remote": "https://github.com/grafana/jsonnet-libs",
-                    "subdir": "consul"
-                }
-            },
-            "version": "master"
-        },
-        {
-            "name": "memcached",
-            "source": {
-                "git": {
-                    "remote": "https://github.com/grafana/jsonnet-libs",
-                    "subdir": "memcached"
-                }
-            },
-            "version": "master"
+  "version": 1,
+  "dependencies": [
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "consul"
         }
-    ]
+      },
+      "version": "master"
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "jaeger-agent-mixin"
+        }
+      },
+      "version": "master"
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "ksonnet-util"
+        }
+      },
+      "version": "master"
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "memcached"
+        }
+      },
+      "version": "master"
+    }
+  ],
+  "legacyImports": true
 }

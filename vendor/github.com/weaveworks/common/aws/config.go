@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -39,13 +40,24 @@ func ConfigFromURL(awsURL *url.URL) (*aws.Config, error) {
 		})
 
 	if awsURL.User != nil {
+		username := awsURL.User.Username()
 		password, _ := awsURL.User.Password()
-		creds := credentials.NewStaticCredentials(awsURL.User.Username(), password, "")
-		config = config.WithCredentials(creds)
+
+		// We request at least the username or password being set to enable the static credentials.
+		if username != "" || password != "" {
+			config = config.WithCredentials(credentials.NewStaticCredentials(username, password, ""))
+		}
 	}
 
 	if strings.Contains(awsURL.Host, ".") {
-		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)).WithRegion("dummy"), nil
+		region := os.Getenv("AWS_REGION")
+		if region == "" {
+			region = "dummy"
+		}
+		if awsURL.Scheme == "https" {
+			return config.WithEndpoint(fmt.Sprintf("https://%s", awsURL.Host)).WithRegion(region), nil
+		}
+		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)).WithRegion(region), nil
 	}
 
 	// Let AWS generate default endpoint based on region passed as a host in URL.

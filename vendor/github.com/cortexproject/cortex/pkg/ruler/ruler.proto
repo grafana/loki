@@ -1,0 +1,68 @@
+// Ruler Service Representation
+// This service is used to retrieve the current state of rules running across
+// all Rulers in a cluster. It allows cortex to fully serve the `/api/v1/{rules|alerts}`
+// Prometheus API
+syntax = "proto3";
+package ruler;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+import "github.com/cortexproject/cortex/pkg/ruler/rulespb/rules.proto";
+
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+service Ruler {
+  rpc Rules(RulesRequest) returns (RulesResponse) {};
+}
+
+message RulesRequest {}
+
+message RulesResponse {
+  repeated GroupStateDesc groups = 1;
+}
+
+// GroupStateDesc is a proto representation of a cortex rule group
+message GroupStateDesc {
+  rules.RuleGroupDesc group = 1;
+  repeated RuleStateDesc active_rules = 2;
+  google.protobuf.Timestamp evaluationTimestamp = 3 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Duration evaluationDuration = 4 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
+}
+
+// RuleStateDesc is a proto representation of a Prometheus Rule
+message RuleStateDesc {
+  rules.RuleDesc rule = 1;
+  string state = 2;
+  string health = 3;
+  string lastError = 4;
+  repeated AlertStateDesc alerts = 5;
+  google.protobuf.Timestamp evaluationTimestamp = 6  [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Duration evaluationDuration = 7 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true];
+}
+
+message AlertStateDesc {
+  string state = 1;
+  repeated cortexpb.LabelPair labels = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
+  ];
+  repeated cortexpb.LabelPair annotations = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
+  ];
+  double value = 4;
+  google.protobuf.Timestamp active_at = 5
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp fired_at = 6
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp resolved_at = 7
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp last_sent_at = 8
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp valid_until = 9
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+}

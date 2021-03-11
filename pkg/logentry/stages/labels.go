@@ -39,7 +39,7 @@ func validateLabelsConfig(c LabelsConfig) error {
 }
 
 // newLabelStage creates a new label stage to set labels from extracted data
-func newLabelStage(logger log.Logger, configs interface{}) (*labelStage, error) {
+func newLabelStage(logger log.Logger, configs interface{}) (Stage, error) {
 	cfgs := &LabelsConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -49,10 +49,10 @@ func newLabelStage(logger log.Logger, configs interface{}) (*labelStage, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &labelStage{
+	return toStage(&labelStage{
 		cfgs:   *cfgs,
 		logger: logger,
-	}, nil
+	}), nil
 }
 
 // labelStage sets labels from extracted data
@@ -64,16 +64,19 @@ type labelStage struct {
 // Process implements Stage
 func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for lName, lSrc := range l.cfgs {
-		if _, ok := extracted[*lSrc]; ok {
-			lValue := extracted[*lSrc]
+		if lValue, ok := extracted[*lSrc]; ok {
 			s, err := getString(lValue)
 			if err != nil {
-				level.Debug(l.logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue).String())
+				if Debug {
+					level.Debug(l.logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue))
+				}
 				continue
 			}
 			labelValue := model.LabelValue(s)
 			if !labelValue.IsValid() {
-				level.Debug(l.logger).Log("msg", "invalid label value parsed", "value", labelValue)
+				if Debug {
+					level.Debug(l.logger).Log("msg", "invalid label value parsed", "value", labelValue)
+				}
 				continue
 			}
 			labels[model.LabelName(lName)] = labelValue

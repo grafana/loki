@@ -9,24 +9,28 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/user"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	lstore "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
 	start     = model.Time(1523750400000)
 	ctx       = user.InjectOrgID(context.Background(), "fake")
-	maxChunks = 600 // 600 chunks is 1.2bib of data enough to run benchmark
+	maxChunks = 1200 // 1200 chunks is 2gib ish of data enough to run benchmark
 )
 
 // fill up the local filesystem store with 1gib of data to run benchmark
@@ -39,15 +43,15 @@ func main() {
 }
 
 func getStore() (lstore.Store, error) {
-	store, err := lstore.NewStore(
-		lstore.Config{
-			Config: storage.Config{
-				BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-				FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
-			},
+	storeConfig := lstore.Config{
+		Config: storage.Config{
+			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+			FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},
-		chunk.StoreConfig{},
-		chunk.SchemaConfig{
+	}
+
+	schemaCfg := lstore.SchemaConfig{
+		SchemaConfig: chunk.SchemaConfig{
 			Configs: []chunk.PeriodConfig{
 				{
 					From:       chunk.DayTime{Time: start},
@@ -61,12 +65,22 @@ func getStore() (lstore.Store, error) {
 				},
 			},
 		},
+	}
+
+	chunkStore, err := storage.NewStore(
+		storeConfig.Config,
+		chunk.StoreConfig{},
+		schemaCfg.SchemaConfig,
 		&validation.Overrides{},
+		prometheus.DefaultRegisterer,
+		nil,
+		util_log.Logger,
 	)
 	if err != nil {
 		return nil, err
 	}
-	return store, nil
+
+	return lstore.NewStore(storeConfig, schemaCfg, chunkStore, prometheus.DefaultRegisterer)
 }
 
 func fillStore() error {
@@ -86,15 +100,15 @@ func fillStore() error {
 		wgPush.Add(1)
 		go func(j int) {
 			defer wgPush.Done()
-			lbs, err := util.ToClientLabels(fmt.Sprintf("{foo=\"bar\",level=\"%d\"}", j))
+			lbs, err := logql.ParseLabels(fmt.Sprintf("{foo=\"bar\",level=\"%d\"}", j))
 			if err != nil {
 				panic(err)
 			}
-			labelsBuilder := labels.NewBuilder(client.FromLabelAdaptersToLabels(lbs))
+			labelsBuilder := labels.NewBuilder(lbs)
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
-			fp := client.FastFingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144)
+			fp := client.Fingerprint(lbs)
+			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_4M, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),
@@ -104,7 +118,7 @@ func fillStore() error {
 					_ = chunkEnc.Append(entry)
 				} else {
 					from, to := chunkEnc.Bounds()
-					c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
+					c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
 					if err := c.Encode(); err != nil {
 						panic(err)
 					}
@@ -117,7 +131,7 @@ func fillStore() error {
 					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144)
+					chunkEnc = chunkenc.NewMemChunk(chunkenc.EncLZ4_64k, 262144, 1572864)
 				}
 			}
 

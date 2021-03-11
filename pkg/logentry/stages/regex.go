@@ -65,11 +65,11 @@ func newRegexStage(logger log.Logger, config interface{}) (Stage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &regexStage{
+	return toStage(&regexStage{
 		cfg:        cfg,
 		expression: expression,
 		logger:     log.With(logger, "component", "stage", "type", "regex"),
-	}, nil
+	}), nil
 }
 
 // parseRegexConfig processes an incoming configuration into a RegexConfig
@@ -85,18 +85,22 @@ func parseRegexConfig(config interface{}) (*RegexConfig, error) {
 // Process implements Stage
 func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	// If a source key is provided, the regex stage should process it
-	// from the exctracted map, otherwise should fallback to the entry
+	// from the extracted map, otherwise should fallback to the entry
 	input := entry
 
 	if r.cfg.Source != nil {
 		if _, ok := extracted[*r.cfg.Source]; !ok {
-			level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
+			if Debug {
+				level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
+			}
 			return
 		}
 
 		value, err := getString(extracted[*r.cfg.Source])
 		if err != nil {
-			level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
+			if Debug {
+				level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]))
+			}
 			return
 		}
 
@@ -104,13 +108,17 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 	}
 
 	if input == nil {
-		level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
+		if Debug {
+			level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
+		}
 		return
 	}
 
 	match := r.expression.FindStringSubmatch(*input)
 	if match == nil {
-		level.Debug(r.logger).Log("msg", "regex did not match")
+		if Debug {
+			level.Debug(r.logger).Log("msg", "regex did not match", "input", *input, "regex", r.expression)
+		}
 		return
 	}
 

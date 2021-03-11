@@ -1,21 +1,25 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.2.1
-# Directories in this file are referenced from the root of the project not this folder
-# This file is intented to be called from the root like so:
-# docker build -t grafana/promtail -f cmd/promtail/Dockerfile .
-FROM golang:1.11.4-alpine as goenv
-RUN go env GOARCH > /goarch && \
-    go env GOARM > /goarm
+FROM golang:1.15.3-buster as build
+# TOUCH_PROTOS signifies if we should touch the compiled proto files and thus not regenerate them.
+# This is helpful when file system timestamps can't be trusted with make
+ARG TOUCH_PROTOS
+COPY . /src/loki
+WORKDIR /src/loki
+# Backports repo required to get a libsystemd version 246 or newer which is required to handle journal +ZSTD compression
+RUN echo "deb http://deb.debian.org/debian buster-backports main" >> /etc/apt/sources.list
+RUN apt-get update && apt-get install -t buster-backports -qy libsystemd-dev
+RUN make clean && (if [ "${TOUCH_PROTOS}" ]; then make touch-protos; fi) && make BUILD_IN_CONTAINER=false promtail
 
-FROM --platform=linux/amd64 $BUILD_IMAGE as build
-COPY --from=goenv /goarch /goarm /
-COPY . /go/src/github.com/grafana/loki
-WORKDIR /go/src/github.com/grafana/loki
-RUN GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make clean && make promtail
-
-FROM alpine:3.9
+# Promtail requires debian as the base image to support systemd journal reading
+FROM debian:buster-slim
 # tzdata required for the timestamp stage to work
-RUN apk add --update --no-cache ca-certificates tzdata
-COPY --from=build /go/src/github.com/grafana/loki/cmd/promtail/promtail /usr/bin/promtail
-COPY cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
-COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/docker-config.yaml
+# Backports repo required to get a libsystemd version 246 or newer which is required to handle journal +ZSTD compression
+RUN echo "deb http://deb.debian.org/debian buster-backports main" >> /etc/apt/sources.list
+RUN apt-get update && \
+  apt-get install -qy \
+  tzdata ca-certificates
+RUN apt-get install -t buster-backports -qy libsystemd-dev && \
+  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+COPY --from=build /src/loki/cmd/promtail/promtail /usr/bin/promtail
+COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
 ENTRYPOINT ["/usr/bin/promtail"]
+CMD ["-config.file=/etc/promtail/config.yml"]

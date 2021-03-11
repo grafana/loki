@@ -18,7 +18,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql/internal/lru"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Session is the interface used by users to interact with the database.
@@ -31,6 +34,9 @@ import (
 // and automatically sets a default consistency level on all operations
 // that do not have a consistency level set.
 type Session struct {
+	logger     log.Logger
+	registerer prometheus.Registerer
+
 	cons                Consistency
 	pageSize            int
 	prefetch            float64
@@ -62,12 +68,14 @@ type Session struct {
 	schemaEvents *eventDebouncer
 
 	// ring metadata
-	hosts           []HostInfo
-	useSystemSchema bool
+	hosts                     []HostInfo
+	useSystemSchema           bool
+	hasAggregatesAndFunctions bool
 
 	cfg ClusterConfig
 
-	quit chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	closeMu  sync.RWMutex
 	isClosed bool
@@ -77,27 +85,6 @@ var queryPool = &sync.Pool{
 	New: func() interface{} {
 		return new(Query)
 	},
-}
-
-func addrsToHosts(addrs []string, defaultPort int) ([]*HostInfo, error) {
-	var hosts []*HostInfo
-	for _, hostport := range addrs {
-		resolvedHosts, err := hostInfo(hostport, defaultPort)
-		if err != nil {
-			// Try other hosts if unable to resolve DNS name
-			if _, ok := err.(*net.DNSError); ok {
-				Logger.Printf("gocql: dns error: %v\n", err)
-				continue
-			}
-			return nil, err
-		}
-
-		hosts = append(hosts, resolvedHosts...)
-	}
-	if len(hosts) == 0 {
-		return nil, errors.New("failed to resolve any of the provided hostnames")
-	}
-	return hosts, nil
 }
 
 // NewSession wraps an existing Node.
@@ -112,20 +99,32 @@ func NewSession(cfg ClusterConfig) (*Session, error) {
 		return nil, errors.New("Can't use both Authenticator and AuthProvider in cluster config.")
 	}
 
+	// TODO: we should take a context in here at some point
+	ctx, cancel := context.WithCancel(context.TODO())
+
+	logger := cfg.Logger
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	s := &Session{
+		logger:     logger,
+		registerer: cfg.Registerer,
+
 		cons:            cfg.Consistency,
 		prefetch:        0.25,
 		cfg:             cfg,
 		pageSize:        cfg.PageSize,
 		stmtsLRU:        &preparedLRU{lru: lru.New(cfg.MaxPreparedStmts)},
-		quit:            make(chan struct{}),
 		connectObserver: cfg.ConnectObserver,
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 
 	s.schemaDescriber = newSchemaDescriber(s)
 
-	s.nodeEvents = newEventDebouncer("NodeEvents", s.handleNodeEvent)
-	s.schemaEvents = newEventDebouncer("SchemaEvents", s.handleSchemaEvent)
+	s.nodeEvents = newEventDebouncer(logger, "NodeEvents", s.handleNodeEvent)
+	s.schemaEvents = newEventDebouncer(logger, "SchemaEvents", s.handleSchemaEvent)
 
 	s.routingKeyInfoCache.lru = lru.New(cfg.MaxRoutingKeyInfo)
 
@@ -134,7 +133,7 @@ func NewSession(cfg ClusterConfig) (*Session, error) {
 	if cfg.PoolConfig.HostSelectionPolicy == nil {
 		cfg.PoolConfig.HostSelectionPolicy = RoundRobinHostPolicy()
 	}
-	s.pool = cfg.PoolConfig.buildPool(s)
+	s.pool = cfg.PoolConfig.buildPool(s.logger, s.registerer, s)
 
 	s.policy = cfg.PoolConfig.HostSelectionPolicy
 	s.policy.Init(s)
@@ -173,14 +172,14 @@ func NewSession(cfg ClusterConfig) (*Session, error) {
 }
 
 func (s *Session) init() error {
-	hosts, err := addrsToHosts(s.cfg.Hosts, s.cfg.Port)
+	hosts, err := s.addrsToHosts(s.cfg.Hosts, s.cfg.Port)
 	if err != nil {
 		return err
 	}
 	s.ring.endpoints = hosts
 
 	if !s.cfg.disableControlConn {
-		s.control = createControlConn(s)
+		s.control = createControlConn(s.logger, s)
 		if s.cfg.ProtoVersion == 0 {
 			proto, err := s.control.discoverProtocol(hosts)
 			if err != nil {
@@ -220,9 +219,28 @@ func (s *Session) init() error {
 		hostMap[host.ConnectAddress().String()] = host
 	}
 
+	hosts = hosts[:0]
 	for _, host := range hostMap {
 		host = s.ring.addOrUpdate(host)
-		s.addNewNode(host)
+		if s.cfg.filterHost(host) {
+			continue
+		}
+
+		host.setState(NodeUp)
+		s.pool.addHost(host)
+
+		hosts = append(hosts, host)
+	}
+
+	type bulkAddHosts interface {
+		AddHosts([]*HostInfo)
+	}
+	if v, ok := s.policy.(bulkAddHosts); ok {
+		v.AddHosts(hosts)
+	} else {
+		for _, host := range hosts {
+			s.policy.AddHost(host)
+		}
 	}
 
 	// TODO(zariel): we probably dont need this any more as we verify that we
@@ -240,15 +258,58 @@ func (s *Session) init() error {
 		newer, _ := checkSystemSchema(s.control)
 		s.useSystemSchema = newer
 	} else {
-		host := s.ring.rrHost()
-		s.useSystemSchema = host.Version().Major >= 3
+		version := s.ring.rrHost().Version()
+		s.useSystemSchema = version.AtLeast(3, 0, 0)
+		s.hasAggregatesAndFunctions = version.AtLeast(2, 2, 0)
 	}
 
 	if s.pool.Size() == 0 {
 		return ErrNoConnectionsStarted
 	}
 
+	// Invoke KeyspaceChanged to let the policy cache the session keyspace
+	// parameters. This is used by tokenAwareHostPolicy to discover replicas.
+	if !s.cfg.disableControlConn && s.cfg.Keyspace != "" {
+		s.policy.KeyspaceChanged(KeyspaceUpdateEvent{Keyspace: s.cfg.Keyspace})
+	}
+
 	return nil
+}
+
+func (s *Session) addrsToHosts(addrs []string, defaultPort int) ([]*HostInfo, error) {
+	var hosts []*HostInfo
+	for _, hostport := range addrs {
+		resolvedHosts, err := hostInfo(hostport, defaultPort)
+		if err != nil {
+			// Try other hosts if unable to resolve DNS name
+			if _, ok := err.(*net.DNSError); ok {
+				level.Error(s.logger).Log("msg", "dns error", "error", err)
+				continue
+			}
+			return nil, err
+		}
+
+		hosts = append(hosts, resolvedHosts...)
+	}
+	if len(hosts) == 0 {
+		return nil, errors.New("failed to resolve any of the provided hostnames")
+	}
+	return hosts, nil
+}
+
+// AwaitSchemaAgreement will wait until schema versions across all nodes in the
+// cluster are the same (as seen from the point of view of the control connection).
+// The maximum amount of time this takes is governed
+// by the MaxWaitSchemaAgreement setting in the configuration (default: 60s).
+// AwaitSchemaAgreement returns an error in case schema versions are not the same
+// after the timeout specified in MaxWaitSchemaAgreement elapses.
+func (s *Session) AwaitSchemaAgreement(ctx context.Context) error {
+	if s.cfg.disableControlConn {
+		return errNoControl
+	}
+	return s.control.withConn(func(conn *Conn) *Iter {
+		return &Iter{err: conn.awaitSchemaAgreement(ctx)}
+	}).err
 }
 
 func (s *Session) reconnectDownedHosts(intv time.Duration) {
@@ -266,7 +327,7 @@ func (s *Session) reconnectDownedHosts(intv time.Duration) {
 				for _, h := range hosts {
 					buf.WriteString("[" + h.ConnectAddress().String() + ":" + h.State().String() + "]")
 				}
-				Logger.Println(buf.String())
+				level.Debug(s.logger).Log("msg", "reconnect ticker", "ring", buf.String())
 			}
 
 			for _, h := range hosts {
@@ -275,7 +336,7 @@ func (s *Session) reconnectDownedHosts(intv time.Duration) {
 				}
 				s.handleNodeUp(h.ConnectAddress(), h.Port(), true)
 			}
-		case <-s.quit:
+		case <-s.ctx.Done():
 			return
 		}
 	}
@@ -378,8 +439,8 @@ func (s *Session) Close() {
 		s.schemaEvents.stop()
 	}
 
-	if s.quit != nil {
-		close(s.quit)
+	if s.cancel != nil {
+		s.cancel()
 	}
 }
 
@@ -648,29 +709,103 @@ func (s *Session) MapExecuteBatchCAS(batch *Batch, dest map[string]interface{}) 
 	return applied, iter, iter.err
 }
 
-func (s *Session) connect(host *HostInfo, errorHandler ConnErrorHandler) (*Conn, error) {
-	if s.connectObserver != nil {
-		obs := ObservedConnect{
-			Host:  host,
-			Start: time.Now(),
-		}
-		conn, err := s.dial(host, s.connCfg, errorHandler)
-		obs.End = time.Now()
-		obs.Err = err
-		s.connectObserver.ObserveConnect(obs)
-		return conn, err
-	}
-	return s.dial(host, s.connCfg, errorHandler)
-}
-
 type hostMetrics struct {
-	Attempts     int
+	// Attempts is count of how many times this query has been attempted for this host.
+	// An attempt is either a retry or fetching next page of results.
+	Attempts int
+
+	// TotalLatency is the sum of attempt latencies for this host in nanoseconds.
 	TotalLatency int64
 }
 
 type queryMetrics struct {
 	l sync.RWMutex
 	m map[string]*hostMetrics
+	// totalAttempts is total number of attempts.
+	// Equal to sum of all hostMetrics' Attempts.
+	totalAttempts int
+}
+
+// preFilledQueryMetrics initializes new queryMetrics based on per-host supplied data.
+func preFilledQueryMetrics(m map[string]*hostMetrics) *queryMetrics {
+	qm := &queryMetrics{m: m}
+	for _, hm := range qm.m {
+		qm.totalAttempts += hm.Attempts
+	}
+	return qm
+}
+
+// hostMetrics returns a snapshot of metrics for given host.
+// If the metrics for host don't exist, they are created.
+func (qm *queryMetrics) hostMetrics(host *HostInfo) *hostMetrics {
+	qm.l.Lock()
+	metrics := qm.hostMetricsLocked(host)
+	copied := new(hostMetrics)
+	*copied = *metrics
+	qm.l.Unlock()
+	return copied
+}
+
+// hostMetricsLocked gets or creates host metrics for given host.
+// It must be called only while holding qm.l lock.
+func (qm *queryMetrics) hostMetricsLocked(host *HostInfo) *hostMetrics {
+	metrics, exists := qm.m[host.ConnectAddress().String()]
+	if !exists {
+		// if the host is not in the map, it means it's been accessed for the first time
+		metrics = &hostMetrics{}
+		qm.m[host.ConnectAddress().String()] = metrics
+	}
+
+	return metrics
+}
+
+// attempts returns the number of times the query was executed.
+func (qm *queryMetrics) attempts() int {
+	qm.l.Lock()
+	attempts := qm.totalAttempts
+	qm.l.Unlock()
+	return attempts
+}
+
+func (qm *queryMetrics) latency() int64 {
+	qm.l.Lock()
+	var (
+		attempts int
+		latency  int64
+	)
+	for _, metric := range qm.m {
+		attempts += metric.Attempts
+		latency += metric.TotalLatency
+	}
+	qm.l.Unlock()
+	if attempts > 0 {
+		return latency / int64(attempts)
+	}
+	return 0
+}
+
+// attempt adds given number of attempts and latency for given host.
+// It returns previous total attempts.
+// If needsHostMetrics is true, a copy of updated hostMetrics is returned.
+func (qm *queryMetrics) attempt(addAttempts int, addLatency time.Duration,
+	host *HostInfo, needsHostMetrics bool) (int, *hostMetrics) {
+	qm.l.Lock()
+
+	totalAttempts := qm.totalAttempts
+	qm.totalAttempts += addAttempts
+
+	updateHostMetrics := qm.hostMetricsLocked(host)
+	updateHostMetrics.Attempts += addAttempts
+	updateHostMetrics.TotalLatency += addLatency.Nanoseconds()
+
+	var hostMetricsCopy *hostMetrics
+	if needsHostMetrics {
+		hostMetricsCopy = new(hostMetrics)
+		*hostMetricsCopy = *updateHostMetrics
+	}
+
+	qm.l.Unlock()
+	return totalAttempts, hostMetricsCopy
 }
 
 // Query represents a CQL statement that can be executed.
@@ -680,7 +815,6 @@ type Query struct {
 	cons                  Consistency
 	pageSize              int
 	routingKey            []byte
-	routingKeyBuffer      []byte
 	pageState             []byte
 	prefetch              float64
 	trace                 Tracer
@@ -699,6 +833,13 @@ type Query struct {
 	metrics               *queryMetrics
 
 	disableAutoPage bool
+
+	// getKeyspace is field so that it can be overriden in tests
+	getKeyspace func() string
+
+	// used by control conn queries to prevent triggering a write to systems
+	// tables in AWS MCS see
+	skipPrepare bool
 }
 
 func (q *Query) defaultsFromSession() {
@@ -720,19 +861,6 @@ func (q *Query) defaultsFromSession() {
 	s.mu.RUnlock()
 }
 
-func (q *Query) getHostMetrics(host *HostInfo) *hostMetrics {
-	q.metrics.l.Lock()
-	metrics, exists := q.metrics.m[host.ConnectAddress().String()]
-	if !exists {
-		// if the host is not in the map, it means it's been accessed for the first time
-		metrics = &hostMetrics{}
-		q.metrics.m[host.ConnectAddress().String()] = metrics
-	}
-	q.metrics.l.Unlock()
-
-	return metrics
-}
-
 // Statement returns the statement that was used to generate this query.
 func (q Query) Statement() string {
 	return q.stmt
@@ -745,43 +873,20 @@ func (q Query) String() string {
 
 //Attempts returns the number of times the query was executed.
 func (q *Query) Attempts() int {
-	q.metrics.l.Lock()
-	var attempts int
-	for _, metric := range q.metrics.m {
-		attempts += metric.Attempts
-	}
-	q.metrics.l.Unlock()
-	return attempts
+	return q.metrics.attempts()
 }
 
 func (q *Query) AddAttempts(i int, host *HostInfo) {
-	hostMetric := q.getHostMetrics(host)
-	q.metrics.l.Lock()
-	hostMetric.Attempts += i
-	q.metrics.l.Unlock()
+	q.metrics.attempt(i, 0, host, false)
 }
 
 //Latency returns the average amount of nanoseconds per attempt of the query.
 func (q *Query) Latency() int64 {
-	q.metrics.l.Lock()
-	var attempts int
-	var latency int64
-	for _, metric := range q.metrics.m {
-		attempts += metric.Attempts
-		latency += metric.TotalLatency
-	}
-	q.metrics.l.Unlock()
-	if attempts > 0 {
-		return latency / int64(attempts)
-	}
-	return 0
+	return q.metrics.latency()
 }
 
 func (q *Query) AddLatency(l int64, host *HostInfo) {
-	hostMetric := q.getHostMetrics(host)
-	q.metrics.l.Lock()
-	hostMetric.TotalLatency += l
-	q.metrics.l.Unlock()
+	q.metrics.attempt(0, time.Duration(l)*time.Nanosecond, host, false)
 }
 
 // Consistency sets the consistency level for this query. If no consistency
@@ -896,8 +1001,8 @@ func (q *Query) execute(ctx context.Context, conn *Conn) *Iter {
 }
 
 func (q *Query) attempt(keyspace string, end, start time.Time, iter *Iter, host *HostInfo) {
-	q.AddAttempts(1, host)
-	q.AddLatency(end.Sub(start).Nanoseconds(), host)
+	latency := end.Sub(start)
+	attempt, metricsForHost := q.metrics.attempt(1, latency, host, q.observer != nil)
 
 	if q.observer != nil {
 		q.observer.ObserveQuery(q.Context(), ObservedQuery{
@@ -907,8 +1012,9 @@ func (q *Query) attempt(keyspace string, end, start time.Time, iter *Iter, host 
 			End:       end,
 			Rows:      iter.numRows,
 			Host:      host,
-			Metrics:   q.getHostMetrics(host),
+			Metrics:   metricsForHost,
 			Err:       iter.err,
+			Attempt:   attempt,
 		})
 	}
 }
@@ -919,6 +1025,9 @@ func (q *Query) retryPolicy() RetryPolicy {
 
 // Keyspace returns the keyspace the query will be executed against.
 func (q *Query) Keyspace() string {
+	if q.getKeyspace != nil {
+		return q.getKeyspace()
+	}
 	if q.session == nil {
 		return ""
 	}
@@ -949,46 +1058,7 @@ func (q *Query) GetRoutingKey() ([]byte, error) {
 		return nil, err
 	}
 
-	if routingKeyInfo == nil {
-		return nil, nil
-	}
-
-	if len(routingKeyInfo.indexes) == 1 {
-		// single column routing key
-		routingKey, err := Marshal(
-			routingKeyInfo.types[0],
-			q.values[routingKeyInfo.indexes[0]],
-		)
-		if err != nil {
-			return nil, err
-		}
-		return routingKey, nil
-	}
-
-	// We allocate that buffer only once, so that further re-bind/exec of the
-	// same query don't allocate more memory.
-	if q.routingKeyBuffer == nil {
-		q.routingKeyBuffer = make([]byte, 0, 256)
-	}
-
-	// composite routing key
-	buf := bytes.NewBuffer(q.routingKeyBuffer)
-	for i := range routingKeyInfo.indexes {
-		encoded, err := Marshal(
-			routingKeyInfo.types[i],
-			q.values[routingKeyInfo.indexes[i]],
-		)
-		if err != nil {
-			return nil, err
-		}
-		lenBuf := []byte{0x00, 0x00}
-		binary.BigEndian.PutUint16(lenBuf, uint16(len(encoded)))
-		buf.Write(lenBuf)
-		buf.Write(encoded)
-		buf.WriteByte(0x00)
-	}
-	routingKey := buf.Bytes()
-	return routingKey, nil
+	return createRoutingKey(routingKeyInfo, q.values)
 }
 
 func (q *Query) shouldPrepare() bool {
@@ -1053,6 +1123,7 @@ func (q *Query) Idempotent(value bool) *Query {
 // to an existing query instance.
 func (q *Query) Bind(v ...interface{}) *Query {
 	q.values = v
+	q.pageState = nil
 	return q
 }
 
@@ -1478,10 +1549,13 @@ type Batch struct {
 	Type                  BatchType
 	Entries               []BatchEntry
 	Cons                  Consistency
+	routingKey            []byte
+	routingKeyBuffer      []byte
 	CustomPayload         map[string][]byte
 	rt                    RetryPolicy
 	spec                  SpeculativeExecutionPolicy
 	observer              BatchObserver
+	session               *Session
 	serialCons            SerialConsistency
 	defaultTimestamp      bool
 	defaultTimestampValue int64
@@ -1510,6 +1584,7 @@ func (s *Session) NewBatch(typ BatchType) *Batch {
 		rt:               s.cfg.RetryPolicy,
 		serialCons:       s.cfg.SerialConsistency,
 		observer:         s.batchObserver,
+		session:          s,
 		Cons:             s.cons,
 		defaultTimestamp: s.cfg.DefaultTimestamp,
 		keyspace:         s.cfg.Keyspace,
@@ -1519,19 +1594,6 @@ func (s *Session) NewBatch(typ BatchType) *Batch {
 
 	s.mu.RUnlock()
 	return batch
-}
-
-func (b *Batch) getHostMetrics(host *HostInfo) *hostMetrics {
-	b.metrics.l.Lock()
-	metrics, exists := b.metrics.m[host.ConnectAddress().String()]
-	if !exists {
-		// if the host is not in the map, it means it's been accessed for the first time
-		metrics = &hostMetrics{}
-		b.metrics.m[host.ConnectAddress().String()] = metrics
-	}
-	b.metrics.l.Unlock()
-
-	return metrics
 }
 
 // Observer enables batch-level observer on this batch.
@@ -1547,47 +1609,20 @@ func (b *Batch) Keyspace() string {
 
 // Attempts returns the number of attempts made to execute the batch.
 func (b *Batch) Attempts() int {
-	b.metrics.l.Lock()
-	defer b.metrics.l.Unlock()
-
-	var attempts int
-	for _, metric := range b.metrics.m {
-		attempts += metric.Attempts
-	}
-	return attempts
+	return b.metrics.attempts()
 }
 
 func (b *Batch) AddAttempts(i int, host *HostInfo) {
-	hostMetric := b.getHostMetrics(host)
-	b.metrics.l.Lock()
-	hostMetric.Attempts += i
-	b.metrics.l.Unlock()
+	b.metrics.attempt(i, 0, host, false)
 }
 
 //Latency returns the average number of nanoseconds to execute a single attempt of the batch.
 func (b *Batch) Latency() int64 {
-	b.metrics.l.Lock()
-	defer b.metrics.l.Unlock()
-
-	var (
-		attempts int
-		latency  int64
-	)
-	for _, metric := range b.metrics.m {
-		attempts += metric.Attempts
-		latency += metric.TotalLatency
-	}
-	if attempts > 0 {
-		return latency / int64(attempts)
-	}
-	return 0
+	return b.metrics.latency()
 }
 
 func (b *Batch) AddLatency(l int64, host *HostInfo) {
-	hostMetric := b.getHostMetrics(host)
-	b.metrics.l.Lock()
-	hostMetric.TotalLatency += l
-	b.metrics.l.Unlock()
+	b.metrics.attempt(0, time.Duration(l)*time.Nanosecond, host, false)
 }
 
 // GetConsistency returns the currently configured consistency level for the batch
@@ -1711,8 +1746,8 @@ func (b *Batch) WithTimestamp(timestamp int64) *Batch {
 }
 
 func (b *Batch) attempt(keyspace string, end, start time.Time, iter *Iter, host *HostInfo) {
-	b.AddAttempts(1, host)
-	b.AddLatency(end.Sub(start).Nanoseconds(), host)
+	latency := end.Sub(start)
+	_, metricsForHost := b.metrics.attempt(1, latency, host, b.observer != nil)
 
 	if b.observer == nil {
 		return
@@ -1730,14 +1765,69 @@ func (b *Batch) attempt(keyspace string, end, start time.Time, iter *Iter, host 
 		End:        end,
 		// Rows not used in batch observations // TODO - might be able to support it when using BatchCAS
 		Host:    host,
-		Metrics: b.getHostMetrics(host),
+		Metrics: metricsForHost,
 		Err:     iter.err,
 	})
 }
 
 func (b *Batch) GetRoutingKey() ([]byte, error) {
-	// TODO: use the first statement in the batch as the routing key?
-	return nil, nil
+	if b.routingKey != nil {
+		return b.routingKey, nil
+	}
+
+	if len(b.Entries) == 0 {
+		return nil, nil
+	}
+
+	entry := b.Entries[0]
+	if entry.binding != nil {
+		// bindings do not have the values let's skip it like Query does.
+		return nil, nil
+	}
+	// try to determine the routing key
+	routingKeyInfo, err := b.session.routingKeyInfo(b.Context(), entry.Stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	return createRoutingKey(routingKeyInfo, entry.Args)
+}
+
+func createRoutingKey(routingKeyInfo *routingKeyInfo, values []interface{}) ([]byte, error) {
+	if routingKeyInfo == nil {
+		return nil, nil
+	}
+
+	if len(routingKeyInfo.indexes) == 1 {
+		// single column routing key
+		routingKey, err := Marshal(
+			routingKeyInfo.types[0],
+			values[routingKeyInfo.indexes[0]],
+		)
+		if err != nil {
+			return nil, err
+		}
+		return routingKey, nil
+	}
+
+	// composite routing key
+	buf := bytes.NewBuffer(make([]byte, 0, 256))
+	for i := range routingKeyInfo.indexes {
+		encoded, err := Marshal(
+			routingKeyInfo.types[i],
+			values[routingKeyInfo.indexes[i]],
+		)
+		if err != nil {
+			return nil, err
+		}
+		lenBuf := []byte{0x00, 0x00}
+		binary.BigEndian.PutUint16(lenBuf, uint16(len(encoded)))
+		buf.Write(lenBuf)
+		buf.Write(encoded)
+		buf.WriteByte(0x00)
+	}
+	routingKey := buf.Bytes()
+	return routingKey, nil
 }
 
 type BatchType byte
@@ -1890,6 +1980,11 @@ type ObservedQuery struct {
 	// Err is the error in the query.
 	// It only tracks network errors or errors of bad cassandra syntax, in particular selects with no match return nil error
 	Err error
+
+	// Attempt is the index of attempt at executing this query.
+	// An attempt might be either retry or fetching next page of a query.
+	// The first attempt is number zero and any retries have non-zero attempt number.
+	Attempt int
 }
 
 // QueryObserver is the interface implemented by query observers / stat collectors.

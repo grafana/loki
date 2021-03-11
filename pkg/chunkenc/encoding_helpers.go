@@ -6,7 +6,7 @@ import (
 	"hash/crc32"
 )
 
-// enbuf is a helper type to populate a byte slice with various types.
+// encbuf is a helper type to populate a byte slice with various types.
 type encbuf struct {
 	b []byte
 	c [binary.MaxVarintLen64]byte
@@ -15,8 +15,7 @@ type encbuf struct {
 func (e *encbuf) reset()      { e.b = e.b[:0] }
 func (e *encbuf) get() []byte { return e.b }
 
-func (e *encbuf) putBytes(b []byte) { e.b = append(e.b, b...) }
-func (e *encbuf) putByte(c byte)    { e.b = append(e.b, c) }
+func (e *encbuf) putByte(c byte) { e.b = append(e.b, c) }
 
 func (e *encbuf) putBE64int(x int) { e.putBE64(uint64(x)) }
 func (e *encbuf) putUvarint(x int) { e.putUvarint64(uint64(x)) }
@@ -116,6 +115,19 @@ func (d *decbuf) byte() byte {
 	}
 	x := d.b[0]
 	d.b = d.b[1:]
+	return x
+}
+
+func (d *decbuf) bytes(n int) []byte {
+	if d.e != nil {
+		return nil
+	}
+	if len(d.b) < n {
+		d.e = ErrInvalidSize
+		return nil
+	}
+	x := d.b[:n]
+	d.b = d.b[n:]
 	return x
 }
 

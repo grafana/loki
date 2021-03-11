@@ -2,8 +2,11 @@ package stages
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"reflect"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -12,6 +15,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
+
+	"golang.org/x/crypto/sha3"
 )
 
 // Config Errors
@@ -31,6 +36,22 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
+		"Hash": func(salt string, input string) string {
+			hash := sha3.Sum256([]byte(salt + input))
+			return hex.EncodeToString(hash[:])
+		},
+		"Sha2Hash": func(salt string, input string) string {
+			hash := sha256.Sum256([]byte(salt + input))
+			return hex.EncodeToString(hash[:])
+		},
+		"regexReplaceAll": func(regex string, s string, repl string) string {
+			r := regexp.MustCompile(regex)
+			return r.ReplaceAllString(s, repl)
+		},
+		"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
+			r := regexp.MustCompile(regex)
+			return r.ReplaceAllLiteralString(s, repl)
+		},
 	}
 )
 
@@ -53,7 +74,7 @@ func validateTemplateConfig(cfg *TemplateConfig) (*template.Template, error) {
 }
 
 // newTemplateStage creates a new templateStage
-func newTemplateStage(logger log.Logger, config interface{}) (*templateStage, error) {
+func newTemplateStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg := &TemplateConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -64,15 +85,11 @@ func newTemplateStage(logger log.Logger, config interface{}) (*templateStage, er
 		return nil, err
 	}
 
-	return &templateStage{
+	return toStage(&templateStage{
 		cfgs:     cfg,
 		logger:   logger,
 		template: t,
-	}, nil
-}
-
-type templateData struct {
-	Value string
+	}), nil
 }
 
 // templateStage will mutate the incoming entry and set it from extracted data
@@ -87,41 +104,38 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 	if o.cfgs == nil {
 		return
 	}
-	if v, ok := extracted[o.cfgs.Source]; ok {
+	td := make(map[string]interface{})
+	for k, v := range extracted {
 		s, err := getString(v)
 		if err != nil {
-			level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v).String())
-			return
+			if Debug {
+				level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
+			}
+			continue
 		}
-		td := templateData{s}
-		buf := &bytes.Buffer{}
-		err = o.template.Execute(buf, td)
-		if err != nil {
-			level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
-			return
-		}
-		st := buf.String()
-		// If the template evaluates to an empty string, remove the key from the map
-		if st == "" {
-			delete(extracted, o.cfgs.Source)
-		} else {
-			extracted[o.cfgs.Source] = st
-		}
-
-	} else {
-		td := templateData{}
-		buf := &bytes.Buffer{}
-		err := o.template.Execute(buf, td)
-		if err != nil {
-			level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
-			return
-		}
-		st := buf.String()
-		// Do not set extracted data with empty values
-		if st != "" {
-			extracted[o.cfgs.Source] = st
+		td[k] = s
+		if k == o.cfgs.Source {
+			td["Value"] = s
 		}
 	}
+	td["Entry"] = *entry
+
+	buf := &bytes.Buffer{}
+	err := o.template.Execute(buf, td)
+	if err != nil {
+		if Debug {
+			level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err)
+		}
+		return
+	}
+	st := buf.String()
+	// If the template evaluates to an empty string, remove the key from the map
+	if st == "" {
+		delete(extracted, o.cfgs.Source)
+	} else {
+		extracted[o.cfgs.Source] = st
+	}
+
 }
 
 // Name implements Stage

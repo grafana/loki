@@ -57,14 +57,22 @@ func (ls Set) Get(label string) string {
 	return ls[label]
 }
 
-// AsSelector converts labels into a selectors.
+// AsSelector converts labels into a selectors. It does not
+// perform any validation, which means the server will reject
+// the request if the Set contains invalid values.
 func (ls Set) AsSelector() Selector {
 	return SelectorFromSet(ls)
 }
 
+// AsValidatedSelector converts labels into a selectors.
+// The Set is validated client-side, which allows to catch errors early.
+func (ls Set) AsValidatedSelector() (Selector, error) {
+	return ValidatedSelectorFromSet(ls)
+}
+
 // AsSelectorPreValidated converts labels into a selector, but
-// assumes that labels are already validated and thus don't
-// preform any validation.
+// assumes that labels are already validated and thus doesn't
+// perform any validation.
 // According to our measurements this is significantly faster
 // in codepaths that matter at high scale.
 func (ls Set) AsSelectorPreValidated() Selector {
@@ -133,25 +141,6 @@ func Equals(labels1, labels2 Set) bool {
 	return true
 }
 
-// AreLabelsInWhiteList verifies if the provided label list
-// is in the provided whitelist and returns true, otherwise false.
-func AreLabelsInWhiteList(labels, whitelist Set) bool {
-	if len(whitelist) == 0 {
-		return true
-	}
-
-	for k, v := range labels {
-		value, ok := whitelist[k]
-		if !ok {
-			return false
-		}
-		if value != v {
-			return false
-		}
-	}
-	return true
-}
-
 // ConvertSelectorToLabelsMap converts selector string to labels map
 // and validates keys and values
 func ConvertSelectorToLabelsMap(selector string) (Set, error) {
@@ -172,7 +161,7 @@ func ConvertSelectorToLabelsMap(selector string) (Set, error) {
 			return labelsMap, err
 		}
 		value := strings.TrimSpace(l[1])
-		if err := validateLabelValue(value); err != nil {
+		if err := validateLabelValue(key, value); err != nil {
 			return labelsMap, err
 		}
 		labelsMap[key] = value

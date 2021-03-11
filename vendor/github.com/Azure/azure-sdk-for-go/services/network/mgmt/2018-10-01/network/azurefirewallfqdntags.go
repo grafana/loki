@@ -96,8 +96,8 @@ func (client AzureFirewallFqdnTagsClient) ListAllPreparer(ctx context.Context) (
 // ListAllSender sends the ListAll request. The method will close the
 // http.Response Body if it receives an error.
 func (client AzureFirewallFqdnTagsClient) ListAllSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // ListAllResponder handles the response to the ListAll request. The method always

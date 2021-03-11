@@ -1,0 +1,61 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
+syntax = "proto3";
+package hintspb;
+
+import "gogoproto/gogo.proto";
+import "store/storepb/types.proto";
+
+option go_package = "hintspb";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+
+// Do not generate XXX fields to reduce memory.
+option (gogoproto.goproto_unkeyed_all) = false;
+option (gogoproto.goproto_unrecognized_all) = false;
+option (gogoproto.goproto_sizecache_all) = false;
+
+message SeriesRequestHints {
+    /// block_matchers is a list of label matchers that are evaluated against each single block's
+    /// labels to filter which blocks get queried. If the list is empty, no per-block filtering
+    /// is applied.
+    repeated thanos.LabelMatcher block_matchers = 1 [(gogoproto.nullable) = false];
+}
+
+message SeriesResponseHints {
+    /// queried_blocks is the list of blocks that have been queried.
+    repeated Block queried_blocks = 1 [(gogoproto.nullable) = false];
+}
+
+message Block {
+    string id = 1;
+}
+
+
+message LabelNamesRequestHints {
+    /// block_matchers is a list of label matchers that are evaluated against each single block's
+    /// labels to filter which blocks get queried. If the list is empty, no per-block filtering
+    /// is applied.
+    repeated thanos.LabelMatcher block_matchers = 1 [(gogoproto.nullable) = false];
+}
+
+message LabelNamesResponseHints {
+    /// queried_blocks is the list of blocks that have been queried.
+    repeated Block queried_blocks = 1 [(gogoproto.nullable) = false];
+}
+
+message LabelValuesRequestHints {
+    /// block_matchers is a list of label matchers that are evaluated against each single block's
+    /// labels to filter which blocks get queried. If the list is empty, no per-block filtering
+    /// is applied.
+    repeated thanos.LabelMatcher block_matchers = 1 [(gogoproto.nullable) = false];
+}
+
+message LabelValuesResponseHints {
+    /// queried_blocks is the list of blocks that have been queried.
+    repeated Block queried_blocks = 1 [(gogoproto.nullable) = false];
+}

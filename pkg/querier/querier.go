@@ -6,189 +6,252 @@ import (
 	"net/http"
 	"time"
 
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/ingester/client"
+	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
+	listutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
-var readinessProbeSuccess = []byte("Ready")
+const (
+	// How long the Tailer should wait - once there are no entries to read from ingesters -
+	// before checking if a new entry is available (to avoid spinning the CPU in a continuous
+	// check loop)
+	tailerWaitEntryThrottle = time.Second / 2
+)
+
+type interval struct {
+	start, end time.Time
+}
 
 // Config for a querier.
 type Config struct {
-	TailMaxDuration time.Duration `yaml:"tail_max_duration"`
-	QueryTimeout    time.Duration `yaml:"query_timeout"`
+	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
+	TailMaxDuration               time.Duration    `yaml:"tail_max_duration"`
+	ExtraQueryDelay               time.Duration    `yaml:"extra_query_delay,omitempty"`
+	QueryIngestersWithin          time.Duration    `yaml:"query_ingesters_within,omitempty"`
+	IngesterQueryStoreMaxLookback time.Duration    `yaml:"-"`
+	Engine                        logql.EngineOpts `yaml:"engine,omitempty"`
+	MaxConcurrent                 int              `yaml:"max_concurrent"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.Engine.RegisterFlagsWithPrefix("querier", f)
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
-	f.DurationVar(&cfg.QueryTimeout, "querier.query_timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request")
+	f.DurationVar(&cfg.QueryTimeout, "querier.query-timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request")
+	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
+	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 }
 
 // Querier handlers queries.
 type Querier struct {
-	cfg   Config
-	ring  ring.ReadRing
-	pool  *cortex_client.Pool
-	store storage.Store
+	cfg             Config
+	store           storage.Store
+	engine          *logql.Engine
+	limits          *validation.Overrides
+	ingesterQuerier *IngesterQuerier
 }
 
 // New makes a new Querier.
-func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.Store) (*Querier, error) {
-	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
-		return client.New(clientCfg, addr)
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*Querier, error) {
+	querier := Querier{
+		cfg:             cfg,
+		store:           store,
+		ingesterQuerier: ingesterQuerier,
+		limits:          limits,
 	}
 
-	return newQuerier(cfg, clientCfg, factory, ring, store)
+	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits)
+
+	return &querier, nil
 }
 
-// newQuerier creates a new Querier and allows to pass a custom ingester client factory
-// used for testing purposes
-func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client.Factory, ring ring.ReadRing, store storage.Store) (*Querier, error) {
-	return &Querier{
-		cfg:   cfg,
-		ring:  ring,
-		pool:  cortex_client.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
-		store: store,
-	}, nil
-}
-
-type responseFromIngesters struct {
-	addr     string
-	response interface{}
-}
-
-// ReadinessHandler is used to indicate to k8s when the querier is ready.
-// Returns 200 when the querier is ready, 500 otherwise.
-func (q *Querier) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := q.ring.GetAll()
-	if err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
-	}
-}
-
-// forAllIngesters runs f, in parallel, for all ingesters
-// TODO taken from Cortex, see if we can refactor out an usable interface.
-func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	replicationSet, err := q.ring.GetAll()
+// Select Implements logql.Querier which select logs via matchers and regex filters.
+func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	err := q.validateQueryRequest(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
-	return q.forGivenIngesters(replicationSet, f)
-}
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
-// forGivenIngesters runs f, in parallel, for given ingesters
-// TODO taken from Cortex, see if we can refactor out an usable interface.
-func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	resps, errs := make(chan responseFromIngesters), make(chan error)
-	for _, ingester := range replicationSet.Ingesters {
-		go func(ingester ring.IngesterDesc) {
-			client, err := q.pool.GetClientFor(ingester.Addr)
-			if err != nil {
-				errs <- err
-				return
-			}
+	iters := []iter.EntryIterator{}
+	if ingesterQueryInterval != nil {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+		queryRequestCopy := *params.QueryRequest
+		newParams := logql.SelectLogParams{
+			QueryRequest: &queryRequestCopy,
+		}
+		newParams.Start = ingesterQueryInterval.start
+		newParams.End = ingesterQueryInterval.end
 
-			resp, err := f(client.(logproto.QuerierClient))
-			if err != nil {
-				errs <- err
-			} else {
-				resps <- responseFromIngesters{ingester.Addr, resp}
-			}
-		}(ingester)
+		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
+		if err != nil {
+			return nil, err
+		}
+
+		iters = append(iters, ingesterIters...)
 	}
 
-	var lastErr error
-	result, numErrs := []responseFromIngesters{}, 0
-	for range replicationSet.Ingesters {
-		select {
-		case resp := <-resps:
-			result = append(result, resp)
-		case lastErr = <-errs:
-			numErrs++
+	if storeQueryInterval != nil {
+		params.Start = storeQueryInterval.start
+		params.End = storeQueryInterval.end
+
+		storeIter, err := q.store.SelectLogs(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		iters = append(iters, storeIter)
+	}
+
+	return iter.NewHeapIterator(ctx, iters, params.Direction), nil
+}
+
+func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+	err := q.validateQueryRequest(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+
+	iters := []iter.SampleIterator{}
+	if ingesterQueryInterval != nil {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+		queryRequestCopy := *params.SampleQueryRequest
+		newParams := logql.SelectSampleParams{
+			SampleQueryRequest: &queryRequestCopy,
+		}
+		newParams.Start = ingesterQueryInterval.start
+		newParams.End = ingesterQueryInterval.end
+
+		ingesterIters, err := q.ingesterQuerier.SelectSample(ctx, newParams)
+		if err != nil {
+			return nil, err
+		}
+
+		iters = append(iters, ingesterIters...)
+	}
+
+	if storeQueryInterval != nil {
+		params.Start = storeQueryInterval.start
+		params.End = storeQueryInterval.end
+
+		storeIter, err := q.store.SelectSamples(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		iters = append(iters, storeIter)
+	}
+	return iter.NewHeapSampleIterator(ctx, iters), nil
+}
+
+func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
+	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
+	limitQueryInterval := false
+	// ingesterMLB having -1 means query ingester for whole duration.
+	ingesterMLB := time.Duration(-1)
+	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
+		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
+		limitQueryInterval = true
+		ingesterMLB = q.cfg.IngesterQueryStoreMaxLookback
+	} else if q.cfg.QueryIngestersWithin != 0 {
+		ingesterMLB = q.cfg.QueryIngestersWithin
+	}
+
+	// query ingester for whole duration.
+	if ingesterMLB == -1 {
+		i := &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}
+
+		if limitQueryInterval {
+			// query only ingesters.
+			return i, nil
+		}
+
+		// query both stores and ingesters without limiting the query interval.
+		return i, i
+	}
+
+	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.
+	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
+	if queryEnd.Before(ingesterOldestStartTime) {
+		return nil, &interval{
+			start: queryStart,
+			end:   queryEnd,
 		}
 	}
 
-	if numErrs > replicationSet.MaxErrors {
-		return nil, lastErr
+	// if there is an overlap and we are not limiting the query interval then do both store and ingester query for whole query interval.
+	if !limitQueryInterval {
+		i := &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}
+		return i, i
 	}
 
-	return result, nil
-}
-
-// Query does the heavy lifting for an actual query.
-func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
-	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
-	defer cancel()
-
-	iterators, err := q.getQueryIterators(ctx, req)
-	if err != nil {
-		return nil, err
+	// since we are limiting the query interval, check if the query touches just the ingesters, if yes then query just the ingesters.
+	if ingesterOldestStartTime.Before(queryStart) {
+		return &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}, nil
 	}
 
-	iterator := iter.NewHeapIterator(iterators, req.Direction)
-	defer helpers.LogError("closing iterator", iterator.Close)
-
-	resp, _, err := iter.ReadBatch(iterator, req.Limit)
-	return resp, err
-}
-
-func (q *Querier) getQueryIterators(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
-	ingesterIterators, err := q.queryIngesters(ctx, req)
-	if err != nil {
-		return nil, err
+	// limit the start of ingester query interval to ingesterOldestStartTime.
+	ingesterQueryInterval := &interval{
+		start: ingesterOldestStartTime,
+		end:   queryEnd,
 	}
 
-	chunkStoreIterators, err := q.store.LazyQuery(ctx, req)
-	if err != nil {
-		return nil, err
+	// limit the end of ingester query interval to ingesterOldestStartTime.
+	storeQueryInterval := &interval{
+		start: queryStart,
+		end:   ingesterOldestStartTime,
 	}
 
-	iterators := append(ingesterIterators, chunkStoreIterators)
-	return iterators, nil
-}
-
-func (q *Querier) queryIngesters(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
-	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(ctx, req)
-	})
-	if err != nil {
-		return nil, err
+	// query touches only ingester query interval so do not do store query.
+	if storeQueryInterval.start.After(storeQueryInterval.end) {
+		storeQueryInterval = nil
 	}
 
-	iterators := make([]iter.EntryIterator, len(clients))
-	for i := range clients {
-		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), req.Direction)
-	}
-	return iterators, nil
+	return ingesterQueryInterval, storeQueryInterval
 }
 
 // Label does the heavy lifting for a Label query.
 func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = q.validateQueryTimeRange(userID, *req.Start, *req.End); err != nil {
+		return nil, err
+	}
+
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
 
-	resps, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Label(ctx, req)
-	})
+	ingesterValues, err := q.ingesterQuerier.Label(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -196,25 +259,21 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
 	var storeValues []string
 	if req.Values {
-		storeValues, err = q.store.LabelValuesForMetricName(ctx, from, through, "logs", req.Name)
+		storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		storeValues, err = q.store.LabelNamesForMetricName(ctx, from, through, "logs")
+		storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	results := make([][]string, 0, len(resps))
-	for _, resp := range resps {
-		results = append(results, resp.response.(*logproto.LabelResponse).Values)
-	}
-	results = append(results, storeValues)
+	results := append(ingesterValues, storeValues)
 
 	return &logproto.LabelResponse{
-		Values: mergeLists(results...),
+		Values: listutil.MergeStringLists(results...),
 	}, nil
 }
 
@@ -223,79 +282,45 @@ func (*Querier) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
-func mergeLists(ss ...[]string) []string {
-	switch len(ss) {
-	case 0:
-		return nil
-	case 1:
-		return ss[0]
-	case 2:
-		return mergePair(ss[0], ss[1])
-	default:
-		n := len(ss) / 2
-		return mergePair(mergeLists(ss[:n]...), mergeLists(ss[n:]...))
-	}
-}
-
-func mergePair(s1, s2 []string) []string {
-	i, j := 0, 0
-	result := make([]string, 0, len(s1)+len(s2))
-	for i < len(s1) && j < len(s2) {
-		if s1[i] < s2[j] {
-			result = append(result, s1[i])
-			i++
-		} else if s1[i] > s2[j] {
-			result = append(result, s2[j])
-			j++
-		} else {
-			result = append(result, s1[i])
-			i++
-			j++
-		}
-	}
-	for ; i < len(s1); i++ {
-		result = append(result, s1[i])
-	}
-	for ; j < len(s2); j++ {
-		result = append(result, s2[j])
-	}
-	return result
-}
-
 // Tail keeps getting matching logs from all ingesters for given query
 func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+	err := q.checkTailRequestLimit(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	histReq := logql.SelectLogParams{
+		QueryRequest: &logproto.QueryRequest{
+			Selector:  req.Query,
+			Start:     req.Start,
+			End:       time.Now(),
+			Limit:     req.Limit,
+			Direction: logproto.BACKWARD,
+		},
+	}
+
+	err = q.validateQueryRequest(ctx, histReq)
+	if err != nil {
+		return nil, err
+	}
+
 	// Enforce the query timeout except when tailing, otherwise the tailing
 	// will be terminated once the query timeout is reached
 	tailCtx := ctx
 	queryCtx, cancelQuery := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancelQuery()
 
-	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Tail(tailCtx, req)
-	})
+	tailClients, err := q.ingesterQuerier.Tail(tailCtx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	tailClients := make(map[string]logproto.Querier_TailClient)
-	for i := range clients {
-		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
-	}
-
-	histReq := logproto.QueryRequest{
-		Query:     req.Query,
-		Start:     req.Start,
-		End:       time.Now(),
-		Limit:     req.Limit,
-		Direction: logproto.BACKWARD,
-		Regex:     req.Regex,
-	}
-	histIterators, err := q.getQueryIterators(queryCtx, &histReq)
+	histIterators, err := q.SelectLogs(queryCtx, histReq)
 	if err != nil {
 		return nil, err
 	}
 
-	reversedIterator, err := iter.NewEntryIteratorForward(iter.NewHeapIterator(histIterators, logproto.BACKWARD), req.Limit, true)
+	reversedIterator, err := iter.NewReversedIter(histIterators, req.Limit, true)
 	if err != nil {
 		return nil, err
 	}
@@ -305,42 +330,196 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		tailClients,
 		reversedIterator,
 		func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
-			return q.tailDisconnectedIngesters(tailCtx, req, connectedIngestersAddr)
+			return q.ingesterQuerier.TailDisconnectedIngesters(tailCtx, req, connectedIngestersAddr)
 		},
 		q.cfg.TailMaxDuration,
+		tailerWaitEntryThrottle,
 	), nil
 }
 
-// passed to tailer for (re)connecting to new or disconnected ingesters
-func (q *Querier) tailDisconnectedIngesters(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
-	tailClients := make(map[string]logproto.Querier_TailClient)
-	for i := range connectedIngestersAddr {
-		tailClients[connectedIngestersAddr[i]] = nil
-	}
-
-	disconnectedIngesters := []ring.IngesterDesc{}
-	replicationSet, err := q.ring.GetAll()
+// Series fetches any matching series for a list of matcher sets
+func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, ingester := range replicationSet.Ingesters {
-		if _, isOk := tailClients[ingester.Addr]; isOk {
-			delete(tailClients, ingester.Addr)
-		} else {
-			disconnectedIngesters = append(disconnectedIngesters, ingester)
+	if err = q.validateQueryTimeRange(userID, req.Start, req.End); err != nil {
+		return nil, err
+	}
+
+	// Enforce the query timeout while querying backends
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	defer cancel()
+
+	return q.awaitSeries(ctx, req)
+
+}
+
+func (q *Querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+
+	// buffer the channels to the # of calls they're expecting su
+	series := make(chan [][]logproto.SeriesIdentifier, 2)
+	errs := make(chan error, 2)
+
+	// fetch series from ingesters and store concurrently
+
+	go func() {
+		// fetch series identifiers from ingesters
+		resps, err := q.ingesterQuerier.Series(ctx, req)
+		if err != nil {
+			errs <- err
+			return
+		}
+
+		series <- resps
+	}()
+
+	go func() {
+		storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups())
+		if err != nil {
+			errs <- err
+			return
+		}
+		series <- [][]logproto.SeriesIdentifier{storeValues}
+	}()
+
+	var sets [][]logproto.SeriesIdentifier
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-errs:
+			return nil, err
+		case s := <-series:
+			sets = append(sets, s...)
 		}
 	}
 
-	clients, err := q.forGivenIngesters(ring.ReplicationSet{Ingesters: disconnectedIngesters}, func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Tail(ctx, req)
+	deduped := make(map[string]logproto.SeriesIdentifier)
+	for _, set := range sets {
+		for _, s := range set {
+			key := loghttp.LabelSet(s.Labels).String()
+			if _, exists := deduped[key]; !exists {
+				deduped[key] = s
+			}
+		}
+	}
+
+	response := &logproto.SeriesResponse{
+		Series: make([]logproto.SeriesIdentifier, 0, len(deduped)),
+	}
+
+	for _, s := range deduped {
+		response.Series = append(response.Series, s)
+	}
+
+	return response, nil
+}
+
+// seriesForMatchers fetches series from the store for each matcher set
+// TODO: make efficient if/when the index supports labels so we don't have to read chunks
+func (q *Querier) seriesForMatchers(
+	ctx context.Context,
+	from, through time.Time,
+	groups []string,
+) ([]logproto.SeriesIdentifier, error) {
+
+	var results []logproto.SeriesIdentifier
+	// If no matchers were specified for the series query,
+	// we send a query with an empty matcher which will match every series.
+	if len(groups) == 0 {
+		var err error
+		results, err = q.seriesForMatcher(ctx, from, through, "")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		for _, group := range groups {
+			ids, err := q.seriesForMatcher(ctx, from, through, group)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, ids...)
+		}
+	}
+	return results, nil
+}
+
+// seriesForMatcher fetches series from the store for a given matcher
+func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string) ([]logproto.SeriesIdentifier, error) {
+	ids, err := q.store.GetSeries(ctx, logql.SelectLogParams{
+		QueryRequest: &logproto.QueryRequest{
+			Selector:  matcher,
+			Limit:     1,
+			Start:     from,
+			End:       through,
+			Direction: logproto.FORWARD,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
+	return ids, nil
+}
 
-	for i := range clients {
-		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
+func (q *Querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
 	}
-	return tailClients, nil
+
+	selector, err := req.LogSelector()
+	if err != nil {
+		return err
+	}
+	matchers := selector.Matchers()
+
+	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(userID)
+	if len(matchers) > maxStreamMatchersPerQuery {
+		return httpgrpc.Errorf(http.StatusBadRequest,
+			"max streams matchers per query exceeded, matchers-count > limit (%d > %d)", len(matchers), maxStreamMatchersPerQuery)
+	}
+
+	return q.validateQueryTimeRange(userID, req.GetStart(), req.GetEnd())
+}
+
+func (q *Querier) validateQueryTimeRange(userID string, from time.Time, through time.Time) error {
+	if (through).Before(from) {
+		return httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
+	}
+
+	maxQueryLength := q.limits.MaxQueryLength(userID)
+	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
+		return httpgrpc.Errorf(http.StatusBadRequest, cortex_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
+	}
+
+	return nil
+}
+
+func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	responses, err := q.ingesterQuerier.TailersCount(ctx)
+	// We are only checking active ingesters, and any error returned stops checking other ingesters
+	// so return that error here as well.
+	if err != nil {
+		return err
+	}
+
+	var maxCnt uint32
+	maxCnt = 0
+	for _, resp := range responses {
+		if resp > maxCnt {
+			maxCnt = resp
+		}
+	}
+	l := uint32(q.limits.MaxConcurrentTailRequests(userID))
+	if maxCnt >= l {
+		return httpgrpc.Errorf(http.StatusBadRequest,
+			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, l)
+	}
+
+	return nil
 }

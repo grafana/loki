@@ -3,31 +3,11 @@ apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 metadata:
   name: {{ template "promtail.fullname" . }}
-  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ template "promtail.name" . }}
     chart: {{ template "promtail.chart" . }}
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
 spec:
-  privileged: false
-  allowPrivilegeEscalation: false
-  volumes:
-    - 'secret'
-    - 'configMap'
-    - 'hostPath'
-  hostNetwork: false
-  hostIPC: false
-  hostPID: false
-  runAsUser:
-    rule: 'RunAsAny'
-  seLinux:
-    rule: 'RunAsAny'
-  supplementalGroups:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-  readOnlyRootFilesystem: true
-  requiredDropCapabilities:
-    - ALL
-  {{- end }}
+  {{- toYaml .Values.podSecurityPolicy | nindent 2 }}
+{{- end }}

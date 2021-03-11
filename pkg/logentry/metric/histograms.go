@@ -1,6 +1,8 @@
 package metric
 
 import (
+	"time"
+
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -31,7 +33,7 @@ type Histograms struct {
 }
 
 // NewHistograms creates a new histogram vec.
-func NewHistograms(name, help string, config interface{}) (*Histograms, error) {
+func NewHistograms(name, help string, config interface{}, maxIdleSec int64) (*Histograms, error) {
 	cfg, err := parseHistogramConfig(config)
 	if err != nil {
 		return nil, err
@@ -42,13 +44,15 @@ func NewHistograms(name, help string, config interface{}) (*Histograms, error) {
 	}
 	return &Histograms{
 		metricVec: newMetricVec(func(labels map[string]string) prometheus.Metric {
-			return prometheus.NewHistogram(prometheus.HistogramOpts{
+			return &expiringHistogram{prometheus.NewHistogram(prometheus.HistogramOpts{
 				Help:        help,
 				Name:        name,
 				ConstLabels: labels,
 				Buckets:     cfg.Buckets,
-			})
-		}),
+			}),
+				0,
+			}
+		}, maxIdleSec),
 		Cfg: cfg,
 	}, nil
 }
@@ -56,4 +60,20 @@ func NewHistograms(name, help string, config interface{}) (*Histograms, error) {
 // With returns the histogram associated with a stream labelset.
 func (h *Histograms) With(labels model.LabelSet) prometheus.Histogram {
 	return h.metricVec.With(labels).(prometheus.Histogram)
+}
+
+type expiringHistogram struct {
+	prometheus.Histogram
+	lastModSec int64
+}
+
+// Observe adds a single observation to the histogram.
+func (h *expiringHistogram) Observe(val float64) {
+	h.Histogram.Observe(val)
+	h.lastModSec = time.Now().Unix()
+}
+
+// HasExpired implements Expirable
+func (h *expiringHistogram) HasExpired(currentTimeSec int64, maxAgeSec int64) bool {
+	return currentTimeSec-h.lastModSec >= maxAgeSec
 }

@@ -4,28 +4,33 @@ import (
 	"context"
 	"flag"
 	"net/http"
-	"sync/atomic"
 	"time"
 
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	lru "github.com/hashicorp/golang-lru"
+	"github.com/pkg/errors"
+	"go.uber.org/atomic"
+
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/runtime"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
-const metricName = "logs"
-
-var readinessProbeSuccess = []byte("Ready")
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -38,85 +43,139 @@ var (
 		Help:      "The total number of failed batch appends sent to ingesters.",
 	}, []string{"ingester"})
 
-	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "distributor_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant",
-	}, []string{"tenant"})
-	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "distributor_lines_received_total",
-		Help:      "The total number of lines received per tenant",
-	}, []string{"tenant"})
+	maxLabelCacheSize = 100000
 )
 
 // Config for a Distributor.
 type Config struct {
+	// Distributors ring
+	DistributorRing cortex_distributor.RingConfig `yaml:"ring,omitempty"`
+
 	// For testing.
-	factory func(addr string) (grpc_health_v1.HealthClient, error)
+	factory ring_client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.DistributorRing.RegisterFlags(f)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
-	cfg       Config
-	clientCfg client.Config
-	ring      ring.ReadRing
-	overrides *validation.Overrides
-	pool      *cortex_client.Pool
+	services.Service
+
+	cfg           Config
+	clientCfg     client.Config
+	tenantConfigs *runtime.TenantConfigs
+	ingestersRing ring.ReadRing
+	validator     *Validator
+	pool          *ring_client.Pool
+
+	// The global rate limiter requires a distributors ring to count
+	// the number of healthy instances.
+	distributorsRing *ring.Lifecycler
+
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
+
+	// Per-user rate limiter.
+	ingestionRateLimiter *limiter.RateLimiter
+	labelCache           *lru.Cache
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, overrides *validation.Overrides) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, registerer prometheus.Registerer) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
-		factory = func(addr string) (grpc_health_v1.HealthClient, error) {
+		factory = func(addr string) (ring_client.PoolClient, error) {
 			return client.New(clientCfg, addr)
 		}
 	}
 
-	return &Distributor{
-		cfg:       cfg,
-		clientCfg: clientCfg,
-		ring:      ring,
-		overrides: overrides,
-		pool:      cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, cortex_util.Logger),
-	}, nil
+	validator, err := NewValidator(overrides)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the configured ingestion rate limit strategy (local or global).
+	var ingestionRateStrategy limiter.RateLimiterStrategy
+	var distributorsRing *ring.Lifecycler
+
+	var servs []services.Service
+
+	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
+		var err error
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false, registerer)
+		if err != nil {
+			return nil, err
+		}
+
+		servs = append(servs, distributorsRing)
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
+	} else {
+		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
+	}
+
+	labelCache, err := lru.New(maxLabelCacheSize)
+	if err != nil {
+		return nil, err
+	}
+	d := Distributor{
+		cfg:                  cfg,
+		clientCfg:            clientCfg,
+		tenantConfigs:        configs,
+		ingestersRing:        ingestersRing,
+		distributorsRing:     distributorsRing,
+		validator:            validator,
+		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		labelCache:           labelCache,
+	}
+
+	servs = append(servs, d.pool)
+	d.subservices, err = services.NewManager(servs...)
+	if err != nil {
+		return nil, errors.Wrap(err, "services manager")
+	}
+	d.subservicesWatcher = services.NewFailureWatcher()
+	d.subservicesWatcher.WatchManager(d.subservices)
+	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
+
+	return &d, nil
+}
+
+func (d *Distributor) starting(ctx context.Context) error {
+	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
+}
+
+func (d *Distributor) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-d.subservicesWatcher.Chan():
+		return errors.Wrap(err, "distributor subservice failed")
+	}
+}
+
+func (d *Distributor) stopping(_ error) error {
+	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
-	stream      *logproto.Stream
+	stream      logproto.Stream
 	minSuccess  int
 	maxFailures int
-	succeeded   int32
-	failed      int32
+	succeeded   atomic.Int32
+	failed      atomic.Int32
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type pushTracker struct {
-	samplesPending int32
-	samplesFailed  int32
+	samplesPending atomic.Int32
+	samplesFailed  atomic.Int32
 	done           chan struct{}
 	err            chan error
-}
-
-// ReadinessHandler is used to indicate to k8s when the distributor is ready.
-// Returns 200 when the distributor is ready, 500 otherwise.
-func (d *Distributor) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := d.ring.GetAll()
-	if err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(cortex_util.Logger).Log("msg", "error writing success message", "error", err)
-	}
 }
 
 // Push a set of streams.
@@ -126,45 +185,45 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, err
 	}
 
-	// Track metrics.
-	bytesCount := 0
-	lineCount := 0
-	for _, stream := range req.Streams {
-		for _, entry := range stream.Entries {
-			bytesCount += len(entry.Line)
-			lineCount++
-		}
-	}
-	bytesIngested.WithLabelValues(userID).Add(float64(bytesCount))
-	linesIngested.WithLabelValues(userID).Add(float64(lineCount))
-
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	streams := make([]streamTracker, 0, len(req.Streams))
 	keys := make([]uint32, 0, len(req.Streams))
 	var validationErr error
+	validatedSamplesSize := 0
+	validatedSamplesCount := 0
+
+	validationContext := d.validator.getValidationContextFor(userID)
+
 	for _, stream := range req.Streams {
-		if err := d.validateLabels(userID, stream.Labels); err != nil {
+		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+		if err != nil {
 			validationErr = err
+			validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, userID).Add(float64(len(stream.Entries)))
+			bytes := 0
+			for _, e := range stream.Entries {
+				bytes += len(e.Line)
+			}
+			validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, userID).Add(float64(bytes))
 			continue
 		}
-
-		entries := make([]logproto.Entry, 0, len(stream.Entries))
+		n := 0
 		for _, entry := range stream.Entries {
-			if err := d.overrides.ValidateSample(userID, metricName, cortex_client.Sample{
-				TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
-			}); err != nil {
+			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
 				validationErr = err
 				continue
 			}
-			entries = append(entries, entry)
+			stream.Entries[n] = entry
+			n++
+			validatedSamplesSize += len(entry.Line)
+			validatedSamplesCount++
 		}
+		stream.Entries = stream.Entries[:n]
 
-		if len(entries) == 0 {
+		if len(stream.Entries) == 0 {
 			continue
 		}
-		stream.Entries = entries
 		keys = append(keys, util.TokenFor(userID, stream.Labels))
 		streams = append(streams, streamTracker{
 			stream: stream,
@@ -175,14 +234,25 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	replicationSets, err := d.ring.BatchGet(keys, ring.Write)
-	if err != nil {
-		return nil, err
+	now := time.Now()
+	if ok, _ := d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize); !ok {
+		// Return a 429 to indicate to the client they are being rate limited
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
+		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
 	}
 
+	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
+	var descs [maxExpectedReplicationSet]ring.InstanceDesc
+
 	samplesByIngester := map[string][]*streamTracker{}
-	ingesterDescs := map[string]ring.IngesterDesc{}
-	for i, replicationSet := range replicationSets {
+	ingesterDescs := map[string]ring.InstanceDesc{}
+	for i, key := range keys {
+		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
+		if err != nil {
+			return nil, err
+		}
+
 		streams[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
 		streams[i].maxFailures = replicationSet.MaxErrors
 		for _, ingester := range replicationSet.Ingesters {
@@ -192,12 +262,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	tracker := pushTracker{
-		samplesPending: int32(len(streams)),
-		done:           make(chan struct{}),
-		err:            make(chan error),
+		done: make(chan struct{}),
+		err:  make(chan error),
 	}
+	tracker.samplesPending.Store(int32(len(streams)))
 	for ingester, samples := range samplesByIngester {
-		go func(ingester ring.IngesterDesc, samples []*streamTracker) {
+		go func(ingester ring.InstanceDesc, samples []*streamTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
 			localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
 			defer cancel()
@@ -218,17 +288,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
-func (d *Distributor) validateLabels(userID, labels string) error {
-	ls, err := util.ToClientLabels(labels)
-	if err != nil {
-		return err
-	}
-
-	return d.overrides.ValidateLabels(userID, ls)
-}
-
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
+func (d *Distributor) sendSamples(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
 	err := d.sendSamplesErr(ctx, ingester, streamTrackers)
 
 	// If we succeed, decrement each sample's pending count by one.  If we reach
@@ -242,17 +303,17 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 	// goroutine will write to either channel.
 	for i := range streamTrackers {
 		if err != nil {
-			if atomic.AddInt32(&streamTrackers[i].failed, 1) <= int32(streamTrackers[i].maxFailures) {
+			if streamTrackers[i].failed.Inc() <= int32(streamTrackers[i].maxFailures) {
 				continue
 			}
-			if atomic.AddInt32(&pushTracker.samplesFailed, 1) == 1 {
+			if pushTracker.samplesFailed.Inc() == 1 {
 				pushTracker.err <- err
 			}
 		} else {
-			if atomic.AddInt32(&streamTrackers[i].succeeded, 1) != int32(streamTrackers[i].minSuccess) {
+			if streamTrackers[i].succeeded.Inc() != int32(streamTrackers[i].minSuccess) {
 				continue
 			}
-			if atomic.AddInt32(&pushTracker.samplesPending, -1) == 0 {
+			if pushTracker.samplesPending.Dec() == 0 {
 				pushTracker.done <- struct{}{}
 			}
 		}
@@ -260,14 +321,14 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.IngesterDesc, streams []*streamTracker) error {
+func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
 
 	req := &logproto.PushRequest{
-		Streams: make([]*logproto.Stream, len(streams)),
+		Streams: make([]logproto.Stream, len(streams)),
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream
@@ -284,4 +345,22 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 // Check implements the grpc healthcheck
 func (*Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, error) {
+	labelVal, ok := d.labelCache.Get(key)
+	if ok {
+		return labelVal.(string), nil
+	}
+	ls, err := logql.ParseLabels(key)
+	if err != nil {
+		return "", httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
+	}
+	// ensure labels are correctly sorted.
+	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
+		return "", err
+	}
+	lsVal := ls.String()
+	d.labelCache.Add(key, lsVal)
+	return lsVal, nil
 }

@@ -87,6 +87,7 @@ func (client P2sVpnServerConfigurationsClient) CreateOrUpdatePreparer(ctx contex
 		"api-version": APIVersion,
 	}
 
+	p2SVpnServerConfigurationParameters.Etag = nil
 	preparer := autorest.CreatePreparer(
 		autorest.AsContentType("application/json; charset=utf-8"),
 		autorest.AsPut(),
@@ -100,9 +101,9 @@ func (client P2sVpnServerConfigurationsClient) CreateOrUpdatePreparer(ctx contex
 // CreateOrUpdateSender sends the CreateOrUpdate request. The method will close the
 // http.Response Body if it receives an error.
 func (client P2sVpnServerConfigurationsClient) CreateOrUpdateSender(req *http.Request) (future P2sVpnServerConfigurationsCreateOrUpdateFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -179,9 +180,9 @@ func (client P2sVpnServerConfigurationsClient) DeletePreparer(ctx context.Contex
 // DeleteSender sends the Delete request. The method will close the
 // http.Response Body if it receives an error.
 func (client P2sVpnServerConfigurationsClient) DeleteSender(req *http.Request) (future P2sVpnServerConfigurationsDeleteFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -263,8 +264,8 @@ func (client P2sVpnServerConfigurationsClient) GetPreparer(ctx context.Context, 
 // GetSender sends the Get request. The method will close the
 // http.Response Body if it receives an error.
 func (client P2sVpnServerConfigurationsClient) GetSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // GetResponder handles the response to the Get request. The method always
@@ -341,8 +342,8 @@ func (client P2sVpnServerConfigurationsClient) ListByVirtualWanPreparer(ctx cont
 // ListByVirtualWanSender sends the ListByVirtualWan request. The method will close the
 // http.Response Body if it receives an error.
 func (client P2sVpnServerConfigurationsClient) ListByVirtualWanSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // ListByVirtualWanResponder handles the response to the ListByVirtualWan request. The method always

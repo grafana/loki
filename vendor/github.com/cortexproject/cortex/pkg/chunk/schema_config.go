@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -12,8 +13,8 @@ import (
 	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/math"
 )
 
 const (
@@ -23,6 +24,14 @@ const (
 	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
 )
 
+var (
+	errInvalidSchemaVersion     = errors.New("invalid schema version")
+	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
+	errConfigFileNotSet         = errors.New("schema config file needs to be set")
+	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
+	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
+)
+
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
 	From        DayTime             `yaml:"from"`         // used when working with config
@@ -30,7 +39,7 @@ type PeriodConfig struct {
 	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
-	ChunkTables PeriodicTableConfig `yaml:"chunks,omitempty"`
+	ChunkTables PeriodicTableConfig `yaml:"chunks"`
 	RowShards   uint32              `yaml:"row_shards"`
 }
 
@@ -42,7 +51,7 @@ type DayTime struct {
 
 // MarshalYAML implements yaml.Marshaller.
 func (d DayTime) MarshalYAML() (interface{}, error) {
-	return d.Time.Time().Format("2006-01-02"), nil
+	return d.String(), nil
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
@@ -59,117 +68,64 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+func (d *DayTime) String() string {
+	return d.Time.Time().Format("2006-01-02")
+}
+
 // SchemaConfig contains the config for our chunk index schemas
 type SchemaConfig struct {
 	Configs []PeriodConfig `yaml:"configs"`
 
 	fileName string
-	legacy   LegacySchemaConfig // if fileName is set then legacy config is ignored
-}
-
-// LegacySchemaConfig lets you configure schema via command-line flags
-type LegacySchemaConfig struct {
-	StorageClient string // aws, gcp, etc.
-
-	// After midnight on this day, we start bucketing indexes by day instead of by
-	// hour.  Only the day matters, not the time within the day.
-	DailyBucketsFrom      flagext.DayValue
-	Base64ValuesFrom      flagext.DayValue
-	V4SchemaFrom          flagext.DayValue
-	V5SchemaFrom          flagext.DayValue
-	V6SchemaFrom          flagext.DayValue
-	V9SchemaFrom          flagext.DayValue
-	BigtableColumnKeyFrom flagext.DayValue
-
-	// Config for the index & chunk tables.
-	OriginalTableName string
-	UsePeriodicTables bool
-	IndexTablesFrom   flagext.DayValue
-	IndexTables       PeriodicTableConfig
-	ChunkTablesFrom   flagext.DayValue
-	ChunkTables       PeriodicTableConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.fileName, "config-yaml", "", "Schema config yaml")
-	cfg.legacy.RegisterFlags(f)
+	f.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file. The schema config is used only when running Cortex with the chunks storage.")
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *LegacySchemaConfig) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "aws", "Which storage client to use (aws, gcp, cassandra, inmemory).")
-	f.Var(&cfg.DailyBucketsFrom, "dynamodb.daily-buckets-from", "The date (in the format YYYY-MM-DD) of the first day for which DynamoDB index buckets should be day-sized vs. hour-sized.")
-	f.Var(&cfg.Base64ValuesFrom, "dynamodb.base64-buckets-from", "The date (in the format YYYY-MM-DD) after which we will stop querying to non-base64 encoded values.")
-	f.Var(&cfg.V4SchemaFrom, "dynamodb.v4-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v4 schema.")
-	f.Var(&cfg.V5SchemaFrom, "dynamodb.v5-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v5 schema.")
-	f.Var(&cfg.V6SchemaFrom, "dynamodb.v6-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v6 schema.")
-	f.Var(&cfg.V9SchemaFrom, "dynamodb.v9-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v9 schema (Series indexing).")
-	f.Var(&cfg.BigtableColumnKeyFrom, "bigtable.column-key-from", "The date (in the format YYYY-MM-DD) after which we use bigtable column keys.")
+// loadFromFile loads the schema config from a yaml file
+func (cfg *SchemaConfig) loadFromFile() error {
+	if cfg.fileName == "" {
+		return errConfigFileNotSet
+	}
 
-	f.StringVar(&cfg.OriginalTableName, "dynamodb.original-table-name", "cortex", "The name of the DynamoDB table used before versioned schemas were introduced.")
-	f.BoolVar(&cfg.UsePeriodicTables, "dynamodb.use-periodic-tables", false, "Should we use periodic tables.")
+	f, err := os.Open(cfg.fileName)
+	if err != nil {
+		return err
+	}
 
-	f.Var(&cfg.IndexTablesFrom, "dynamodb.periodic-table.from", "Date after which to use periodic tables.")
-	cfg.IndexTables.RegisterFlags("dynamodb.periodic-table", "cortex_", f)
-	f.Var(&cfg.ChunkTablesFrom, "dynamodb.chunk-table.from", "Date after which to write chunks to DynamoDB.")
-	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", "cortex_chunks_", f)
+	decoder := yaml.NewDecoder(f)
+	decoder.SetStrict(true)
+	return decoder.Decode(&cfg)
 }
 
-// translate from command-line parameters into new config data structure
-func (cfg *SchemaConfig) translate() error {
-	cfg.Configs = []PeriodConfig{}
+// Validate the schema config and returns an error if the validation
+// doesn't pass
+func (cfg *SchemaConfig) Validate() error {
+	for i := range cfg.Configs {
+		periodCfg := &cfg.Configs[i]
+		periodCfg.applyDefaults()
+		if err := periodCfg.validate(); err != nil {
+			return err
+		}
 
-	add := func(t string, f model.Time) {
-		cfg.Configs = append(cfg.Configs, PeriodConfig{
-			From:      DayTime{f},
-			Schema:    t,
-			IndexType: cfg.legacy.StorageClient,
-			IndexTables: PeriodicTableConfig{
-				Prefix: cfg.legacy.OriginalTableName,
-				Tags:   cfg.legacy.IndexTables.Tags,
-			},
-		})
-	}
-
-	add("v1", 0)
-
-	if cfg.legacy.DailyBucketsFrom.IsSet() {
-		add("v2", cfg.legacy.DailyBucketsFrom.Time)
-	}
-	if cfg.legacy.Base64ValuesFrom.IsSet() {
-		add("v3", cfg.legacy.Base64ValuesFrom.Time)
-	}
-	if cfg.legacy.V4SchemaFrom.IsSet() {
-		add("v4", cfg.legacy.V4SchemaFrom.Time)
-	}
-	if cfg.legacy.V5SchemaFrom.IsSet() {
-		add("v5", cfg.legacy.V5SchemaFrom.Time)
-	}
-	if cfg.legacy.V6SchemaFrom.IsSet() {
-		add("v6", cfg.legacy.V6SchemaFrom.Time)
-	}
-	if cfg.legacy.V9SchemaFrom.IsSet() {
-		add("v9", cfg.legacy.V9SchemaFrom.Time)
-	}
-
-	cfg.ForEachAfter(cfg.legacy.IndexTablesFrom.Time, func(config *PeriodConfig) {
-		config.IndexTables = cfg.legacy.IndexTables
-	})
-	if cfg.legacy.ChunkTablesFrom.IsSet() {
-		cfg.ForEachAfter(cfg.legacy.ChunkTablesFrom.Time, func(config *PeriodConfig) {
-			if config.IndexType == "aws" {
-				config.IndexType = "aws-dynamo"
+		if i+1 < len(cfg.Configs) {
+			if cfg.Configs[i].From.Time.Unix() >= cfg.Configs[i+1].From.Time.Unix() {
+				return errSchemaIncreasingFromTime
 			}
-			config.ChunkTables = cfg.legacy.ChunkTables
-		})
-	}
-	if cfg.legacy.BigtableColumnKeyFrom.IsSet() {
-		cfg.ForEachAfter(cfg.legacy.BigtableColumnKeyFrom.Time, func(config *PeriodConfig) {
-			config.IndexType = "gcp-columnkey"
-		})
+		}
 	}
 	return nil
+}
+
+func defaultRowShards(schema string) uint32 {
+	switch schema {
+	case "v1", "v2", "v3", "v4", "v5", "v6", "v9":
+		return 0
+	default:
+		return 16
+	}
 }
 
 // ForEachAfter will call f() on every entry after t, splitting
@@ -188,34 +144,90 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 	}
 }
 
-func (cfg PeriodConfig) createSchema() Schema {
-	var s schema
+func validateChunks(cfg PeriodConfig) error {
+	objectStore := cfg.IndexType
+	if cfg.ObjectType != "" {
+		objectStore = cfg.ObjectType
+	}
+	switch objectStore {
+	case "cassandra", "aws-dynamo", "bigtable-hashed", "gcp", "gcp-columnkey", "bigtable", "grpc-store":
+		if cfg.ChunkTables.Prefix == "" {
+			return errConfigChunkPrefixNotSet
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+// CreateSchema returns the schema defined by the PeriodConfig
+func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
+	buckets, bucketsPeriod := cfg.createBucketsFunc()
+
+	// Ensure the tables period is a multiple of the bucket period
+	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%bucketsPeriod != 0 {
+		return nil, errInvalidTablePeriod
+	}
+
+	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%bucketsPeriod != 0 {
+		return nil, errInvalidTablePeriod
+	}
+
 	switch cfg.Schema {
 	case "v1":
-		s = schema{cfg.hourlyBuckets, originalEntries{}}
+		return newStoreSchema(buckets, originalEntries{}), nil
 	case "v2":
-		s = schema{cfg.dailyBuckets, originalEntries{}}
+		return newStoreSchema(buckets, originalEntries{}), nil
 	case "v3":
-		s = schema{cfg.dailyBuckets, base64Entries{originalEntries{}}}
+		return newStoreSchema(buckets, base64Entries{originalEntries{}}), nil
 	case "v4":
-		s = schema{cfg.dailyBuckets, labelNameInHashKeyEntries{}}
+		return newStoreSchema(buckets, labelNameInHashKeyEntries{}), nil
 	case "v5":
-		s = schema{cfg.dailyBuckets, v5Entries{}}
+		return newStoreSchema(buckets, v5Entries{}), nil
 	case "v6":
-		s = schema{cfg.dailyBuckets, v6Entries{}}
+		return newStoreSchema(buckets, v6Entries{}), nil
 	case "v9":
-		s = schema{cfg.dailyBuckets, v9Entries{}}
-	case "v10":
-		rowShards := uint32(16)
-		if cfg.RowShards > 0 {
-			rowShards = cfg.RowShards
+		return newSeriesStoreSchema(buckets, v9Entries{}), nil
+	case "v10", "v11":
+		if cfg.RowShards == 0 {
+			return nil, fmt.Errorf("Must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
 
-		s = schema{cfg.dailyBuckets, v10Entries{
-			rowShards: rowShards,
-		}}
+		v10 := v10Entries{rowShards: cfg.RowShards}
+		if cfg.Schema == "v10" {
+			return newSeriesStoreSchema(buckets, v10), nil
+		}
+
+		return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
+	default:
+		return nil, errInvalidSchemaVersion
 	}
-	return s
+}
+
+func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
+	switch cfg.Schema {
+	case "v1":
+		return cfg.hourlyBuckets, 1 * time.Hour
+	default:
+		return cfg.dailyBuckets, 24 * time.Hour
+	}
+}
+
+func (cfg *PeriodConfig) applyDefaults() {
+	if cfg.RowShards == 0 {
+		cfg.RowShards = defaultRowShards(cfg.Schema)
+	}
+}
+
+// Validate the period config.
+func (cfg PeriodConfig) validate() error {
+	validateError := validateChunks(cfg)
+	if validateError != nil {
+		return validateError
+	}
+
+	_, err := cfg.CreateSchema()
+	return err
 }
 
 // Load the yaml file, or build the config from legacy command-line flags
@@ -223,32 +235,22 @@ func (cfg *SchemaConfig) Load() error {
 	if len(cfg.Configs) > 0 {
 		return nil
 	}
-	if cfg.fileName == "" {
-		return cfg.translate()
-	}
 
-	f, err := os.Open(cfg.fileName)
-	if err != nil {
+	// Load config from file.
+	if err := cfg.loadFromFile(); err != nil {
 		return err
 	}
 
-	decoder := yaml.NewDecoder(f)
-	decoder.SetStrict(true)
-	return decoder.Decode(&cfg)
-}
-
-// PrintYaml dumps the yaml to stdout, to aid in migration
-func (cfg SchemaConfig) PrintYaml() {
-	encoder := yaml.NewEncoder(os.Stdout)
-	encoder.Encode(cfg)
+	return cfg.Validate()
 }
 
 // Bucket describes a range of time with a tableName and hashKey
 type Bucket struct {
-	from      uint32
-	through   uint32
-	tableName string
-	hashKey   string
+	from       uint32
+	through    uint32
+	tableName  string
+	hashKey    string
+	bucketSize uint32 // helps with deletion of series ids in series store. Size in milliseconds.
 }
 
 func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) []Bucket {
@@ -258,19 +260,15 @@ func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) 
 		result      = []Bucket{}
 	)
 
-	// If through ends on the hour, don't include the upcoming hour
-	if through.Unix()%secondsInHour == 0 {
-		throughHour--
-	}
-
 	for i := fromHour; i <= throughHour; i++ {
-		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInHour))
-		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
+		relativeFrom := math.Max64(0, int64(from)-(i*millisecondsInHour))
+		relativeThrough := math.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
 		result = append(result, Bucket{
-			from:      uint32(relativeFrom),
-			through:   uint32(relativeThrough),
-			tableName: cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInHour)),
-			hashKey:   fmt.Sprintf("%s:%d", userID, i),
+			from:       uint32(relativeFrom),
+			through:    uint32(relativeThrough),
+			tableName:  cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInHour)),
+			hashKey:    fmt.Sprintf("%s:%d", userID, i),
+			bucketSize: uint32(millisecondsInHour), // helps with deletion of series ids in series store
 		})
 	}
 	return result
@@ -283,11 +281,6 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 		result     = []Bucket{}
 	)
 
-	// If through ends on 00:00 of the day, don't include the upcoming day
-	if through.Unix()%secondsInDay == 0 {
-		throughDay--
-	}
-
 	for i := fromDay; i <= throughDay; i++ {
 		// The idea here is that the hash key contains the bucket start time (rounded to
 		// the nearest day).  The range key can contain the offset from that, to the
@@ -299,13 +292,14 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 		// include in the range keys - we use a uint32 - as we then have to base 32
 		// encode it.
 
-		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInDay))
-		relativeThrough := util.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
+		relativeFrom := math.Max64(0, int64(from)-(i*millisecondsInDay))
+		relativeThrough := math.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
 		result = append(result, Bucket{
-			from:      uint32(relativeFrom),
-			through:   uint32(relativeThrough),
-			tableName: cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInDay)),
-			hashKey:   fmt.Sprintf("%s:d%d", userID, i),
+			from:       uint32(relativeFrom),
+			through:    uint32(relativeThrough),
+			tableName:  cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInDay)),
+			hashKey:    fmt.Sprintf("%s:d%d", userID, i),
+			bucketSize: uint32(millisecondsInDay), // helps with deletion of series ids in series store
 		})
 	}
 	return result
@@ -313,27 +307,53 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
 type PeriodicTableConfig struct {
-	Prefix string        `yaml:"prefix"`
-	Period time.Duration `yaml:"period,omitempty"`
-	Tags   Tags          `yaml:"tags,omitempty"`
+	Prefix string
+	Period time.Duration
+	Tags   Tags
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *PeriodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Prefix, argPrefix+".prefix", tablePrefix, "DynamoDB table prefix for period tables.")
-	f.DurationVar(&cfg.Period, argPrefix+".period", 7*24*time.Hour, "DynamoDB table period.")
-	f.Var(&cfg.Tags, argPrefix+".tag", "Tag (of the form key=value) to be added to all tables under management.")
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	g := struct {
+		Prefix string         `yaml:"prefix"`
+		Period model.Duration `yaml:"period"`
+		Tags   Tags           `yaml:"tags"`
+	}{}
+	if err := unmarshal(&g); err != nil {
+		return err
+	}
+
+	cfg.Prefix = g.Prefix
+	cfg.Period = time.Duration(g.Period)
+	cfg.Tags = g.Tags
+
+	return nil
+}
+
+// MarshalYAML implements the yaml.Marshaler interface.
+func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
+	g := &struct {
+		Prefix string         `yaml:"prefix"`
+		Period model.Duration `yaml:"period"`
+		Tags   Tags           `yaml:"tags"`
+	}{
+		Prefix: cfg.Prefix,
+		Period: model.Duration(cfg.Period),
+		Tags:   cfg.Tags,
+	}
+
+	return g, nil
 }
 
 // AutoScalingConfig for DynamoDB tables.
 type AutoScalingConfig struct {
-	Enabled     bool    `yaml:"enabled,omitempty"`
-	RoleARN     string  `yaml:"role_arn,omitempty"`
-	MinCapacity int64   `yaml:"min_capacity,omitempty"`
-	MaxCapacity int64   `yaml:"max_capacity,omitempty"`
-	OutCooldown int64   `yaml:"out_cooldown,omitempty"`
-	InCooldown  int64   `yaml:"in_cooldown,omitempty"`
-	TargetValue float64 `yaml:"target,omitempty"`
+	Enabled     bool    `yaml:"enabled"`
+	RoleARN     string  `yaml:"role_arn"`
+	MinCapacity int64   `yaml:"min_capacity"`
+	MaxCapacity int64   `yaml:"max_capacity"`
+	OutCooldown int64   `yaml:"out_cooldown"`
+	InCooldown  int64   `yaml:"in_cooldown"`
+	TargetValue float64 `yaml:"target"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -359,8 +379,8 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		nowWeek        = now / periodSecs
 		result         = []TableDesc{}
 	)
-	// If through ends on 00:00 of the day, don't include the upcoming day
-	if through.Unix()%secondsInDay == 0 {
+	// If interval ends exactly on a period boundary, don’t include the upcoming period
+	if through.Unix()%periodSecs == 0 {
 		lastTable--
 	}
 	// Don't make tables further back than the configured retention
@@ -368,35 +388,14 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		firstTable = lastTable - tablesToKeep
 	}
 	for i := firstTable; i <= lastTable; i++ {
-		table := TableDesc{
-			Name:              cfg.tableForPeriod(i),
-			ProvisionedRead:   pCfg.InactiveReadThroughput,
-			ProvisionedWrite:  pCfg.InactiveWriteThroughput,
-			UseOnDemandIOMode: pCfg.InactiveThroughputOnDemandMode,
-			Tags:              cfg.Tags,
-		}
-		level.Debug(util.Logger).Log("msg", "Expected Table", "tableName", table.Name,
-			"provisionedRead", table.ProvisionedRead,
-			"provisionedWrite", table.ProvisionedWrite,
-			"useOnDemandMode", table.UseOnDemandIOMode,
-		)
+		tableName := cfg.tableForPeriod(i)
+		table := TableDesc{}
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
-			table.ProvisionedRead = pCfg.ProvisionedReadThroughput
-			table.ProvisionedWrite = pCfg.ProvisionedWriteThroughput
-			table.UseOnDemandIOMode = pCfg.ProvisionedThroughputOnDemandMode
+			table = pCfg.ActiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags)
 
-			if pCfg.WriteScale.Enabled {
-				table.WriteScale = pCfg.WriteScale
-				table.UseOnDemandIOMode = false
-			}
-
-			if pCfg.ReadScale.Enabled {
-				table.ReadScale = pCfg.ReadScale
-				table.UseOnDemandIOMode = false
-			}
-			level.Debug(util.Logger).Log("msg", "Table is Active",
+			level.Debug(log.Logger).Log("msg", "Table is Active",
 				"tableName", table.Name,
 				"provisionedRead", table.ProvisionedRead,
 				"provisionedWrite", table.ProvisionedWrite,
@@ -404,20 +403,14 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 				"useWriteAutoScale", table.WriteScale.Enabled,
 				"useReadAutoScale", table.ReadScale.Enabled)
 
-		} else if pCfg.InactiveWriteScale.Enabled || pCfg.InactiveReadScale.Enabled {
+		} else {
 			// Autoscale last N tables
 			// this is measured against "now", since the lastWeek is the final week in the schema config range
 			// the N last tables in that range will always be set to the inactive scaling settings.
-			if pCfg.InactiveWriteScale.Enabled && i >= (nowWeek-pCfg.InactiveWriteScaleLastN) {
-				table.WriteScale = pCfg.InactiveWriteScale
-				table.UseOnDemandIOMode = false
-			}
-			if pCfg.InactiveReadScale.Enabled && i >= (nowWeek-pCfg.InactiveReadScaleLastN) {
-				table.ReadScale = pCfg.InactiveReadScale
-				table.UseOnDemandIOMode = false
-			}
+			disableAutoscale := i < (nowWeek - pCfg.InactiveWriteScaleLastN)
+			table = pCfg.InactiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags, disableAutoscale)
 
-			level.Debug(util.Logger).Log("msg", "Table is Inactive",
+			level.Debug(log.Logger).Log("msg", "Table is Inactive",
 				"tableName", table.Name,
 				"provisionedRead", table.ProvisionedRead,
 				"provisionedWrite", table.ProvisionedWrite,

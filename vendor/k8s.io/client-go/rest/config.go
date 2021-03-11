@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	gruntime "runtime"
@@ -37,7 +38,7 @@ import (
 	"k8s.io/client-go/transport"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/client-go/util/flowcontrol"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -94,6 +95,10 @@ type Config struct {
 	// UserAgent is an optional field that specifies the caller of this request.
 	UserAgent string
 
+	// DisableCompression bypasses automatic GZip compression requests to the
+	// server.
+	DisableCompression bool
+
 	// Transport may be used for custom HTTP behavior. This attribute may not
 	// be specified with the TLS client certificate options. Use WrapTransport
 	// to provide additional per-server middleware behavior.
@@ -118,11 +123,22 @@ type Config struct {
 	// Rate limiter for limiting connections to the master from this client. If present overwrites QPS/Burst
 	RateLimiter flowcontrol.RateLimiter
 
+	// WarningHandler handles warnings in server responses.
+	// If not set, the default warning handler is used.
+	WarningHandler WarningHandler
+
 	// The maximum length of time to wait before giving up on a server request. A value of zero means no timeout.
 	Timeout time.Duration
 
 	// Dial specifies the dial function for creating unencrypted TCP connections.
 	Dial func(ctx context.Context, network, address string) (net.Conn, error)
+
+	// Proxy is the the proxy func to be used for all requests made by this
+	// transport. If Proxy is nil, http.ProxyFromEnvironment is used. If Proxy
+	// returns a nil *URL, no proxy is used.
+	//
+	// socks5 proxying does not currently support spdy streaming endpoints.
+	Proxy func(*http.Request) (*url.URL, error)
 
 	// Version forces a specific version to be used (if registered)
 	// Do we need this?
@@ -207,6 +223,12 @@ type TLSClientConfig struct {
 	// CAData holds PEM-encoded bytes (typically read from a root certificates bundle).
 	// CAData takes precedence over CAFile
 	CAData []byte
+
+	// NextProtos is a list of supported application level protocols, in order of preference.
+	// Used to populate tls.Config.NextProtos.
+	// To indicate to the server http/1.1 is preferred over http/2, set to ["http/1.1", "h2"] (though the server is free to ignore that preference).
+	// To use only http/1.1, set to ["http/1.1"].
+	NextProtos []string
 }
 
 var _ fmt.Stringer = TLSClientConfig{}
@@ -232,6 +254,7 @@ func (c TLSClientConfig) String() string {
 		CertData:   c.CertData,
 		KeyData:    c.KeyData,
 		CAData:     c.CAData,
+		NextProtos: c.NextProtos,
 	}
 	// Explicitly mark non-empty credential fields as redacted.
 	if len(cc.CertData) != 0 {
@@ -258,6 +281,9 @@ type ContentConfig struct {
 	GroupVersion *schema.GroupVersion
 	// NegotiatedSerializer is used for obtaining encoders and decoders for multiple
 	// supported media types.
+	//
+	// TODO: NegotiatedSerializer will be phased out as internal clients are removed
+	//   from Kubernetes.
 	NegotiatedSerializer runtime.NegotiatedSerializer
 }
 
@@ -271,14 +297,6 @@ func RESTClientFor(config *Config) (*RESTClient, error) {
 	}
 	if config.NegotiatedSerializer == nil {
 		return nil, fmt.Errorf("NegotiatedSerializer is required when initializing a RESTClient")
-	}
-	qps := config.QPS
-	if config.QPS == 0.0 {
-		qps = DefaultQPS
-	}
-	burst := config.Burst
-	if config.Burst == 0 {
-		burst = DefaultBurst
 	}
 
 	baseURL, versionedAPIPath, err := defaultServerUrlFor(config)
@@ -299,7 +317,37 @@ func RESTClientFor(config *Config) (*RESTClient, error) {
 		}
 	}
 
-	return NewRESTClient(baseURL, versionedAPIPath, config.ContentConfig, qps, burst, config.RateLimiter, httpClient)
+	rateLimiter := config.RateLimiter
+	if rateLimiter == nil {
+		qps := config.QPS
+		if config.QPS == 0.0 {
+			qps = DefaultQPS
+		}
+		burst := config.Burst
+		if config.Burst == 0 {
+			burst = DefaultBurst
+		}
+		if qps > 0 {
+			rateLimiter = flowcontrol.NewTokenBucketRateLimiter(qps, burst)
+		}
+	}
+
+	var gv schema.GroupVersion
+	if config.GroupVersion != nil {
+		gv = *config.GroupVersion
+	}
+	clientContent := ClientContentConfig{
+		AcceptContentTypes: config.AcceptContentTypes,
+		ContentType:        config.ContentType,
+		GroupVersion:       gv,
+		Negotiator:         runtime.NewClientNegotiator(config.NegotiatedSerializer, gv),
+	}
+
+	restClient, err := NewRESTClient(baseURL, versionedAPIPath, clientContent, rateLimiter, httpClient)
+	if err == nil && config.WarningHandler != nil {
+		restClient.warningHandler = config.WarningHandler
+	}
+	return restClient, err
 }
 
 // UnversionedRESTClientFor is the same as RESTClientFor, except that it allows
@@ -327,13 +375,37 @@ func UnversionedRESTClientFor(config *Config) (*RESTClient, error) {
 		}
 	}
 
-	versionConfig := config.ContentConfig
-	if versionConfig.GroupVersion == nil {
-		v := metav1.SchemeGroupVersion
-		versionConfig.GroupVersion = &v
+	rateLimiter := config.RateLimiter
+	if rateLimiter == nil {
+		qps := config.QPS
+		if config.QPS == 0.0 {
+			qps = DefaultQPS
+		}
+		burst := config.Burst
+		if config.Burst == 0 {
+			burst = DefaultBurst
+		}
+		if qps > 0 {
+			rateLimiter = flowcontrol.NewTokenBucketRateLimiter(qps, burst)
+		}
 	}
 
-	return NewRESTClient(baseURL, versionedAPIPath, versionConfig, config.QPS, config.Burst, config.RateLimiter, httpClient)
+	gv := metav1.SchemeGroupVersion
+	if config.GroupVersion != nil {
+		gv = *config.GroupVersion
+	}
+	clientContent := ClientContentConfig{
+		AcceptContentTypes: config.AcceptContentTypes,
+		ContentType:        config.ContentType,
+		GroupVersion:       gv,
+		Negotiator:         runtime.NewClientNegotiator(config.NegotiatedSerializer, gv),
+	}
+
+	restClient, err := NewRESTClient(baseURL, versionedAPIPath, clientContent, rateLimiter, httpClient)
+	if err == nil && config.WarningHandler != nil {
+		restClient.warningHandler = config.WarningHandler
+	}
+	return restClient, err
 }
 
 // SetKubernetesDefaults sets default values on the provided client config for accessing the
@@ -487,7 +559,7 @@ func AddUserAgent(config *Config, userAgent string) *Config {
 	return config
 }
 
-// AnonymousClientConfig returns a copy of the given config with all user credentials (cert/key, bearer token, and username/password) removed
+// AnonymousClientConfig returns a copy of the given config with all user credentials (cert/key, bearer token, and username/password) and custom transports (WrapTransport, Transport) removed
 func AnonymousClientConfig(config *Config) *Config {
 	// copy only known safe fields
 	return &Config{
@@ -499,15 +571,17 @@ func AnonymousClientConfig(config *Config) *Config {
 			ServerName: config.ServerName,
 			CAFile:     config.TLSClientConfig.CAFile,
 			CAData:     config.TLSClientConfig.CAData,
+			NextProtos: config.TLSClientConfig.NextProtos,
 		},
-		RateLimiter:   config.RateLimiter,
-		UserAgent:     config.UserAgent,
-		Transport:     config.Transport,
-		WrapTransport: config.WrapTransport,
-		QPS:           config.QPS,
-		Burst:         config.Burst,
-		Timeout:       config.Timeout,
-		Dial:          config.Dial,
+		RateLimiter:        config.RateLimiter,
+		WarningHandler:     config.WarningHandler,
+		UserAgent:          config.UserAgent,
+		DisableCompression: config.DisableCompression,
+		QPS:                config.QPS,
+		Burst:              config.Burst,
+		Timeout:            config.Timeout,
+		Dial:               config.Dial,
+		Proxy:              config.Proxy,
 	}
 }
 
@@ -538,14 +612,18 @@ func CopyConfig(config *Config) *Config {
 			CertData:   config.TLSClientConfig.CertData,
 			KeyData:    config.TLSClientConfig.KeyData,
 			CAData:     config.TLSClientConfig.CAData,
+			NextProtos: config.TLSClientConfig.NextProtos,
 		},
-		UserAgent:     config.UserAgent,
-		Transport:     config.Transport,
-		WrapTransport: config.WrapTransport,
-		QPS:           config.QPS,
-		Burst:         config.Burst,
-		RateLimiter:   config.RateLimiter,
-		Timeout:       config.Timeout,
-		Dial:          config.Dial,
+		UserAgent:          config.UserAgent,
+		DisableCompression: config.DisableCompression,
+		Transport:          config.Transport,
+		WrapTransport:      config.WrapTransport,
+		QPS:                config.QPS,
+		Burst:              config.Burst,
+		RateLimiter:        config.RateLimiter,
+		WarningHandler:     config.WarningHandler,
+		Timeout:            config.Timeout,
+		Dial:               config.Dial,
+		Proxy:              config.Proxy,
 	}
 }

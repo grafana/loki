@@ -14,8 +14,15 @@
 package testutil
 
 import (
+	"crypto/sha256"
+	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strconv"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -126,4 +133,38 @@ func NewTemporaryDirectory(name string, t T) (handler TemporaryDirectory) {
 	}
 
 	return
+}
+
+// DirHash returns a hash of all files attributes and their content within a directory.
+func DirHash(t *testing.T, path string) []byte {
+	hash := sha256.New()
+	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+		require.NoError(t, err)
+
+		if info.IsDir() {
+			return nil
+		}
+		f, err := os.Open(path)
+		require.NoError(t, err)
+		defer f.Close()
+
+		_, err = io.Copy(hash, f)
+		require.NoError(t, err)
+
+		_, err = io.WriteString(hash, strconv.Itoa(int(info.Size())))
+		require.NoError(t, err)
+
+		_, err = io.WriteString(hash, info.Name())
+		require.NoError(t, err)
+
+		modTime, err := info.ModTime().GobEncode()
+		require.NoError(t, err)
+
+		_, err = io.WriteString(hash, string(modTime))
+		require.NoError(t, err)
+		return nil
+	})
+	require.NoError(t, err)
+
+	return hash.Sum(nil)
 }

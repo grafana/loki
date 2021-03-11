@@ -9,23 +9,23 @@ import (
 	"strings"
 	"sync"
 
-	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-
 	errs "github.com/weaveworks/common/errors"
+
+	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
-// Errors that decode can return
 const (
 	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
 	ErrDataLength      = errs.Error("chunk data wrong length")
+	ErrSliceOutOfRange = errs.Error("chunk can't be sliced out of its data range")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -56,10 +56,6 @@ type Chunk struct {
 	// missing, we default to DoubleDelta.
 	Encoding prom_chunk.Encoding `json:"encoding"`
 	Data     prom_chunk.Chunk    `json:"-"`
-
-	// This flag is used for very old chunks, where the metadata is read out
-	// of the index.
-	metadataInIndex bool
 
 	// The encoded version of the chunk, held so we don't need to re-encode it
 	encoded []byte
@@ -187,8 +183,14 @@ var writerPool = sync.Pool{
 
 // Encode writes the chunk into a buffer, and calculates the checksum.
 func (c *Chunk) Encode() error {
-	var buf bytes.Buffer
+	return c.EncodeTo(nil)
+}
 
+// EncodeTo is like Encode but you can provide your own buffer to use.
+func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
+	if buf == nil {
+		buf = bytes.NewBuffer(nil)
+	}
 	// Write 4 empty bytes first - we will come back and put the len in here.
 	metadataLenBytes := [4]byte{}
 	if _, err := buf.Write(metadataLenBytes[:]); err != nil {
@@ -198,7 +200,7 @@ func (c *Chunk) Encode() error {
 	// Encode chunk metadata into snappy-compressed buffer
 	writer := writerPool.Get().(*snappy.Writer)
 	defer writerPool.Put(writer)
-	writer.Reset(&buf)
+	writer.Reset(buf)
 	json := jsoniter.ConfigFastest
 	if err := json.NewEncoder(writer).Encode(c); err != nil {
 		return err
@@ -218,7 +220,7 @@ func (c *Chunk) Encode() error {
 	}
 
 	// And now the chunk data
-	if err := c.Data.Marshal(&buf); err != nil {
+	if err := c.Data.Marshal(buf); err != nil {
 		return err
 	}
 
@@ -258,17 +260,6 @@ func NewDecodeContext() *DecodeContext {
 // Decode the chunk from the given buffer, and confirm the chunk is the one we
 // expected.
 func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
-	// Legacy chunks were written with metadata in the index.
-	if c.metadataInIndex {
-		var err error
-		c.Data, err = prom_chunk.NewForEncoding(prom_chunk.DoubleDelta)
-		if err != nil {
-			return err
-		}
-		c.encoded = input
-		return errors.Wrap(c.Data.UnmarshalFromBuf(input), "when unmarshalling legacy chunk")
-	}
-
 	// First, calculate the checksum of the chunk and confirm it matches
 	// what we expected.
 	if c.ChecksumSet && c.Checksum != crc32.Checksum(input, castagnoliTable) {
@@ -288,8 +279,10 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	if err != nil {
 		return errors.Wrap(err, "when decoding chunk metadata")
 	}
-	if len(input)-r.Len() != int(metadataLen) {
-		return ErrMetadataLength
+	metadataRead := len(input) - r.Len()
+	// Older versions of Cortex included the initial length word; newer versions do not.
+	if !(metadataRead == int(metadataLen) || metadataRead == int(metadataLen)+4) {
+		return errors.Wrapf(ErrMetadataLength, "expected %d, got %d", metadataLen, metadataRead)
 	}
 
 	// Next, confirm the chunks matches what we expected.  Easiest way to do this
@@ -336,7 +329,31 @@ func equalByKey(a, b Chunk) bool {
 
 // Samples returns all SamplePairs for the chunk.
 func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
-	it := c.Data.NewIterator()
+	it := c.Data.NewIterator(nil)
 	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
 	return prom_chunk.RangeValues(it, interval)
+}
+
+// Slice builds a new smaller chunk with data only from given time range (inclusive)
+func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
+	// there should be atleast some overlap between chunk interval and slice interval
+	if from > c.Through || through < c.From {
+		return nil, ErrSliceOutOfRange
+	}
+
+	pc, err := c.Data.Rebound(from, through)
+	if err != nil {
+		return nil, err
+	}
+
+	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
+	return &nc, nil
+}
+
+func intervalsOverlap(interval1, interval2 model.Interval) bool {
+	if interval1.Start > interval2.End || interval2.Start > interval1.End {
+		return false
+	}
+
+	return true
 }

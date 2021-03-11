@@ -43,3 +43,17 @@ func (v *DayValue) Set(s string) error {
 func (v *DayValue) IsSet() bool {
 	return v.set
 }
+
+// UnmarshalYAML implements yaml.Unmarshaler.
+func (v *DayValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	return v.Set(s)
+}
+
+// MarshalYAML implements yaml.Marshaler.
+func (v DayValue) MarshalYAML() (interface{}, error) {
+	return v.Time.Time().Format("2006-01-02"), nil
+}

@@ -16,8 +16,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const arnPrefix = "arn:"
@@ -55,6 +56,7 @@ func (a dynamoDBStorageClient) setErrorParameters(provisionedErr, errAfter int) 
 	}
 }
 
+//nolint:unused //Leaving this around in the case we need to create a table via mock this is useful.
 func (m *mockDynamoDBClient) createTable(name string) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -192,7 +194,7 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 	}
 }
 
-func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
+func (m *mockDynamoDBClient) QueryPagesWithContext(ctx aws.Context, input *dynamodb.QueryInput, fn func(*dynamodb.QueryOutput, bool) bool, opts ...request.Option) error {
 	result := &dynamodb.QueryOutput{
 		Items: []map[string]*dynamodb.AttributeValue{},
 	}
@@ -232,17 +234,15 @@ func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.Que
 						continue
 					}
 				} else {
-					level.Warn(util.Logger).Log("msg", "unsupported FilterExpression", "expression", *input.FilterExpression)
+					level.Warn(util_log.Logger).Log("msg", "unsupported FilterExpression", "expression", *input.FilterExpression)
 				}
 			}
 		}
 
 		result.Items = append(result.Items, item)
 	}
-
-	return &dynamoDBMockRequest{
-		result: result,
-	}
+	fn(result, true)
+	return nil
 }
 
 type dynamoDBMockRequest struct {
@@ -250,9 +250,6 @@ type dynamoDBMockRequest struct {
 	err    error
 }
 
-func (m *dynamoDBMockRequest) NextPage() dynamoDBRequest {
-	return m
-}
 func (m *dynamoDBMockRequest) Send() error {
 	return m.err
 }
@@ -261,9 +258,6 @@ func (m *dynamoDBMockRequest) Data() interface{} {
 }
 func (m *dynamoDBMockRequest) Error() error {
 	return m.err
-}
-func (m *dynamoDBMockRequest) HasNextPage() bool {
-	return false
 }
 func (m *dynamoDBMockRequest) Retryable() bool {
 	return false

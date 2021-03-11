@@ -1,0 +1,12 @@
+{
+  "name": "bigtable",
+  "name_pretty": "Cloud Bigtable API",
+  "product_documentation": "https://cloud.google.com/bigtable",
+  "client_documentation": "https://godoc.org/cloud.google.com/go/bigtable",
+  "release_level": "ga",
+  "language": "go",
+  "repo": "googleapis/google-cloud-go",
+  "distribution_name": "cloud.google.com/go/bigtable",
+  "api_id": "bigtable.googleapis.com",
+  "requires_billing": true
+}

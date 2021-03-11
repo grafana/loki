@@ -23,12 +23,14 @@ package iam
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	gax "github.com/googleapis/gax-go"
+	gax "github.com/googleapis/gax-go/v2"
 	pb "google.golang.org/genproto/googleapis/iam/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 )
 
 // client abstracts the IAMPolicy API to allow multiple implementations.
@@ -36,6 +38,7 @@ type client interface {
 	Get(ctx context.Context, resource string) (*pb.Policy, error)
 	Set(ctx context.Context, resource string, p *pb.Policy) error
 	Test(ctx context.Context, resource string, perms []string) ([]string, error)
+	GetWithVersion(ctx context.Context, resource string, requestedPolicyVersion int32) (*pb.Policy, error)
 }
 
 // grpcClient implements client for the standard gRPC-based IAMPolicy service.
@@ -55,10 +58,22 @@ var withRetry = gax.WithRetry(func() gax.Retryer {
 })
 
 func (g *grpcClient) Get(ctx context.Context, resource string) (*pb.Policy, error) {
+	return g.GetWithVersion(ctx, resource, 1)
+}
+
+func (g *grpcClient) GetWithVersion(ctx context.Context, resource string, requestedPolicyVersion int32) (*pb.Policy, error) {
 	var proto *pb.Policy
+	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", resource))
+	ctx = insertMetadata(ctx, md)
+
 	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
-		proto, err = g.c.GetIamPolicy(ctx, &pb.GetIamPolicyRequest{Resource: resource})
+		proto, err = g.c.GetIamPolicy(ctx, &pb.GetIamPolicyRequest{
+			Resource: resource,
+			Options: &pb.GetPolicyOptions{
+				RequestedPolicyVersion: requestedPolicyVersion,
+			},
+		})
 		return err
 	}, withRetry)
 	if err != nil {
@@ -68,6 +83,9 @@ func (g *grpcClient) Get(ctx context.Context, resource string) (*pb.Policy, erro
 }
 
 func (g *grpcClient) Set(ctx context.Context, resource string, p *pb.Policy) error {
+	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", resource))
+	ctx = insertMetadata(ctx, md)
+
 	return gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		_, err := g.c.SetIamPolicy(ctx, &pb.SetIamPolicyRequest{
 			Resource: resource,
@@ -79,6 +97,9 @@ func (g *grpcClient) Set(ctx context.Context, resource string, p *pb.Policy) err
 
 func (g *grpcClient) Test(ctx context.Context, resource string, perms []string) ([]string, error) {
 	var res *pb.TestIamPermissionsResponse
+	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", resource))
+	ctx = insertMetadata(ctx, md)
+
 	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		res, err = g.c.TestIamPermissions(ctx, &pb.TestIamPermissionsRequest{
@@ -99,11 +120,18 @@ type Handle struct {
 	resource string
 }
 
+// A Handle3 provides IAM operations for a resource. It is similar to a Handle, but provides access to newer IAM features (e.g., conditions).
+type Handle3 struct {
+	c        client
+	resource string
+	version  int32
+}
+
 // InternalNewHandle is for use by the Google Cloud Libraries only.
 //
 // InternalNewHandle returns a Handle for resource.
 // The conn parameter refers to a server that must support the IAMPolicy service.
-func InternalNewHandle(conn *grpc.ClientConn, resource string) *Handle {
+func InternalNewHandle(conn grpc.ClientConnInterface, resource string) *Handle {
 	return InternalNewHandleGRPCClient(pb.NewIAMPolicyClient(conn), resource)
 }
 
@@ -123,6 +151,17 @@ func InternalNewHandleClient(c client, resource string) *Handle {
 	return &Handle{
 		c:        c,
 		resource: resource,
+	}
+}
+
+// V3 returns a Handle3, which is like Handle except it sets
+// requestedPolicyVersion to 3 when retrieving a policy and policy.version to 3
+// when storing a policy.
+func (h *Handle) V3() *Handle3 {
+	return &Handle3{
+		c:        h.c,
+		resource: h.resource,
+		version:  3,
 	}
 }
 
@@ -289,4 +328,60 @@ func memberIndex(m string, b *pb.Binding) int {
 		}
 	}
 	return -1
+}
+
+// insertMetadata inserts metadata into the given context
+func insertMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
+	out, _ := metadata.FromOutgoingContext(ctx)
+	out = out.Copy()
+	for _, md := range mds {
+		for k, v := range md {
+			out[k] = append(out[k], v...)
+		}
+	}
+	return metadata.NewOutgoingContext(ctx, out)
+}
+
+// A Policy3 is a list of Bindings representing roles granted to members.
+//
+// The zero Policy3 is a valid policy with no bindings.
+//
+// It is similar to a Policy, except a Policy3 provides direct access to the
+// list of Bindings.
+//
+// The policy version is always set to 3.
+type Policy3 struct {
+	etag     []byte
+	Bindings []*pb.Binding
+}
+
+// Policy retrieves the IAM policy for the resource.
+//
+// requestedPolicyVersion is always set to 3.
+func (h *Handle3) Policy(ctx context.Context) (*Policy3, error) {
+	proto, err := h.c.GetWithVersion(ctx, h.resource, h.version)
+	if err != nil {
+		return nil, err
+	}
+	return &Policy3{
+		Bindings: proto.Bindings,
+		etag:     proto.Etag,
+	}, nil
+}
+
+// SetPolicy replaces the resource's current policy with the supplied Policy.
+//
+// If policy was created from a prior call to Get, then the modification will
+// only succeed if the policy has not changed since the Get.
+func (h *Handle3) SetPolicy(ctx context.Context, policy *Policy3) error {
+	return h.c.Set(ctx, h.resource, &pb.Policy{
+		Bindings: policy.Bindings,
+		Etag:     policy.etag,
+		Version:  h.version,
+	})
+}
+
+// TestPermissions returns the subset of permissions that the caller has on the resource.
+func (h *Handle3) TestPermissions(ctx context.Context, permissions []string) ([]string, error) {
+	return h.c.Test(ctx, h.resource, permissions)
 }

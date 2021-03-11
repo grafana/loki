@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/gogo/protobuf/proto"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
-const tpl = `
+const pageContent = `
 <!DOCTYPE html>
 <html>
 	<head>
@@ -30,9 +30,11 @@ const tpl = `
 			<table width="100%" border="1">
 				<thead>
 					<tr>
-						<th>Ingester</th>
+						<th>Instance ID</th>
+						<th>Availability Zone</th>
 						<th>State</th>
 						<th>Address</th>
+						<th>Registered At</th>
 						<th>Last Heartbeat</th>
 						<th>Tokens</th>
 						<th>Ownership</th>
@@ -40,28 +42,53 @@ const tpl = `
 					</tr>
 				</thead>
 				<tbody>
-					{{ range .Ingesters }}
+					{{ range $i, $ing := .Ingesters }}
+					{{ if mod $i 2 }}
 					<tr>
+					{{ else }}
+					<tr bgcolor="#BEBEBE">
+					{{ end }}
 						<td>{{ .ID }}</td>
+						<td>{{ .Zone }}</td>
 						<td>{{ .State }}</td>
 						<td>{{ .Address }}</td>
-						<td>{{ .Timestamp }}</td>
-						<td>{{ .Tokens }}</td>
+						<td>{{ .RegisteredTimestamp }}</td>
+						<td>{{ .HeartbeatTimestamp }}</td>
+						<td>{{ .NumTokens }}</td>
 						<td>{{ .Ownership }}%</td>
 						<td><button name="forget" value="{{ .ID }}" type="submit">Forget</button></td>
 					</tr>
 					{{ end }}
 				</tbody>
 			</table>
-			<pre>{{ .Ring }}</pre>
+			<br>
+			{{ if .ShowTokens }}
+			<input type="button" value="Hide Tokens" onclick="window.location.href = '?tokens=false' " />
+			{{ else }}
+			<input type="button" value="Show Tokens" onclick="window.location.href = '?tokens=true'" />
+			{{ end }}
+
+			{{ if .ShowTokens }}
+				{{ range $i, $ing := .Ingesters }}
+					<h2>Instance: {{ .ID }}</h2>
+					<p>
+						Tokens:<br />
+						{{ range $token := .Tokens }}
+							{{ $token }}
+						{{ end }}
+					</p>
+				{{ end }}
+			{{ end }}
 		</form>
 	</body>
 </html>`
 
-var tmpl *template.Template
+var pageTemplate *template.Template
 
 func init() {
-	tmpl = template.Must(template.New("webpage").Parse(tpl))
+	t := template.New("webpage")
+	t.Funcs(template.FuncMap{"mod": func(i, j int) bool { return i%j == 0 }})
+	pageTemplate = template.Must(t.Parse(pageContent))
 }
 
 func (r *Ring) forget(ctx context.Context, id string) error {
@@ -74,19 +101,25 @@ func (r *Ring) forget(ctx context.Context, id string) error {
 		ringDesc.RemoveIngester(id)
 		return ringDesc, true, nil
 	}
-	return r.KVClient.CAS(ctx, ConsulKey, unregister)
+	return r.KVClient.CAS(ctx, r.key, unregister)
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodPost {
 		ingesterID := req.FormValue("forget")
 		if err := r.forget(req.Context(), ingesterID); err != nil {
-			level.Error(util.WithContext(req.Context(), util.Logger)).Log("msg", "error forgetting ingester", "err", err)
+			level.Error(log.WithContext(req.Context(), log.Logger)).Log("msg", "error forgetting instance", "err", err)
 		}
 
 		// Implement PRG pattern to prevent double-POST and work with CSRF middleware.
 		// https://en.wikipedia.org/wiki/Post/Redirect/Get
-		http.Redirect(w, req, req.RequestURI, http.StatusFound)
+
+		// http.Redirect() would convert our relative URL to absolute, which is not what we want.
+		// Browser knows how to do that, and it also knows real URL. Furthermore it will also preserve tokens parameter.
+		// Note that relative Location URLs are explicitly allowed by specification, so we're not doing anything wrong here.
+		w.Header().Set("Location", "#")
+		w.WriteHeader(http.StatusFound)
+
 		return
 	}
 
@@ -99,40 +132,55 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	sort.Strings(ingesterIDs)
 
+	now := time.Now()
 	ingesters := []interface{}{}
-	tokens, owned := countTokens(r.ringDesc)
+	_, owned := r.countTokens()
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
-		timestamp := time.Unix(ing.Timestamp, 0)
+		heartbeatTimestamp := time.Unix(ing.Timestamp, 0)
 		state := ing.State.String()
-		if !r.IsHealthy(&ing, Reporting) {
+		if !r.IsHealthy(&ing, Reporting, now) {
 			state = unhealthy
 		}
 
+		// Format the registered timestamp.
+		registeredTimestamp := ""
+		if ing.RegisteredTimestamp != 0 {
+			registeredTimestamp = ing.GetRegisteredAt().String()
+		}
+
 		ingesters = append(ingesters, struct {
-			ID, State, Address, Timestamp string
-			Tokens                        uint32
-			Ownership                     float64
+			ID                  string   `json:"id"`
+			State               string   `json:"state"`
+			Address             string   `json:"address"`
+			HeartbeatTimestamp  string   `json:"timestamp"`
+			RegisteredTimestamp string   `json:"registered_timestamp"`
+			Zone                string   `json:"zone"`
+			Tokens              []uint32 `json:"tokens"`
+			NumTokens           int      `json:"-"`
+			Ownership           float64  `json:"-"`
 		}{
-			ID:        id,
-			State:     state,
-			Address:   ing.Addr,
-			Timestamp: timestamp.String(),
-			Tokens:    tokens[id],
-			Ownership: (float64(owned[id]) / float64(math.MaxUint32)) * 100,
+			ID:                  id,
+			State:               state,
+			Address:             ing.Addr,
+			HeartbeatTimestamp:  heartbeatTimestamp.String(),
+			RegisteredTimestamp: registeredTimestamp,
+			Tokens:              ing.Tokens,
+			Zone:                ing.Zone,
+			NumTokens:           len(ing.Tokens),
+			Ownership:           (float64(owned[id]) / float64(math.MaxUint32)) * 100,
 		})
 	}
 
-	if err := tmpl.Execute(w, struct {
-		Ingesters []interface{}
-		Now       time.Time
-		Ring      string
+	tokensParam := req.URL.Query().Get("tokens")
+
+	util.RenderHTTPResponse(w, struct {
+		Ingesters  []interface{} `json:"shards"`
+		Now        time.Time     `json:"now"`
+		ShowTokens bool          `json:"-"`
 	}{
-		Ingesters: ingesters,
-		Now:       time.Now(),
-		Ring:      proto.MarshalTextString(r.ringDesc),
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+		Ingesters:  ingesters,
+		Now:        now,
+		ShowTokens: tokensParam == "true",
+	}, pageTemplate, req)
 }

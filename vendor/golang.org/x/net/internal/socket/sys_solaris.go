@@ -5,21 +5,9 @@
 package socket
 
 import (
-	"errors"
-	"runtime"
 	"syscall"
 	"unsafe"
 )
-
-func probeProtocolStack() int {
-	switch runtime.GOARCH {
-	case "amd64":
-		return 4
-	default:
-		var p uintptr
-		return int(unsafe.Sizeof(p))
-	}
-}
 
 //go:cgo_import_dynamic libc___xnet_getsockopt __xnet_getsockopt "libsocket.so"
 //go:cgo_import_dynamic libc_setsockopt setsockopt "libsocket.so"
@@ -63,9 +51,9 @@ func sendmsg(s uintptr, h *msghdr, flags int) (int, error) {
 }
 
 func recvmmsg(s uintptr, hs []mmsghdr, flags int) (int, error) {
-	return 0, errors.New("not implemented")
+	return 0, errNotImplemented
 }
 
 func sendmmsg(s uintptr, hs []mmsghdr, flags int) (int, error) {
-	return 0, errors.New("not implemented")
+	return 0, errNotImplemented
 }

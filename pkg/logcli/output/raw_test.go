@@ -1,23 +1,27 @@
 package output
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
 func TestRawOutput_Format(t *testing.T) {
 	t.Parallel()
 
 	timestamp, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
-	someLabels := labels.New(labels.Label{Name: "type", Value: "test"})
+	someLabels := loghttp.LabelSet(map[string]string{
+		"type": "test",
+	})
 
 	tests := map[string]struct {
 		options      *LogOutputOptions
 		timestamp    time.Time
-		lbls         *labels.Labels
+		lbls         loghttp.LabelSet
 		maxLabelsLen int
 		line         string
 		expected     string
@@ -25,18 +29,34 @@ func TestRawOutput_Format(t *testing.T) {
 		"empty line": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"",
-			"",
+			"\n",
 		},
 		"non empty line": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello world",
-			"Hello world",
+			"Hello world\n",
+		},
+		"line with single newline at the end": {
+			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
+			timestamp,
+			someLabels,
+			0,
+			"Hello world\n",
+			"Hello world\n",
+		},
+		"line with multiple newlines at the end": {
+			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
+			timestamp,
+			someLabels,
+			0,
+			"Hello world\n\n\n",
+			"Hello world\n\n\n",
 		},
 	}
 
@@ -46,10 +66,11 @@ func TestRawOutput_Format(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			out := &RawOutput{testData.options}
-			actual := out.Format(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
+			writer := &bytes.Buffer{}
+			out := &RawOutput{writer, testData.options}
+			out.FormatAndPrintln(testData.timestamp, testData.lbls, testData.maxLabelsLen, testData.line)
 
-			assert.Equal(t, testData.expected, actual)
+			assert.Equal(t, testData.expected, writer.String())
 		})
 	}
 }

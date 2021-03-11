@@ -2,37 +2,74 @@ package logql
 
 import (
 	"errors"
-	"fmt"
-	"strconv"
+	"sort"
 	"strings"
+	"sync"
 	"text/scanner"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 )
+
+var parserPool = sync.Pool{
+	New: func() interface{} {
+		p := &parser{
+			p:      &exprParserImpl{},
+			Reader: strings.NewReader(""),
+			lexer:  &lexer{},
+		}
+		return p
+	},
+}
 
 func init() {
 	// Improve the error messages coming out of yacc.
 	exprErrorVerbose = true
+	// uncomment when you need to understand yacc rule tree.
+	// exprDebug = 3
 	for str, tok := range tokens {
 		exprToknames[tok-exprPrivate+1] = str
 	}
 }
 
-// ParseExpr parses a string and returns an Expr.
-func ParseExpr(input string) (Expr, error) {
-	l := lexer{
-		parser: exprNewParser().(*exprParserImpl),
-	}
-	l.Init(strings.NewReader(input))
-	l.Scanner.Error = func(_ *scanner.Scanner, msg string) {
-		l.Error(msg)
-	}
+type parser struct {
+	p *exprParserImpl
+	*lexer
+	expr Expr
+	*strings.Reader
+}
 
-	e := l.parser.Parse(&l)
-	if e != 0 || len(l.errs) > 0 {
-		return nil, l.errs[0]
+func (p *parser) Parse() (Expr, error) {
+	p.lexer.errs = p.lexer.errs[:0]
+	p.lexer.Scanner.Error = func(_ *scanner.Scanner, msg string) {
+		p.lexer.Error(msg)
 	}
-	return l.expr, nil
+	e := p.p.Parse(p)
+	if e != 0 || len(p.lexer.errs) > 0 {
+		return nil, p.lexer.errs[0]
+	}
+	return p.expr, nil
+}
+
+// ParseExpr parses a string and returns an Expr.
+func ParseExpr(input string) (expr Expr, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			if err, ok = r.(error); ok {
+				if errors.Is(err, ErrParse) {
+					return
+				}
+				err = newParseError(err.Error(), 0, 0)
+			}
+		}
+	}()
+	p := parserPool.Get().(*parser)
+	defer parserPool.Put(p)
+
+	p.Reader.Reset(input)
+	p.lexer.Init(p.Reader)
+	return p.Parse()
 }
 
 // ParseMatchers parses a string and returns labels matchers, if the expression contains
@@ -49,70 +86,38 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	return matcherExpr.matchers, nil
 }
 
-var tokens = map[string]int{
-	",":  COMMA,
-	".":  DOT,
-	"{":  OPEN_BRACE,
-	"}":  CLOSE_BRACE,
-	"=":  EQ,
-	"!=": NEQ,
-	"=~": RE,
-	"!~": NRE,
-	"|=": PIPE_EXACT,
-	"|~": PIPE_MATCH,
-}
-
-type lexer struct {
-	scanner.Scanner
-	errs   []ParseError
-	expr   Expr
-	parser *exprParserImpl
-}
-
-func (l *lexer) Lex(lval *exprSymType) int {
-	r := l.Scan()
-
-	switch r {
-	case scanner.EOF:
-		return 0
-
-	case scanner.String:
-		var err error
-		lval.str, err = strconv.Unquote(l.TokenText())
-		if err != nil {
-			l.Error(err.Error())
-			return 0
-		}
-		return STRING
+// ParseSampleExpr parses a string and returns the sampleExpr
+func ParseSampleExpr(input string) (SampleExpr, error) {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		return nil, err
 	}
-
-	if tok, ok := tokens[l.TokenText()+string(l.Peek())]; ok {
-		l.Next()
-		return tok
+	sampleExpr, ok := expr.(SampleExpr)
+	if !ok {
+		return nil, errors.New("only sample expression supported")
 	}
+	return sampleExpr, nil
+}
 
-	if tok, ok := tokens[l.TokenText()]; ok {
-		return tok
+// ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
+func ParseLogSelector(input string) (LogSelectorExpr, error) {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		return nil, err
 	}
-
-	lval.str = l.TokenText()
-	return IDENTIFIER
+	logSelector, ok := expr.(LogSelectorExpr)
+	if !ok {
+		return nil, errors.New("only log selector is supported")
+	}
+	return logSelector, nil
 }
 
-func (l *lexer) Error(msg string) {
-	l.errs = append(l.errs, ParseError{
-		msg:  msg,
-		line: l.Line,
-		col:  l.Column,
-	})
-}
-
-// ParseError is what is returned when we failed to parse.
-type ParseError struct {
-	msg       string
-	line, col int
-}
-
-func (p ParseError) Error() string {
-	return fmt.Sprintf("parse error at line %d, col %d: %s", p.line, p.col, p.msg)
+// ParseLabels parses labels from a string using logql parser.
+func ParseLabels(lbs string) (labels.Labels, error) {
+	ls, err := promql_parser.ParseMetric(lbs)
+	if err != nil {
+		return nil, err
+	}
+	sort.Sort(ls)
+	return ls, nil
 }

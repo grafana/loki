@@ -1,6 +1,6 @@
 local config = import 'config.libsonnet';
 
-config + {
+config {
   local gen_scrape_config(job_name, pod_uid) = {
     job_name: job_name,
     pipeline_stages: $._config.promtail_config.pipeline_stages,
@@ -20,7 +20,7 @@ config + {
       {
         source_labels: ['__service__'],
         action: 'drop',
-        regex: '^$',
+        regex: '',
       },
 
       // Include all the other labels on the pod.
@@ -31,7 +31,7 @@ config + {
         regex: '__meta_kubernetes_pod_label_(.+)',
       },
 
-      // Rename jobs to be <namespace>/<name, from pod name label>
+      // Rename jobs to be <namespace>/<service>.
       {
         source_labels: ['__meta_kubernetes_namespace', '__service__'],
         action: 'replace',
@@ -40,25 +40,24 @@ config + {
         replacement: '$1',
       },
 
-      // But also include the namespace as a separate label, for routing alerts
+      // But also include the namespace, pod, container as separate
+      // labels. They uniquely identify a container. They are also
+      // identical to the target labels configured in Prometheus
+      // (but note that Loki does not use an instance label).
       {
         source_labels: ['__meta_kubernetes_namespace'],
         action: 'replace',
         target_label: 'namespace',
       },
-
-      // Rename instances to be the pod name
       {
         source_labels: ['__meta_kubernetes_pod_name'],
         action: 'replace',
-        target_label: 'instance',
+        target_label: 'pod',  // Not 'pod_name', which disappeared in K8s 1.16.
       },
-
-      // Include container_name label
       {
         source_labels: ['__meta_kubernetes_pod_container_name'],
         action: 'replace',
-        target_label: 'container_name',
+        target_label: 'container',  // Not 'container_name', which disappeared in K8s 1.16.
       },
 
       // Kubernetes puts logs under subdirectories keyed pod UID and container_name.
@@ -76,16 +75,15 @@ config + {
       // Scrape config to scrape any pods with a 'name' label.
       gen_scrape_config('kubernetes-pods-name', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
-
           // Use name label as __service__.
           {
             source_labels: ['__meta_kubernetes_pod_label_name'],
             target_label: '__service__',
-          }
+          },
         ],
       },
 
-      // Scrape config to scrape any pods with a 'app' label.
+      // Scrape config to scrape any pods with an 'app' label.
       gen_scrape_config('kubernetes-pods-app', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
           // Drop pods with a 'name' label.  They will have already been added by
@@ -122,7 +120,7 @@ config + {
           {
             source_labels: ['__meta_kubernetes_pod_controller_name'],
             action: 'drop',
-            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            regex: '[0-9a-z-.]+-[0-9a-f]{8,10}',
           },
 
           // Use controller name as __service__.
@@ -149,18 +147,18 @@ config + {
           // Drop pods not from an indirect controller. eg StatefulSets, DaemonSets
           {
             source_labels: ['__meta_kubernetes_pod_controller_name'],
-            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            regex: '[0-9a-z-.]+-[0-9a-f]{8,10}',
             action: 'keep',
           },
 
-          // put the indirect controller name into a temp label.
+          // Put the indirect controller name into a temp label.
           {
             source_labels: ['__meta_kubernetes_pod_controller_name'],
             action: 'replace',
-            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            regex: '([0-9a-z-.]+)-[0-9a-f]{8,10}',
             target_label: '__service__',
           },
-        ]
+        ],
       },
 
       // Scrape config to scrape any control plane static pods (e.g. kube-apiserver
@@ -171,7 +169,7 @@ config + {
           {
             action: 'drop',
             source_labels: ['__meta_kubernetes_pod_annotation_kubernetes_io_config_mirror'],
-            regex: '^$',
+            regex: '',
           },
 
           // Static control plane pods usually have a component label that identifies them
@@ -180,7 +178,7 @@ config + {
             source_labels: ['__meta_kubernetes_pod_label_component'],
             target_label: '__service__',
           },
-        ]
+        ],
       },
     ],
   },

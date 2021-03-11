@@ -14,9 +14,10 @@
 package expfmt
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"strconv"
 	"strings"
@@ -27,7 +28,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
-// enhancedWriter has all the enhanced write functions needed here. bytes.Buffer
+// enhancedWriter has all the enhanced write functions needed here. bufio.Writer
 // implements it.
 type enhancedWriter interface {
 	io.Writer
@@ -37,14 +38,13 @@ type enhancedWriter interface {
 }
 
 const (
-	initialBufSize    = 512
 	initialNumBufSize = 24
 )
 
 var (
 	bufPool = sync.Pool{
 		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 0, initialBufSize))
+			return bufio.NewWriter(ioutil.Discard)
 		},
 	}
 	numBufPool = sync.Pool{
@@ -75,16 +75,14 @@ func MetricFamilyToText(out io.Writer, in *dto.MetricFamily) (written int, err e
 	}
 
 	// Try the interface upgrade. If it doesn't work, we'll use a
-	// bytes.Buffer from the sync.Pool and write out its content to out in a
-	// single go in the end.
+	// bufio.Writer from the sync.Pool.
 	w, ok := out.(enhancedWriter)
 	if !ok {
-		b := bufPool.Get().(*bytes.Buffer)
-		b.Reset()
+		b := bufPool.Get().(*bufio.Writer)
+		b.Reset(out)
 		w = b
 		defer func() {
-			bWritten, bErr := out.Write(b.Bytes())
-			written = bWritten
+			bErr := b.Flush()
 			if err == nil {
 				err = bErr
 			}
@@ -425,9 +423,8 @@ var (
 func writeEscapedString(w enhancedWriter, v string, includeDoubleQuote bool) (int, error) {
 	if includeDoubleQuote {
 		return quotedEscaper.WriteString(w, v)
-	} else {
-		return escaper.WriteString(w, v)
 	}
+	return escaper.WriteString(w, v)
 }
 
 // writeFloat is equivalent to fmt.Fprint with a float64 argument but hardcodes
@@ -436,11 +433,11 @@ func writeEscapedString(w enhancedWriter, v string, includeDoubleQuote bool) (in
 func writeFloat(w enhancedWriter, f float64) (int, error) {
 	switch {
 	case f == 1:
-		return w.WriteString("1.0")
+		return 1, w.WriteByte('1')
 	case f == 0:
-		return w.WriteString("0.0")
+		return 1, w.WriteByte('0')
 	case f == -1:
-		return w.WriteString("-1.0")
+		return w.WriteString("-1")
 	case math.IsNaN(f):
 		return w.WriteString("NaN")
 	case math.IsInf(f, +1):
@@ -450,12 +447,6 @@ func writeFloat(w enhancedWriter, f float64) (int, error) {
 	default:
 		bp := numBufPool.Get().(*[]byte)
 		*bp = strconv.AppendFloat((*bp)[:0], f, 'g', -1, 64)
-		// Add a .0 if used fixed point and there is no decimal
-		// point already. This is for future proofing with OpenMetrics,
-		// where floats always contain either an exponent or decimal.
-		if !bytes.ContainsAny(*bp, "e.") {
-			*bp = append(*bp, '.', '0')
-		}
 		written, err := w.Write(*bp)
 		numBufPool.Put(bp)
 		return written, err

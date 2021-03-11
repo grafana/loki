@@ -1,9 +1,0 @@
-# frozen_string_literal: true
-
-source 'https://rubygems.org'
-
-gem 'fluent-plugin-kubernetes_metadata_filter', '~> 2.1.6'
-gem 'fluent-plugin-multi-format-parser', '~>1.0.0'
-gem 'fluent-plugin-prometheus', '~>1.4.0'
-gem 'fluent-plugin-systemd', '~> 1.0.1'
-gem 'fluentd', '1.6.2'

@@ -24,35 +24,41 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-
 	"github.com/uber/jaeger-client-go"
 )
 
 const (
 	// environment variable names
-	envServiceName            = "JAEGER_SERVICE_NAME"
-	envDisabled               = "JAEGER_DISABLED"
-	envRPCMetrics             = "JAEGER_RPC_METRICS"
-	envTags                   = "JAEGER_TAGS"
-	envSamplerType            = "JAEGER_SAMPLER_TYPE"
-	envSamplerParam           = "JAEGER_SAMPLER_PARAM"
-	envSamplerManagerHostPort = "JAEGER_SAMPLER_MANAGER_HOST_PORT"
-	envSamplerMaxOperations   = "JAEGER_SAMPLER_MAX_OPERATIONS"
-	envSamplerRefreshInterval = "JAEGER_SAMPLER_REFRESH_INTERVAL"
-	envReporterMaxQueueSize   = "JAEGER_REPORTER_MAX_QUEUE_SIZE"
-	envReporterFlushInterval  = "JAEGER_REPORTER_FLUSH_INTERVAL"
-	envReporterLogSpans       = "JAEGER_REPORTER_LOG_SPANS"
-	envEndpoint               = "JAEGER_ENDPOINT"
-	envUser                   = "JAEGER_USER"
-	envPassword               = "JAEGER_PASSWORD"
-	envAgentHost              = "JAEGER_AGENT_HOST"
-	envAgentPort              = "JAEGER_AGENT_PORT"
+	envServiceName                         = "JAEGER_SERVICE_NAME"
+	envDisabled                            = "JAEGER_DISABLED"
+	envRPCMetrics                          = "JAEGER_RPC_METRICS"
+	envTags                                = "JAEGER_TAGS"
+	envSamplerType                         = "JAEGER_SAMPLER_TYPE"
+	envSamplerParam                        = "JAEGER_SAMPLER_PARAM"
+	envSamplerManagerHostPort              = "JAEGER_SAMPLER_MANAGER_HOST_PORT" // Deprecated by envSamplingEndpoint
+	envSamplingEndpoint                    = "JAEGER_SAMPLING_ENDPOINT"
+	envSamplerMaxOperations                = "JAEGER_SAMPLER_MAX_OPERATIONS"
+	envSamplerRefreshInterval              = "JAEGER_SAMPLER_REFRESH_INTERVAL"
+	envReporterMaxQueueSize                = "JAEGER_REPORTER_MAX_QUEUE_SIZE"
+	envReporterFlushInterval               = "JAEGER_REPORTER_FLUSH_INTERVAL"
+	envReporterLogSpans                    = "JAEGER_REPORTER_LOG_SPANS"
+	envReporterAttemptReconnectingDisabled = "JAEGER_REPORTER_ATTEMPT_RECONNECTING_DISABLED"
+	envReporterAttemptReconnectInterval    = "JAEGER_REPORTER_ATTEMPT_RECONNECT_INTERVAL"
+	envEndpoint                            = "JAEGER_ENDPOINT"
+	envUser                                = "JAEGER_USER"
+	envPassword                            = "JAEGER_PASSWORD"
+	envAgentHost                           = "JAEGER_AGENT_HOST"
+	envAgentPort                           = "JAEGER_AGENT_PORT"
 )
 
 // FromEnv uses environment variables to set the tracer's Configuration
 func FromEnv() (*Configuration, error) {
 	c := &Configuration{}
+	return c.FromEnv()
+}
 
+// FromEnv uses environment variables and overrides existing tracer's Configuration
+func (c *Configuration) FromEnv() (*Configuration, error) {
 	if e := os.Getenv(envServiceName); e != "" {
 		c.ServiceName = e
 	}
@@ -77,13 +83,21 @@ func FromEnv() (*Configuration, error) {
 		c.Tags = parseTags(e)
 	}
 
-	if s, err := samplerConfigFromEnv(); err == nil {
+	if c.Sampler == nil {
+		c.Sampler = &SamplerConfig{}
+	}
+
+	if s, err := c.Sampler.samplerConfigFromEnv(); err == nil {
 		c.Sampler = s
 	} else {
 		return nil, errors.Wrap(err, "cannot obtain sampler config from env")
 	}
 
-	if r, err := reporterConfigFromEnv(); err == nil {
+	if c.Reporter == nil {
+		c.Reporter = &ReporterConfig{}
+	}
+
+	if r, err := c.Reporter.reporterConfigFromEnv(); err == nil {
 		c.Reporter = r
 	} else {
 		return nil, errors.Wrap(err, "cannot obtain reporter config from env")
@@ -93,9 +107,7 @@ func FromEnv() (*Configuration, error) {
 }
 
 // samplerConfigFromEnv creates a new SamplerConfig based on the environment variables
-func samplerConfigFromEnv() (*SamplerConfig, error) {
-	sc := &SamplerConfig{}
-
+func (sc *SamplerConfig) samplerConfigFromEnv() (*SamplerConfig, error) {
 	if e := os.Getenv(envSamplerType); e != "" {
 		sc.Type = e
 	}
@@ -108,8 +120,13 @@ func samplerConfigFromEnv() (*SamplerConfig, error) {
 		}
 	}
 
-	if e := os.Getenv(envSamplerManagerHostPort); e != "" {
+	if e := os.Getenv(envSamplingEndpoint); e != "" {
 		sc.SamplingServerURL = e
+	} else if e := os.Getenv(envSamplerManagerHostPort); e != "" {
+		sc.SamplingServerURL = e
+	} else if e := os.Getenv(envAgentHost); e != "" {
+		// Fallback if we know the agent host - try the sampling endpoint there
+		sc.SamplingServerURL = fmt.Sprintf("http://%s:%d/sampling", e, jaeger.DefaultSamplingServerPort)
 	}
 
 	if e := os.Getenv(envSamplerMaxOperations); e != "" {
@@ -132,9 +149,7 @@ func samplerConfigFromEnv() (*SamplerConfig, error) {
 }
 
 // reporterConfigFromEnv creates a new ReporterConfig based on the environment variables
-func reporterConfigFromEnv() (*ReporterConfig, error) {
-	rc := &ReporterConfig{}
-
+func (rc *ReporterConfig) reporterConfigFromEnv() (*ReporterConfig, error) {
 	if e := os.Getenv(envReporterMaxQueueSize); e != "" {
 		if value, err := strconv.ParseInt(e, 10, 0); err == nil {
 			rc.QueueSize = int(value)
@@ -173,20 +188,43 @@ func reporterConfigFromEnv() (*ReporterConfig, error) {
 		rc.User = user
 		rc.Password = pswd
 	} else {
+		useEnv := false
 		host := jaeger.DefaultUDPSpanServerHost
 		if e := os.Getenv(envAgentHost); e != "" {
 			host = e
+			useEnv = true
 		}
 
 		port := jaeger.DefaultUDPSpanServerPort
 		if e := os.Getenv(envAgentPort); e != "" {
 			if value, err := strconv.ParseInt(e, 10, 0); err == nil {
 				port = int(value)
+				useEnv = true
 			} else {
 				return nil, errors.Wrapf(err, "cannot parse env var %s=%s", envAgentPort, e)
 			}
 		}
-		rc.LocalAgentHostPort = fmt.Sprintf("%s:%d", host, port)
+		if useEnv || rc.LocalAgentHostPort == "" {
+			rc.LocalAgentHostPort = fmt.Sprintf("%s:%d", host, port)
+		}
+
+		if e := os.Getenv(envReporterAttemptReconnectingDisabled); e != "" {
+			if value, err := strconv.ParseBool(e); err == nil {
+				rc.DisableAttemptReconnecting = value
+			} else {
+				return nil, errors.Wrapf(err, "cannot parse env var %s=%s", envReporterAttemptReconnectingDisabled, e)
+			}
+		}
+
+		if !rc.DisableAttemptReconnecting {
+			if e := os.Getenv(envReporterAttemptReconnectInterval); e != "" {
+				if value, err := time.ParseDuration(e); err == nil {
+					rc.AttemptReconnectInterval = value
+				} else {
+					return nil, errors.Wrapf(err, "cannot parse env var %s=%s", envReporterAttemptReconnectInterval, e)
+				}
+			}
+		}
 	}
 
 	return rc, nil

@@ -104,9 +104,9 @@ func (client VirtualNetworkGatewaysClient) CreateOrUpdatePreparer(ctx context.Co
 // CreateOrUpdateSender sends the CreateOrUpdate request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) CreateOrUpdateSender(req *http.Request) (future VirtualNetworkGatewaysCreateOrUpdateFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -181,9 +181,9 @@ func (client VirtualNetworkGatewaysClient) DeletePreparer(ctx context.Context, r
 // DeleteSender sends the Delete request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) DeleteSender(req *http.Request) (future VirtualNetworkGatewaysDeleteFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -261,9 +261,9 @@ func (client VirtualNetworkGatewaysClient) GeneratevpnclientpackagePreparer(ctx 
 // GeneratevpnclientpackageSender sends the Generatevpnclientpackage request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) GeneratevpnclientpackageSender(req *http.Request) (future VirtualNetworkGatewaysGeneratevpnclientpackageFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -277,7 +277,7 @@ func (client VirtualNetworkGatewaysClient) GeneratevpnclientpackageResponder(res
 	err = autorest.Respond(
 		resp,
 		client.ByInspecting(),
-		azure.WithErrorUnlessStatusCode(http.StatusOK),
+		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusAccepted),
 		autorest.ByUnmarshallingJSON(&result),
 		autorest.ByClosing())
 	result.Response = autorest.Response{Response: resp}
@@ -342,9 +342,9 @@ func (client VirtualNetworkGatewaysClient) GenerateVpnProfilePreparer(ctx contex
 // GenerateVpnProfileSender sends the GenerateVpnProfile request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) GenerateVpnProfileSender(req *http.Request) (future VirtualNetworkGatewaysGenerateVpnProfileFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -425,8 +425,8 @@ func (client VirtualNetworkGatewaysClient) GetPreparer(ctx context.Context, reso
 // GetSender sends the Get request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) GetSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // GetResponder handles the response to the Get request. The method always
@@ -499,9 +499,9 @@ func (client VirtualNetworkGatewaysClient) GetAdvertisedRoutesPreparer(ctx conte
 // GetAdvertisedRoutesSender sends the GetAdvertisedRoutes request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) GetAdvertisedRoutesSender(req *http.Request) (future VirtualNetworkGatewaysGetAdvertisedRoutesFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -580,9 +580,9 @@ func (client VirtualNetworkGatewaysClient) GetBgpPeerStatusPreparer(ctx context.
 // GetBgpPeerStatusSender sends the GetBgpPeerStatus request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) GetBgpPeerStatusSender(req *http.Request) (future VirtualNetworkGatewaysGetBgpPeerStatusFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -658,9 +658,9 @@ func (client VirtualNetworkGatewaysClient) GetLearnedRoutesPreparer(ctx context.
 // GetLearnedRoutesSender sends the GetLearnedRoutes request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) GetLearnedRoutesSender(req *http.Request) (future VirtualNetworkGatewaysGetLearnedRoutesFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -737,9 +737,9 @@ func (client VirtualNetworkGatewaysClient) GetVpnclientIpsecParametersPreparer(c
 // GetVpnclientIpsecParametersSender sends the GetVpnclientIpsecParameters request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) GetVpnclientIpsecParametersSender(req *http.Request) (future VirtualNetworkGatewaysGetVpnclientIpsecParametersFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -815,9 +815,9 @@ func (client VirtualNetworkGatewaysClient) GetVpnProfilePackageURLPreparer(ctx c
 // GetVpnProfilePackageURLSender sends the GetVpnProfilePackageURL request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) GetVpnProfilePackageURLSender(req *http.Request) (future VirtualNetworkGatewaysGetVpnProfilePackageURLFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -897,8 +897,8 @@ func (client VirtualNetworkGatewaysClient) ListPreparer(ctx context.Context, res
 // ListSender sends the List request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) ListSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // ListResponder handles the response to the List request. The method always
@@ -1012,8 +1012,8 @@ func (client VirtualNetworkGatewaysClient) ListConnectionsPreparer(ctx context.C
 // ListConnectionsSender sends the ListConnections request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) ListConnectionsSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // ListConnectionsResponder handles the response to the ListConnections request. The method always
@@ -1125,9 +1125,9 @@ func (client VirtualNetworkGatewaysClient) ResetPreparer(ctx context.Context, re
 // ResetSender sends the Reset request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) ResetSender(req *http.Request) (future VirtualNetworkGatewaysResetFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -1203,9 +1203,9 @@ func (client VirtualNetworkGatewaysClient) ResetVpnClientSharedKeyPreparer(ctx c
 // ResetVpnClientSharedKeySender sends the ResetVpnClientSharedKey request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) ResetVpnClientSharedKeySender(req *http.Request) (future VirtualNetworkGatewaysResetVpnClientSharedKeyFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -1291,9 +1291,9 @@ func (client VirtualNetworkGatewaysClient) SetVpnclientIpsecParametersPreparer(c
 // SetVpnclientIpsecParametersSender sends the SetVpnclientIpsecParameters request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) SetVpnclientIpsecParametersSender(req *http.Request) (future VirtualNetworkGatewaysSetVpnclientIpsecParametersFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -1374,8 +1374,8 @@ func (client VirtualNetworkGatewaysClient) SupportedVpnDevicesPreparer(ctx conte
 // SupportedVpnDevicesSender sends the SupportedVpnDevices request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) SupportedVpnDevicesSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // SupportedVpnDevicesResponder handles the response to the SupportedVpnDevices request. The method always
@@ -1448,9 +1448,9 @@ func (client VirtualNetworkGatewaysClient) UpdateTagsPreparer(ctx context.Contex
 // UpdateTagsSender sends the UpdateTags request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) UpdateTagsSender(req *http.Request) (future VirtualNetworkGatewaysUpdateTagsFuture, err error) {
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
 	var resp *http.Response
-	resp, err = autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	resp, err = autorest.SendWithSender(client, req, sd...)
 	if err != nil {
 		return
 	}
@@ -1535,8 +1535,8 @@ func (client VirtualNetworkGatewaysClient) VpnDeviceConfigurationScriptPreparer(
 // VpnDeviceConfigurationScriptSender sends the VpnDeviceConfigurationScript request. The method will close the
 // http.Response Body if it receives an error.
 func (client VirtualNetworkGatewaysClient) VpnDeviceConfigurationScriptSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // VpnDeviceConfigurationScriptResponder handles the response to the VpnDeviceConfigurationScript request. The method always

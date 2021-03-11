@@ -5,7 +5,7 @@ networks:
 
 services:
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:2.0.0
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
@@ -13,15 +13,15 @@ services:
       - loki
 
   promtail:
-    image: grafana/promtail:latest
+    image: grafana/promtail:2.0.0
     volumes:
       - /var/log:/var/log
-    command: -config.file=/etc/promtail/docker-config.yaml
+    command: -config.file=/etc/promtail/config.yml
     networks:
       - loki
 
   grafana:
-    image: grafana/grafana:master
+    image: grafana/grafana:latest
     ports:
       - "3000:3000"
     networks:

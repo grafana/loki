@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package queryrange;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "pkg/logproto/logproto.proto";
+import "pkg/logql/stats/stats.proto";
+import "github.com/cortexproject/cortex/pkg/querier/queryrange/queryrange.proto";
+import "google/protobuf/timestamp.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message LokiRequest {
+  string query = 1;
+  uint32 limit = 2;
+  int64 step = 3;
+  google.protobuf.Timestamp startTs = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp endTs = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  logproto.Direction direction = 6;
+  string path = 7;
+  repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
+}
+
+message LokiResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  LokiData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+  logproto.Direction direction = 5;
+  uint32 limit = 6;
+  uint32 version = 7;
+  stats.Result statistics = 8 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "statistics"];
+  repeated queryrange.PrometheusResponseHeader Headers = 9 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
+}
+
+message LokiSeriesRequest {
+  repeated string match = 1;
+  google.protobuf.Timestamp startTs = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp endTs = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  string path = 4;
+}
+
+message LokiSeriesResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  repeated logproto.SeriesIdentifier Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  uint32 version = 3;
+  repeated queryrange.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
+}
+
+message LokiLabelNamesRequest {
+  google.protobuf.Timestamp startTs = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp endTs = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  string path = 3;
+}
+
+message LokiLabelNamesResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
+  uint32 version = 3;
+  repeated queryrange.PrometheusResponseHeader Headers = 4 [(gogoproto.jsontag) = "-", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/queryrange.PrometheusResponseHeader"];
+}
+
+message LokiData {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated logproto.StreamAdapter Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result", (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.Stream"];
+}
+
+
+// LokiPromResponse wraps a Prometheus response with statistics.
+message LokiPromResponse {
+  queryrange.PrometheusResponse response = 1 [(gogoproto.nullable) = true];
+  stats.Result statistics = 2 [(gogoproto.nullable) = false];
+}

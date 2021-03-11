@@ -2,6 +2,7 @@ package metric
 
 import (
 	"sync"
+	"time"
 
 	"github.com/grafana/loki/pkg/util"
 
@@ -9,16 +10,23 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-type metricVec struct {
-	factory func(labels map[string]string) prometheus.Metric
-	mtx     sync.Mutex
-	metrics map[model.Fingerprint]prometheus.Metric
+// Expirable allows checking if something has exceeded the provided maxAge based on the provided currentTime
+type Expirable interface {
+	HasExpired(currentTimeSec int64, maxAgeSec int64) bool
 }
 
-func newMetricVec(factory func(labels map[string]string) prometheus.Metric) *metricVec {
+type metricVec struct {
+	factory   func(labels map[string]string) prometheus.Metric
+	mtx       sync.Mutex
+	metrics   map[model.Fingerprint]prometheus.Metric
+	maxAgeSec int64
+}
+
+func newMetricVec(factory func(labels map[string]string) prometheus.Metric, maxAgeSec int64) *metricVec {
 	return &metricVec{
-		metrics: map[model.Fingerprint]prometheus.Metric{},
-		factory: factory,
+		metrics:   map[model.Fingerprint]prometheus.Metric{},
+		factory:   factory,
+		maxAgeSec: maxAgeSec,
 	}
 }
 
@@ -33,6 +41,7 @@ func (c *metricVec) Collect(ch chan<- prometheus.Metric) {
 	for _, m := range c.metrics {
 		ch <- m
 	}
+	c.prune()
 }
 
 // With returns the metric associated with the labelset.
@@ -47,4 +56,28 @@ func (c *metricVec) With(labels model.LabelSet) prometheus.Metric {
 		c.metrics[fp] = metric
 	}
 	return metric
+}
+
+func (c *metricVec) Delete(labels model.LabelSet) bool {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	fp := labels.Fingerprint()
+	_, ok := c.metrics[fp]
+	if ok {
+		delete(c.metrics, fp)
+	}
+	return ok
+}
+
+// prune will remove all metrics which implement the Expirable interface and have expired
+// it does not take out a lock on the metrics map so whoever calls this function should do so.
+func (c *metricVec) prune() {
+	currentTimeSec := time.Now().Unix()
+	for fp, m := range c.metrics {
+		if em, ok := m.(Expirable); ok {
+			if em.HasExpired(currentTimeSec, c.maxAgeSec) {
+				delete(c.metrics, fp)
+			}
+		}
+	}
 }

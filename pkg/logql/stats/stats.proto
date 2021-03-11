@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package stats;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option go_package = "github.com/grafana/loki/pkg/logql/stats";
+
+
+// Result contains LogQL query statistics.
+message Result {
+  Summary summary = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "summary"];
+  Store store = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "store"];
+  Ingester ingester = 3 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "ingester"];
+}
+
+// Summary is the summary of a query statistics.
+message Summary {
+   // Total bytes processed per second.
+  int64 bytesProcessedPerSecond = 1 [(gogoproto.jsontag) = "bytesProcessedPerSecond"];
+  // Total lines processed per second.
+  int64 linesProcessedPerSecond = 2 [(gogoproto.jsontag) = "linesProcessedPerSecond"];
+  // Total bytes processed.
+  int64 totalBytesProcessed = 3 [(gogoproto.jsontag) = "totalBytesProcessed"];
+  // Total lines processed.
+  int64 totalLinesProcessed = 4 [(gogoproto.jsontag) = "totalLinesProcessed"];
+  // Execution time in seconds.
+  double execTime = 5 [(gogoproto.jsontag) = "execTime"];
+}
+
+message Store {
+  // The total of chunk reference fetched from index.
+  int64 totalChunksRef = 1 [(gogoproto.jsontag) = "totalChunksRef"];
+  // Total number of chunks fetched.
+  int64 totalChunksDownloaded  = 2 [(gogoproto.jsontag) = "totalChunksDownloaded"];
+  // Time spent fetching chunks in nanoseconds.
+  double chunksDownloadTime = 3 [(gogoproto.jsontag) = "chunksDownloadTime"];
+
+  // Total bytes processed but was already in memory. (found in the headchunk)
+  int64 headChunkBytes = 4 [(gogoproto.jsontag) = "headChunkBytes"];
+  // Total lines processed but was already in memory. (found in the headchunk)
+  int64 headChunkLines = 5 [(gogoproto.jsontag) = "headChunkLines"];
+  // Total bytes decompressed and processed from chunks.
+  int64 decompressedBytes = 6 [(gogoproto.jsontag) = "decompressedBytes"];
+  // Total lines decompressed and processed from chunks.
+  int64 decompressedLines = 7 [(gogoproto.jsontag) = "decompressedLines"];
+  // Total bytes of compressed chunks (blocks) processed.
+  int64 compressedBytes = 8 [(gogoproto.jsontag) = "compressedBytes"];
+  // Total duplicates found while processing.
+  int64 totalDuplicates = 9 [(gogoproto.jsontag) = "totalDuplicates"];
+}
+
+message Ingester {
+  // Total ingester reached for this query.
+  int32 totalReached = 1 [(gogoproto.jsontag) = "totalReached"];
+  // Total of chunks matched by the query from ingesters
+  int64 totalChunksMatched = 2 [(gogoproto.jsontag) = "totalChunksMatched"];
+  // Total of batches sent from ingesters.
+  int64 totalBatches = 3 [(gogoproto.jsontag) = "totalBatches"];
+  // Total lines sent by ingesters.
+  int64 totalLinesSent = 4 [(gogoproto.jsontag) = "totalLinesSent"];
+
+  // Total bytes processed but was already in memory. (found in the headchunk)
+  int64 headChunkBytes  = 5 [(gogoproto.jsontag) = "headChunkBytes"];
+  // Total lines processed but was already in memory. (found in the headchunk)
+  int64 headChunkLines  = 6 [(gogoproto.jsontag) = "headChunkLines"];
+  // Total bytes decompressed and processed from chunks.
+  int64 decompressedBytes = 7 [(gogoproto.jsontag) = "decompressedBytes"];
+  // Total lines decompressed and processed from chunks.
+  int64 decompressedLines = 8 [(gogoproto.jsontag) = "decompressedLines"];
+  // Total bytes of compressed chunks (blocks) processed.
+  int64 compressedBytes = 9 [(gogoproto.jsontag) = "compressedBytes"];
+  // Total duplicates found while processing.
+  int64 totalDuplicates = 10 [(gogoproto.jsontag) = "totalDuplicates"];
+}

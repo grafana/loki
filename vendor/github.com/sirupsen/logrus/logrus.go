@@ -51,7 +51,7 @@ func (level *Level) UnmarshalText(text []byte) error {
 		return err
 	}
 
-	*level = Level(l)
+	*level = l
 
 	return nil
 }
@@ -74,7 +74,7 @@ func (level Level) MarshalText() ([]byte, error) {
 		return []byte("panic"), nil
 	}
 
-	return nil, fmt.Errorf("not a valid lorus level %q", level)
+	return nil, fmt.Errorf("not a valid logrus level %d", level)
 }
 
 // A constant exposing all logging levels

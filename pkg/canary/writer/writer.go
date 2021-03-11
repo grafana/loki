@@ -72,7 +72,7 @@ func (w *Writer) run() {
 				w.prevTsLen = tsLen
 			}
 
-			_, _ = fmt.Fprintf(w.w, LogEntry, ts, w.pad)
+			fmt.Fprintf(w.w, LogEntry, ts, w.pad)
 			w.sent <- t
 		case <-w.quit:
 			return

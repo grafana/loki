@@ -2,14 +2,19 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	_ "net/http/pprof"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
+
+	_ "github.com/grafana/loki/pkg/build"
 )
 
 const socketAddress = "/run/docker/plugins/loki.sock"
@@ -27,13 +32,23 @@ func main() {
 		os.Exit(1)
 	}
 	logger := newLogger(logLevel)
-	level.Info(util.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
+	level.Info(util_log.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
+
 	h := sdk.NewHandler(`{"Implements": ["LoggingDriver"]}`)
+
 	handlers(&h, newDriver(logger))
+
+	pprofPort := os.Getenv("PPROF_PORT")
+	if pprofPort != "" {
+		go func() {
+			err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil)
+			logger.Log("msg", "http server stopped", "err", err)
+		}()
+	}
+
 	if err := h.ServeUnix(socketAddress, 0); err != nil {
 		panic(err)
 	}
-
 }
 
 func newLogger(lvl logging.Level) log.Logger {

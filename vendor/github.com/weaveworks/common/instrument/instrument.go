@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	oldcontext "golang.org/x/net/context"
 
+	"github.com/weaveworks/common/grpc"
 	"github.com/weaveworks/common/user"
 )
 
@@ -152,7 +153,7 @@ func CollectedRequest(ctx context.Context, method string, col Collector, toStatu
 	col.After(method, toStatusCode(err), start)
 
 	if err != nil {
-		if err != context.Canceled {
+		if !grpc.IsCanceled(err) {
 			ext.Error.Set(sp, true)
 		}
 		sp.LogFields(otlog.Error(err))

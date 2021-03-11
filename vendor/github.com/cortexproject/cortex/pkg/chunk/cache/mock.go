@@ -33,13 +33,17 @@ func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, b
 	return
 }
 
-func (m *mockCache) Stop() error {
-	return nil
+func (m *mockCache) Stop() {
 }
 
-// NewMockCache makes a new MockCache
+// NewMockCache makes a new MockCache.
 func NewMockCache() Cache {
 	return &mockCache{
 		cache: map[string][]byte{},
 	}
+}
+
+// NewNoopCache returns a no-op cache.
+func NewNoopCache() Cache {
+	return NewTiered(nil)
 }

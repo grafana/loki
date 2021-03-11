@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -13,16 +15,25 @@ import (
 type Log struct {
 	Log               logging.Interface
 	LogRequestHeaders bool // LogRequestHeaders true -> dump http headers at debug log level
+	SourceIPs         *SourceIPExtractor
 }
 
 // logWithRequest information from the request and context as fields.
 func (l Log) logWithRequest(r *http.Request) logging.Interface {
+	localLog := l.Log
 	traceID, ok := ExtractTraceID(r.Context())
 	if ok {
-		l.Log = l.Log.WithField("traceID", traceID)
+		localLog = localLog.WithField("traceID", traceID)
 	}
 
-	return user.LogWith(r.Context(), l.Log)
+	if l.SourceIPs != nil {
+		ips := l.SourceIPs.Get(r)
+		if ips != "" {
+			localLog = localLog.WithField("sourceIPs", ips)
+		}
+	}
+
+	return user.LogWith(r.Context(), localLog)
 }
 
 // Wrap implements Middleware
@@ -39,7 +50,18 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 		var buf bytes.Buffer
 		wrapped := newBadResponseLoggingWriter(w, &buf)
 		next.ServeHTTP(wrapped, r)
-		statusCode := wrapped.statusCode
+
+		statusCode, writeErr := wrapped.statusCode, wrapped.writeError
+
+		if writeErr != nil {
+			if errors.Is(writeErr, context.Canceled) {
+				l.logWithRequest(r).Debugf("%s %s %s, request cancelled: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers)
+			} else {
+				l.logWithRequest(r).Warnf("%s %s %s, error: %s ws: %v; %s", r.Method, uri, time.Since(begin), writeErr, IsWSHandshakeRequest(r), headers)
+			}
+
+			return
+		}
 		if 100 <= statusCode && statusCode < 500 || statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable {
 			l.logWithRequest(r).Debugf("%s %s (%d) %s", r.Method, uri, statusCode, time.Since(begin))
 			if l.LogRequestHeaders && headers != nil {

@@ -1,11 +1,14 @@
 package promtail
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,33 +17,37 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
-	"github.com/grafana/loki/pkg/promtail/scrape"
-	"github.com/grafana/loki/pkg/promtail/targets"
+	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	file2 "github.com/grafana/loki/pkg/promtail/targets/file"
 )
 
 const httpTestPort = 9080
 
 func TestPromtail(t *testing.T) {
-
 	// Setup.
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	logger = level.NewFilter(logger, level.AllowInfo())
-	util.Logger = logger
+	util_log.Logger = logger
 
 	initRandom()
 	dirName := "/tmp/promtail_test_" + randName()
@@ -62,31 +69,45 @@ func TestPromtail(t *testing.T) {
 	}
 
 	handler := &testServerHandler{
-		receivedMap: map[string][]logproto.Entry{},
-		recMtx:      sync.Mutex{},
-		t:           t,
+		receivedMap:    map[string][]logproto.Entry{},
+		receivedLabels: map[string][]labels.Labels{},
+		recMtx:         sync.Mutex{},
+		t:              t,
 	}
-	http.Handle("/api/prom/push", handler)
+	http.Handle("/loki/api/v1/push", handler)
+	var (
+		wg        sync.WaitGroup
+		listenErr error
+		server    = &http.Server{Addr: "localhost:3100", Handler: nil}
+	)
 	defer func() {
+		fmt.Fprintf(os.Stdout, "wait close")
+		wg.Wait()
 		if err != nil {
 			t.Fatal(err)
 		}
-	}()
-	go func() {
-		if err = http.ListenAndServe("localhost:3100", nil); err != nil {
-			err = errors.Wrap(err, "Failed to start web server to receive logs")
+		if listenErr != nil && listenErr != http.ErrServerClosed {
+			t.Fatal(listenErr)
 		}
 	}()
-
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		listenErr = server.ListenAndServe()
+	}()
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
 	// Run.
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir))
+	p, err := New(buildTestConfig(t, positionsFileName, testDir), false)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
 	}
-
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		err = p.Run()
 		if err != nil {
 			err = errors.Wrap(err, "Failed to start promtail")
@@ -121,6 +142,43 @@ func TestPromtail(t *testing.T) {
 	prefix4 := "sub"
 	expectedCounts[logFile4] = subdirSingleFile(t, logFile4, prefix4)
 
+	logFile5 := testDir + "/testPipeline.log"
+	entries := []string{
+		`{"log":"11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] \"GET /1986.js HTTP/1.1\" 200 932 \"-\" \"Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6\"","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z"}`,
+		`{"log":"11.11.11.12 - - [19/May/2015:04:05:16 -0500] \"POST /blog HTTP/1.1\" 200 10975 \"http://grafana.com/test/\" \"Mozilla/5.0 (Windows NT 6.1; WOW64) Gecko/20091221 Firefox/3.5.7 GTB6\"","stream":"stdout","time":"2019-04-30T02:12:42.8443515Z"}`,
+	}
+	expectedCounts[logFile5] = pipelineFile(t, logFile5, entries)
+	expectedEntries := make(map[string]int)
+	entriesArray := []string{
+		`11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`,
+		`11.11.11.12 - - [19/May/2015:04:05:16 -0500] "POST /blog HTTP/1.1" 200 10975 "http://grafana.com/test/" "Mozilla/5.0 (Windows NT 6.1; WOW64) Gecko/20091221 Firefox/3.5.7 GTB6"`,
+	}
+	for i, entry := range entriesArray {
+		expectedEntries[entry] = i
+	}
+	lbls := []labels.Labels{}
+	lbls = append(lbls, labels.Labels{
+		labels.Label{Name: "action", Value: "GET"},
+		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
+		labels.Label{Name: "job", Value: "varlogs"},
+		labels.Label{Name: "localhost", Value: ""},
+		labels.Label{Name: "match", Value: "true"},
+		labels.Label{Name: "stream", Value: "stderr"},
+	})
+
+	lbls = append(lbls, labels.Labels{
+		labels.Label{Name: "action", Value: "POST"},
+		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
+		labels.Label{Name: "job", Value: "varlogs"},
+		labels.Label{Name: "localhost", Value: ""},
+		labels.Label{Name: "match", Value: "true"},
+		labels.Label{Name: "stream", Value: "stdout"},
+	})
+	expectedLabels := make(map[string]int)
+	for i, label := range lbls {
+		expectedLabels[label.String()] = i
+	}
+
 	// Wait for all lines to be received.
 	if err := waitForEntries(20, handler, expectedCounts); err != nil {
 		t.Fatal("Timed out waiting for log entries: ", err)
@@ -135,17 +193,17 @@ func TestPromtail(t *testing.T) {
 	// Sync period is 500ms in tests, need to wait for at least one sync period for tailer to be cleaned up
 	<-time.After(500 * time.Millisecond)
 
-	//Pull out some prometheus metrics before shutting down
+	// Pull out some prometheus metrics before shutting down
 	metricsBytes, contentType := getPromMetrics(t)
 
 	p.Shutdown()
 
 	// Verify.
-
 	verifyFile(t, expectedCounts[logFile1], prefix1, handler.receivedMap[logFile1])
 	verifyFile(t, expectedCounts[logFile2], prefix2, handler.receivedMap[logFile2])
 	verifyFile(t, expectedCounts[logFile3], prefix3, handler.receivedMap[logFile3])
 	verifyFile(t, expectedCounts[logFile4], prefix4, handler.receivedMap[logFile4])
+	verifyPipeline(t, expectedCounts[logFile5], expectedEntries, handler.receivedMap[logFile5], handler.receivedLabels[logFile5], expectedLabels)
 
 	if len(handler.receivedMap) != len(expectedCounts) {
 		t.Error("Somehow we ended up tailing more files than we were supposed to, this is likely a bug")
@@ -165,7 +223,6 @@ func TestPromtail(t *testing.T) {
 
 	verifyMetric(t, readBytesMetrics, "promtail_read_bytes_total", logFile4, 590)
 	verifyMetric(t, fileBytesMetrics, "promtail_file_bytes_total", logFile4, 590)
-
 }
 
 func createStartupFile(t *testing.T, filename string) int {
@@ -184,6 +241,20 @@ func verifyFile(t *testing.T, expected int, prefix string, entries []logproto.En
 	for i := 0; i < expected; i++ {
 		if entries[i].Line != fmt.Sprintf("%s%d", prefix, i) {
 			t.Errorf("Received out of order or incorrect log event, expected test%d, received %s", i, entries[i].Line)
+		}
+	}
+}
+
+func verifyPipeline(t *testing.T, expected int, expectedEntries map[string]int, entries []logproto.Entry, labels []labels.Labels, expectedLabels map[string]int) {
+	for i := 0; i < expected; i++ {
+		if _, ok := expectedLabels[labels[i].String()]; !ok {
+			t.Errorf("Did not receive expected labels, expected %v, received %s", expectedLabels, labels[i])
+		}
+	}
+
+	for i := 0; i < expected; i++ {
+		if _, ok := expectedEntries[entries[i].Line]; !ok {
+			t.Errorf("Did not receive expected log entry, expected %v, received %s", expectedEntries, entries[i].Line)
 		}
 	}
 }
@@ -220,6 +291,24 @@ func singleFile(t *testing.T, filename string, prefix string) int {
 	}
 
 	return entries
+}
+
+func pipelineFile(t *testing.T, filename string, entries []string) int {
+	f, err := os.Create(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, entry := range entries {
+		line := fmt.Sprintf("%s\n", entry)
+		_, err = f.WriteString(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	return len(entries)
 }
 
 func fileRoll(t *testing.T, filename string, prefix string) int {
@@ -303,7 +392,6 @@ func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) i
 	}
 
 	return 200
-
 }
 
 func subdirSingleFile(t *testing.T, filename string, prefix string) int {
@@ -351,7 +439,7 @@ func waitForEntries(timeoutSec int, handler *testServerHandler, expectedCounts m
 			if rcvd, ok := handler.receivedMap[file]; !ok || len(rcvd) != expectedCount {
 				waiting = waiting + " " + file
 				for _, e := range rcvd {
-					level.Info(util.Logger).Log("file", file, "entry", e.Line)
+					level.Info(util_log.Logger).Log("file", file, "entry", e.Line)
 				}
 			}
 		}
@@ -361,27 +449,28 @@ func waitForEntries(timeoutSec int, handler *testServerHandler, expectedCounts m
 }
 
 type testServerHandler struct {
-	receivedMap map[string][]logproto.Entry
-	recMtx      sync.Mutex
-	t           *testing.T
+	receivedMap    map[string][]logproto.Entry
+	receivedLabels map[string][]labels.Labels
+	recMtx         sync.Mutex
+	t              *testing.T
 }
 
 func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req logproto.PushRequest
-	if _, err := util.ParseProtoReader(r.Context(), r.Body, &req, util.RawSnappy); err != nil {
+	if err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	h.recMtx.Lock()
 	for _, s := range req.Streams {
-		labels, err := promql.ParseMetric(s.Labels)
+		parsedLabels, err := parser.ParseMetric(s.Labels)
 		if err != nil {
 			h.t.Error("Failed to parse incoming labels", err)
 			return
 		}
 		file := ""
-		for _, label := range labels {
-			if label.Name == targets.FilenameLabel {
+		for _, label := range parsedLabels {
+			if label.Name == file2.FilenameLabel {
 				file = label.Value
 				continue
 			}
@@ -390,12 +479,12 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.t.Error("Expected to find a label with name `filename` but did not!")
 			return
 		}
-		if _, ok := h.receivedMap[file]; ok {
-			h.receivedMap[file] = append(h.receivedMap[file], s.Entries...)
-		} else {
-			h.receivedMap[file] = s.Entries
-		}
+
+		h.receivedMap[file] = append(h.receivedMap[file], s.Entries...)
+		h.receivedLabels[file] = append(h.receivedLabels[file], parsedLabels)
+
 	}
+
 	h.recMtx.Unlock()
 }
 
@@ -450,7 +539,7 @@ func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName
 
 func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) config.Config {
 	var clientURL flagext.URLValue
-	err := clientURL.Set("http://localhost:3100/api/prom/push")
+	err := clientURL.Set("http://localhost:3100/loki/api/v1/push")
 	if err != nil {
 		t.Fatal("Failed to parse client URL")
 	}
@@ -459,10 +548,11 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	// Init everything with default values.
 	flagext.RegisterFlags(&cfg)
 
-	// Make promtail listen on localhost to avoid prompts on MacOS.
-	cfg.ServerConfig.HTTPListenHost = "localhost"
+	const hostname = "localhost"
+	cfg.ServerConfig.HTTPListenAddress = hostname
+	cfg.ServerConfig.ExternalURL = hostname
+	cfg.ServerConfig.GRPCListenAddress = hostname
 	cfg.ServerConfig.HTTPListenPort = httpTestPort
-	cfg.ServerConfig.GRPCListenHost = "localhost"
 
 	// Override some of those defaults
 	cfg.ClientConfig.URL = clientURL
@@ -472,29 +562,59 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	cfg.PositionsConfig.SyncPeriod = 100 * time.Millisecond
 	cfg.PositionsConfig.PositionsFile = positionsFileName
 
+	pipeline := stages.PipelineStages{
+		stages.PipelineStage{
+			stages.StageTypeMatch: stages.MatcherConfig{
+				PipelineName: nil,
+				Selector:     "{match=\"true\"}",
+				Stages: stages.PipelineStages{
+					stages.PipelineStage{
+						stages.StageTypeDocker: nil,
+					},
+					stages.PipelineStage{
+						stages.StageTypeRegex: stages.RegexConfig{
+							Expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$",
+							Source:     nil,
+						},
+					},
+					stages.PipelineStage{
+						stages.StageTypeTimestamp: stages.TimestampConfig{
+							Source: "timestamp",
+							Format: "02/Jan/2006:15:04:05 -0700",
+						},
+					},
+					stages.PipelineStage{
+						stages.StageTypeLabel: stages.LabelsConfig{
+							"action": nil,
+						},
+					},
+				},
+			},
+		},
+	}
+
 	targetGroup := targetgroup.Group{
 		Targets: []model.LabelSet{{
 			"localhost": "",
 		}},
 		Labels: model.LabelSet{
 			"job":      "varlogs",
+			"match":    "true",
 			"__path__": model.LabelValue(logDirName + "/**/*.log"),
 		},
 		Source: "",
 	}
-
-	serviceConfig := sd_config.ServiceDiscoveryConfig{
-		StaticConfigs: []*targetgroup.Group{
-			&targetGroup,
+	scrapeConfig := scrapeconfig.Config{
+		JobName:        "",
+		PipelineStages: pipeline,
+		RelabelConfigs: nil,
+		ServiceDiscoveryConfig: scrapeconfig.ServiceDiscoveryConfig{
+			StaticConfigs: discovery.StaticConfig{
+				&targetGroup,
+			},
 		},
 	}
 
-	scrapeConfig := scrape.Config{
-		JobName:                "",
-		EntryParser:            api.Raw,
-		RelabelConfigs:         nil,
-		ServiceDiscoveryConfig: serviceConfig,
-	}
 	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
 
 	// Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)
@@ -516,4 +636,35 @@ func randName() string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+func Test_DryRun(t *testing.T) {
+	f, err := ioutil.TempFile("/tmp", "Test_DryRun")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	_, err = New(config.Config{}, true)
+	require.Error(t, err)
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
+	_, err = New(config.Config{
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}, true)
+	require.NoError(t, err)
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
+	p, err := New(config.Config{
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}, false)
+	require.NoError(t, err)
+	require.IsType(t, &client.MultiClient{}, p.client)
 }

@@ -3,18 +3,22 @@ package util
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
+
+	"io"
 
 	ot "github.com/opentracing/opentracing-go"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/math"
 )
 
+// Callback from an IndexQuery.
+type Callback func(chunk.IndexQuery, chunk.ReadBatch) bool
+
 // DoSingleQuery is the interface for indexes that don't support batching yet.
-type DoSingleQuery func(
-	ctx context.Context, query chunk.IndexQuery,
-	callback func(chunk.ReadBatch) bool,
-) error
+type DoSingleQuery func(context.Context, chunk.IndexQuery, Callback) error
 
 // QueryParallelism is the maximum number of subqueries run in
 // parallel per higher-level query
@@ -24,11 +28,15 @@ var QueryParallelism = 100
 // and indexes that don't yet support batching.
 func DoParallelQueries(
 	ctx context.Context, doSingleQuery DoSingleQuery, queries []chunk.IndexQuery,
-	callback func(chunk.IndexQuery, chunk.ReadBatch) bool,
+	callback Callback,
 ) error {
+	if len(queries) == 1 {
+		return doSingleQuery(ctx, queries[0], callback)
+	}
+
 	queue := make(chan chunk.IndexQuery)
 	incomingErrors := make(chan error)
-	n := util.Min(len(queries), QueryParallelism)
+	n := math.Min(len(queries), QueryParallelism)
 	// Run n parallel goroutines fetching queries from the queue
 	for i := 0; i < n; i++ {
 		go func() {
@@ -39,9 +47,7 @@ func DoParallelQueries(
 				if !ok {
 					return
 				}
-				incomingErrors <- doSingleQuery(ctx, query, func(r chunk.ReadBatch) bool {
-					return callback(query, r)
-				})
+				incomingErrors <- doSingleQuery(ctx, query, callback)
 			}
 		}()
 	}
@@ -64,9 +70,6 @@ func DoParallelQueries(
 	}
 	return lastErr
 }
-
-// Callback from an IndexQuery.
-type Callback func(chunk.IndexQuery, chunk.ReadBatch) bool
 
 type filteringBatch struct {
 	query chunk.IndexQuery
@@ -112,4 +115,34 @@ func QueryFilter(callback Callback) Callback {
 	return func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		return callback(query, &filteringBatch{query, batch})
 	}
+}
+
+// EnsureDirectory makes sure directory is there, if not creates it if not
+func EnsureDirectory(dir string) error {
+	info, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		return os.MkdirAll(dir, 0777)
+	} else if err == nil && !info.IsDir() {
+		return fmt.Errorf("not a directory: %s", dir)
+	}
+	return err
+}
+
+// ReadCloserWithContextCancelFunc helps with cancelling the context when closing a ReadCloser.
+// NOTE: The consumer of ReadCloserWithContextCancelFunc should always call the Close method when it is done reading which otherwise could cause a resource leak.
+type ReadCloserWithContextCancelFunc struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func NewReadCloserWithContextCancelFunc(readCloser io.ReadCloser, cancel context.CancelFunc) io.ReadCloser {
+	return ReadCloserWithContextCancelFunc{
+		ReadCloser: readCloser,
+		cancel:     cancel,
+	}
+}
+
+func (r ReadCloserWithContextCancelFunc) Close() error {
+	defer r.cancel()
+	return r.ReadCloser.Close()
 }

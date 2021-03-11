@@ -26,9 +26,40 @@ import (
 	"strings"
 	"unicode"
 
-	"k8s.io/klog"
+	jsonutil "k8s.io/apimachinery/pkg/util/json"
+
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
 )
+
+// Unmarshal unmarshals the given data
+// If v is a *map[string]interface{}, *[]interface{}, or *interface{} numbers
+// are converted to int64 or float64
+func Unmarshal(data []byte, v interface{}) error {
+	preserveIntFloat := func(d *json.Decoder) *json.Decoder {
+		d.UseNumber()
+		return d
+	}
+	switch v := v.(type) {
+	case *map[string]interface{}:
+		if err := yaml.Unmarshal(data, v, preserveIntFloat); err != nil {
+			return err
+		}
+		return jsonutil.ConvertMapNumbers(*v, 0)
+	case *[]interface{}:
+		if err := yaml.Unmarshal(data, v, preserveIntFloat); err != nil {
+			return err
+		}
+		return jsonutil.ConvertSliceNumbers(*v, 0)
+	case *interface{}:
+		if err := yaml.Unmarshal(data, v, preserveIntFloat); err != nil {
+			return err
+		}
+		return jsonutil.ConvertInterfaceNumbers(v, 0)
+	default:
+		return yaml.Unmarshal(data, v)
+	}
+}
 
 // ToJSON converts a single YAML document into a JSON document
 // or returns an error. If the document appears to be JSON the
@@ -92,6 +123,10 @@ type YAMLDecoder struct {
 // the caller in framing the chunk.
 func NewDocumentDecoder(r io.ReadCloser) io.ReadCloser {
 	scanner := bufio.NewScanner(r)
+	// the size of initial allocation for buffer 4k
+	buf := make([]byte, 4*1024)
+	// the maximum size used to buffer a token 5M
+	scanner.Buffer(buf, 5*1024*1024)
 	scanner.Split(splitYAMLDocument)
 	return &YAMLDecoder{
 		r:       r,
@@ -217,11 +252,9 @@ func (d *YAMLOrJSONDecoder) Decode(into interface{}) error {
 	if d.decoder == nil {
 		buffer, origData, isJSON := GuessJSONStream(d.r, d.bufferSize)
 		if isJSON {
-			klog.V(4).Infof("decoding stream as JSON")
 			d.decoder = json.NewDecoder(buffer)
 			d.rawData = origData
 		} else {
-			klog.V(4).Infof("decoding stream as YAML")
 			d.decoder = NewYAMLToJSONDecoder(buffer)
 		}
 	}

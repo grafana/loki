@@ -6,24 +6,28 @@ import (
 	"testing"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
+var fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
 var fooLabels = "{foo=\"bar\"}"
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
 
-func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
+func assertStream(t *testing.T, expected, actual []logproto.Stream) {
 	if len(expected) != len(actual) {
 		t.Fatalf("error stream length are different expected %d actual %d\n%s", len(expected), len(actual), spew.Sdump(expected, actual))
 		return
@@ -33,7 +37,7 @@ func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
 	for i := range expected {
 		assert.Equal(t, expected[i].Labels, actual[i].Labels)
 		if len(expected[i].Entries) != len(actual[i].Entries) {
-			t.Fatalf("error entries length are different expected %d actual%d\n%s", len(expected[i].Entries), len(actual[i].Entries), spew.Sdump(expected[i].Entries, actual[i].Entries))
+			t.Fatalf("error entries length are different expected %d actual %d\n%s", len(expected[i].Entries), len(actual[i].Entries), spew.Sdump(expected[i].Entries, actual[i].Entries))
 
 			return
 		}
@@ -44,26 +48,56 @@ func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
 	}
 }
 
-func newLazyChunk(stream logproto.Stream) *chunkenc.LazyChunk {
-	return &chunkenc.LazyChunk{
+func assertSeries(t *testing.T, expected, actual []logproto.Series) {
+	if len(expected) != len(actual) {
+		t.Fatalf("error stream length are different expected %d actual %d\n%s", len(expected), len(actual), spew.Sdump(expected, actual))
+		return
+	}
+	sort.Slice(expected, func(i int, j int) bool { return expected[i].Labels < expected[j].Labels })
+	sort.Slice(actual, func(i int, j int) bool { return actual[i].Labels < actual[j].Labels })
+	for i := range expected {
+		assert.Equal(t, expected[i].Labels, actual[i].Labels)
+		if len(expected[i].Samples) != len(actual[i].Samples) {
+			t.Fatalf("error entries length are different expected %d actual%d\n%s", len(expected[i].Samples), len(actual[i].Samples), spew.Sdump(expected[i].Samples, actual[i].Samples))
+
+			return
+		}
+		for j := range expected[i].Samples {
+			assert.Equal(t, expected[i].Samples[j].Timestamp, actual[i].Samples[j].Timestamp)
+			assert.Equal(t, expected[i].Samples[j].Value, actual[i].Samples[j].Value)
+			assert.Equal(t, expected[i].Samples[j].Hash, actual[i].Samples[j].Hash)
+		}
+	}
+}
+
+func newLazyChunk(stream logproto.Stream) *LazyChunk {
+	return &LazyChunk{
 		Fetcher: nil,
+		IsValid: true,
+		Chunk:   newChunk(stream),
+	}
+}
+
+func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
+	return &LazyChunk{
+		Fetcher: nil,
+		IsValid: false,
 		Chunk:   newChunk(stream),
 	}
 }
 
 func newChunk(stream logproto.Stream) chunk.Chunk {
-	lbs, err := util.ToClientLabels(stream.Labels)
+	lbs, err := logql.ParseLabels(stream.Labels)
 	if err != nil {
 		panic(err)
 	}
-	l := client.FromLabelAdaptersToLabels(lbs)
-	if !l.Has(labels.MetricName) {
-		builder := labels.NewBuilder(l)
+	if !lbs.Has(labels.MetricName) {
+		builder := labels.NewBuilder(lbs)
 		builder.Set(labels.MetricName, "logs")
-		l = builder.Labels()
+		lbs = builder.Labels()
 	}
 	from, through := model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano()), model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano())
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP)
+	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
 	for _, e := range stream.Entries {
 		if e.Timestamp.UnixNano() < from.UnixNano() {
 			from = model.TimeFromUnixNano(e.Timestamp.UnixNano())
@@ -74,7 +108,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		_ = chk.Append(&e)
 	}
 	chk.Close()
-	c := chunk.NewChunk("fake", client.Fingerprint(l), l, chunkenc.NewFacade(chk), from, through)
+	c := chunk.NewChunk("fake", client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through)
 	// force the checksum creation
 	if err := c.Encode(); err != nil {
 		panic(err)
@@ -83,54 +117,116 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 }
 
 func newMatchers(matchers string) []*labels.Matcher {
-	ls, err := logql.ParseExpr(matchers)
+	res, err := logql.ParseMatchers(matchers)
 	if err != nil {
 		panic(err)
 	}
-	return ls.Matchers()
+	return res
 }
 
-func newQuery(query string, start, end time.Time, direction logproto.Direction) *logproto.QueryRequest {
-	return &logproto.QueryRequest{
-		Query:     query,
+func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnotation) *logproto.QueryRequest {
+	req := &logproto.QueryRequest{
+		Selector:  query,
 		Start:     start,
 		Limit:     1000,
 		End:       end,
-		Direction: direction,
+		Direction: logproto.FORWARD,
 	}
+	for _, shard := range shards {
+		req.Shards = append(req.Shards, shard.String())
+	}
+	return req
+}
+
+func newSampleQuery(query string, start, end time.Time) *logproto.SampleQueryRequest {
+	req := &logproto.SampleQueryRequest{
+		Selector: query,
+		Start:    start,
+		End:      end,
+	}
+	return req
 }
 
 type mockChunkStore struct {
 	chunks []chunk.Chunk
+	client *mockChunkStoreClient
 }
+
+// mockChunkStore cannot implement both chunk.Store and chunk.Client,
+// since there is a conflict in signature for DeleteChunk method.
+var _ chunk.Store = &mockChunkStore{}
+var _ chunk.Client = &mockChunkStoreClient{}
 
 func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	chunks := make([]chunk.Chunk, 0, len(streams))
 	for _, s := range streams {
 		chunks = append(chunks, newChunk(*s))
 	}
-	return &mockChunkStore{chunks: chunks}
+	return &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}}
 }
+
 func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
 func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return nil
 }
-func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error) {
+func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
 	return nil, nil
 }
-func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	return nil, nil
+}
+
+func (m *mockChunkStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	return nil
+}
+
+func (m *mockChunkStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	return nil
 }
 func (m *mockChunkStore) Stop() {}
-func (m *mockChunkStore) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
 }
+func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
+	return nil
+}
 
-// PutChunks implements ObjectClient from Fetcher
-func (m *mockChunkStore) PutChunks(ctx context.Context, chunks []chunk.Chunk) error { return nil }
+func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	refs := make([]chunk.Chunk, 0, len(m.chunks))
+	// transform real chunks into ref chunks.
+	for _, c := range m.chunks {
+		r, err := chunk.ParseExternalKey("fake", c.ExternalKey())
+		if err != nil {
+			panic(err)
+		}
+		refs = append(refs, r)
+	}
 
-// GetChunks implements ObjectClient from Fetcher
-func (m *mockChunkStore) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger)
+	if err != nil {
+		panic(err)
+	}
+
+	f, err := chunk.NewChunkFetcher(cache, false, m.client)
+	if err != nil {
+		panic(err)
+	}
+	return [][]chunk.Chunk{refs}, []*chunk.Fetcher{f}, nil
+}
+
+type mockChunkStoreClient struct {
+	chunks []chunk.Chunk
+}
+
+func (m mockChunkStoreClient) Stop() {
+	panic("implement me")
+}
+
+func (m mockChunkStoreClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+	return nil
+}
+
+func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	var res []chunk.Chunk
 	for _, c := range chunks {
 		for _, sc := range m.chunks {
@@ -143,21 +239,8 @@ func (m *mockChunkStore) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([
 	return res, nil
 }
 
-func (m *mockChunkStore) GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
-	refs := make([]chunk.Chunk, 0, len(m.chunks))
-	// transform real chunks into ref chunks.
-	for _, c := range m.chunks {
-		r, err := chunk.ParseExternalKey("fake", c.ExternalKey())
-		if err != nil {
-			panic(err)
-		}
-		refs = append(refs, r)
-	}
-	f, err := chunk.NewChunkFetcher(cache.Config{}, false, m)
-	if err != nil {
-		panic(err)
-	}
-	return [][]chunk.Chunk{refs}, []*chunk.Fetcher{f}, nil
+func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+	return nil
 }
 
 var streamsFixture = []*logproto.Stream{

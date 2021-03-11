@@ -10,10 +10,11 @@ import (
 	template_text "text/template"
 	"time"
 
-	"github.com/grafana/loki/pkg/promtail/server/ui"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/template"
+
+	"github.com/grafana/loki/pkg/promtail/server/ui"
 )
 
 // templateOptions is a set of options to render a template.

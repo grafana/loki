@@ -2,20 +2,24 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"math/rand"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-
-	"github.com/cortexproject/cortex/pkg/util"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -25,23 +29,54 @@ const (
 	bucketRetentionEnforcementInterval = 12 * time.Hour
 )
 
-var (
-	syncTableDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "dynamo_sync_tables_seconds",
-		Help:      "Time spent doing SyncTables.",
-		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"}))
-	tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "dynamo_table_capacity_units",
-		Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
-	}, []string{"op", "table"})
-)
+type tableManagerMetrics struct {
+	syncTableDuration  *prometheus.HistogramVec
+	tableCapacity      *prometheus.GaugeVec
+	createFailures     prometheus.Gauge
+	deleteFailures     prometheus.Gauge
+	lastSuccessfulSync prometheus.Gauge
+}
 
-func init() {
-	prometheus.MustRegister(tableCapacity)
-	syncTableDuration.Register()
+func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
+	m := tableManagerMetrics{}
+	m.syncTableDuration = promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "table_manager_sync_duration_seconds",
+		Help:      "Time spent synching tables.",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"operation", "status_code"})
+
+	m.tableCapacity = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_capacity_units",
+		Help:      "Per-table capacity, measured in DynamoDB capacity units.",
+	}, []string{"op", "table"})
+
+	m.createFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_manager_create_failures",
+		Help:      "Number of table creation failures during the last table-manager reconciliation",
+	})
+	m.deleteFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_manager_delete_failures",
+		Help:      "Number of table deletion failures during the last table-manager reconciliation",
+	})
+
+	m.lastSuccessfulSync = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_manager_sync_success_timestamp_seconds",
+		Help:      "Timestamp of the last successful table manager sync.",
+	})
+
+	return &m
+}
+
+// ExtraTables holds the list of tables that TableManager has to manage using a TableClient.
+// This is useful for managing tables other than Chunk and Index tables.
+type ExtraTables struct {
+	TableClient TableClient
+	Tables      []TableDesc
 }
 
 // TableManagerConfig holds config for a TableManager
@@ -53,10 +88,12 @@ type TableManagerConfig struct {
 	RetentionDeletesEnabled bool `yaml:"retention_deletes_enabled"`
 
 	// How far back tables will be kept before they are deleted
-	RetentionPeriod time.Duration `yaml:"retention_period"`
+	RetentionPeriod time.Duration `yaml:"-"`
+	// This is so that we can accept 1w, 1y in the YAML.
+	RetentionPeriodModel model.Duration `yaml:"retention_period"`
 
 	// Period with which the table manager will poll for tables.
-	DynamoDBPollInterval time.Duration `yaml:"dynamodb_poll_interval"`
+	PollInterval time.Duration `yaml:"poll_interval"`
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod time.Duration `yaml:"creation_grace_period"`
@@ -65,145 +102,226 @@ type TableManagerConfig struct {
 	ChunkTables ProvisionConfig `yaml:"chunk_tables_provisioning"`
 }
 
-// ProvisionConfig holds config for provisioning capacity (on DynamoDB)
-type ProvisionConfig struct {
-	ProvisionedThroughputOnDemandMode bool  `yaml:"provisioned_throughput_on_demand_mode"`
-	ProvisionedWriteThroughput        int64 `yaml:"provisioned_write_throughput"`
-	ProvisionedReadThroughput         int64 `yaml:"provisioned_read_throughput"`
-	InactiveThroughputOnDemandMode    bool  `yaml:"inactive_throughput_on_demand_mode"`
-	InactiveWriteThroughput           int64 `yaml:"inactive_write_throughput"`
-	InactiveReadThroughput            int64 `yaml:"inactive_read_throughput"`
+// UnmarshalYAML implements the yaml.Unmarshaler interface. To support RetentionPeriod.
+func (cfg *TableManagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
-	WriteScale              AutoScalingConfig `yaml:"write_scale"`
-	InactiveWriteScale      AutoScalingConfig `yaml:"inactive_write_scale"`
-	InactiveWriteScaleLastN int64             `yaml:"inactive_write_scale_lastn"`
-	ReadScale               AutoScalingConfig `yaml:"read_scale"`
-	InactiveReadScale       AutoScalingConfig `yaml:"inactive_read_scale"`
-	InactiveReadScaleLastN  int64             `yaml:"inactive_read_scale_lastn"`
+	// If we call unmarshal on TableManagerConfig, it will call UnmarshalYAML leading to infinite recursion.
+	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
+	// again, we have to hide it using a type indirection.
+	type plain TableManagerConfig
+	if err := unmarshal((*plain)(cfg)); err != nil {
+		return err
+	}
+
+	if cfg.RetentionPeriodModel > 0 {
+		cfg.RetentionPeriod = time.Duration(cfg.RetentionPeriodModel)
+	}
+
+	return nil
+}
+
+// MarshalYAML implements the yaml.Marshaler interface. To support RetentionPeriod.
+func (cfg *TableManagerConfig) MarshalYAML() (interface{}, error) {
+	cfg.RetentionPeriodModel = model.Duration(cfg.RetentionPeriod)
+	return cfg, nil
+}
+
+// Validate validates the config.
+func (cfg *TableManagerConfig) Validate() error {
+	// We're setting this field because when using flags, you set the RetentionPeriodModel but not RetentionPeriod.
+	// TODO(gouthamve): Its a hack, but I can't think of any other way :/
+	if cfg.RetentionPeriodModel > 0 {
+		cfg.RetentionPeriod = time.Duration(cfg.RetentionPeriodModel)
+	}
+
+	return nil
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.BoolVar(&cfg.RetentionDeletesEnabled, "table-manager.retention-deletes-enabled", false, "If true, enables retention deletes of DB tables")
-	f.DurationVar(&cfg.RetentionPeriod, "table-manager.retention-period", 0, "Tables older than this retention period are deleted. Note: This setting is destructive to data!(default: 0, which disables deletion)")
-	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
-	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
+	f.Var(&cfg.RetentionPeriodModel, "table-manager.retention-period", "Tables older than this retention period are deleted. Must be either 0 (disabled) or a multiple of 24h. When enabled, be aware this setting is destructive to data!")
+	f.DurationVar(&cfg.PollInterval, "table-manager.poll-interval", 2*time.Minute, "How frequently to poll backend to learn our capacity.")
+	f.DurationVar(&cfg.CreationGracePeriod, "table-manager.periodic-table.grace-period", 10*time.Minute, "Periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
-	cfg.IndexTables.RegisterFlags("dynamodb.periodic-table", f)
-	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", f)
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 3000, "DynamoDB table default write throughput.")
-	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
-	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand througput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
-	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
-	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
-	f.BoolVar(&cfg.InactiveThroughputOnDemandMode, argPrefix+".inactive-enable-ondemand-throughput-mode", false, "Enables on demand througput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
-
-	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
-	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
-	f.Int64Var(&cfg.InactiveWriteScaleLastN, argPrefix+".inactive-write-throughput.scale-last-n", 4, "Number of last inactive tables to enable write autoscale.")
-
-	cfg.ReadScale.RegisterFlags(argPrefix+".read-throughput.scale", f)
-	cfg.InactiveReadScale.RegisterFlags(argPrefix+".inactive-read-throughput.scale", f)
-	f.Int64Var(&cfg.InactiveReadScaleLastN, argPrefix+".inactive-read-throughput.scale-last-n", 4, "Number of last inactive tables to enable read autoscale.")
+	cfg.IndexTables.RegisterFlags("table-manager.index-table", f)
+	cfg.ChunkTables.RegisterFlags("table-manager.chunk-table", f)
 }
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
+	services.Service
+
 	client       TableClient
 	cfg          TableManagerConfig
 	schemaCfg    SchemaConfig
 	maxChunkAge  time.Duration
-	done         chan struct{}
-	wait         sync.WaitGroup
 	bucketClient BucketClient
+	metrics      *tableManagerMetrics
+	extraTables  []ExtraTables
+
+	bucketRetentionLoop services.Service
 }
 
 // NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
-	objectClient BucketClient) (*TableManager, error) {
-	return &TableManager{
+	objectClient BucketClient, extraTables []ExtraTables, registerer prometheus.Registerer) (*TableManager, error) {
+
+	if cfg.RetentionPeriod != 0 {
+		// Assume the newest config is the one to use for validation of retention
+		indexTablesPeriod := schemaCfg.Configs[len(schemaCfg.Configs)-1].IndexTables.Period
+		if indexTablesPeriod != 0 && cfg.RetentionPeriod%indexTablesPeriod != 0 {
+			return nil, errors.New("retention period should now be a multiple of periodic table duration")
+		}
+	}
+
+	tm := &TableManager{
 		cfg:          cfg,
 		schemaCfg:    schemaCfg,
 		maxChunkAge:  maxChunkAge,
 		client:       tableClient,
-		done:         make(chan struct{}),
 		bucketClient: objectClient,
-	}, nil
+		metrics:      newTableManagerMetrics(registerer),
+		extraTables:  extraTables,
+	}
+
+	tm.Service = services.NewBasicService(tm.starting, tm.loop, tm.stopping)
+	return tm, nil
 }
 
 // Start the TableManager
-func (m *TableManager) Start() {
-	m.wait.Add(1)
-	go m.loop()
-
-	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled == true {
-		m.wait.Add(1)
-		go m.bucketRetentionLoop()
+func (m *TableManager) starting(ctx context.Context) error {
+	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
+		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
+		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
 	}
+	return nil
 }
 
 // Stop the TableManager
-func (m *TableManager) Stop() {
-	close(m.done)
-	m.wait.Wait()
+func (m *TableManager) stopping(_ error) error {
+	if m.bucketRetentionLoop != nil {
+		return services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
+	}
+	m.client.Stop()
+	return nil
 }
 
-func (m *TableManager) loop() {
-	defer m.wait.Done()
-
-	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
+func (m *TableManager) loop(ctx context.Context) error {
+	ticker := time.NewTicker(m.cfg.PollInterval)
 	defer ticker.Stop()
 
-	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		return m.SyncTables(ctx)
 	}); err != nil {
-		level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
+		level.Error(util_log.Logger).Log("msg", "error syncing tables", "err", err)
+	}
+
+	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
+	select {
+	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.PollInterval)))):
+	case <-ctx.Done():
+		return nil
 	}
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
 				return m.SyncTables(ctx)
 			}); err != nil {
-				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error syncing tables", "err", err)
 			}
-		case <-m.done:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
 
-func (m *TableManager) bucketRetentionLoop() {
-	defer m.wait.Done()
+func (m *TableManager) checkAndCreateExtraTables() error {
+	for _, extraTables := range m.extraTables {
+		existingTablesList, err := extraTables.TableClient.ListTables(context.Background())
+		if err != nil {
+			return err
+		}
 
-	ticker := time.NewTicker(bucketRetentionEnforcementInterval)
-	defer ticker.Stop()
+		existingTablesMap := map[string]struct{}{}
+		for _, table := range existingTablesList {
+			existingTablesMap[table] = struct{}{}
+		}
 
-	for {
-		select {
-		case <-ticker.C:
-			err := m.bucketClient.DeleteChunksBefore(context.Background(), mtime.Now().Add(-m.cfg.RetentionPeriod))
-
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
+		for _, tableDesc := range extraTables.Tables {
+			if _, ok := existingTablesMap[tableDesc.Name]; !ok {
+				// creating table
+				level.Info(util_log.Logger).Log("msg", "creating extra table",
+					"tableName", tableDesc.Name,
+					"provisionedRead", tableDesc.ProvisionedRead,
+					"provisionedWrite", tableDesc.ProvisionedWrite,
+					"useOnDemandMode", tableDesc.UseOnDemandIOMode,
+					"useWriteAutoScale", tableDesc.WriteScale.Enabled,
+					"useReadAutoScale", tableDesc.ReadScale.Enabled,
+				)
+				err = extraTables.TableClient.CreateTable(context.Background(), tableDesc)
+				if err != nil {
+					return err
+				}
+				continue
+			} else if m.cfg.ThroughputUpdatesDisabled {
+				// table already exists, throughput updates are disabled so no need to check for difference in configured throuhput vs actual
+				continue
 			}
-		case <-m.done:
-			return
+
+			level.Info(util_log.Logger).Log("msg", "checking throughput of extra table", "table", tableDesc.Name)
+			// table already exists, lets check actual throughput for tables is same as what is in configurations, if not let us update it
+			current, _, err := extraTables.TableClient.DescribeTable(context.Background(), tableDesc.Name)
+			if err != nil {
+				return err
+			}
+
+			if !current.Equals(tableDesc) {
+				level.Info(util_log.Logger).Log("msg", "updating throughput of extra table",
+					"table", tableDesc.Name,
+					"tableName", tableDesc.Name,
+					"provisionedRead", tableDesc.ProvisionedRead,
+					"provisionedWrite", tableDesc.ProvisionedWrite,
+					"useOnDemandMode", tableDesc.UseOnDemandIOMode,
+					"useWriteAutoScale", tableDesc.WriteScale.Enabled,
+					"useReadAutoScale", tableDesc.ReadScale.Enabled,
+				)
+				err := extraTables.TableClient.UpdateTable(context.Background(), current, tableDesc)
+				if err != nil {
+					return err
+				}
+			}
 		}
 	}
+
+	return nil
+}
+
+// single iteration of bucket retention loop
+func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
+	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
+
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
+	}
+
+	// don't return error, otherwise timer service would stop.
+	return nil
 }
 
 // SyncTables will calculate the tables expected to exist, create those that do
 // not and update those that need it.  It is exposed for testing.
 func (m *TableManager) SyncTables(ctx context.Context) error {
+	err := m.checkAndCreateExtraTables()
+	if err != nil {
+		return err
+	}
+
 	expected := m.calculateExpectedTables()
-	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", len(expected))
+	level.Info(util_log.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
 
 	toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, expected)
 	if err != nil {
@@ -218,14 +336,20 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 		return err
 	}
 
-	return m.updateTables(ctx, toCheckThroughput)
+	if err := m.updateTables(ctx, toCheckThroughput); err != nil {
+		return err
+	}
+
+	m.metrics.lastSuccessfulSync.SetToCurrentTime()
+	return nil
 }
 
 func (m *TableManager) calculateExpectedTables() []TableDesc {
 	result := []TableDesc{}
 
 	for i, config := range m.schemaCfg.Configs {
-		if config.From.Time.Time().After(mtime.Now()) {
+		// Consider configs which we are about to hit and requires tables to be created due to grace period
+		if config.From.Time.Time().After(mtime.Now().Add(m.cfg.CreationGracePeriod)) {
 			continue
 		}
 		if config.IndexTables.Period == 0 { // non-periodic table
@@ -345,54 +469,66 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 }
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
+	numFailures := 0
+	merr := tsdb_errors.NewMulti()
+
 	for _, desc := range descriptions {
-		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
+		level.Info(util_log.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
-			return err
+			numFailures++
+			merr.Add(err)
 		}
 	}
-	return nil
+
+	m.metrics.createFailures.Set(float64(numFailures))
+	return merr.Err()
 }
 
 func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDesc) error {
+	numFailures := 0
+	merr := tsdb_errors.NewMulti()
+
 	for _, desc := range descriptions {
-		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
+		level.Info(util_log.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
 		if !m.cfg.RetentionDeletesEnabled {
 			continue
 		}
 
-		level.Info(util.Logger).Log("msg", "deleting table", "table", desc.Name)
+		level.Info(util_log.Logger).Log("msg", "deleting table", "table", desc.Name)
 		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
-			return err
+			numFailures++
+			merr.Add(err)
 		}
 	}
-	return nil
+
+	m.metrics.deleteFailures.Set(float64(numFailures))
+	return merr.Err()
 }
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, expected := range descriptions {
-		level.Debug(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
+		level.Debug(util_log.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
 		current, isActive, err := m.client.DescribeTable(ctx, expected.Name)
 		if err != nil {
 			return err
 		}
 
-		tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
-		tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
+		m.metrics.tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
+		m.metrics.tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
 
 		if m.cfg.ThroughputUpdatesDisabled {
 			continue
 		}
 
 		if !isActive {
-			level.Info(util.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name)
+			level.Info(util_log.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name)
 			continue
 		}
 
 		if expected.Equals(current) {
-			level.Info(util.Logger).Log("msg", "provisioned throughput on table, skipping", "table", current.Name, "read", current.ProvisionedRead, "write", current.ProvisionedWrite)
+			level.Info(util_log.Logger).Log("msg", "provisioned throughput on table, skipping", "table", current.Name, "read", current.ProvisionedRead, "write", current.ProvisionedWrite)
 			continue
 		}
 

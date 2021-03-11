@@ -1,0 +1,31 @@
+FROM golang:1.15.3 as build
+# TOUCH_PROTOS signifies if we should touch the compiled proto files and thus not regenerate them.
+# This is helpful when file system timestamps can't be trusted with make
+ARG TOUCH_PROTOS
+COPY . /src/loki
+WORKDIR /src/loki
+RUN apt-get update && apt-get install -qy libsystemd-dev
+RUN make clean && (if [ "${TOUCH_PROTOS}" ]; then make touch-protos; fi) && make BUILD_IN_CONTAINER=false promtail
+
+# Promtail requires debian as the base image to support systemd journal reading
+FROM debian:stretch-slim
+# tzdata required for the timestamp stage to work
+RUN apt-get update && \
+  apt-get install -qy \
+  tzdata ca-certificates libsystemd-dev && \
+  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+COPY --from=build /src/loki/cmd/promtail/promtail /usr/bin/promtail
+COPY cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
+COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
+
+# Drone CI builds arm32 images using armv8l rather than armv7l. Something in
+# our build process above causes ldconfig to be rerun and removes the armhf
+# library that debian:stretch-slim on ARM comes with. Symbolically linking to
+# ld-linux.so.3 fixes the problem and allows Promtail to start.
+#
+# This process isn't necessary when building on armv7l so we only do it if the
+# library was removed.
+RUN sh -c '[ ! -f /lib/ld-linux-armhf.so.3 ] && echo RE-LINKING LD-LINUX-ARMHF.SO.3 && ln -s /lib/ld-linux.so.3 /lib/ld-linux-armhf.so.3'
+
+ENTRYPOINT ["/usr/bin/promtail"]
+CMD ["-config.file=/etc/promtail/config.yml"]

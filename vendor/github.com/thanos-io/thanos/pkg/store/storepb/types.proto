@@ -1,0 +1,73 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
+syntax = "proto3";
+package thanos;
+
+option go_package = "storepb";
+
+import "gogoproto/gogo.proto";
+import "store/labelpb/types.proto";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+
+// Do not generate XXX fields to reduce memory footprint and opening a door
+// for zero-copy casts to/from prometheus data types.
+option (gogoproto.goproto_unkeyed_all) = false;
+option (gogoproto.goproto_unrecognized_all) = false;
+option (gogoproto.goproto_sizecache_all) = false;
+
+message Chunk {
+  enum Encoding {
+    XOR = 0;
+  }
+  Encoding type  = 1;
+  bytes data     = 2;
+}
+
+message Series {
+  repeated Label labels      = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
+  repeated AggrChunk chunks  = 2 [(gogoproto.nullable) = false];
+}
+
+message AggrChunk {
+  int64 min_time = 1;
+  int64 max_time = 2;
+
+  Chunk raw     = 3;
+  Chunk count   = 4;
+  Chunk sum     = 5;
+  Chunk min     = 6;
+  Chunk max     = 7;
+  Chunk counter = 8;
+}
+
+// Matcher specifies a rule, which can match or set of labels or not.
+message LabelMatcher {
+  enum Type {
+    EQ  = 0; // =
+    NEQ = 1; // !=
+    RE  = 2; // =~
+    NRE = 3; // !~
+  }
+  Type type    = 1;
+  string name  = 2;
+  string value = 3;
+}
+
+/// PartialResponseStrategy controls partial response handling.
+enum PartialResponseStrategy {
+  /// WARN strategy tells server to treat any error that will related to single StoreAPI (e.g missing chunk series because of underlying
+  /// storeAPI is temporarily not available) as warning which will not fail the whole query (still OK response).
+  /// Server should produce those as a warnings field in response.
+  WARN = 0;
+  /// ABORT strategy tells server to treat any error that will related to single StoreAPI (e.g missing chunk series because of underlying
+  /// storeAPI is temporarily not available) as the gRPC error that aborts the query.
+  ///
+  /// This is especially useful for any rule/alert evaluations on top of StoreAPI which usually does not tolerate partial
+  /// errors.
+  ABORT = 1;
+}

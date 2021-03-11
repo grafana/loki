@@ -9,23 +9,15 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
-)
 
-var (
-	memcacheRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "memcache_request_duration_seconds",
-		Help:      "Total time spent in seconds doing memcache requests.",
-		// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
-		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
-	}, []string{"method", "status_code", "name"})
+	"github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 type observableVecCollector struct {
@@ -35,21 +27,21 @@ type observableVecCollector struct {
 func (observableVecCollector) Register()                             {}
 func (observableVecCollector) Before(method string, start time.Time) {}
 func (o observableVecCollector) After(method, statusCode string, start time.Time) {
-	o.v.WithLabelValues(method, statusCode).Observe(time.Now().Sub(start).Seconds())
+	o.v.WithLabelValues(method, statusCode).Observe(time.Since(start).Seconds())
 }
 
 // MemcachedConfig is config to make a Memcached
 type MemcachedConfig struct {
-	Expiration time.Duration `yaml:"expiration,omitempty"`
+	Expiration time.Duration `yaml:"expiration"`
 
-	BatchSize   int `yaml:"batch_size,omitempty"`
-	Parallelism int `yaml:"parallelism,omitempty"`
+	BatchSize   int `yaml:"batch_size"`
+	Parallelism int `yaml:"parallelism"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.Expiration, prefix+"memcached.expiration", 0, description+"How long keys stay in the memcache.")
-	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 0, description+"How many keys to fetch in each batch.")
+	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 1024, description+"How many keys to fetch in each batch.")
 	f.IntVar(&cfg.Parallelism, prefix+"memcached.parallelism", 100, description+"Maximum active requests to memcache.")
 }
 
@@ -63,18 +55,26 @@ type Memcached struct {
 
 	wg      sync.WaitGroup
 	inputCh chan *work
+
+	logger log.Logger
 }
 
-// NewMemcached makes a new Memcache
-func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string) *Memcached {
+// NewMemcached makes a new Memcache.
+func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg prometheus.Registerer, logger log.Logger) *Memcached {
 	c := &Memcached{
 		cfg:      cfg,
 		memcache: client,
 		name:     name,
+		logger:   logger,
 		requestDuration: observableVecCollector{
-			v: memcacheRequestDuration.MustCurryWith(prometheus.Labels{
-				"name": name,
-			}),
+			v: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+				Namespace: "cortex",
+				Name:      "memcache_request_duration_seconds",
+				Help:      "Total time spent in seconds doing memcache requests.",
+				// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
+				Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+				ConstLabels: prometheus.Labels{"name": name},
+			}, []string{"method", "status_code"}),
 		},
 	}
 
@@ -132,12 +132,11 @@ func memcacheStatusCode(err error) string {
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
 func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
-	instr.CollectedRequest(ctx, "Memcache.Get", c.requestDuration, memcacheStatusCode, func(ctx context.Context) error {
-		if c.cfg.BatchSize == 0 {
-			found, bufs, missed = c.fetch(ctx, keys)
-			return nil
-		}
-
+	if c.cfg.BatchSize == 0 {
+		found, bufs, missed = c.fetch(ctx, keys)
+		return
+	}
+	_ = instr.CollectedRequest(ctx, "Memcache.GetBatched", c.requestDuration, memcacheStatusCode, func(ctx context.Context) error {
 		found, bufs, missed = c.fetchKeysBatched(ctx, keys)
 		return nil
 	})
@@ -146,22 +145,28 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
-		sp := opentracing.SpanFromContext(ctx)
-		sp.LogFields(otlog.Int("keys requested", len(keys)))
+	const method = "Memcache.GetMulti"
+	err := instr.CollectedRequest(ctx, method, c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
+		log, _ := spanlogger.New(innerCtx, method)
+		defer log.Finish()
+		log.LogFields(otlog.Int("keys requested", len(keys)))
 
 		var err error
 		items, err = c.memcache.GetMulti(keys)
 
-		sp.LogFields(otlog.Int("keys found", len(items)))
+		log.LogFields(otlog.Int("keys found", len(items)))
 
 		// Memcached returns partial results even on error.
 		if err != nil {
-			sp.LogFields(otlog.Error(err))
-			level.Error(util.Logger).Log("msg", "Failed to get keys from memcached", "err", err)
+			log.Error(err)
+			level.Error(log).Log("msg", "Failed to get keys from memcached", "err", err)
 		}
 		return err
 	})
+
+	if err != nil {
+		return found, bufs, keys
+	}
 
 	for _, key := range keys {
 		item, ok := items[key]
@@ -181,7 +186,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
-			batchKeys := keys[i:util.Min(i+batchSize, len(keys))]
+			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
 			c.inputCh <- &work{
 				keys:     batchKeys,
 				ctx:      ctx,
@@ -227,26 +232,25 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 			return c.memcache.Set(&item)
 		})
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
+			level.Error(c.logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
 		}
 	}
 }
 
 // Stop does nothing.
-func (c *Memcached) Stop() error {
+func (c *Memcached) Stop() {
 	if c.inputCh == nil {
-		return nil
+		return
 	}
 
 	close(c.inputCh)
 	c.wg.Wait()
-	return nil
 }
 
 // HashKey hashes key into something you can store in memcached.
 func HashKey(key string) string {
 	hasher := fnv.New64a()
-	hasher.Write([]byte(key)) // This'll never error.
+	_, _ = hasher.Write([]byte(key)) // This'll never error.
 
 	// Hex because memcache errors for the bytes produced by the hash.
 	return hex.EncodeToString(hasher.Sum(nil))

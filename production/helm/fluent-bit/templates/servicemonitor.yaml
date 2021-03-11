@@ -1,0 +1,35 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ template "fluent-bit-loki.fullname" . }}
+  labels:
+    app: {{ template "fluent-bit-loki.name" . }}
+    chart: {{ template "fluent-bit-loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    {{- if .Values.serviceMonitor.additionalLabels }}
+{{ toYaml .Values.serviceMonitor.additionalLabels | indent 4 }}
+    {{- end }}
+  {{- if .Values.serviceMonitor.annotations }}
+  annotations:
+{{ toYaml .Values.serviceMonitor.annotations | indent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "fluent-bit-loki.name" . }}
+      release: {{ .Release.Name | quote }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace | quote }}
+  endpoints:
+  - port: http-metrics
+    path: /api/v1/metrics/prometheus
+    {{- if .Values.serviceMonitor.interval }}
+    interval: {{ .Values.serviceMonitor.interval }}
+    {{- end }}
+    {{- if .Values.serviceMonitor.scrapeTimeout }}
+    scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+    {{- end }}
+{{- end }}

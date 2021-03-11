@@ -3,12 +3,27 @@ package chunk
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"sort"
+	"strings"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/cortexproject/cortex/pkg/util/log"
+)
+
+type MockStorageMode int
+
+var errPermissionDenied = errors.New("permission denied")
+
+const (
+	MockStorageModeReadWrite = 0
+	MockStorageModeReadOnly  = 1
+	MockStorageModeWriteOnly = 2
 )
 
 // MockStorage is a fake in-memory StorageClient.
@@ -17,7 +32,9 @@ type MockStorage struct {
 	tables  map[string]*mockTable
 	objects map[string][]byte
 
-	numWrites int
+	numIndexWrites int
+	numChunkWrites int
+	mode           MockStorageMode
 }
 
 type mockTable struct {
@@ -38,8 +55,31 @@ func NewMockStorage() *MockStorage {
 	}
 }
 
+func (m *MockStorage) GetSortedObjectKeys() []string {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	keys := make([]string, 0, len(m.objects))
+	for k := range m.objects {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (m *MockStorage) GetObjectCount() int {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	return len(m.objects)
+}
+
 // Stop doesn't do anything.
 func (*MockStorage) Stop() {
+}
+
+func (m *MockStorage) SetMode(mode MockStorageMode) {
+	m.mode = mode
 }
 
 // ListTables implements StorageClient.
@@ -131,12 +171,16 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	if m.mode == MockStorageModeReadOnly {
+		return errPermissionDenied
+	}
+
 	mockBatch := *batch.(*mockWriteBatch)
 	seenWrites := map[string]bool{}
 
-	m.numWrites += len(mockBatch)
+	m.numIndexWrites += len(mockBatch.inserts)
 
-	for _, req := range mockBatch {
+	for _, req := range mockBatch.inserts {
 		table, ok := m.tables[req.tableName]
 		if !ok {
 			return fmt.Errorf("table not found")
@@ -149,7 +193,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 		}
 		seenWrites[key] = true
 
-		level.Debug(util.WithContext(ctx, util.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
+		level.Debug(log.WithContext(ctx, log.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
 
 		items := table.items[req.hashValue]
 
@@ -161,17 +205,38 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 			items = append(items, mockItem{})
 			copy(items[i+1:], items[i:])
 		} else {
-			// Return error if duplicate write and not metric name entry or series entry
-			itemComponents := decodeRangeKey(items[i].rangeValue)
-			if !bytes.Equal(itemComponents[3], metricNameRangeKeyV1) &&
-				!bytes.Equal(itemComponents[3], seriesRangeKeyV1) &&
-				!bytes.Equal(itemComponents[3], labelSeriesRangeKeyV1) {
-				return fmt.Errorf("Dupe write")
-			}
+			// if duplicate write then just update the value
+			items[i].value = req.value
+			continue
 		}
 		items[i] = mockItem{
 			rangeValue: req.rangeValue,
 			value:      req.value,
+		}
+
+		table.items[req.hashValue] = items
+	}
+
+	for _, req := range mockBatch.deletes {
+		table, ok := m.tables[req.tableName]
+		if !ok {
+			return fmt.Errorf("table not found")
+		}
+
+		items := table.items[req.hashValue]
+
+		i := sort.Search(len(items), func(i int) bool {
+			return bytes.Compare(items[i].rangeValue, req.rangeValue) >= 0
+		})
+
+		if i >= len(items) || !bytes.Equal(items[i].rangeValue, req.rangeValue) {
+			continue
+		}
+
+		if len(items) == 1 {
+			items = nil
+		} else {
+			items = items[:i+copy(items[i:], items[i+1:])]
 		}
 
 		table.items[req.hashValue] = items
@@ -183,6 +248,10 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
+
+	if m.mode == MockStorageModeWriteOnly {
+		return errPermissionDenied
+	}
 
 	for _, query := range queries {
 		err := m.query(ctx, query, func(b ReadBatch) bool {
@@ -197,7 +266,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, call
 }
 
 func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func(ReadBatch) (shouldContinue bool)) error {
-	logger := util.WithContext(ctx, util.Logger)
+	logger := log.WithContext(ctx, log.Logger)
 	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
 
 	table, ok := m.tables[query.TableName]
@@ -266,9 +335,7 @@ func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func
 	}
 
 	result := mockReadBatch{}
-	for _, item := range items {
-		result.items = append(result.items, item)
-	}
+	result.items = append(result.items, items...)
 
 	callback(&result)
 	return nil
@@ -278,6 +345,12 @@ func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func
 func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+
+	if m.mode == MockStorageModeReadOnly {
+		return errPermissionDenied
+	}
+
+	m.numChunkWrites += len(chunks)
 
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
@@ -294,13 +367,17 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
+	if m.mode == MockStorageModeWriteOnly {
+		return nil, errPermissionDenied
+	}
+
 	decodeContext := NewDecodeContext()
 	result := []Chunk{}
 	for _, chunk := range chunkSet {
 		key := chunk.ExternalKey()
 		buf, ok := m.objects[key]
 		if !ok {
-			return nil, fmt.Errorf("%v not found", key)
+			return nil, ErrStorageObjectNotFound
 		}
 		if err := chunk.Decode(decodeContext, buf); err != nil {
 			return nil, err
@@ -310,14 +387,134 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	return result, nil
 }
 
-type mockWriteBatch []struct {
-	tableName, hashValue string
-	rangeValue           []byte
-	value                []byte
+// DeleteChunk implements StorageClient.
+func (m *MockStorage) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+	if m.mode == MockStorageModeReadOnly {
+		return errPermissionDenied
+	}
+
+	return m.DeleteObject(ctx, chunkID)
+}
+
+func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if m.mode == MockStorageModeWriteOnly {
+		return nil, errPermissionDenied
+	}
+
+	buf, ok := m.objects[objectKey]
+	if !ok {
+		return nil, ErrStorageObjectNotFound
+	}
+
+	return ioutil.NopCloser(bytes.NewReader(buf)), nil
+}
+
+func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+	buf, err := ioutil.ReadAll(object)
+	if err != nil {
+		return err
+	}
+
+	if m.mode == MockStorageModeReadOnly {
+		return errPermissionDenied
+	}
+
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	m.objects[objectKey] = buf
+	return nil
+}
+
+func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if m.mode == MockStorageModeReadOnly {
+		return errPermissionDenied
+	}
+
+	if _, ok := m.objects[objectKey]; !ok {
+		return ErrStorageObjectNotFound
+	}
+
+	delete(m.objects, objectKey)
+	return nil
+}
+
+// List implements chunk.ObjectClient.
+func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]StorageObject, []StorageCommonPrefix, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if m.mode == MockStorageModeWriteOnly {
+		return nil, nil, errPermissionDenied
+	}
+
+	prefixes := map[string]struct{}{}
+
+	storageObjects := make([]StorageObject, 0, len(m.objects))
+	for key := range m.objects {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+
+		// ToDo: Store mtime when we have mtime based use-cases for storage objects
+		if delimiter == "" {
+			storageObjects = append(storageObjects, StorageObject{Key: key})
+			continue
+		}
+
+		ix := strings.Index(key[len(prefix):], delimiter)
+		if ix < 0 {
+			storageObjects = append(storageObjects, StorageObject{Key: key})
+			continue
+		}
+
+		commonPrefix := key[:len(prefix)+ix+len(delimiter)] // Include delimeter in the common prefix.
+		prefixes[commonPrefix] = struct{}{}
+	}
+
+	var commonPrefixes = []StorageCommonPrefix(nil)
+	for p := range prefixes {
+		commonPrefixes = append(commonPrefixes, StorageCommonPrefix(p))
+	}
+
+	// Object stores return results in sorted order.
+	sort.Slice(storageObjects, func(i, j int) bool {
+		return storageObjects[i].Key < storageObjects[j].Key
+	})
+	sort.Slice(commonPrefixes, func(i, j int) bool {
+		return commonPrefixes[i] < commonPrefixes[j]
+	})
+
+	return storageObjects, commonPrefixes, nil
+}
+
+type mockWriteBatch struct {
+	inserts []struct {
+		tableName, hashValue string
+		rangeValue           []byte
+		value                []byte
+	}
+	deletes []struct {
+		tableName, hashValue string
+		rangeValue           []byte
+	}
+}
+
+func (b *mockWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	b.deletes = append(b.deletes, struct {
+		tableName, hashValue string
+		rangeValue           []byte
+	}{tableName: tableName, hashValue: hashValue, rangeValue: rangeValue})
 }
 
 func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	*b = append(*b, struct {
+	b.inserts = append(b.inserts, struct {
 		tableName, hashValue string
 		rangeValue           []byte
 		value                []byte

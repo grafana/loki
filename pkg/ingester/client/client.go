@@ -5,63 +5,91 @@ import (
 	"io"
 	"time"
 
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	grpc_middleware "github.com/mwitkow/go-grpc-middleware"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
+
+var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "loki_ingester_client_request_duration_seconds",
+	Help:    "Time spent doing Ingester requests.",
+	Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+}, []string{"operation", "status_code"})
+
+type HealthAndIngesterClient interface {
+	logproto.IngesterClient
+	grpc_health_v1.HealthClient
+	Close() error
+}
+
+type ClosableHealthAndIngesterClient struct {
+	logproto.PusherClient
+	logproto.QuerierClient
+	logproto.IngesterClient
+	grpc_health_v1.HealthClient
+	io.Closer
+}
 
 // Config for an ingester client.
 type Config struct {
-	PoolConfig     cortex_client.PoolConfig `yaml:"pool_config,omitempty"`
-	MaxRecvMsgSize int                      `yaml:"max_recv_msg_size,omitempty"`
-	RemoteTimeout  time.Duration            `yaml:"remote_timeout,omitempty"`
+	PoolConfig       distributor.PoolConfig `yaml:"pool_config,omitempty"`
+	RemoteTimeout    time.Duration          `yaml:"remote_timeout,omitempty"`
+	GRPCClientConfig grpcclient.Config      `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
 	cfg.PoolConfig.RegisterFlags(f)
 
-	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
 	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester.client.healthcheck-timeout", 1*time.Second, "Timeout for healthcheck rpcs.")
 	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "Timeout for ingester client RPCs.")
 }
 
 // New returns a new ingester client.
-func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
+func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-			middleware.ClientUserHeaderInterceptor,
-		)),
-		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
-			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
-			middleware.StreamClientUserHeaderInterceptor,
-		)),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize),
-			grpc.UseCompressor("gzip"),
-		),
+		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
+
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation())
+	if err != nil {
+		return nil, err
+	}
+
+	opts = append(opts, dialOpts...)
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return struct {
-		logproto.PusherClient
-		logproto.QuerierClient
-		logproto.IngesterClient
-		grpc_health_v1.HealthClient
-		io.Closer
-	}{
+	return ClosableHealthAndIngesterClient{
 		PusherClient:   logproto.NewPusherClient(conn),
 		QuerierClient:  logproto.NewQuerierClient(conn),
 		IngesterClient: logproto.NewIngesterClient(conn),
+		HealthClient:   grpc_health_v1.NewHealthClient(conn),
 		Closer:         conn,
 	}, nil
+}
+
+func instrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+	return []grpc.UnaryClientInterceptor{
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.ClientUserHeaderInterceptor,
+			cortex_middleware.PrometheusGRPCUnaryInstrumentation(ingesterClientRequestDuration),
+		}, []grpc.StreamClientInterceptor{
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.StreamClientUserHeaderInterceptor,
+			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
+		}
 }

@@ -4,14 +4,20 @@
 .cache
 *.output
 *.tgz
+*.exe
+__debug_bin
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
+cmd/logcli/logcli
 cmd/promtail/promtail
 cmd/loki/loki-debug
 cmd/promtail/promtail-debug
 cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
+cmd/fluent-bit/out_loki.so
+cmd/fluent-bit/out_loki.h
+cmd/migrate/migrate
 /loki
 /promtail
 /logcli
@@ -19,3 +25,15 @@ cmd/loki-canary/loki-canary
 dlv
 rootfs/
 dist
+coverage.txt
+.DS_Store
+.aws-sam
+.idea
+
+# emacs
+.#*
+
+# terraform
+.terraform*
+*.tfstate*
+*.tfvars

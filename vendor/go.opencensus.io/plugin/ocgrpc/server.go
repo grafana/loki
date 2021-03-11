@@ -15,10 +15,11 @@
 package ocgrpc
 
 import (
-	"go.opencensus.io/trace"
-	"golang.org/x/net/context"
+	"context"
 
 	"google.golang.org/grpc/stats"
+
+	"go.opencensus.io/trace"
 )
 
 // ServerHandler implements gRPC stats.Handler recording OpenCensus stats and

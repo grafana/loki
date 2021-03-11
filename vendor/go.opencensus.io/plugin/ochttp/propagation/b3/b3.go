@@ -38,7 +38,7 @@ const (
 // because there are additional fields not represented in the
 // OpenCensus span context. Spans created from the incoming
 // header will be the direct children of the client-side span.
-// Similarly, reciever of the outgoing spans should use client-side
+// Similarly, receiver of the outgoing spans should use client-side
 // span created by OpenCensus as the parent.
 type HTTPFormat struct{}
 
@@ -68,7 +68,7 @@ func ParseTraceID(tid string) (trace.TraceID, bool) {
 		return trace.TraceID{}, false
 	}
 	b, err := hex.DecodeString(tid)
-	if err != nil {
+	if err != nil || len(b) > 16 {
 		return trace.TraceID{}, false
 	}
 	var traceID trace.TraceID
@@ -90,7 +90,7 @@ func ParseSpanID(sid string) (spanID trace.SpanID, ok bool) {
 		return trace.SpanID{}, false
 	}
 	b, err := hex.DecodeString(sid)
-	if err != nil {
+	if err != nil || len(b) > 8 {
 		return trace.SpanID{}, false
 	}
 	start := 8 - len(b)

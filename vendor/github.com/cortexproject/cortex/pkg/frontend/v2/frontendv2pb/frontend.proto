@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package frontendv2pb;
+
+option go_package = "frontendv2pb";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+import "github.com/cortexproject/cortex/pkg/querier/stats/stats.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+// Frontend interface exposed to Queriers. Used by queriers to report back the result of the query.
+service FrontendForQuerier {
+    rpc QueryResult (QueryResultRequest) returns (QueryResultResponse) { };
+}
+
+message QueryResultRequest {
+    uint64 queryID = 1;
+    httpgrpc.HTTPResponse httpResponse = 2;
+    stats.Stats stats = 3;
+
+    // There is no userID field here, because Querier puts userID into the context when
+    // calling QueryResult, and that is where Frontend expects to find it.
+}
+
+message QueryResultResponse { }
