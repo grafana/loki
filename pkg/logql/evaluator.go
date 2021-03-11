@@ -173,10 +173,18 @@ func (ev *DefaultEvaluator) StepEvaluator(
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
 			nextEv = SampleEvaluatorFunc(func(ctx context.Context, nextEvaluator SampleEvaluator, expr SampleExpr, p Params) (StepEvaluator, error) {
+				var (
+					start = q.Start().Add(-rangExpr.left.interval)
+					end   = q.End()
+				)
+				if rangExpr.left.offset != nil {
+					start = start.Add(-rangExpr.left.offset.offset)
+					end = end.Add(-rangExpr.left.offset.offset)
+				}
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.left.interval).Add(-rangExpr.left.offset),
-						End:      q.End().Add(-rangExpr.left.offset),
+						Start:    start,
+						End:      end,
 						Selector: e.String(), // intentionally send the the vector for reducing labels.
 						Shards:   q.Shards(),
 					},
@@ -189,10 +197,18 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		}
 		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *rangeAggregationExpr:
+		var (
+			start = q.Start().Add(-e.left.interval)
+			end   = q.End()
+		)
+		if e.left.offset != nil {
+			start = start.Add(-e.left.offset.offset)
+			end = end.Add(-e.left.offset.offset)
+		}
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.left.interval).Add(-e.left.offset),
-				End:      q.End().Add(-e.left.offset),
+				Start:    start,
+				End:      end,
 				Selector: expr.String(),
 				Shards:   q.Shards(),
 			},
@@ -413,8 +429,8 @@ func rangeAggEvaluator(
 		return nil, err
 	}
 	var offset int64
-	if expr.offset != nil {
-		offset = expr.offset.offset.Nanoseconds()
+	if expr.left.offset != nil {
+		offset = expr.left.offset.offset.Nanoseconds()
 	}
 	iter := newRangeVectorIterator(
 		it,
