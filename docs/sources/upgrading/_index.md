@@ -47,7 +47,7 @@ In 2.2 we changed this behavior to apply the `max_query_parallelism` after split
 
 You could consider multiplying your current `max_query_parallelism` setting by 16 to obtain the previous behavior, though in practice we suspect few people would really want it this high unless you have a significant querier worker pool.
 
-**Also be aware to make sure `max_outsdanting_per_tenant` is always greater than `max_query_parallelism` or large queries will automatically fail with a 429 back to the user.**
+**Also be aware to make sure `max_outstanding_per_tenant` is always greater than `max_query_parallelism` or large queries will automatically fail with a 429 back to the user.**
 
 
 
