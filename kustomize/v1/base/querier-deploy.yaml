@@ -23,7 +23,7 @@ spec:
         args:
           - -target=querier
           - -config.file=/etc/loki/config/loki-config.yaml
-          - -log.level=debug
+          - -log.level=error
         ports:
         - containerPort: 3100
           name: metrics

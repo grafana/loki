@@ -23,7 +23,7 @@ spec:
         args:
           - -target=ingester
           - -config.file=/etc/loki/config/loki-config.yaml
-          - -log.level=debug
+          - -log.level=error
         env: []
         ports:
         - containerPort: 3100

@@ -27,5 +27,5 @@ resources:
 configMapGenerator:
   - name: loki-config
     files:
-      - loki-config.yaml
+      - config/loki-config.yaml
 

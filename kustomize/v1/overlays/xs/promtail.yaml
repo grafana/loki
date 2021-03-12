@@ -40,7 +40,7 @@ spec:
         - args:
             - -config.file=/etc/promtail/promtail.yaml
             - -client.url=http://loki-distributor-http.loki.svc.cluster.local:3100/api/prom/push
-            - -log.level=debug
+            - -log.level=error
           env:
             - name: HOSTNAME
               valueFrom:
