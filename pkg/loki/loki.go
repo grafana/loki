@@ -11,7 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/felixge/fgprof"
-	"github.com/grafana/loki/pkg/ruler/config"
+	ruler "github.com/grafana/loki/pkg/ruler"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/util/runtime"
@@ -66,7 +66,7 @@ type Config struct {
 	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
 	Worker           worker.Config               `yaml:"frontend_worker,omitempty"`
 	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
-	Ruler            config.Config               `yaml:"ruler,omitempty"`
+	Ruler            ruler.Config                `yaml:"ruler,omitempty"`
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`

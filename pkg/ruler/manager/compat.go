@@ -11,7 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	rulerConfig "github.com/grafana/loki/pkg/ruler/config"
+	rulerConfig "github.com/grafana/loki/pkg/ruler"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
@@ -112,7 +112,7 @@ func MemstoreTenantManager(
 		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      &TestAppendable{remoteWriter: newRemoteWriter(logger, cfg), logger: logger},
+			Appendable:      &RemoteWriteAppendable{remoteWriter: newRemoteWriter(logger, cfg), logger: logger},
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),

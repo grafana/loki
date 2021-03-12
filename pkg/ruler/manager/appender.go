@@ -14,12 +14,12 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 )
 
-type TestAppendable struct {
+type RemoteWriteAppendable struct {
 	logger       log.Logger
 	remoteWriter *remote.WriteClient
 }
 
-type TestAppender struct {
+type RemoteWriteAppender struct {
 	logger       log.Logger
 	ctx          context.Context
 	remoteWriter *remote.WriteClient
@@ -43,7 +43,7 @@ func labelsToLabelsProto(labels labels.Labels, buf []prompb.Label) []prompb.Labe
 	return result
 }
 
-func (a *TestAppender) encodeRequest(l labels.Labels, s client.Sample) ([]byte, error) {
+func (a *RemoteWriteAppender) encodeRequest(l labels.Labels, s client.Sample) ([]byte, error) {
 	ts := prompb.TimeSeries{
 		Labels: labelsToLabelsProto(l, nil),
 		Samples: []prompb.Sample{
@@ -65,8 +65,8 @@ func (a *TestAppender) encodeRequest(l labels.Labels, s client.Sample) ([]byte, 
 	return compressed, nil
 }
 
-func (a *TestAppendable) Appender(ctx context.Context) storage.Appender {
-	return &TestAppender{
+func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
+	return &RemoteWriteAppender{
 		ctx:          ctx,
 		logger:       a.logger,
 		remoteWriter: a.remoteWriter,
@@ -80,7 +80,7 @@ func (a *TestAppendable) Appender(ctx context.Context) storage.Appender {
 // to AddFast() at any point. Adding the sample via Add() returns a new
 // reference number.
 // If the reference is 0 it must not be used for caching.
-func (a *TestAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
+func (a *RemoteWriteAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
 
 	a.samples = append(a.samples, client.Sample{
@@ -93,7 +93,7 @@ func (a *TestAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) 
 
 // AddFast adds a sample pair for the referenced series. It is generally
 // faster than adding a sample by providing its full label set.
-func (a *TestAppender) AddFast(ref uint64, t int64, v float64) error {
+func (a *RemoteWriteAppender) AddFast(ref uint64, t int64, v float64) error {
 	return storage.ErrNotFound
 }
 
@@ -101,7 +101,7 @@ func (a *TestAppender) AddFast(ref uint64, t int64, v float64) error {
 // returns a non-nil error, it also rolls back all modifications made in
 // the appender so far, as Rollback would do. In any case, an Appender
 // must not be used anymore after Commit has been called.
-func (a *TestAppender) Commit() error {
+func (a *RemoteWriteAppender) Commit() error {
 	if a.remoteWriter == nil {
 		level.Debug(a.logger).Log("msg", "no remote_write client defined, skipping commit")
 	}
@@ -122,7 +122,7 @@ func (a *TestAppender) Commit() error {
 	return nil
 }
 
-func (a *TestAppender) prepareRequest() ([]byte, error) {
+func (a *RemoteWriteAppender) prepareRequest() ([]byte, error) {
 	req := client.ToWriteRequest(a.labels, a.samples, nil, client.API)
 	reqBytes, err := req.Marshal()
 	if err != nil {
@@ -134,7 +134,7 @@ func (a *TestAppender) prepareRequest() ([]byte, error) {
 
 // Rollback rolls back all modifications made in the appender so far.
 // Appender has to be discarded after rollback.
-func (a *TestAppender) Rollback() error {
+func (a *RemoteWriteAppender) Rollback() error {
 	a.labels = nil
 	a.samples = nil
 

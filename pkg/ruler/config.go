@@ -1,4 +1,4 @@
-package config
+package ruler
 
 import (
 	"github.com/cortexproject/cortex/pkg/ruler"
