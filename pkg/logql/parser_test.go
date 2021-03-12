@@ -1299,6 +1299,11 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in:  "{app=~\"\xa0\xa1\"}",
+			exp: nil,
+			err: ParseError{msg: "invalid UTF-8 encoding", line: 1, col: 7},
+		},
+		{
 			in: `sum_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}"[5m])`,
 			exp: nil,
