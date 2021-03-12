@@ -97,7 +97,8 @@ var functionTokens = map[string]int{
 
 type lexer struct {
 	scanner.Scanner
-	errs []ParseError
+	errs    []ParseError
+	builder strings.Builder
 }
 
 func (l *lexer) Lex(lval *exprSymType) int {
@@ -149,10 +150,10 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	// scanning duration tokens
 	if r == '[' {
-		d := ""
+		l.builder.Reset()
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {
-			if string(r) == "]" {
-				i, err := model.ParseDuration(d)
+			if r == ']' {
+				i, err := model.ParseDuration(l.builder.String())
 				if err != nil {
 					l.Error(err.Error())
 					return 0
@@ -160,7 +161,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 				lval.duration = time.Duration(i)
 				return RANGE
 			}
-			d += string(r)
+			_, _ = l.builder.WriteRune(r)
 		}
 		l.Error("missing closing ']' in duration")
 		return 0
